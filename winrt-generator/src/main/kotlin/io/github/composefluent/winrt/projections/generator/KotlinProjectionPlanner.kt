@@ -607,48 +607,60 @@ class KotlinProjectionPlanner(
             staticInterfaces.flatMap { staticInterface ->
                 staticInterface.events.map { event -> staticInterface to event.copy(isStatic = true) }
             }.forEach { (staticInterface, event) ->
-                resolveStaticMemberBinding(
-                    candidateInterfaces = candidateInterfaces,
-                    typesByQualifiedName = typesByQualifiedName,
-                    bindingName = "STATIC_${event.name.uppercase()}_ADD_SLOT",
-                    slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
-                    returnBinding = classifyAbiTypeBinding(
-                        "Windows.Foundation.EventRegistrationToken",
-                        type.namespace,
-                        typesByQualifiedName,
-                    ),
-                    parameterBindings = listOf(
-                        KotlinProjectionAbiParameterBinding(
-                            name = "handler",
-                            typeBinding = classifyAbiTypeBinding(event.delegateTypeName, type.namespace, typesByQualifiedName),
+                if (event.hasNativeProjectionAddAccessor()) {
+                    resolveStaticMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        bindingName = "STATIC_${event.name.uppercase()}_ADD_SLOT",
+                        slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
+                        returnBinding = classifyAbiTypeBinding(
+                            "Windows.Foundation.EventRegistrationToken",
+                            type.namespace,
+                            typesByQualifiedName,
                         ),
-                    ),
-                    suppressHResultCheck = false,
-                    signatureMatcher = { interfaceType ->
-                        interfaceType.qualifiedName == staticInterface.qualifiedName
-                    },
-                )?.let(::add)
-                resolveStaticMemberBinding(
-                    candidateInterfaces = candidateInterfaces,
-                    typesByQualifiedName = typesByQualifiedName,
-                    bindingName = "STATIC_${event.name.uppercase()}_REMOVE_SLOT",
-                    slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
-                    returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                    parameterBindings = listOf(
-                        KotlinProjectionAbiParameterBinding(
-                            name = "token",
-                            typeBinding = classifyAbiTypeBinding(
-                                "Windows.Foundation.EventRegistrationToken",
-                                type.namespace,
-                                typesByQualifiedName,
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "handler",
+                                typeBinding = classifyAbiTypeBinding(event.delegateTypeName, type.namespace, typesByQualifiedName),
                             ),
                         ),
-                    ),
-                    suppressHResultCheck = true,
-                    signatureMatcher = { interfaceType ->
-                        interfaceType.qualifiedName == staticInterface.qualifiedName
-                    },
-                )?.let(::add)
+                        suppressHResultCheck = false,
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.qualifiedName == staticInterface.qualifiedName &&
+                                interfaceType.events.any {
+                                    it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                        it.hasNativeProjectionAddAccessor()
+                                }
+                        },
+                    )?.let(::add)
+                }
+                if (event.hasNativeProjectionRemoveAccessor()) {
+                    resolveStaticMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        bindingName = "STATIC_${event.name.uppercase()}_REMOVE_SLOT",
+                        slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "token",
+                                typeBinding = classifyAbiTypeBinding(
+                                    "Windows.Foundation.EventRegistrationToken",
+                                    type.namespace,
+                                    typesByQualifiedName,
+                                ),
+                            ),
+                        ),
+                        suppressHResultCheck = true,
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.qualifiedName == staticInterface.qualifiedName &&
+                                interfaceType.events.any {
+                                    it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                        it.hasNativeProjectionRemoveAccessor()
+                                }
+                        },
+                    )?.let(::add)
+                }
             }
         }.distinctBy(KotlinProjectionStaticMemberBinding::bindingName)
     }

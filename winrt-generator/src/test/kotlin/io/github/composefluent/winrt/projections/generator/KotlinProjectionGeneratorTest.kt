@@ -16417,6 +16417,76 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun planner_does_not_synthesize_static_event_binding_for_invalid_accessor_metadata() {
+        val namespace = WinRtNamespace(
+            name = "Sample.Foundation",
+            types = listOf(
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "WidgetUpdatedHandler",
+                    kind = WinRtTypeKind.Delegate,
+                    iid = Guid("22222222-3333-4444-5555-666666666666"),
+                    methods = listOf(
+                        WinRtMethodDefinition(
+                            name = "Invoke",
+                            returnTypeName = "Unit",
+                            parameters = listOf(
+                                WinRtParameterDefinition("sender", "Object"),
+                                WinRtParameterDefinition("args", "Object"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "IWidget",
+                    kind = WinRtTypeKind.Interface,
+                    iid = Guid("11111111-2222-3333-4444-555555555555"),
+                ),
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "IWidgetStatics",
+                    kind = WinRtTypeKind.Interface,
+                    iid = Guid("33333333-4444-5555-6666-777777777777"),
+                    events = listOf(
+                        WinRtEventDefinition(
+                            name = "Updated",
+                            delegateTypeName = "Sample.Foundation.WidgetUpdatedHandler",
+                            isStatic = true,
+                            addMethodName = "add_Updated",
+                            removeMethodName = "remove_Updated",
+                            addMethodRowId = 6,
+                            removeMethodRowId = 7,
+                            hasValidAccessors = false,
+                        ),
+                    ),
+                ),
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "Widget",
+                    kind = WinRtTypeKind.RuntimeClass,
+                    defaultInterfaceName = "Sample.Foundation.IWidget",
+                    activation = WinRtActivationShape(
+                        staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                    ),
+                ),
+            ),
+        )
+        val typesByName = namespace.types.associateBy(WinRtTypeDefinition::qualifiedName)
+
+        val widgetPlan = KotlinProjectionPlanner()
+            .planNamespace(
+                namespace = namespace,
+                interfaceIidsByName = typesByName.mapValues { it.value.iid },
+                typesByQualifiedName = typesByName,
+            )
+            .single { it.type.qualifiedName == "Sample.Foundation.Widget" }
+
+        assertFalse(widgetPlan.staticMemberBindings.any { it.bindingName == "STATIC_UPDATED_ADD_SLOT" })
+        assertFalse(widgetPlan.staticMemberBindings.any { it.bindingName == "STATIC_UPDATED_REMOVE_SLOT" })
+    }
+
+    @Test
     fun generator_rejects_abi_member_delegate_parameter_without_delegate_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

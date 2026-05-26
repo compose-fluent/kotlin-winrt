@@ -881,17 +881,22 @@ class KotlinProjectionGenerator(
         plan: KotlinTypeProjectionPlan,
         event: WinRtEventDefinition,
     ) {
+        validateEventAccessorPairContract(plan, event)
         if (event.hasNativeProjectionAddAccessor()) {
             val bindingName = "${event.name.uppercase()}_ADD_SLOT"
-            require(plan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+            val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == bindingName }
+            require(binding != null) {
                 "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to be present before projection rendering."
             }
+            validateEventAddAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
         }
         if (event.hasNativeProjectionRemoveAccessor()) {
             val bindingName = "${event.name.uppercase()}_REMOVE_SLOT"
-            require(plan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+            val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == bindingName }
+            require(binding != null) {
                 "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to be present before projection rendering."
             }
+            validateEventRemoveAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
         }
     }
 
@@ -899,19 +904,71 @@ class KotlinProjectionGenerator(
         plan: KotlinTypeProjectionPlan,
         event: WinRtEventDefinition,
     ) {
+        validateEventAccessorPairContract(plan, event, staticEvent = true)
         if (event.hasNativeProjectionAddAccessor()) {
             val bindingName = "STATIC_${event.name.uppercase()}_ADD_SLOT"
-            require(plan.staticMemberBindings.any { it.bindingName == bindingName }) {
+            val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == bindingName }
+            require(binding != null) {
                 "Generator requires runtime class ${plan.type.qualifiedName} static event ${event.name} add binding $bindingName to be present before projection rendering."
             }
+            validateEventAddAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
         }
         if (event.hasNativeProjectionRemoveAccessor()) {
             val bindingName = "STATIC_${event.name.uppercase()}_REMOVE_SLOT"
-            require(plan.staticMemberBindings.any { it.bindingName == bindingName }) {
+            val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == bindingName }
+            require(binding != null) {
                 "Generator requires runtime class ${plan.type.qualifiedName} static event ${event.name} remove binding $bindingName to be present before projection rendering."
             }
+            validateEventRemoveAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
         }
     }
+
+    private fun validateEventAccessorPairContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        staticEvent: Boolean = false,
+    ) {
+        require(event.hasNativeProjectionAddAccessor() == event.hasNativeProjectionRemoveAccessor()) {
+            val eventLabel = if (staticEvent) "static event" else "event"
+            "Generator requires ${plan.projectionContractSubject()} $eventLabel ${event.name} to carry both add and remove accessor metadata before projection rendering."
+        }
+    }
+
+    private fun validateEventAddAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        bindingName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    ) {
+        require(returnBinding.isEventRegistrationTokenBinding()) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to return Windows.Foundation.EventRegistrationToken before projection rendering; found ${returnBinding.describeAbiKind()}."
+        }
+        require(parameterBindings.size == 1 && parameterBindings.single().typeBinding.kind == KotlinProjectionAbiValueKind.Delegate) {
+            val found = parameterBindings.singleOrNull()?.typeBinding?.describeAbiKind() ?: "${parameterBindings.size} parameter(s)"
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to take exactly one delegate handler parameter before projection rendering; found $found."
+        }
+    }
+
+    private fun validateEventRemoveAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        bindingName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    ) {
+        require(returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to return Unit before projection rendering; found ${returnBinding.describeAbiKind()}."
+        }
+        require(parameterBindings.size == 1 && parameterBindings.single().typeBinding.isEventRegistrationTokenBinding()) {
+            val found = parameterBindings.singleOrNull()?.typeBinding?.describeAbiKind() ?: "${parameterBindings.size} parameter(s)"
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to take exactly one Windows.Foundation.EventRegistrationToken parameter before projection rendering; found $found."
+        }
+    }
+
+    private fun KotlinProjectionAbiTypeBinding.isEventRegistrationTokenBinding(): Boolean =
+        resolvedTypeName.removeSuffix("?") == "Windows.Foundation.EventRegistrationToken" &&
+            kind == KotlinProjectionAbiValueKind.Struct
 
     private fun KotlinProjectionInstanceMemberBinding.isInstanceEventAccessorBinding(
         plan: KotlinTypeProjectionPlan,
