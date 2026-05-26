@@ -33,8 +33,10 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtValueType
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1032,6 +1034,19 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
         val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
         return CodeBlock.of("%M(%L, %L)", WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME, keyAdapter, valueAdapter)
+    }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.GuidValue ||
+        winRtFundamentalTypeForName(typeBinding.typeName)?.isWinRtValueType == true
+    ) {
+        val projectedType = resolveTypeName(typeBinding.typeName).copy(nullable = false)
+        val typeSignature = abiTypeSignature(typeBinding) ?: return null
+        return CodeBlock.of(
+            "%T.valueType(%T::class, %S, %L)",
+            WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
+            projectedType,
+            typeBinding.typeName.trim().removeSuffix("?"),
+            typeSignature,
+        )
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.Struct) {
         val projectedType = nativeStructClassName(typeBinding) ?: return null
