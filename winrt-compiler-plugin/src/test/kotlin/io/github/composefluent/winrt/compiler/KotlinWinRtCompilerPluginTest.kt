@@ -371,6 +371,45 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_rejects_declared_entry_count_mismatches() {
+        val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-count-mismatch-")
+        val manifest = manifestDirectory.resolve("compiler-support.tsv")
+        val projectionRegistrar = manifestDirectory.resolve("projection-registrar.tsv")
+        Files.writeString(
+            projectionRegistrar,
+            listOf(
+                listOf("kotlinClassName", "projectedTypeName", "kind", "baseTypeName", "metadataClassName"),
+                listOf("java.lang.String", "Sample.Foundation.Widget", "RuntimeClass", "Sample.Foundation.WidgetBase", ""),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+        val manifestEntries = listOf(
+            KotlinWinRtCompilerSupportManifestEntry(
+                kind = "projection-registrar",
+                className = "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic",
+                sourceFile = "projection-registrar.tsv",
+                entries = 2,
+            ),
+        )
+
+        val error = runCatching {
+            readCompilerSupportInputEntries(
+                manifestPath = manifest,
+                manifestEntries = manifestEntries,
+                kind = "projection-registrar",
+                description = "projection registrar input",
+                read = ::readProjectionRegistrarEntries,
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("expected 2 projection registrar input entries"),
+        )
+    }
+
+    @Test
     fun generic_abi_registry_input_reads_compile_time_facts() {
         val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-", ".tsv")
         Files.writeString(
