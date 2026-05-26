@@ -84,7 +84,7 @@ internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtTyp
 
 private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
     val parts = line.split('\t')
-    if (parts.size < 2 || parts[0].isBlank() || parts[1].isBlank()) {
+    if (parts.size !in 2..4 || parts[0].isBlank() || parts[1].isBlank()) {
         return null
     }
     if (parts[1] !in authoringMetadataIndexKinds) {

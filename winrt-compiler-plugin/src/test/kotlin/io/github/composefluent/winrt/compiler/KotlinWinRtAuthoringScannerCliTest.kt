@@ -92,6 +92,21 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_authoring_metadata_index_rows_with_extra_columns() {
+        val metadataIndex = Files.createTempFile("kotlin-winrt-extra-column-metadata-index-", ".tsv")
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\t\t\textra\n")
+
+        val error = runCatching { readAuthoringMetadataIndex(metadataIndex) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("authoring metadata index row 1"),
+        )
+    }
+
+    @Test
     fun rejects_missing_authoring_source_roots() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-missing-root-")
         val missingSourceRoot = root.resolve("missing")

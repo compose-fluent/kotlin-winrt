@@ -142,6 +142,7 @@
 - [x] Generic ABI registry duplicate fail-closed closure: reject duplicate derived-interface and delegate registry rows instead of silently distincting or repeatedly registering generic ABI support entries.
 - [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
 - [x] Authoring metadata index list-field fail-closed closure: reject blank elements inside authoring metadata index list columns instead of silently compacting inherited/overridable interface metadata.
+- [x] Authoring metadata index schema fail-closed closure: reject metadata-index rows with extra columns instead of ignoring generator/schema drift in the compiler-plugin authoring handoff.
 - [x] Authoring candidate TSV fail-closed closure: reject malformed scanner candidate rows, visibility flags, and list fields before Gradle authoring metadata or TypeDetails rendering can consume incomplete authored type data.
 - [x] Authoring TypeDetails interface metadata fail-closed closure: reject authored TypeDetails candidates whose scanned WinRT interface metadata is missing, not an interface, or lacks IID metadata instead of silently dropping authored support generation.
 - [x] Authoring TypeDetails collection return fail-closed closure: reject authored collection returns whose element adapter cannot be rendered instead of falling back to object marshaling for malformed or unsupported collection helper shapes.
