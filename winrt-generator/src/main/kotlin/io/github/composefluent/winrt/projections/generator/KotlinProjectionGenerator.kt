@@ -1208,7 +1208,7 @@ class KotlinProjectionGenerator(
                 }
             }
         }
-        if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass && customObjectAbi(typeBinding) == null) {
             require(typeBinding.interfaceId != null) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole runtime class ${typeBinding.resolvedTypeName} to carry default-interface metadata IID before projection rendering."
             }

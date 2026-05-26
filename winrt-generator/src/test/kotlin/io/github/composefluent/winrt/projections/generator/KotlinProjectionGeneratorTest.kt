@@ -11627,6 +11627,48 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_reads_async_operation_with_progress_collection_result_through_runtime_bridge() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+            typeName = "Windows.Foundation.IAsyncOperationWithProgress<Windows.Foundation.Collections.IMapView<String, Int>, UInt>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.MappedMapView,
+                    typeName = "Windows.Foundation.Collections.IMapView<String, Int>",
+                    resolvedTypeName = "Windows.Foundation.Collections.IMapView",
+                    typeArguments = listOf(
+                        KotlinProjectionAbiTypeBinding(
+                            kind = KotlinProjectionAbiValueKind.String,
+                            typeName = "String",
+                        ),
+                        KotlinProjectionAbiTypeBinding(
+                            kind = KotlinProjectionAbiValueKind.Int32,
+                            typeName = "Int",
+                        ),
+                    ),
+                ),
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.UInt32,
+                    typeName = "UInt",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("WinRtAsyncProjectionInterop.operationWithProgress<kotlin.collections.Map<kotlin.String, kotlin.Int>, kotlin.UInt>"))
+        assertTrue(expression, expression.contains("resultSignature = io.github.composefluent.winrt.runtime.WinRtCollectionInterfaceIds.mapViewSignature(io.github.composefluent.winrt.runtime.WinRtTypeSignature.string(), io.github.composefluent.winrt.runtime.WinRtTypeSignature.int32())"))
+        assertTrue(expression, expression.contains("progressSignature = io.github.composefluent.winrt.runtime.WinRtTypeSignature.uint32()"))
+        assertTrue(expression, expression.contains("resultOut = { __operationScope -> io.github.composefluent.winrt.runtime.PlatformAbi.allocatePointerSlot(__operationScope) }"))
+        assertTrue(expression, expression.contains("val __collectionPointer = io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)"))
+        assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection.fromAbi(__collectionPointer, io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters.string, io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters.valueType(kotlin.Int::class, \"Int\", io.github.composefluent.winrt.runtime.WinRtTypeSignature.int32()))"))
+        assertFalse(expression, expression.contains("val __collectionRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
+        assertFalse(expression, expression.contains("fromRawComPtr(__collectionRef.pointer)"))
+        assertFalse(expression, expression.contains("WinRtAsyncOperationWithProgressVftblSlots.GetResults, __operationResultOut"))
+    }
+
+    @Test
     fun generator_fails_closed_for_projected_interface_type_signature_with_unrenderable_generic_argument() {
         val renderer = KotlinProjectionRenderer()
         val binding = KotlinProjectionAbiTypeBinding(
@@ -12406,8 +12448,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("private class NativeProjection("))
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
         assertTrue(contents.contains("\"Int32,Int32\""))
+        assertTrue(contents.contains("WinRtReadOnlyListProjection.fromAbi("))
+        assertTrue(contents.contains("WinRtReferenceValueAdapters.valueType(Float::class"))
+        assertTrue(contents.contains("WinRtTypeSignature.float32()"))
         assertTrue(contents.contains("{ __collectionRef ->"))
-        assertTrue(contents.contains("object : AbstractList<Float>(), List<Float>, IWinRTObject"))
+        assertFalse(contents.contains("object : AbstractList<Float>(), List<Float>, IWinRTObject"))
         assertTrue(contents.contains("orientation.abiValue"))
         assertTrue(contents.contains("alignment.abiValue"))
         assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
@@ -12952,6 +12997,13 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
+                            name = "IIterator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222223"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
                             name = "IVector",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("33333333-3333-3333-3333-333333333333"),
@@ -13061,6 +13113,13 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("11111111-2222-3333-4444-555555555601"),
                             genericParameterCount = 1,
                             methods = listOf(WinRtMethodDefinition("First", "Windows.Foundation.Collections.IIterator<T0>")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555603"),
+                            genericParameterCount = 1,
                         ),
                     ),
                 ),
@@ -14758,11 +14817,14 @@ class KotlinProjectionGeneratorTest {
         assertFalse(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi(__collectionPointer"))
         assertFalse(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
-        assertTrue(contents, contents.contains("return object : AbstractMap<String, Int>(), Map<String, Int>, IWinRTObject"))
-        assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyDictionaryProjection.fromAbi(__collectionPointer"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.valueType(Int::class"))
+        assertTrue(contents, contents.contains("\"Int\", WinRtTypeSignature.int32())"))
+        assertFalse(contents, contents.contains("return object : AbstractMap<String, Int>(), Map<String, Int>, IWinRTObject"))
+        assertFalse(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
         assertFalse(contents, contents.contains("IVectorView.Metadata.GETAT_SLOT"))
-        assertTrue(contents, contents.contains("IMapView.Metadata.LOOKUP_SLOT"))
-        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+        assertFalse(contents, contents.contains("IMapView.Metadata.LOOKUP_SLOT"))
+        assertFalse(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
     }
 
     @Test

@@ -2936,6 +2936,9 @@ class KotlinProjectionRenderer(
             return CodeBlock.of("%T.Metadata.IID", projectionClassName(rawInterfaceName))
         }
         runtimeClassMappedIteratorInterfaceIdCode(interfaceName, plan)?.let { return it }
+        if (mappedTypeByAbiName(rawInterfaceName)?.isBindableCollectionMapping() == true) {
+            return CodeBlock.of("%T.Metadata.IID", projectionClassName(rawInterfaceName))
+        }
         val signature = abiTypeSignature(
             renderAbiTypeBinding(interfaceName, plan.typesByQualifiedName, plan.type.namespace),
         ) ?: throw IllegalArgumentException(
@@ -2969,6 +2972,11 @@ class KotlinProjectionRenderer(
             elementSignature,
         )
     }
+
+    private fun KotlinProjectionMappedType.isBindableCollectionMapping(): Boolean =
+        abiValueKind == KotlinProjectionAbiValueKind.MappedBindableIterable ||
+            abiValueKind == KotlinProjectionAbiValueKind.MappedBindableVector ||
+            abiValueKind == KotlinProjectionAbiValueKind.MappedBindableVectorView
 
     internal fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {
         val invokeMethod = requireDelegateInvokeMethod(plan.type)

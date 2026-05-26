@@ -169,7 +169,7 @@
 - [x] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [x] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [x] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
-- [ ] Collection and async projection closure: finish generated collection, observable/bindable, iterable/vector/map, async action/operation/progress surfaces, helper support, and runtime bridge calls after runtime contracts are complete.
+- [x] Collection and async projection closure: finish generated collection, observable/bindable, iterable/vector/map, async action/operation/progress surfaces, helper support, and runtime bridge calls after runtime contracts are complete.
 - [ ] Delegate and event projection closure: finish delegate `Invoke`, event add/remove, event-source helper support, token ownership, callback marshaling, and fail-closed diagnostics for unsupported delegate shapes.
 - [x] Struct and enum projection closure: finish nested structs, fixed/array fields where supported, enum underlying types, ABI layouts, and unsupported field diagnostics.
 - [ ] Activation/static/factory closure: finish runtime class activation, static interface companions, factory/composable factory surfaces, required interface caches, and generated support files.
