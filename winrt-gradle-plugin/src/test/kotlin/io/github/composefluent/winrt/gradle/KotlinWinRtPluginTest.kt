@@ -847,6 +847,29 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun checked_in_projection_breadth_stays_on_smoke_surface_until_upstream_contracts_close() {
+        val projectionsRoot = repositoryRoot().resolve("winrt-projections/src/main")
+        val checkedInProjectionFiles = Files.walk(projectionsRoot).use { stream ->
+            stream
+                .filter(Files::isRegularFile)
+                .map { path -> projectionsRoot.relativize(path).toString().replace('\\', '/') }
+                .sorted()
+                .toList()
+        }
+
+        assertEquals(
+            listOf(
+                "kotlin/io/github/composefluent/winrt/projections/ProjectionModuleMarker.kt",
+                "kotlin/io/github/composefluent/winrt/projections/support/WinRTGenericAbiSupport.kt",
+                "kotlin/io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations.kt",
+                "winrt/SimpleMathComponent.dll",
+                "winrt/SimpleMathComponent.winmd",
+            ),
+            checkedInProjectionFiles,
+        )
+    }
+
+    @Test
     fun application_plugin_resolves_identity_configuration() {
         val project = ProjectBuilder.builder().build()
 
@@ -5632,6 +5655,14 @@ private fun writeGradleFile(path: Path, content: String) {
     Files.createDirectories(path.parent)
     Files.writeString(path, content)
 }
+
+private fun repositoryRoot(): Path =
+    generateSequence(Path.of("").toAbsolutePath().normalize()) { path -> path.parent }
+        .firstOrNull { path ->
+            Files.isRegularFile(path.resolve("settings.gradle.kts")) &&
+                Files.isDirectory(path.resolve("winrt-projections"))
+        }
+        ?: error("Unable to locate kotlin-winrt repository root from ${Path.of("").toAbsolutePath().normalize()}.")
 
 private fun commandExists(name: String): Boolean =
     runCatching {
