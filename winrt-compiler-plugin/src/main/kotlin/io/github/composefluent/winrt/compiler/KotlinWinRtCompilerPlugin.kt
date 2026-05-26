@@ -2959,57 +2959,39 @@ class KotlinWinRtIrGenerationExtension(
         manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
     ): List<KotlinWinRtProjectionRegistrarEntry> {
         val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
-        val manifestDirectory = manifestPath.parent ?: return emptyList()
-        return manifestEntries
-            .asSequence()
-            .filter { it.kind == "projection-registrar" }
-            .flatMap { entry ->
-                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
-                if (Files.isRegularFile(sourcePath)) {
-                    readProjectionRegistrarEntries(sourcePath).asSequence()
-                } else {
-                    emptySequence()
-                }
-            }
-            .toList()
+        return readCompilerSupportInputEntries(
+            manifestPath = manifestPath,
+            manifestEntries = manifestEntries,
+            kind = "projection-registrar",
+            description = "projection registrar input",
+            read = ::readProjectionRegistrarEntries,
+        )
     }
 
     private fun readGenericTypeInstantiationEntries(
         manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
     ): List<KotlinWinRtGenericTypeInstantiationEntry> {
         val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
-        val manifestDirectory = manifestPath.parent ?: return emptyList()
-        return manifestEntries
-            .asSequence()
-            .filter { it.kind == "generic-type-instantiation" }
-            .flatMap { entry ->
-                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
-                if (Files.isRegularFile(sourcePath)) {
-                    readGenericTypeInstantiationEntries(sourcePath).asSequence()
-                } else {
-                    emptySequence()
-                }
-            }
-            .toList()
+        return readCompilerSupportInputEntries(
+            manifestPath = manifestPath,
+            manifestEntries = manifestEntries,
+            kind = "generic-type-instantiation",
+            description = "generic type instantiation input",
+            read = ::readGenericTypeInstantiationEntries,
+        )
     }
 
     private fun readGenericAbiRegistryEntries(
         manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
     ): List<KotlinWinRtGenericAbiRegistryEntry> {
         val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
-        val manifestDirectory = manifestPath.parent ?: return emptyList()
-        return manifestEntries
-            .asSequence()
-            .filter { it.kind == "generic-abi-registry" }
-            .flatMap { entry ->
-                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
-                if (Files.isRegularFile(sourcePath)) {
-                    readGenericAbiRegistryEntries(sourcePath).asSequence()
-                } else {
-                    emptySequence()
-                }
-            }
-            .toList()
+        return readCompilerSupportInputEntries(
+            manifestPath = manifestPath,
+            manifestEntries = manifestEntries,
+            kind = "generic-abi-registry",
+            description = "generic ABI registry input",
+            read = ::readGenericAbiRegistryEntries,
+        )
     }
 
     private fun writeProjectionTypeIndex(
@@ -4375,6 +4357,27 @@ data class KotlinWinRtGenericAbiRegistryEntry(
 
 fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistryEntry> =
     readRequiredTsvRows(path, "generic ABI registry input", ::parseGenericAbiRegistryLine)
+
+fun <T> readCompilerSupportInputEntries(
+    manifestPath: Path,
+    manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    kind: String,
+    description: String,
+    read: (Path) -> List<T>,
+): List<T> {
+    val manifestDirectory = manifestPath.parent ?: return emptyList()
+    return manifestEntries
+        .asSequence()
+        .filter { it.kind == kind }
+        .flatMap { entry ->
+            val sourcePath = manifestDirectory.resolve(entry.sourceFile)
+            require(Files.isRegularFile(sourcePath)) {
+                "kotlin-winrt compiler plugin requires $description file $sourcePath declared by $manifestPath to exist."
+            }
+            read(sourcePath).asSequence()
+        }
+        .toList()
+}
 
 private fun <T> readRequiredTsvRows(
     path: Path,
