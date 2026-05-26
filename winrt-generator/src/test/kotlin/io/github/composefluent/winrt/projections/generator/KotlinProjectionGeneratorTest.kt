@@ -12832,6 +12832,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("input", "System.Object"),
                                     ),
+                                    methodRowId = 6,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "EchoWidget",
@@ -12839,6 +12840,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("input", "Sample.Foundation.Widget"),
                                     ),
+                                    methodRowId = 7,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "RoundTripPoint",
@@ -12846,6 +12848,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("point", "Sample.Foundation.WidgetPoint"),
                                     ),
+                                    methodRowId = 8,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "RoundTripHandler",
@@ -12853,6 +12856,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler"),
                                     ),
+                                    methodRowId = 9,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "SumValues",
@@ -12860,6 +12864,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("values", "Array<Int>", isInParameter = true),
                                     ),
+                                    methodRowId = 10,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "RoundTripNames",
@@ -12867,6 +12872,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("names", "Array<String>", isInParameter = true),
                                     ),
+                                    methodRowId = 11,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "FillNames",
@@ -12878,6 +12884,7 @@ class KotlinProjectionGeneratorTest {
                                             isOutParameter = true,
                                         ),
                                     ),
+                                    methodRowId = 12,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "ReceiveNames",
@@ -12890,6 +12897,7 @@ class KotlinProjectionGeneratorTest {
                                             isOutParameter = true,
                                         ),
                                     ),
+                                    methodRowId = 13,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "ReceiveNamesForPrefix",
@@ -12903,37 +12911,7 @@ class KotlinProjectionGeneratorTest {
                                             isOutParameter = true,
                                         ),
                                     ),
-                                ),
-                                WinRtMethodDefinition(
-                                    name = "ReceiveNamesThenSuffix",
-                                    returnTypeName = "Unit",
-                                    parameters = listOf(
-                                        WinRtParameterDefinition(
-                                            "names",
-                                            "Array<String>",
-                                            typeIsByRef = true,
-                                            isOutParameter = true,
-                                        ),
-                                        WinRtParameterDefinition("suffix", "String"),
-                                    ),
-                                ),
-                                WinRtMethodDefinition(
-                                    name = "ReceiveTwoNameArrays",
-                                    returnTypeName = "Unit",
-                                    parameters = listOf(
-                                        WinRtParameterDefinition(
-                                            "firstNames",
-                                            "Array<String>",
-                                            typeIsByRef = true,
-                                            isOutParameter = true,
-                                        ),
-                                        WinRtParameterDefinition(
-                                            "secondNames",
-                                            "Array<String>",
-                                            typeIsByRef = true,
-                                            isOutParameter = true,
-                                        ),
-                                    ),
+                                    methodRowId = 14,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "RoundTripGeneric",
@@ -12943,6 +12921,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("value", "M0"),
                                     ),
+                                    methodRowId = 15,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "RoundTripGenericArray",
@@ -12952,6 +12931,7 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("values", "Array<M0>", isInParameter = true),
                                     ),
+                                    methodRowId = 16,
                                 ),
                             ),
                             events = listOf(
@@ -12960,24 +12940,32 @@ class KotlinProjectionGeneratorTest {
                                     delegateTypeName = "Windows.Foundation.EventHandler<Int>",
                                     addMethodName = "add_Changed",
                                     removeMethodName = "remove_Changed",
+                                    addMethodRowId = 17,
+                                    removeMethodRowId = 18,
                                 ),
                                 WinRtEventDefinition(
                                     name = "Ticked",
                                     delegateTypeName = "Sample.Foundation.WidgetHandler",
                                     addMethodName = "add_Ticked",
                                     removeMethodName = "remove_Ticked",
+                                    addMethodRowId = 19,
+                                    removeMethodRowId = 20,
                                 ),
                                 WinRtEventDefinition(
                                     name = "Typed",
                                     delegateTypeName = "Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget,Int>",
                                     addMethodName = "add_Typed",
                                     removeMethodName = "remove_Typed",
+                                    addMethodRowId = 21,
+                                    removeMethodRowId = 22,
                                 ),
                                 WinRtEventDefinition(
                                     name = "MapChanged",
                                     delegateTypeName = "Windows.Foundation.Collections.MapChangedEventHandler<String,Int>",
                                     addMethodName = "add_MapChanged",
                                     removeMethodName = "remove_MapChanged",
+                                    addMethodRowId = 23,
+                                    removeMethodRowId = 24,
                                 ),
                             ),
                         ),
@@ -13186,6 +13174,13 @@ class KotlinProjectionGeneratorTest {
                             name = "AcceleratorKeyEventArgs",
                             kind = WinRtTypeKind.RuntimeClass,
                             iid = Guid("11111111-2222-3333-4444-555555555564"),
+                            defaultInterfaceName = "Windows.UI.Core.IAcceleratorKeyEventArgs",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Core",
+                            name = "IAcceleratorKeyEventArgs",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555567"),
                         ),
                     ),
                 ),
