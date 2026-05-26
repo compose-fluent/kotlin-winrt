@@ -1895,6 +1895,12 @@ class KotlinProjectionSupportRenderer {
             require(slotOrder.containsKey(binding.slotConstantName)) {
                 "Support renderer requires authored CCW binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to carry ABI slot metadata before rendering authoring CCW definitions."
             }
+            require(
+                authoredCcwBindingHasMemberBody(interfacePlan.type, binding) ||
+                    authoredCcwBindingHasIntentionalFallback(interfacePlan.type, binding),
+            ) {
+                "Support renderer requires authored CCW binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to map to an authored method, property, or event body before rendering authoring CCW definitions."
+            }
         }
         val methods = interfacePlan.instanceMemberBindings.sortedWith(
             compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder.getValue(it.slotConstantName) }
@@ -1919,6 +1925,22 @@ class KotlinProjectionSupportRenderer {
         code.add(")")
         return code.build()
     }
+
+    private fun authoredCcwBindingHasMemberBody(
+        interfaceType: WinRtTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): Boolean =
+        interfaceType.events.any { event ->
+            binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
+                binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
+        } ||
+            interfaceType.methods
+                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .any { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) } ||
+            interfaceType.properties.any { property ->
+                binding.bindingName == "${property.name.uppercase()}_GETTER_SLOT" ||
+                    binding.bindingName == "${property.name.uppercase()}_SETTER_SLOT"
+            }
 
     private fun authoringCcwMethodSignatureCode(binding: KotlinProjectionInstanceMemberBinding): CodeBlock {
         val explicitKinds = binding.parameterBindings.flatMap(::authoringCcwParameterAbiValueKindCodes) +

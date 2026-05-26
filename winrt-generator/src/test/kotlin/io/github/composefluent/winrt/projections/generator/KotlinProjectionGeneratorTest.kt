@@ -439,6 +439,76 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_renderer_rejects_authored_ccw_binding_without_member_body_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Refresh",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val plans = KotlinProjectionPlanner().plan(model).map { plan ->
+            if (plan.type.qualifiedName != "Sample.Foundation.IWidget") {
+                plan
+            } else {
+                plan.copy(
+                    abiSlotBindings = plan.abiSlotBindings + KotlinProjectionAbiSlotBinding("BROKEN_SLOT", 8),
+                    instanceMemberBindings = plan.instanceMemberBindings + KotlinProjectionInstanceMemberBinding(
+                        bindingName = "BROKEN_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "iWidget",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "BROKEN_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                    ),
+                )
+            }
+        }
+
+        val error = runCatching {
+            KotlinProjectionSupportRenderer().render(
+                model = model,
+                plans = plans,
+                context = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            )
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Support renderer requires authored CCW binding Sample.Foundation.IWidget.BROKEN_SLOT to map to an authored method, property, or event body before rendering authoring CCW definitions.",
+            ),
+        )
+    }
+
+    @Test
     fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
         val runtimeOwned = listOf(
             "System.Object?",

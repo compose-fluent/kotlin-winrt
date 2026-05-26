@@ -94,6 +94,7 @@
 - [x] Authoring activation factory member-reference fail-closed closure: reject support rendering when factory member references name a missing factory interface instead of emitting empty member lists.
 - [x] Authored CCW support-renderer interface plan closure: reject support rendering when authored CCW interface definitions lack projection plans instead of emitting empty method tables.
 - [x] Authored CCW support-renderer slot metadata closure: reject support rendering when authored CCW method tables lack ABI slot metadata instead of sorting unsupported members last.
+- [x] Authored CCW support-renderer member-body closure: reject authored CCW method-table bindings that do not map to an interface method, property, or event body before support rendering emits runtime fallback handlers.
 - [x] Authored CCW generic interface IID closure: render authored CCW implemented/default generic interface IDs through `WinRtTypeSignature` and `ParameterizedInterfaceId` instead of collapsing `IBox<T>` instances to raw interface IID metadata.
 - [x] Runtime-class required generic interface IID closure: render runtime-class required-interface cache acquisition for substituted generic closure interfaces through `WinRtTypeSignature` and `ParameterizedInterfaceId` instead of querying raw required interface IIDs.
 - [x] Interface native collection generic IID closure: render interface `NativeProjection` collection-owner cache acquisition through generic collection signatures and `ParameterizedInterfaceId` instead of querying raw collection interface IIDs.
