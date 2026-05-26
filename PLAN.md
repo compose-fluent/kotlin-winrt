@@ -133,6 +133,7 @@
 - [x] Projection registrar required-column fail-closed closure: reject blank projection registrar `kotlinClassName`, `projectedTypeName`, or `kind` columns instead of generating invalid projection support initializer registrations.
 - [x] Projection registrar kind fail-closed closure: reject projection registrar `kind` values outside the generator-emitted non-`Unknown` `WinRtTypeKind` set instead of writing invalid support registrations.
 - [x] Projection registrar duplicate fail-closed closure: reject duplicate projection registrar `kotlinClassName`/`projectedTypeName` rows instead of generating repeated support initializer registrations.
+- [x] Projection identity registrar fail-closed closure: reject malformed projection registrar headers and rows before dependency identity JSON can under-report generated projected types for downstream suppression.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Generic type-instantiation required-column fail-closed closure: reject blank generic instantiation `className` or `sourceType` columns instead of accepting invalid generator handoff rows.
 - [x] Compiler support list-field fail-closed closure: reject blank elements inside generic instantiation and generic ABI registry support-list columns instead of silently compacting malformed generator handoff lists.

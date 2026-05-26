@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
@@ -113,11 +114,41 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
 internal fun readProjectedTypeNames(projectionRegistrarFiles: Iterable<File>): List<String> =
     projectionRegistrarFiles
         .filter(File::isFile)
-        .flatMap(File::readLines)
-        .drop(1)
-        .mapNotNull { line -> line.split('\t').getOrNull(1)?.takeIf(String::isNotBlank) }
+        .flatMap(::readProjectionRegistrarProjectedTypeNames)
         .distinct()
         .sorted()
+
+private val projectionRegistrarHeader = listOf(
+    "kotlinClassName",
+    "projectedTypeName",
+    "kind",
+    "baseTypeName",
+    "metadataClassName",
+)
+
+private fun readProjectionRegistrarProjectedTypeNames(file: File): List<String> {
+    val lines = file.readLines()
+    val header = lines.firstOrNull()?.split('\t')
+        ?: throw GradleException("Projection registrar '${file.absolutePath}' is missing a header.")
+    if (header != projectionRegistrarHeader) {
+        throw GradleException(
+            "Projection registrar '${file.absolutePath}' has malformed header '${lines.first()}'.",
+        )
+    }
+    return lines.drop(1).mapIndexedNotNull { index, line ->
+        if (line.isBlank()) {
+            return@mapIndexedNotNull null
+        }
+        val rowNumber = index + 2
+        val parts = line.split('\t', limit = projectionRegistrarHeader.size)
+        if (parts.size != projectionRegistrarHeader.size || parts.any(String::isBlank)) {
+            throw GradleException(
+                "Projection registrar '${file.absolutePath}' has malformed row $rowNumber.",
+            )
+        }
+        parts[1]
+    }
+}
 
 internal fun readCompilerSupportManifests(identityFile: File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
