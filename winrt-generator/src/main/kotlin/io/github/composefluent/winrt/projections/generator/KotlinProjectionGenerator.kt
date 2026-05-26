@@ -829,6 +829,9 @@ class KotlinProjectionGenerator(
             KotlinProjectionAbiValueKind.MappedVectorView -> 1
             KotlinProjectionAbiValueKind.MappedMap,
             KotlinProjectionAbiValueKind.MappedMapView -> 2
+            KotlinProjectionAbiValueKind.MappedBindableIterable,
+            KotlinProjectionAbiValueKind.MappedBindableVector,
+            KotlinProjectionAbiValueKind.MappedBindableVectorView -> 0
             else -> return
         }
         require(typeBinding.typeArguments.size == expectedArgumentCount) {
