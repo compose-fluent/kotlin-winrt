@@ -1027,6 +1027,14 @@ class KotlinProjectionGenerator(
             require(typeBinding.interfaceId != null || invokeShape?.interfaceId != null) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole delegate ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
             }
+            if (typeBinding.typeArguments.isNotEmpty() &&
+                typeBinding.typeArguments.none { argument -> argument.kind == KotlinProjectionAbiValueKind.Unsupported } &&
+                invokeShape != null
+            ) {
+                require(renderer.delegateInterfaceIdCode(typeBinding, invokeShape) != null) {
+                    "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole delegate ${typeBinding.resolvedTypeName} generic arguments to have renderable WinRT type signatures before projection rendering."
+                }
+            }
             invokeShape?.let { shape ->
                 validateProjectedAbiTypeBindingContract(
                     plan,
