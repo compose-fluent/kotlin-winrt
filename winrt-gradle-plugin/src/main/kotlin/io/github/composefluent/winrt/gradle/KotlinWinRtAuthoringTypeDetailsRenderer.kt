@@ -602,10 +602,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             ?: throw GradleException(
                 "Authored WinRT override ${method.name} returns collection type '$returnTypeName' without exactly one element type.",
             )
-        val elementAdapter = renderCollectionElementAdapter(elementType, typesByName, semanticHelpers)
-            ?: throw GradleException(
-                "Authored WinRT override ${method.name} returns unsupported collection element type '${elementType.displayName()}'.",
-            )
+        val elementAdapter = renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)
         return CodeBlock.of(
             "%T.writePointer(%L, %T.fromManaged(%L, %L))",
             platformAbiType,
@@ -620,32 +617,37 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         qualifiedName ?: toString()
 
     private fun renderCollectionElementAdapter(
+        method: WinRtMethodDefinition,
         elementType: WinRtTypeRef,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
-    ): CodeBlock? {
-        val elementTypeName = elementType.qualifiedName ?: return null
+    ): CodeBlock {
+        val elementTypeName = elementType.qualifiedName
+            ?: throw GradleException(
+                "Authored WinRT override ${method.name} returns collection element '${elementType.displayName()}' without a qualified type name.",
+            )
         if (isWinRtObjectTypeName(elementTypeName)) {
             return CodeBlock.of("%T.object_", winRtReferenceValueAdaptersType)
         }
         if (isWinRtStringTypeName(elementTypeName)) {
             return CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
         }
-        return when (elementTypeName) {
-            else -> {
-                val elementDefinition = typesByName[elementTypeName] ?: return null
-                when (elementDefinition.kind) {
-                    WinRtTypeKind.RuntimeClass -> CodeBlock.of(
-                        "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
-                        winRtReferenceValueAdaptersType,
-                        projectionClassName(elementTypeName, semanticHelpers),
-                        elementTypeName,
-                        projectionClassName(elementTypeName, semanticHelpers),
-                        projectionClassName(elementTypeName, semanticHelpers),
-                    )
-                    else -> null
-                }
-            }
+        val elementDefinition = typesByName[elementTypeName]
+            ?: throw GradleException(
+                "Authored WinRT override ${method.name} returns collection element type '$elementTypeName' without metadata.",
+            )
+        return when (elementDefinition.kind) {
+            WinRtTypeKind.RuntimeClass -> CodeBlock.of(
+                "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
+                winRtReferenceValueAdaptersType,
+                projectionClassName(elementTypeName, semanticHelpers),
+                elementTypeName,
+                projectionClassName(elementTypeName, semanticHelpers),
+                projectionClassName(elementTypeName, semanticHelpers),
+            )
+            else -> throw GradleException(
+                "Authored WinRT override ${method.name} returns unsupported collection element type '$elementTypeName'.",
+            )
         }
     }
 
