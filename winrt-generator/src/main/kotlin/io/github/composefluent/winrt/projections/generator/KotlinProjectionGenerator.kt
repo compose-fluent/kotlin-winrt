@@ -821,6 +821,14 @@ class KotlinProjectionGenerator(
                     require(getterBinding != null) {
                         "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} getter binding $getterBindingName to be present before projection rendering."
                     }
+                    validateProjectedAbiBindingContract(
+                        plan,
+                        getterBinding.bindingName,
+                        getterBinding.returnBinding,
+                        getterBinding.parameterBindings,
+                        getterBinding.marshalerPlanDescriptor,
+                        getterBinding.suppressHResultCheck,
+                    )
                 }
                 if (property.hasNativeProjectionSetterAccessor()) {
                     val setterBindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT"
@@ -828,11 +836,13 @@ class KotlinProjectionGenerator(
                     require(setterBinding != null) {
                         "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} setter binding $setterBindingName to be present before projection rendering."
                     }
-                    validateProjectedAbiTypeBindingContract(
+                    validateProjectedAbiBindingContract(
                         plan,
                         setterBinding.bindingName,
-                        "static property ${property.name} setter value",
-                        setterBinding.parameterBindings.single().typeBinding,
+                        setterBinding.returnBinding,
+                        setterBinding.parameterBindings,
+                        setterBinding.marshalerPlanDescriptor,
+                        setterBinding.suppressHResultCheck,
                     )
                 }
             }

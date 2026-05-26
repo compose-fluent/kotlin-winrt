@@ -18060,6 +18060,132 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_static_property_getter_with_unrenderable_abi_call_plan() {
+        val propertyTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Pair",
+                                    typeName = propertyTypeName,
+                                    getterMethodName = "get_Pair",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Pair",
+                                    typeName = propertyTypeName,
+                                    isStatic = true,
+                                    getterMethodName = "get_Pair",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("Generator ABI marshaler parity does not yet support STATIC_PAIR_GETTER_SLOT for Array("),
+        )
+    }
+
+    @Test
+    fun generator_rejects_static_property_setter_with_unrenderable_abi_call_plan() {
+        val propertyTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Pair",
+                                    typeName = propertyTypeName,
+                                    setterMethodName = "put_Pair",
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Pair",
+                                    typeName = propertyTypeName,
+                                    isStatic = true,
+                                    setterMethodName = "put_Pair",
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("Generator ABI marshaler parity does not yet support STATIC_PAIR_SETTER_SLOT for Array("),
+        )
+    }
+
+    @Test
     fun generator_rejects_composable_runtime_surface_without_default_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
