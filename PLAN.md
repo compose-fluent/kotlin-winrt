@@ -43,7 +43,7 @@
 - [ ] Compiler-plugin gaps: move authored type discovery, annotation/source-generator-equivalent behavior, descriptor-backed projection lowering, native-call lowering, and support artifact generation onto compiler-visible K2/IR symbols where runtime reflection would be used in CsWinRT.
 - [ ] Projection gaps: generate Windows/WinAppSDK slices through deterministic plugin-owned output only after the owning runtime, metadata, and generator contracts exist; keep checked-in projection breadth gated by functional coverage.
 - [ ] Authoring gaps: finish factories, activation/hosting, authored metadata, receive-array variants, inherited/overridable interfaces, ABI marshaling combinations, and validation beyond the current JVM happy path.
-- [ ] Packaging gaps: finish Kotlin appx/msix layout, manifest/resource/PRI/MRT details, dependency payload staging, signing/test-install flow, and runtime asset layout without cloning full MSBuild.
+- [x] Packaging gaps: finish Kotlin appx/msix layout, manifest/resource/PRI/MRT details, dependency payload staging, signing/test-install flow, and runtime asset layout without cloning full MSBuild.
 - [ ] Validation gaps: keep Windows Gradle configuration cache and build cache enabled for every touched slice, then run representative runtime/metadata/generator/plugin/authoring/packaging/sample checks only after the owning contracts are implemented.
 - [ ] Post-completeness structure cleanup: frozen until the functional gaps above are closed. After completion, audit duplicate type/category tables, obsolete handwritten projections, and module boundaries only as a correctness-preserving cleanup pass, not as a current implementation objective.
 
