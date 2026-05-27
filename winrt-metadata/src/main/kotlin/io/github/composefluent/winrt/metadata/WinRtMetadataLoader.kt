@@ -113,7 +113,7 @@ private class WinRtCliMetadataFile private constructor(
         val dataDirectoryBase = when (magic) {
             OPTIONAL_HEADER_MAGIC_PE32 -> optionalHeaderOffset + PE32_DATA_DIRECTORIES_OFFSET
             OPTIONAL_HEADER_MAGIC_PE32_PLUS -> optionalHeaderOffset + PE32_PLUS_DATA_DIRECTORIES_OFFSET
-            else -> error("${path.name} has unsupported PE optional header magic 0x${magic.toString(16)}")
+            else -> throw IllegalArgumentException("${path.name} has unsupported PE optional header magic 0x${magic.toString(16)}")
         }
         return buffer.intAt(dataDirectoryBase + CLI_DATA_DIRECTORY_INDEX * DATA_DIRECTORY_SIZE)
     }
@@ -122,7 +122,7 @@ private class WinRtCliMetadataFile private constructor(
         val section = sections.firstOrNull { header ->
             val span = maxOf(header.virtualSize, header.sizeOfRawData)
             rva >= header.virtualAddress && rva < header.virtualAddress + span
-        } ?: error("${path.name} does not map RVA 0x${rva.toString(16)} to a section")
+        } ?: throw IllegalArgumentException("${path.name} does not map RVA 0x${rva.toString(16)} to a section")
         return section.pointerToRawData + (rva - section.virtualAddress)
     }
 
@@ -149,22 +149,36 @@ private class WinRtCliMetadataFile private constructor(
         fun parse(path: Path): List<WinRtTypeDefinition> {
             path.inputStream().use { input ->
                 val bytes = input.readAllBytes()
-                return WinRtCliMetadataFile(
-                    path = path,
-                    buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN),
-                ).parseTypes()
+                return parseMetadata(path, bytes) { it.parseTypes() }
             }
         }
 
         fun parseAuxiliaryTableInventory(path: Path): WinRtMetadataFileAuxiliaryTableInventory {
             path.inputStream().use { input ->
                 val bytes = input.readAllBytes()
-                return WinRtCliMetadataFile(
-                    path = path,
-                    buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN),
-                ).parseAuxiliaryTableInventory()
+                return parseMetadata(path, bytes) { it.parseAuxiliaryTableInventory() }
             }
         }
+
+        private fun <T> parseMetadata(
+            path: Path,
+            bytes: ByteArray,
+            parse: (WinRtCliMetadataFile) -> T,
+        ): T =
+            try {
+                parse(
+                    WinRtCliMetadataFile(
+                        path = path,
+                        buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN),
+                    ),
+                )
+            } catch (error: IndexOutOfBoundsException) {
+                throw IllegalArgumentException("${path.name} is not a valid WinMD metadata file.", error)
+            } catch (error: java.nio.BufferUnderflowException) {
+                throw IllegalArgumentException("${path.name} is not a valid WinMD metadata file.", error)
+            } catch (error: IllegalStateException) {
+                throw IllegalArgumentException(error.message ?: "${path.name} is not a valid WinMD metadata file.", error)
+            }
     }
 }
 
@@ -2230,7 +2244,7 @@ private class MetadataTables private constructor(
                 }
                 val currentRowSize = rowSize(tableId, rowCounts, stringIndexSize, guidIndexSize, blobIndexSize)
                 if (currentRowSize == null) {
-                    error("Metadata 2.4 parser does not yet support table 0x${tableId.toString(16)}")
+                    throw IllegalArgumentException("Metadata 2.4 parser does not yet support table 0x${tableId.toString(16)}")
                 }
                 tableOffsets[tableId] = tableCursor
                 tableCursor += rowCounts[tableId] * currentRowSize
@@ -3033,7 +3047,7 @@ private fun readIndex(offset: Int, size: Int, buffer: ByteBuffer): Int =
     when (size) {
         2 -> buffer.shortAt(offset).toInt() and 0xFFFF
         4 -> buffer.intAt(offset)
-        else -> error("Unsupported index size $size")
+        else -> throw IllegalArgumentException("Unsupported index size $size")
     }
 
 private fun alignToFour(size: Int): Int = (size + 3) and 3.inv()

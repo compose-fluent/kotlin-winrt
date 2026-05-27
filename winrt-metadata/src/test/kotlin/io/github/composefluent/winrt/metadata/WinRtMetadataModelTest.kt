@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.metadata
 
 import io.github.composefluent.winrt.runtime.Guid
+import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -3277,6 +3278,14 @@ class WinRtMetadataModelTest {
         ).validateForProjectionInputs()
         assertEquals(true, missing.hasErrors)
         assertEquals(WinRtMetadataDiagnosticCode.InvalidMetadataSource, missing.errors.single().code)
+
+        val corruptWinmd = Files.createTempFile("kotlin-winrt-corrupt-metadata", ".winmd")
+        Files.write(corruptWinmd, byteArrayOf(0x4D, 0x5A))
+        val corrupt = WinRtMetadataProjectionContext(
+            sources = listOf(WinRtMetadataSource.path(corruptWinmd)),
+        ).validateForProjectionInputs()
+        assertEquals(true, corrupt.hasErrors)
+        assertEquals(WinRtMetadataDiagnosticCode.InvalidMetadataSource, corrupt.errors.single().code)
 
         val model = WinRtMetadataModel(
             listOf(
