@@ -108,6 +108,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nugetPackageContentFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val projectModel: Property<String>
 
