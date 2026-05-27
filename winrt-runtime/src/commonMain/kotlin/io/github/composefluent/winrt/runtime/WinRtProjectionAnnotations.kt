@@ -66,6 +66,14 @@ annotation class GeneratedBindableCustomProperty(
 @Target(AnnotationTarget.CLASS)
 annotation class GeneratedWinRtExposedType
 
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CLASS)
+annotation class WinRtAuthoredRuntimeClass(
+    val baseClassName: String = "",
+    val interfaceNames: Array<String> = [],
+    val overridableInterfaceNames: Array<String> = [],
+)
+
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.CLASS)
 annotation class GeneratedWinRtExposedExternalType(
