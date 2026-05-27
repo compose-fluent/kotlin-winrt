@@ -174,7 +174,7 @@
 - [x] Struct and enum projection closure: finish nested structs, fixed/array fields where supported, enum underlying types, ABI layouts, and unsupported field diagnostics.
 - [x] Activation/static/factory closure: finish runtime class activation, static interface companions, factory/composable factory surfaces, required interface caches, and generated support files.
 - [x] Attribute/source-generator-equivalent closure: implement Kotlin annotation and authored metadata transformation through `winrt-generator` and `winrt-compiler-plugin`; do not add runtime reflection discovery.
-- [ ] Compiler-plugin IR closure: move semantic authored type discovery, descriptor-backed projection lowering, native-call lowering, and support artifact generation onto K2/IR symbols where needed for functional parity.
+- [x] Compiler-plugin IR closure: move semantic authored type discovery, descriptor-backed projection lowering, native-call lowering, and support artifact generation onto K2/IR symbols where needed for functional parity.
 - [ ] Expect/actual closure: remove common fallback gates for async, collections, custom mapped types, static members, events, setter-only properties, and unsupported ABI shapes only after both JVM and later `mingwX64` contracts exist.
 - [ ] Unsupported-shape diagnostics: fail closed with stable diagnostics when metadata or generator input requires unsupported ABI, projection, authoring, or platform behavior.
 - [x] Generated support-file closure: verify helper/init/metadata support emission against CsWinRT responsibility split, including activation factories, static interfaces, delegate bridges, generic interface helpers, event tokens, and marshaling support.
