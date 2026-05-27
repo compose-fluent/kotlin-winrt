@@ -47,6 +47,7 @@ import org.jetbrains.kotlin.ir.builders.declarations.IrValueParameterBuilder
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.defaultType
+import org.jetbrains.kotlin.ir.util.parentClassOrNull
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irIfNull
 import org.jetbrains.kotlin.ir.builders.irGetField
@@ -3014,10 +3015,12 @@ class KotlinWinRtIrGenerationExtension(
         ) {
             return null
         }
-        val resolvedWinRtTypes = klass.superTypes
+        val annotation = authoredRuntimeClassAnnotation(klass, winRtTypes)
+        val inheritedWinRtTypes = klass.superTypes
             .mapNotNull { type -> type.classFqName?.asString() }
             .map(::projectionPackageToMetadataName)
             .mapNotNull(winRtTypes::get)
+        val resolvedWinRtTypes = annotation.resolvedTypes + inheritedWinRtTypes
         if (resolvedWinRtTypes.isEmpty()) {
             return null
         }
@@ -3027,7 +3030,9 @@ class KotlinWinRtIrGenerationExtension(
         val directInterfaces = resolvedWinRtTypes
             .filter { type -> type.kind == "Interface" }
             .map { type -> type.qualifiedName }
-        val overridableInterfaces = inheritedOverridableInterfaceNames(winRtBase, winRtTypes)
+        val overridableInterfaces = (annotation.overridableInterfaceNames + inheritedOverridableInterfaceNames(winRtBase, winRtTypes))
+            .distinct()
+            .sorted()
         return KotlinWinRtAuthoredTypeCandidate(
             packageName = packageName,
             className = className,
@@ -3038,6 +3043,64 @@ class KotlinWinRtIrGenerationExtension(
             isPublic = true,
         )
     }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun authoredRuntimeClassAnnotation(
+        klass: IrClass,
+        winRtTypes: Map<String, IndexedWinRtType>,
+    ): ResolvedAuthoredRuntimeClassAnnotation {
+        val annotation = klass.annotations.firstOrNull { call ->
+            call.symbol.owner.parentClassOrNull?.fqNameWhenAvailable?.asString() == WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
+        } ?: return ResolvedAuthoredRuntimeClassAnnotation.Empty
+        val baseClassName = annotation.arguments.getOrNull(0).stringConstantValue()
+        val interfaceNames = annotation.arguments.getOrNull(1).stringArrayConstantValue()
+        val overridableInterfaceNames = annotation.arguments.getOrNull(2).stringArrayConstantValue()
+        val resolvedBase = baseClassName
+            .takeIf(String::isNotBlank)
+            ?.let(::projectionPackageToMetadataName)
+            ?.let { typeName ->
+                requireNotNull(winRtTypes[typeName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $baseClassName."
+                }
+            }
+        val resolvedInterfaces = interfaceNames
+            .map { typeName ->
+                val metadataName = projectionPackageToMetadataName(typeName)
+                requireNotNull(winRtTypes[metadataName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }
+            }
+        val resolvedOverridableInterfaces = overridableInterfaceNames
+            .map { typeName ->
+                val metadataName = projectionPackageToMetadataName(typeName)
+                requireNotNull(winRtTypes[metadataName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }
+            }
+            .filter { type -> type.kind == "Interface" }
+            .map(IndexedWinRtType::qualifiedName)
+        return ResolvedAuthoredRuntimeClassAnnotation(
+            resolvedTypes = listOfNotNull(resolvedBase) + resolvedInterfaces,
+            overridableInterfaceNames = resolvedOverridableInterfaces,
+        )
+    }
+
+    private data class ResolvedAuthoredRuntimeClassAnnotation(
+        val resolvedTypes: List<IndexedWinRtType>,
+        val overridableInterfaceNames: List<String>,
+    ) {
+        companion object {
+            val Empty = ResolvedAuthoredRuntimeClassAnnotation(emptyList(), emptyList())
+        }
+    }
+
+    private fun IrExpression?.stringArrayConstantValue(): List<String> {
+        val vararg = this as? IrVararg ?: return emptyList()
+        return vararg.elements.mapNotNull { element -> (element as? IrConst)?.value as? String }
+    }
+
+    private fun IrExpression?.stringConstantValue(): String =
+        (this as? IrConst)?.value as? String ?: ""
 
     private fun validateAuthoredType(
         klass: IrClass,

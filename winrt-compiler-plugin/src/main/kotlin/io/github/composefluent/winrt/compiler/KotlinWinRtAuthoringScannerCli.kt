@@ -80,9 +80,18 @@ object KotlinWinRtAuthoringScannerCli {
         return source.classes().filter(source::isEffectivelyAuthorableClass).mapNotNull { klass ->
             val className = source.className(klass) ?: return@mapNotNull null
             val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
-            val resolvedWinRtTypes = source.superTypeNames(klass)
-                .mapNotNull { superType -> resolveWinRtTypeName(superType, packageName, imports, winRtTypes) }
-                .mapNotNull(winRtTypes::get)
+            val annotation = source.authoredRuntimeClassAnnotation(klass, packageName, imports)
+            val inheritedWinRtTypes = source.superTypeNames(klass)
+                .mapNotNull { superType -> resolveIndexedWinRtType(superType, packageName, imports, winRtTypes) }
+            val annotatedBase = annotation.baseClassName
+                ?.let { typeName -> resolveAnnotatedWinRtType(typeName, packageName, imports, winRtTypes, sourceTypeName) }
+            val annotatedInterfaces = annotation.interfaceNames
+                .map { typeName -> resolveAnnotatedWinRtType(typeName, packageName, imports, winRtTypes, sourceTypeName) }
+            val annotatedOverridableInterfaces = annotation.overridableInterfaceNames
+                .map { typeName -> resolveAnnotatedWinRtType(typeName, packageName, imports, winRtTypes, sourceTypeName) }
+                .filter { type -> type.kind == "Interface" }
+                .map(IndexedWinRtType::qualifiedName)
+            val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
             if (resolvedWinRtTypes.isEmpty()) {
                 return@mapNotNull null
             }
@@ -90,7 +99,9 @@ object KotlinWinRtAuthoringScannerCli {
             val directInterfaces = resolvedWinRtTypes
                 .filter { type -> type.kind == "Interface" }
                 .map { type -> type.qualifiedName }
-            val overridableInterfaces = inheritedOverridableInterfaceNames(winRtBase, winRtTypes)
+            val overridableInterfaces = (annotatedOverridableInterfaces + inheritedOverridableInterfaceNames(winRtBase, winRtTypes))
+                .distinct()
+                .sorted()
             KotlinWinRtAuthoredTypeCandidate(
                 packageName = packageName,
                 className = className,
@@ -112,6 +123,17 @@ object KotlinWinRtAuthoringScannerCli {
         ) { _: Int, _: Int, _: String? -> }
         return KotlinLightSource(text, tree)
     }
+
+    private fun resolveAnnotatedWinRtType(
+        typeName: String,
+        packageName: String,
+        imports: KotlinImports,
+        winRtTypes: Map<String, IndexedWinRtType>,
+        sourceTypeName: String,
+    ): IndexedWinRtType =
+        requireNotNull(resolveIndexedWinRtType(typeName, packageName, imports, winRtTypes)) {
+            "WinRT authored type $sourceTypeName annotation references unknown WinRT metadata type $typeName."
+        }
 
     private fun ensureKotlinApplicationEnvironment() {
         if (ApplicationManager.getApplication() == null) {
@@ -278,6 +300,24 @@ object KotlinWinRtAuthoringScannerCli {
                         ?.takeIf(String::isNotBlank)
                 }
 
+        fun authoredRuntimeClassAnnotation(
+            classNode: LighterASTNode,
+            packageName: String,
+            imports: KotlinImports,
+        ): KotlinWinRtAuthoredRuntimeClassAnnotation {
+            val modifierText = classNode.children()
+                .firstOrNull { child -> child.tokenType == KtNodeTypes.MODIFIER_LIST }
+                ?.let(::nodeText)
+                ?: return KotlinWinRtAuthoredRuntimeClassAnnotation()
+            val annotationText = authoredRuntimeClassAnnotationText(modifierText, packageName, imports)
+                ?: return KotlinWinRtAuthoredRuntimeClassAnnotation()
+            return KotlinWinRtAuthoredRuntimeClassAnnotation(
+                baseClassName = annotationStringArgument(annotationText, "baseClassName").takeIf(String::isNotBlank),
+                interfaceNames = annotationStringArrayArgument(annotationText, "interfaceNames"),
+                overridableInterfaceNames = annotationStringArrayArgument(annotationText, "overridableInterfaceNames"),
+            )
+        }
+
         private fun LighterASTNode.children(): List<LighterASTNode> = getChildren(tree)
 
         private fun isPublicClass(classNode: LighterASTNode): Boolean {
@@ -310,6 +350,50 @@ object KotlinWinRtAuthoringScannerCli {
 
         private fun nodeText(node: LighterASTNode): String =
             text.substring(node.startOffset, node.endOffset)
+
+        private fun authoredRuntimeClassAnnotationText(
+            modifierText: String,
+            packageName: String,
+            imports: KotlinImports,
+        ): String? {
+            val acceptedNames = linkedSetOf(
+                "WinRtAuthoredRuntimeClass",
+                WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION,
+            )
+            imports.explicit
+                .filterValues { it == WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION }
+                .keys
+                .forEach(acceptedNames::add)
+            if (WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION.substringBeforeLast('.') in imports.wildcards) {
+                acceptedNames += "WinRtAuthoredRuntimeClass"
+            }
+            if (packageName == WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION.substringBeforeLast('.')) {
+                acceptedNames += "WinRtAuthoredRuntimeClass"
+            }
+            return acceptedNames.firstNotNullOfOrNull { name ->
+                Regex("""@${Regex.escape(name)}(?:\(([^@]*)\))?""").find(modifierText)?.value
+            }
+        }
+
+        private fun annotationStringArgument(annotationText: String, name: String): String =
+            Regex("\\b${Regex.escape(name)}\\s*=\\s*\"([^\"]*)\"")
+                .find(annotationText)
+                ?.groupValues
+                ?.get(1)
+                .orEmpty()
+
+        private fun annotationStringArrayArgument(annotationText: String, name: String): List<String> {
+            val body = Regex("\\b${Regex.escape(name)}\\s*=\\s*\\[([^\\]]*)]")
+                .find(annotationText)
+                ?.groupValues
+                ?.get(1)
+                ?: return emptyList()
+            return Regex("\"([^\"]*)\"")
+                .findAll(body)
+                .map { match -> match.groupValues[1] }
+                .filter(String::isNotBlank)
+                .toList()
+        }
     }
 
     private class InMemoryKtSourceFile(

@@ -22,6 +22,15 @@ internal data class KotlinWinRtAuthoredTypeCandidate(
     val isPublic: Boolean,
 )
 
+internal data class KotlinWinRtAuthoredRuntimeClassAnnotation(
+    val baseClassName: String? = null,
+    val interfaceNames: List<String> = emptyList(),
+    val overridableInterfaceNames: List<String> = emptyList(),
+) {
+    val hasMetadata: Boolean
+        get() = baseClassName != null || interfaceNames.isNotEmpty() || overridableInterfaceNames.isNotEmpty()
+}
+
 internal data class KotlinWinRtProjectionTypeIndexRecord(
     val sourceTypeName: String,
     val winRtTypeName: String,
@@ -151,6 +160,14 @@ internal fun resolveWinRtTypeName(
         .firstOrNull { candidate -> candidate in winRtTypes }
 }
 
+internal fun resolveIndexedWinRtType(
+    typeName: String,
+    packageName: String,
+    imports: KotlinImports,
+    winRtTypes: Map<String, IndexedWinRtType>,
+): IndexedWinRtType? =
+    resolveWinRtTypeName(typeName, packageName, imports, winRtTypes)?.let(winRtTypes::get)
+
 internal fun projectionPackageToMetadataName(typeName: String): String {
     return typeName.removePrefix(PROJECTION_PACKAGE_PREFIX)
         .split('.')
@@ -158,3 +175,5 @@ internal fun projectionPackageToMetadataName(typeName: String): String {
 }
 
 internal const val PROJECTION_PACKAGE_PREFIX: String = "io.github.composefluent.winrt.projections."
+internal const val WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION: String =
+    "io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass"

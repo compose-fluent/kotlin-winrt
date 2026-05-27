@@ -292,6 +292,88 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun scans_authored_runtime_class_annotation_metadata_without_runtime_reflection() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+            @WinRtAuthoredRuntimeClass(
+                baseClassName = "Microsoft.UI.Xaml.Controls.ContentControl",
+                interfaceNames = ["Windows.Foundation.IStringable"],
+                overridableInterfaceNames = ["Microsoft.UI.Xaml.Controls.IContentControlOverrides"],
+            )
+            class LocalContentControl
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Controls.ContentControl	RuntimeClass	Microsoft.UI.Xaml.Controls.IContentControlOverrides
+            Microsoft.UI.Xaml.Controls.IContentControlOverrides	Interface
+            Windows.Foundation.IStringable	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            "sample\tLocalContentControl\tsample.LocalContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides;Windows.Foundation.IStringable\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides\ttrue",
+            output.readText().trimEnd(),
+        )
+    }
+
+    @Test
+    fun rejects_authored_runtime_class_annotation_unknown_metadata_type() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-missing-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            @io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass(
+                interfaceNames = ["Sample.MissingInterface"],
+            )
+            class LocalShape
+            """.trimIndent(),
+        )
+        metadataIndex.writeText("Sample.IShapeOverrides\tInterface\n")
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("annotation references unknown WinRT metadata type Sample.MissingInterface"),
+        )
+    }
+
+    @Test
     fun scans_inherited_winui_overridable_interfaces_for_grid_subclass() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-grid-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
