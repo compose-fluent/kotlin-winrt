@@ -5553,6 +5553,28 @@ class KotlinProjectionGeneratorTest {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "System.Object"),
+                                        WinRtParameterDefinition("args", "T0"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
                         WinRtTypeDefinition(
@@ -5646,8 +5668,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IDependencyProperty",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("55555555-5555-5555-5555-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "DependencyProperty",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IDependencyProperty",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IDependencyProperty", isDefault = true),
+                            ),
                         ),
                     ),
                 ),
@@ -5758,13 +5790,33 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "IDataPackageView",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "IDataPackage",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
                             name = "DataPackageView",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.ApplicationModel.DataTransfer.IDataPackageView",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.ApplicationModel.DataTransfer.IDataPackageView", isDefault = true),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.ApplicationModel.DataTransfer",
                             name = "DataPackage",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.ApplicationModel.DataTransfer.IDataPackage",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.ApplicationModel.DataTransfer.IDataPackage", isDefault = true),
+                            ),
                         ),
                     ),
                 ),
@@ -6476,8 +6528,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IDependencyProperty",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "DependencyProperty",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IDependencyProperty",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IDependencyProperty", isDefault = true),
+                            ),
                         ),
                     ),
                 ),

@@ -241,8 +241,7 @@ class KotlinProjectionGenerator(
                     .filterNot { isMappedCollectionInterfaceName(it.qualifiedName) }
                     .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
                     .forEach { binding ->
-                        val interfaceType = plan.typesByQualifiedName[binding.qualifiedName]
-                            ?: plan.typesByQualifiedName[binding.qualifiedName.substringBefore('<').removeSuffix("?")]
+                        val interfaceType = projectionType(binding.qualifiedName, plan)
                         require(interfaceType?.kind == WinRtTypeKind.Interface) {
                             "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to be present in the metadata model."
                         }
@@ -763,8 +762,11 @@ class KotlinProjectionGenerator(
             }
             val bindingName = staticMethodBindingName(plan, method)
             val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == bindingName }
-            require(binding != null) {
-                "Generator requires runtime class ${plan.type.qualifiedName} static method ${method.name} binding $bindingName to be present before projection rendering."
+            if (binding == null) {
+                require(method.methodRowId == null) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} static method ${method.name} binding $bindingName to be present before projection rendering."
+                }
+                return@forEach
             }
             validateProjectedAbiBindingContract(
                 plan,
@@ -820,8 +822,11 @@ class KotlinProjectionGenerator(
                 if (property.hasNativeProjectionGetterAccessor()) {
                     val getterBindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT"
                     val getterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == getterBindingName }
-                    require(getterBinding != null) {
-                        "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} getter binding $getterBindingName to be present before projection rendering."
+                    if (getterBinding == null) {
+                        require(property.getterMethodRowId == null) {
+                            "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} getter binding $getterBindingName to be present before projection rendering."
+                        }
+                        return@forEach
                     }
                     validateProjectedAbiBindingContract(
                         plan,
@@ -835,8 +840,11 @@ class KotlinProjectionGenerator(
                 if (property.hasNativeProjectionSetterAccessor()) {
                     val setterBindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT"
                     val setterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == setterBindingName }
-                    require(setterBinding != null) {
-                        "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} setter binding $setterBindingName to be present before projection rendering."
+                    if (setterBinding == null) {
+                        require(property.setterMethodRowId == null) {
+                            "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} setter binding $setterBindingName to be present before projection rendering."
+                        }
+                        return@forEach
                     }
                     validateProjectedAbiBindingContract(
                         plan,
@@ -1460,9 +1468,15 @@ class KotlinProjectionGenerator(
     private fun eventDelegateType(
         delegateTypeName: String,
         plan: KotlinTypeProjectionPlan,
+    ): WinRtTypeDefinition? =
+        projectionType(delegateTypeName, plan)
+
+    private fun projectionType(
+        typeName: String,
+        plan: KotlinTypeProjectionPlan,
     ): WinRtTypeDefinition? {
-        val rawName = delegateTypeName.substringBefore('<').removeSuffix("?")
-        return plan.typesByQualifiedName[delegateTypeName]
+        val rawName = typeName.substringBefore('<').removeSuffix("?")
+        return plan.typesByQualifiedName[typeName]
             ?: plan.typesByQualifiedName[rawName]
             ?: plan.typesByQualifiedName["${plan.type.namespace}.$rawName"]
     }

@@ -157,6 +157,7 @@ class KotlinProjectionPlanner(
         fun interfaceIidFor(interfaceName: String): Guid? =
             interfaceIidsByName[interfaceName]
                 ?: interfaceIidsByName[interfaceName.substringBefore('<').removeSuffix("?")]
+                ?: interfaceIidsByName["${type.namespace}.${interfaceName.substringBefore('<').removeSuffix("?")}"]
 
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
@@ -183,7 +184,7 @@ class KotlinProjectionPlanner(
             specializationKinds = planSpecializations(type),
             interfaceIid = type.iid,
             defaultInterfaceName = type.defaultInterfaceName,
-            defaultInterfaceIid = type.defaultInterfaceName?.let(interfaceIidsByName::get),
+            defaultInterfaceIid = type.defaultInterfaceName?.let(::interfaceIidFor),
             staticInterfaceNames = type.activation.staticInterfaceNames,
             staticInterfaceBindings = type.activation.staticInterfaceNames.map { interfaceName ->
                 KotlinProjectionInterfaceBinding(
@@ -200,9 +201,9 @@ class KotlinProjectionPlanner(
                     )
                 },
             activatableFactoryInterfaceName = type.activation.activatableFactoryInterfaceName,
-            activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(interfaceIidsByName::get),
+            activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(::interfaceIidFor),
             composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
-            composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(interfaceIidsByName::get),
+            composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(::interfaceIidFor),
             abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName, semanticHelpers),
             instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName, semanticHelpers),
             staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName, semanticHelpers),
