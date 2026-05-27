@@ -700,6 +700,14 @@ private fun configureWinRtGeneration(
                     }
                 },
             )
+            task.nugetPackageContentFiles.from(
+                task.nugetPackages.zip(extension.nugetGlobalPackagesRoots) { packageSpecs, explicitGlobalPackagesRoots ->
+                    existingNuGetPackageContentRoots(
+                        packageSpecs = packageSpecs,
+                        explicitGlobalPackagesRoots = explicitGlobalPackagesRoots,
+                    )
+                },
+            )
             task.projectModel.set(
                 project.provider {
                     if ((extension as? WinRtExtension)?.applicationEnabled?.get() == true) "application" else "library"

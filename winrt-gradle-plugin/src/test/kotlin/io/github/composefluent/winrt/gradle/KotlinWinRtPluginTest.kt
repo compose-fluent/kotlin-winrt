@@ -81,6 +81,11 @@ class KotlinWinRtPluginTest {
     @Test
     fun plugin_wires_extension_inputs_to_generation_task() {
         val project = ProjectBuilder.builder().build()
+        val nugetPackageRoot = project.projectDir
+            .toPath()
+            .resolve("nuget-cache/microsoft.windowsappsdk/1.8.260416003")
+        Files.createDirectories(nugetPackageRoot.resolve("lib/net8.0"))
+        Files.writeString(nugetPackageRoot.resolve("lib/net8.0/Microsoft.UI.Xaml.winmd"), "metadata")
 
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
         val extension = project.extensions.getByType(WinRtExtension::class.java)
@@ -127,6 +132,10 @@ class KotlinWinRtPluginTest {
         assertEquals(
             listOf("Microsoft.WindowsAppSDK@1.8.260416003"),
             task.nugetPackages.get(),
+        )
+        assertEquals(
+            setOf(nugetPackageRoot.toFile()),
+            task.nugetPackageContentFiles.files,
         )
         assertEquals(
             listOf(
