@@ -142,18 +142,25 @@ sealed interface WinRtMetadataSource {
         fun parseInputs(vararg values: String): List<WinRtMetadataSource> = parseInputs(values.toList())
 
         private fun expandResponseFileArguments(values: List<String>): List<String> =
-            values.flatMap { value ->
-                if (value.startsWith("@") && value.length > 1) {
-                    val responsePath = Path.of(value.drop(1))
-                    val extension = responsePath.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
-                    require(!responsePath.isDirectory() && extension !in setOf("winmd", "dll")) {
-                        "'@' is reserved for response files"
-                    }
-                    tokenizeResponseFile(responsePath.readText())
-                } else {
-                    listOf(value)
-                }
+            values.flatMap { value -> expandResponseFileArgument(value, emptySet()) }
+
+        private fun expandResponseFileArgument(value: String, responseStack: Set<Path>): List<String> {
+            if (!value.startsWith("@") || value.length <= 1) {
+                return listOf(value)
             }
+
+            val responsePath = Path.of(value.drop(1))
+            val extension = responsePath.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+            require(!responsePath.isDirectory() && extension !in setOf("winmd", "dll", "exe")) {
+                "'@' is reserved for response files"
+            }
+            val responseKey = responsePath.toAbsolutePath().normalize()
+            require(responseKey !in responseStack) {
+                "Response file '$responsePath' recursively includes itself."
+            }
+            return tokenizeResponseFile(responsePath.readText())
+                .flatMap { token -> expandResponseFileArgument(token, responseStack + responseKey) }
+        }
 
         private fun tokenizeResponseFile(content: String): List<String> {
             return content
