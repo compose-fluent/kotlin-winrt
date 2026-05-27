@@ -1565,7 +1565,7 @@ private class MetadataTables private constructor(
                 WINDOWS_FOUNDATION_METADATA_COMPOSABLE -> WinRtAttributedFactoryKind.Composable
                 else -> return@mapNotNull null
             }
-            val interfaceName = attribute.stringArguments.firstOrNull() ?: return@mapNotNull null
+            val interfaceName = attribute.factoryInterfaceTypeName() ?: return@mapNotNull null
             WinRtAttributedFactoryShape(
                 interfaceName = interfaceName,
                 kind = kind,
@@ -1578,12 +1578,15 @@ private class MetadataTables private constructor(
         }
         return WinRtActivationShape(
             isActivatable = activatable != null,
-            activatableFactoryInterfaceName = activatable?.stringArguments?.firstOrNull(),
-            staticInterfaceNames = staticAttributes.mapNotNull { it.stringArguments.firstOrNull() },
-            composableFactoryInterfaceName = composable?.stringArguments?.firstOrNull(),
+            activatableFactoryInterfaceName = activatable?.factoryInterfaceTypeName(),
+            staticInterfaceNames = staticAttributes.mapNotNull { it.factoryInterfaceTypeName() },
+            composableFactoryInterfaceName = composable?.factoryInterfaceTypeName(),
             factories = factories,
         )
     }
+
+    private fun DecodedCustomAttribute.factoryInterfaceTypeName(): String? =
+        (fixedArguments.firstOrNull() as? WinRtCustomAttributeValue.TypeValue)?.typeName?.takeIf(String::isNotBlank)
 
     private fun extractAvailability(attributes: List<DecodedCustomAttribute>): WinRtAvailabilityMetadata =
         WinRtAvailabilityMetadata(

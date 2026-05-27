@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.projections.generator
 
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 
 internal fun mappedCollectionMemberNames(plan: KotlinTypeProjectionPlan): Set<String> =
     if (!plan.hasMappedCollectionOrIteratorRuntimeProjection) {
@@ -22,6 +23,33 @@ internal fun WinRtMethodDefinition.isMappedCollectionRuntimeMethod(
         return binding.isMappedCollectionOrIteratorBinding
     }
     return plan.hasMappedCollectionOrIteratorRuntimeProjection
+}
+
+internal fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(
+    plan: KotlinTypeProjectionPlan,
+    mappedCollectionMemberNames: Set<String>,
+): Boolean {
+    if (name !in mappedCollectionMemberNames) {
+        return false
+    }
+    if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
+        val hasGetterBinding = !hasNativeProjectionGetterAccessor() ||
+            plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
+        val hasSetterBinding = !hasNativeProjectionSetterAccessor() ||
+            plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
+        if (!hasGetterBinding || !hasSetterBinding) {
+            return true
+        }
+    }
+    val getterIsMapped = !hasNativeProjectionGetterAccessor() ||
+        plan.instanceMemberBindings
+            .firstOrNull { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
+            ?.isMappedCollectionOrIteratorBinding == true
+    val setterIsMapped = !hasNativeProjectionSetterAccessor() ||
+        plan.instanceMemberBindings
+            .firstOrNull { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
+            ?.isMappedCollectionOrIteratorBinding == true
+    return getterIsMapped && setterIsMapped
 }
 
 internal val KotlinProjectionInstanceMemberBinding.isMappedCollectionOrIteratorBinding: Boolean
