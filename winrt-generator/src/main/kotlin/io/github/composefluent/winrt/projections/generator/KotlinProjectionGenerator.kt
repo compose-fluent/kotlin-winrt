@@ -612,8 +612,10 @@ class KotlinProjectionGenerator(
             if (authoredCcwBindingHasIntentionalFallback(interfaceType, binding)) {
                 return@forEach
             }
-            require(authoredCcwBindingIsSupported(renderer, interfaceType, binding)) {
-                "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.${binding.bindingName} to use supported authored ABI metadata before support rendering."
+            authoredCcwBindingUnsupportedReason(renderer, interfaceType, binding)?.let { reason ->
+                throw IllegalArgumentException(
+                    "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.${binding.bindingName} to use supported authored ABI metadata before support rendering; unsupported $reason.",
+                )
             }
         }
     }

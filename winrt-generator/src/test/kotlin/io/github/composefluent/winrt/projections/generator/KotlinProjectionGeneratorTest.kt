@@ -19202,7 +19202,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             message,
             message.contains(
-                "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.REFRESHASYNC_SLOT to use supported authored ABI metadata before support rendering.",
+                "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.REFRESHASYNC_SLOT to use supported authored ABI metadata before support rendering; unsupported return IAsyncAction() uses unsupported authored ABI shape.",
             ),
         )
     }
