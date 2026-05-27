@@ -5550,6 +5550,21 @@ class KotlinWinRtPluginTest {
     fun application_distribution_contains_windowsappsdk_framework_runtime_resources() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-app-dist-test-")
         val nugetRoot = projectDir.resolve("nuget")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        val metadataJar = Path.of("../winrt-metadata/build/libs/winrt-metadata.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        val generatorJar = Path.of("../winrt-generator/build/libs/winrt-generator.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK",
@@ -5583,12 +5598,20 @@ class KotlinWinRtPluginTest {
             includeWinUiFrameworkAssets = true,
             includeLiftedRegistrations = true,
         )
+        val makePriLog = projectDir.resolve("makepri.log")
+        val makePri = writeFakeMakePri(projectDir.resolve("fake-makepri.cmd"), makePriLog)
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
             pluginManagement {
                 repositories {
                     gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
                     mavenCentral()
                 }
             }
@@ -5626,11 +5649,26 @@ class KotlinWinRtPluginTest {
                 mainClass.set("sample.Main")
             }
 
+            configurations.named("kotlinWinRtGeneratorWorker") {
+                isCanBeConsumed = false
+                isCanBeResolved = true
+                exclude(group = "io.github.compose-fluent")
+            }
+
+            dependencies {
+                add("kotlinWinRtGeneratorWorker", files("$runtimeJar", "$metadataJar", "$generatorJar"))
+                add("kotlinWinRtGeneratorWorker", "com.squareup:kotlinpoet:1.18.1")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
+            }
+
             winRt {
                 nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
                 restoreNuGetPackages.set(false)
                 nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
                 application {
+                    makePriExecutable.set("${makePri.toString().replace("\\", "\\\\")}")
                 }
             }
             """.trimIndent(),

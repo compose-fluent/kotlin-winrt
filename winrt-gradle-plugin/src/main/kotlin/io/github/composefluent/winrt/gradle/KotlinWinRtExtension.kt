@@ -173,6 +173,7 @@ abstract class WinRtApplicationOptions @Inject constructor(
         objects.mapProperty(String::class.java, String::class.java).convention(emptyMap())
     val projectPriExcludedFromBuildPaths: SetProperty<String> =
         objects.setProperty(String::class.java).convention(emptySet())
+    val makePriExecutable: Property<String> = objects.property(String::class.java).convention("")
     val generatePackage: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val packageOutputFile: RegularFileProperty = objects.fileProperty()
     val makeAppxExecutable: Property<String> = objects.property(String::class.java).convention("")

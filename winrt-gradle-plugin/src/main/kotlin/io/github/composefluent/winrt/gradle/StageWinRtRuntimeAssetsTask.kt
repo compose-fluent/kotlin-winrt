@@ -558,6 +558,13 @@ internal fun readAuthoredHostManifests(identityFile: java.io.File): List<String>
     return readJsonStringArray(match.groupValues[1])
 }
 
+internal fun authoredHostManifestDeclaresActivatableClasses(manifest: java.io.File): Boolean {
+    val content = manifest.takeIf { it.isFile }?.readText().orEmpty()
+    val defaultTargets = readJsonStringArrayField(content, "activatableClasses")
+    val explicitTargets = readJsonStringMap(content, "activatableClassTargets").keys
+    return (defaultTargets + explicitTargets).any { it.isNotBlank() }
+}
+
 internal fun readAuthoredTargetArtifacts(identityFile: java.io.File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     val match = Regex(""""authoredTargetArtifacts"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
