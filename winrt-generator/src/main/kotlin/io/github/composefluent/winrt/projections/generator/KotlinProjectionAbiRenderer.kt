@@ -640,10 +640,10 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.Delegate ->
             resolvedReturnClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
-                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __result = %T.Metadata.fromAbi(__resultPointer) ?: error(%S)\nreturn __result\n",
+                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __result = %L ?: error(%S)\nreturn __result\n",
                     PLATFORM_ABI_CLASS_NAME,
                     abiNullReturnReadback(returnBinding),
-                    returnType,
+                    delegateReturnFromAbiCode(returnType, returnBinding),
                     "Expected non-null delegate instance from ABI return for ${returnBinding.resolvedTypeName}.",
                 )
             }
@@ -715,6 +715,23 @@ internal fun KotlinProjectionRenderer.resolvedReturnClassName(
 ): ClassName? =
     runCatching { resolveTypeName(returnBinding.typeName.trim().removeSuffix("?")) as? ClassName }.getOrNull()
         ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName.trim().removeSuffix("?")) as? ClassName }.getOrNull()
+
+private fun KotlinProjectionRenderer.delegateReturnFromAbiCode(
+    returnType: ClassName,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock {
+    if (returnBinding.typeArguments.isEmpty()) {
+        return CodeBlock.of("%T.Metadata.fromAbi(__resultPointer)", returnType)
+    }
+    val typeArguments = CodeBlock.builder()
+    returnBinding.typeArguments.forEachIndexed { index, typeArgument ->
+        if (index > 0) {
+            typeArguments.add(", ")
+        }
+        typeArguments.add("%T", resolveTypeName(typeArgument.typeName))
+    }
+    return CodeBlock.of("%T.Metadata.fromAbi<%L>(__resultPointer)", returnType, typeArguments.build())
+}
 
 internal fun KotlinProjectionRenderer.mappedKeyValuePairReturnReadback(
     returnBinding: KotlinProjectionAbiTypeBinding,

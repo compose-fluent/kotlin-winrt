@@ -143,14 +143,19 @@ class KotlinProjectionSupportRenderer {
         validateAuthoringMetadataProjectionPlans(inventory, plans)
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
+        val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
         return listOfNotNull(
             renderTypeShapeDescriptorCompilerInput(plans),
-            renderProjectionRegistrarCompilerInput(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
+            renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
             renderGenericAbiSupportSource(inventory.genericAbiInventory),
             renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
             renderGenericTypeInstantiations(genericInstantiationWriters),
-            renderEventProjectionHelpers(model, plans),
+            renderEventProjectionHelpers(
+                model,
+                eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
+                allPlans = plans,
+            ),
             renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
@@ -181,6 +186,22 @@ class KotlinProjectionSupportRenderer {
             }
         }
     }
+
+    private fun registrarProjectionPlans(
+        plans: List<KotlinTypeProjectionPlan>,
+        inventory: WinRtMetadataProjectionInventory,
+        excludedProjectionTypeNames: Set<String>,
+    ): List<KotlinTypeProjectionPlan> {
+        val authoredTypes = inventory.authoredMetadataTypeMappings
+            .mapTo(excludedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
+        return plans
+            .asSequence()
+            .filterNot { it.type.qualifiedName in authoredTypes }
+            .filterNot { it.type.kind == WinRtTypeKind.Unknown }
+            .sortedBy { it.type.qualifiedName }
+            .toList()
+    }
+
 
     private fun renderTypeShapeDescriptorCompilerInput(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
         val rows = buildList {
@@ -326,12 +347,8 @@ class KotlinProjectionSupportRenderer {
         excludedProjectionTypeNames: Set<String>,
         emitProjectionRegistrar: Boolean,
     ): KotlinProjectionFile? {
-        val authoredTypes = inventory.authoredMetadataTypeMappings
-            .mapTo(excludedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
         val registrarEntries = if (emitProjectionRegistrar) {
-            plans.count { plan ->
-                plan.type.qualifiedName !in authoredTypes && plan.type.kind != WinRtTypeKind.Unknown
-            }
+            registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames).size
         } else {
             0
         }
@@ -411,18 +428,8 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun renderProjectionRegistrarCompilerInput(
-        plans: List<KotlinTypeProjectionPlan>,
-        inventory: WinRtMetadataProjectionInventory,
-        excludedProjectionTypeNames: Set<String>,
+        registrationPlans: List<KotlinTypeProjectionPlan>,
     ): KotlinProjectionFile? {
-        val authoredTypes = inventory.authoredMetadataTypeMappings
-            .mapTo(excludedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
-        val registrationPlans = plans
-            .asSequence()
-            .filterNot { it.type.qualifiedName in authoredTypes }
-            .filterNot { it.type.kind == WinRtTypeKind.Unknown }
-            .sortedBy { it.type.qualifiedName }
-            .toList()
         if (registrationPlans.isEmpty()) {
             return null
         }
@@ -548,24 +555,21 @@ class KotlinProjectionSupportRenderer {
 
     private fun renderEventProjectionHelpers(
         model: WinRtMetadataModel,
-        plans: List<KotlinTypeProjectionPlan>,
+        eventOwnerPlans: List<KotlinTypeProjectionPlan>,
+        allPlans: List<KotlinTypeProjectionPlan>,
     ): KotlinProjectionFile? {
-        val helpers = model.semanticHelpers()
-        val eventSourceEntries = model.namespaces
-            .flatMap(WinRtNamespace::types)
-            .flatMap(helpers::eventHelperSubclassDescriptors)
-            .distinctBy { it.eventTypeName to it.ownerTypeName }
-            .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
-        if (eventSourceEntries.isEmpty()) {
+        val eventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
+        val delegateEventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
+        if (eventSourceEntries.isEmpty() && delegateEventSourceEntries.isEmpty()) {
             return null
         }
-        val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
+        val plansByType = allPlans.associateBy { plan -> plan.type.qualifiedName }
         val typesByQualifiedName = model.namespaces
             .flatMap(WinRtNamespace::types)
             .associateBy(WinRtTypeDefinition::qualifiedName)
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
             .addGeneratedProjectionSuppressions()
-        eventSourceEntries
+        delegateEventSourceEntries
             .filterNot { it.usesSharedEventHandlerSource }
             .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
             .forEach { descriptor ->
@@ -2690,11 +2694,11 @@ class KotlinProjectionSupportRenderer {
         if (mappedTypeByAbiName(binding.typeName) != null) {
             CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
         } else if (binding.supportsProjectedGenericMetadataWrap(plansByType)) {
-            val wrapPlan = binding.projectedGenericMetadataWrapPlan(plansByType)
-                ?: error("Projected generic metadata wrap support requires a matching projection plan for ${binding.describeAbiKind()}")
+            val wrapTypeName = binding.projectedGenericMetadataWrapTypeName(plansByType)
+                ?: error("Projected generic metadata wrap support requires a matching projection type for ${binding.describeAbiKind()}")
             CodeBlock.of(
                 "%T.Metadata.wrap<%L>(__args[%L] as %T)",
-                typeRenderer.resolveTypeName(wrapPlan.type.qualifiedName),
+                typeRenderer.resolveTypeName(wrapTypeName),
                 eventSourceTypeArgumentCode(binding.typeArguments),
                 index,
                 when (binding.kind) {
@@ -2951,7 +2955,13 @@ class KotlinProjectionSupportRenderer {
 
     private fun KotlinProjectionAbiTypeBinding.supportsProjectedGenericMetadataWrap(
         plansByType: Map<String, KotlinTypeProjectionPlan>,
-    ): Boolean = projectedGenericMetadataWrapPlan(plansByType) != null
+    ): Boolean = projectedGenericMetadataWrapTypeName(plansByType) != null
+
+    private fun KotlinProjectionAbiTypeBinding.projectedGenericMetadataWrapTypeName(
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): String? =
+        projectedGenericMetadataWrapPlan(plansByType)?.type?.qualifiedName
+            ?: collectionEventProjectedGenericMetadataWrapTypeName()
 
     private fun KotlinProjectionAbiTypeBinding.projectedGenericMetadataWrapPlan(
         plansByType: Map<String, KotlinTypeProjectionPlan>,
@@ -2986,6 +2996,23 @@ class KotlinProjectionSupportRenderer {
                     KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds
             else -> false
         }
+    }
+
+    private fun KotlinProjectionAbiTypeBinding.collectionEventProjectedGenericMetadataWrapTypeName(): String? {
+        if (kind != KotlinProjectionAbiValueKind.ProjectedInterface || typeArguments.isEmpty()) {
+            return null
+        }
+        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        val rawResolvedTypeName = resolvedTypeName.substringBefore('<').removeSuffix("?")
+        return listOf(rawResolvedTypeName, rawTypeName)
+            .firstOrNull { name ->
+                when (name) {
+                    "Windows.Foundation.Collections.IObservableVector" -> typeArguments.size == 1
+                    "Windows.Foundation.Collections.IObservableMap" -> typeArguments.size == 2
+                    "Windows.Foundation.Collections.IMapChangedEventArgs" -> typeArguments.size == 1
+                    else -> false
+                }
+            }
     }
 
     private fun abiEntriesBuildListCode(indices: IntRange): CodeBlock {

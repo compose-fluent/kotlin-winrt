@@ -7,6 +7,8 @@ plugins {
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
     .orElse("1.8.260416003")
+val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
+    .orElse("10.0.26100.0")
 
 kotlin {
     jvmToolchain(25)
@@ -31,6 +33,7 @@ winRt {
     application {
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
+        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
         type("Windows.Foundation.Uri")
         type("Windows.System.Launcher")

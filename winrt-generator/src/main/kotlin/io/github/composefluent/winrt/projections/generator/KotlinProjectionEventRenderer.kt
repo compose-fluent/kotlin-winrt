@@ -1486,7 +1486,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addParameter("iid", GUID_CLASS_NAME)
                 .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
                 .addCode(
-                    "return instance.queryInterface(iid).getOrThrow().use { %T(it.getRefPointer(), iid) }\n",
+                    "return instance.queryInterface(iid).getOrThrow().use({ %T(it.getRefPointer(), iid) })\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
                 )
                 .build(),

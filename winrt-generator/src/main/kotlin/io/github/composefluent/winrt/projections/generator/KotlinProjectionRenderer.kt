@@ -261,7 +261,7 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { nativeObject.queryInterface(%L).getOrThrow().use { %T(it.getRefPointer(), %L) } }",
+                            "lazy(%T.PUBLICATION) { nativeObject.queryInterface(%L).getOrThrow().use({ %T(it.getRefPointer(), %L) }) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
                             runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -1264,6 +1264,12 @@ class KotlinProjectionRenderer(
                     override = true,
                     modifiers = eventModifiers,
                     eventSourceOwnerTypeName = addBinding?.slotInterfaceQualifiedName,
+                    eventSourceEventTypeName = addBinding?.let { binding ->
+                        plan.typesByQualifiedName[binding.slotInterfaceQualifiedName]
+                            ?.events
+                            ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
+                            ?.delegateTypeName
+                    },
                     eventSourceObjectReference = addBinding?.let { CodeBlock.of(it.ownerCachePropertyName) },
                     eventSourceAddSlot = addBinding?.let {
                         CodeBlock.of("%T.Metadata.%L", resolveTypeName(it.slotInterfaceQualifiedName), it.slotConstantName)
@@ -1351,17 +1357,25 @@ class KotlinProjectionRenderer(
             .distinctBy { it.projectionPropertyName }
             .sortedBy { it.projectionPropertyName }
             .forEach { target ->
+                val initializer = if (target.ownerCachePropertyName == "_defaultInterface") {
+                    CodeBlock.of(
+                        "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
+                        LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                        resolveTypeName(target.rawInterfaceName),
+                        resolveTypeName(target.rawInterfaceName),
+                    )
+                } else {
+                    CodeBlock.of(
+                        "lazy(%T.PUBLICATION) { %T.Metadata.wrap(%L) }",
+                        LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                        resolveTypeName(target.rawInterfaceName),
+                        target.ownerCachePropertyName,
+                    )
+                }
                 builder.addProperty(
                     PropertySpec.builder(target.projectionPropertyName, resolveTypeName(target.interfaceName))
                         .addModifiers(KModifier.PRIVATE)
-                        .delegate(
-                            CodeBlock.of(
-                                "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
-                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                                resolveTypeName(target.interfaceName),
-                                resolveTypeName(target.interfaceName),
-                            ),
-                        )
+                        .delegate(initializer)
                         .build(),
                 )
             }
@@ -1371,9 +1385,9 @@ class KotlinProjectionRenderer(
         target: RuntimeClassInterfaceProjectionForwardTarget,
     ): CodeBlock =
         CodeBlock.of(
-            "%T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID))",
-            resolveTypeName(target.interfaceName),
-            resolveTypeName(target.interfaceName),
+            "%T.Metadata.wrap(%L)",
+            resolveTypeName(target.rawInterfaceName),
+            target.ownerCachePropertyName,
         )
 
     private fun TypeSpec.Builder.addRuntimeClassSuperinterface(
@@ -1502,7 +1516,9 @@ class KotlinProjectionRenderer(
     }
 
     private data class RuntimeClassInterfaceProjectionForwardTarget(
+        val rawInterfaceName: String,
         val interfaceName: String,
+        val ownerCachePropertyName: String,
         val projectionPropertyName: String,
     )
 
@@ -1535,14 +1551,14 @@ class KotlinProjectionRenderer(
     private fun runtimeClassInterfaceProjectionForwardTargets(
         plan: KotlinTypeProjectionPlan,
     ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> {
-        val ownerInterfaceNames = plan.instanceMemberBindings
-            .map { binding -> binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?") }
-            .distinct()
-        return ownerInterfaceNames.mapNotNull { interfaceName ->
-            if ('<' in interfaceName) {
+        val ownerInterfaceBindings = plan.instanceMemberBindings
+            .distinctBy { binding -> binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?") }
+        return ownerInterfaceBindings.mapNotNull { binding ->
+            val rawInterfaceName = binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?")
+            if (isMappedCollectionInterfaceName(rawInterfaceName) || isRuntimeOwnedMappedTypeName(rawInterfaceName)) {
                 return@mapNotNull null
             }
-            val interfaceType = plan.typesByQualifiedName[interfaceName] ?: return@mapNotNull null
+            val interfaceType = plan.typesByQualifiedName[rawInterfaceName] ?: return@mapNotNull null
             if (interfaceType.kind != WinRtTypeKind.Interface) {
                 return@mapNotNull null
             }
@@ -1561,8 +1577,10 @@ class KotlinProjectionRenderer(
             if (!canRenderInterfaceProxy(interfacePlan)) {
                 return@mapNotNull null
             }
-            interfaceName to RuntimeClassInterfaceProjectionForwardTarget(
-                interfaceName = interfaceName,
+            rawInterfaceName to RuntimeClassInterfaceProjectionForwardTarget(
+                rawInterfaceName = rawInterfaceName,
+                interfaceName = binding.ownerInterfaceQualifiedName,
+                ownerCachePropertyName = binding.ownerCachePropertyName,
                 projectionPropertyName = "_${interfaceType.name.replaceFirstChar(Char::lowercase)}Projection",
             )
         }.toMap()
@@ -1903,13 +1921,7 @@ class KotlinProjectionRenderer(
             return false
         }
         if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
-            val hasGetterBinding = !hasNativeProjectionGetterAccessor() ||
-                plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
-            val hasSetterBinding = !hasNativeProjectionSetterAccessor() ||
-                plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
-            if (!hasGetterBinding || !hasSetterBinding) {
-                return true
-            }
+            return true
         }
         val getterIsMapped = !hasNativeProjectionGetterAccessor() ||
             plan.instanceMemberBindings

@@ -324,6 +324,8 @@ class KotlinWinRtPluginTest {
             """
             kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
             windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
+            windows.foundation.IStringable	Windows.Foundation.IStringable	Interface		
+            windows.applicationmodel.AppExecutionContext	Windows.ApplicationModel.AppExecutionContext	Enum	System.Enum	
             windows.system.DisplayRequest	Windows.System.DisplayRequest	RuntimeClass	System.Object	windows.system.DisplayRequest.Metadata
             windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
             """.trimIndent(),
@@ -348,7 +350,10 @@ class KotlinWinRtPluginTest {
         task.generate()
 
         val json = Files.readString(root.resolve("identity.json"))
-        assertTrue(json.contains("\"projectedTypes\": [\"Windows.Foundation.Uri\", \"Windows.System.DisplayRequest\"]"))
+        assertTrue(json.contains("\"Windows.ApplicationModel.AppExecutionContext\""))
+        assertTrue(json.contains("\"Windows.Foundation.IStringable\""))
+        assertTrue(json.contains("\"Windows.Foundation.Uri\""))
+        assertTrue(json.contains("\"Windows.System.DisplayRequest\""))
     }
 
     @Test

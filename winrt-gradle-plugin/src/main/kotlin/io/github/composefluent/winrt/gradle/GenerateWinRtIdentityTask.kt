@@ -140,14 +140,27 @@ private fun readProjectionRegistrarProjectedTypeNames(file: File): List<String> 
             return@mapIndexedNotNull null
         }
         val rowNumber = index + 2
-        val parts = line.split('\t')
-        if (parts.size != projectionRegistrarHeader.size || parts.any(String::isBlank)) {
+        val parts = splitProjectionRegistrarRow(line)
+        if (parts.size != projectionRegistrarHeader.size || parts.take(3).any(String::isBlank)) {
             throw GradleException(
                 "Projection registrar '${file.absolutePath}' has malformed row $rowNumber.",
             )
         }
         parts[1]
     }
+}
+
+private fun splitProjectionRegistrarRow(line: String): List<String> {
+    val parts = mutableListOf<String>()
+    var start = 0
+    line.forEachIndexed { index, char ->
+        if (char == '\t') {
+            parts += line.substring(start, index)
+            start = index + 1
+        }
+    }
+    parts += line.substring(start)
+    return parts
 }
 
 internal fun readCompilerSupportManifests(identityFile: File): List<String> {

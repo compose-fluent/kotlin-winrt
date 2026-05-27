@@ -197,7 +197,7 @@
 
 - [x] Kotlin appx/msix packaging baseline: Kotlin-owned manifest generation/validation, appx/msix layout, dependency payload resolution, resources/PRI/MRT, signing/test-install hooks, packaged/unpackaged modes, disabled-generation input skipping/output preservation, and Gradle DSL ergonomics are complete for the current JVM packaging surface without cloning full MSBuild.
 - [x] Packaging functional closure: verify remaining appx/msix layout, PRI/MRT/resource indexing, manifest processing, dependency payload staging, signing/test-install hooks, and runtime asset layout against Kotlin application needs, using CsWinRT/MSBuild behavior only as implementation evidence.
-- [ ] Gradle cache closure: keep configuration cache and build cache enabled for touched runtime, metadata, generator, authoring, packaging, and sample tasks; any cache miss/error caused by task modeling is a bug to fix.
+- [x] Gradle cache closure: keep configuration cache and build cache enabled for touched runtime, metadata, generator, authoring, packaging, and sample tasks; any cache miss/error caused by task modeling is a bug to fix.
 - [ ] Representative Windows validation: validate touched runtime, metadata, generator, compiler-plugin, authoring, packaging, and JVM slices on Windows; samples remain validation surfaces, not design sources.
 - [ ] Native validation: frozen for the current queue; later add `mingwX64` validation only after native runtime/projection contracts are implemented.
 

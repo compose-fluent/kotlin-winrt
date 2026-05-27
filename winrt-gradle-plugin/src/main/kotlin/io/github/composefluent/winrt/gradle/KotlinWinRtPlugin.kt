@@ -87,11 +87,10 @@ private fun configureWinRtLibraryModel(
             )
             task.compilerSupportManifestFiles.from(
                 project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/compiler-support/merged/compiler-support.tsv",
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/compiler-support.tsv",
                 ),
             )
             task.dependsOn("generateWinRtProjections")
-            task.dependsOn("mergeWinRtCompilerSupport")
         },
     )
 
