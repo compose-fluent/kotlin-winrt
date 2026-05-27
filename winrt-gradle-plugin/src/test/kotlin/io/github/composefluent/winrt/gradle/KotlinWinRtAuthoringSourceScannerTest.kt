@@ -1269,6 +1269,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                 ),
                             ),
                         ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "LaunchActivatedEventArgs",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
                     ),
                 ),
                 WinRtNamespace(
