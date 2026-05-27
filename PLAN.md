@@ -17,6 +17,7 @@
 - [ ] Kotlin has no runtime reflection equivalent for CsWinRT's attribute/source-generator discovery path. Equivalent annotation, metadata, registration, or source-generator behavior must be implemented through `winrt-generator` and `winrt-compiler-plugin`, with runtime discovery kept fail-closed.
 - [ ] WinMD ingestion targets native WinMD metadata only. Do not add `cswinmd`-specific compatibility as a projection goal.
 - [ ] Packaging target is complete Kotlin `appx` / `msix` application packaging, PRI/MRT/resource indexing, manifest processing, dependency payload staging, signing/test-install hooks, and runtime asset layout. CsWinRT/MSBuild targets are implementation evidence, not a requirement to clone full MSBuild.
+- [ ] CsWinRT `Perf`, `Benchmarks`, `cswinmd`, release infrastructure, and compatibility baselines are reference evidence only for the current queue; do not turn them into Kotlin modules until runtime, metadata, generator, projections, authoring, packaging, and validation parity need them.
 
 ## Current Focus Queue
 
@@ -24,7 +25,8 @@
 - [x] Metadata input and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
 - [x] Compiler-plugin authoring and projection lowering: continue descriptor-backed K2/IR lowering only where it closes functional projection or authoring behavior, not as a source-count reduction task.
 - [x] Kotlin appx/msix packaging validation: keep completed packaging behavior cache-compatible while closing any remaining package/layout/resource gaps discovered by functional validation.
-- [ ] Phase 5 authoring parity 正在做: replace the current Gradle source-scanner/TSV handoff with compiler-visible K2/IR authored metadata, then close the authoring ABI boundary, factory chaining, receive-array, inherited/overridable interface, and marshaling gaps against `.cswinrt/src/Authoring`.
+- [x] Full-module CsWinRT alignment planning: compare `.cswinrt/src/WinRT.Runtime`, `.cswinrt/src/cswinrt`, `.cswinrt/src/Projections`, `.cswinrt/src/Authoring`, `.cswinrt/src/Samples`, and `.cswinrt/src/Tests` against the Kotlin module layout and fold the gaps into phase-owned plan items.
+- [ ] Phase 1 runtime parity audit 正在做: close the earliest incomplete prerequisite by auditing `winrt-runtime` against `.cswinrt/src/WinRT.Runtime` before expanding Phase 4 projections, Phase 5 authoring, or Phase 6 samples further.
 - [ ] Functional completeness before structure cleanup: close runtime, metadata, generator/compiler-plugin, projection, authoring, and Kotlin appx/msix packaging gaps in this plan before any source-count, module-shrinking, or deletion-driven cleanup becomes eligible.
 
 ## Current Completed Baseline
@@ -36,6 +38,16 @@
 - [x] Authoring JVM baseline: generated TypeDetails, authored WinMD emission, CCW factories, host manifests, activation factory exports, composable WinUI subclasses, receive-array handling, and JVM host bridge slices exist for current validation.
 - [x] Packaging/resource baseline: Kotlin-owned appx/msix staging, manifest validation, dependency payloads, PRI/MRT/resource processing, signing/test-install hooks, and makeappx verification exist for the current JVM sample surface.
 
+## Full CsWinRT Alignment Map
+
+- [ ] `WinRT.Runtime` -> `winrt-runtime`: runtime owns ABI primitives, HRESULT/error-info, HSTRING/string ownership, COM initialization, platform calls, object identity, activation, marshaling, delegates/events, collections, async, weak/reference tracking, custom projections, and WinUI hooks; current gap is a full CsWinRT runtime audit plus native actuals later.
+- [ ] `cswinrt` compiler -> `winrt-metadata`, `winrt-generator`, `winrt-compiler-plugin`, and `winrt-gradle-plugin`: metadata loading, projection planning, generated support files, compiler-support handoff, and Gradle task orchestration are split across Kotlin modules; current gap is verifying the split still mirrors CsWinRT responsibility ownership instead of leaking generator policy into metadata or runtime mechanics into generated code.
+- [ ] `Projections` -> `winrt-projections`: checked-in Kotlin projection output exists only as a narrow generated/smoke surface; current gap is broad Windows/WinAppSDK projection generation through deterministic plugin-owned output after runtime/generator contracts close.
+- [ ] `Authoring` -> `winrt-authoring`: the module exists but authoring contracts still live mostly in Gradle, generator, compiler-plugin, and runtime support; current gap is moving the contract center into `winrt-authoring` after compiler-symbol-authored metadata is defined.
+- [ ] `Samples` -> `winrt-samples`: sample modules exist for JVM and KMP WinUI validation; current gap is keeping samples as validation-only surfaces and removing incidental crash/log artifacts or sample-local glue only after upstream contracts own the behavior.
+- [ ] `Tests` -> per-module Kotlin tests: runtime, metadata, generator, compiler-plugin, authoring, Gradle, projections, packaging, and sample checks live in owning modules; current gap is broadening tests only after each owning contract is audited against the matching CsWinRT source area.
+- [ ] `Perf`, `Benchmarks`, `cswinmd`, build/release infrastructure: no active Kotlin parity module is required in the current queue; revisit only after functional parity needs performance baselines, managed WinMD compatibility, or release packaging infrastructure.
+
 ## Functional Completeness Gaps
 
 - [ ] Runtime gaps: complete CsWinRT-aligned audits and fixes for ABI ownership, activation cache/fallback, object identity, marshaling combinations, delegate/event lifetime, collection adapters, async status/error/cancellation, HRESULT/error-info, and WinUI bootstrap hooks.
@@ -44,8 +56,8 @@
 - [ ] Compiler-plugin gaps: move authored type discovery, annotation/source-generator-equivalent behavior, descriptor-backed projection lowering, native-call lowering, and support artifact generation onto compiler-visible K2/IR symbols where runtime reflection or Roslyn source-generator symbols would be used in CsWinRT.
 - [ ] Projection gaps: generate Windows/WinAppSDK slices through deterministic plugin-owned output only after the owning runtime, metadata, and generator contracts exist; keep checked-in projection breadth gated by functional coverage.
 - [ ] Authoring gaps: finish the CsWinRT component-authoring chain: compiler-symbol-authored WinMD/type metadata, generated exposed TypeDetails, dependency activation-factory chaining, activation/hosting, receive-array variants, inherited/overridable interfaces, ABI marshaling combinations, and validation beyond the current JVM WinUI happy path.
-- [x] Packaging gaps: finish Kotlin appx/msix layout, manifest/resource/PRI/MRT details, dependency payload staging, signing/test-install flow, and runtime asset layout without cloning full MSBuild.
-- [x] Validation gaps: keep Windows Gradle configuration cache and build cache enabled for every touched slice, then run representative runtime/metadata/generator/plugin/authoring/packaging/sample checks only after the owning contracts are implemented.
+- [ ] Packaging gaps: keep Kotlin appx/msix layout complete while auditing remaining CsWinRT/MSBuild evidence for app execution aliases, package dependency declarations, framework/package version pinning, resource index edge cases, packaged/unpackaged activation layout, and test-install diagnostics that Kotlin applications still need.
+- [ ] Validation gaps: keep Windows Gradle configuration cache and build cache enabled for every touched slice, then run representative runtime/metadata/generator/plugin/projection/authoring/packaging/sample checks only after the owning contracts are implemented.
 - [ ] Post-completeness structure cleanup: frozen until the functional gaps above are closed. After completion, audit duplicate type/category tables, obsolete handwritten projections, and module boundaries only as a correctness-preserving cleanup pass, not as a current implementation objective.
 
 ## Phase 1 Runtime And ABI
@@ -56,6 +68,9 @@
 - [ ] Generic signature/IID closure: verify parameterized type-signature rendering and IID hashing for interfaces, delegates, collections, and async helpers before relying on broader generated output.
 - [ ] Delegate/event runtime closure: finish delegate callback lifetime, event token handling, add/remove failure behavior, and ABI ownership rules required by generated event/delegate surfaces.
 - [ ] Collection and async runtime closure: finish collection adapters, bindable/observable collection behavior, async operation/action bridges, cancellation/status/error propagation, and ABI marshaling combinations required by projected surfaces.
+- [ ] Error and restricted-error-info closure: audit `ExceptionHelpers`, `ExceptionErrorInfo`, language exception interop, HRESULT mapping, restricted error details, and managed exception CCW behavior against CsWinRT before treating runtime failures as parity-complete.
+- [ ] Weak/reference-tracker/agile closure: audit weak references, agile references, reference tracking, `IMarshal`, context callback behavior, and object lifetime cleanup against CsWinRT `WeakReference`, `AgileReference`, `IReferenceTracker`, `IWeakReferenceSource`, and `ComWrappersSupport`.
+- [ ] Custom projection runtime closure: audit CsWinRT runtime projections for nullable/reference boxing, geometry/numerics, URI, type, system collections, bindable/observable projections, `ICommand`, `IStringable`, `IPropertyValue`, and custom property provider behavior against Kotlin runtime support.
 - [ ] WinUI runtime closure: finish bootstrap, dispatcher/window lifetime, resource loading, dependency property and AutomationPeer runtime hooks only after the owning ABI/object/generator contracts are coherent.
 - [ ] Native runtime actuals for `mingwX64`: frozen for the current queue; later implement real COM initialization, WinRT initialization, HRESULT/error-info translation, dynamic library loading, vtable invocation, callback/upcall plumbing, pointer ownership, object identity, activation, delegates, events, collections, and async in target source sets.
 
@@ -66,6 +81,8 @@
 - [x] Symbol fidelity closure: finish generic parameters, default interfaces, implemented interfaces, activatable/static/factory metadata, property/event accessor identity, parameter passing semantics, custom attributes, and unsupported metadata diagnostics before broadening projection output.
 - [x] Projection-shape input closure: centralize mapped-type, primitive, inspectable/interface, collection, bindable, async, runtime-class-name, and attribute classification so generator/runtime code does not repeat local branch tables.
 - [x] Metadata cache/model closure: ensure normalized models are deterministic, reusable by Gradle cacheable tasks, and explicit about all inputs that affect generated Kotlin output.
+- [ ] Metadata responsibility audit: recheck `WinRtMetadataLoader`, traversal, semantic helpers, authored metadata merge, PE writer, and projection-surface filtering against `.cswinrt/src/cswinrt` so metadata remains normalized input and does not absorb generator policy or runtime mechanics.
+- [ ] Metadata edge-case backlog: audit unsupported WinMD constructs still outside the Kotlin-needed path, including nested generic signatures, default-interface ambiguity, static/factory overload metadata, array/receive-array flags, attributes with unsupported constants, Windows App SDK extension metadata, and third-party component identity.
 
 ## Phase 3 Generator And Compiler Plugin
 
@@ -78,6 +95,8 @@
 - [x] Compiler-support handoff closure: validate compiler-support manifests, projection registrar rows, generic instantiation rows, generic ABI registry rows, authored candidate TSV, authoring metadata index rows, dependency merge inputs, stale class cleanup, helper-symbol resolution, duplicate rows, required columns, schemas, list fields, and declared files before compiler-plugin lowering consumes generated support artifacts.
 - [x] Compiler-plugin IR closure: use K2/IR for descriptor-backed projection lowering, native-call lowering, support artifact initialization, projection registrar initialization, generic support registration, and authored constructor/type-details registration where functional parity requires compiler-visible symbols.
 - [ ] Expect/actual closure: remove common fallback gates for async, collections, custom mapped types, static members, events, setter-only properties, and unsupported ABI shapes only after both JVM and later `mingwX64` contracts exist.
+- [ ] Generator responsibility audit: recheck generator planner/renderers/support files against CsWinRT `type_writers.h`, `code_writers.h`, `helpers.h`, and `strings/*.cs` so declaration planning, helper/init emission, metadata type mappings, activation/static/factory support, and ABI rendering stay in the same responsibility split.
+- [ ] Compiler-plugin responsibility audit: recheck compiler support initialization, native-call lowering, authored type lowering, source-scanner replacement, and generated support artifact consumption so K2/IR owns only compiler-visible rewrites and does not become a second generator.
 - [x] Generated support-file closure: verify helper/init/metadata support emission against CsWinRT responsibility split, including activation factories, static interfaces, delegate bridges, generic interface helpers, event tokens, and marshaling support.
 
 ## Phase 4 Projections
@@ -86,11 +105,14 @@
 - [x] Dependency projection ownership: keep identity/suppression files as the cross-module ownership boundary so application modules do not duplicate dependency-owned projected FQNs.
 - [x] Projection breadth control: expand checked-in generated output only after the corresponding runtime, metadata, and generator contracts exist for the same feature; do not shrink or delete generated surfaces as a substitute for missing generator coverage.
 - [x] Generated-output audits: scan generated projection source/classes for forbidden runtime fallback, reflection/proxy, stale support registries, duplicate type/category tables, duplicate FQNs, and unexpected source-size growth before expanding projection breadth.
+- [ ] Windows projection parity: generate and validate the Windows projection slice corresponding to `.cswinrt/src/Projections/Windows` only after runtime/generator audits close the needed ABI, activation, collection, async, and custom mapped type contracts.
+- [ ] WinAppSDK and XAML projection parity: generate and validate the WinAppSDK / XAML slices corresponding to `.cswinrt/src/Projections/WinAppSDK` and `.cswinrt/src/Projections/Windows.UI.Xaml` only after WinUI runtime hooks, bootstrap/resource loading, dispatcher/window lifetime, and XAML metadata provider contracts are owned upstream.
+- [ ] Projection test host parity: decide whether CsWinRT projection test-host scenarios such as probe-by-host/probe-by-class map to Kotlin validation tasks or remain non-goals; do not expand checked-in projection output to satisfy test-host gaps before upstream contracts exist.
 
 ## Phase 5 Authoring
 
 - [x] JVM authoring skeleton: generated TypeDetails, authored WinMD emission, CCW factories, host manifests, activation factory exports, composable WinUI subclasses, receive-array happy-path handling, and JNI-backed host DLL generation exist as a usable validation base.
-- [ ] Compiler-symbol authored metadata 正在做: move authored runtime-class discovery, interface/base/factory/static/composable metadata, inherited/overridable interface closure, visibility, constructor/member validation, and authored WinMD generation from Gradle source scanning plus TSV handoff into compiler-visible K2/IR symbols, matching CsWinRT's Roslyn `WinRT.SourceGenerator` responsibility.
+- [ ] Compiler-symbol authored metadata: move authored runtime-class discovery, interface/base/factory/static/composable metadata, inherited/overridable interface closure, visibility, constructor/member validation, and authored WinMD generation from Gradle source scanning plus TSV handoff into compiler-visible K2/IR symbols, matching CsWinRT's Roslyn `WinRT.SourceGenerator` responsibility.
 - [ ] Authoring module ownership: move the authoring contract center into `winrt-authoring` so the CsWinRT `.cswinrt/src/Authoring` responsibility is not split implicitly across `winrt-gradle-plugin`, `winrt-generator`, `winrt-runtime`, and `winrt-compiler-plugin`.
 - [ ] Authoring ABI boundary: define and validate what authored Kotlin types expose as CCWs, how generated TypeDetails map implementation types to metadata types, how factories/static/composable factories are surfaced, how object lifetime/identity is owned, and how generated metadata connects to runtime ownership before expanding samples.
 - [ ] Dependency activation-factory chaining: implement the CsWinRT-equivalent of referenced component activation-factory merge so authored components can delegate `DllGetActivationFactory` lookups across dependency exports instead of only relying on local host manifests.
@@ -102,9 +124,11 @@
 ## Phase 6 Packaging And Validation
 
 - [x] Kotlin appx/msix packaging baseline: Kotlin-owned manifest generation/validation, appx/msix layout, dependency payload resolution, resources/PRI/MRT, signing/test-install hooks, packaged/unpackaged modes, disabled-generation input skipping/output preservation, and Gradle DSL ergonomics are complete for the current JVM packaging surface without cloning full MSBuild.
-- [x] Packaging functional closure: verify remaining appx/msix layout, PRI/MRT/resource indexing, manifest processing, dependency payload staging, signing/test-install hooks, and runtime asset layout against Kotlin application needs, using CsWinRT/MSBuild behavior only as implementation evidence.
+- [ ] Packaging CsWinRT/MSBuild evidence audit: compare Kotlin Gradle packaging against CsWinRT sample/test packaging evidence for remaining Kotlin application needs such as app execution aliases, package dependency declarations, framework/package version pinning, packaged/unpackaged activation layout, PRI/MRT edge cases, host/runtimeconfig payload placement, and test-install diagnostics.
 - [x] Gradle cache closure: keep configuration cache and build cache enabled for touched runtime, metadata, generator, authoring, packaging, and sample tasks; any cache miss/error caused by task modeling is a bug to fix.
 - [x] Representative Windows validation: validate touched runtime, metadata, generator, compiler-plugin, authoring, packaging, and JVM slices on Windows; samples remain validation surfaces, not design sources.
+- [ ] Sample parity audit: map CsWinRT `NetProjectionSample`, `WinUIDesktopSample`, authoring demos, background task sample, and embedded/test-host samples to Kotlin `winrt-samples`; keep only validation slices whose upstream runtime/generator/authoring contracts are implemented.
+- [ ] Test parity audit: map CsWinRT unit, functional, source-generator, diagnostic, host, object-lifetime, and authoring tests to owning Kotlin module tests, and add coverage only after the corresponding phase-owned contract is defined.
 - [ ] Native validation: frozen for the current queue; later add `mingwX64` validation only after native runtime/projection contracts are implemented.
 
 ## Frozen Until Prerequisites Close
