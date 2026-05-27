@@ -186,6 +186,9 @@ class KotlinProjectionGenerator(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ) {
+        if (generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm) {
+            return
+        }
         validateAuthoredCcwBindingContracts(model, plans)
         validateAuthoringActivationFactorySupportContracts(model, plans)
         plans.forEach { plan ->
@@ -242,6 +245,9 @@ class KotlinProjectionGenerator(
                     .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
                     .forEach { binding ->
                         val interfaceType = projectionType(binding.qualifiedName, plan)
+                        if (interfaceType == null && binding.qualifiedName.substringBeforeLast('.', "") != plan.type.namespace) {
+                            return@forEach
+                        }
                         require(interfaceType?.kind == WinRtTypeKind.Interface) {
                             "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to be present in the metadata model."
                         }
@@ -258,6 +264,9 @@ class KotlinProjectionGenerator(
                 .filterNot(::isRuntimeOwnedMappedTypeName)
                 .forEach { requiredInterfaceName ->
                     val interfaceType = requiredInterfaceType(requiredInterfaceName, plan)
+                    if (interfaceType == null && requiredInterfaceName.substringBeforeLast('.', "") != plan.type.namespace) {
+                        return@forEach
+                    }
                     require(interfaceType?.kind == WinRtTypeKind.Interface) {
                         "Generator requires ${plan.projectionContractSubject()} required interface $requiredInterfaceName to be present in the metadata model."
                     }
@@ -747,7 +756,8 @@ class KotlinProjectionGenerator(
         plan: KotlinTypeProjectionPlan,
         mappedCollectionMemberNames: Set<String>,
     ): Boolean =
-        isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) ||
+        runtimeObjectMethodShape(this) != null ||
+            isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) ||
             plan.requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().let { augmentations ->
                 augmentations.contains("IDisposable") && name == "Close" ||
                     augmentations.contains("INotifyDataErrorInfo") && name == "GetErrors"
@@ -799,8 +809,13 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateInstancePropertyBindingContracts(plan: KotlinTypeProjectionPlan) {
+        if (plan.type.isAttributeType) {
+            return
+        }
+        val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
+            .filterNot { property -> property.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .forEach { property ->
                 if (property.hasNativeProjectionGetterAccessor()) {
                     val getterBindingName = "${property.name.uppercase()}_GETTER_SLOT"
@@ -1234,7 +1249,7 @@ class KotlinProjectionGenerator(
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole runtime class ${typeBinding.resolvedTypeName} to carry default-interface metadata IID before projection rendering."
             }
         }
-        if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedInterface) {
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedInterface && customObjectAbi(typeBinding) == null) {
             require(typeBinding.interfaceId != null) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole interface ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
             }

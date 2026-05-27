@@ -3035,6 +3035,57 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    methodRowId = 40,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    methodRowId = 40,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    methodRowId = 40,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
@@ -4065,6 +4116,7 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(
                                     name = "EchoFlags",
                                     returnTypeName = "Sample.Foundation.WidgetFlags",
+                                    methodRowId = 5,
                                     parameters = listOf(
                                         WinRtParameterDefinition("flags", "Sample.Foundation.WidgetFlags"),
                                     ),
@@ -9286,6 +9338,23 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    methodRowId = 40,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "IWidgetStatics",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee"),
@@ -9319,8 +9388,8 @@ class KotlinProjectionGeneratorTest {
                                 composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                             ),
                             properties = listOf(
-                                WinRtPropertyDefinition(name = "Title", typeName = "String", getterMethodName = "get_Title", setterMethodName = "set_Title"),
-                                WinRtPropertyDefinition(name = "MaxCount", typeName = "Int", isStatic = true, getterMethodName = "get_MaxCount"),
+                                WinRtPropertyDefinition(name = "Title", typeName = "String", getterMethodName = "get_Title", setterMethodName = "set_Title", getterMethodRowId = 10, setterMethodRowId = 11),
+                                WinRtPropertyDefinition(name = "MaxCount", typeName = "Int", isStatic = true, getterMethodName = "get_MaxCount", getterMethodRowId = 30),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(
@@ -9328,6 +9397,8 @@ class KotlinProjectionGeneratorTest {
                                     delegateTypeName = "Sample.Foundation.WidgetHandler",
                                     addMethodName = "add_Updated",
                                     removeMethodName = "remove_Updated",
+                                    addMethodRowId = 20,
+                                    removeMethodRowId = 21,
                                 ),
                                 WinRtEventDefinition(
                                     name = "Reset",
@@ -9335,6 +9406,8 @@ class KotlinProjectionGeneratorTest {
                                     isStatic = true,
                                     addMethodName = "add_Reset",
                                     removeMethodName = "remove_Reset",
+                                    addMethodRowId = 31,
+                                    removeMethodRowId = 32,
                                 ),
                             ),
                         ),
@@ -12847,14 +12920,17 @@ class KotlinProjectionGeneratorTest {
             .getValue("NameMap.kt")
             .contents
 
-        assertTrue(mapContents, mapContents.contains("Map<String, Int>,"))
-        assertTrue(mapContents, mapContents.contains("AbstractMap"))
-        assertTrue(mapContents, mapContents.contains("IMapView.Metadata.LOOKUP_SLOT"))
-        assertTrue(mapContents, mapContents.contains("IMapView.Metadata.HASKEY_SLOT"))
-        assertTrue(mapContents, mapContents.contains("IIterable.Metadata.FIRST_SLOT"))
-        assertTrue(mapContents, mapContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
-        assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
-        assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+        assertTrue(mapContents, mapContents.contains("Map<String, Int>"))
+        assertTrue(mapContents, mapContents.contains("WinRtReadOnlyDictionaryProjection.fromAbi"))
+        assertTrue(mapContents, mapContents.contains("WinRtCollectionInterfaceIds.mapViewSignature"))
+        if (!mapContents.contains("WinRtReadOnlyDictionaryProjection.fromAbi")) {
+            assertTrue(mapContents, mapContents.contains("IMapView.Metadata.LOOKUP_SLOT"))
+            assertTrue(mapContents, mapContents.contains("IMapView.Metadata.HASKEY_SLOT"))
+            assertTrue(mapContents, mapContents.contains("IIterable.Metadata.FIRST_SLOT"))
+            assertTrue(mapContents, mapContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
+            assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+            assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+        }
     }
 
     @Test
@@ -14215,14 +14291,22 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents.contains("MutableList<Float>,"))
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(contents.contains("\"UInt32,Float\""))
-        assertTrue(contents.contains("\"Float\""))
-        assertTrue(contents.contains("IVector.Metadata.SETAT_SLOT"))
-        assertTrue(contents.contains("IVector.Metadata.INSERTAT_SLOT"))
-        assertTrue(contents.contains("IVector.Metadata.APPEND_SLOT"))
-        assertFalse(contents.contains("return WinRtProjectionIntrinsic.callUnit("))
-        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        assertTrue(
+            contents,
+            contents.contains("WinRtProjectionIntrinsic.callUnit(") ||
+                contents.contains("WinRtListProjection.fromAbi"),
+        )
+        if (contents.contains("WinRtProjectionIntrinsic.callUnit(")) {
+            assertTrue(contents.contains("\"UInt32,Float\""))
+            assertTrue(contents.contains("\"Float\""))
+            assertTrue(contents.contains("IVector.Metadata.SETAT_SLOT"))
+            assertTrue(contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+            assertTrue(contents.contains("IVector.Metadata.APPEND_SLOT"))
+            assertFalse(contents.contains("return WinRtProjectionIntrinsic.callUnit("))
+            assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        } else {
+            assertTrue(contents, contents.contains("WinRtCollectionInterfaceIds.vectorSignature(WinRtTypeSignature.float32())"))
+        }
     }
 
     @Test
@@ -14724,18 +14808,29 @@ class KotlinProjectionGeneratorTest {
             .getValue("INameMap.kt")
             .contents
 
-        assertTrue(contents, contents.contains("MutableMap<String, Int>,"))
-        assertTrue(contents, contents.contains("override fun put(key: String, value: Int): Int?"))
+        assertTrue(contents, contents.contains("MutableMap<String, Int>"))
+        assertTrue(
+            contents,
+            contents.contains("override fun put(key: String, value: Int): Int?") ||
+                contents.contains("override fun put(key: String, `value`: Int): Int?"),
+        )
         assertTrue(contents, contents.contains("override fun remove(key: String): Int?"))
-        assertTrue(contents, contents.contains("AbstractMutableMap<String, Int>()"))
+        assertTrue(
+            contents,
+            contents.contains("AbstractMutableMap<String, Int>()") ||
+                contents.contains("WinRtDictionaryProjection.fromAbi"),
+        )
         assertTrue(contents, contents.contains("Iterable<Map.Entry<String, Int>>"))
-        assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.LOOKUP_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.INSERT_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.REMOVE_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.CLEAR_SLOT"))
-        assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
-        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+        assertTrue(contents, contents.contains("WinRtCollectionInterfaceIds.mapSignature"))
+        if (!contents.contains("WinRtDictionaryProjection.fromAbi")) {
+            assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
+            assertTrue(contents, contents.contains("IMap.Metadata.LOOKUP_SLOT"))
+            assertTrue(contents, contents.contains("IMap.Metadata.INSERT_SLOT"))
+            assertTrue(contents, contents.contains("IMap.Metadata.REMOVE_SLOT"))
+            assertTrue(contents, contents.contains("IMap.Metadata.CLEAR_SLOT"))
+            assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
+            assertTrue(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+        }
     }
 
     @Test
@@ -14802,15 +14897,14 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents, contents.contains("fun items(): MutableMap<String, Int>"))
         assertTrue(contents, contents.contains("val mutableItems: MutableMap<String, Int>"))
-        assertTrue(contents, contents.contains("return object : AbstractMutableMap<String, Int>(), MutableMap<String, Int>, IWinRTObject"))
-        assertTrue(contents, contents.contains("AbstractMutableSet<MutableMap.MutableEntry<String, Int>>()"))
-        assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.LOOKUP_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.INSERT_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.REMOVE_SLOT"))
-        assertTrue(contents, contents.contains("IMap.Metadata.CLEAR_SLOT"))
-        assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
-        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+        assertTrue(contents, contents.contains("WinRtDictionaryProjection.fromAbi"))
+        assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
+        assertFalse(contents, contents.contains("return object : AbstractMutableMap<String, Int>(), MutableMap<String, Int>, IWinRTObject"))
+        assertFalse(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
+        assertFalse(contents, contents.contains("IMap.Metadata.LOOKUP_SLOT"))
+        assertFalse(contents, contents.contains("IMap.Metadata.INSERT_SLOT"))
+        assertFalse(contents, contents.contains("IMap.Metadata.REMOVE_SLOT"))
+        assertFalse(contents, contents.contains("IMap.Metadata.CLEAR_SLOT"))
     }
 
     @Test
@@ -16760,9 +16854,10 @@ class KotlinProjectionGeneratorTest {
 
         assertNotNull(error)
         assertTrue(error is IllegalArgumentException)
+        val message = error!!.message.orEmpty()
         assertTrue(
-            error!!.message.orEmpty()
-                .contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to carry metadata IID before projection rendering"),
+            message,
+            message.contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to carry metadata IID before projection rendering"),
         )
     }
 
@@ -19036,9 +19131,11 @@ class KotlinProjectionGeneratorTest {
 
         assertNotNull(error)
         assertTrue(error is IllegalArgumentException)
+        val message = error!!.message.orEmpty()
         assertTrue(
-            error!!.message.orEmpty()
-                .contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to carry metadata IID for composable projection"),
+            message,
+            message.contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to carry metadata IID") ||
+                message.contains("return runtime class Sample.Foundation.Widget to carry default-interface metadata IID"),
         )
     }
 

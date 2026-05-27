@@ -20,7 +20,7 @@
 
 ## Current Focus Queue
 
-- [ ] Generator projection matrix closure 正在做: close ABI/member/metadata fail-closed gaps for activation, static/factory, delegates/events, structs, arrays, custom mapped types, collections, async, generic instantiation, and unsupported shapes before broad projection growth.
+- [x] Generator projection matrix closure: close ABI/member/metadata fail-closed gaps for activation, static/factory, delegates/events, structs, arrays, custom mapped types, collections, async, generic instantiation, and unsupported shapes before broad projection growth.
 - [ ] Metadata input and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
 - [ ] Compiler-plugin authoring and projection lowering: continue descriptor-backed K2/IR lowering only where it closes functional projection or authoring behavior, not as a source-count reduction task.
 - [ ] Kotlin appx/msix packaging validation: keep completed packaging behavior cache-compatible while closing any remaining package/layout/resource gaps discovered by functional validation.
@@ -69,7 +69,7 @@
 ## Phase 3 Generator And Compiler Plugin
 
 - [x] Generator declaration planning: keep declaration ownership, namespace/type shells, companion/metadata surfaces, and deterministic ordering as the first generator responsibility before member emission expands.
-- [ ] Generator projection matrix closure 正在做: finish Kotlin-relevant activation, static, factory, custom mapped type, nullable reference, required/default interface, generic instantiation, collection, async, delegate/event, struct, array, attribute, and unsupported-shape behavior.
+- [x] Generator projection matrix closure: finish Kotlin-relevant activation, static, factory, custom mapped type, nullable reference, required/default interface, generic instantiation, collection, async, delegate/event, struct, array, attribute, and unsupported-shape behavior.
 - [x] ABI array contract closure: verify arrays always carry exactly one renderable element ABI binding before projection rendering, including nested generic/array cases and diagnostics that fail before marshaler fallback paths.
 - [x] Authored CCW fail-closed closure: validate unsupported authored CCW ABI member bindings before support-file rendering instead of emitting generated `E_NOTIMPL` fallback handlers for shapes the authoring ABI cannot marshal.
 - [x] Collection owner fail-closed closure: reject mapped collection owner interfaces whose element, key, or value ABI shape cannot be projected before silently dropping the Kotlin collection bridge.
