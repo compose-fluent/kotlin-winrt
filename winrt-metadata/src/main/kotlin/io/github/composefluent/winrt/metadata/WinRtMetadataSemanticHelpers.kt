@@ -2506,13 +2506,13 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
         private fun addAbiDelegatesForType(type: WinRtTypeRef) {
             val normalized = type.normalized()
-            val typeName = normalized.qualifiedName ?: return
             if (normalized.typeArguments.isEmpty()) return
-            val namespace = typeName.substringBeforeLast('.', "")
-            val name = typeName.substringAfterLast('.')
-            if (namespace != "Windows.Foundation" && namespace != "Windows.Foundation.Collections") return
-            abiDelegateOperationsFor(name, normalized.typeArguments).forEach { operation ->
-                addAbiDelegateOperation(normalized, operation, namespace)
+            val descriptor = typeClassifier.classify(normalized, "")
+            abiDelegateOperationsFor(descriptor.specialType, normalized.typeArguments).forEach { operation ->
+                val currentNamespace = descriptor.definitionType?.namespace
+                    ?: normalized.qualifiedName?.substringBeforeLast('.', missingDelimiterValue = "")
+                    ?: ""
+                addAbiDelegateOperation(normalized, operation, currentNamespace)
             }
         }
 
@@ -2545,14 +2545,31 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             )
         }
 
-        private fun abiDelegateOperationsFor(typeName: String, arguments: List<WinRtTypeRef>): List<AbiDelegateOperation> =
-            when (typeName) {
-                "IIterator" ->
+        private fun abiDelegateOperationsFor(
+            specialType: WinRtSpecialTypeDescriptor?,
+            arguments: List<WinRtTypeRef>,
+        ): List<AbiDelegateOperation> =
+            when (specialType) {
+                is WinRtCollectionTypeDescriptor -> collectionAbiDelegateOperationsFor(specialType.kind, arguments)
+                is WinRtReferenceTypeDescriptor -> referenceAbiDelegateOperationsFor(specialType.kind, arguments)
+                is WinRtAsyncTypeDescriptor -> asyncAbiDelegateOperationsFor(specialType.kind, arguments)
+                is WinRtEventHandlerTypeDescriptor -> eventHandlerAbiDelegateOperationsFor(specialType.kind, arguments)
+                is WinRtBindableCollectionTypeDescriptor,
+                null,
+                -> emptyList()
+            }
+
+        private fun collectionAbiDelegateOperationsFor(
+            kind: WinRtCollectionInterfaceKind,
+            arguments: List<WinRtTypeRef>,
+        ): List<AbiDelegateOperation> =
+            when (kind) {
+                WinRtCollectionInterfaceKind.Iterator ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get_Current", listOf(0), AbiDelegateShape.OutReturn))
-                "IKeyValuePair" ->
+                WinRtCollectionInterfaceKind.KeyValuePair ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get_Key", listOf(0), AbiDelegateShape.IntPtrOutPointer)) +
                         ifRequired(arguments, 1, AbiDelegateOperation("get_Value", listOf(1), AbiDelegateShape.IntPtrOutPointer))
-                "IMapView" -> {
+                WinRtCollectionInterfaceKind.MapView -> {
                     val lookup = if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
                         listOf(AbiDelegateOperation("lookup", listOf(0, 1), AbiDelegateShape.MapLookup))
                     } else {
@@ -2560,7 +2577,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     }
                     lookup + ifRequired(arguments, 0, AbiDelegateOperation("has_key", listOf(0), AbiDelegateShape.HasKey))
                 }
-                "IMap" -> {
+                WinRtCollectionInterfaceKind.Map -> {
                     val mapOperations = if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
                         listOf(
                             AbiDelegateOperation("lookup", listOf(0, 1), AbiDelegateShape.MapLookup),
@@ -2573,7 +2590,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                         ifRequired(arguments, 0, AbiDelegateOperation("has_key", listOf(0), AbiDelegateShape.HasKey)) +
                         ifRequired(arguments, 0, AbiDelegateOperation("remove", listOf(0), AbiDelegateShape.Remove))
                 }
-                "IVectorView" ->
+                WinRtCollectionInterfaceKind.VectorView ->
                     ifRequired(
                         arguments,
                         0,
@@ -2581,7 +2598,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                         AbiDelegateOperation("index_of", listOf(0), AbiDelegateShape.IndexOf),
                         AbiDelegateOperation("get_Current", listOf(0), AbiDelegateShape.OutReturn),
                     )
-                "IVector" ->
+                WinRtCollectionInterfaceKind.Vector ->
                     ifRequired(
                         arguments,
                         0,
@@ -2591,27 +2608,58 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                         AbiDelegateOperation("append", listOf(0), AbiDelegateShape.Value),
                         AbiDelegateOperation("get_Current", listOf(0), AbiDelegateShape.OutReturn),
                     )
-                "EventHandler" ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("invoke", listOf(0), AbiDelegateShape.EventHandler))
-                "IReference" ->
+                WinRtCollectionInterfaceKind.Iterable -> emptyList()
+            }
+
+        private fun referenceAbiDelegateOperationsFor(
+            kind: WinRtReferenceInterfaceKind,
+            arguments: List<WinRtTypeRef>,
+        ): List<AbiDelegateOperation> =
+            when (kind) {
+                WinRtReferenceInterfaceKind.Reference ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get_Value", listOf(0), AbiDelegateShape.OutReturn))
-                "IMapChangedEventArgs", "IAsyncOperation" ->
+                WinRtReferenceInterfaceKind.ReferenceArray -> emptyList()
+            }
+
+        private fun asyncAbiDelegateOperationsFor(
+            kind: WinRtAsyncInterfaceKind,
+            arguments: List<WinRtTypeRef>,
+        ): List<AbiDelegateOperation> =
+            when (kind) {
+                WinRtAsyncInterfaceKind.Operation ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get", listOf(0), AbiDelegateShape.OutReturn))
-                "IAsyncOperationWithProgress" ->
+                WinRtAsyncInterfaceKind.OperationWithProgress ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get", listOf(0), AbiDelegateShape.OutReturn)) +
                         ifRequired(arguments, 1, AbiDelegateOperation("invoke", listOf(1), AbiDelegateShape.AsyncProgress))
-                "TypedEventHandler" -> {
+                WinRtAsyncInterfaceKind.Info,
+                WinRtAsyncInterfaceKind.Action,
+                WinRtAsyncInterfaceKind.ActionWithProgress,
+                -> emptyList()
+            }
+
+        private fun eventHandlerAbiDelegateOperationsFor(
+            kind: WinRtEventHandlerKind,
+            arguments: List<WinRtTypeRef>,
+        ): List<AbiDelegateOperation> =
+            when (kind) {
+                WinRtEventHandlerKind.EventHandler ->
+                    ifRequired(arguments, 0, AbiDelegateOperation("invoke", listOf(0), AbiDelegateShape.EventHandler))
+                WinRtEventHandlerKind.TypedEventHandler -> {
                     if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
                         listOf(AbiDelegateOperation("invoke", listOf(0, 1), AbiDelegateShape.TypedEventHandler))
                     } else {
                         emptyList()
                     }
                 }
-                "AsyncOperationProgressHandler" ->
+                WinRtEventHandlerKind.AsyncOperationProgressHandler ->
                     ifRequired(arguments, 1, AbiDelegateOperation("invoke", listOf(1), AbiDelegateShape.AsyncProgress))
-                "AsyncActionProgressHandler" ->
+                WinRtEventHandlerKind.AsyncActionProgressHandler ->
                     ifRequired(arguments, 0, AbiDelegateOperation("invoke", listOf(0), AbiDelegateShape.AsyncProgress))
-                else -> emptyList()
+                WinRtEventHandlerKind.PropertyChangedEventHandler,
+                WinRtEventHandlerKind.NotifyCollectionChangedEventHandler,
+                WinRtEventHandlerKind.VectorChangedEventHandler,
+                WinRtEventHandlerKind.MapChangedEventHandler,
+                -> emptyList()
             }
 
         private fun ifRequired(
