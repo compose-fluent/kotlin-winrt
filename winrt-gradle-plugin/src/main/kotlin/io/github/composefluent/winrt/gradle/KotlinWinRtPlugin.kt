@@ -241,9 +241,7 @@ private fun configureWinRtApplicationTasks(
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(identityDependencies)
             task.authoredHostManifestFiles.from(
-                project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
-                ),
+                localAuthoredHostManifestFiles(project),
             )
             task.dependsOn("generateWinRtProjections")
         },
@@ -417,9 +415,7 @@ private fun configureWinRtApplicationTasks(
                 ),
             )
             task.authoredHostManifestFiles.from(
-                project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
-                ),
+                localAuthoredHostManifestFiles(project),
             )
             task.authoredTargetArtifactFiles.from(
                 identityDependencies.elements.map { elements ->
@@ -510,7 +506,7 @@ private fun configureWinRtApplicationTasks(
             task.packagePayloadFiles.from(extension.application.packagePayloadFiles)
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
-            task.makePriExecutable.set("")
+            task.makePriExecutable.set(extension.application.makePriExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.dependsOn(stageRuntimeAssetsTask)
@@ -1041,6 +1037,18 @@ private fun kotlinMainSourceDirs(project: Project): List<File> {
     val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return emptyList()
     return kotlinExtension.sourceSets.findByName("main")?.kotlin?.srcDirs.orEmpty().toList()
 }
+
+private fun localAuthoredHostManifestFiles(project: Project) =
+    project.provider {
+        val manifest = project.layout.buildDirectory.file(
+            "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
+        ).get().asFile
+        if (authoredHostManifestDeclaresActivatableClasses(manifest)) {
+            listOf(manifest)
+        } else {
+            emptyList()
+        }
+    }
 
 private fun existingNuGetPackageContentRoots(
     packageSpecs: List<String>,
