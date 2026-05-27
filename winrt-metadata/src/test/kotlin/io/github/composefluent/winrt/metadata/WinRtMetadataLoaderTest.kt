@@ -559,11 +559,15 @@ class WinRtMetadataLoaderTest {
     fun expands_response_file_inputs_and_applies_reference_style_filters() {
         val assembly = buildManagedMetadataSample()
         val responseFile = Files.createTempFile("kotlin-winrt-metadata-inputs", ".rsp")
+        val nestedResponseFile = Files.createTempFile("kotlin-winrt-metadata-nested-inputs", ".rsp")
+        nestedResponseFile.writeText(
+            "\"C:\\metadata\\\\quoted name\"\n" +
+                "plain\\path\n",
+        )
         responseFile.writeText(
             "# comment lines are ignored like cswinrt response files\n" +
-                "\"${assembly.parent}\"\n" +
-                "\"C:\\metadata\\\\quoted name\"\n" +
-                "plain\\path\n",
+            "\"${assembly.parent}\"\n" +
+                "@$nestedResponseFile\n",
         )
         val context = WinRtMetadataProjectionContext(
             sources = WinRtMetadataSource.parseInputs("@$responseFile")
@@ -605,12 +609,59 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun resolves_mixed_metadata_sources_into_deterministic_cache_order() {
+        val assembly = buildManagedMetadataSample()
+        val root = Files.createTempDirectory("kotlin-winrt-metadata-mixed-sources")
+        val fileInput = root.resolve("file").resolve("Zeta.winmd")
+        val directoryInput = root.resolve("directory")
+        val directoryWinmd = directoryInput.resolve("Alpha.winmd")
+        val packageDir = root.resolve("package")
+        val packageWinmd = packageDir.resolve("lib/net8.0/Mid.winmd")
+        fileInput.parent.createDirectories()
+        directoryInput.createDirectories()
+        packageWinmd.parent.createDirectories()
+        Files.copy(assembly, fileInput)
+        Files.copy(assembly, directoryWinmd)
+        Files.copy(assembly, packageWinmd)
+
+        val firstCache = WinRtMetadataSourceResolver.resolve(
+            listOf(
+                WinRtMetadataSource.nugetPackage(packageDir),
+                WinRtMetadataSource.path(directoryInput),
+                WinRtMetadataSource.path(fileInput),
+                WinRtMetadataSource.path(directoryWinmd),
+            ),
+        )
+        val secondCache = WinRtMetadataSourceResolver.resolve(
+            listOf(
+                WinRtMetadataSource.path(fileInput),
+                WinRtMetadataSource.path(directoryWinmd),
+                WinRtMetadataSource.path(directoryInput),
+                WinRtMetadataSource.nugetPackage(packageDir),
+            ),
+        )
+
+        assertEquals(firstCache.files.map { it.toCanonicalTestPath() }, secondCache.files.map { it.toCanonicalTestPath() })
+        assertEquals(firstCache.resolvedFiles.map { it.file.toCanonicalTestPath() }, firstCache.files.map { it.toCanonicalTestPath() })
+        val resolvedFileOrder = firstCache.files.map { it.toCanonicalTestPath() }
+        assertEquals(
+            resolvedFileOrder.sortedWith(String.CASE_INSENSITIVE_ORDER),
+            resolvedFileOrder,
+        )
+        assertEquals(3, firstCache.files.size)
+    }
+
+    @Test
     fun rejects_response_file_prefix_for_metadata_files_and_models_windows_sdk_discovery_boundary() {
         val assembly = buildManagedMetadataSample()
 
         val responseFailure = runCatching { WinRtMetadataSource.parseInputs("@$assembly") }.exceptionOrNull()
         assertTrue(responseFailure is IllegalArgumentException)
         assertEquals("'@' is reserved for response files", responseFailure?.message)
+        val responseDirectory = Files.createTempDirectory("kotlin-winrt-metadata-response-directory")
+        val directoryFailure = runCatching { WinRtMetadataSource.parseInputs("@$responseDirectory") }.exceptionOrNull()
+        assertTrue(directoryFailure is IllegalArgumentException)
+        assertEquals("'@' is reserved for response files", directoryFailure?.message)
 
         val sdkRoot = buildWindowsSdkMetadataRoot(
             version = "10.0.22621.0",
