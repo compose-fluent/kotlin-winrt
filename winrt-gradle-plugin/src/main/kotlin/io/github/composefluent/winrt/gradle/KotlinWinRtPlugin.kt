@@ -3,6 +3,8 @@ package io.github.composefluent.winrt.gradle
 import io.github.composefluent.winrt.compiler.KotlinWinRtCommandLineProcessor
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
+import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
+import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -812,6 +814,9 @@ private fun configureKotlinWinRtCompilerPluginClasspath(project: Project) {
         .configureEach { configuration ->
             if (configuredConfigurations.add(configuration.name)) {
                 project.dependencies.add(configuration.name, kotlinWinRtCompilerPluginDependency(project))
+                kotlinWinRtCompilerPluginRuntimeDependencies(project).forEach { dependency ->
+                    project.dependencies.add(configuration.name, dependency)
+                }
             }
         }
 }
@@ -822,6 +827,9 @@ private fun kotlinWinRtCompilerPluginClasspath(project: Project) =
             configuration.isCanBeConsumed = false
             configuration.isCanBeResolved = true
             project.dependencies.add(configuration.name, kotlinWinRtCompilerPluginDependency(project))
+            kotlinWinRtCompilerPluginRuntimeDependencies(project).forEach { dependency ->
+                project.dependencies.add(configuration.name, dependency)
+            }
         }
 
 private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
@@ -832,19 +840,25 @@ private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
                 configuration.isCanBeConsumed = false
                 configuration.isCanBeResolved = true
                 val version = kotlinWinRtPluginVersion()
-                project.dependencies.add(
-                    configuration.name,
-                    kotlinWinRtProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version),
-                )
-                project.dependencies.add(
-                    configuration.name,
-                    kotlinWinRtProjectOrModuleDependency(project, ":winrt-metadata", "winrt-metadata", version),
-                )
-                project.dependencies.add(
-                    configuration.name,
-                    kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
-                )
-                project.dependencies.add(configuration.name, "com.squareup:kotlinpoet:1.18.1")
+                kotlinWinRtLocalGeneratorWorkerClasspath(project).takeIf { it.isNotEmpty() }?.let { files ->
+                    project.dependencies.add(configuration.name, project.files(files))
+                } ?: run {
+                    project.dependencies.add(
+                        configuration.name,
+                        kotlinWinRtProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version),
+                    )
+                    project.dependencies.add(
+                        configuration.name,
+                        kotlinWinRtProjectOrModuleDependency(project, ":winrt-metadata", "winrt-metadata", version),
+                    )
+                    project.dependencies.add(
+                        configuration.name,
+                        kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
+                    )
+                }
+                if (kotlinWinRtCodeSourceFile(com.squareup.kotlinpoet.ClassName::class.java) == null) {
+                    project.dependencies.add(configuration.name, "com.squareup:kotlinpoet:1.18.1")
+                }
             },
     )
 
@@ -879,12 +893,37 @@ private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
     }
 }
 
+private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List<Any> {
+    val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
+    if (localMetadataProject != null) {
+        return listOf(project.dependencies.project(mapOf("path" to localMetadataProject.path)))
+    }
+    val metadataClasspath = kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java)
+    return if (metadataClasspath != null) {
+        listOf(project.files(metadataClasspath))
+    } else {
+        listOf("io.github.compose-fluent:winrt-metadata:${kotlinWinRtPluginVersion()}")
+    }
+}
+
+private fun kotlinWinRtLocalGeneratorWorkerClasspath(project: Project): List<File> =
+    listOfNotNull(
+        kotlinWinRtCodeSourceFile(Guid::class.java),
+        kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java),
+        kotlinWinRtCodeSourceFile(KotlinProjectionGenerator::class.java),
+        kotlinWinRtCodeSourceFile(com.squareup.kotlinpoet.ClassName::class.java),
+    )
+        .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
+        .filter { file -> file.exists() }
+
 private fun kotlinWinRtCompilerPluginClasspathJar(project: Project): Any? {
     val compilerPluginClass = KotlinWinRtCommandLineProcessor::class.java
-    val location = compilerPluginClass.protectionDomain?.codeSource?.location ?: return null
-    return runCatching {
-        project.files(File(location.toURI()))
-    }.getOrNull()
+    return kotlinWinRtCodeSourceFile(compilerPluginClass)?.let { file -> project.files(file) }
+}
+
+private fun kotlinWinRtCodeSourceFile(type: Class<*>): File? {
+    val location = type.protectionDomain?.codeSource?.location ?: return null
+    return runCatching { File(location.toURI()) }.getOrNull()
 }
 
 private fun kotlinWinRtPluginVersion(): String =

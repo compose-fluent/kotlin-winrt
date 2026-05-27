@@ -157,10 +157,22 @@ class KotlinWinRtPluginTest {
         val generatorWorkerConfiguration = project.configurations.getByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
         assertTrue(generatorWorkerConfiguration.isCanBeResolved)
         assertFalse(generatorWorkerConfiguration.isCanBeConsumed)
-        assertEquals(
-            setOf("winrt-runtime", "winrt-metadata", "winrt-generator", "kotlinpoet"),
-            generatorWorkerConfiguration.dependencies.mapTo(mutableSetOf()) { it.name },
-        )
+        val generatorWorkerDependencyNames = generatorWorkerConfiguration.dependencies.mapTo(mutableSetOf()) { it.name }
+        val publishedWorkerDependencyNames = setOf("winrt-runtime", "winrt-metadata", "winrt-generator", "kotlinpoet")
+        if (generatorWorkerDependencyNames.any { it in publishedWorkerDependencyNames }) {
+            assertEquals(publishedWorkerDependencyNames, generatorWorkerDependencyNames)
+        } else {
+            val generatorCodeSource = KotlinProjectionGenerator::class.java.protectionDomain.codeSource.location
+                .toURI()
+                .let(Path::of)
+                .toAbsolutePath()
+                .normalize()
+            assertTrue(
+                task.generatorWorkerClasspath.files.any { file ->
+                    file.toPath().toAbsolutePath().normalize() == generatorCodeSource
+                },
+            )
+        }
         assertEquals(project.name, task.authoringAssemblyName.get())
         assertEquals("${project.name}.jar", task.authoringTargetArtifactName.get())
     }
@@ -908,17 +920,64 @@ class KotlinWinRtPluginTest {
 
     @Test
     fun application_packaging_only_nuget_does_not_expand_projection_surface() {
-        val project = ProjectBuilder.builder().build()
+        val projectDir = Files.createTempDirectory("kotlin-winrt-packaging-only-test-")
+        val nugetRoot = projectDir.resolve("nuget")
+        writeWindowsAppSdkPackage(
+            nugetRoot = nugetRoot,
+            packageId = "Microsoft.WindowsAppSDK",
+            version = "1.8.260416003",
+        )
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-packaging-only-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("io.github.composefluent.winrt")
+            }
 
-        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
-        val extension = project.extensions.getByType(WinRtExtension::class.java)
-        extension.application {}
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+            winRt {
+                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                restoreNuGetPackages.set(false)
+                application {}
+                nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+            }
+            """.trimIndent(),
+        )
 
-        val task = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
-        task.generate()
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRtProjections", "--stacktrace")
+            .forwardOutput()
+            .build()
 
-        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        val outputRoot = projectDir.resolve("build/generated/kotlin-winrt/src/main/kotlin")
         assertFalse(Files.exists(outputRoot.resolve("microsoft")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")))
     }
