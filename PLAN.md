@@ -22,7 +22,7 @@
 
 - [x] Generator projection matrix closure: close ABI/member/metadata fail-closed gaps for activation, static/factory, delegates/events, structs, arrays, custom mapped types, collections, async, generic instantiation, and unsupported shapes before broad projection growth.
 - [x] Metadata input and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
-- [ ] Compiler-plugin authoring and projection lowering: continue descriptor-backed K2/IR lowering only where it closes functional projection or authoring behavior, not as a source-count reduction task.
+- [x] Compiler-plugin authoring and projection lowering: continue descriptor-backed K2/IR lowering only where it closes functional projection or authoring behavior, not as a source-count reduction task.
 - [ ] Kotlin appx/msix packaging validation: keep completed packaging behavior cache-compatible while closing any remaining package/layout/resource gaps discovered by functional validation.
 - [ ] Functional completeness before structure cleanup: close runtime, metadata, generator/compiler-plugin, projection, authoring, and Kotlin appx/msix packaging gaps in this plan before any source-count, module-shrinking, or deletion-driven cleanup becomes eligible.
 
