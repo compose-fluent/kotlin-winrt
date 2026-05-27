@@ -10,13 +10,32 @@ internal fun authoredCcwBindingIsSupported(
     typeRenderer: KotlinProjectionRenderer,
     interfaceType: WinRtTypeDefinition,
     binding: KotlinProjectionInstanceMemberBinding,
-): Boolean {
+): Boolean =
+    authoredCcwBindingUnsupportedReason(typeRenderer, interfaceType, binding) == null
+
+internal fun authoredCcwBindingUnsupportedReason(
+    typeRenderer: KotlinProjectionRenderer,
+    interfaceType: WinRtTypeDefinition,
+    binding: KotlinProjectionInstanceMemberBinding,
+): String? {
     val receiveArrayParameterName = authoredCcwReceiveArrayReturnParameter(interfaceType, binding)?.name
-    return binding.parameterBindings.all { parameter ->
-        parameter.category != WinRtMetadataParameterCategory.ReceiveArray ||
-            parameter.name == receiveArrayParameterName
-    } && binding.parameterBindings.all { authoredCcwAbiBindingIsSupported(typeRenderer, it.typeBinding) } &&
-        authoredCcwAbiBindingIsSupported(typeRenderer, binding.returnBinding)
+    binding.parameterBindings
+        .firstOrNull { parameter ->
+            parameter.category == WinRtMetadataParameterCategory.ReceiveArray &&
+                parameter.name != receiveArrayParameterName
+        }
+        ?.let { parameter ->
+            return "parameter ${parameter.name} receive-array ABI shape ${parameter.typeBinding.describeAbiKind()}"
+        }
+    binding.parameterBindings.forEach { parameter ->
+        authoredCcwAbiBindingUnsupportedReason(typeRenderer, parameter.typeBinding)?.let { reason ->
+            return "parameter ${parameter.name} $reason"
+        }
+    }
+    authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding.returnBinding)?.let { reason ->
+        return "return $reason"
+    }
+    return null
 }
 
 internal fun authoredCcwBindingHasIntentionalFallback(
@@ -38,36 +57,55 @@ internal fun authoredCcwReceiveArrayReturnParameter(
 internal fun authoredCcwAbiBindingIsSupported(
     typeRenderer: KotlinProjectionRenderer,
     binding: KotlinProjectionAbiTypeBinding,
-): Boolean = when (binding.kind) {
-    KotlinProjectionAbiValueKind.Unit,
-    KotlinProjectionAbiValueKind.String,
-    KotlinProjectionAbiValueKind.Boolean,
-    KotlinProjectionAbiValueKind.Int8,
-    KotlinProjectionAbiValueKind.UInt8,
-    KotlinProjectionAbiValueKind.Int16,
-    KotlinProjectionAbiValueKind.UInt16,
-    KotlinProjectionAbiValueKind.Int32,
-    KotlinProjectionAbiValueKind.UInt32,
-    KotlinProjectionAbiValueKind.Int64,
-    KotlinProjectionAbiValueKind.UInt64,
-    KotlinProjectionAbiValueKind.Float,
-    KotlinProjectionAbiValueKind.Double,
-    KotlinProjectionAbiValueKind.Char16,
-    KotlinProjectionAbiValueKind.GuidValue,
-    KotlinProjectionAbiValueKind.Enum,
-    KotlinProjectionAbiValueKind.Object,
-    KotlinProjectionAbiValueKind.ProjectedInterface,
-    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-    KotlinProjectionAbiValueKind.Delegate,
-    KotlinProjectionAbiValueKind.GenericParameter,
-    KotlinProjectionAbiValueKind.UnknownReference,
-    KotlinProjectionAbiValueKind.InspectableReference -> true
-    KotlinProjectionAbiValueKind.Array -> binding.typeArguments.singleOrNull()
-        ?.let { authoredCcwArrayElementBindingIsSupported(typeRenderer, it) } == true
-    KotlinProjectionAbiValueKind.Struct ->
-        binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
-            typeRenderer.nativeStructClassName(binding) != null
-    else -> false
+): Boolean = authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding) == null
+
+private fun authoredCcwAbiBindingUnsupportedReason(
+    typeRenderer: KotlinProjectionRenderer,
+    binding: KotlinProjectionAbiTypeBinding,
+): String? {
+    return when (binding.kind) {
+        KotlinProjectionAbiValueKind.Unit,
+        KotlinProjectionAbiValueKind.String,
+        KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8,
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16,
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32,
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64,
+        KotlinProjectionAbiValueKind.Float,
+        KotlinProjectionAbiValueKind.Double,
+        KotlinProjectionAbiValueKind.Char16,
+        KotlinProjectionAbiValueKind.GuidValue,
+        KotlinProjectionAbiValueKind.Enum,
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.Delegate,
+        KotlinProjectionAbiValueKind.GenericParameter,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference -> null
+        KotlinProjectionAbiValueKind.Array -> {
+            val elementBinding = binding.typeArguments.singleOrNull()
+                ?: return "array ${binding.describeAbiKind()} is missing an element ABI binding"
+            if (authoredCcwArrayElementBindingIsSupported(typeRenderer, elementBinding)) {
+                null
+            } else {
+                "array element ${elementBinding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        }
+        KotlinProjectionAbiValueKind.Struct ->
+            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
+                typeRenderer.nativeStructClassName(binding) != null
+            ) {
+                null
+            } else {
+                "struct ${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        else -> "${binding.describeAbiKind()} uses unsupported authored ABI shape"
+    }
 }
 
 private fun authoredCcwArrayElementBindingIsSupported(
