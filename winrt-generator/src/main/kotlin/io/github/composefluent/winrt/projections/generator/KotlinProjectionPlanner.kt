@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
 import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
+import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
@@ -45,6 +46,8 @@ import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.metadataParameterCategoryFor
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
+import io.github.composefluent.winrt.metadata.winRtEventHandlerKindForTypeName
+import io.github.composefluent.winrt.metadata.WinRtEventHandlerKind
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -259,10 +262,31 @@ class KotlinProjectionPlanner(
             } else {
                 null
             },
-            projectedAttributes = semanticHelpers.projectedAttributes(type),
+            projectedAttributes = semanticHelpers.projectedAttributes(type).normalizeApiContractProjectedAttributes(type),
             companionKinds = planCompanions(type),
         )
     }
+
+    private fun List<WinRtProjectedAttributeDescriptor>.normalizeApiContractProjectedAttributes(
+        type: WinRtTypeDefinition,
+    ): List<WinRtProjectedAttributeDescriptor> =
+        if (!type.isApiContract) {
+            this
+        } else {
+            map { attribute ->
+                if (
+                    attribute.projectedTypeName == "Windows.Foundation.Metadata.ContractVersion" &&
+                    attribute.arguments.size == 1 &&
+                    attribute.arguments.single() is WinRtCustomAttributeValue.IntegralValue
+                ) {
+                    attribute.copy(
+                        arguments = listOf(WinRtCustomAttributeValue.StringValue(type.qualifiedName)) + attribute.arguments,
+                    )
+                } else {
+                    attribute
+                }
+            }
+        }
 
     private fun shouldSkipMappedProjection(
         type: WinRtTypeDefinition,
@@ -450,7 +474,8 @@ class KotlinProjectionPlanner(
             }
             type.events.filterNot { it.isStatic }.forEach { event ->
                 if (event.hasNativeProjectionAddAccessor()) {
-                    resolveInstanceMemberBinding(
+                    (
+                        resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
@@ -468,17 +493,41 @@ class KotlinProjectionPlanner(
                         suppressHResultCheck = false,
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
-                                it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                it.name == event.name &&
                                     it.hasNativeProjectionAddAccessor()
                             }
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
-                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                            fastAbiOwnerCachePropertyName(
+                                ownerInterface,
+                                slotInterface,
+                                defaultInterfaceName = if (ownerInterface.contains('<')) null else candidateInterfaces.firstOrNull(),
+                                typesByQualifiedName,
+                                semanticHelpers,
+                            )
                         },
-                    )?.let(::add)
+                        ) ?: resolveMappedCollectionEventBinding(
+                            candidateInterfaces = candidateInterfaces,
+                            event = event,
+                            slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
+                            returnBinding = classifyAbiTypeBinding(
+                                "Windows.Foundation.EventRegistrationToken",
+                                type.namespace,
+                                typesByQualifiedName,
+                            ),
+                            parameterBindings = listOf(
+                                KotlinProjectionAbiParameterBinding(
+                                    name = "handler",
+                                    typeBinding = classifyAbiTypeBinding(event.delegateTypeName, type.namespace, typesByQualifiedName),
+                                ),
+                            ),
+                            suppressHResultCheck = false,
+                        )
+                        )?.let(::add)
                 }
                 if (event.hasNativeProjectionRemoveAccessor()) {
-                    resolveInstanceMemberBinding(
+                    (
+                        resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
@@ -496,14 +545,37 @@ class KotlinProjectionPlanner(
                         suppressHResultCheck = true,
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
-                                it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                it.name == event.name &&
                                     it.hasNativeProjectionRemoveAccessor()
                             }
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
-                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                            fastAbiOwnerCachePropertyName(
+                                ownerInterface,
+                                slotInterface,
+                                defaultInterfaceName = if (ownerInterface.contains('<')) null else candidateInterfaces.firstOrNull(),
+                                typesByQualifiedName,
+                                semanticHelpers,
+                            )
                         },
-                    )?.let(::add)
+                        ) ?: resolveMappedCollectionEventBinding(
+                            candidateInterfaces = candidateInterfaces,
+                            event = event,
+                            slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
+                            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                            parameterBindings = listOf(
+                                KotlinProjectionAbiParameterBinding(
+                                    name = "token",
+                                    typeBinding = classifyAbiTypeBinding(
+                                        "Windows.Foundation.EventRegistrationToken",
+                                        type.namespace,
+                                        typesByQualifiedName,
+                                    ),
+                                ),
+                            ),
+                            suppressHResultCheck = true,
+                        )
+                        )?.let(::add)
                 }
             }
         }.distinctBy(KotlinProjectionInstanceMemberBinding::bindingName)
@@ -1091,6 +1163,39 @@ class KotlinProjectionPlanner(
         return null
     }
 
+    private fun resolveMappedCollectionEventBinding(
+        candidateInterfaces: List<String>,
+        event: WinRtEventDefinition,
+        slotConstantName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        suppressHResultCheck: Boolean,
+    ): KotlinProjectionInstanceMemberBinding? {
+        val slotInterfaceQualifiedName = when (event.name) {
+            "VectorChanged" -> "Windows.Foundation.Collections.IObservableVector"
+            "MapChanged" -> "Windows.Foundation.Collections.IObservableMap"
+            else -> return null
+        }
+        val ownerInterface = candidateInterfaces.firstOrNull { candidate ->
+            candidate.normalizedRawTypeName() == slotInterfaceQualifiedName
+        } ?: return null
+        return KotlinProjectionInstanceMemberBinding(
+            bindingName = slotConstantName,
+            ownerInterfaceQualifiedName = ownerInterface,
+            ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName = null),
+            slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+            slotConstantName = slotConstantName,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = suppressHResultCheck,
+        )
+    }
+
+    private fun String.normalizedRawTypeName(): String =
+        WinRtTypeRef.fromDisplayName(this)
+            .normalized()
+            .let { type -> type.qualifiedName ?: type.typeName.substringBefore('<').removeSuffix("?") }
+
     private fun resolveStaticMemberBinding(
         candidateInterfaces: List<String>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
@@ -1166,6 +1271,7 @@ class KotlinProjectionPlanner(
         }
         val resolvedTypeName = qualifyTypeName(rawTypeName, currentNamespace, typesByQualifiedName) ?: rawTypeName
         val resolvedType = typesByQualifiedName[resolvedTypeName]
+        val eventHandlerKind = winRtEventHandlerKindForTypeName(resolvedTypeName) ?: winRtEventHandlerKindForTypeName(rawTypeName)
         val mappedType = mappedTypeByAbiName(resolvedTypeName) ?: mappedTypeByAbiName(rawTypeName)
         val isProjectedKeyValuePair = rawTypeName == "Map.Entry" || rawTypeName == "kotlin.collections.Map.Entry"
         val fundamentalType = winRtFundamentalTypeForName(rawTypeName)
@@ -1187,6 +1293,7 @@ class KotlinProjectionPlanner(
                 isWinRtObjectTypeName(rawTypeName) -> KotlinProjectionAbiValueKind.Object
                 isProjectedKeyValuePair -> KotlinProjectionAbiValueKind.MappedKeyValuePair
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
+                eventHandlerKind != null -> KotlinProjectionAbiValueKind.Delegate
                 resolvedType != null -> when (resolvedType.kind) {
                     WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
                     WinRtTypeKind.RuntimeClass -> KotlinProjectionAbiValueKind.ProjectedRuntimeClass
@@ -1200,33 +1307,33 @@ class KotlinProjectionPlanner(
                 else -> KotlinProjectionAbiValueKind.Unsupported
             }
         }
-        val delegateInvokeShape = if (
-            includeDelegateInvokeShape &&
-            kind == KotlinProjectionAbiValueKind.Delegate &&
-            resolvedType != null
-        ) {
-            val invokeMethod = requireDelegateInvokeMethod(resolvedType)
-            val delegateGenericArguments = typeArguments
-            KotlinProjectionDelegateInvokeShape(
-                interfaceId = resolvedType.iid,
-                parameterBindings = invokeMethod.parameters.map { parameter ->
-                    KotlinProjectionAbiParameterBinding(
-                        name = parameter.name,
-                        typeBinding = classifyAbiTypeBinding(
-                            typeName = parameter.typeName,
-                            currentNamespace = resolvedType.namespace,
-                            typesByQualifiedName = typesByQualifiedName,
-                            includeDelegateInvokeShape = false,
-                        ).withDelegateGenericArgumentProjection(delegateGenericArguments),
-                    )
-                },
-                returnBinding = classifyAbiTypeBinding(
-                    typeName = invokeMethod.returnTypeName,
-                    currentNamespace = resolvedType.namespace,
-                    typesByQualifiedName = typesByQualifiedName,
-                    includeDelegateInvokeShape = false,
-                ).withDelegateGenericArgumentProjection(delegateGenericArguments),
-            )
+        val delegateInvokeShape = if (includeDelegateInvokeShape && kind == KotlinProjectionAbiValueKind.Delegate) {
+            if (resolvedType != null) {
+                val invokeMethod = requireDelegateInvokeMethod(resolvedType)
+                val delegateGenericArguments = typeArguments
+                KotlinProjectionDelegateInvokeShape(
+                    interfaceId = resolvedType.iid,
+                    parameterBindings = invokeMethod.parameters.map { parameter ->
+                        KotlinProjectionAbiParameterBinding(
+                            name = parameter.name,
+                            typeBinding = classifyAbiTypeBinding(
+                                typeName = parameter.typeName,
+                                currentNamespace = resolvedType.namespace,
+                                typesByQualifiedName = typesByQualifiedName,
+                                includeDelegateInvokeShape = false,
+                            ).withDelegateGenericArgumentProjection(delegateGenericArguments),
+                        )
+                    },
+                    returnBinding = classifyAbiTypeBinding(
+                        typeName = invokeMethod.returnTypeName,
+                        currentNamespace = resolvedType.namespace,
+                        typesByQualifiedName = typesByQualifiedName,
+                        includeDelegateInvokeShape = false,
+                    ).withDelegateGenericArgumentProjection(delegateGenericArguments),
+                )
+            } else {
+                syntheticEventHandlerDelegateInvokeShape(eventHandlerKind, typeArguments)
+            }
         } else {
             null
         }
@@ -1256,6 +1363,94 @@ class KotlinProjectionPlanner(
 
     private fun String.withNullableSuffix(): String =
         if (trim().endsWith("?")) this else "$this?"
+
+    private fun syntheticEventHandlerDelegateInvokeShape(
+        eventHandlerKind: WinRtEventHandlerKind?,
+        typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    ): KotlinProjectionDelegateInvokeShape? {
+        val interfaceId = when (eventHandlerKind) {
+            WinRtEventHandlerKind.EventHandler -> Guid("C50898F6-C536-5F47-8583-8B2C2438A13B")
+            WinRtEventHandlerKind.TypedEventHandler -> Guid("9DE1C535-6AE1-11E0-84E1-18A905BCC53F")
+            WinRtEventHandlerKind.VectorChangedEventHandler -> Guid("0C051752-9FBF-4C70-AA0C-0E4C82D9A761")
+            WinRtEventHandlerKind.MapChangedEventHandler -> Guid("179517F3-94EE-41F8-BDDC-768A895544F3")
+            else -> null
+        }
+        val parameters = when (eventHandlerKind) {
+            WinRtEventHandlerKind.EventHandler -> listOf(
+                KotlinProjectionAbiParameterBinding(
+                    "sender",
+                    KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
+                ),
+                KotlinProjectionAbiParameterBinding(
+                    "args",
+                    typeArguments.getOrNull(0) ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T0"),
+                ),
+            )
+            WinRtEventHandlerKind.TypedEventHandler -> listOf(
+                KotlinProjectionAbiParameterBinding(
+                    "sender",
+                    typeArguments.getOrNull(0) ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T0"),
+                ),
+                KotlinProjectionAbiParameterBinding(
+                    "args",
+                    typeArguments.getOrNull(1) ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T1"),
+                ),
+            )
+            WinRtEventHandlerKind.VectorChangedEventHandler -> listOf(
+                KotlinProjectionAbiParameterBinding(
+                    "sender",
+                    KotlinProjectionAbiTypeBinding(
+                        KotlinProjectionAbiValueKind.ProjectedInterface,
+                        "Windows.Foundation.Collections.IObservableVector",
+                        "Windows.Foundation.Collections.IObservableVector",
+                        interfaceId = Guid("5917EB53-50B4-4A0D-B309-65862B3F1DBC"),
+                        typeArguments = listOf(
+                            typeArguments.getOrNull(0)
+                                ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T0"),
+                        ),
+                    ),
+                ),
+                KotlinProjectionAbiParameterBinding(
+                    "event",
+                    KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
+                ),
+            )
+            WinRtEventHandlerKind.MapChangedEventHandler -> {
+                val keyBinding = typeArguments.getOrNull(0)
+                    ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T0")
+                val valueBinding = typeArguments.getOrNull(1)
+                    ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T1")
+                listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        "sender",
+                        KotlinProjectionAbiTypeBinding(
+                            KotlinProjectionAbiValueKind.ProjectedInterface,
+                            "Windows.Foundation.Collections.IObservableMap",
+                            "Windows.Foundation.Collections.IObservableMap",
+                            interfaceId = Guid("65DF2BF5-BF39-41B5-AEBE-5D7E0513B129"),
+                            typeArguments = listOf(keyBinding, valueBinding),
+                        ),
+                    ),
+                    KotlinProjectionAbiParameterBinding(
+                        "event",
+                        KotlinProjectionAbiTypeBinding(
+                            KotlinProjectionAbiValueKind.ProjectedInterface,
+                            "Windows.Foundation.Collections.IMapChangedEventArgs",
+                            "Windows.Foundation.Collections.IMapChangedEventArgs",
+                            interfaceId = Guid("9939F4DF-050A-4C0F-AA60-77075F9C4777"),
+                            typeArguments = listOf(keyBinding),
+                        ),
+                    ),
+                )
+            }
+            else -> return null
+        }
+        return KotlinProjectionDelegateInvokeShape(
+            interfaceId = interfaceId,
+            parameterBindings = parameters,
+            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+        )
+    }
 
     private fun KotlinProjectionAbiTypeBinding.withDelegateGenericArgumentProjection(
         genericArguments: List<KotlinProjectionAbiTypeBinding>,
@@ -1313,21 +1508,69 @@ class KotlinProjectionPlanner(
         visiting: MutableSet<String>,
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
     ): String? {
-        val type = typesByQualifiedName[interfaceName] ?: return null
+        val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
+        val type = typesByQualifiedName[interfaceName]
+            ?: typesByQualifiedName[rawInterfaceName]
+            ?: return null
         if (type.kind != WinRtTypeKind.Interface || !visiting.add(interfaceName)) {
             return null
         }
         return try {
-            if (signatureMatcher(type)) {
-                interfaceName
+            val instantiatedType = type.withInstantiatedInterfaceSignature(interfaceName)
+            if (signatureMatcher(instantiatedType)) {
+                type.qualifiedName
             } else {
-                type.implementedInterfaces.firstNotNullOfOrNull { implemented ->
+                instantiatedType.implementedInterfaces.firstNotNullOfOrNull { implemented ->
                     findDeclaringInterface(implemented.interfaceName, typesByQualifiedName, visiting, signatureMatcher)
                 }
             }
         } finally {
             visiting.remove(interfaceName)
         }
+    }
+
+    private fun WinRtTypeDefinition.withInstantiatedInterfaceSignature(interfaceName: String): WinRtTypeDefinition {
+        val genericArguments = genericArgumentTypeRefs(interfaceName)
+        if (genericArguments.isEmpty()) {
+            return this
+        }
+        return copy(
+            implementedInterfaces = implementedInterfaces.map { implemented ->
+                implemented.copy(
+                    interfaceName = implemented.interfaceType
+                        .substituteTypeParameters(genericArguments)
+                        .typeName,
+                )
+            },
+            methods = methods.map { method ->
+                val substitutedReturnType = method.returnType.substituteTypeParameters(genericArguments)
+                method.copy(
+                    returnTypeName = substitutedReturnType.typeName,
+                    returnTypeSignature = substitutedReturnType,
+                    parameters = method.parameters.map { parameter ->
+                        val substitutedParameterType = parameter.type.substituteTypeParameters(genericArguments)
+                        parameter.copy(
+                            typeName = substitutedParameterType.typeName,
+                            typeSignature = substitutedParameterType,
+                        )
+                    },
+                )
+            },
+            properties = properties.map { property ->
+                val substitutedPropertyType = property.type.substituteTypeParameters(genericArguments)
+                property.copy(
+                    typeName = substitutedPropertyType.typeName,
+                    typeSignature = substitutedPropertyType,
+                )
+            },
+            events = events.map { event ->
+                val substitutedDelegateType = event.delegateType.substituteTypeParameters(genericArguments)
+                event.copy(
+                    delegateTypeName = substitutedDelegateType.typeName,
+                    delegateTypeSignature = substitutedDelegateType,
+                )
+            },
+        )
     }
 
     private fun ownerCachePropertyName(interfaceName: String, defaultInterfaceName: String?): String =

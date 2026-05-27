@@ -1057,6 +1057,10 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     returnTypeName = "Windows.Foundation.Collections.IIterable<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "FindSubElementsForTouchTargeting",
+                                    returnTypeName = "Windows.Foundation.Collections.IIterable<Windows.Foundation.Collections.IIterable<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>>",
+                                ),
+                                WinRtMethodDefinition(
                                     name = "GetRawChildrenCore",
                                     returnTypeName = "Windows.Foundation.Collections.IVector<Object>",
                                 ),
@@ -1081,6 +1085,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtListProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtReadOnlyListProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtIterableProjection.fromManaged(__result"))
+        assertTrue(generated.contains("WinRtReferenceValueAdapter<Iterable<AutomationPeer>>"))
+        assertTrue(generated.contains("WinRtCollectionInterfaceIds.iterableSignature"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.runtimeClass(AutomationPeer::class"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))

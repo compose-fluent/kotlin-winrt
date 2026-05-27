@@ -142,7 +142,7 @@ internal fun renderProjectedAttributeAnnotation(attribute: WinRtProjectedAttribu
                 .build()
         }
         "Windows.Foundation.Metadata.ContractVersion" -> {
-            val contract = attribute.arguments.getOrNull(0)?.stringValue ?: return null
+            val contract = attribute.arguments.getOrNull(0)?.contractNameValue() ?: return null
             val version = (attribute.arguments.getOrNull(1) as? WinRtCustomAttributeValue.IntegralValue)?.value ?: return null
             AnnotationSpec.builder(WINRT_CONTRACT_VERSION_CLASS_NAME)
                 .addMember("contract = %S", contract)
@@ -189,6 +189,13 @@ private fun renderGeneratedWinRtAttributeAnnotation(attribute: WinRtProjectedAtt
         }
         .build()
 }
+
+private fun WinRtCustomAttributeValue.contractNameValue(): String? =
+    when (this) {
+        is WinRtCustomAttributeValue.StringValue -> value
+        is WinRtCustomAttributeValue.TypeValue -> typeName
+        else -> null
+    }
 
 private fun renderGeneratedAttributeValue(value: WinRtCustomAttributeValue): CodeBlock? =
     when (value) {

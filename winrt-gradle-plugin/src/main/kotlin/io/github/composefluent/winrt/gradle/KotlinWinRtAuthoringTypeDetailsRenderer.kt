@@ -8,7 +8,9 @@ import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
@@ -34,9 +36,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val comMethodSignatureType = ClassName("io.github.composefluent.winrt.runtime", "ComMethodSignature")
     private val guidType = ClassName("io.github.composefluent.winrt.runtime", "Guid")
     private val hStringType = ClassName("io.github.composefluent.winrt.runtime", "HString")
+    private val iUnknownReferenceType = ClassName("io.github.composefluent.winrt.runtime", "IUnknownReference")
     private val iInspectableReferenceType = ClassName("io.github.composefluent.winrt.runtime", "IInspectableReference")
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
+    private val parameterizedInterfaceIdType = ClassName("io.github.composefluent.winrt.runtime", "ParameterizedInterfaceId")
     private val platformAbiType = ClassName("io.github.composefluent.winrt.runtime", "PlatformAbi")
     private val projectionsType = ClassName("io.github.composefluent.winrt.runtime", "Projections")
     private val rawAddressType = ClassName("io.github.composefluent.winrt.runtime", "RawAddress")
@@ -46,11 +50,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableInterfaceDefinition")
     private val winRtInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableMethodDefinition")
+    private val winRtCollectionInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRtCollectionInterfaceIds")
     private val winRtIterableProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtIterableProjection")
     private val winRtListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtListProjection")
     private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
     private val winRtReadOnlyListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyListProjection")
+    private val winRtReferenceValueAdapterType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapter")
     private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
+    private val winRtTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRtTypeSignature")
     private val enumIntegralAbiDescriptors = mapOf(
         WinRtIntegralType.Int8 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Byte::class.asClassName(),
@@ -626,6 +633,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             ?: throw GradleException(
                 "Authored WinRT override ${method.name} returns collection element '${elementType.displayName()}' without a qualified type name.",
             )
+        renderNestedCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)?.let { return it }
         if (isWinRtObjectTypeName(elementTypeName)) {
             return CodeBlock.of("%T.object_", winRtReferenceValueAdaptersType)
         }
@@ -645,11 +653,177 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 projectionClassName(elementTypeName, semanticHelpers),
                 projectionClassName(elementTypeName, semanticHelpers),
             )
+            WinRtTypeKind.Struct -> {
+                val projectedType = runtimeMappedClassName(elementTypeName, semanticHelpers)
+                    ?: throw GradleException(
+                        "Authored WinRT override ${method.name} returns unsupported collection element type '$elementTypeName'.",
+                    )
+                CodeBlock.of(
+                    "%T.valueType(%T::class, %S, %L)",
+                    winRtReferenceValueAdaptersType,
+                    projectedType,
+                    elementTypeName,
+                    renderWinRtTypeSignature(elementType, typesByName),
+                )
+            }
             else -> throw GradleException(
                 "Authored WinRT override ${method.name} returns unsupported collection element type '$elementTypeName'.",
             )
         }
     }
+
+    private fun renderNestedCollectionElementAdapter(
+        method: WinRtMethodDefinition,
+        elementType: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        val elementTypeName = elementType.qualifiedName ?: return null
+        val descriptor = when (elementTypeName) {
+            "Windows.Foundation.Collections.IIterable" -> NestedCollectionProjectionDescriptor(
+                projectedType = Iterable::class.asClassName(),
+                projectionType = winRtIterableProjectionType,
+                signatureFunctionName = "iterableSignature",
+            )
+            "Windows.Foundation.Collections.IVectorView" -> NestedCollectionProjectionDescriptor(
+                projectedType = List::class.asClassName(),
+                projectionType = winRtReadOnlyListProjectionType,
+                signatureFunctionName = "vectorViewSignature",
+            )
+            "Windows.Foundation.Collections.IVector" -> NestedCollectionProjectionDescriptor(
+                projectedType = MutableList::class.asClassName(),
+                projectionType = winRtListProjectionType,
+                signatureFunctionName = "vectorSignature",
+            )
+            else -> return null
+        }
+        val nestedElementType = elementType.typeArguments.singleOrNull()?.normalized()
+            ?: throw GradleException(
+                "Authored WinRT override ${method.name} returns collection element type '${elementType.typeName}' without exactly one nested element type.",
+            )
+        val nestedElementAdapter = renderCollectionElementAdapter(method, nestedElementType, typesByName, semanticHelpers)
+        val nestedProjectedType = authoringProjectedTypeName(nestedElementType, typesByName, semanticHelpers)
+        val projectedType = descriptor.projectedType.parameterizedBy(nestedProjectedType)
+        val typeSignature = renderWinRtTypeSignature(elementType, typesByName)
+        return CodeBlock.of(
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L) ?: emptyList() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
+            winRtReferenceValueAdapterType,
+            projectedType,
+            elementType.typeName,
+            typeSignature,
+            descriptor.projectionType,
+            platformAbiType,
+            nestedElementAdapter,
+            iUnknownReferenceType,
+            platformAbiType,
+            descriptor.projectionType,
+            nestedElementAdapter,
+            parameterizedInterfaceIdType,
+            typeSignature,
+        )
+    }
+
+    private fun authoringProjectedTypeName(
+        type: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): TypeName {
+        val typeName = type.qualifiedName
+            ?: throw GradleException("Authored WinRT collection element '${type.displayName()}' has no projected type name.")
+        renderNestedCollectionProjectedType(type, typesByName, semanticHelpers)?.let { return it }
+        if (isWinRtObjectTypeName(typeName)) {
+            return ANY.copy(nullable = true)
+        }
+        if (isWinRtStringTypeName(typeName)) {
+            return String::class.asClassName()
+        }
+        val definition = typesByName[typeName]
+            ?: throw GradleException("Authored WinRT collection element type '$typeName' has no metadata.")
+        return when (definition.kind) {
+            WinRtTypeKind.RuntimeClass -> projectionClassName(typeName, semanticHelpers)
+            WinRtTypeKind.Struct -> runtimeMappedClassName(typeName, semanticHelpers)
+                ?: throw GradleException("Authored WinRT collection element type '$typeName' is not projectable.")
+            else -> throw GradleException("Authored WinRT collection element type '$typeName' is not projectable.")
+        }
+    }
+
+    private fun renderNestedCollectionProjectedType(
+        type: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): TypeName? {
+        val projectedType = when (type.qualifiedName) {
+            "Windows.Foundation.Collections.IIterable" -> Iterable::class.asClassName()
+            "Windows.Foundation.Collections.IVectorView" -> List::class.asClassName()
+            "Windows.Foundation.Collections.IVector" -> MutableList::class.asClassName()
+            else -> return null
+        }
+        val argument = type.typeArguments.singleOrNull()?.normalized()
+            ?: throw GradleException("Authored WinRT collection element type '${type.typeName}' has no projected type argument.")
+        return projectedType.parameterizedBy(authoringProjectedTypeName(argument, typesByName, semanticHelpers))
+    }
+
+    private fun renderWinRtTypeSignature(
+        type: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        val typeName = type.qualifiedName
+            ?: throw GradleException("Authored WinRT collection element '${type.displayName()}' has no type signature name.")
+        when (typeName) {
+            "Windows.Foundation.Collections.IIterable" -> {
+                val elementSignature = renderWinRtTypeSignature(type.typeArguments.singleOrNull()?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                return CodeBlock.of("%T.iterableSignature(%L)", winRtCollectionInterfaceIdsType, elementSignature)
+            }
+            "Windows.Foundation.Collections.IVectorView" -> {
+                val elementSignature = renderWinRtTypeSignature(type.typeArguments.singleOrNull()?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                return CodeBlock.of("%T.vectorViewSignature(%L)", winRtCollectionInterfaceIdsType, elementSignature)
+            }
+            "Windows.Foundation.Collections.IVector" -> {
+                val elementSignature = renderWinRtTypeSignature(type.typeArguments.singleOrNull()?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                return CodeBlock.of("%T.vectorSignature(%L)", winRtCollectionInterfaceIdsType, elementSignature)
+            }
+        }
+        if (isWinRtObjectTypeName(typeName)) {
+            return CodeBlock.of("%T.object_()", winRtTypeSignatureType)
+        }
+        if (isWinRtStringTypeName(typeName)) {
+            return CodeBlock.of("%T.string()", winRtTypeSignatureType)
+        }
+        fundamentalType(typeName)?.let { type ->
+            return renderFundamentalTypeSignature(type)
+        }
+        val definition = typesByName[typeName]
+            ?: throw GradleException("Authored WinRT collection element type '$typeName' has no metadata signature.")
+        return when (definition.kind) {
+            WinRtTypeKind.RuntimeClass -> CodeBlock.of("%T.object_()", winRtTypeSignatureType)
+            WinRtTypeKind.Struct -> CodeBlock.of(
+                "%T.struct(%S%L)",
+                winRtTypeSignatureType,
+                typeName,
+                definition.fields.joinToString(separator = "") { field ->
+                    ", ${renderWinRtTypeSignature(WinRtTypeRef.fromDisplayName(field.typeName).normalized(), typesByName)}"
+                },
+            )
+            else -> throw GradleException("Authored WinRT collection element type '$typeName' has no supported type signature.")
+        }
+    }
+
+    private fun renderFundamentalTypeSignature(type: WinRtFundamentalType): CodeBlock =
+        when (type) {
+            WinRtFundamentalType.Boolean -> CodeBlock.of("%T.boolean()", winRtTypeSignatureType)
+            WinRtFundamentalType.Char -> CodeBlock.of("%T.char16()", winRtTypeSignatureType)
+            WinRtFundamentalType.Int8 -> CodeBlock.of("%T.int8()", winRtTypeSignatureType)
+            WinRtFundamentalType.UInt8 -> CodeBlock.of("%T.uint8()", winRtTypeSignatureType)
+            WinRtFundamentalType.Int16 -> CodeBlock.of("%T.int16()", winRtTypeSignatureType)
+            WinRtFundamentalType.UInt16 -> CodeBlock.of("%T.uint16()", winRtTypeSignatureType)
+            WinRtFundamentalType.Int32 -> CodeBlock.of("%T.int32()", winRtTypeSignatureType)
+            WinRtFundamentalType.UInt32 -> CodeBlock.of("%T.uint32()", winRtTypeSignatureType)
+            WinRtFundamentalType.Int64 -> CodeBlock.of("%T.int64()", winRtTypeSignatureType)
+            WinRtFundamentalType.UInt64 -> CodeBlock.of("%T.uint64()", winRtTypeSignatureType)
+            WinRtFundamentalType.Float -> CodeBlock.of("%T.float32()", winRtTypeSignatureType)
+            WinRtFundamentalType.Double -> CodeBlock.of("%T.float64()", winRtTypeSignatureType)
+            WinRtFundamentalType.String -> CodeBlock.of("%T.string()", winRtTypeSignatureType)
+        }
 
     private fun renderObjectReturnProjection(
         method: WinRtMethodDefinition,
@@ -742,6 +916,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val abiWriteConversionSuffix: String = "",
     )
 
+    private data class NestedCollectionProjectionDescriptor(
+        val projectedType: ClassName,
+        val projectionType: ClassName,
+        val signatureFunctionName: String,
+    )
+
     private fun sourceClassName(candidate: KotlinWinRtAuthoredTypeCandidate): ClassName {
         val names = candidate.className.split('$').filter(String::isNotBlank)
         return ClassName(candidate.packageName, names.first(), *names.drop(1).toTypedArray())
@@ -751,13 +931,18 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         qualifiedName: String,
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): ClassName {
+        runtimeMappedClassName(qualifiedName, semanticHelpers)?.let { return it }
+        return classNameFromWinRtName(qualifiedName)
+    }
+
+    private fun runtimeMappedClassName(
+        qualifiedName: String,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): ClassName? =
         semanticHelpers.getMappedType(WinRtTypeRef.fromDisplayName(qualifiedName), "")
             ?.mappedQualifiedName
             ?.takeIf { mappedName -> mappedName.startsWith("io.github.composefluent.winrt.runtime.") }
             ?.let(::classNameFromQualifiedName)
-            ?.let { return it }
-        return classNameFromWinRtName(qualifiedName)
-    }
 
     private fun classNameFromWinRtName(qualifiedName: String): ClassName {
         val lastDot = qualifiedName.lastIndexOf('.')

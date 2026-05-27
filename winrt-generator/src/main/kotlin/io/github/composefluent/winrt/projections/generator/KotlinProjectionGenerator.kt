@@ -345,12 +345,7 @@ class KotlinProjectionGenerator(
             .flatMap(WinRtNamespace::types)
             .associateBy(WinRtTypeDefinition::qualifiedName)
         val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
-        val descriptorsByOwnerAndEvent = model.semanticHelpers()
-            .let { helpers ->
-                model.namespaces
-                    .flatMap(WinRtNamespace::types)
-                    .flatMap(helpers::eventHelperSubclassDescriptors)
-            }
+        val descriptorsByOwnerAndEvent = planner.eventSourceDescriptors(model, plans)
             .associateBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
         plans.forEach { plan ->
             validateRuntimeClassEventSourceHelperContracts(plan, descriptorsByOwnerAndEvent, typesByQualifiedName, plansByType)
@@ -373,7 +368,11 @@ class KotlinProjectionGenerator(
             .forEach { event ->
                 val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
                     ?: return@forEach
-                val eventTypeName = plan.eventInvokeDescriptors
+                val eventTypeName = typesByQualifiedName[binding.slotInterfaceQualifiedName]
+                    ?.events
+                    ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
+                    ?.delegateTypeName
+                    ?: plan.eventInvokeDescriptors
                     .firstOrNull { it.eventName == event.name && !it.isStatic }
                     ?.delegateTypeName
                     ?: event.delegateTypeName
@@ -881,8 +880,9 @@ class KotlinProjectionGenerator(
     ) {
         val delegateTypeName = event.delegateTypeName
         val rawDelegateTypeName = delegateTypeName.substringBefore('<').removeSuffix("?")
-        if (mappedTypeByAbiName(rawDelegateTypeName) != null) {
-            validateMappedEventDelegateContract(plan, event, rawDelegateTypeName)
+        val eventHandlerKind = winRtEventHandlerKindForTypeName(rawDelegateTypeName)
+        if (eventHandlerKind != null) {
+            validateMappedEventDelegateContract(plan, event, eventHandlerKind)
             return
         }
         val delegateType = eventDelegateType(delegateTypeName, plan)
@@ -898,9 +898,9 @@ class KotlinProjectionGenerator(
     private fun validateMappedEventDelegateContract(
         plan: KotlinTypeProjectionPlan,
         event: WinRtEventDefinition,
-        rawDelegateTypeName: String,
+        eventHandlerKind: WinRtEventHandlerKind,
     ) {
-        val expectedArgumentCount = when (winRtEventHandlerKindForTypeName(rawDelegateTypeName)) {
+        val expectedArgumentCount = when (eventHandlerKind) {
             WinRtEventHandlerKind.EventHandler,
             WinRtEventHandlerKind.VectorChangedEventHandler,
             WinRtEventHandlerKind.AsyncActionProgressHandler -> 1
@@ -909,7 +909,6 @@ class KotlinProjectionGenerator(
             WinRtEventHandlerKind.AsyncOperationProgressHandler -> 2
             WinRtEventHandlerKind.PropertyChangedEventHandler,
             WinRtEventHandlerKind.NotifyCollectionChangedEventHandler -> 0
-            null -> return
         }
         val argumentCount = WinRtTypeRef.fromDisplayName(event.delegateTypeName)
             .normalized()

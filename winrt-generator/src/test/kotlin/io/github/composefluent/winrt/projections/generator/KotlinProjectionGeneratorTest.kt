@@ -9058,6 +9058,39 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_renders_contract_version_attribute_with_type_contract_argument() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "FoundationContract",
+                            kind = WinRtTypeKind.Struct,
+                            isApiContract = true,
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ContractVersionAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.IntegralValue(0x00040000),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model).single { it.relativePath.endsWith("FoundationContract.kt") }.contents
+
+        assertTrue(contents.contains("@WinRtContractVersion("))
+        assertTrue(contents.contains("contract = \"Windows.Foundation.FoundationContract\""))
+        assertTrue(contents.contains("version = 262_144L"))
+    }
+
+    @Test
     fun generator_propagates_declaring_interface_platform_attributes_to_runtime_members() {
         val interfaceAvailability = WinRtAvailabilityMetadata(
             contractVersion = WinRtContractVersionMetadata(
@@ -11671,6 +11704,71 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_renders_generic_async_delegate_return_type_arguments() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "AsyncStatus",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Started", 0u),
+                                WinRtEnumMemberDefinition("Completed", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "AsyncOperationCompletedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555570"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("asyncInfo", "Windows.Foundation.IAsyncOperation<T0>"),
+                                        WinRtParameterDefinition("asyncStatus", "Windows.Foundation.AsyncStatus"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IAsyncOperation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555570"),
+                            genericParameterCount = 1,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Completed",
+                                    typeName = "Windows.Foundation.AsyncOperationCompletedHandler<T0>",
+                                    getterMethodName = "get_Completed",
+                                    getterMethodRowId = 6,
+                                    setterMethodName = "put_Completed",
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IAsyncOperation.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("AsyncOperationCompletedHandler.Metadata.fromAbi<T0>(__resultPointer)"))
+    }
+
+    @Test
     fun generator_emits_guid_async_operation_result_readback() {
         val renderer = KotlinProjectionRenderer()
         val returnBinding = KotlinProjectionAbiTypeBinding(
@@ -13088,7 +13186,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(observableVectorContents, observableVectorContents.contains("MutableList<T0>"))
         assertTrue(observableVectorContents, observableVectorContents.contains("private val _iVector: IUnknownReference"))
         assertTrue(observableVectorContents, observableVectorContents.contains("nativeObject.queryInterface(ParameterizedInterfaceId.createFromSignature(WinRtCollectionInterfaceIds.vectorSignature(WinRtTypeSignature.object_())))"))
+        assertTrue(observableVectorContents, observableVectorContents.contains(".getOrThrow().use({"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("IUnknownReference(it.getRefPointer()"))
         assertFalse(observableVectorContents, observableVectorContents.contains("nativeObject.queryInterface(IVector.Metadata.IID)"))
+        assertFalse(observableVectorContents, observableVectorContents.contains(".getOrThrow().use\n"))
         assertTrue(observableVectorContents, observableVectorContents.contains("private val __iObservableVectorVectorCollection"))
         assertTrue(observableVectorContents, observableVectorContents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.pointer)"))
         assertFalse(observableVectorContents, observableVectorContents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(nativeObject.pointer)"))
@@ -14643,6 +14744,23 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
+                            name = "VectorChangedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Windows.Foundation.Collections.IObservableVector<T0>"),
+                                        WinRtParameterDefinition("event", "System.Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
                             name = "IObservableVector",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("33333333-3333-3333-3333-333333333333"),
@@ -14650,6 +14768,16 @@ class KotlinProjectionGeneratorTest {
                             implementedInterfaces = listOf(
                                 io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
                                     interfaceName = "Windows.Foundation.Collections.IVector<T0>",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "VectorChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.VectorChangedEventHandler<T0>",
+                                    addMethodName = "add_VectorChanged",
+                                    removeMethodName = "remove_VectorChanged",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
                                 ),
                             ),
                         ),
@@ -14662,11 +14790,19 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "ObjectItems",
                             kind = WinRtTypeKind.RuntimeClass,
-                            defaultInterfaceName = "Windows.Foundation.Collections.IObservableVector<System.Object>",
+                            defaultInterfaceName = "Windows.Foundation.Collections.IObservableVector`1<System.Object>",
                             implementedInterfaces = listOf(
                                 io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
-                                    interfaceName = "Windows.Foundation.Collections.IObservableVector<System.Object>",
+                                    interfaceName = "Windows.Foundation.Collections.IObservableVector`1<System.Object>",
                                     isDefault = true,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "VectorChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.VectorChangedEventHandler<System.Object>",
+                                    addMethodName = "add_VectorChanged",
+                                    removeMethodName = "remove_VectorChanged",
                                 ),
                             ),
                         ),
@@ -14684,6 +14820,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("private val _iVector: IUnknownReference"))
         assertTrue(contents, contents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.pointer)"))
         assertFalse(contents, contents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_defaultInterface.pointer)"))
+        assertTrue(contents, contents.contains("private val _iObservableVectorProjection: IObservableVector<Any?>"))
+        assertTrue(contents, contents.contains("IObservableVector.Metadata.wrap(_iObservableVector)"))
+        assertTrue(contents, contents.contains("override val vectorChanged: WinRtEvent<VectorChangedEventHandler<Any?>>"))
+        assertTrue(contents, contents.contains("override fun addVectorChanged(handler: VectorChangedEventHandler<Any?>): EventRegistrationToken"))
+        assertTrue(contents, contents.contains("override fun removeVectorChanged(token: EventRegistrationToken)"))
+        assertTrue(contents, contents.contains("VECTORCHANGED_ADD_SLOT_OWNER_CACHE: String = \"_iObservableVector\""))
+        assertTrue(contents, contents.contains("VECTORCHANGED_ADD_SLOT: Int = IObservableVector.Metadata.VECTORCHANGED_ADD_SLOT"))
+        assertFalse(contents, contents.contains("Metadata.acquireInterface(_inner, IObservableVector.Metadata.IID)"))
     }
 
     @Test
@@ -15862,6 +16006,163 @@ class KotlinProjectionGeneratorTest {
             assertTrue(contents, contents.contains("__namesMarshaler.use { __namesAbi ->"))
             assertFalse(contents, contents.contains("createMarshaler(names, null)"))
         }
+    }
+
+    @Test
+    fun generator_marshals_map_return_with_vector_view_value_adapter() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "TextSegment",
+                            kind = WinRtTypeKind.Struct,
+                            layout = WinRtTypeLayout(
+                                kind = WinRtTypeLayoutKind.Sequential,
+                                classSize = 8,
+                            ),
+                            fields = listOf(
+                                WinRtFieldDefinition("StartPosition", "UInt"),
+                                WinRtFieldDefinition("Length", "UInt"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IQueryResult",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getMatchingPropertiesWithRanges",
+                                    returnTypeName = "Windows.Foundation.Collections.IMap<String, Windows.Foundation.Collections.IVectorView<Sample.Foundation.TextSegment>>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IQueryResult.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("fun getMatchingPropertiesWithRanges(): MutableMap<String, List<TextSegment>>"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromManaged"))
+        assertTrue(contents, contents.contains("WinRtDictionaryProjection.fromAbi"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<List<TextSegment>>"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.string"))
+    }
+
+    @Test
+    fun generator_marshals_iterable_return_with_iterable_value_adapter() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IUIElement",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555567"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "UIElement",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IUIElement",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IUIElement", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IUIElementOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555568"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "findSubElementsForTouchTargeting",
+                                    returnTypeName = "Windows.Foundation.Collections.IIterable<Windows.Foundation.Collections.IIterable<Microsoft.UI.Xaml.UIElement>>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IUIElementOverrides.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("fun findSubElementsForTouchTargeting(): Iterable<Iterable<UIElement>>"))
+        assertTrue(contents, contents.contains("WinRtIterableProjection.fromAbi"))
+        assertTrue(contents, contents.contains("WinRtIterableProjection.fromManaged"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<Iterable<UIElement>>"))
+        assertTrue(contents, contents.contains("WinRtCollectionInterfaceIds.iterableSignature"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.runtimeClass(UIElement::class"))
+    }
+
+    @Test
+    fun generator_marshals_vector_view_return_with_enum_value_adapter() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.System",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.System",
+                            name = "UserWatcherUpdateKind",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Properties", 0u),
+                                WinRtEnumMemberDefinition("Picture", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.System",
+                            name = "IUserChangedEventArgs2",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "ChangedPropertyKinds",
+                                    typeName = "Windows.Foundation.Collections.IVectorView<Windows.System.UserWatcherUpdateKind>",
+                                    getterMethodName = "get_ChangedPropertyKinds",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IUserChangedEventArgs2.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("val changedPropertyKinds: List<UserWatcherUpdateKind>"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.valueType("))
+        assertTrue(contents, contents.contains("UserWatcherUpdateKind::class"))
+        assertTrue(contents, contents.contains("\"Windows.System.UserWatcherUpdateKind\""))
+        assertTrue(contents, contents.contains("WinRtTypeSignature.enum(\"Windows.System.UserWatcherUpdateKind\""))
+        assertTrue(contents, contents.contains("WinRtTypeSignature.int32())"))
     }
 
     @Test
@@ -17072,6 +17373,55 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_accepts_mapped_typed_event_handler_without_delegate_definition() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget,System.Object>",
+                                    addMethodName = "add_Updated",
+                                    removeMethodName = "remove_Updated",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IWidget.kt")
+            .contents
+
+        assertTrue(contents.contains("fun addUpdated(handler: TypedEventHandler<Widget, Any?>): EventRegistrationToken"))
+    }
+
+    @Test
     fun generator_rejects_event_surface_without_delegate_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -17268,6 +17618,289 @@ class KotlinProjectionGeneratorTest {
             message
                 .contains("requires runtime class Sample.Foundation.Widget event Updated add binding UPDATED_ADD_SLOT to be present before projection rendering"),
         )
+    }
+
+    @Test
+    fun generator_binds_runtime_event_declared_on_instantiated_generic_interface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IObservableMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            genericParameterCount = 2,
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "MapChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.MapChangedEventHandler<T0,T1>",
+                                    addMethodName = "add_MapChanged",
+                                    removeMethodName = "remove_MapChanged",
+                                    addMethodRowId = 10,
+                                    removeMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IPropertySet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555555a"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IObservableMap<String, System.Object>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IValueSet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555555b"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "ValueSet",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.Collections.IValueSet",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IValueSet",
+                                    isDefault = true,
+                                ),
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IPropertySet",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "MapChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.MapChangedEventHandler<String,System.Object>",
+                                    addMethodName = "add_MapChanged",
+                                    removeMethodName = "remove_MapChanged",
+                                    addMethodRowId = 20,
+                                    removeMethodRowId = 21,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IMapChangedEventArgs",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "MapChangedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            genericParameterCount = 2,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "sender",
+                                            "Windows.Foundation.Collections.IObservableMap<T0,T1>",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            "event",
+                                            "Windows.Foundation.Collections.IMapChangedEventArgs<T0>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val observableMapContents = filesByName.getValue("IObservableMap.kt").contents
+        val valueSetContents = filesByName.getValue("ValueSet.kt").contents
+
+        assertTrue(observableMapContents.contains("const val MAPCHANGED_ADD_SLOT: Int = 6"))
+        assertTrue(observableMapContents.contains("const val MAPCHANGED_REMOVE_SLOT: Int = 7"))
+        assertTrue(valueSetContents.contains("get() = _iPropertySetProjection.mapChanged"))
+        assertTrue(valueSetContents.contains("_iPropertySet"))
+        assertTrue(valueSetContents.contains("MAPCHANGED_ADD_SLOT_OWNER_INTERFACE: String ="))
+        assertTrue(valueSetContents.contains("\"Windows.Foundation.Collections.IPropertySet\""))
+        assertTrue(valueSetContents.contains("MAPCHANGED_ADD_SLOT_OWNER_CACHE: String = \"_iPropertySet\""))
+        assertTrue(valueSetContents.contains("MAPCHANGED_ADD_SLOT: Int = IObservableMap.Metadata.MAPCHANGED_ADD_SLOT"))
+        assertTrue(valueSetContents.contains("MAPCHANGED_REMOVE_SLOT: Int = IObservableMap.Metadata.MAPCHANGED_REMOVE_SLOT"))
+        assertTrue(valueSetContents.contains("fun addMapChanged"))
+        assertTrue(valueSetContents.contains("fun removeMapChanged"))
+    }
+
+    @Test
+    fun generator_suppresses_runtime_class_collection_members_when_mapped_map_facade_exists() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                            genericParameterCount = 2,
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "T1", parameters = listOf(WinRtParameterDefinition("key", "T0")), methodRowId = 6),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0")), methodRowId = 7),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"), WinRtParameterDefinition("value", "T1")), methodRowId = 8),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "T0")), methodRowId = 9),
+                                WinRtMethodDefinition("Clear", "Unit", methodRowId = 10),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size", getterMethodRowId = 11),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IPropertySet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IMap<String, System.Object>"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "System.Object", parameters = listOf(WinRtParameterDefinition("key", "String")), methodRowId = 6),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "String")), methodRowId = 7),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "String"), WinRtParameterDefinition("value", "System.Object")), methodRowId = 8),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "String")), methodRowId = 9),
+                                WinRtMethodDefinition("Clear", "Unit", methodRowId = 10),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size", getterMethodRowId = 11),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "ValueSet",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.Collections.IPropertySet",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IPropertySet", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "System.Object", parameters = listOf(WinRtParameterDefinition("key", "String"))),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "String"))),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "String"), WinRtParameterDefinition("value", "System.Object"))),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "String"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ValueSet.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("MutableMap<String, Any?>,"))
+        assertTrue(contents, contents.contains("override val size: Int"))
+        assertFalse(contents, contents.contains("override val size: UInt"))
+        assertFalse(contents, contents.contains("override fun lookup(key: String)"))
+        assertFalse(contents, contents.contains("override fun hasKey(key: String)"))
+        assertFalse(contents, contents.contains("override fun insert(key: String"))
+        assertFalse(contents, contents.contains("override fun remove(key: String) {\n"))
+    }
+
+    @Test
+    fun generator_keeps_non_collection_remove_when_runtime_class_also_has_mapped_iterable_facade() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555581"),
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Visual",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IVisual",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IVisual", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IVisual",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555582"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IVisualCollection",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555583"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Remove",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("child", "Sample.Foundation.Visual")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "VisualCollection",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IVisualCollection",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IVisualCollection", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IIterable<Sample.Foundation.Visual>"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Remove",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("child", "Sample.Foundation.Visual")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("VisualCollection.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("Iterable<Visual>,"))
+        assertTrue(contents, contents.contains("override fun remove(child: Visual)"))
+        assertTrue(contents, contents.contains("_iVisualCollectionProjection.remove(child)"))
     }
 
     @Test

@@ -251,7 +251,7 @@ data class WinRtTypeRef(
             val genericStart = trimmed.indexOf('<')
             if (genericStart > 0 && trimmed.endsWith(">")) {
                 return named(
-                    qualifiedName = trimmed.substring(0, genericStart).trim(),
+                    qualifiedName = trimmed.substring(0, genericStart).trim().withoutGenericAritySuffix(),
                     typeArguments =
                         splitGenericTypeArguments(trimmed.substring(genericStart + 1, trimmed.length - 1))
                             .map(Companion::fromDisplayName),
@@ -259,6 +259,18 @@ data class WinRtTypeRef(
             }
             return named(trimmed)
         }
+    }
+}
+
+private fun String.withoutGenericAritySuffix(): String {
+    val backtick = lastIndexOf('`')
+    if (backtick <= 0 || backtick == lastIndex) {
+        return this
+    }
+    return if (substring(backtick + 1).all(Char::isDigit)) {
+        substring(0, backtick)
+    } else {
+        this
     }
 }
 

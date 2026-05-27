@@ -22,7 +22,7 @@ kotlin {
             dependencies {
                 implementation(project(":winrt-runtime"))
                 implementation(project(":winrt-authoring"))
-                implementation(project(":winrt-samples:winui-kmp-base-library"))
+                api(project(":winrt-samples:winui-kmp-base-library"))
             }
         }
         val winuiMain by creating {
