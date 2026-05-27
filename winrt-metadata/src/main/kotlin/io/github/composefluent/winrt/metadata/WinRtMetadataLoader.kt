@@ -1586,7 +1586,11 @@ private class MetadataTables private constructor(
     }
 
     private fun DecodedCustomAttribute.factoryInterfaceTypeName(): String? =
-        (fixedArguments.firstOrNull() as? WinRtCustomAttributeValue.TypeValue)?.typeName?.takeIf(String::isNotBlank)
+        when (val value = fixedArguments.firstOrNull()) {
+            is WinRtCustomAttributeValue.TypeValue -> value.typeName
+            is WinRtCustomAttributeValue.StringValue -> value.value
+            else -> null
+        }?.takeIf(String::isNotBlank)
 
     private fun extractAvailability(attributes: List<DecodedCustomAttribute>): WinRtAvailabilityMetadata =
         WinRtAvailabilityMetadata(
