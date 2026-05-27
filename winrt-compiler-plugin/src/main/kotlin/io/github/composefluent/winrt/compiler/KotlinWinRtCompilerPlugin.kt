@@ -3215,7 +3215,12 @@ class KotlinWinRtIrGenerationExtension(
                     if (!call.isProjectionSupportEnsureInitializedCall()) {
                         return call
                     }
-                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol
+                        ?: return call.also {
+                            pluginContext.reportUnloweredCompilerPluginIntrinsic(
+                                "WinRtProjectionSupportIntrinsic.ensureInitialized",
+                            )
+                        }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
                     return initialize?.let { symbol -> builder.irCall(symbol) } ?: builder.irUnit()
                 }
@@ -3425,7 +3430,12 @@ class KotlinWinRtIrGenerationExtension(
                 override fun visitCall(expression: IrCall): IrExpression {
                     val call = super.visitCall(expression) as IrCall
                     val genericCall = call.genericTypeInstantiationSupportIntrinsicCallName() ?: return call
-                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol
+                        ?: return call.also {
+                            pluginContext.reportUnloweredCompilerPluginIntrinsic(
+                                "WinRtGenericTypeInstantiationSupportIntrinsic.$genericCall",
+                            )
+                        }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
                     return when (genericCall) {
                         "initializeAll" -> support?.let { builder.irCall(it.initializeAll) } ?: builder.irUnit()
@@ -3767,7 +3777,12 @@ class KotlinWinRtIrGenerationExtension(
                 override fun visitCall(expression: IrCall): IrExpression {
                     val call = super.visitCall(expression) as IrCall
                     val genericAbiCall = call.genericAbiSupportIntrinsicCallName() ?: return call
-                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol
+                        ?: return call.also {
+                            pluginContext.reportUnloweredCompilerPluginIntrinsic(
+                                "WinRtGenericAbiSupportIntrinsic.$genericAbiCall",
+                            )
+                        }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
                     return when (genericAbiCall) {
                         "delegateNamed" -> support?.let {
@@ -3835,7 +3850,12 @@ class KotlinWinRtIrGenerationExtension(
                     if (!call.isAuthoringSupportEnsureInitializedCall()) {
                         return call
                     }
-                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol
+                        ?: return call.also {
+                            pluginContext.reportUnloweredCompilerPluginIntrinsic(
+                                "WinRtAuthoringSupportIntrinsic.ensureInitialized",
+                            )
+                        }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
                     val resolvedRegistrar = requireCompilerSupportPrerequisite(
                         description = "authoring type-details registrar",
@@ -3910,7 +3930,12 @@ class KotlinWinRtIrGenerationExtension(
                     if (constructedTypeName !in authoredTypeNames) {
                         return call
                     }
-                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol
+                        ?: return call.also {
+                            pluginContext.reportUnloweredCompilerPluginIntrinsic(
+                                "authored constructor call for $constructedTypeName",
+                            )
+                        }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
                     return builder.irBlock(resultType = call.type) {
                         +builder.irCall(registrar.register).apply {
@@ -3947,6 +3972,14 @@ class KotlinWinRtIrGenerationExtension(
         val registrarClass: IrClassSymbol,
         val register: IrSimpleFunctionSymbol,
     )
+
+    private fun IrPluginContext.reportUnloweredCompilerPluginIntrinsic(description: String) {
+        messageCollector.report(
+            CompilerMessageSeverity.ERROR,
+            "kotlin-winrt compiler plugin recognized $description but could not lower it from the current IR scope.",
+            null,
+        )
+    }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun IrCall.isAuthoringSupportEnsureInitializedCall(): Boolean {
