@@ -2052,8 +2052,20 @@ class KotlinProjectionGeneratorTest {
                             add(
                                 WinRtTypeDefinition(
                                     namespace = "Windows.ApplicationModel",
+                                    name = "IPackage",
+                                    kind = WinRtTypeKind.Interface,
+                                    iid = Guid("22222222-3333-4444-5555-666666666666"),
+                                ),
+                            )
+                            add(
+                                WinRtTypeDefinition(
+                                    namespace = "Windows.ApplicationModel",
                                     name = "Package",
                                     kind = WinRtTypeKind.RuntimeClass,
+                                    defaultInterfaceName = "Windows.ApplicationModel.IPackage",
+                                    implementedInterfaces = listOf(
+                                        WinRtInterfaceImplementationDefinition("Windows.ApplicationModel.IPackage", isDefault = true),
+                                    ),
                                 ),
                             )
                         }
@@ -17310,7 +17322,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             message,
             message.contains(
-                "Generator requires runtime class Sample.Foundation.Widget ABI binding STATIC_UPDATED_ADD_SLOT parameter handler delegate Sample.Foundation.WidgetUpdatedHandler to carry metadata IID before projection rendering.",
+                "Generator requires interface Sample.Foundation.IWidgetStatics event Updated delegate Sample.Foundation.WidgetUpdatedHandler to carry metadata IID before projection rendering.",
             ),
         )
     }

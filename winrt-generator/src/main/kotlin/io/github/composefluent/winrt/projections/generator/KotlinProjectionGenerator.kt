@@ -188,6 +188,11 @@ class KotlinProjectionGenerator(
     ) {
         validateAuthoredCcwBindingContracts(model, plans)
         validateAuthoringActivationFactorySupportContracts(model, plans)
+        plans.forEach { plan ->
+            plan.type.events.filter { event -> shouldValidateEventAbiContracts(plan, event) }.forEach { event ->
+                validateEventDelegateContract(plan, event)
+            }
+        }
         validateEventAccessorBindingContracts(plans)
         validateEventSourceHelperContracts(model, plans)
         val runtimeClassStaticInterfaceNames = plans
@@ -261,13 +266,9 @@ class KotlinProjectionGenerator(
                         "Generator requires ${plan.projectionContractSubject()} required interface $requiredInterfaceName to carry metadata IID before projection rendering."
                     }
                 }
-            plan.type.events.forEach { event ->
-                validateEventDelegateContract(plan, event)
-            }
             validateDelegateInvokeBindingContracts(plan)
             validateInstanceMethodBindingContracts(plan)
             validateInstancePropertyBindingContracts(plan)
-            validateEventAccessorBindingContracts(plan)
             plan.instanceMemberBindings.forEach { binding ->
                 if (binding.isInstanceEventAccessorBinding(plan)) {
                     return@forEach
@@ -897,6 +898,7 @@ class KotlinProjectionGenerator(
     private fun validateEventAccessorBindingContracts(plan: KotlinTypeProjectionPlan) {
         plan.type.events
             .filterNot { it.isStatic }
+            .filter { event -> shouldValidateEventAbiContracts(plan, event) }
             .forEach { event ->
                 validateInstanceEventAccessorBindingContract(plan, event)
             }
@@ -920,10 +922,19 @@ class KotlinProjectionGenerator(
             .asSequence()
             .map { it.copy(isStatic = true) }
             .distinctBy { "${it.name}|${it.delegateTypeName}" }
+            .filter { event -> shouldValidateEventAbiContracts(plan, event) }
             .forEach { event ->
                 validateStaticEventAccessorBindingContract(plan, event)
             }
     }
+
+    private fun shouldValidateEventAbiContracts(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+    ): Boolean =
+        generationLayout != KotlinProjectionGenerationLayout.ExpectActualJvm ||
+            plan.type.kind != WinRtTypeKind.RuntimeClass ||
+            !event.isStatic
 
     private fun validateInstanceEventAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
