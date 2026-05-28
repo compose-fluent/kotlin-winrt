@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue

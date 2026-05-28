@@ -24,11 +24,13 @@ dependencyResolutionManagement {
 include(
     ":winrt-runtime",
     ":winrt-metadata",
+    ":winrt-authoring",
     ":winrt-generator",
     ":winrt-compiler-plugin",
 )
 
 project(":winrt-runtime").projectDir = file("../winrt-runtime")
 project(":winrt-metadata").projectDir = file("../winrt-metadata")
+project(":winrt-authoring").projectDir = file("../winrt-authoring")
 project(":winrt-generator").projectDir = file("../winrt-generator")
 project(":winrt-compiler-plugin").projectDir = file("../winrt-compiler-plugin")

@@ -23,6 +23,7 @@ import java.io.File
 import java.nio.file.Path
 import org.gradle.jvm.tasks.Jar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -894,16 +895,30 @@ private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
 }
 
 private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List<Any> {
+    val runtimeDependencies = mutableListOf<Any>()
+    val localAuthoringProject = project.rootProject.findProject(":winrt-authoring")
+    if (localAuthoringProject != null) {
+        runtimeDependencies += project.dependencies.project(mapOf("path" to localAuthoringProject.path))
+    } else {
+        val authoringClasspath = kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate::class.java)
+        runtimeDependencies += if (authoringClasspath != null) {
+            project.files(authoringClasspath)
+        } else {
+            "io.github.compose-fluent:winrt-authoring:${kotlinWinRtPluginVersion()}"
+        }
+    }
     val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
     if (localMetadataProject != null) {
-        return listOf(project.dependencies.project(mapOf("path" to localMetadataProject.path)))
+        runtimeDependencies += project.dependencies.project(mapOf("path" to localMetadataProject.path))
+        return runtimeDependencies
     }
     val metadataClasspath = kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java)
-    return if (metadataClasspath != null) {
-        listOf(project.files(metadataClasspath))
+    runtimeDependencies += if (metadataClasspath != null) {
+        project.files(metadataClasspath)
     } else {
-        listOf("io.github.compose-fluent:winrt-metadata:${kotlinWinRtPluginVersion()}")
+        "io.github.compose-fluent:winrt-metadata:${kotlinWinRtPluginVersion()}"
     }
+    return runtimeDependencies
 }
 
 private fun kotlinWinRtLocalGeneratorWorkerClasspath(project: Project): List<File> =
@@ -1020,18 +1035,12 @@ private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     project.gradle.projectsEvaluated {
-        val authoringRoots = generateTask.get().sourceRoots.files
-            .map { it.toPath().toAbsolutePath().normalize() }
-            .toSet()
-        if (authoringRoots.isEmpty()) {
+        if (generateTask.get().sourceRoots.files.isEmpty()) {
             return@projectsEvaluated
         }
-        kotlinExtension.sourceSets.forEach { sourceSet ->
-            val sourceSetRoots = sourceSet.kotlin.srcDirs
-                .map { it.toPath().toAbsolutePath().normalize() }
-            if (sourceSetRoots.any { sourceRoot -> sourceRoot in authoringRoots }) {
-                sourceSet.kotlin.srcDir(generatedSources)
-            }
+        kotlinExtension.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+            val sourceSet = target.compilations.getByName("main").defaultSourceSet
+            sourceSet.kotlin.srcDir(generatedSources)
         }
     }
 }

@@ -1,5 +1,14 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.authoring.KotlinImports
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredRuntimeClassAnnotation
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
+import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.authoring.resolveIndexedWinRtType
 import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.KtSourceFile
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreApplicationEnvironment
@@ -28,20 +37,7 @@ object KotlinWinRtAuthoringScannerCli {
         val options = CliOptions.parse(args)
         val index = readAuthoringMetadataIndex(options.metadataIndex)
         val candidates = scan(options.sourceRoots, index)
-        options.output.parent?.let(Files::createDirectories)
-        options.output.writeText(
-            candidates.joinToString(separator = "\n", postfix = if (candidates.isEmpty()) "" else "\n") { candidate ->
-                listOf(
-                    candidate.packageName,
-                    candidate.className,
-                    candidate.sourceTypeName,
-                    candidate.winRtBaseClassName.orEmpty(),
-                    candidate.winRtInterfaceNames.joinToString(";"),
-                    candidate.overridableInterfaceNames.joinToString(";"),
-                    candidate.isPublic.toString(),
-                ).joinToString("\t")
-            },
-        )
+        KotlinWinRtAuthoringCandidateFile.write(options.output, candidates)
     }
 
     private fun scan(
