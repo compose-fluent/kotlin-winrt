@@ -2,6 +2,8 @@ package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
@@ -13,7 +15,6 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
-import org.gradle.api.GradleException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -209,7 +210,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = model(),
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("references missing WinRT interface"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_App_TypeDetails.kt")))
             return
@@ -236,7 +237,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = model(),
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("references non-interface WinRT type"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_App_TypeDetails.kt")))
             return
@@ -263,7 +264,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = model(),
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("without metadata IID"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_LocalStringable_TypeDetails.kt")))
             return
@@ -520,7 +521,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = metadataModel,
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("unsupported object type 'Sample.PeerCallback'"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt")))
             return
@@ -704,7 +705,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = metadataModel,
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("without default interface metadata"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt")))
             return
@@ -763,7 +764,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = metadataModel,
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("without IID metadata"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt")))
             return
@@ -1145,7 +1146,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = metadataModel,
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("unsupported collection element type 'Sample.Value'"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_LocalShape_TypeDetails.kt")))
             return
@@ -1199,7 +1200,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                 metadataModel = metadataModel,
                 outputDirectory = output,
             )
-        } catch (error: GradleException) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("collection element type 'Sample.Value' without metadata"))
             assertFalse(Files.exists(output.resolve("sample/WinRT_LocalShape_TypeDetails.kt")))
             return

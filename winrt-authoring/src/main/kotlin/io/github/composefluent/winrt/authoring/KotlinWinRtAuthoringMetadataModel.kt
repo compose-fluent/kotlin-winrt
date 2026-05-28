@@ -1,4 +1,4 @@
-package io.github.composefluent.winrt.gradle
+package io.github.composefluent.winrt.authoring
 
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.metadata.WinRtAuthoredMetadataDescriptorWriter
@@ -83,5 +83,26 @@ object KotlinWinRtAuthoringMetadataModel {
     private fun Map<String, String>.toJsonObject(): String =
         entries.joinToString(prefix = "{", postfix = "}") { (key, value) ->
             "${key.toJsonString()}: ${value.toJsonString()}"
+        }
+
+    private fun List<String>.toJsonArray(): String =
+        joinToString(prefix = "[", postfix = "]") { it.toJsonString() }
+
+    private fun String.toJsonString(): String =
+        buildString {
+            append('"')
+            this@toJsonString.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(char)
+                }
+            }
+            append('"')
         }
 }
