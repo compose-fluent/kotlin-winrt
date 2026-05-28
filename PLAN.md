@@ -63,7 +63,7 @@
 ## Phase 1 Runtime And ABI
 
 - [ ] Runtime parity audit: compare activation, object identity, marshaling, delegate/event, collection, async, HRESULT/error-info, and WinUI bootstrap behavior against `.cswinrt/src/WinRT.Runtime`; close gaps in `winrt-runtime` before expanding dependent projections.
-- [ ] ABI primitive closure: verify that GUID/HRESULT/HSTRING ownership, memory layout helpers, raw vtable-call shapes, COM initialization, dynamic library loading, and error translation are centralized in runtime-owned abstractions instead of duplicated in generator or sample code.
+- [x] ABI primitive closure: verified against `.cswinrt/src/WinRT.Runtime` `GuidGenerator`, `FundamentalMarshalers`, `Marshalers`, `Platform`, `ExceptionHelpers`, and `Interop/IUnknownVftbl`; Kotlin ownership is centralized in `winrt-runtime` `Guid`, `HResult`, `HString`/`NativeStringMarshaller`, `PlatformAbi`, `ComVtableInvoker`, `RuntimeInitialization`, and `WinRtPlatformApi`, with generator/sample code calling these runtime abstractions instead of owning duplicate platform/HSTRING/vtable logic.
 - [ ] Object identity and activation closure: verify IUnknown/IInspectable wrappers, QueryInterface/interface casting, runtime-class-name lookup, activation factory lookup/cache, manifest-free fallback, and runtime-class activation helpers against `.cswinrt/src/WinRT.Runtime`.
 - [ ] Generic signature/IID closure: verify parameterized type-signature rendering and IID hashing for interfaces, delegates, collections, and async helpers before relying on broader generated output.
 - [ ] Delegate/event runtime closure: finish delegate callback lifetime, event token handling, add/remove failure behavior, and ABI ownership rules required by generated event/delegate surfaces.
