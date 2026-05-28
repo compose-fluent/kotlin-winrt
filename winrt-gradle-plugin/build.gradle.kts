@@ -16,6 +16,7 @@ java {
 
 dependencies {
     implementation(gradleApi())
+    implementation(projects.winrtAuthoring)
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
     implementation(projects.winrtGenerator)

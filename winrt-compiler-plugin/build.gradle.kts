@@ -7,6 +7,7 @@ plugins {
 description = "Kotlin compiler plugin for WinRT and WinUI projection support"
 
 dependencies {
+    implementation(projects.winrtAuthoring)
     implementation(projects.winrtMetadata)
     implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
     testImplementation(libs.junit)

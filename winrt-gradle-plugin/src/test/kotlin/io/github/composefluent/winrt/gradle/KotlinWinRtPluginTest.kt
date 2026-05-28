@@ -886,8 +886,6 @@ class KotlinWinRtPluginTest {
         assertEquals(
             listOf(
                 "kotlin/io/github/composefluent/winrt/projections/ProjectionModuleMarker.kt",
-                "kotlin/io/github/composefluent/winrt/projections/support/WinRTGenericAbiSupport.kt",
-                "kotlin/io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations.kt",
                 "winrt/SimpleMathComponent.dll",
                 "winrt/SimpleMathComponent.winmd",
             ),

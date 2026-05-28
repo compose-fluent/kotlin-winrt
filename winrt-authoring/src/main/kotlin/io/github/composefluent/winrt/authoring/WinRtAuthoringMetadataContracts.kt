@@ -1,28 +1,30 @@
-package io.github.composefluent.winrt.compiler
+package io.github.composefluent.winrt.authoring
 
+import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.writeText
 
-internal data class IndexedWinRtType(
+data class IndexedWinRtType(
     val qualifiedName: String,
     val kind: String,
     val overridableInterfaces: List<String>,
     val baseTypeName: String,
 )
 
-internal data class KotlinWinRtAuthoredTypeCandidate(
+data class KotlinWinRtAuthoredTypeCandidate(
     val packageName: String,
     val className: String,
     val sourceTypeName: String,
     val winRtBaseClassName: String?,
     val winRtInterfaceNames: List<String>,
     val overridableInterfaceNames: List<String>,
-    val isPublic: Boolean,
+    val isPublic: Boolean = true,
 )
 
-internal data class KotlinWinRtAuthoredRuntimeClassAnnotation(
+data class KotlinWinRtAuthoredRuntimeClassAnnotation(
     val baseClassName: String? = null,
     val interfaceNames: List<String> = emptyList(),
     val overridableInterfaceNames: List<String> = emptyList(),
@@ -31,7 +33,7 @@ internal data class KotlinWinRtAuthoredRuntimeClassAnnotation(
         get() = baseClassName != null || interfaceNames.isNotEmpty() || overridableInterfaceNames.isNotEmpty()
 }
 
-internal data class KotlinWinRtProjectionTypeIndexRecord(
+data class KotlinWinRtProjectionTypeIndexRecord(
     val sourceTypeName: String,
     val winRtTypeName: String,
     val kind: String,
@@ -41,7 +43,7 @@ internal data class KotlinWinRtProjectionTypeIndexRecord(
         listOf(sourceTypeName, winRtTypeName, kind, baseTypeName).joinToString("\t")
 }
 
-internal data class KotlinImports(
+data class KotlinImports(
     val explicit: Map<String, String>,
     val wildcards: List<String>,
 ) {
@@ -50,7 +52,63 @@ internal data class KotlinImports(
     }
 }
 
-internal fun projectionTypeIndexRecordForSourceType(
+object KotlinWinRtAuthoringCandidateFile {
+    fun read(path: Path): List<KotlinWinRtAuthoredTypeCandidate> {
+        if (!Files.exists(path)) {
+            return emptyList()
+        }
+        return Files.readAllLines(path)
+            .mapIndexedNotNull { index, line ->
+                if (line.isBlank()) {
+                    null
+                } else {
+                    parseLine(line)
+                        ?: throw IllegalArgumentException(
+                            "kotlin-winrt authored candidate row ${index + 1} in $path is malformed.",
+                        )
+                }
+            }
+    }
+
+    fun write(path: Path, candidates: List<KotlinWinRtAuthoredTypeCandidate>) {
+        path.parent?.let(Files::createDirectories)
+        path.writeText(
+            candidates.joinToString(separator = "\n", postfix = if (candidates.isEmpty()) "" else "\n") { candidate ->
+                listOf(
+                    candidate.packageName,
+                    candidate.className,
+                    candidate.sourceTypeName,
+                    candidate.winRtBaseClassName.orEmpty(),
+                    candidate.winRtInterfaceNames.joinToString(";"),
+                    candidate.overridableInterfaceNames.joinToString(";"),
+                    candidate.isPublic.toString(),
+                ).joinToString("\t")
+            },
+        )
+    }
+
+    private fun parseLine(line: String): KotlinWinRtAuthoredTypeCandidate? {
+        val parts = line.split('\t')
+        if (parts.size != 7) {
+            return null
+        }
+        if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+            return null
+        }
+        val isPublic = parts[6].toBooleanStrictOrNull() ?: return null
+        return KotlinWinRtAuthoredTypeCandidate(
+            packageName = parts[0],
+            className = parts[1],
+            sourceTypeName = parts[2],
+            winRtBaseClassName = parts[3].takeIf(String::isNotBlank),
+            winRtInterfaceNames = parts[4].semicolonListOrNull() ?: return null,
+            overridableInterfaceNames = parts[5].semicolonListOrNull() ?: return null,
+            isPublic = isPublic,
+        )
+    }
+}
+
+fun projectionTypeIndexRecordForSourceType(
     sourceTypeName: String,
     winRtTypes: Map<String, IndexedWinRtType>,
 ): KotlinWinRtProjectionTypeIndexRecord? {
@@ -67,7 +125,7 @@ internal fun projectionTypeIndexRecordForSourceType(
     )
 }
 
-internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtType> {
+fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtType> {
     require(Files.isRegularFile(path)) {
         "kotlin-winrt authoring metadata index $path does not exist."
     }
@@ -91,6 +149,29 @@ internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtTyp
     return types
 }
 
+fun writeAuthoringMetadataIndex(
+    model: WinRtMetadataModel,
+    output: Path,
+) {
+    val lines = model.namespaces
+        .flatMap { namespace -> namespace.types }
+        .sortedBy { type -> type.qualifiedName }
+        .map { type ->
+            listOf(
+                type.qualifiedName,
+                type.kind.name,
+                type.implementedInterfaces
+                    .filter { implementation -> implementation.isOverridable }
+                    .map { implementation -> implementation.interfaceName }
+                    .distinct()
+                    .sorted()
+                    .joinToString(";"),
+                type.baseTypeName.orEmpty(),
+            ).joinToString("\t")
+        }
+    Files.write(output, lines)
+}
+
 private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
     val parts = line.split('\t')
     if (parts.size !in 2..4 || parts[0].isBlank() || parts[1].isBlank()) {
@@ -110,18 +191,10 @@ private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
 
 private val authoringMetadataIndexKinds = WinRtTypeKind.entries.map(WinRtTypeKind::name).toSet()
 
-private fun parseAuthoringMetadataIndexListField(value: String): List<String>? {
-    if (value.isBlank()) {
-        return emptyList()
-    }
-    val parts = value.split(';')
-    if (parts.any(String::isBlank)) {
-        return null
-    }
-    return parts
-}
+private fun parseAuthoringMetadataIndexListField(value: String): List<String>? =
+    value.semicolonListOrNull()
 
-internal fun inheritedOverridableInterfaceNames(
+fun inheritedOverridableInterfaceNames(
     winRtBase: IndexedWinRtType?,
     winRtTypes: Map<String, IndexedWinRtType>,
 ): List<String> {
@@ -141,7 +214,7 @@ internal fun inheritedOverridableInterfaceNames(
     return names.sorted()
 }
 
-internal fun resolveWinRtTypeName(
+fun resolveWinRtTypeName(
     typeName: String,
     packageName: String,
     imports: KotlinImports,
@@ -160,7 +233,7 @@ internal fun resolveWinRtTypeName(
         .firstOrNull { candidate -> candidate in winRtTypes }
 }
 
-internal fun resolveIndexedWinRtType(
+fun resolveIndexedWinRtType(
     typeName: String,
     packageName: String,
     imports: KotlinImports,
@@ -168,12 +241,23 @@ internal fun resolveIndexedWinRtType(
 ): IndexedWinRtType? =
     resolveWinRtTypeName(typeName, packageName, imports, winRtTypes)?.let(winRtTypes::get)
 
-internal fun projectionPackageToMetadataName(typeName: String): String {
+fun projectionPackageToMetadataName(typeName: String): String {
     return typeName.removePrefix(PROJECTION_PACKAGE_PREFIX)
         .split('.')
         .joinToString(".") { segment -> if (segment == "ui") "UI" else segment.replaceFirstChar(Char::uppercaseChar) }
 }
 
-internal const val PROJECTION_PACKAGE_PREFIX: String = "io.github.composefluent.winrt.projections."
-internal const val WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION: String =
+private fun String.semicolonListOrNull(): List<String>? {
+    if (isBlank()) {
+        return emptyList()
+    }
+    val parts = split(';')
+    if (parts.any(String::isBlank)) {
+        return null
+    }
+    return parts
+}
+
+const val PROJECTION_PACKAGE_PREFIX: String = "io.github.composefluent.winrt.projections."
+const val WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION: String =
     "io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass"

@@ -1,5 +1,14 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.authoring.KotlinWinRtProjectionTypeIndexRecord
+import io.github.composefluent.winrt.authoring.PROJECTION_PACKAGE_PREFIX
+import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
+import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.authoring.projectionPackageToMetadataName
+import io.github.composefluent.winrt.authoring.projectionTypeIndexRecordForSourceType
+import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext

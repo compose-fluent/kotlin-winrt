@@ -63,9 +63,6 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
                 targetRows += lines.asSequence().drop(1).filter(String::isNotBlank)
             }
         }
-        if (sourceRows.isEmpty()) {
-            return
-        }
         val manifestRows = mutableListOf("kind\tclassName\tsourceFile\tentries")
         sourceRows.toSortedMap(compareBy<CompilerSupportSourceKey> { it.kind }.thenBy { it.className }.thenBy { it.sourceFile })
             .forEach { (key, lines) ->

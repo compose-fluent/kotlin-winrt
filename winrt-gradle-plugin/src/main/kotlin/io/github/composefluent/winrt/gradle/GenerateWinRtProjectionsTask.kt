@@ -1,6 +1,9 @@
 package io.github.composefluent.winrt.gradle
 
 import com.squareup.kotlinpoet.ClassName
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
@@ -474,29 +477,6 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
 
     private fun codeSourceLocation(codeSource: CodeSource?): String =
         codeSource?.location?.toString() ?: "<unknown>"
-
-    private fun writeAuthoringMetadataIndex(
-        model: io.github.composefluent.winrt.metadata.WinRtMetadataModel,
-        output: Path,
-    ) {
-        val lines = model.namespaces
-            .flatMap { namespace -> namespace.types }
-            .sortedBy { type -> type.qualifiedName }
-            .map { type ->
-                listOf(
-                    type.qualifiedName,
-                    type.kind.name,
-                    type.implementedInterfaces
-                        .filter { implementation -> implementation.isOverridable }
-                        .map { implementation -> implementation.interfaceName }
-                        .distinct()
-                        .sorted()
-                        .joinToString(";"),
-                    type.baseTypeName.orEmpty(),
-                ).joinToString("\t")
-            }
-        Files.write(output, lines)
-    }
 
     private fun runAuthoringScanner(
         sourceRoots: List<Path>,
