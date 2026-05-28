@@ -1,4 +1,4 @@
-package io.github.composefluent.winrt.gradle
+package io.github.composefluent.winrt.authoring
 
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
@@ -26,7 +26,6 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
-import org.gradle.api.GradleException
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -134,22 +133,22 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRtTypeDefinition>,
     ): List<WinRtTypeDefinition> {
         if (candidate.winRtInterfaceNames.isEmpty()) {
-            throw GradleException(
+            throw IllegalArgumentException(
                 "Authored type '${candidate.sourceTypeName}' has no WinRT interfaces for TypeDetails generation.",
             )
         }
         return candidate.winRtInterfaceNames.map { interfaceName ->
             val type = typesByName[interfaceName]
-                ?: throw GradleException(
+                ?: throw IllegalArgumentException(
                     "Authored type '${candidate.sourceTypeName}' references missing WinRT interface '$interfaceName'.",
                 )
             if (type.kind != WinRtTypeKind.Interface) {
-                throw GradleException(
+                throw IllegalArgumentException(
                     "Authored type '${candidate.sourceTypeName}' references non-interface WinRT type '$interfaceName'.",
                 )
             }
             if (type.iid == null) {
-                throw GradleException(
+                throw IllegalArgumentException(
                     "Authored type '${candidate.sourceTypeName}' references WinRT interface '$interfaceName' without metadata IID.",
                 )
             }
@@ -404,10 +403,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     iidType,
                 )
             }
-            null -> throw GradleException(
+            null -> throw IllegalArgumentException(
                 "Authored WinRT override parameter '${parameter.name}' of type '${parameter.typeName}' has no metadata.",
             )
-            else -> throw GradleException(
+            else -> throw IllegalArgumentException(
                 "Authored WinRT override parameter '${parameter.name}' has unsupported object type '${parameter.typeName}'.",
             )
         }
@@ -605,7 +604,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             else -> return null
         }
         val elementType = returnType.typeArguments.singleOrNull()?.normalized()
-            ?: throw GradleException(
+            ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns collection type '$returnTypeName' without exactly one element type.",
             )
         val elementAdapter = renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)
@@ -629,7 +628,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         val elementTypeName = elementType.qualifiedName
-            ?: throw GradleException(
+            ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns collection element '${elementType.displayName()}' without a qualified type name.",
             )
         renderNestedCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)?.let { return it }
@@ -640,7 +639,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
         }
         val elementDefinition = typesByName[elementTypeName]
-            ?: throw GradleException(
+            ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns collection element type '$elementTypeName' without metadata.",
             )
         return when (elementDefinition.kind) {
@@ -654,7 +653,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             )
             WinRtTypeKind.Struct -> {
                 val projectedType = runtimeMappedClassName(elementTypeName, semanticHelpers)
-                    ?: throw GradleException(
+                    ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns unsupported collection element type '$elementTypeName'.",
                     )
                 CodeBlock.of(
@@ -665,7 +664,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     renderWinRtTypeSignature(elementType, typesByName),
                 )
             }
-            else -> throw GradleException(
+            else -> throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns unsupported collection element type '$elementTypeName'.",
             )
         }
@@ -697,7 +696,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             else -> return null
         }
         val nestedElementType = elementType.typeArguments.singleOrNull()?.normalized()
-            ?: throw GradleException(
+            ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns collection element type '${elementType.typeName}' without exactly one nested element type.",
             )
         val nestedElementAdapter = renderCollectionElementAdapter(method, nestedElementType, typesByName, semanticHelpers)
@@ -728,7 +727,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): TypeName {
         val typeName = type.qualifiedName
-            ?: throw GradleException("Authored WinRT collection element '${type.displayName()}' has no projected type name.")
+            ?: throw IllegalArgumentException("Authored WinRT collection element '${type.displayName()}' has no projected type name.")
         renderNestedCollectionProjectedType(type, typesByName, semanticHelpers)?.let { return it }
         if (isWinRtObjectTypeName(typeName)) {
             return ANY.copy(nullable = true)
@@ -737,12 +736,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return String::class.asClassName()
         }
         val definition = typesByName[typeName]
-            ?: throw GradleException("Authored WinRT collection element type '$typeName' has no metadata.")
+            ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no metadata.")
         return when (definition.kind) {
             WinRtTypeKind.RuntimeClass -> projectionClassName(typeName, semanticHelpers)
             WinRtTypeKind.Struct -> runtimeMappedClassName(typeName, semanticHelpers)
-                ?: throw GradleException("Authored WinRT collection element type '$typeName' is not projectable.")
-            else -> throw GradleException("Authored WinRT collection element type '$typeName' is not projectable.")
+                ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
+            else -> throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
         }
     }
 
@@ -758,7 +757,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             else -> return null
         }
         val argument = type.typeArguments.singleOrNull()?.normalized()
-            ?: throw GradleException("Authored WinRT collection element type '${type.typeName}' has no projected type argument.")
+            ?: throw IllegalArgumentException("Authored WinRT collection element type '${type.typeName}' has no projected type argument.")
         return projectedType.parameterizedBy(authoringProjectedTypeName(argument, typesByName, semanticHelpers))
     }
 
@@ -767,7 +766,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
         val typeName = type.qualifiedName
-            ?: throw GradleException("Authored WinRT collection element '${type.displayName()}' has no type signature name.")
+            ?: throw IllegalArgumentException("Authored WinRT collection element '${type.displayName()}' has no type signature name.")
         when (typeName) {
             "Windows.Foundation.Collections.IIterable" -> {
                 val elementSignature = renderWinRtTypeSignature(type.typeArguments.singleOrNull()?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
@@ -792,7 +791,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return renderFundamentalTypeSignature(type)
         }
         val definition = typesByName[typeName]
-            ?: throw GradleException("Authored WinRT collection element type '$typeName' has no metadata signature.")
+            ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no metadata signature.")
         return when (definition.kind) {
             WinRtTypeKind.RuntimeClass -> CodeBlock.of("%T.object_()", winRtTypeSignatureType)
             WinRtTypeKind.Struct -> CodeBlock.of(
@@ -803,7 +802,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     ", ${renderWinRtTypeSignature(WinRtTypeRef.fromDisplayName(field.typeName).normalized(), typesByName)}"
                 },
             )
-            else -> throw GradleException("Authored WinRT collection element type '$typeName' has no supported type signature.")
+            else -> throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no supported type signature.")
         }
     }
 
@@ -834,31 +833,31 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val interfaceId = when (returnType?.kind) {
             WinRtTypeKind.RuntimeClass -> {
                 val defaultInterfaceName = returnType.defaultInterfaceName
-                    ?: throw GradleException(
+                    ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' without default interface metadata.",
                     )
                 val defaultInterface = typesByName[defaultInterfaceName]
                     ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
-                    ?: throw GradleException(
+                    ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' whose default interface '$defaultInterfaceName' is missing.",
                     )
                 val iid = defaultInterface.iid
-                    ?: throw GradleException(
+                    ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' whose default interface '$defaultInterfaceName' has no IID.",
                     )
                 CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
             }
             WinRtTypeKind.Interface -> {
                 val iid = returnType.iid
-                    ?: throw GradleException(
+                    ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns interface '${method.returnTypeName}' without IID metadata.",
                     )
                 CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
             }
-            null -> throw GradleException(
+            null -> throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns '${method.returnTypeName}' without metadata.",
             )
-            else -> throw GradleException(
+            else -> throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns unsupported object type '${method.returnTypeName}'.",
             )
         }

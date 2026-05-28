@@ -3,6 +3,8 @@ package io.github.composefluent.winrt.gradle
 import com.squareup.kotlinpoet.ClassName
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
