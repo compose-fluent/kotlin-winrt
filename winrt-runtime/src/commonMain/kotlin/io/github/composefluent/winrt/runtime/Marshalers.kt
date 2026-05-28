@@ -122,6 +122,9 @@ class Marshaler<T> internal constructor(
         fun inspectableAny(): Marshaler<Any?> = MarshalInspectable.any()
 
         fun <T> genericParameter(): Marshaler<T> = MarshalGenericParameter.of()
+
+        fun <T> referenceValueAdapter(adapter: WinRtReferenceValueAdapter<T>): Marshaler<T> =
+            MarshalReferenceValueAdapter.of(adapter)
     }
 }
 
@@ -528,6 +531,37 @@ object MarshalGenericParameter {
             disposeAbiPointer = { pointer ->
                 if (!PlatformAbi.isNull(pointer)) {
                     IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
+                }
+            },
+        )
+}
+
+object MarshalReferenceValueAdapter {
+    fun <T> of(adapter: WinRtReferenceValueAdapter<T>): Marshaler<T> =
+        pointerMarshaler(
+            category = WinRtAbiCategory.INTERFACE,
+            nullFromAbi = { adapter.projector(null) },
+            createMarshaler = { value -> value?.let(adapter::createOutputMarshaler) },
+            getAbiPointer = { value ->
+                when (value) {
+                    null -> PlatformAbi.nullPointer
+                    is WinRtObjectMarshaler -> value.abi
+                    is ComObjectReference -> value.pointer.asRawAddress()
+                    is RawAddress -> value
+                    else -> error("Expected reference-value adapter marshaler, got '${abiTypeName(value)}'.")
+                }
+            },
+            fromAbiPointer = { pointer ->
+                adapter.projector(IUnknownReference(pointer.asRawComPtr(), preventReleaseOnDispose = true))
+            },
+            fromManagedPointer = { value ->
+                value?.let { adapter.createOutputMarshaler(it).use { marshaler -> marshaler.abi } }
+                    ?: PlatformAbi.nullPointer
+            },
+            disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
+            disposeAbiPointer = { pointer ->
+                if (!PlatformAbi.isNull(pointer)) {
+                    IUnknownReference(pointer.asRawComPtr()).close()
                 }
             },
         )

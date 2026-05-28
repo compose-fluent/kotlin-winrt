@@ -125,9 +125,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             render(candidate, interfaces, typesByName, semanticHelpers).writeTo(outputDirectory)
             candidate
         }
-        if (renderedCandidates.isNotEmpty()) {
-            renderRegistrar(renderedCandidates).writeTo(outputDirectory)
-        }
+        renderRegistrar(renderedCandidates).writeTo(outputDirectory)
     }
 
     private fun resolveAuthoringInterfaces(

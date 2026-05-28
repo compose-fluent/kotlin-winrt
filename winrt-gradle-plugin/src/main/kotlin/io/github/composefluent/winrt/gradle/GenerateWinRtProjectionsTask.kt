@@ -277,13 +277,11 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
                 ),
         ).generateTo(model, parameters.outputDirectory.get().asFile.toPath())
         writeAuthoringMetadataIndex(model, authoringMetadataIndex)
-        if (authoringCandidates.isNotEmpty()) {
-            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-                candidates = authoringCandidates,
-                metadataModel = model,
-                outputDirectory = authoringTypeDetailsRoot,
-            )
-        }
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = authoringCandidates,
+            metadataModel = model,
+            outputDirectory = authoringTypeDetailsRoot,
+        )
     }
 
     private fun cleanDirectory(path: Path) {

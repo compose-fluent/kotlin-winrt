@@ -77,6 +77,7 @@ import io.github.composefluent.winrt.runtime.WinRtListProjection
 import io.github.composefluent.winrt.runtime.WinRtAsyncActionReference
 import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressReference
 import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRtAsyncInterfaceIds
 import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
 import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressReference
 import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
@@ -187,6 +188,7 @@ internal val WINRT_LIST_PROJECTION_CLASS_NAME = WinRtListProjection::class.asCla
 internal val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRtAsyncActionReference::class.asClassName()
 internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncActionWithProgressReference::class.asClassName()
 internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncActionWithProgressVftblSlots::class.asClassName()
+internal val WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME = WinRtAsyncInterfaceIds::class.asClassName()
 internal val WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME = WinRtAsyncOperationReference::class.asClassName()
 internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncOperationWithProgressReference::class.asClassName()
 internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationWithProgressVftblSlots::class.asClassName()
@@ -792,6 +794,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableIterable,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.Iterable,
+        runtimeOwnedProjection = true,
         descriptionName = "IBindableIterable",
     ),
     KotlinProjectionMappedType(
@@ -799,6 +802,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { List::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVectorView,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+        runtimeOwnedProjection = true,
         descriptionName = "IBindableVectorView",
     ),
     KotlinProjectionMappedType(
@@ -806,6 +810,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVector,
         mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("530155E1-28A5-5693-87CE-30724D95A06D"), "io.github.composefluent.winrt.runtime.WinRtCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
@@ -830,6 +835,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableIterable,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.Iterable,
+        runtimeOwnedProjection = true,
         descriptionName = "IBindableIterable",
     ),
     KotlinProjectionMappedType(
@@ -837,6 +843,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { List::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVectorView,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+        runtimeOwnedProjection = true,
         descriptionName = "IBindableVectorView",
     ),
     KotlinProjectionMappedType(
@@ -844,6 +851,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVector,
         mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
     KotlinProjectionMappedType("Windows.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("28B167D5-1A31-465B-9B25-D5C3AE686C40"), "io.github.composefluent.winrt.runtime.WinRtCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
@@ -880,6 +888,17 @@ internal fun KotlinProjectionMappedType.isRuntimeOwnedProjection(): Boolean =
 internal fun isRuntimeOwnedMappedTypeName(typeName: String): Boolean {
     val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
     return mappedTypeByAbiName(rawTypeName)?.isRuntimeOwnedProjection() == true
+}
+
+internal fun kotlinPoetNameLiteral(identifier: String): String =
+    identifier.removeSurrounding("`")
+
+internal fun generatedLocalIdentifier(prefix: String, identifier: String, suffix: String = ""): String {
+    val raw = kotlinPoetNameLiteral(identifier)
+    val sanitized = raw.map { char ->
+        if (char.isLetterOrDigit() || char == '_') char else '_'
+    }.joinToString("")
+    return prefix + sanitized.ifEmpty { "value" } + suffix
 }
 
 internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(

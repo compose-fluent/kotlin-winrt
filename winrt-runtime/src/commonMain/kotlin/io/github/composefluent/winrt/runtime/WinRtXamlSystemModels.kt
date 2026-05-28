@@ -2,12 +2,21 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-enum class WinRtNotifyCollectionChangedAction {
-    Add,
-    Remove,
-    Replace,
-    Move,
-    Reset,
+enum class WinRtNotifyCollectionChangedAction(val abiValue: Int) {
+    Add(0),
+    Remove(1),
+    Replace(2),
+    Move(3),
+    Reset(4),
+    ;
+
+    companion object Metadata {
+        fun fromAbi(value: Int): WinRtNotifyCollectionChangedAction =
+            entries.firstOrNull { it.abiValue == value }
+                ?: error("Unknown NotifyCollectionChangedAction ABI value: $value")
+
+        fun toAbi(value: WinRtNotifyCollectionChangedAction): Int = value.abiValue
+    }
 }
 
 data class WinRtPropertyChangedEventArgs(

@@ -306,15 +306,16 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
                 abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
                 scopeOpeners = listOf(
                     CodeBlock.of(
-                        "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %T.BYTE_SIZE.toLong())\n%L.writeTo(%L)",
+                        "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %T.BYTE_SIZE.toLong())\n%T.writeGuid(%L, %L)",
                         PLATFORM_ABI_CLASS_NAME,
                         scopeName,
                         abiLocalName,
                         PLATFORM_ABI_CLASS_NAME,
                         scopeName,
                         GUID_CLASS_NAME,
-                        parameterName,
+                        PLATFORM_ABI_CLASS_NAME,
                         abiLocalName,
+                        parameterName,
                     ),
                 ),
             )
@@ -384,7 +385,7 @@ private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
         abiArgumentExpression = projectedObjectParameterAbiExpression(parameterName, parameterBinding),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
-    val marshalerName = "__${parameterName}ProjectionMarshaler"
+    val marshalerName = generatedLocalIdentifier("__", parameterName, "ProjectionMarshaler")
     return KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
@@ -393,9 +394,9 @@ private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(
-                "%M(%L, %S, %T(%S)).use { %L ->",
+                "%M(%N, %S, %T(%S)).use { %L ->",
                 WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
-                parameterName,
+                kotlinPoetNameLiteral(parameterName),
                 parameterBinding.typeBinding.resolvedTypeName,
                 GUID_CLASS_NAME,
                 interfaceId.toString(),
@@ -713,8 +714,11 @@ internal val KotlinProjectionAbiTypeBinding.isNullableAbiTypeName: Boolean
 internal fun KotlinProjectionRenderer.resolvedReturnClassName(
     returnBinding: KotlinProjectionAbiTypeBinding,
 ): ClassName? =
-    runCatching { resolveTypeName(returnBinding.typeName.trim().removeSuffix("?")) as? ClassName }.getOrNull()
-        ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName.trim().removeSuffix("?")) as? ClassName }.getOrNull()
+    runCatching { resolveTypeName(returnBinding.typeName.rawProjectionTypeName()) as? ClassName }.getOrNull()
+        ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName.rawProjectionTypeName()) as? ClassName }.getOrNull()
+
+private fun String.rawProjectionTypeName(): String =
+    trim().removeSuffix("?").substringBefore('<')
 
 private fun KotlinProjectionRenderer.delegateReturnFromAbiCode(
     returnType: ClassName,

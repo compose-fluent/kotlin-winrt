@@ -632,7 +632,35 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
         IUNKNOWN_REFERENCE_CLASS_NAME,
     )
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-        if (mappedTypeByAbiName(typeBinding.resolvedTypeName)?.descriptionName == "PropertyChangedEventArgs") {
+        customObjectAbi(typeBinding)?.let { customAbi ->
+            val projectedType = resolveTypeName(typeBinding.resolvedTypeName).copy(nullable = false)
+            if (customAbi.fromAbiFunctionName == "objectFromAbi") {
+                CodeBlock.of(
+                    "%T.%L(%T.fromRawComPtr((__args[%L] as %T).getRefPointer()), %T(%S, %T(%S)), %T::class) ?: error(%S)",
+                    WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+                    customAbi.fromAbiFunctionName,
+                    PLATFORM_ABI_CLASS_NAME,
+                    index,
+                    IINSPECTABLE_REFERENCE_CLASS_NAME,
+                    WINRT_TYPE_HANDLE_CLASS_NAME,
+                    customAbi.typeHandleName,
+                    GUID_CLASS_NAME,
+                    customAbi.interfaceId.toString(),
+                    projectedType,
+                    "WINRT_E_NULL_ABI_DELEGATE_ARGUMENT",
+                )
+            } else {
+                CodeBlock.of(
+                    "%T.%L(%T.fromRawComPtr((__args[%L] as %T).getRefPointer())) ?: error(%S)",
+                    WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+                    customAbi.fromAbiFunctionName,
+                    PLATFORM_ABI_CLASS_NAME,
+                    index,
+                    IINSPECTABLE_REFERENCE_CLASS_NAME,
+                    "WINRT_E_NULL_ABI_DELEGATE_ARGUMENT",
+                )
+            }
+        } ?: if (mappedTypeByAbiName(typeBinding.resolvedTypeName)?.descriptionName == "PropertyChangedEventArgs") {
             CodeBlock.of(
                 "%M(__args[%L])",
                 WINRT_PROPERTY_CHANGED_EVENT_ARGS_FROM_ABI_FUNCTION_NAME,

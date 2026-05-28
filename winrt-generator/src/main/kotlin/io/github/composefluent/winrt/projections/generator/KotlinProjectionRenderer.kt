@@ -1141,6 +1141,7 @@ class KotlinProjectionRenderer(
         plan.defaultInterfaceName
             ?.takeUnless(::isMappedCollectionInterfaceName)
             ?.takeUnless(::isRuntimeOwnedMappedTypeName)
+            ?.takeUnless(String::isMappedRuntimeHelperInterfaceName)
             ?.takeIf { interfaceName -> plan.isPublicRuntimeClassInterface(interfaceName) }
             ?.let { defaultInterfaceName ->
             builder.addRuntimeClassSuperinterface(
@@ -1156,6 +1157,9 @@ class KotlinProjectionRenderer(
             }
             .filterNot { implemented ->
                 isRuntimeOwnedMappedTypeName(implemented.interfaceName)
+            }
+            .filterNot { implemented ->
+                implemented.interfaceName.isMappedRuntimeHelperInterfaceName()
             }
             .forEach { implemented ->
                 builder.addRuntimeClassSuperinterface(
@@ -1225,7 +1229,17 @@ class KotlinProjectionRenderer(
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
-            .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" }
+            .filterNot { method ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                    ?.isRuntimeOwnedMappedBinding == true
+            }
+            .filterNot { method ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                    ?.isMappedRuntimeHelperBinding == true
+            }
+            .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" && it.parameters.isEmpty() }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
             .forEach { method ->
                 builder.addFunction(renderRuntimeClassInterfaceForwardMethod(plan, method) ?: renderRuntimeMethod(plan, method))
@@ -1236,6 +1250,16 @@ class KotlinProjectionRenderer(
             .filter { it.hasNativeProjectionGetterAccessor() }
             .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { property -> isRuntimeClassDelegatedMember(plan, "${property.name.uppercase()}_GETTER_SLOT") }
+            .filterNot { property ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
+                    ?.isRuntimeOwnedMappedBinding == true
+            }
+            .filterNot { property ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
+                    ?.isMappedRuntimeHelperBinding == true
+            }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
             .forEach { property ->
                 builder.addProperty(renderRuntimeClassInterfaceForwardProperty(plan, property) ?: renderRuntimeProperty(plan, property))
@@ -1245,6 +1269,16 @@ class KotlinProjectionRenderer(
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "ErrorsChanged" }
             .filterNot { plan.usesMappedPropertyChangedAugmentation && it.name == "PropertyChanged" }
             .filterNot { event -> isRuntimeClassDelegatedMember(plan, "${event.name.uppercase()}_ADD_SLOT") }
+            .filterNot { event ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
+                    ?.isRuntimeOwnedMappedBinding == true
+            }
+            .filterNot { event ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
+                    ?.isMappedRuntimeHelperBinding == true
+            }
             .forEach { event ->
             val forwardEvent = renderRuntimeClassInterfaceForwardEvent(plan, event)
             if (forwardEvent != null) {
@@ -1308,7 +1342,17 @@ class KotlinProjectionRenderer(
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
-            .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" }
+            .filterNot { method ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                    ?.isRuntimeOwnedMappedBinding == true
+            }
+            .filterNot { method ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                    ?.isMappedRuntimeHelperBinding == true
+            }
+            .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" && it.parameters.isEmpty() }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
             .mapNotNull { method ->
                 val binding = plan.instanceMemberBindings.firstOrNull {
@@ -1318,13 +1362,15 @@ class KotlinProjectionRenderer(
                 if (KModifier.PROTECTED !in modifiers) {
                     return@mapNotNull null
                 }
-                renderRuntimeClassAuthoringInvokeBridge(method)
+                renderRuntimeClassAuthoringInvokeBridge(method, method.projectedRuntimeClassMethodName(plan, modifiers))
             }
             .forEach(builder::addFunction)
     }
 
-    private fun renderRuntimeClassAuthoringInvokeBridge(method: WinRtMethodDefinition): FunSpec {
-        val methodName = method.projectedMethodName()
+    private fun renderRuntimeClassAuthoringInvokeBridge(
+        method: WinRtMethodDefinition,
+        methodName: String,
+    ): FunSpec {
         val parameterSpecs = method.projectedKotlinParameters().map { parameter ->
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
@@ -1358,17 +1404,19 @@ class KotlinProjectionRenderer(
             .sortedBy { it.projectionPropertyName }
             .forEach { target ->
                 val initializer = if (target.ownerCachePropertyName == "_defaultInterface") {
+                    val rawInterfaceType = projectionClassName(target.rawInterfaceName)
                     CodeBlock.of(
                         "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
                         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                        resolveTypeName(target.rawInterfaceName),
-                        resolveTypeName(target.rawInterfaceName),
+                        rawInterfaceType,
+                        rawInterfaceType,
                     )
                 } else {
+                    val rawInterfaceType = projectionClassName(target.rawInterfaceName)
                     CodeBlock.of(
                         "lazy(%T.PUBLICATION) { %T.Metadata.wrap(%L) }",
                         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                        resolveTypeName(target.rawInterfaceName),
+                        rawInterfaceType,
                         target.ownerCachePropertyName,
                     )
                 }
@@ -1411,7 +1459,9 @@ class KotlinProjectionRenderer(
         val target = runtimeClassInterfaceProjectionForwardTargets(plan)[binding.ownerInterfaceQualifiedName.substringBefore('<')]
             ?: return null
         val objectShape = runtimeObjectMethodShape(method)
-        val functionName = objectShape?.name ?: method.projectedMethodName()
+        val modifiers = objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding)
+        val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
+        val targetFunctionName = objectShape?.name ?: method.projectedMethodName()
         val parameterSpecs = objectShape?.parameters ?: method.projectedKotlinParameters().map { parameter ->
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
@@ -1420,7 +1470,7 @@ class KotlinProjectionRenderer(
         return FunSpec.builder(functionName)
             .addProjectedAttributeAnnotations(binding.projectedAttributes)
             .addMethodGenericParameters(method, objectShape)
-            .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
+            .addModifiers(modifiers)
             .addParameters(parameterSpecs)
             .returns(returns)
             .apply {
@@ -1428,9 +1478,9 @@ class KotlinProjectionRenderer(
                     addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
                 }
                 if (returns == UNIT) {
-                    addCode("%L.%L(%L)\n", target.projectionPropertyName, functionName, arguments)
+                    addCode("%L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
                 } else {
-                    addCode("return %L.%L(%L)\n", target.projectionPropertyName, functionName, arguments)
+                    addCode("return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
                 }
             }
             .build()
@@ -1556,6 +1606,9 @@ class KotlinProjectionRenderer(
         return ownerInterfaceBindings.mapNotNull { binding ->
             val rawInterfaceName = binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?")
             if (isMappedCollectionInterfaceName(rawInterfaceName) || isRuntimeOwnedMappedTypeName(rawInterfaceName)) {
+                return@mapNotNull null
+            }
+            if (rawInterfaceName.isMappedRuntimeHelperInterfaceName()) {
                 return@mapNotNull null
             }
             val interfaceType = plan.typesByQualifiedName[rawInterfaceName] ?: return@mapNotNull null
@@ -1920,9 +1973,6 @@ class KotlinProjectionRenderer(
         if (name !in mappedCollectionMemberNames) {
             return false
         }
-        if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
-            return true
-        }
         val getterIsMapped = !hasNativeProjectionGetterAccessor() ||
             plan.instanceMemberBindings
                 .firstOrNull { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
@@ -1931,7 +1981,11 @@ class KotlinProjectionRenderer(
             plan.instanceMemberBindings
                 .firstOrNull { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
                 ?.isMappedCollectionOrIteratorBinding == true
-        return getterIsMapped && setterIsMapped
+        if (getterIsMapped && setterIsMapped) {
+            return name in mappedCollectionRuntimeMethodNames(plan)
+        }
+        return name in mappedCollectionRuntimeMethodNames(plan) &&
+            (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty())
     }
 
     private data class RequiredIteratorBinding(
@@ -2613,6 +2667,9 @@ class KotlinProjectionRenderer(
         if (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) != null) {
             return CodeBlock.of("%T(%S, %T.ADDRESS)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME)
         }
+        nativeStructCustomAbiFieldScalarKind(field.typeName)?.let { scalarKind ->
+            return CodeBlock.of("%T(%S, %T.%L)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME, scalarKind)
+        }
         val enumQualifiedName = field.typeName.substringBefore('<').removeSuffix("?").let { rawTypeName ->
             when {
                 typesByQualifiedName[rawTypeName]?.kind == WinRtTypeKind.Enum -> rawTypeName
@@ -2748,6 +2805,14 @@ class KotlinProjectionRenderer(
         winRtFundamentalTypeForName(field.typeName)?.toNativeStructFieldReadCode(slice)?.let { readCode ->
             return readCode
         }
+        customStructAbiForNativeField(field.typeName)?.let { customAbi ->
+            return CodeBlock.of("%T.%L(%L)", customAbi.helperTypeName, customAbi.fromAbiFunctionName, slice)
+        }
+        renderAbiTypeBinding(field.typeName, typesByQualifiedName, currentNamespace)
+            .takeIf { it.kind == KotlinProjectionAbiValueKind.Reference }
+            ?.let { binding ->
+                referenceReadbackExpression(binding, WINRT_REFERENCE_PROJECTION_CLASS_NAME, CodeBlock.of("%L", slice).toString())?.let { return it }
+            }
         return nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName)
             ?: nativeStructEnumFieldReadCode(field, slice, currentNamespace, typesByQualifiedName)
             ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
@@ -2769,9 +2834,43 @@ class KotlinProjectionRenderer(
         winRtFundamentalTypeForName(field.typeName)?.toNativeStructFieldWriteCode(slice, value)?.let { writeCode ->
             return writeCode
         }
+        customStructAbiForNativeField(field.typeName)?.let { customAbi ->
+            return CodeBlock.of("%T.%L(%L, %L)", customAbi.helperTypeName, customAbi.copyToFunctionName, value, slice)
+        }
+        renderAbiTypeBinding(field.typeName, typesByQualifiedName, currentNamespace)
+            .takeIf { it.kind == KotlinProjectionAbiValueKind.Reference }
+            ?.let { binding ->
+                referenceInterfaceIdCode(binding)?.let { interfaceId ->
+                    return CodeBlock.of(
+                        "%T.writePointer(%L, %T.fromManaged(%L, %L))",
+                        PLATFORM_ABI_CLASS_NAME,
+                        slice,
+                        WINRT_REFERENCE_PROJECTION_CLASS_NAME,
+                        value,
+                        interfaceId,
+                    )
+                }
+            }
         return nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName)
             ?: nativeStructEnumFieldWriteCode(field, value, slice, currentNamespace, typesByQualifiedName)
             ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
+    }
+
+    private fun customStructAbiForNativeField(typeName: String): KotlinProjectionCustomStructAbi? =
+        mappedTypeByAbiName(typeName.substringBefore('<').removeSuffix("?"))
+            ?.customStructAbi
+
+    private fun nativeStructCustomAbiFieldScalarKind(typeName: String): String? {
+        val customAbi = customStructAbiForNativeField(typeName) ?: return null
+        return when (customAbi.abiArgumentKind) {
+            KotlinProjectionComArgumentKind.Int32 -> "INT32"
+            KotlinProjectionComArgumentKind.Int64 -> "INT64"
+            else -> when (customAbi.sizeBytes) {
+                4L -> "INT32"
+                8L -> "INT64"
+                else -> null
+            }
+        }
     }
 
     private fun nativeStructEnumFieldReadCode(

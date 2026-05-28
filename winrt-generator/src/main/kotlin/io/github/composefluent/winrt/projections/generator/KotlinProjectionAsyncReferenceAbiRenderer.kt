@@ -297,6 +297,49 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
         val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
         if (key != null && value != null) CodeBlock.of("%T.keyValuePairSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
     }
+    KotlinProjectionAbiValueKind.MappedAsyncAction ->
+        CodeBlock.of("%T.guid(%T.IAsyncAction)", WINRT_TYPE_SIGNATURE_CLASS_NAME, WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME)
+    KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
+        val progress = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        if (progress != null) {
+            CodeBlock.of(
+                "%T.parameterizedInterface(%T.IAsyncActionWithProgressGeneric, %L)",
+                WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME,
+                progress,
+            )
+        } else {
+            null
+        }
+    }
+    KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
+        val result = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        if (result != null) {
+            CodeBlock.of(
+                "%T.parameterizedInterface(%T.IAsyncOperationGeneric, %L)",
+                WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME,
+                result,
+            )
+        } else {
+            null
+        }
+    }
+    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
+        val result = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        val progress = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        if (result != null && progress != null) {
+            CodeBlock.of(
+                "%T.parameterizedInterface(%T.IAsyncOperationWithProgressGeneric, %L, %L)",
+                WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME,
+                result,
+                progress,
+            )
+        } else {
+            null
+        }
+    }
     KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
     KotlinProjectionAbiValueKind.Reference,
     KotlinProjectionAbiValueKind.ReferenceArray -> referenceTypeSignatureCode(binding)
@@ -324,27 +367,41 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
         }
     KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    KotlinProjectionAbiValueKind.ProjectedInterface ->
-        resolvedReturnClassName(binding)?.let { resultType ->
-            if (binding.typeArguments.isNotEmpty()) {
-                val arguments = binding.typeArguments.map { argument ->
-                    abiTypeSignature(argument) ?: return@let null
-                }
-                CodeBlock.builder()
-                    .add("%T.parameterizedInterface(%T.Metadata.IID", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
-                    .apply {
-                        arguments.forEach { argument ->
-                            add(", %L", argument)
-                        }
+    KotlinProjectionAbiValueKind.ProjectedInterface -> {
+        val customAbi = customObjectAbi(binding)
+        if (customAbi != null) {
+            CodeBlock.of("%T.guid(%T(%S))", WINRT_TYPE_SIGNATURE_CLASS_NAME, GUID_CLASS_NAME, customAbi.interfaceId.toString())
+        } else if (binding.typeArguments.isNotEmpty()) {
+            val resultType = projectionClassName(binding.resolvedTypeName.trim().removeSuffix("?").substringBefore('<'))
+            val arguments = binding.typeArguments.map { argument ->
+                abiTypeSignature(argument) ?: return null
+            }
+            CodeBlock.builder()
+                .add("%T.parameterizedInterface(%T.Metadata.IID", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
+                .apply {
+                    arguments.forEach { argument ->
+                        add(", %L", argument)
                     }
-                    .add(")")
-                    .build()
-            } else {
+                }
+                .add(")")
+                .build()
+        } else {
+            resolvedReturnClassName(binding)?.let { resultType ->
                 CodeBlock.of("%T.guid(%T.Metadata.IID)", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
             }
         }
+    }
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-        resolvedReturnClassName(binding)?.let { resultType ->
+        customObjectAbi(binding)?.let { customAbi ->
+            CodeBlock.of(
+                "%T.runtimeClass(%S, %T.guid(%T(%S)))",
+                WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                binding.resolvedTypeName,
+                WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                GUID_CLASS_NAME,
+                customAbi.interfaceId.toString(),
+            )
+        } ?: resolvedReturnClassName(binding)?.let { resultType ->
             CodeBlock.of(
                 "%T.runtimeClass(%S, %T.guid(%T.Metadata.DEFAULT_INTERFACE_IID))",
                 WINRT_TYPE_SIGNATURE_CLASS_NAME,
