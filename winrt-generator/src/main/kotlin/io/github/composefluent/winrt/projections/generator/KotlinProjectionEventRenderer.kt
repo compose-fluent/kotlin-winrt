@@ -1676,6 +1676,8 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     val abiSlotBindingNames = plan.abiSlotBindings.mapTo(mutableSetOf()) { it.constantName }
     plan.instanceMemberBindings
         .filterNot { it.bindingName in abiSlotBindingNames }
+        .filterNot(KotlinProjectionInstanceMemberBinding::isRuntimeOwnedMappedBinding)
+        .filterNot(KotlinProjectionInstanceMemberBinding::isMappedRuntimeHelperBinding)
         .filterNot { binding ->
             plan.requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyPropertyChanged") &&
                 mappedTypeByAbiName(binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?"))?.descriptionName == "INotifyPropertyChanged"

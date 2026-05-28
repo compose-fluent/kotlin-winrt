@@ -20,7 +20,8 @@ internal fun WinRtMethodDefinition.isMappedCollectionRuntimeMethod(
     val bindingName = abiSlotConstantName(plan.type.methods)
     val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == bindingName }
     if (binding != null) {
-        return binding.isMappedCollectionOrIteratorBinding(plan)
+        return name in mappedCollectionRuntimeMethodNames(plan) &&
+            binding.isMappedCollectionOrIteratorBinding(plan)
     }
     if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
         return name in mappedCollectionRuntimeMethodNames(plan)
@@ -35,9 +36,6 @@ internal fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(
     if (name !in mappedCollectionMemberNames) {
         return false
     }
-    if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
-        return true
-    }
     val getterIsMapped = !hasNativeProjectionGetterAccessor() ||
         plan.instanceMemberBindings
             .firstOrNull { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
@@ -46,7 +44,11 @@ internal fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(
         plan.instanceMemberBindings
             .firstOrNull { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
             ?.isMappedCollectionOrIteratorBinding(plan) == true
-    return getterIsMapped && setterIsMapped
+    if (getterIsMapped && setterIsMapped) {
+        return name in mappedCollectionRuntimeMethodNames(plan)
+    }
+    return name in mappedCollectionRuntimeMethodNames(plan) &&
+        (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty())
 }
 
 internal val KotlinProjectionInstanceMemberBinding.isMappedCollectionOrIteratorBinding: Boolean
@@ -55,6 +57,24 @@ internal val KotlinProjectionInstanceMemberBinding.isMappedCollectionOrIteratorB
             mappedType.mutableCollectionKind != null ||
             mappedType.descriptionName == "Iterator"
     } == true
+
+internal val KotlinProjectionInstanceMemberBinding.isRuntimeOwnedMappedBinding: Boolean
+    get() = isRuntimeOwnedMappedTypeName(ownerInterfaceQualifiedName) ||
+        isRuntimeOwnedMappedTypeName(slotInterfaceQualifiedName)
+
+internal val KotlinProjectionInstanceMemberBinding.isMappedRuntimeHelperBinding: Boolean
+    get() = slotInterfaceQualifiedName.isMappedRuntimeHelperInterfaceName()
+
+internal fun String.isMappedRuntimeHelperInterfaceName(): Boolean {
+    val mappedType = mappedTypeByAbiName(substringBefore('<').removeSuffix("?")) ?: return false
+    return mappedType.readOnlyCollectionKind != null ||
+        mappedType.mutableCollectionKind != null ||
+        mappedType.descriptionName == "Iterator" ||
+        mappedType.abiValueKind == KotlinProjectionAbiValueKind.MappedAsyncAction ||
+        mappedType.abiValueKind == KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress ||
+        mappedType.abiValueKind == KotlinProjectionAbiValueKind.MappedAsyncOperation ||
+        mappedType.abiValueKind == KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress
+}
 
 private fun KotlinProjectionInstanceMemberBinding.isMappedCollectionOrIteratorBinding(
     plan: KotlinTypeProjectionPlan,
@@ -87,7 +107,7 @@ private val KotlinTypeProjectionPlan.hasMappedCollectionOrIteratorRuntimeProject
         readOnlyCollectionBindings.isNotEmpty() ||
         requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("Iterator")
 
-private fun mappedCollectionRuntimeMethodNames(plan: KotlinTypeProjectionPlan): Set<String> =
+internal fun mappedCollectionRuntimeMethodNames(plan: KotlinTypeProjectionPlan): Set<String> =
     buildSet {
         if (plan.readOnlyCollectionBindings.isNotEmpty() || plan.mutableCollectionBindings.isNotEmpty()) {
             addAll(KotlinProjectionReadOnlyCollectionKind.Iterable.runtimeMethodNames)
@@ -129,7 +149,7 @@ private val KotlinProjectionMutableCollectionKind.runtimeMethodNames: Set<String
         KotlinProjectionMutableCollectionKind.Map -> setOf("Lookup", "Size", "HasKey", "GetView", "Insert", "Remove", "Clear")
     }
 
-private val iteratorRuntimeMethodNames = setOf("Current", "HasCurrent", "MoveNext")
+private val iteratorRuntimeMethodNames = setOf("Current", "HasCurrent", "MoveNext", "GetMany")
 
 private val mappedCollectionRuntimeMemberNames = setOf(
     "First",

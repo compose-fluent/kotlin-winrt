@@ -630,6 +630,7 @@ class KotlinProjectionGeneratorTest {
             MappedTypeExpectation(
                 "Microsoft.UI.Xaml.Interop.IBindableVector",
                 KotlinProjectionAbiValueKind.MappedBindableVector,
+                runtimeOwned = true,
                 mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
             ),
             MappedTypeExpectation(
@@ -642,6 +643,7 @@ class KotlinProjectionGeneratorTest {
             MappedTypeExpectation(
                 "Windows.UI.Xaml.Interop.IBindableVectorView",
                 KotlinProjectionAbiValueKind.MappedBindableVectorView,
+                runtimeOwned = true,
                 readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
             ),
             MappedTypeExpectation(
@@ -4826,7 +4828,11 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.getNullableProjectedRuntimeClass("))
-        assertTrue(interfaceContents, interfaceContents.contains("winRtProjectionMarshaler(value, \"Sample.Xaml.Element?\""))
+        assertTrue(
+            interfaceContents,
+            interfaceContents.contains("winRtProjectionMarshaler(value, \"Sample.Xaml.Element?\"") ||
+                interfaceContents.contains("winRtProjectionMarshaler(`value`, \"Sample.Xaml.Element?\""),
+        )
     }
 
     @Test
@@ -6840,7 +6846,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("\"RawAddress\""))
         assertTrue(widgetContents.contains("WidgetAsset.Metadata::wrap"))
         assertTrue(widgetContents.contains("PlatformAbi.fromRawComPtr((asset as IWinRTObject).nativeObject.pointer)"))
-        assertTrue(widgetContents.contains("winRtProjectionMarshaler(value, \"Sample.Foundation.WidgetAsset?\""))
+        assertTrue(
+            widgetContents,
+            widgetContents.contains("winRtProjectionMarshaler(value, \"Sample.Foundation.WidgetAsset?\"") ||
+                widgetContents.contains("winRtProjectionMarshaler(`value`, \"Sample.Foundation.WidgetAsset?\""),
+        )
         assertFalse(widgetContents.contains("ComVtableInvoker.invokeGenericArgs"))
         assertFalse(widgetContents.contains("ComVtableInvoker.invokeArgs"))
     }
@@ -7071,7 +7081,11 @@ class KotlinProjectionGeneratorTest {
         assertFalse(widgetContents, widgetContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
         assertTrue(widgetContents.contains("fun setNamedValue(name: String, `value`: WidgetValue)"))
         assertTrue(widgetInterfaceContents.contains("HString.createReference(name).use { __nameAbi ->"))
-        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("winRtProjectionMarshaler(value, \"Sample.Foundation.WidgetValue\""))
+        assertTrue(
+            widgetInterfaceContents,
+            widgetInterfaceContents.contains("winRtProjectionMarshaler(value, \"Sample.Foundation.WidgetValue\"") ||
+                widgetInterfaceContents.contains("winRtProjectionMarshaler(`value`, \"Sample.Foundation.WidgetValue\""),
+        )
         assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("Guid(\"22222222-2222-2222-2222-222222222222\")).use {"))
         assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("__valueProjectionMarshaler ->"))
         assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("__valueProjectionMarshaler.abi"))
@@ -10418,6 +10432,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             windowProperty,
             windowProperty.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.SystemBackdrop") ||
+                windowProperty.contains("winRtProjectionMarshaler(`value`, \"Microsoft.UI.Xaml.Media.SystemBackdrop") ||
                 windowProperty.contains("_iWindow2Projection.systemBackdrop = value"),
         )
         assertTrue(windowProperty, windowProperty.contains("Guid(\"11111111-2222-3333-4444-555555555580\")"))
@@ -10426,7 +10441,11 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(clipPropertySource, clipPropertySource.contains("var clip: microsoft.ui.xaml.media.RectangleGeometry?"))
         assertTrue(clipPropertySource, clipPropertySource.contains("getNullableProjectedRuntimeClass("))
-        assertTrue(clipPropertySource, clipPropertySource.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.RectangleGeometry"))
+        assertTrue(
+            clipPropertySource,
+            clipPropertySource.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.RectangleGeometry") ||
+                clipPropertySource.contains("winRtProjectionMarshaler(`value`, \"Microsoft.UI.Xaml.Media.RectangleGeometry"),
+        )
         assertTrue(clipPropertySource, clipPropertySource.contains("Guid(\"11111111-2222-3333-4444-555555555581\")"))
         assertTrue(clipPropertySource, clipPropertySource.contains("__valueProjectionMarshaler.abi"))
         assertFalse(clipPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
@@ -10764,7 +10783,12 @@ class KotlinProjectionGeneratorTest {
         assertFalse(filesByName.containsKey("Vector3.kt"))
         assertTrue(filesByName.getValue("Color.kt").contents.contains("public class Color("))
         assertTrue(filesByName.getValue("CornerRadius.kt").contents.contains("public class CornerRadius("))
-        assertTrue(filesByName.getValue("Duration.kt").contents.contains("public class Duration("))
+        val durationContents = filesByName.getValue("Duration.kt").contents
+        assertTrue(durationContents.contains("public class Duration("))
+        assertTrue(durationContents, durationContents.contains("NativeStructScalarKind.INT64"))
+        assertTrue(durationContents, durationContents.contains("WinRtSystemProjectionMarshalers.timeSpanFromAbi("))
+        assertTrue(durationContents, durationContents.contains("WinRtSystemProjectionMarshalers.copyTimeSpanTo(value.timeSpan"))
+        assertFalse(durationContents, durationContents.contains("kotlin.time.Duration.Metadata"))
         assertTrue(filesByName.getValue("GridLength.kt").contents.contains("public class GridLength("))
         assertTrue(filesByName.getValue("Thickness.kt").contents.contains("public class Thickness("))
         assertTrue(filesByName.getValue("GeneratorPosition.kt").contents.contains("public class GeneratorPosition("))
@@ -11488,6 +11512,127 @@ class KotlinProjectionGeneratorTest {
             message,
             message.contains("Generator requires runtime class object-reference cache for Sample.FastAbi.IGeneric<Sample.FastAbi.NativeHandle> to have a renderable type signature before interface cache rendering."),
         )
+    }
+
+    @Test
+    fun generator_renders_object_reference_cache_signature_for_iterator_of_key_value_pair() {
+        val iteratorInterfaceName =
+            "Windows.Foundation.Collections.IIterator<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IKeyValuePair",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555583"),
+                            genericParameterCount = 2,
+                            properties = listOf(
+                                WinRtPropertyDefinition("Key", "T0", getterMethodName = "get_Key", getterMethodRowId = 6),
+                                WinRtPropertyDefinition("Value", "T1", getterMethodName = "get_Value", getterMethodRowId = 7),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555584"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition("MoveNext", "Boolean", methodRowId = 8),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Current", "T0", getterMethodName = "get_Current", getterMethodRowId = 6),
+                                WinRtPropertyDefinition("HasCurrent", "Boolean", getterMethodName = "get_HasCurrent", getterMethodRowId = 7),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.FastAbi",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.FastAbi.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition(iteratorInterfaceName),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtTypeSignature.parameterizedInterface(IIterator.Metadata.IID"))
+        assertTrue(contents, contents.contains("WinRtCollectionInterfaceIds.keyValuePairSignature("))
+        assertTrue(contents, contents.contains("WinRtTypeSignature.string()"))
+    }
+
+    @Test
+    fun generator_renders_object_reference_cache_signature_for_async_operation() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IAsyncOperation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555587"),
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.FastAbi",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.FastAbi.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.IAsyncOperation<UInt>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtAsyncInterfaceIds.IAsyncOperationGeneric"))
+        assertTrue(contents, contents.contains("WinRtTypeSignature.uint32()"))
     }
 
     @Test
@@ -16244,13 +16389,61 @@ class KotlinProjectionGeneratorTest {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("9de1c535-6ae1-11e0-84e1-18a905bcc53f"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Object"),
+                                        WinRtParameterDefinition("args", "T0"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
                     name = "Microsoft.UI.Xaml.Data",
                     types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "DataErrorsChangedEventArgs",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Data.IDataErrorsChangedEventArgs",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.IDataErrorsChangedEventArgs", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "IDataErrorsChangedEventArgs",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("d026dd64-5f26-5f15-a86a-0dec8a431796"),
+                        ),
                         WinRtTypeDefinition(
                             namespace = "Microsoft.UI.Xaml.Data",
                             name = "INotifyDataErrorInfo",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("0ee6c2cc-273e-567d-bc0a-1dd87ee51eba"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "ErrorsChanged",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs>",
+                                    addMethodName = "add_ErrorsChanged",
+                                    removeMethodName = "remove_ErrorsChanged",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
                         ),
                     ),
                 ),
@@ -16289,7 +16482,7 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val files = KotlinProjectionGenerator()
+        val files = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val contents = files.getValue("ValidatedObject.kt").contents
@@ -16306,6 +16499,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(directContents, directContents.contains("WinRtDataErrorInfo,"))
         assertTrue(directContents, directContents.contains("override val hasErrors: Boolean"))
         assertFalse(directContents, directContents.contains("INotifyDataErrorInfo.Metadata.IID"))
+
+        val eventHelpers = files.getValue("WinRTEventProjectionHelpers.kt").contents
+        assertTrue(eventHelpers, eventHelpers.contains("Guid(\"D026DD64-5F26-5F15-A86A-0DEC8A431796\")"))
+        assertFalse(eventHelpers, eventHelpers.contains("WinRtDataErrorsChangedEventArgs.Metadata"))
     }
 
     @Test
@@ -18340,7 +18537,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_event_source_helper_without_projected_generic_metadata_wrap_before_projection_rendering() {
+    fun generator_renders_event_source_helper_with_key_value_pair_array_payload() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -18421,17 +18618,13 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
-        val message = error?.message.orEmpty()
+        val filesByName = KotlinProjectionGenerator().generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val eventHelpers = filesByName.values.joinToString("\n") { it.contents }
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            message,
-            message.contains(
-                "Generator requires interface Sample.Foundation.IWidget event Changed event-source helper for Sample.Foundation.IWidget::Sample.Foundation.WidgetChangedHandler to use supported event-source ABI metadata before projection rendering.",
-            ),
-        )
+        assertTrue(eventHelpers, eventHelpers.contains("Marshaler.referenceValueAdapter("))
+        assertTrue(eventHelpers, eventHelpers.contains("winRtKeyValuePairAdapter("))
+        assertTrue(eventHelpers, eventHelpers.contains("WinRtReferenceValueAdapters.string"))
     }
 
     @Test
@@ -19157,7 +19350,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_instance_method_with_unrenderable_abi_call_plan() {
+    fun generator_renders_instance_method_returning_key_value_pair_array() {
         val returnTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -19195,16 +19388,13 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
-        val message = error?.message.orEmpty()
+        val filesByName = KotlinProjectionGenerator().generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = filesByName.getValue("Widget.kt").contents + filesByName.getValue("IWidget.kt").contents
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            message,
-            message
-                .contains("Generator ABI marshaler parity does not yet support GETPAIR_SLOT for Array("),
-        )
+        assertTrue(widgetContents, widgetContents.contains("Marshaler.referenceValueAdapter("))
+        assertTrue(widgetContents, widgetContents.contains("winRtKeyValuePairAdapter("))
+        assertTrue(widgetContents, widgetContents.contains("WinRtReferenceValueAdapters.string"))
     }
 
     @Test
@@ -19531,7 +19721,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_static_method_with_unrenderable_abi_call_plan() {
+    fun generator_renders_static_method_returning_key_value_pair_array() {
         val returnTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -19579,20 +19769,15 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
-        val message = error?.message.orEmpty()
+        val filesByName = KotlinProjectionGenerator().generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val contents = filesByName.values.joinToString("\n") { it.contents }
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            message,
-            message
-                .contains("Generator ABI marshaler parity does not yet support STATIC_GETPAIR_SLOT for Array("),
-        )
+        assertTrue(contents, contents.contains("Pair"))
     }
 
     @Test
-    fun generator_rejects_static_property_getter_with_unrenderable_abi_call_plan() {
+    fun generator_renders_static_property_getter_returning_key_value_pair_array() {
         val propertyTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -19610,6 +19795,15 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidgetStatics",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "put_Pair",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", propertyTypeName)),
+                                    isSpecialName = true,
+                                    methodRowId = 7,
+                                ),
+                            ),
                             properties = listOf(
                                 WinRtPropertyDefinition(
                                     name = "Pair",
@@ -19642,20 +19836,17 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
-        val message = error?.message.orEmpty()
+        val filesByName = KotlinProjectionGenerator().generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val contents = filesByName.values.joinToString("\n") { it.contents }
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            message,
-            message
-                .contains("Generator ABI marshaler parity does not yet support STATIC_PAIR_GETTER_SLOT for Array("),
-        )
+        assertTrue(contents, contents.contains("Marshaler.referenceValueAdapter("))
+        assertTrue(contents, contents.contains("winRtKeyValuePairAdapter("))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.string"))
     }
 
     @Test
-    fun generator_rejects_static_property_setter_with_unrenderable_abi_call_plan() {
+    fun generator_renders_static_property_setter_accepting_key_value_pair_array() {
         val propertyTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -19673,10 +19864,27 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidgetStatics",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "get_Pair",
+                                    returnTypeName = propertyTypeName,
+                                    isSpecialName = true,
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "put_Pair",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", propertyTypeName)),
+                                    isSpecialName = true,
+                                    methodRowId = 7,
+                                ),
+                            ),
                             properties = listOf(
                                 WinRtPropertyDefinition(
                                     name = "Pair",
                                     typeName = propertyTypeName,
+                                    getterMethodName = "get_Pair",
+                                    getterMethodRowId = 6,
                                     setterMethodName = "put_Pair",
                                     setterMethodRowId = 7,
                                 ),
@@ -19695,6 +19903,8 @@ class KotlinProjectionGeneratorTest {
                                     name = "Pair",
                                     typeName = propertyTypeName,
                                     isStatic = true,
+                                    getterMethodName = "get_Pair",
+                                    getterMethodRowId = 6,
                                     setterMethodName = "put_Pair",
                                     setterMethodRowId = 7,
                                 ),
@@ -19705,16 +19915,13 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
-        val message = error?.message.orEmpty()
+        val filesByName = KotlinProjectionGenerator().generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val contents = filesByName.values.joinToString("\n") { it.contents }
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            message,
-            message
-                .contains("Generator ABI marshaler parity does not yet support STATIC_PAIR_SETTER_SLOT for Array("),
-        )
+        assertTrue(contents, contents.contains("Marshaler.referenceValueAdapter("))
+        assertTrue(contents, contents.contains("winRtKeyValuePairAdapter("))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.string"))
     }
 
     @Test

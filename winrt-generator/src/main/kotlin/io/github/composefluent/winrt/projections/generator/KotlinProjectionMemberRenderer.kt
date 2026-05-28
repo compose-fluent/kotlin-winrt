@@ -33,6 +33,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
@@ -415,10 +416,12 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
             )
             ?: renderBoundInvocation(binding)
     }
-    return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
+    val modifiers = objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding)
+    val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
+    return FunSpec.builder(functionName)
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
-        .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
+        .addModifiers(modifiers)
         .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .apply {
@@ -428,6 +431,67 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         }
         .addCode("%L\n", invocation)
         .build()
+}
+
+internal fun WinRtMethodDefinition.projectedRuntimeClassMethodName(
+    plan: KotlinTypeProjectionPlan,
+    modifiers: List<KModifier>,
+): String {
+    val functionName = projectedMethodName()
+    if (KModifier.OVERRIDE in modifiers ||
+        KModifier.PROTECTED !in modifiers ||
+        !functionName.startsWith("set") ||
+        functionName.length <= "set".length ||
+        parameters.size != 1 ||
+        !isWinRtVoidTypeName(returnTypeName)
+    ) {
+        return functionName
+    }
+    if (!plan.hasRuntimeClassPropertySetterJvmSignature(functionName)) {
+        return functionName
+    }
+    return "winrt${functionName.replaceFirstChar(Char::uppercase)}"
+}
+
+private fun KotlinTypeProjectionPlan.hasRuntimeClassPropertySetterJvmSignature(setterName: String): Boolean =
+    typesByQualifiedName.values
+        .filter { candidate ->
+            candidate.kind == WinRtTypeKind.RuntimeClass &&
+                (candidate.qualifiedName == type.qualifiedName ||
+                    candidate.hasRuntimeClassBase(type.qualifiedName, typesByQualifiedName))
+        }
+        .flatMap { it.properties }
+        .any { property -> property.setterJvmName() == setterName }
+
+private fun WinRtTypeDefinition.hasRuntimeClassBase(
+    baseQualifiedName: String,
+    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+): Boolean {
+    var currentBaseName = baseTypeName
+    while (currentBaseName != null && !isWinRtObjectTypeName(currentBaseName)) {
+        if (currentBaseName == baseQualifiedName) {
+            return true
+        }
+        val currentBase = typesByQualifiedName[currentBaseName]
+            ?: typesByQualifiedName.values.firstOrNull { it.name == currentBaseName || it.qualifiedName == currentBaseName }
+            ?: return false
+        currentBaseName = currentBase.baseTypeName
+    }
+    return false
+}
+
+private fun WinRtPropertyDefinition.setterJvmName(): String {
+    val projectedName = name.replaceFirstChar(Char::lowercase)
+    val setterStem = if (
+        projectedName.startsWith("is") &&
+        projectedName.length > 2 &&
+        projectedName[2].isUpperCase()
+    ) {
+        projectedName.drop(2)
+    } else {
+        projectedName.replaceFirstChar(Char::uppercase)
+    }
+    return "set$setterStem"
 }
 
 internal enum class RuntimeObjectMethodKind {
@@ -872,15 +936,15 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
     } ?: return null
     if (shape == "Object" && binding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
         val interfaceId = binding.interfaceId ?: return null
-        val marshalerName = "__${parameter.name}ProjectionMarshaler"
+        val marshalerName = generatedLocalIdentifier("__", parameter.name, "ProjectionMarshaler")
         return DescriptorIntrinsicArgument(
             shape = "RawAddress",
             expressions = listOf(CodeBlock.of("%L.abi", marshalerName)),
             scopeOpeners = listOf(
                 CodeBlock.of(
-                    "%M(%L, %S, %T(%S)).use { %L ->",
+                    "%M(%N, %S, %T(%S)).use { %L ->",
                     WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
-                    parameter.name,
+                    kotlinPoetNameLiteral(parameter.name),
                     binding.resolvedTypeName,
                     GUID_CLASS_NAME,
                     interfaceId.toString(),
@@ -1488,6 +1552,9 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
         }
         val ownerInterface = implemented.interfaceName
         collectRequiredForwardInterfaceTypes(ownerInterface, plan, mutableSetOf()).forEach { requiredInterface ->
+            if (isRuntimeOwnedMappedTypeName(requiredInterface.interfaceName)) {
+                return@forEach
+            }
             val interfaceType = requiredInterface.type
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
