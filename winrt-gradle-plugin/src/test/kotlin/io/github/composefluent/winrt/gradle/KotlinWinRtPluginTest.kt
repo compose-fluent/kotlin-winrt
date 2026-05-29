@@ -5093,6 +5093,33 @@ class KotlinWinRtPluginTest {
                 }
             }
 
+            val writeAuthoredCandidateProbe = tasks.register("writeAuthoredCandidateProbe") {
+                dependsOn("generateWinRtProjections")
+                val outputFile = layout.projectDirectory.file(
+                    "src/commonMain/kotlin/sample/InternalStringableThing.kt",
+                )
+                outputs.file(outputFile)
+                doLast {
+                    outputFile.asFile.apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            ${"\"\"\""}
+                            package sample
+
+                            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                            @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                            internal class InternalStringableThing
+                            ${"\"\"\""}.trimIndent()
+                        )
+                    }
+                }
+            }
+
+            tasks.named("compileKotlinWinuiJvm") {
+                dependsOn(writeAuthoredCandidateProbe)
+            }
+
             tasks.register("verifyWinuiJvmCompilerSupportOutput") {
                 dependsOn("compileKotlinWinuiJvm")
                 doLast {
@@ -5116,8 +5143,24 @@ class KotlinWinRtPluginTest {
                     check(authoredCandidates.isFile) {
                         "Expected compiler-authored candidates output: " + authoredCandidates
                     }
+                    val authoredCandidateRows = authoredCandidates.readLines()
+                    check(
+                        authoredCandidateRows.contains(
+                            "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t\tfalse",
+                        ),
+                    ) {
+                        "Expected internal authored candidate with non-public visibility in: " + authoredCandidateRows
+                    }
                 }
             }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/commonMain/kotlin/sample/PlainSource.kt"),
+            """
+            package sample
+
+            internal object PlainSource
             """.trimIndent(),
         )
 

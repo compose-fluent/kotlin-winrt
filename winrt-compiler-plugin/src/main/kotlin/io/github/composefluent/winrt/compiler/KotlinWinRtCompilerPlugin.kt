@@ -240,7 +240,8 @@ class KotlinWinRtIrGenerationExtension(
             .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
             .toList()
         val authoredTypeNames = classContexts
-            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes)?.sourceTypeName }
+            .filter(::isEffectivelyAuthorable)
+            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes, isEffectivelyPublic(context))?.sourceTypeName }
             .toSet()
         lowerAuthoredTypeConstructors(moduleFragment, pluginContext, authoredTypeNames)
         lowerAuthoredTypeConstructorCalls(moduleFragment, pluginContext, authoredTypeNames)
@@ -248,10 +249,10 @@ class KotlinWinRtIrGenerationExtension(
         writeAuthoredCandidates(classContexts, winRtTypes)
         classContexts.forEach { context ->
             val klass = context.klass
-            if (klass.visibility != DescriptorVisibilities.PUBLIC || !context.containingTypesPublic) {
+            if (!isEffectivelyAuthorable(context)) {
                 return@forEach
             }
-            val authoredType = authoredTypeFor(klass, winRtTypes) ?: return@forEach
+            val authoredType = authoredTypeFor(klass, winRtTypes, isEffectivelyPublic(context)) ?: return@forEach
             validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
                 messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
             }
@@ -3035,8 +3036,8 @@ class KotlinWinRtIrGenerationExtension(
         val outputPath = authoredCandidatesOutputPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         val candidates = classContexts
             .asSequence()
-            .filter { context -> context.klass.visibility == DescriptorVisibilities.PUBLIC && context.containingTypesPublic }
-            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes) }
+            .filter(::isEffectivelyAuthorable)
+            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes, isEffectivelyPublic(context)) }
             .distinctBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .sortedBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .toList()
@@ -3046,6 +3047,7 @@ class KotlinWinRtIrGenerationExtension(
     private fun authoredTypeFor(
         klass: IrClass,
         winRtTypes: Map<String, IndexedWinRtType>,
+        isPublic: Boolean = true,
     ): KotlinWinRtAuthoredTypeCandidate? {
         val sourceTypeName = klass.fqNameWhenAvailable?.asString() ?: return null
         if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
@@ -3078,7 +3080,7 @@ class KotlinWinRtIrGenerationExtension(
             winRtBaseClassName = winRtBase?.qualifiedName,
             winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
             overridableInterfaceNames = overridableInterfaces,
-            isPublic = true,
+            isPublic = isPublic,
         )
     }
 
@@ -3164,12 +3166,16 @@ class KotlinWinRtIrGenerationExtension(
     private fun classContextsIn(
         declaration: IrDeclaration,
         containingTypesPublic: Boolean = true,
+        containingTypesAuthorable: Boolean = true,
     ): List<AuthoredIrClassContext> =
         when (declaration) {
             is IrClass -> {
                 val nestedContainingTypesPublic = containingTypesPublic && declaration.visibility == DescriptorVisibilities.PUBLIC
-                listOf(AuthoredIrClassContext(declaration, containingTypesPublic)) +
-                    declaration.declarations.flatMap { child -> classContextsIn(child, nestedContainingTypesPublic) }
+                val nestedContainingTypesAuthorable = containingTypesAuthorable && isAuthorableVisibility(declaration.visibility)
+                listOf(AuthoredIrClassContext(declaration, containingTypesPublic, containingTypesAuthorable)) +
+                    declaration.declarations.flatMap { child ->
+                        classContextsIn(child, nestedContainingTypesPublic, nestedContainingTypesAuthorable)
+                    }
             }
             else -> emptyList()
         }
@@ -3177,7 +3183,17 @@ class KotlinWinRtIrGenerationExtension(
     private data class AuthoredIrClassContext(
         val klass: IrClass,
         val containingTypesPublic: Boolean,
+        val containingTypesAuthorable: Boolean,
     )
+
+    private fun isEffectivelyPublic(context: AuthoredIrClassContext): Boolean =
+        context.containingTypesPublic && context.klass.visibility == DescriptorVisibilities.PUBLIC
+
+    private fun isEffectivelyAuthorable(context: AuthoredIrClassContext): Boolean =
+        context.containingTypesAuthorable && isAuthorableVisibility(context.klass.visibility)
+
+    private fun isAuthorableVisibility(visibility: org.jetbrains.kotlin.descriptors.DescriptorVisibility): Boolean =
+        visibility == DescriptorVisibilities.PUBLIC || visibility == DescriptorVisibilities.INTERNAL
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun addProjectionSupportInitializerFunction(
