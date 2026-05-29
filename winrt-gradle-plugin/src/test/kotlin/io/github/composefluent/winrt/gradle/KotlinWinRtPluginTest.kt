@@ -5507,6 +5507,22 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_public_authored_runtime_classes_without_default_constructor() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/StringableThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class StringableThing(private val value: String)
+            """.trimIndent(),
+            expectedDiagnostic = "must declare an accessible zero-argument constructor for default activation",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_unsealed_authored_runtime_classes() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/OpenStringableThing.kt",

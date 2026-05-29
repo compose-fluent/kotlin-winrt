@@ -3158,6 +3158,11 @@ class KotlinWinRtIrGenerationExtension(
         if (klass.kind != ClassKind.CLASS) {
             report("WinRT authored type ${authoredType.sourceTypeName} must be a concrete Kotlin class.")
         }
+        if (authoredType.isPublic && !klass.hasPublicDefaultActivationConstructor()) {
+            report(
+                "Public WinRT authored type ${authoredType.sourceTypeName} must declare an accessible zero-argument constructor for default activation.",
+            )
+        }
         if (klass.isInner) {
             report("WinRT authored type ${authoredType.sourceTypeName} must not be an inner class.")
         }
@@ -3207,6 +3212,15 @@ class KotlinWinRtIrGenerationExtension(
 
     private fun isAuthorableVisibility(visibility: org.jetbrains.kotlin.descriptors.DescriptorVisibility): Boolean =
         visibility == DescriptorVisibilities.PUBLIC || visibility == DescriptorVisibilities.INTERNAL
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrClass.hasPublicDefaultActivationConstructor(): Boolean =
+        declarations
+            .filterIsInstance<IrConstructor>()
+            .any { constructor ->
+                constructor.visibility == DescriptorVisibilities.PUBLIC &&
+                    constructor.parameters.none { parameter -> parameter.kind == IrParameterKind.Regular }
+            }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun addProjectionSupportInitializerFunction(
