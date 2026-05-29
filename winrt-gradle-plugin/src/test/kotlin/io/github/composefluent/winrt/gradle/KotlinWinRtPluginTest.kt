@@ -5491,6 +5491,22 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_non_class_authored_runtime_classes() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/StringableContract.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                interface StringableContract
+            """.trimIndent(),
+            expectedDiagnostic = "must be a concrete Kotlin class",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_unsealed_authored_runtime_classes() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/OpenStringableThing.kt",

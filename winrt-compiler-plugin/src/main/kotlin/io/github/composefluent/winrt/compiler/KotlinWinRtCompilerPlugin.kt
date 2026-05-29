@@ -3155,6 +3155,9 @@ class KotlinWinRtIrGenerationExtension(
         if (!afterK2) {
             report("kotlin-winrt authoring requires K2 semantic analysis for ${authoredType.sourceTypeName}.")
         }
+        if (klass.kind != ClassKind.CLASS) {
+            report("WinRT authored type ${authoredType.sourceTypeName} must be a concrete Kotlin class.")
+        }
         if (klass.isInner) {
             report("WinRT authored type ${authoredType.sourceTypeName} must not be an inner class.")
         }
