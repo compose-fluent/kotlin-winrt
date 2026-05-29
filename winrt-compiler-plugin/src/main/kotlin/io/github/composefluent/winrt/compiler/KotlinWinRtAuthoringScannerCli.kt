@@ -101,6 +101,9 @@ object KotlinWinRtAuthoringScannerCli {
             require(source.isRuntimeClassDeclaration(klass)) {
                 "WinRT authored type $sourceTypeName must be a concrete Kotlin class."
             }
+            require(!source.isEffectivelyPublicClass(klass) || source.hasPublicDefaultActivationConstructor(klass)) {
+                "Public WinRT authored type $sourceTypeName must declare an accessible zero-argument constructor for default activation."
+            }
             require(!source.hasTypeParameters(klass)) {
                 "WinRT authored type $sourceTypeName must not be generic."
             }
@@ -289,9 +292,30 @@ object KotlinWinRtAuthoringScannerCli {
         fun isRuntimeClassDeclaration(classNode: LighterASTNode): Boolean =
             classDeclarationKeyword(classNode) == KtTokens.CLASS_KEYWORD
 
+        fun hasPublicDefaultActivationConstructor(classNode: LighterASTNode): Boolean {
+            val constructors = classNode.descendantsOfType(KtNodeTypes.PRIMARY_CONSTRUCTOR) +
+                classNode.descendantsOfType(KtNodeTypes.SECONDARY_CONSTRUCTOR)
+            if (constructors.isEmpty()) {
+                return true
+            }
+            return constructors.any { constructor ->
+                isPublicConstructor(constructor) && !constructor.hasValueParameters()
+            }
+        }
+
         fun isUnsealedAuthoredClass(classNode: LighterASTNode): Boolean =
             classDeclarationKeyword(classNode) == KtTokens.CLASS_KEYWORD &&
                 hasModifier(classNode, KtTokens.OPEN_KEYWORD, KtTokens.ABSTRACT_KEYWORD, KtTokens.SEALED_KEYWORD)
+
+        private fun isPublicConstructor(constructorNode: LighterASTNode): Boolean =
+            !hasModifier(constructorNode, KtTokens.PRIVATE_KEYWORD, KtTokens.INTERNAL_KEYWORD, KtTokens.PROTECTED_KEYWORD)
+
+        private fun LighterASTNode.hasValueParameters(): Boolean =
+            children()
+                .firstOrNull { child -> child.tokenType == KtNodeTypes.VALUE_PARAMETER_LIST }
+                ?.children()
+                .orEmpty()
+                .any { child -> child.tokenType == KtNodeTypes.VALUE_PARAMETER }
 
         fun className(classNode: LighterASTNode): String? {
             var seenDeclarationKeyword = false
