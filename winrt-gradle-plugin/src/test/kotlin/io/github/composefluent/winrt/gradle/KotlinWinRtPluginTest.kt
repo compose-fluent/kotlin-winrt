@@ -5599,6 +5599,105 @@ class KotlinWinRtPluginTest {
         )
     }
 
+    @Test
+    fun compiler_plugin_warns_on_authored_runtime_class_casts() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-runtime-class-cast-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-runtime-class-cast-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+
+            val writeRuntimeClassCastProbe = tasks.register("writeRuntimeClassCastProbe") {
+                dependsOn("generateWinRtProjections")
+                val outputFile = layout.projectDirectory.file("src/commonMain/kotlin/sample/StringableThing.kt")
+                outputs.file(outputFile)
+                doLast {
+                    outputFile.asFile.apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            ${"\"\"\""}
+                            package sample
+
+                            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                            @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                            class StringableThing
+
+                            fun castStringableThing(value: Any): StringableThing = value as StringableThing
+                            ${"\"\"\""}.trimIndent()
+                        )
+                    }
+                }
+            }
+
+            tasks.named("compileKotlinWinuiJvm") {
+                dependsOn(writeRuntimeClassCastProbe)
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("compileKotlinWinuiJvm", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinWinuiJvm")?.outcome)
+        assertTrue(result.output.contains("WinRT runtime class cast to sample.StringableThing is not projection-safe"))
+    }
+
     private fun assertCompilerPluginRejectsGeneratedAuthoredSource(
         sourceFile: String,
         sourceText: String,

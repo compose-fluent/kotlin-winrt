@@ -41,6 +41,8 @@ import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.expressions.IrTypeOperator
+import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.impl.IrVarargImpl
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
@@ -316,6 +318,7 @@ class KotlinWinRtIrGenerationExtension(
         val authoredCandidates = authoredCandidates(classContexts, winRtTypes)
         writeAuthoredCandidates(authoredCandidates)
         writeAuthoredSupportArtifacts(authoredCandidates)
+        reportRuntimeClassCastDiagnostics(moduleFragment, pluginContext, winRtTypes, authoredCandidates, generatedSourceRoot)
         classContexts.forEach { context ->
             val klass = context.klass
             if (!isEffectivelyAuthorable(context)) {
@@ -327,6 +330,57 @@ class KotlinWinRtIrGenerationExtension(
             }
         }
     }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun reportRuntimeClassCastDiagnostics(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        winRtTypes: Map<String, IndexedWinRtType>,
+        authoredCandidates: List<KotlinWinRtAuthoredTypeCandidate>,
+        generatedSourceRoot: String?,
+    ) {
+        val runtimeClassNames = winRtTypes.values
+            .asSequence()
+            .filter { type -> type.kind == "RuntimeClass" }
+            .mapTo(mutableSetOf(), IndexedWinRtType::qualifiedName)
+        authoredCandidates.mapTo(runtimeClassNames, KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
+        if (runtimeClassNames.isEmpty()) {
+            return
+        }
+        val castOperators = setOf(IrTypeOperator.CAST, IrTypeOperator.SAFE_CAST, IrTypeOperator.INSTANCEOF)
+        moduleFragment.files
+            .asSequence()
+            .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .forEach { file ->
+                file.transformChildrenVoid(
+                    object : IrElementTransformerVoidWithContext() {
+                        override fun visitTypeOperator(expression: IrTypeOperatorCall): IrExpression {
+                            val call = super.visitTypeOperator(expression) as IrTypeOperatorCall
+                            if (call.operator !in castOperators) {
+                                return call
+                            }
+                            val targetName = call.typeOperand.classFqName?.asString() ?: return call
+                            val runtimeClassName = runtimeClassCastTarget(targetName, runtimeClassNames) ?: return call
+                            pluginContext.messageCollector.report(
+                                CompilerMessageSeverity.WARNING,
+                                "WinRT runtime class cast to $runtimeClassName is not projection-safe; use WinRT projection cast helpers instead.",
+                                null,
+                            )
+                            return call
+                        }
+                    },
+                )
+            }
+    }
+
+    private fun runtimeClassCastTarget(
+        targetName: String,
+        runtimeClassNames: Set<String>,
+    ): String? =
+        when {
+            targetName in runtimeClassNames -> targetName
+            else -> projectionPackageToMetadataName(targetName).takeIf { metadataName -> metadataName in runtimeClassNames }
+        }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     @Suppress("DEPRECATION", "DEPRECATION_ERROR")
