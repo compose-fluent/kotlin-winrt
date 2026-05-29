@@ -3105,6 +3105,10 @@ class KotlinWinRtIrGenerationExtension(
             ?.let { typeName ->
                 requireNotNull(winRtTypes[typeName]) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $baseClassName."
+                }.also { type ->
+                    require(type.kind == "RuntimeClass") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation baseClassName must reference a WinRT runtime class: $baseClassName."
+                    }
                 }
             }
         val resolvedInterfaces = interfaceNames
@@ -3112,6 +3116,10 @@ class KotlinWinRtIrGenerationExtension(
                 val metadataName = projectionPackageToMetadataName(typeName)
                 requireNotNull(winRtTypes[metadataName]) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }.also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation interfaceNames must reference WinRT interfaces: $typeName."
+                    }
                 }
             }
         val resolvedOverridableInterfaces = overridableInterfaceNames
@@ -3119,9 +3127,12 @@ class KotlinWinRtIrGenerationExtension(
                 val metadataName = projectionPackageToMetadataName(typeName)
                 requireNotNull(winRtTypes[metadataName]) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }.also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation overridableInterfaceNames must reference WinRT interfaces: $typeName."
+                    }
                 }
             }
-            .filter { type -> type.kind == "Interface" }
             .map(IndexedWinRtType::qualifiedName)
         return ResolvedAuthoredRuntimeClassAnnotation(
             resolvedTypes = listOfNotNull(resolvedBase) + resolvedInterfaces,

@@ -87,12 +87,29 @@ object KotlinWinRtAuthoringScannerCli {
             val inheritedWinRtTypes = source.superTypeNames(klass)
                 .mapNotNull { superType -> resolveIndexedWinRtType(superType, packageName, imports, winRtTypes) }
             val annotatedBase = annotation.baseClassName
-                ?.let { typeName -> resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName) }
+                ?.let { typeName ->
+                    resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                        require(type.kind == "RuntimeClass") {
+                            "WinRT authored type $sourceTypeName annotation baseClassName must reference a WinRT runtime class: $typeName."
+                        }
+                    }
+                }
             val annotatedInterfaces = annotation.interfaceNames
-                .map { typeName -> resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName) }
+                .map { typeName ->
+                    resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                        require(type.kind == "Interface") {
+                            "WinRT authored type $sourceTypeName annotation interfaceNames must reference WinRT interfaces: $typeName."
+                        }
+                    }
+                }
             val annotatedOverridableInterfaces = annotation.overridableInterfaceNames
-                .map { typeName -> resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName) }
-                .filter { type -> type.kind == "Interface" }
+                .map { typeName ->
+                    resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                        require(type.kind == "Interface") {
+                            "WinRT authored type $sourceTypeName annotation overridableInterfaceNames must reference WinRT interfaces: $typeName."
+                        }
+                    }
+                }
                 .map(IndexedWinRtType::qualifiedName)
             val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
             if (resolvedWinRtTypes.isEmpty()) {
