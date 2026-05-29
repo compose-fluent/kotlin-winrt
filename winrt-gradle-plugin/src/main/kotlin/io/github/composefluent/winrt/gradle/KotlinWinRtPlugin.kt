@@ -836,18 +836,16 @@ private fun registerWinRtAuthoredCandidateValidation(
         Action<ValidateWinRtAuthoredCandidatesTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Validates source-scanned authored candidates against compiler IR authored candidates."
-            task.scannerCandidates.set(
+            task.scannerCandidates.from(
                 generatedSources.map { directory ->
                     directory.file("kotlin-winrt-authoring/authored-candidates.tsv")
                 },
             )
-            task.compilerCandidates.set(
+            task.compilerCandidates.from(
                 compileTask.destinationDirectory.map { directory ->
                     directory.file("kotlin-winrt/authored-candidates.tsv")
                 },
             )
-            task.candidateFiles.from(task.scannerCandidates)
-            task.candidateFiles.from(task.compilerCandidates)
             task.outputFile.set(
                 project.layout.buildDirectory.file("kotlin-winrt/validation/${compileTask.name}/authored-candidates.txt"),
             )

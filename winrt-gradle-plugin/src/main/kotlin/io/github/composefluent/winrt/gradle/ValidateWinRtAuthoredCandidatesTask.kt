@@ -8,7 +8,6 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -18,16 +17,15 @@ import java.io.File
 
 @CacheableTask
 abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
-    @get:Internal
-    abstract val scannerCandidates: RegularFileProperty
-
-    @get:Internal
-    abstract val compilerCandidates: RegularFileProperty
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val scannerCandidates: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val candidateFiles: ConfigurableFileCollection
+    abstract val compilerCandidates: ConfigurableFileCollection
 
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
@@ -35,8 +33,8 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
     @TaskAction
     fun validate() {
         validateAuthoredCandidateHandoff(
-            scannerCandidates = scannerCandidates.orNull?.asFile,
-            compilerCandidates = compilerCandidates.orNull?.asFile,
+            scannerCandidates = scannerCandidates.singleCandidateFileOrNull(),
+            compilerCandidates = compilerCandidates.singleCandidateFileOrNull(),
         )
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
@@ -44,6 +42,9 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
         }
     }
 }
+
+private fun ConfigurableFileCollection.singleCandidateFileOrNull(): File? =
+    files.singleOrNull()?.takeIf(File::isFile)
 
 internal fun validateAuthoredCandidateHandoff(
     scannerCandidates: File?,
