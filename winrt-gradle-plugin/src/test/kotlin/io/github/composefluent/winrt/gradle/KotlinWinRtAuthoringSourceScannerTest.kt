@@ -436,6 +436,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
         val generated = output.resolve("sample/WinRT_LocalContentControl_TypeDetails.kt").readText()
         assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[1] as RawAddress)"))
+        assertTrue(
+            generated,
+            Regex("""ComMethodSignature\.of\(\s*ComAbiValueKind\.Pointer,\s*ComAbiValueKind\.Pointer\s*\)""").containsMatchIn(generated),
+        )
+        assertTrue(generated, !generated.contains("ComMethodSignature.of(ComAbiValueKind.Pointer, , ComAbiValueKind.Pointer)"))
         assertTrue(generated.contains("(value as ContentControl).__winrtAuthoringInvokeOnContentChanged(__arg0, __arg1)"))
         assertTrue(generated, !generated.contains("ContentControl::class.java"))
         assertTrue(generated, !generated.contains("Any::class.java, Any::class.java"))
