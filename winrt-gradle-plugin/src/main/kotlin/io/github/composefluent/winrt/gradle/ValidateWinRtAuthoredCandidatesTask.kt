@@ -27,6 +27,36 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val compilerCandidates: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val scannerAuthoredMetadata: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilerAuthoredMetadata: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val scannerAuthoredWinmd: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilerAuthoredWinmd: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val scannerAuthoredHostManifest: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilerAuthoredHostManifest: ConfigurableFileCollection
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -35,6 +65,21 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
         validateAuthoredCandidateHandoff(
             scannerCandidates = scannerCandidates.singleCandidateFileOrNull(),
             compilerCandidates = compilerCandidates.singleCandidateFileOrNull(),
+        )
+        validateAuthoredArtifactHandoff(
+            description = "authored metadata descriptor",
+            scannerArtifact = scannerAuthoredMetadata.singleCandidateFileOrNull(),
+            compilerArtifact = compilerAuthoredMetadata.singleCandidateFileOrNull(),
+        )
+        validateAuthoredArtifactHandoff(
+            description = "authored WinMD",
+            scannerArtifact = scannerAuthoredWinmd.singleCandidateFileOrNull(),
+            compilerArtifact = compilerAuthoredWinmd.singleCandidateFileOrNull(),
+        )
+        validateAuthoredArtifactHandoff(
+            description = "authored host manifest",
+            scannerArtifact = scannerAuthoredHostManifest.singleCandidateFileOrNull(),
+            compilerArtifact = compilerAuthoredHostManifest.singleCandidateFileOrNull(),
         )
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
@@ -68,6 +113,27 @@ internal fun validateAuthoredCandidateHandoff(
             "Only compiler candidates: ${(compilerTypes - scannerTypes).sorted().joinToString().ifBlank { "<none>" }}. " +
             "Changed candidates: ${changedTypes.joinToString().ifBlank { "<none>" }}. " +
             "Regenerate authored metadata from sources visible before generateWinRtProjections or fix scanner/IR parity.",
+    )
+}
+
+internal fun validateAuthoredArtifactHandoff(
+    description: String,
+    scannerArtifact: File?,
+    compilerArtifact: File?,
+) {
+    val scannerBytes = scannerArtifact?.takeIf(File::isFile)?.readBytes()
+    val compilerBytes = compilerArtifact?.takeIf(File::isFile)?.readBytes()
+    if (scannerBytes == null && compilerBytes == null) {
+        return
+    }
+    if (scannerBytes != null && compilerBytes != null && scannerBytes.contentEquals(compilerBytes)) {
+        return
+    }
+    throw GradleException(
+        "kotlin-winrt $description handoff mismatch between source scanner and compiler IR output. " +
+            "Scanner artifact: ${scannerArtifact?.absolutePath ?: "<missing>"}. " +
+            "Compiler artifact: ${compilerArtifact?.absolutePath ?: "<missing>"}. " +
+            "Regenerate authored support artifacts from compiler-visible symbols or fix scanner/IR parity.",
     )
 }
 

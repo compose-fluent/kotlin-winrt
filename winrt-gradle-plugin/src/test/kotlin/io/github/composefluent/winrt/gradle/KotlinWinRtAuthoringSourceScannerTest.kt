@@ -185,6 +185,42 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun validates_matching_scanner_and_compiler_authored_support_artifacts() {
+        val scanner = Files.createTempFile("kotlin-winrt-scanner-authored-metadata-", ".tsv")
+        val compiler = Files.createTempFile("kotlin-winrt-compiler-authored-metadata-", ".tsv")
+        scanner.writeText("sample.App\tABI.sample.App\n")
+        compiler.writeText("sample.App\tABI.sample.App\n")
+
+        validateAuthoredArtifactHandoff(
+            description = "authored metadata descriptor",
+            scannerArtifact = scanner.toFile(),
+            compilerArtifact = compiler.toFile(),
+        )
+    }
+
+    @Test
+    fun rejects_mismatched_scanner_and_compiler_authored_support_artifacts() {
+        val scanner = Files.createTempFile("kotlin-winrt-scanner-authored-host-", ".json")
+        val compiler = Files.createTempFile("kotlin-winrt-compiler-authored-host-", ".json")
+        scanner.writeText("""{"activatableClasses":["sample.App"]}""")
+        compiler.writeText("""{"activatableClasses":[]}""")
+
+        val error = runCatching {
+            validateAuthoredArtifactHandoff(
+                description = "authored host manifest",
+                scannerArtifact = scanner.toFile(),
+                compilerArtifact = compiler.toFile(),
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is GradleException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("authored host manifest handoff mismatch"),
+        )
+    }
+
+    @Test
     fun merges_scanned_authored_runtime_classes_into_projection_metadata_model() {
         val augmented = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             model = model(),

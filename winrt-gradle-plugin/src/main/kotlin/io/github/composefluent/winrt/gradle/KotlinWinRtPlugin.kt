@@ -854,6 +854,36 @@ private fun registerWinRtAuthoredCandidateValidation(
                     directory.file("kotlin-winrt/authored-candidates.tsv")
                 },
             )
+            task.scannerAuthoredMetadata.from(
+                generatedSources.map { directory ->
+                    directory.file("kotlin-winrt-authoring/authored-metadata.tsv")
+                },
+            )
+            task.compilerAuthoredMetadata.from(
+                compileTask.destinationDirectory.map { directory ->
+                    directory.file("kotlin-winrt-authoring/authored-metadata.tsv")
+                },
+            )
+            task.scannerAuthoredWinmd.from(
+                generatedSources.map { directory ->
+                    directory.file("kotlin-winrt-authoring/${project.name}.winmd")
+                },
+            )
+            task.compilerAuthoredWinmd.from(
+                compileTask.destinationDirectory.map { directory ->
+                    directory.file("kotlin-winrt-authoring/${project.name}.winmd")
+                },
+            )
+            task.scannerAuthoredHostManifest.from(
+                generatedSources.map { directory ->
+                    directory.file("kotlin-winrt-authoring/${project.name}.host.json")
+                },
+            )
+            task.compilerAuthoredHostManifest.from(
+                compileTask.destinationDirectory.map { directory ->
+                    directory.file("kotlin-winrt-authoring/${project.name}.host.json")
+                },
+            )
             task.outputFile.set(
                 project.layout.buildDirectory.file("kotlin-winrt/validation/${compileTask.name}/authored-candidates.txt"),
             )
