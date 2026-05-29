@@ -5111,6 +5111,9 @@ class KotlinWinRtPluginTest {
 
                             @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
                             internal class InternalStringableThing
+
+                            @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                            class PublicStringableThing
                             ${"\"\"\""}.trimIndent()
                         )
                     }
@@ -5152,6 +5155,43 @@ class KotlinWinRtPluginTest {
                     ) {
                         "Expected internal authored candidate with non-public visibility in: " + authoredCandidateRows
                     }
+                    check(
+                        authoredCandidateRows.contains(
+                            "sample\tPublicStringableThing\tsample.PublicStringableThing\t\tWindows.Foundation.IStringable\t\ttrue",
+                        ),
+                    ) {
+                        "Expected public authored candidate with public visibility in: " + authoredCandidateRows
+                    }
+                    val authoredOutputRoot = layout.buildDirectory.dir(
+                        "classes/kotlin/winuiJvm/main/kotlin-winrt-authoring",
+                    ).get().asFile
+                    val authoredMetadata = authoredOutputRoot.resolve("authored-metadata.tsv")
+                    check(authoredMetadata.isFile) {
+                        "Expected compiler-authored metadata descriptor output: " + authoredMetadata
+                    }
+                    check(authoredMetadata.readText().contains("sample.PublicStringableThing")) {
+                        "Expected public compiler-authored metadata descriptor row in: " + authoredMetadata.readText()
+                    }
+                    check(!authoredMetadata.readText().contains("sample.InternalStringableThing")) {
+                        "Internal authored types must not be exported in compiler-authored metadata descriptor: " +
+                            authoredMetadata.readText()
+                    }
+                    val authoredWinmd = authoredOutputRoot.resolve("kotlin-winrt-kmp-plugin-test.winmd")
+                    check(authoredWinmd.isFile) {
+                        "Expected compiler-authored WinMD output: " + authoredWinmd
+                    }
+                    val authoredHostManifest = authoredOutputRoot.resolve("kotlin-winrt-kmp-plugin-test.host.json")
+                    check(authoredHostManifest.isFile) {
+                        "Expected compiler-authored host manifest output: " + authoredHostManifest
+                    }
+                    val authoredHostManifestText = authoredHostManifest.readText()
+                    check(authoredHostManifestText.contains("sample.PublicStringableThing")) {
+                        "Expected public compiler-authored host manifest entry in: " + authoredHostManifestText
+                    }
+                    check(!authoredHostManifestText.contains("sample.InternalStringableThing")) {
+                        "Internal authored types must not be exported in compiler-authored host manifest: " +
+                            authoredHostManifestText
+                    }
                 }
             }
             """.trimIndent(),
@@ -5176,6 +5216,11 @@ class KotlinWinRtPluginTest {
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:metadataIndex="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredCandidatesOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredMetadataOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredHostManifestOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringAssemblyName=kotlin-winrt-kmp-plugin-test"))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=kotlin-winrt-kmp-plugin-test.jar"))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
         assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/main/kotlin"))

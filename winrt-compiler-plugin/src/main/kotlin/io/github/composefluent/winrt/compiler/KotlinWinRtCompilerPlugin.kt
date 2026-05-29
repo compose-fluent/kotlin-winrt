@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.compiler
 import io.github.composefluent.winrt.authoring.IndexedWinRtType
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
 import io.github.composefluent.winrt.authoring.KotlinWinRtProjectionTypeIndexRecord
 import io.github.composefluent.winrt.authoring.PROJECTION_PACKAGE_PREFIX
 import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
@@ -112,6 +113,36 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             required = false,
         ),
         CliOption(
+            optionName = "authoredMetadataOutput",
+            valueDescription = "<path>",
+            description = "Path to the compiler-generated kotlin-winrt authored metadata descriptor.",
+            required = false,
+        ),
+        CliOption(
+            optionName = "authoredWinmdOutput",
+            valueDescription = "<path>",
+            description = "Path to the compiler-generated kotlin-winrt authored WinMD file.",
+            required = false,
+        ),
+        CliOption(
+            optionName = "authoredHostManifestOutput",
+            valueDescription = "<path>",
+            description = "Path to the compiler-generated kotlin-winrt authored host manifest.",
+            required = false,
+        ),
+        CliOption(
+            optionName = "authoringAssemblyName",
+            valueDescription = "<name>",
+            description = "Assembly name used for compiler-generated kotlin-winrt authored metadata assets.",
+            required = false,
+        ),
+        CliOption(
+            optionName = "authoringTargetArtifactName",
+            valueDescription = "<file>",
+            description = "Target artifact file name used for compiler-generated kotlin-winrt authored host manifests.",
+            required = false,
+        ),
+        CliOption(
             optionName = "compilerSupportManifest",
             valueDescription = "<path>",
             description = "Path to the generator-emitted kotlin-winrt compiler support manifest.",
@@ -136,6 +167,16 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             configuration.put(TYPE_INDEX_OUTPUT_KEY, value)
         } else if (option.optionName == "authoredCandidatesOutput") {
             configuration.put(AUTHORED_CANDIDATES_OUTPUT_KEY, value)
+        } else if (option.optionName == "authoredMetadataOutput") {
+            configuration.put(AUTHORED_METADATA_OUTPUT_KEY, value)
+        } else if (option.optionName == "authoredWinmdOutput") {
+            configuration.put(AUTHORED_WINMD_OUTPUT_KEY, value)
+        } else if (option.optionName == "authoredHostManifestOutput") {
+            configuration.put(AUTHORED_HOST_MANIFEST_OUTPUT_KEY, value)
+        } else if (option.optionName == "authoringAssemblyName") {
+            configuration.put(AUTHORING_ASSEMBLY_NAME_KEY, value)
+        } else if (option.optionName == "authoringTargetArtifactName") {
+            configuration.put(AUTHORING_TARGET_ARTIFACT_NAME_KEY, value)
         } else if (option.optionName == "compilerSupportManifest") {
             configuration.put(COMPILER_SUPPORT_MANIFEST_KEY, value)
         } else if (option.optionName == "compilerSupportClassOutputDirectory") {
@@ -151,6 +192,16 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             CompilerConfigurationKey("kotlin-winrt type index output")
         val AUTHORED_CANDIDATES_OUTPUT_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt authored candidates output")
+        val AUTHORED_METADATA_OUTPUT_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt authored metadata output")
+        val AUTHORED_WINMD_OUTPUT_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt authored WinMD output")
+        val AUTHORED_HOST_MANIFEST_OUTPUT_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt authored host manifest output")
+        val AUTHORING_ASSEMBLY_NAME_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt authoring assembly name")
+        val AUTHORING_TARGET_ARTIFACT_NAME_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt authoring target artifact name")
         val COMPILER_SUPPORT_MANIFEST_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt compiler support manifest")
         val COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY: CompilerConfigurationKey<String> =
@@ -169,6 +220,11 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
                 metadataIndexPath = configuration.get(KotlinWinRtCommandLineProcessor.METADATA_INDEX_KEY),
                 typeIndexOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.TYPE_INDEX_OUTPUT_KEY),
                 authoredCandidatesOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_CANDIDATES_OUTPUT_KEY),
+                authoredMetadataOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_METADATA_OUTPUT_KEY),
+                authoredWinmdOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_WINMD_OUTPUT_KEY),
+                authoredHostManifestOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_HOST_MANIFEST_OUTPUT_KEY),
+                authoringAssemblyName = configuration.get(KotlinWinRtCommandLineProcessor.AUTHORING_ASSEMBLY_NAME_KEY),
+                authoringTargetArtifactName = configuration.get(KotlinWinRtCommandLineProcessor.AUTHORING_TARGET_ARTIFACT_NAME_KEY),
                 compilerSupportManifestPath = configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY),
                 compilerSupportClassOutputDirectoryPath = configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY),
             ),
@@ -180,6 +236,11 @@ class KotlinWinRtIrGenerationExtension(
     private val metadataIndexPath: String?,
     private val typeIndexOutputPath: String?,
     private val authoredCandidatesOutputPath: String?,
+    private val authoredMetadataOutputPath: String?,
+    private val authoredWinmdOutputPath: String?,
+    private val authoredHostManifestOutputPath: String?,
+    private val authoringAssemblyName: String?,
+    private val authoringTargetArtifactName: String?,
     private val compilerSupportManifestPath: String?,
     private val compilerSupportClassOutputDirectoryPath: String?,
 ) : IrGenerationExtension {
@@ -228,12 +289,14 @@ class KotlinWinRtIrGenerationExtension(
         if (metadataIndexPath.isNullOrBlank()) {
             writeProjectionTypeIndex(emptyList(), emptyMap())
             writeAuthoredCandidates(emptyList(), emptyMap())
+            writeAuthoredSupportArtifacts(emptyList())
             return
         }
         val winRtTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
         if (winRtTypes.isEmpty()) {
             writeProjectionTypeIndex(emptyList(), winRtTypes)
             writeAuthoredCandidates(emptyList(), winRtTypes)
+            writeAuthoredSupportArtifacts(emptyList())
             return
         }
         val messageCollector = pluginContext.messageCollector
@@ -250,7 +313,9 @@ class KotlinWinRtIrGenerationExtension(
         lowerAuthoredTypeConstructors(moduleFragment, pluginContext, authoredTypeNames)
         lowerAuthoredTypeConstructorCalls(moduleFragment, pluginContext, authoredTypeNames)
         writeProjectionTypeIndex(classContexts, winRtTypes)
-        writeAuthoredCandidates(classContexts, winRtTypes)
+        val authoredCandidates = authoredCandidates(classContexts, winRtTypes)
+        writeAuthoredCandidates(authoredCandidates)
+        writeAuthoredSupportArtifacts(authoredCandidates)
         classContexts.forEach { context ->
             val klass = context.klass
             if (!isEffectivelyAuthorable(context)) {
@@ -3037,15 +3102,63 @@ class KotlinWinRtIrGenerationExtension(
         classContexts: List<AuthoredIrClassContext>,
         winRtTypes: Map<String, IndexedWinRtType>,
     ) {
-        val outputPath = authoredCandidatesOutputPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
-        val candidates = classContexts
+        writeAuthoredCandidates(authoredCandidates(classContexts, winRtTypes))
+    }
+
+    private fun authoredCandidates(
+        classContexts: List<AuthoredIrClassContext>,
+        winRtTypes: Map<String, IndexedWinRtType>,
+    ): List<KotlinWinRtAuthoredTypeCandidate> =
+        classContexts
             .asSequence()
             .filter(::isEffectivelyAuthorable)
             .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes, isEffectivelyPublic(context)) }
             .distinctBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .sortedBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .toList()
+
+    private fun writeAuthoredCandidates(
+        candidates: List<KotlinWinRtAuthoredTypeCandidate>,
+    ) {
+        val outputPath = authoredCandidatesOutputPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         KotlinWinRtAuthoringCandidateFile.write(outputPath, candidates)
+    }
+
+    private fun writeAuthoredSupportArtifacts(
+        candidates: List<KotlinWinRtAuthoredTypeCandidate>,
+    ) {
+        val exportedCandidates = candidates.filter(KotlinWinRtAuthoredTypeCandidate::isPublic)
+        authoredMetadataOutputPath
+            ?.takeIf(String::isNotBlank)
+            ?.let(Path::of)
+            ?.let { outputPath ->
+                KotlinWinRtAuthoringMetadataModel.writeDescriptor(
+                    candidates = exportedCandidates,
+                    outputFile = outputPath,
+                )
+            }
+        val assemblyName = authoringAssemblyName?.takeIf(String::isNotBlank) ?: return
+        authoredWinmdOutputPath
+            ?.takeIf(String::isNotBlank)
+            ?.let(Path::of)
+            ?.let { outputPath ->
+                KotlinWinRtAuthoringMetadataModel.writeWinmd(
+                    assemblyName = assemblyName,
+                    candidates = exportedCandidates,
+                    outputFile = outputPath,
+                )
+            }
+        authoredHostManifestOutputPath
+            ?.takeIf(String::isNotBlank)
+            ?.let(Path::of)
+            ?.let { outputPath ->
+                KotlinWinRtAuthoringMetadataModel.writeHostManifest(
+                    assemblyName = assemblyName,
+                    targetArtifactName = authoringTargetArtifactName?.takeIf(String::isNotBlank) ?: "$assemblyName.jar",
+                    candidates = exportedCandidates,
+                    outputFile = outputPath,
+                )
+            }
     }
 
     private fun authoredTypeFor(
