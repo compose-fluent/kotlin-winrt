@@ -13,6 +13,8 @@ import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.file.CopySpec
+import org.gradle.api.file.RegularFile
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
@@ -214,10 +216,6 @@ private fun configureWinRtApplicationTasks(
             task.javaHome.set(project.provider { System.getProperty("java.home") })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(identityDependencies)
-            task.authoredHostManifestFiles.from(
-                localAuthoredHostManifestFiles(project),
-            )
-            task.dependsOn("generateWinRtProjections")
         },
     )
     val resolveRuntimeNuGetPackagesTask = project.tasks.register(
@@ -383,9 +381,6 @@ private fun configureWinRtApplicationTasks(
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
-            task.authoredHostManifestFiles.from(
-                localAuthoredHostManifestFiles(project),
-            )
             task.authoredTargetArtifactFiles.from(
                 identityDependencies.elements.map { elements ->
                     elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
@@ -865,6 +860,7 @@ private fun registerWinRtAuthoredCandidateValidation(
     val compilerAuthoredHostManifest = compileTask.destinationDirectory.map { directory ->
         directory.file("kotlin-winrt-authoring/${project.name}.host.json")
     }
+    val compilerAuthoredHostManifestFiles = localAuthoredHostManifestFiles(project, compilerAuthoredHostManifest)
     project.tasks.withType(GenerateWinRtIdentityTask::class.java).matching { task ->
         task.name == "generateWinRtIdentity"
     }.configureEach { task ->
@@ -887,6 +883,11 @@ private fun registerWinRtAuthoredCandidateValidation(
     })
     project.tasks.withType(StageWinRtRuntimeAssetsTask::class.java).configureEach { task ->
         task.authoredMetadataFiles.from(compilerAuthoredMetadata)
+        task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
+        task.dependsOn(validationTask)
+    }
+    project.tasks.withType(BuildWinRtAuthoringHostTask::class.java).configureEach { task ->
+        task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
         task.dependsOn(validationTask)
     }
     project.tasks.matching { task -> task.name == "check" }.configureEach(Action<Task> { task ->
@@ -1231,11 +1232,9 @@ private fun kotlinMainSourceDirs(project: Project): List<File> {
     return kotlinExtension.sourceSets.findByName("main")?.kotlin?.srcDirs.orEmpty().toList()
 }
 
-private fun localAuthoredHostManifestFiles(project: Project) =
+private fun localAuthoredHostManifestFiles(project: Project, manifestFile: Provider<RegularFile>) =
     project.provider {
-        val manifest = project.layout.buildDirectory.file(
-            "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
-        ).get().asFile
+        val manifest = manifestFile.get().asFile
         if (authoredHostManifestDeclaresActivatableClasses(manifest)) {
             listOf(manifest)
         } else {
