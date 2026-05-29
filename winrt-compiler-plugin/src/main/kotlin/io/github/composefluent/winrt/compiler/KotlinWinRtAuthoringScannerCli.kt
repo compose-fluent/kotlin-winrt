@@ -91,6 +91,10 @@ object KotlinWinRtAuthoringScannerCli {
             if (resolvedWinRtTypes.isEmpty()) {
                 return@mapNotNull null
             }
+            require(!source.isNestedClass(klass)) {
+                "WinRT authored type $sourceTypeName must be a top-level Kotlin type; " +
+                    "nested authored runtime classes are not supported."
+            }
             val winRtBase = resolvedWinRtTypes.firstOrNull { type -> type.kind == "RuntimeClass" }
             val directInterfaces = resolvedWinRtTypes
                 .filter { type -> type.kind == "Interface" }
@@ -259,6 +263,11 @@ object KotlinWinRtAuthoringScannerCli {
                     .filter { candidate -> candidate !== classNode }
                     .filter { candidate -> candidate.startOffset < classNode.startOffset && candidate.endOffset > classNode.endOffset }
                     .all(::isPublicClass)
+
+        fun isNestedClass(classNode: LighterASTNode): Boolean =
+            classes()
+                .filter { candidate -> candidate !== classNode }
+                .any { candidate -> candidate.startOffset < classNode.startOffset && candidate.endOffset > classNode.endOffset }
 
         fun className(classNode: LighterASTNode): String? {
             var seenDeclarationKeyword = false

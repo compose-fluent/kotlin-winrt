@@ -210,6 +210,45 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_nested_authored_runtime_class_candidates() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-nested-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import windows.foundation.IStringable
+
+            class Container {
+                class NestedStringableThing : IStringable
+            }
+            """.trimIndent(),
+        )
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\n")
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("nested authored runtime classes are not supported"),
+        )
+    }
+
+    @Test
     fun rejects_duplicate_authored_type_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-duplicate-scan-")
         val sourceRootA = root.resolve("a")
