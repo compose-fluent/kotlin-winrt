@@ -734,6 +734,7 @@ private fun configureWinRtGeneration(
             )
             task.generatorWorkerClasspath.from(generatorWorkerClasspath)
             task.authoringScannerClasspath.from(compilerPluginClasspath)
+            task.authoringScannerClasspath.from(kotlinWinRtAuthoringScannerRuntimeClasspath(project))
             task.sourceRoots.from(
                 project.provider {
                     val generatedSourcesPath = generatedSources.get().asFile.toPath().toAbsolutePath().normalize()
@@ -931,6 +932,18 @@ private fun kotlinWinRtLocalGeneratorWorkerClasspath(project: Project): List<Fil
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
         .filter { file -> file.exists() }
 
+private fun kotlinWinRtAuthoringScannerRuntimeClasspath(project: Project): Any =
+    project.files(
+        listOf(
+            "kotlin.Unit",
+            "kotlinx.coroutines.CoroutineScope",
+            "org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment",
+            "org.jetbrains.kotlin.psi.KtFile",
+        )
+            .mapNotNull(::kotlinWinRtCodeSourceFile)
+            .distinctBy { file -> file.toPath().toAbsolutePath().normalize() },
+    )
+
 private fun kotlinWinRtCompilerPluginClasspathJar(project: Project): Any? {
     val compilerPluginClass = KotlinWinRtCommandLineProcessor::class.java
     return kotlinWinRtCodeSourceFile(compilerPluginClass)?.let { file -> project.files(file) }
@@ -940,6 +953,11 @@ private fun kotlinWinRtCodeSourceFile(type: Class<*>): File? {
     val location = type.protectionDomain?.codeSource?.location ?: return null
     return runCatching { File(location.toURI()) }.getOrNull()
 }
+
+private fun kotlinWinRtCodeSourceFile(typeName: String): File? =
+    runCatching { Class.forName(typeName, false, KotlinWinRtPlugin::class.java.classLoader) }
+        .getOrNull()
+        ?.let(::kotlinWinRtCodeSourceFile)
 
 private fun kotlinWinRtPluginVersion(): String =
     KotlinWinRtPlugin::class.java.`package`.implementationVersion
