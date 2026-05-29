@@ -5507,6 +5507,25 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_authored_annotation_metadata_kind_mismatches() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/StringableThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(
+                    baseClassName = "windows.foundation.IStringable",
+                    interfaceNames = ["windows.foundation.IStringable"],
+                )
+                class StringableThing
+            """.trimIndent(),
+            expectedDiagnostic = "annotation baseClassName must reference a WinRT runtime class",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_public_authored_runtime_classes_without_default_constructor() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/StringableThing.kt",

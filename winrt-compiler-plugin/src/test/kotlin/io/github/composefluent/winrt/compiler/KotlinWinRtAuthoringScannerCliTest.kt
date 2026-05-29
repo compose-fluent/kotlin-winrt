@@ -671,6 +671,49 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_authored_runtime_class_annotation_metadata_kind_mismatches() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-kind-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            @io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass(
+                interfaceNames = ["Microsoft.UI.Xaml.Application"],
+            )
+            class LocalShape
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Application	RuntimeClass	Microsoft.UI.Xaml.IApplicationOverrides
+            Microsoft.UI.Xaml.IApplicationOverrides	Interface
+            """.trimIndent(),
+        )
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("annotation interfaceNames must reference WinRT interfaces"),
+        )
+    }
+
+    @Test
     fun rejects_authored_runtime_class_annotation_metadata_resolved_only_by_source_imports() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-import-only-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
