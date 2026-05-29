@@ -118,11 +118,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .flatMap { namespace -> namespace.types }
             .associateBy { type -> type.qualifiedName }
         val semanticHelpers = WinRtMetadataSemanticHelpers(metadataModel)
+        val authoredRuntimeClassNames = candidates.mapTo(mutableSetOf(), KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
         val renderedCandidates = candidates.map { candidate ->
             val interfaces = resolveAuthoringInterfaces(candidate, typesByName)
             val packageDirectory = outputDirectory.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
-            render(candidate, interfaces, typesByName, semanticHelpers).writeTo(outputDirectory)
+            render(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames).writeTo(outputDirectory)
             candidate
         }
         renderRegistrar(renderedCandidates).writeTo(outputDirectory)
@@ -161,6 +162,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         interfaces: List<WinRtTypeDefinition>,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): FileSpec {
         val typeDetailsName = detailsObjectName(candidate)
         return FileSpec.builder(candidate.packageName, typeDetailsName)
@@ -169,7 +171,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .addType(
                 TypeSpec.objectBuilder(typeDetailsName)
                     .addFunction(renderRegister(candidate))
-                    .addFunction(renderCreateCcwDefinition(candidate, interfaces, typesByName, semanticHelpers))
+                    .addFunction(renderCreateCcwDefinition(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames))
                     .build(),
             )
             .build()
@@ -202,6 +204,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         interfaces: List<WinRtTypeDefinition>,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): FunSpec {
         val defaultInterface = interfaces.first()
         return FunSpec.builder("createCcwDefinition")
@@ -216,7 +219,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     .indent()
                     .apply {
                         interfaces.forEach { type ->
-                            add("%L,\n", renderInterface(candidate, type, typesByName, semanticHelpers))
+                            add("%L,\n", renderInterface(candidate, type, typesByName, semanticHelpers, authoredRuntimeClassNames))
                         }
                     }
                     .unindent()
@@ -257,6 +260,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         type: WinRtTypeDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
         val dispatchBaseClassName = semanticHelpers.getExclusiveToType(type)?.qualifiedName
             ?: candidate.winRtBaseClassName
@@ -268,7 +272,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .indent()
             .apply {
                 type.methods.filterNot { method -> method.isStatic }.forEach { method ->
-                    add("%L,\n", renderMethod(method, typesByName, semanticHelpers, dispatchBaseClassName))
+                    add("%L,\n", renderMethod(method, typesByName, semanticHelpers, dispatchBaseClassName, authoredRuntimeClassNames))
                 }
             }
             .unindent()
@@ -283,6 +287,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         dispatchBaseClassName: String?,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
         val dispatchBase = dispatchBaseClassName
             ?: error("Authored WinRT override ${method.name} has no declaring WinRT base class.")
@@ -293,7 +298,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .indent()
             .apply {
                 method.parameters.forEachIndexed { index, parameter ->
-                    add("%L", renderParameterProjectionStatement(index, parameter, typesByName, semanticHelpers))
+                    add("%L", renderParameterProjectionStatement(index, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames))
                 }
             }
             .apply {
@@ -328,6 +333,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
         val rawArg = CodeBlock.of("rawArgs[%L]", index)
         if (isWinRtObjectTypeName(parameter.typeName)) {
@@ -341,7 +347,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 return projection
             }
         }
-        return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers)
+        return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames)
     }
 
     private fun renderParameterProjectionStatement(
@@ -349,6 +355,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock =
         if (isWinRtStringTypeName(parameter.typeName)) {
             CodeBlock.builder()
@@ -370,7 +377,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 .add("}\n")
                 .build()
         } else {
-            CodeBlock.of("val __arg%L = %L\n", index, renderParameterProjection(index, parameter, typesByName, semanticHelpers))
+            CodeBlock.of("val __arg%L = %L\n", index, renderParameterProjection(index, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames))
         }
 
     private fun renderComplexParameterProjection(
@@ -378,6 +385,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
         if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
             return CodeBlock.of("%L as %T", rawArg, rawAddressType)
@@ -393,6 +401,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtTypeKind.RuntimeClass,
             WinRtTypeKind.Interface,
             -> {
+                if (parameter.typeName in authoredRuntimeClassNames) {
+                    return CodeBlock.of(
+                        "%T.fromAbi(%L as %T) as %T",
+                        winRtObjectMarshallerType,
+                        rawArg,
+                        rawAddressType,
+                        projectionClassName(parameter.typeName, semanticHelpers),
+                    )
+                }
                 CodeBlock.of(
                     "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
                     projectionClassName(parameter.typeName, semanticHelpers),
