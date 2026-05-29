@@ -5274,7 +5274,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun authored_candidate_validation_rejects_compiler_only_authored_candidates() {
+    fun authored_candidate_validation_rejects_compiler_only_authored_candidates_before_identity() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-authored-candidate-mismatch-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
             .toAbsolutePath()
@@ -5364,7 +5364,7 @@ class KotlinWinRtPluginTest {
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("check", "--stacktrace")
+            .withArguments("generateWinRtIdentity", "--stacktrace")
             .forwardOutput()
             .buildAndFail()
 
