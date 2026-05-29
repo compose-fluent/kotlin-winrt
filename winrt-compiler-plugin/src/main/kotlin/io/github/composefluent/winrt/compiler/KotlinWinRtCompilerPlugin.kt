@@ -226,10 +226,14 @@ class KotlinWinRtIrGenerationExtension(
         lowerAuthoringSupportIntrinsicCalls(moduleFragment, pluginContext)
         lowerProjectionIntrinsics(moduleFragment, pluginContext)
         if (metadataIndexPath.isNullOrBlank()) {
+            writeProjectionTypeIndex(emptyList(), emptyMap())
+            writeAuthoredCandidates(emptyList(), emptyMap())
             return
         }
         val winRtTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
         if (winRtTypes.isEmpty()) {
+            writeProjectionTypeIndex(emptyList(), winRtTypes)
+            writeAuthoredCandidates(emptyList(), winRtTypes)
             return
         }
         val messageCollector = pluginContext.messageCollector

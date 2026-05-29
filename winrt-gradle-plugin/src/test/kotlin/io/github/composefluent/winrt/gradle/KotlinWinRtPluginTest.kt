@@ -5449,6 +5449,9 @@ class KotlinWinRtPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRtAuthoredCandidates")?.outcome)
+        val compilerCandidates = projectDir.resolve("build/classes/kotlin/main/kotlin-winrt/authored-candidates.tsv")
+        assertTrue(Files.isRegularFile(compilerCandidates))
+        assertEquals("", Files.readString(compilerCandidates))
         assertEquals(null, result.task(":validateCompileTestKotlinWinRtAuthoredCandidates"))
         assertEquals(TaskOutcome.SUCCESS, result.task(":check")?.outcome)
     }
