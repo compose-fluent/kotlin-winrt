@@ -58,6 +58,9 @@ import org.jetbrains.kotlin.ir.builders.declarations.buildFun
 import org.jetbrains.kotlin.ir.builders.declarations.buildValueParameter
 import org.jetbrains.kotlin.ir.builders.declarations.IrValueParameterBuilder
 import org.jetbrains.kotlin.ir.types.classFqName
+import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
@@ -3359,7 +3362,101 @@ class KotlinWinRtIrGenerationExtension(
         if (klass.kind == ClassKind.CLASS && klass.modality != Modality.FINAL) {
             report("WinRT authored class ${authoredType.sourceTypeName} must be final.")
         }
+        validateAuthoredMemberTypes(klass, authoredType, report)
     }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun validateAuthoredMemberTypes(
+        klass: IrClass,
+        authoredType: KotlinWinRtAuthoredTypeCandidate,
+        report: (String) -> Unit,
+    ) {
+        klass.declarations.filterIsInstance<IrSimpleFunction>()
+            .filter { function ->
+                function.visibility == DescriptorVisibilities.PUBLIC &&
+                    function.origin != IrDeclarationOrigin.FAKE_OVERRIDE &&
+                    function.name.asString() !in authoredMemberValidationSyntheticFunctionNames
+            }
+            .forEach { function ->
+                validateAuthoredExposedType(
+                    type = function.returnType,
+                    authoredType = authoredType,
+                    memberName = function.name.asString(),
+                    role = "return type",
+                    report = report,
+                )
+                function.parameters
+                    .filter { parameter -> parameter.kind == IrParameterKind.Regular }
+                    .forEach { parameter ->
+                        validateAuthoredExposedType(
+                            type = parameter.type,
+                            authoredType = authoredType,
+                            memberName = function.name.asString(),
+                            role = "parameter '${parameter.name.asString()}'",
+                            report = report,
+                        )
+                    }
+            }
+        klass.declarations.filterIsInstance<IrProperty>()
+            .filter { property -> property.visibility == DescriptorVisibilities.PUBLIC }
+            .forEach { property ->
+                val propertyType = property.getter?.returnType ?: property.backingField?.type ?: return@forEach
+                validateAuthoredExposedType(
+                    type = propertyType,
+                    authoredType = authoredType,
+                    memberName = property.name.asString(),
+                    role = "property type",
+                    report = report,
+                )
+            }
+    }
+
+    private fun validateAuthoredExposedType(
+        type: IrType,
+        authoredType: KotlinWinRtAuthoredTypeCandidate,
+        memberName: String,
+        role: String,
+        report: (String) -> Unit,
+    ) {
+        if (!type.isKotlinArrayType()) {
+            return
+        }
+        val elementType = type.arrayElementType() ?: return
+        if (elementType.isKotlinArrayType()) {
+            report(
+                "WinRT authored member ${authoredType.sourceTypeName}.$memberName $role must not expose jagged arrays; " +
+                    "Windows Runtime arrays are one-dimensional.",
+            )
+        }
+    }
+
+    private fun IrType.arrayElementType(): IrType? =
+        (this as? IrSimpleType)?.arguments?.singleOrNull()?.typeOrNull
+
+    private fun IrType.isKotlinArrayType(): Boolean =
+        classFqName?.asString() in kotlinArrayTypeNames
+
+    private val kotlinArrayTypeNames = setOf(
+        "kotlin.Array",
+        "kotlin.BooleanArray",
+        "kotlin.ByteArray",
+        "kotlin.CharArray",
+        "kotlin.DoubleArray",
+        "kotlin.FloatArray",
+        "kotlin.IntArray",
+        "kotlin.LongArray",
+        "kotlin.ShortArray",
+        "kotlin.UByteArray",
+        "kotlin.UIntArray",
+        "kotlin.ULongArray",
+        "kotlin.UShortArray",
+    )
+
+    private val authoredMemberValidationSyntheticFunctionNames = setOf(
+        "equals",
+        "hashCode",
+        "toString",
+    )
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun classContextsIn(
