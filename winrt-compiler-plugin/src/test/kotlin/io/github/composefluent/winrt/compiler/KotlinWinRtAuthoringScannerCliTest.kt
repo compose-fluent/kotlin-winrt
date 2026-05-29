@@ -485,6 +485,50 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun scans_authored_runtime_class_annotation_projection_package_metadata_names() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-projection-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+            @WinRtAuthoredRuntimeClass(
+                baseClassName = "microsoft.ui.xaml.controls.ContentControl",
+                interfaceNames = ["windows.foundation.IStringable"],
+                overridableInterfaceNames = ["microsoft.ui.xaml.controls.IContentControlOverrides"],
+            )
+            class LocalContentControl
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Controls.ContentControl	RuntimeClass	Microsoft.UI.Xaml.Controls.IContentControlOverrides
+            Microsoft.UI.Xaml.Controls.IContentControlOverrides	Interface
+            Windows.Foundation.IStringable	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            "sample\tLocalContentControl\tsample.LocalContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides;Windows.Foundation.IStringable\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides\ttrue",
+            output.readText().trimEnd(),
+        )
+    }
+
+    @Test
     fun rejects_authored_runtime_class_annotation_unknown_metadata_type() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-missing-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
