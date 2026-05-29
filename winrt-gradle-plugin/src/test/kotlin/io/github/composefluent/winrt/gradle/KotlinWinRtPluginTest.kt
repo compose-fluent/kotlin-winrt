@@ -4969,6 +4969,7 @@ class KotlinWinRtPluginTest {
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRtAuthoredCandidates")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":jar")?.outcome)
         assertTrue(
             Files.isRegularFile(
