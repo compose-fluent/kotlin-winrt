@@ -118,6 +118,9 @@ object KotlinWinRtAuthoringScannerCli {
             require(source.isRuntimeClassDeclaration(klass)) {
                 "WinRT authored type $sourceTypeName must be a concrete Kotlin class."
             }
+            require(!source.isValueClass(klass)) {
+                "WinRT authored type $sourceTypeName must not be a Kotlin value class."
+            }
             require(!source.isEffectivelyPublicClass(klass) || source.hasPublicDefaultActivationConstructor(klass)) {
                 "Public WinRT authored type $sourceTypeName must declare an accessible zero-argument constructor for default activation."
             }
@@ -308,6 +311,9 @@ object KotlinWinRtAuthoringScannerCli {
 
         fun isRuntimeClassDeclaration(classNode: LighterASTNode): Boolean =
             classDeclarationKeyword(classNode) == KtTokens.CLASS_KEYWORD
+
+        fun isValueClass(classNode: LighterASTNode): Boolean =
+            hasModifier(classNode, KtTokens.VALUE_KEYWORD, KtTokens.INLINE_KEYWORD)
 
         fun hasPublicDefaultActivationConstructor(classNode: LighterASTNode): Boolean {
             val constructors = classNode.descendantsOfType(KtNodeTypes.PRIMARY_CONSTRUCTOR) +

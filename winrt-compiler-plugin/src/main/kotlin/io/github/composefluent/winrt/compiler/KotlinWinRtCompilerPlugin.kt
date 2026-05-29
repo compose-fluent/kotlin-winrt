@@ -3282,6 +3282,9 @@ class KotlinWinRtIrGenerationExtension(
         if (klass.kind != ClassKind.CLASS) {
             report("WinRT authored type ${authoredType.sourceTypeName} must be a concrete Kotlin class.")
         }
+        if (klass.isValue) {
+            report("WinRT authored type ${authoredType.sourceTypeName} must not be a Kotlin value class.")
+        }
         if (authoredType.isPublic && !klass.hasPublicDefaultActivationConstructor()) {
             report(
                 "Public WinRT authored type ${authoredType.sourceTypeName} must declare an accessible zero-argument constructor for default activation.",
