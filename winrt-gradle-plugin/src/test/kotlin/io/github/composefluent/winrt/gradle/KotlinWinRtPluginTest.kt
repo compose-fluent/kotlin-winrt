@@ -5273,6 +5273,107 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun authored_candidate_validation_rejects_compiler_only_authored_candidates() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-authored-candidate-mismatch-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-authored-candidate-mismatch-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.jvm") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            dependencies {
+                implementation(files("$runtimeJar"))
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+
+            val writeGeneratedAuthoredCandidate = tasks.register("writeGeneratedAuthoredCandidate") {
+                dependsOn("generateWinRtProjections")
+                val outputFile = layout.projectDirectory.file(
+                    "src/main/kotlin/sample/LateStringableThing.kt",
+                )
+                outputs.file(outputFile)
+                doLast {
+                    outputFile.asFile.apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            ${"\"\"\""}
+                            package sample
+
+                            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                            @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                            internal class LateStringableThing
+                            ${"\"\"\""}.trimIndent()
+                        )
+                    }
+                }
+            }
+
+            tasks.named("compileKotlin") {
+                dependsOn(writeGeneratedAuthoredCandidate)
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/main/kotlin/sample/PlainSource.kt"),
+            """
+            package sample
+
+            internal object PlainSource
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("check", "--stacktrace")
+            .forwardOutput()
+            .buildAndFail()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
+        assertEquals(TaskOutcome.FAILED, result.task(":validateCompileKotlinWinRtAuthoredCandidates")?.outcome)
+        assertTrue(result.output.contains("Only compiler candidates: sample.LateStringableThing"))
+    }
+
+    @Test
     fun authored_candidate_validation_allows_no_source_jvm_compile() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-authored-candidate-no-source-test-")
         writeGradleFile(
