@@ -91,6 +91,12 @@ object KotlinWinRtAuthoringScannerCli {
             if (resolvedWinRtTypes.isEmpty()) {
                 return@mapNotNull null
             }
+            require(!source.hasTypeParameters(klass)) {
+                "WinRT authored type $sourceTypeName must not be generic."
+            }
+            require(!source.isUnsealedAuthoredClass(klass)) {
+                "WinRT authored class $sourceTypeName must be final."
+            }
             require(!source.isNestedClass(klass)) {
                 "WinRT authored type $sourceTypeName must be a top-level Kotlin type; " +
                     "nested authored runtime classes are not supported."
@@ -269,6 +275,13 @@ object KotlinWinRtAuthoringScannerCli {
                 .filter { candidate -> candidate !== classNode }
                 .any { candidate -> candidate.startOffset < classNode.startOffset && candidate.endOffset > classNode.endOffset }
 
+        fun hasTypeParameters(classNode: LighterASTNode): Boolean =
+            classNode.children().any { child -> child.tokenType == KtNodeTypes.TYPE_PARAMETER_LIST }
+
+        fun isUnsealedAuthoredClass(classNode: LighterASTNode): Boolean =
+            classDeclarationKeyword(classNode) == KtTokens.CLASS_KEYWORD &&
+                hasModifier(classNode, KtTokens.OPEN_KEYWORD, KtTokens.ABSTRACT_KEYWORD, KtTokens.SEALED_KEYWORD)
+
         fun className(classNode: LighterASTNode): String? {
             var seenDeclarationKeyword = false
             return classNode.descendants().firstNotNullOfOrNull { node ->
@@ -343,6 +356,22 @@ object KotlinWinRtAuthoringScannerCli {
                     node.tokenType == KtTokens.PROTECTED_KEYWORD
             }
         }
+
+        private fun hasModifier(classNode: LighterASTNode, vararg modifiers: IElementType): Boolean {
+            val modifierTypes = modifiers.toSet()
+            val modifierList = classNode.children().firstOrNull { child -> child.tokenType == KtNodeTypes.MODIFIER_LIST }
+                ?: return false
+            return modifierList.descendants().any { node -> node.tokenType in modifierTypes }
+        }
+
+        private fun classDeclarationKeyword(classNode: LighterASTNode): IElementType? =
+            classNode.descendants()
+                .firstOrNull { node ->
+                    node.tokenType == KtTokens.CLASS_KEYWORD ||
+                        node.tokenType == KtTokens.INTERFACE_KEYWORD ||
+                        node.tokenType == KtTokens.OBJECT_KEYWORD
+                }
+                ?.tokenType
 
         private fun LighterASTNode.descendants(): Sequence<LighterASTNode> =
             sequence {
