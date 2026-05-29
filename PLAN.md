@@ -118,7 +118,7 @@
 - [x] Dependency activation-factory chaining: implement the CsWinRT-equivalent of referenced component activation-factory merge so authored components can delegate `DllGetActivationFactory` lookups across dependency exports instead of only relying on local host manifests.
 - [ ] Authoring marshaling matrix: finish receive-array variants, object/interface/runtime-class parameters and returns, structs, arrays, delegates/events, collections, async, nullable/reference shapes, HRESULT/error propagation, and stable fail-closed diagnostics beyond the current JVM WinUI happy path.
 - [ ] Inherited and overridable interface parity: validate base runtime-class metadata, default/required/overridable interface exposure, composable class inheritance, and generic interface IDs against `.cswinrt/src/Authoring` and `.cswinrt/src/WinRT.Runtime` before treating authored WinUI subclasses as complete.
-- [ ] Authoring analyzers and diagnostics: add Kotlin compiler-plugin diagnostics equivalent to CsWinRT authoring analyzers for unsupported exposed shapes, invalid runtime-class casts, invalid collection/array authoring patterns, and source-generator contract violations.
+- [ ] Authoring analyzers and diagnostics 正在做: add Kotlin compiler-plugin diagnostics equivalent to CsWinRT authoring analyzers for unsupported exposed shapes, invalid runtime-class casts, invalid collection/array authoring patterns, and source-generator contract violations.
 - [ ] Native authoring host: frozen for the current queue; later implement native CCW/host behavior only after native runtime ABI/object identity and JVM authoring contracts are stable enough to port directly.
 
 ## Phase 6 Packaging And Validation

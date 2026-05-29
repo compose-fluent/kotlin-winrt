@@ -355,6 +355,44 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_value_class_authored_runtime_class_candidates() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-value-class-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import windows.foundation.IStringable
+
+            @JvmInline
+            value class ValueStringableThing(val value: String) : IStringable
+            """.trimIndent(),
+        )
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\n")
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("must not be a Kotlin value class"),
+        )
+    }
+
+    @Test
     fun rejects_unsealed_authored_runtime_class_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-unsealed-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
