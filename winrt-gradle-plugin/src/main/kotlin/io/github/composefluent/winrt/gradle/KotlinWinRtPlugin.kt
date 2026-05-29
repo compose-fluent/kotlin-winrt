@@ -775,6 +775,7 @@ private fun configureWinRtGeneration(
             task.dependsOn(generateTask)
             task.dependsOn(mergeCompilerSupportTask)
         })
+        configureWinRtAuthoredCandidateValidation(project, generatedSources)
     }
 
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
@@ -795,6 +796,7 @@ private fun configureWinRtGeneration(
             task.dependsOn(generateTask)
             task.dependsOn(mergeCompilerSupportTask)
         })
+        configureWinRtAuthoredCandidateValidation(project, generatedSources)
     }
 
     project.plugins.withId("java") {
@@ -805,6 +807,51 @@ private fun configureWinRtGeneration(
             task.dependsOn(generateTask)
         })
     }
+}
+
+private fun configureWinRtAuthoredCandidateValidation(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+) {
+    project.tasks.withType(KotlinJvmCompile::class.java).all { compileTask ->
+        registerWinRtAuthoredCandidateValidation(project, generatedSources, compileTask)
+    }
+}
+
+private fun registerWinRtAuthoredCandidateValidation(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+    compileTask: KotlinJvmCompile,
+) {
+    val validationTaskName = "validate${compileTask.name.replaceFirstChar(Char::uppercaseChar)}WinRtAuthoredCandidates"
+    if (project.tasks.names.contains(validationTaskName)) {
+        return
+    }
+    val validationTask = project.tasks.register(
+        validationTaskName,
+        ValidateWinRtAuthoredCandidatesTask::class.java,
+        Action<ValidateWinRtAuthoredCandidatesTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Validates source-scanned authored candidates against compiler IR authored candidates."
+            task.scannerCandidates.set(
+                generatedSources.map { directory ->
+                    directory.file("kotlin-winrt-authoring/authored-candidates.tsv")
+                },
+            )
+            task.compilerCandidates.set(
+                compileTask.destinationDirectory.map { directory ->
+                    directory.file("kotlin-winrt/authored-candidates.tsv")
+                },
+            )
+            task.outputFile.set(
+                project.layout.buildDirectory.file("kotlin-winrt/validation/${compileTask.name}/authored-candidates.txt"),
+            )
+            task.dependsOn(compileTask)
+        },
+    )
+    project.tasks.matching { task -> task.name == "check" }.configureEach(Action<Task> { task ->
+        task.dependsOn(validationTask)
+    })
 }
 
 private fun configureKotlinWinRtCompilerPluginClasspath(project: Project) {

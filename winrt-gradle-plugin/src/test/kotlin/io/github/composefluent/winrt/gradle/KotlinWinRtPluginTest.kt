@@ -5181,6 +5181,98 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun validates_scanner_and_compiler_authored_candidates_after_jvm_compile() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-authored-candidate-validation-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-authored-candidate-validation-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.jvm") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            dependencies {
+                implementation(files("$runtimeJar"))
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+
+            tasks.register("verifyAuthoredCandidateArtifacts") {
+                dependsOn("validateCompileKotlinWinRtAuthoredCandidates")
+                doLast {
+                    val scannerCandidates = layout.buildDirectory.file(
+                        "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/authored-candidates.tsv",
+                    ).get().asFile
+                    val compilerCandidates = layout.buildDirectory.file(
+                        "classes/kotlin/main/kotlin-winrt/authored-candidates.tsv",
+                    ).get().asFile
+                    check(scannerCandidates.readText() == compilerCandidates.readText()) {
+                        "Expected scanner and compiler authored candidates to match"
+                    }
+                    check(scannerCandidates.readText().isEmpty()) {
+                        "Expected no authored candidates in scanner artifact: " + scannerCandidates.readText()
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/main/kotlin/sample/PlainSource.kt"),
+            """
+            package sample
+
+            internal object PlainSource
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyAuthoredCandidateArtifacts", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRtAuthoredCandidates")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyAuthoredCandidateArtifacts")?.outcome)
+    }
+
+    @Test
     fun compiler_plugin_rejects_nested_authored_runtime_classes() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/Container.kt",
