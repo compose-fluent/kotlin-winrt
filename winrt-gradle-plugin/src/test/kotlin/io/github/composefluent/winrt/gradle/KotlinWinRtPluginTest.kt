@@ -5181,6 +5181,107 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_nested_authored_runtime_classes() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-nested-authoring-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-nested-authoring-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+
+            val writeNestedAuthoredProbe = tasks.register("writeNestedAuthoredProbe") {
+                dependsOn("generateWinRtProjections")
+                val outputFile = layout.projectDirectory.file(
+                    "src/commonMain/kotlin/sample/Container.kt",
+                )
+                outputs.file(outputFile)
+                doLast {
+                    outputFile.asFile.apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            ${"\"\"\""}
+                            package sample
+
+                            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                            class Container {
+                                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                                class NestedStringableThing
+                            }
+                            ${"\"\"\""}.trimIndent()
+                        )
+                    }
+                }
+            }
+
+            tasks.named("compileKotlinWinuiJvm") {
+                dependsOn(writeNestedAuthoredProbe)
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("compileKotlinWinuiJvm", "--stacktrace")
+            .forwardOutput()
+            .buildAndFail()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.FAILED, result.task(":compileKotlinWinuiJvm")?.outcome)
+        assertTrue(result.output.contains("nested authored runtime classes are not supported"))
+    }
+
+    @Test
     fun plugin_lowers_projection_intrinsics_in_multiplatform_jvm_common_sources() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-intrinsic-lowering-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")

@@ -3154,6 +3154,12 @@ class KotlinWinRtIrGenerationExtension(
         if (klass.isInner) {
             report("WinRT authored type ${authoredType.sourceTypeName} must not be an inner class.")
         }
+        if (klass.parentClassOrNull != null) {
+            report(
+                "WinRT authored type ${authoredType.sourceTypeName} must be a top-level Kotlin type; " +
+                    "nested authored runtime classes are not supported.",
+            )
+        }
         if (klass.typeParameters.isNotEmpty()) {
             report("WinRT authored type ${authoredType.sourceTypeName} must not be generic.")
         }
