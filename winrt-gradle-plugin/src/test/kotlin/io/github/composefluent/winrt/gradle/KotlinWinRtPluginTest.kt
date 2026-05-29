@@ -5110,6 +5110,12 @@ class KotlinWinRtPluginTest {
                     check(!legacyInterfaceRegistry.exists()) {
                         "Legacy interface projection registry must not be generated: " + legacyInterfaceRegistry
                     }
+                    val authoredCandidates = layout.buildDirectory.file(
+                        "classes/kotlin/winuiJvm/main/kotlin-winrt/authored-candidates.tsv",
+                    ).get().asFile
+                    check(authoredCandidates.isFile) {
+                        "Expected compiler-authored candidates output: " + authoredCandidates
+                    }
                 }
             }
             """.trimIndent(),
@@ -5125,6 +5131,7 @@ class KotlinWinRtPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:metadataIndex="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredCandidatesOutput="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
         assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/main/kotlin"))

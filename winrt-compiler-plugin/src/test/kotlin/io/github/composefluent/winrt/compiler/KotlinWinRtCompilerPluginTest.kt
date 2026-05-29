@@ -58,6 +58,20 @@ class KotlinWinRtCompilerPluginTest {
         )
         processor.processOption(
             CliOption(
+                optionName = "authoredCandidatesOutput",
+                valueDescription = "<path>",
+                description = "",
+                required = false,
+            ),
+            "build/classes/kotlin/main/kotlin-winrt/authored-candidates.tsv",
+            configuration,
+        )
+        assertEquals(
+            "build/classes/kotlin/main/kotlin-winrt/authored-candidates.tsv",
+            configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_CANDIDATES_OUTPUT_KEY),
+        )
+        processor.processOption(
+            CliOption(
                 optionName = "compilerSupportManifest",
                 valueDescription = "<path>",
                 description = "",
