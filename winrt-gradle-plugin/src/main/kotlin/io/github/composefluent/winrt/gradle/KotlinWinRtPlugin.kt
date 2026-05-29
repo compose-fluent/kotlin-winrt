@@ -857,6 +857,9 @@ private fun registerWinRtAuthoredCandidateValidation(
     })
     project.tasks.matching { task ->
         task.name == "generateWinRtIdentity" ||
+            task.name == "classes" ||
+            task.name == "jar" ||
+            task.name == "assemble" ||
             task.name == "processResources" ||
             task.name == "stageWinRtRuntimeAssets" ||
             task.name == "stageWinRtApplicationPackage"

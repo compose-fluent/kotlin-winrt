@@ -5274,6 +5274,31 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun authored_candidate_validation_gates_jvm_artifact_lifecycle_tasks() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val validationTaskName = "validateCompileKotlinWinRtAuthoredCandidates"
+        listOf(
+            "generateWinRtIdentity",
+            "classes",
+            "jar",
+            "assemble",
+            "processResources",
+            "check",
+        ).forEach { taskName ->
+            val task = project.tasks.named(taskName).get()
+            val dependencies = task.taskDependencies.getDependencies(task).map { it.name }
+            assertTrue(
+                "$taskName must depend on $validationTaskName",
+                validationTaskName in dependencies,
+            )
+        }
+    }
+
+    @Test
     fun authored_candidate_validation_rejects_compiler_only_authored_candidates_before_identity() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-authored-candidate-mismatch-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
