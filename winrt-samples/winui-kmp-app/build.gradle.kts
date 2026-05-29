@@ -87,7 +87,6 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
         "kotlin.winrt.samples.skipWindowContent",
         "kotlin.winrt.samples.skipCallbackSmoke",
         "kotlin.winrt.samples.skipLayoutUpdated",
-        "kotlin.winrt.samples.debugWaitBeforeChildren",
     ).forEach { propertyName ->
         providers.systemProperty(propertyName).orNull?.let { value ->
             systemProperty(propertyName, value)

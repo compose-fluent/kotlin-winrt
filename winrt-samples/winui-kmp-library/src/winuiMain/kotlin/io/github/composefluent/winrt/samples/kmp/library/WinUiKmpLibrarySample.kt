@@ -148,19 +148,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             "Local authored DependencyProperty did not round-trip: ${localControl.sampleText}"
         }
         println("winui-kmp-library: local authored dependency property round-trip")
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.debugWaitBeforeChildren")) {
-            println("winui-kmp-library: debug wait before canvas children; pid=${ProcessHandle.current().pid()}")
-            Thread.sleep(60_000)
-        }
         println("winui-kmp-library: resolving canvas children")
-        val children = try {
-            checkNotNull(panel.children) {
-                "Canvas children collection was not initialized."
-            }
-        } catch (failure: Throwable) {
-            println("winui-kmp-library: canvas children failed: ${failure::class.qualifiedName}: ${failure.message}")
-            failure.printStackTrace()
-            throw failure
+        val children = checkNotNull(panel.children) {
+            "Canvas children collection was not initialized."
         }
         println("winui-kmp-library: canvas children resolved size=${children.size}")
         println("winui-kmp-library: adding button to canvas")
