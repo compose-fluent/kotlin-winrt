@@ -814,6 +814,9 @@ private fun configureWinRtAuthoredCandidateValidation(
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
 ) {
     project.tasks.withType(KotlinJvmCompile::class.java).all { compileTask ->
+        if (!compileTask.name.startsWith("compileKotlin")) {
+            return@all
+        }
         registerWinRtAuthoredCandidateValidation(project, generatedSources, compileTask)
     }
 }
@@ -843,6 +846,8 @@ private fun registerWinRtAuthoredCandidateValidation(
                     directory.file("kotlin-winrt/authored-candidates.tsv")
                 },
             )
+            task.candidateFiles.from(task.scannerCandidates)
+            task.candidateFiles.from(task.compilerCandidates)
             task.outputFile.set(
                 project.layout.buildDirectory.file("kotlin-winrt/validation/${compileTask.name}/authored-candidates.txt"),
             )

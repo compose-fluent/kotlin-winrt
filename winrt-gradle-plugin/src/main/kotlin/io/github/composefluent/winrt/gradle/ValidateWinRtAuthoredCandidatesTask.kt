@@ -4,9 +4,11 @@ import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -16,15 +18,16 @@ import java.io.File
 
 @CacheableTask
 abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
-    @get:InputFile
-    @get:Optional
-    @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:Internal
     abstract val scannerCandidates: RegularFileProperty
 
-    @get:InputFile
+    @get:Internal
+    abstract val compilerCandidates: RegularFileProperty
+
+    @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val compilerCandidates: RegularFileProperty
+    abstract val candidateFiles: ConfigurableFileCollection
 
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
