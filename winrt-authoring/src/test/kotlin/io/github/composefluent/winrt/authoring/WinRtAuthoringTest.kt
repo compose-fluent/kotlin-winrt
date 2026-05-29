@@ -358,6 +358,55 @@ class WinRtAuthoringTest {
     }
 
     @Test
+    fun authored_host_manifest_loader_chains_duplicate_dependency_activation_factories() {
+        assumeTrue(PlatformRuntime.isWindows)
+        ComWrappersSupport.clearRegistriesForTests()
+        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
+        WinRtAuthoringHostManifestLoader.registerHostExports(EmptyHostExports::class.java.name, EmptyHostExports)
+        WinRtAuthoringHostManifestLoader.registerHostExports(HostManifestExports::class.java.name, HostManifestExports)
+
+        val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-chain-")
+        Files.writeString(
+            directory.resolve("EmptyHostManifestComponent.host.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "model": "jvm-authoring-host",
+              "assemblyName": "EmptyHostManifestComponent",
+              "hostExportsClass": "${EmptyHostExports::class.java.name}",
+              "activatableClasses": ["Sample.Authoring.HostManifestComponent"]
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            directory.resolve("HostManifestComponent.host.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "model": "jvm-authoring-host",
+              "assemblyName": "HostManifestComponent",
+              "hostExportsClass": "${HostManifestExports::class.java.name}",
+              "activatableClasses": ["Sample.Authoring.HostManifestComponent"]
+            }
+            """.trimIndent(),
+        )
+
+        WinRtAuthoringHostManifestLoader.installFromDirectory(directory)
+        ActivationFactory.get("Sample.Authoring.HostManifestComponent").use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        HostManifestComponent::class,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
     fun authored_host_manifest_loader_installs_from_plugin_runtime_assets_directory() {
         assumeTrue(PlatformRuntime.isWindows)
         ComWrappersSupport.clearRegistriesForTests()
@@ -635,6 +684,13 @@ class WinRtAuthoringTest {
     private class HostManifestComponent
 
     private class RuntimeAssetsHostComponent
+
+    object EmptyHostExports : WinRtAuthoringHostExports {
+        override fun registerActivationFactories() = Unit
+
+        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
+            WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)
+    }
 
     object HostManifestExports : WinRtAuthoringHostExports {
         override fun registerActivationFactories() {

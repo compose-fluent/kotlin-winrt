@@ -89,14 +89,18 @@ object WinRtAuthoringHostManifestLoader {
                 val entry = manifest.hostExportEntry()
                 manifest.runtimeClassNames().map { runtimeClassName -> runtimeClassName to entry }
             }
-            .toMap()
+            .groupBy(keySelector = { it.first }, valueTransform = { it.second })
         if (entries.isEmpty()) {
             return
         }
         ComWrappersSupport.registerAuthoringActivationFactoryFallback { runtimeClassName, interfaceId ->
-            val entry = entries[runtimeClassName]
+            val candidates = entries[runtimeClassName]
                 ?: return@registerAuthoringActivationFactoryFallback ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
-            activate(entry, runtimeClassName, interfaceId)
+            candidates
+                .asSequence()
+                .map { entry -> activate(entry, runtimeClassName, interfaceId) }
+                .firstOrNull(ActivationResult::isSuccess)
+                ?: ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
     }
 
