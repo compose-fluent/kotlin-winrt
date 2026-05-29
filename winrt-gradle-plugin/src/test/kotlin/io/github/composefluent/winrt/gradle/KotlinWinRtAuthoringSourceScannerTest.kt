@@ -15,6 +15,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import org.gradle.api.GradleException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -101,6 +102,58 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("kotlin-winrt authored candidate row 1"),
+        )
+    }
+
+    @Test
+    fun validates_matching_scanner_and_compiler_authored_candidate_files() {
+        val scanner = Files.createTempFile("kotlin-winrt-scanner-candidates-", ".tsv")
+        val compiler = Files.createTempFile("kotlin-winrt-compiler-candidates-", ".tsv")
+        val candidates = listOf(
+            KotlinWinRtAuthoredTypeCandidate(
+                packageName = "sample",
+                className = "App",
+                sourceTypeName = "sample.App",
+                winRtBaseClassName = null,
+                winRtInterfaceNames = listOf("Windows.Foundation.IStringable"),
+                overridableInterfaceNames = emptyList(),
+                isPublic = false,
+            ),
+        )
+        KotlinWinRtAuthoringCandidateFile.write(scanner, candidates)
+        KotlinWinRtAuthoringCandidateFile.write(compiler, candidates)
+
+        validateAuthoredCandidateHandoff(scanner.toFile(), compiler.toFile())
+    }
+
+    @Test
+    fun rejects_mismatched_scanner_and_compiler_authored_candidate_files() {
+        val scanner = Files.createTempFile("kotlin-winrt-scanner-candidates-", ".tsv")
+        val compiler = Files.createTempFile("kotlin-winrt-compiler-candidates-", ".tsv")
+        KotlinWinRtAuthoringCandidateFile.write(scanner, emptyList())
+        KotlinWinRtAuthoringCandidateFile.write(
+            compiler,
+            listOf(
+                KotlinWinRtAuthoredTypeCandidate(
+                    packageName = "sample",
+                    className = "App",
+                    sourceTypeName = "sample.App",
+                    winRtBaseClassName = null,
+                    winRtInterfaceNames = listOf("Windows.Foundation.IStringable"),
+                    overridableInterfaceNames = emptyList(),
+                    isPublic = false,
+                ),
+            ),
+        )
+
+        val error = runCatching {
+            validateAuthoredCandidateHandoff(scanner.toFile(), compiler.toFile())
+        }.exceptionOrNull()
+
+        assertTrue(error is GradleException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("Only compiler candidates: sample.App"),
         )
     }
 

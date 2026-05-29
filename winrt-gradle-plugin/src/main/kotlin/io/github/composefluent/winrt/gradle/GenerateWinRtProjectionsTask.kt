@@ -248,6 +248,10 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             )
             KotlinWinRtAuthoringCandidateFile.read(candidatesFile)
         }
+        KotlinWinRtAuthoringCandidateFile.write(
+            generatedRoot.resolve("kotlin-winrt-authoring/authored-candidates.tsv"),
+            authoringCandidates,
+        )
         val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files)
         val exportedAuthoringCandidates = authoringCandidates.filter(KotlinWinRtAuthoredTypeCandidate::isPublic)
         val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
