@@ -87,11 +87,11 @@ object KotlinWinRtAuthoringScannerCli {
             val inheritedWinRtTypes = source.superTypeNames(klass)
                 .mapNotNull { superType -> resolveIndexedWinRtType(superType, packageName, imports, winRtTypes) }
             val annotatedBase = annotation.baseClassName
-                ?.let { typeName -> resolveAnnotatedWinRtType(typeName, packageName, imports, winRtTypes, sourceTypeName) }
+                ?.let { typeName -> resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName) }
             val annotatedInterfaces = annotation.interfaceNames
-                .map { typeName -> resolveAnnotatedWinRtType(typeName, packageName, imports, winRtTypes, sourceTypeName) }
+                .map { typeName -> resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName) }
             val annotatedOverridableInterfaces = annotation.overridableInterfaceNames
-                .map { typeName -> resolveAnnotatedWinRtType(typeName, packageName, imports, winRtTypes, sourceTypeName) }
+                .map { typeName -> resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName) }
                 .filter { type -> type.kind == "Interface" }
                 .map(IndexedWinRtType::qualifiedName)
             val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
@@ -139,12 +139,10 @@ object KotlinWinRtAuthoringScannerCli {
 
     private fun resolveAnnotatedWinRtType(
         typeName: String,
-        packageName: String,
-        imports: KotlinImports,
         winRtTypes: Map<String, IndexedWinRtType>,
         sourceTypeName: String,
     ): IndexedWinRtType =
-        requireNotNull(resolveIndexedWinRtType(typeName, packageName, imports, winRtTypes)) {
+        requireNotNull(winRtTypes[projectionPackageToMetadataName(typeName)]) {
             "WinRT authored type $sourceTypeName annotation references unknown WinRT metadata type $typeName."
         }
 
