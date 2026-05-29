@@ -72,6 +72,76 @@ class KotlinWinRtCompilerPluginTest {
         )
         processor.processOption(
             CliOption(
+                optionName = "authoredMetadataOutput",
+                valueDescription = "<path>",
+                description = "",
+                required = false,
+            ),
+            "build/classes/kotlin/main/kotlin-winrt-authoring/authored-metadata.tsv",
+            configuration,
+        )
+        assertEquals(
+            "build/classes/kotlin/main/kotlin-winrt-authoring/authored-metadata.tsv",
+            configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_METADATA_OUTPUT_KEY),
+        )
+        processor.processOption(
+            CliOption(
+                optionName = "authoredWinmdOutput",
+                valueDescription = "<path>",
+                description = "",
+                required = false,
+            ),
+            "build/classes/kotlin/main/kotlin-winrt-authoring/sample.winmd",
+            configuration,
+        )
+        assertEquals(
+            "build/classes/kotlin/main/kotlin-winrt-authoring/sample.winmd",
+            configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_WINMD_OUTPUT_KEY),
+        )
+        processor.processOption(
+            CliOption(
+                optionName = "authoredHostManifestOutput",
+                valueDescription = "<path>",
+                description = "",
+                required = false,
+            ),
+            "build/classes/kotlin/main/kotlin-winrt-authoring/sample.host.json",
+            configuration,
+        )
+        assertEquals(
+            "build/classes/kotlin/main/kotlin-winrt-authoring/sample.host.json",
+            configuration.get(KotlinWinRtCommandLineProcessor.AUTHORED_HOST_MANIFEST_OUTPUT_KEY),
+        )
+        processor.processOption(
+            CliOption(
+                optionName = "authoringAssemblyName",
+                valueDescription = "<name>",
+                description = "",
+                required = false,
+            ),
+            "sample",
+            configuration,
+        )
+        assertEquals(
+            "sample",
+            configuration.get(KotlinWinRtCommandLineProcessor.AUTHORING_ASSEMBLY_NAME_KEY),
+        )
+        processor.processOption(
+            CliOption(
+                optionName = "authoringTargetArtifactName",
+                valueDescription = "<file>",
+                description = "",
+                required = false,
+            ),
+            "sample.jar",
+            configuration,
+        )
+        assertEquals(
+            "sample.jar",
+            configuration.get(KotlinWinRtCommandLineProcessor.AUTHORING_TARGET_ARTIFACT_NAME_KEY),
+        )
+        processor.processOption(
+            CliOption(
                 optionName = "compilerSupportManifest",
                 valueDescription = "<path>",
                 description = "",

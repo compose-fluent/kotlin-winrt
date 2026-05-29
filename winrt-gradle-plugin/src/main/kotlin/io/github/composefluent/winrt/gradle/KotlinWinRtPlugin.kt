@@ -769,6 +769,10 @@ private fun configureWinRtGeneration(
             metadataIndex = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
             },
+            authoringAssemblyName = project.provider { project.name },
+            authoringTargetArtifactName = project.provider {
+                (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
+            },
             compilerSupportManifest = mergeCompilerSupportTask.flatMap { it.outputDirectory.file("compiler-support.tsv") },
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
@@ -789,6 +793,10 @@ private fun configureWinRtGeneration(
             project = project,
             metadataIndex = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
+            },
+            authoringAssemblyName = project.provider { project.name },
+            authoringTargetArtifactName = project.provider {
+                (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
             },
             compilerSupportManifest = mergeCompilerSupportTask.flatMap { it.outputDirectory.file("compiler-support.tsv") },
         )
@@ -1127,6 +1135,8 @@ private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
 private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+    authoringAssemblyName: org.gradle.api.provider.Provider<String>,
+    authoringTargetArtifactName: org.gradle.api.provider.Provider<String>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
@@ -1148,6 +1158,29 @@ private fun configureKotlinWinRtCompilerPluginOptions(
             val outputDirectory = task.destinationDirectory.get()
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredCandidatesOutput=${outputDirectory.file("kotlin-winrt/authored-candidates.tsv").asFile.absolutePath}"
         })
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(project.provider {
+            val outputDirectory = task.destinationDirectory.get()
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredMetadataOutput=${outputDirectory.file("kotlin-winrt-authoring/authored-metadata.tsv").asFile.absolutePath}"
+        })
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(project.provider {
+            val outputDirectory = task.destinationDirectory.get()
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredWinmdOutput=${outputDirectory.file("kotlin-winrt-authoring/${authoringAssemblyName.get()}.winmd").asFile.absolutePath}"
+        })
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(project.provider {
+            val outputDirectory = task.destinationDirectory.get()
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredHostManifestOutput=${outputDirectory.file("kotlin-winrt-authoring/${authoringAssemblyName.get()}.host.json").asFile.absolutePath}"
+        })
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringAssemblyName=${authoringAssemblyName.get()}",
+        )
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringTargetArtifactName=${authoringTargetArtifactName.get()}",
+        )
         val compilerSupportManifestPath = compilerSupportManifest.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
         freeCompilerArgs.add(
