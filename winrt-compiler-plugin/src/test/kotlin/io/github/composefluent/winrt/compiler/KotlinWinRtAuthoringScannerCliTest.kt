@@ -395,6 +395,43 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_public_authored_runtime_class_candidates_without_default_constructor() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-constructor-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import windows.foundation.IStringable
+
+            class StringableThing(private val value: String) : IStringable
+            """.trimIndent(),
+        )
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\n")
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("must declare an accessible zero-argument constructor for default activation"),
+        )
+    }
+
+    @Test
     fun rejects_duplicate_authored_type_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-duplicate-scan-")
         val sourceRootA = root.resolve("a")
