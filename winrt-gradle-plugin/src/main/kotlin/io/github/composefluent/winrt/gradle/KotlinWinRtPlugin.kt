@@ -855,6 +855,14 @@ private fun registerWinRtAuthoredCandidateValidation(
     project.tasks.matching { task -> task.name == "check" }.configureEach(Action<Task> { task ->
         task.dependsOn(validationTask)
     })
+    project.tasks.matching { task ->
+        task.name == "generateWinRtIdentity" ||
+            task.name == "processResources" ||
+            task.name == "stageWinRtRuntimeAssets" ||
+            task.name == "stageWinRtApplicationPackage"
+    }.configureEach(Action<Task> { task ->
+        task.dependsOn(validationTask)
+    })
 }
 
 private fun configureKotlinWinRtCompilerPluginClasspath(project: Project) {
