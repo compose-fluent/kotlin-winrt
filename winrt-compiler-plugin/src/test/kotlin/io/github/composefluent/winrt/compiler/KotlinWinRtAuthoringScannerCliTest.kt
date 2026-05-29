@@ -639,6 +639,44 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_blank_authored_runtime_class_annotation_metadata_elements() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-blank-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+            @WinRtAuthoredRuntimeClass(interfaceNames = [""])
+            class LocalShape
+            """.trimIndent(),
+        )
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\n")
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("annotation references unknown WinRT metadata type "),
+        )
+    }
+
+    @Test
     fun scans_inherited_winui_overridable_interfaces_for_grid_subclass() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-grid-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")

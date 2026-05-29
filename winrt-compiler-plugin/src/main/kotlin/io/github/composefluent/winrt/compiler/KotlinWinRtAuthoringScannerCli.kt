@@ -436,7 +436,6 @@ object KotlinWinRtAuthoringScannerCli {
             return Regex("\"([^\"]*)\"")
                 .findAll(body)
                 .map { match -> match.groupValues[1] }
-                .filter(String::isNotBlank)
                 .toList()
         }
 
@@ -502,7 +501,6 @@ object KotlinWinRtAuthoringScannerCli {
             return Regex("\"([^\"]*)\"")
                 .findAll(body)
                 .map { match -> match.groupValues[1] }
-                .filter(String::isNotBlank)
                 .toList()
         }
     }
