@@ -144,10 +144,7 @@ object KotlinWinRtAuthoringScannerCli {
         winRtTypes: Map<String, IndexedWinRtType>,
         sourceTypeName: String,
     ): IndexedWinRtType =
-        requireNotNull(
-            resolveIndexedWinRtType(typeName, packageName, imports, winRtTypes)
-                ?: winRtTypes[projectionPackageToMetadataName(typeName)],
-        ) {
+        requireNotNull(resolveIndexedWinRtType(typeName, packageName, imports, winRtTypes)) {
             "WinRT authored type $sourceTypeName annotation references unknown WinRT metadata type $typeName."
         }
 
