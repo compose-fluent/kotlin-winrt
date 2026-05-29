@@ -383,11 +383,6 @@ private fun configureWinRtApplicationTasks(
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
-            task.authoredMetadataFiles.from(
-                project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
-                ),
-            )
             task.authoredHostManifestFiles.from(
                 localAuthoredHostManifestFiles(project),
             )
@@ -890,6 +885,10 @@ private fun registerWinRtAuthoredCandidateValidation(
             )
         }
     })
+    project.tasks.withType(StageWinRtRuntimeAssetsTask::class.java).configureEach { task ->
+        task.authoredMetadataFiles.from(compilerAuthoredMetadata)
+        task.dependsOn(validationTask)
+    }
     project.tasks.matching { task -> task.name == "check" }.configureEach(Action<Task> { task ->
         task.dependsOn(validationTask)
     })
