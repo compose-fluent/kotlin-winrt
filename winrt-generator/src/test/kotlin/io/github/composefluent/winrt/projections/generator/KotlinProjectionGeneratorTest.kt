@@ -14065,7 +14065,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationSupportIntrinsic.initializeBySourceType(sourceType)"))
         assertFalse(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
         assertFalse(genericTypeInstantiations.contains("Class.forName"))
-        val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
+        val eventProjectionHelpers = filesByName.values
+            .filter { file -> file.relativePath.contains("/WinRTEventProjectionHelper_") || file.relativePath.contains("/_EventSource_") }
+            .joinToString("\n") { file -> file.contents }
         assertFalse(filesByName.containsKey("event-sources.tsv"))
         assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_IS_CHECK\""))
@@ -16500,7 +16502,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(directContents, directContents.contains("override val hasErrors: Boolean"))
         assertFalse(directContents, directContents.contains("INotifyDataErrorInfo.Metadata.IID"))
 
-        val eventHelpers = files.getValue("WinRTEventProjectionHelpers.kt").contents
+        val eventHelpers = files.values
+            .filter { file -> file.relativePath.contains("/WinRTEventProjectionHelper_") || file.relativePath.contains("/_EventSource_") }
+            .joinToString("\n") { file -> file.contents }
         assertTrue(eventHelpers, eventHelpers.contains("Guid(\"D026DD64-5F26-5F15-A86A-0DEC8A431796\")"))
         assertFalse(eventHelpers, eventHelpers.contains("WinRtDataErrorsChangedEventArgs.Metadata"))
     }

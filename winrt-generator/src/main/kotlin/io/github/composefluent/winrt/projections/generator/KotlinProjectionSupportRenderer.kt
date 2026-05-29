@@ -144,32 +144,34 @@ class KotlinProjectionSupportRenderer {
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
-        return listOfNotNull(
-            renderTypeShapeDescriptorCompilerInput(plans),
-            renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
-            renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
-            renderGenericAbiSupportSource(inventory.genericAbiInventory),
-            renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
-            renderGenericTypeInstantiations(genericInstantiationWriters),
-            renderEventProjectionHelpers(
+        return buildList {
+            listOfNotNull(
+                renderTypeShapeDescriptorCompilerInput(plans),
+                renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
+                renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
+                renderGenericAbiSupportSource(inventory.genericAbiInventory),
+                renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
+                renderGenericTypeInstantiations(genericInstantiationWriters),
+                renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
+                renderAuthoringMetadataTypeMappingHelper(inventory),
+                renderAuthoringWrapperPlan(inventory, plans),
+                renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
+                renderAuthoringWrappers(inventory, plans),
+                renderAuthoringAbiClasses(inventory, plans, semanticHelpers),
+                renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
+                renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
+                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
+                renderAuthoringServerActivationFactories(inventory, plans, semanticHelpers),
+                renderAuthoringHostExports(inventory, plans, semanticHelpers),
+                renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
+                renderNamespaceAdditions(inventory),
+            ).forEach(::add)
+            addAll(renderEventProjectionHelpers(
                 model,
                 eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
                 allPlans = plans,
-            ),
-            renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
-            renderAuthoringMetadataTypeMappingHelper(inventory),
-            renderAuthoringWrapperPlan(inventory, plans),
-            renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
-            renderAuthoringWrappers(inventory, plans),
-            renderAuthoringAbiClasses(inventory, plans, semanticHelpers),
-            renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
-            renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
-            renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
-            renderAuthoringServerActivationFactories(inventory, plans, semanticHelpers),
-            renderAuthoringHostExports(inventory, plans, semanticHelpers),
-            renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
-            renderNamespaceAdditions(inventory),
-        )
+            ))
+        }
     }
 
     private fun validateAuthoringMetadataProjectionPlans(
@@ -557,19 +559,18 @@ class KotlinProjectionSupportRenderer {
         model: WinRtMetadataModel,
         eventOwnerPlans: List<KotlinTypeProjectionPlan>,
         allPlans: List<KotlinTypeProjectionPlan>,
-    ): KotlinProjectionFile? {
+    ): List<KotlinProjectionFile> {
         val eventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
         val delegateEventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
         if (eventSourceEntries.isEmpty() && delegateEventSourceEntries.isEmpty()) {
-            return null
+            return emptyList()
         }
         val plansByType = allPlans.associateBy { plan -> plan.type.qualifiedName }
         val typesByQualifiedName = model.namespaces
             .flatMap(WinRtNamespace::types)
             .associateBy(WinRtTypeDefinition::qualifiedName)
-        val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
-            .addGeneratedProjectionSuppressions()
-        delegateEventSourceEntries
+        val helperTypes = buildList {
+            delegateEventSourceEntries
             .filterNot { it.usesSharedEventHandlerSource }
             .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
             .forEach { descriptor ->
@@ -577,19 +578,27 @@ class KotlinProjectionSupportRenderer {
                 val delegatePlan = plansByType[rawEventType] ?: return@forEach
                 val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
                 if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping(plansByType)) {
-                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape, plansByType))
+                    add(eventSourceSubclassType(descriptor, delegatePlan, invokeShape, plansByType))
                 }
             }
-        eventSourceEntries
+            eventSourceEntries
             .groupBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
             .toSortedMap(compareBy({ it.first }, { it.second }))
             .values
             .forEach { ownerEntries ->
-                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType)?.let(fileBuilder::addType)
+                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType)?.let(::add)
             }
-        val fileSpec = fileBuilder
-            .build()
-        return supportFile("WinRTEventProjectionHelpers.kt", fileSpec)
+        }
+        return helperTypes
+            .sortedBy { type -> type.name }
+            .map { type ->
+                val fileName = type.name ?: error("Event projection helper type requires a deterministic name.")
+                val fileSpec = supportFileSpec(fileName)
+                    .addGeneratedProjectionSuppressions()
+                    .addType(type)
+                    .build()
+                supportFile("$fileName.kt", fileSpec)
+            }
     }
 
     private fun renderAbiImplementationPlan(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
