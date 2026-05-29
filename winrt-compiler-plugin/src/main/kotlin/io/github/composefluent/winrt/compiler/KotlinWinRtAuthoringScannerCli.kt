@@ -5,8 +5,10 @@ import io.github.composefluent.winrt.authoring.KotlinImports
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredRuntimeClassAnnotation
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.authoring.PROJECTION_PACKAGE_PREFIX
 import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
 import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.authoring.projectionPackageToMetadataName
 import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.authoring.resolveIndexedWinRtType
 import org.jetbrains.kotlin.KtNodeTypes
@@ -76,6 +78,11 @@ object KotlinWinRtAuthoringScannerCli {
         return source.classes().filter(source::isEffectivelyAuthorableClass).mapNotNull { klass ->
             val className = source.className(klass) ?: return@mapNotNull null
             val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
+            if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
+                projectionPackageToMetadataName(sourceTypeName) in winRtTypes
+            ) {
+                return@mapNotNull null
+            }
             val annotation = source.authoredRuntimeClassAnnotation(klass, packageName, imports)
             val inheritedWinRtTypes = source.superTypeNames(klass)
                 .mapNotNull { superType -> resolveIndexedWinRtType(superType, packageName, imports, winRtTypes) }

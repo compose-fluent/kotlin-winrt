@@ -249,6 +249,41 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun skips_existing_projection_metadata_types() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-projection-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package windows.foundation
+
+            import sample.IShape
+
+            class IStringable : IShape
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Windows.Foundation.IStringable	Interface
+            Sample.IShape	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals("", output.readText())
+    }
+
+    @Test
     fun rejects_generic_authored_runtime_class_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-generic-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
