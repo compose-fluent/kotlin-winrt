@@ -405,7 +405,6 @@ object KotlinWinRtAuthoringScannerCli {
             imports: KotlinImports,
         ): String? {
             val acceptedNames = linkedSetOf(
-                "WinRtAuthoredRuntimeClass",
                 WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION,
             )
             imports.explicit

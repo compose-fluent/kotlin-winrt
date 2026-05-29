@@ -529,6 +529,39 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun ignores_unresolved_local_authored_runtime_class_annotation_names() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-local-annotation-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            annotation class WinRtAuthoredRuntimeClass(
+                val interfaceNames: Array<String> = [],
+            )
+
+            @WinRtAuthoredRuntimeClass(interfaceNames = ["Windows.Foundation.IStringable"])
+            class LocalShape
+            """.trimIndent(),
+        )
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\n")
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals("", output.readText())
+    }
+
+    @Test
     fun rejects_authored_runtime_class_annotation_unknown_metadata_type() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-annotation-missing-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
