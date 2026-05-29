@@ -336,10 +336,17 @@ object KotlinWinRtAuthoringScannerCli {
                 ?: return KotlinWinRtAuthoredRuntimeClassAnnotation()
             val annotationText = authoredRuntimeClassAnnotationText(modifierText, packageName, imports)
                 ?: return KotlinWinRtAuthoredRuntimeClassAnnotation()
+            val positionalArguments = annotationPositionalArguments(annotationText)
             return KotlinWinRtAuthoredRuntimeClassAnnotation(
-                baseClassName = annotationStringArgument(annotationText, "baseClassName").takeIf(String::isNotBlank),
-                interfaceNames = annotationStringArrayArgument(annotationText, "interfaceNames"),
-                overridableInterfaceNames = annotationStringArrayArgument(annotationText, "overridableInterfaceNames"),
+                baseClassName = (
+                    annotationStringArgument(annotationText, "baseClassName")
+                        .takeIf(String::isNotBlank)
+                        ?: positionalArguments.getOrNull(0).stringLiteralArgument()
+                    ).takeIf(String::isNotBlank),
+                interfaceNames = annotationStringArrayArgument(annotationText, "interfaceNames")
+                    .ifEmpty { positionalArguments.getOrNull(1).stringArrayArgument() },
+                overridableInterfaceNames = annotationStringArrayArgument(annotationText, "overridableInterfaceNames")
+                    .ifEmpty { positionalArguments.getOrNull(2).stringArrayArgument() },
             )
         }
 
@@ -426,6 +433,72 @@ object KotlinWinRtAuthoringScannerCli {
         private fun annotationStringArrayArgument(annotationText: String, name: String): List<String> {
             val body = Regex("\\b${Regex.escape(name)}\\s*=\\s*\\[([^\\]]*)]")
                 .find(annotationText)
+                ?.groupValues
+                ?.get(1)
+                ?: return emptyList()
+            return Regex("\"([^\"]*)\"")
+                .findAll(body)
+                .map { match -> match.groupValues[1] }
+                .filter(String::isNotBlank)
+                .toList()
+        }
+
+        private fun annotationPositionalArguments(annotationText: String): List<String> {
+            val body = annotationText.substringAfter('(', missingDelimiterValue = "")
+                .substringBeforeLast(')', missingDelimiterValue = "")
+                .takeIf(String::isNotBlank)
+                ?: return emptyList()
+            return splitTopLevelArguments(body)
+                .filterNot(::hasTopLevelEquals)
+        }
+
+        private fun splitTopLevelArguments(body: String): List<String> {
+            val arguments = mutableListOf<String>()
+            var start = 0
+            var bracketDepth = 0
+            var inString = false
+            var escaped = false
+            body.forEachIndexed { index, char ->
+                when {
+                    escaped -> escaped = false
+                    char == '\\' && inString -> escaped = true
+                    char == '"' -> inString = !inString
+                    !inString && char == '[' -> bracketDepth += 1
+                    !inString && char == ']' -> bracketDepth -= 1
+                    !inString && char == ',' && bracketDepth == 0 -> {
+                        arguments += body.substring(start, index).trim()
+                        start = index + 1
+                    }
+                }
+            }
+            arguments += body.substring(start).trim()
+            return arguments.filter(String::isNotBlank)
+        }
+
+        private fun hasTopLevelEquals(argument: String): Boolean {
+            var inString = false
+            var escaped = false
+            argument.forEach { char ->
+                when {
+                    escaped -> escaped = false
+                    char == '\\' && inString -> escaped = true
+                    char == '"' -> inString = !inString
+                    !inString && char == '=' -> return true
+                }
+            }
+            return false
+        }
+
+        private fun String?.stringLiteralArgument(): String =
+            this
+                ?.let { Regex("^\\s*\"([^\"]*)\"\\s*$").find(it) }
+                ?.groupValues
+                ?.get(1)
+                .orEmpty()
+
+        private fun String?.stringArrayArgument(): List<String> {
+            val body = this
+                ?.let { Regex("^\\s*\\[([^\\]]*)]\\s*$").find(it) }
                 ?.groupValues
                 ?.get(1)
                 ?: return emptyList()
