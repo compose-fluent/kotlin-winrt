@@ -98,6 +98,9 @@ object KotlinWinRtAuthoringScannerCli {
             if (resolvedWinRtTypes.isEmpty()) {
                 return@mapNotNull null
             }
+            require(source.isRuntimeClassDeclaration(klass)) {
+                "WinRT authored type $sourceTypeName must be a concrete Kotlin class."
+            }
             require(!source.hasTypeParameters(klass)) {
                 "WinRT authored type $sourceTypeName must not be generic."
             }
@@ -282,6 +285,9 @@ object KotlinWinRtAuthoringScannerCli {
 
         fun hasTypeParameters(classNode: LighterASTNode): Boolean =
             classNode.children().any { child -> child.tokenType == KtNodeTypes.TYPE_PARAMETER_LIST }
+
+        fun isRuntimeClassDeclaration(classNode: LighterASTNode): Boolean =
+            classDeclarationKeyword(classNode) == KtTokens.CLASS_KEYWORD
 
         fun isUnsealedAuthoredClass(classNode: LighterASTNode): Boolean =
             classDeclarationKeyword(classNode) == KtTokens.CLASS_KEYWORD &&
