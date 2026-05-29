@@ -5182,7 +5182,60 @@ class KotlinWinRtPluginTest {
 
     @Test
     fun compiler_plugin_rejects_nested_authored_runtime_classes() {
-        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-nested-authoring-test-")
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/Container.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                class Container {
+                    @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                    class NestedStringableThing
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "nested authored runtime classes are not supported",
+        )
+    }
+
+    @Test
+    fun compiler_plugin_rejects_generic_authored_runtime_classes() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/GenericStringableThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class GenericStringableThing<T>
+            """.trimIndent(),
+            expectedDiagnostic = "must not be generic",
+        )
+    }
+
+    @Test
+    fun compiler_plugin_rejects_unsealed_authored_runtime_classes() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/OpenStringableThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                open class OpenStringableThing
+            """.trimIndent(),
+            expectedDiagnostic = "must be final",
+        )
+    }
+
+    private fun assertCompilerPluginRejectsGeneratedAuthoredSource(
+        sourceFile: String,
+        sourceText: String,
+        expectedDiagnostic: String,
+    ) {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-authoring-validation-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
             .toAbsolutePath()
             .normalize()
@@ -5241,7 +5294,7 @@ class KotlinWinRtPluginTest {
             val writeNestedAuthoredProbe = tasks.register("writeNestedAuthoredProbe") {
                 dependsOn("generateWinRtProjections")
                 val outputFile = layout.projectDirectory.file(
-                    "src/commonMain/kotlin/sample/Container.kt",
+                    "$sourceFile",
                 )
                 outputs.file(outputFile)
                 doLast {
@@ -5249,14 +5302,7 @@ class KotlinWinRtPluginTest {
                         parentFile.mkdirs()
                         writeText(
                             ${"\"\"\""}
-                            package sample
-
-                            import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
-
-                            class Container {
-                                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
-                                class NestedStringableThing
-                            }
+                            $sourceText
                             ${"\"\"\""}.trimIndent()
                         )
                     }
@@ -5278,7 +5324,7 @@ class KotlinWinRtPluginTest {
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertEquals(TaskOutcome.FAILED, result.task(":compileKotlinWinuiJvm")?.outcome)
-        assertTrue(result.output.contains("nested authored runtime classes are not supported"))
+        assertTrue(result.output.contains(expectedDiagnostic))
     }
 
     @Test
