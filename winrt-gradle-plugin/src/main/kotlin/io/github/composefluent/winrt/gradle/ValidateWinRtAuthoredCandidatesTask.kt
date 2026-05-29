@@ -57,10 +57,16 @@ internal fun validateAuthoredCandidateHandoff(
     }
     val scannerTypes = scanner.map(KotlinWinRtAuthoredTypeCandidate::sourceTypeName).toSet()
     val compilerTypes = compiler.map(KotlinWinRtAuthoredTypeCandidate::sourceTypeName).toSet()
+    val scannerByType = scanner.associateBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
+    val compilerByType = compiler.associateBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
+    val changedTypes = (scannerTypes intersect compilerTypes)
+        .filter { typeName -> scannerByType[typeName] != compilerByType[typeName] }
+        .sorted()
     throw GradleException(
         "kotlin-winrt authored candidate handoff mismatch between source scanner and compiler IR output. " +
             "Only scanner candidates: ${(scannerTypes - compilerTypes).sorted().joinToString().ifBlank { "<none>" }}. " +
             "Only compiler candidates: ${(compilerTypes - scannerTypes).sorted().joinToString().ifBlank { "<none>" }}. " +
+            "Changed candidates: ${changedTypes.joinToString().ifBlank { "<none>" }}. " +
             "Regenerate authored metadata from sources visible before generateWinRtProjections or fix scanner/IR parity.",
     )
 }
