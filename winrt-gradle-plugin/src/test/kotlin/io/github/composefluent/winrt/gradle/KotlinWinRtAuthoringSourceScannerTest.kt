@@ -158,6 +158,33 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun reports_changed_scanner_and_compiler_authored_candidate_files() {
+        val scanner = Files.createTempFile("kotlin-winrt-scanner-candidates-changed-", ".tsv")
+        val compiler = Files.createTempFile("kotlin-winrt-compiler-candidates-changed-", ".tsv")
+        val scannerCandidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "App",
+            sourceTypeName = "sample.App",
+            winRtBaseClassName = null,
+            winRtInterfaceNames = listOf("Windows.Foundation.IStringable"),
+            overridableInterfaceNames = emptyList(),
+            isPublic = true,
+        )
+        KotlinWinRtAuthoringCandidateFile.write(scanner, listOf(scannerCandidate))
+        KotlinWinRtAuthoringCandidateFile.write(compiler, listOf(scannerCandidate.copy(isPublic = false)))
+
+        val error = runCatching {
+            validateAuthoredCandidateHandoff(scanner.toFile(), compiler.toFile())
+        }.exceptionOrNull()
+
+        assertTrue(error is GradleException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("Changed candidates: sample.App"),
+        )
+    }
+
+    @Test
     fun merges_scanned_authored_runtime_classes_into_projection_metadata_model() {
         val augmented = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             model = model(),
