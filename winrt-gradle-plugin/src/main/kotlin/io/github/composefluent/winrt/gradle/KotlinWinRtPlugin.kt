@@ -1064,6 +1064,11 @@ private fun configureKotlinWinRtCompilerPluginOptions(
             val outputDirectory = task.destinationDirectory.get()
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:typeIndexOutput=${outputDirectory.file("kotlin-winrt/type-index.tsv").asFile.absolutePath}"
         })
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(project.provider {
+            val outputDirectory = task.destinationDirectory.get()
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredCandidatesOutput=${outputDirectory.file("kotlin-winrt/authored-candidates.tsv").asFile.absolutePath}"
+        })
         val compilerSupportManifestPath = compilerSupportManifest.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
         freeCompilerArgs.add(
