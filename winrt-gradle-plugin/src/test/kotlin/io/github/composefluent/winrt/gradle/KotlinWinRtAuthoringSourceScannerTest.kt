@@ -1340,6 +1340,36 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                         ),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "StartBackgroundWorkCore",
+                                    returnTypeName = "Windows.Foundation.IAsyncAction",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetDeferredNameCore",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperation<System.String>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "StartBackgroundWorkWithProgressCore",
+                                    returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<System.UInt32>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetDeferredNameWithProgressCore",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<System.String, System.UInt32>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetDeferredNameCore",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "deferredName",
+                                            typeName = "Windows.Foundation.IAsyncOperation<System.String>",
+                                            typeSignature = WinRtTypeRef.named(
+                                                "Windows.Foundation.IAsyncOperation",
+                                                typeArguments = listOf(WinRtTypeRef.named("System.String")),
+                                            ),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1376,6 +1406,13 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtReadOnlyListProjection.fromAbi(rawArgs[0]"))
         assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(reference.pointer)"))
         assertTrue(generated.contains("AutomationPeer).__winrtAuthoringInvokeSetPeerGroupsCore(__arg0)"))
+        assertTrue(generated.contains("WinRtAsyncInterfaceIds.IAsyncAction"))
+        assertTrue(generated.contains("WinRtAsyncInterfaceIds.IAsyncOperationGeneric"))
+        assertTrue(generated.contains("WinRtAsyncInterfaceIds.IAsyncActionWithProgressGeneric"))
+        assertTrue(generated.contains("WinRtAsyncInterfaceIds.IAsyncOperationWithProgressGeneric"))
+        assertTrue(generated.contains("WinRtTypeSignature.uint32()"))
+        assertTrue(generated.contains("WinRtAsyncOperationReference<String>"))
+        assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[0]"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
     }
 
