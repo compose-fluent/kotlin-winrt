@@ -1256,6 +1256,10 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     returnTypeName = "Windows.Foundation.Collections.IVectorView<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "GetControlledPeerInterfacesCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<Microsoft.UI.Xaml.Automation.Peers.IAutomationPeer>",
+                                ),
+                                WinRtMethodDefinition(
                                     name = "GetDescribedByCore",
                                     returnTypeName = "Windows.Foundation.Collections.IIterable<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
                                 ),
@@ -1304,9 +1308,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtDictionaryProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtReferenceValueAdapter<Iterable<AutomationPeer>>"))
         assertTrue(generated.contains("WinRtReferenceValueAdapter<Map<String, AutomationPeer>>"))
+        assertTrue(generated.contains("WinRtReferenceValueAdapter<IAutomationPeer>"))
         assertTrue(generated.contains("WinRtCollectionInterfaceIds.iterableSignature"))
         assertTrue(generated.contains("WinRtCollectionInterfaceIds.mapViewSignature"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.runtimeClass(AutomationPeer::class"))
+        assertTrue(generated.contains("IAutomationPeer.Metadata.wrap(reference!!)"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
