@@ -1213,6 +1213,90 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_authored_nullable_reference_parameters_and_returns_through_reference_projection_helpers() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-reference-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalSettingsOwner",
+            sourceTypeName = "sample.LocalSettingsOwner",
+            winRtBaseClassName = "Sample.SettingsOwner",
+            winRtInterfaceNames = listOf("Sample.ISettingsOwnerOverrides"),
+            overridableInterfaceNames = listOf("Sample.ISettingsOwnerOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "SettingsOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.ISettingsOwner",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "ISettingsOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IReference",
+                            kind = WinRtTypeKind.Interface,
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "ISettingsOwnerOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetRetryCountCore",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "retryCount",
+                                            typeName = "Windows.Foundation.IReference<System.Int32>",
+                                            typeSignature = WinRtTypeRef.named(
+                                                "Windows.Foundation.IReference",
+                                                typeArguments = listOf(WinRtTypeRef.named("System.Int32")),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetDisplayNameCore",
+                                    returnTypeName = "Windows.Foundation.IReference<System.String>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalSettingsOwner_TypeDetails.kt").readText()
+        assertTrue(generated.contains("WinRtReferenceProjection.fromAbi(rawArgs[0] as RawAddress"))
+        assertTrue(generated.contains("ParameterizedInterfaceId.createFromParameterizedInterface("))
+        assertTrue(generated.contains("IID.IReference"))
+        assertTrue(generated.contains("WinRtTypeSignature.int32()"))
+        assertTrue(generated.contains("as Int?"))
+        assertTrue(generated.contains("(value as SettingsOwner).__winrtAuthoringInvokeSetRetryCountCore(__arg0)"))
+        assertTrue(generated.contains("WinRtReferenceProjection.fromManaged(__result"))
+        assertTrue(generated.contains("WinRtTypeSignature.string()"))
+        assertTrue(generated, !generated.contains("detachCCWForObject(__result"))
+    }
+
+    @Test
     fun renders_authored_delegate_parameters_and_returns_through_delegate_projection_helpers() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-delegate-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(

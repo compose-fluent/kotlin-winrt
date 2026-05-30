@@ -66,17 +66,20 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
     private val winRtReadOnlyDictionaryProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyDictionaryProjection")
     private val winRtReadOnlyListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyListProjection")
+    private val winRtReferenceProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceProjection")
     private val winRtReferenceValueAdapterType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapter")
     private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
     private val winRtTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRtTypeSignature")
     private val enumIntegralAbiDescriptors = mapOf(
         WinRtIntegralType.Int8 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Byte::class.asClassName(),
+            integralType = WinRtIntegralType.Int8,
             abiKindName = "Int8",
             writeFunctionName = "writeInt8",
         ),
         WinRtIntegralType.UInt8 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Byte::class.asClassName(),
+            integralType = WinRtIntegralType.UInt8,
             abiKindName = "Int8",
             rawCarrierConversionSuffix = ".toUByte()",
             writeFunctionName = "writeInt8",
@@ -84,11 +87,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         ),
         WinRtIntegralType.Int16 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Short::class.asClassName(),
+            integralType = WinRtIntegralType.Int16,
             abiKindName = "Int16",
             writeFunctionName = "writeInt16",
         ),
         WinRtIntegralType.UInt16 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Short::class.asClassName(),
+            integralType = WinRtIntegralType.UInt16,
             abiKindName = "Int16",
             rawCarrierConversionSuffix = ".toUShort()",
             writeFunctionName = "writeInt16",
@@ -96,11 +101,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         ),
         WinRtIntegralType.Int32 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Int::class.asClassName(),
+            integralType = WinRtIntegralType.Int32,
             abiKindName = "Int32",
             writeFunctionName = "writeInt32",
         ),
         WinRtIntegralType.UInt32 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Int::class.asClassName(),
+            integralType = WinRtIntegralType.UInt32,
             abiKindName = "Int32",
             rawCarrierConversionSuffix = ".toUInt()",
             writeFunctionName = "writeInt32",
@@ -108,11 +115,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         ),
         WinRtIntegralType.Int64 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Long::class.asClassName(),
+            integralType = WinRtIntegralType.Int64,
             abiKindName = "Int64",
             writeFunctionName = "writeInt64",
         ),
         WinRtIntegralType.UInt64 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Long::class.asClassName(),
+            integralType = WinRtIntegralType.UInt64,
             abiKindName = "Int64",
             rawCarrierConversionSuffix = ".toULong()",
             writeFunctionName = "writeInt64",
@@ -430,6 +439,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         renderCollectionParameterProjection(method, rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
             return projection
         }
+        renderReferenceParameterProjection(method, rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
+            return projection
+        }
         renderDelegateParameterProjection(rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
             return projection
         }
@@ -694,6 +706,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         renderCollectionReturnProjection(method, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
             return it
         }
+        renderReferenceReturnProjection(method, outExpression, valueExpression, typesByName)?.let {
+            return it
+        }
         val returnType = typesByName[method.returnTypeName]
         renderDelegateReturnProjection(outExpression, valueExpression, returnType)?.let {
             return it
@@ -781,6 +796,66 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             winRtProjectedDelegateType,
         )
     }
+
+    private fun renderReferenceParameterProjection(
+        method: WinRtMethodDefinition,
+        rawArg: CodeBlock,
+        parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        val parameterType = parameter.type.normalized()
+        if (parameterType.qualifiedName != "Windows.Foundation.IReference") {
+            return null
+        }
+        val valueType = parameterType.typeArguments.singleOrNull()?.normalized()
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} has nullable parameter '${parameter.name}' without exactly one value type.",
+            )
+        return CodeBlock.of(
+            "%T.fromAbi(%L as %T, %L) as %T",
+            winRtReferenceProjectionType,
+            rawArg,
+            rawAddressType,
+            renderReferenceInterfaceId(valueType, typesByName),
+            authoringProjectedTypeName(valueType, typesByName, semanticHelpers).copy(nullable = true),
+        )
+    }
+
+    private fun renderReferenceReturnProjection(
+        method: WinRtMethodDefinition,
+        outExpression: CodeBlock,
+        valueExpression: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val returnType = WinRtTypeRef.fromDisplayName(method.returnTypeName).normalized()
+        if (returnType.qualifiedName != "Windows.Foundation.IReference") {
+            return null
+        }
+        val valueType = returnType.typeArguments.singleOrNull()?.normalized()
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns nullable type '${method.returnTypeName}' without exactly one value type.",
+            )
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.fromManaged(%L, %L))",
+            platformAbiType,
+            outExpression,
+            winRtReferenceProjectionType,
+            valueExpression,
+            renderReferenceInterfaceId(valueType, typesByName),
+        )
+    }
+
+    private fun renderReferenceInterfaceId(
+        valueType: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock =
+        CodeBlock.of(
+            "%T.createFromParameterizedInterface(%T.IReference, %L)",
+            parameterizedInterfaceIdType,
+            iidType,
+            renderWinRtTypeSignature(valueType, typesByName),
+        )
 
     private fun renderCollectionParameterProjection(
         method: WinRtMethodDefinition,
@@ -1400,15 +1475,35 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (isWinRtStringTypeName(typeName)) {
             return String::class.asClassName()
         }
+        fundamentalProjectedTypeName(typeName)?.let { return it }
         val definition = typesByName[typeName]
             ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no metadata.")
         return when (definition.kind) {
             WinRtTypeKind.RuntimeClass -> projectionClassName(typeName, semanticHelpers)
+            WinRtTypeKind.Enum -> projectionClassName(typeName, semanticHelpers)
             WinRtTypeKind.Struct -> runtimeMappedClassName(typeName, semanticHelpers)
                 ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
             else -> throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
         }
     }
+
+    private fun fundamentalProjectedTypeName(typeName: String): ClassName? =
+        when (fundamentalType(typeName)) {
+            WinRtFundamentalType.Boolean -> Boolean::class.asClassName()
+            WinRtFundamentalType.Char -> Char::class.asClassName()
+            WinRtFundamentalType.Int8 -> Byte::class.asClassName()
+            WinRtFundamentalType.UInt8 -> UByte::class.asClassName()
+            WinRtFundamentalType.Int16 -> Short::class.asClassName()
+            WinRtFundamentalType.UInt16 -> UShort::class.asClassName()
+            WinRtFundamentalType.Int32 -> Int::class.asClassName()
+            WinRtFundamentalType.UInt32 -> UInt::class.asClassName()
+            WinRtFundamentalType.Int64 -> Long::class.asClassName()
+            WinRtFundamentalType.UInt64 -> ULong::class.asClassName()
+            WinRtFundamentalType.Float -> Float::class.asClassName()
+            WinRtFundamentalType.Double -> Double::class.asClassName()
+            WinRtFundamentalType.String,
+            null -> null
+        }
 
     private fun renderAsyncProjectedType(
         type: WinRtTypeRef,
@@ -1514,6 +1609,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no metadata signature.")
         return when (definition.kind) {
             WinRtTypeKind.RuntimeClass -> CodeBlock.of("%T.object_()", winRtTypeSignatureType)
+            WinRtTypeKind.Enum -> CodeBlock.of(
+                "%T.enum(%S, %L)",
+                winRtTypeSignatureType,
+                typeName,
+                renderFundamentalTypeSignature(integralFundamentalType(enumIntegralAbiDescriptor(definition).integralType)),
+            )
             WinRtTypeKind.Struct -> CodeBlock.of(
                 "%T.struct(%S%L)",
                 winRtTypeSignatureType,
@@ -1636,11 +1737,24 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private data class AuthoringEnumIntegralAbiDescriptor(
         val carrierTypeName: ClassName,
+        val integralType: WinRtIntegralType,
         val abiKindName: String,
         val rawCarrierConversionSuffix: String = "",
         val writeFunctionName: String,
         val abiWriteConversionSuffix: String = "",
     )
+
+    private fun integralFundamentalType(type: WinRtIntegralType): WinRtFundamentalType =
+        when (type) {
+            WinRtIntegralType.Int8 -> WinRtFundamentalType.Int8
+            WinRtIntegralType.UInt8 -> WinRtFundamentalType.UInt8
+            WinRtIntegralType.Int16 -> WinRtFundamentalType.Int16
+            WinRtIntegralType.UInt16 -> WinRtFundamentalType.UInt16
+            WinRtIntegralType.Int32 -> WinRtFundamentalType.Int32
+            WinRtIntegralType.UInt32 -> WinRtFundamentalType.UInt32
+            WinRtIntegralType.Int64 -> WinRtFundamentalType.Int64
+            WinRtIntegralType.UInt64 -> WinRtFundamentalType.UInt64
+        }
 
     private data class NestedCollectionProjectionDescriptor(
         val projectedType: ClassName,
