@@ -3395,6 +3395,11 @@ class KotlinWinRtIrGenerationExtension(
                         "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} must not be suspend; expose WinRT async interfaces explicitly.",
                     )
                 }
+                if (function.isOperator) {
+                    report(
+                        "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} must not overload Kotlin operators.",
+                    )
+                }
                 validateAuthoredExposedType(
                     type = function.returnType,
                     authoredType = authoredType,
