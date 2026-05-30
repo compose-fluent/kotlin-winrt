@@ -1348,6 +1348,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
                             name = "IBufferOwnerOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = io.github.composefluent.winrt.runtime.Guid("44444444-3333-2222-1111-000000000000"),
@@ -1394,6 +1399,20 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                         ),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetPoints",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "points",
+                                            typeName = "Array<Sample.Point>",
+                                            direction = io.github.composefluent.winrt.metadata.WinRtParameterDirection.Out,
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Sample.Point"), isByRef = true),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1425,6 +1444,12 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetThings()"))
         assertTrue(generated, generated.contains("ComWrappersSupport.detachCCWForObject(__element"))
         assertTrue(generated, generated.contains("Guid(\"55555555-3333-2222-1111-000000000000\")"))
+        assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetPoints()"))
+        assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() *"))
+        assertTrue(generated, generated.contains("Point.Metadata.layout.sizeBytes, Point.Metadata.layout.alignmentBytes)"))
+        assertTrue(generated, generated.contains("Point.Metadata.layout.alignmentBytes"))
+        assertTrue(generated, generated.contains("Point.Metadata.copyTo(__element"))
+        assertTrue(generated, generated.contains("as Point, PlatformAbi.slice(__returnArrayData"))
     }
 
     @Test

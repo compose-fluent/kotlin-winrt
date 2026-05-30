@@ -342,6 +342,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                                 dataOutExpression = CodeBlock.of("rawArgs[%L] as %T", receiveArrayRawIndex + 1, rawAddressType),
                                 valueExpression = "__result",
                                 typesByName = typesByName,
+                                semanticHelpers = semanticHelpers,
                             ),
                         )
                     } else {
@@ -680,6 +681,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         dataOutExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         val arrayType = parameter.type.normalized()
         val elementType = arrayType.elementType?.normalized()
@@ -691,11 +693,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 "Authored WinRT override ${method.name} returns array '${parameter.typeName}' with unsupported rank ${arrayType.arrayRank}.",
             )
         }
-        val elementSize = arrayElementSize(elementType, typesByName)
+        val (elementSize, elementAlignment) = arrayElementLayout(elementType, typesByName, semanticHelpers)
             ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns unsupported array element type '${elementType.typeName}'.",
             )
-        val elementWrite = renderArrayElementWrite(method, elementType, CodeBlock.of("__returnArrayData"), CodeBlock.of("__index"), CodeBlock.of("__element"), typesByName)
+        val elementWrite = renderArrayElementWrite(method, elementType, CodeBlock.of("__returnArrayData"), CodeBlock.of("__index"), CodeBlock.of("__element"), typesByName, semanticHelpers)
             ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns unsupported array element type '${elementType.typeName}'.",
             )
@@ -704,7 +706,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             platformAbiType,
             valueExpression,
             elementSize,
-            elementSize,
+            elementAlignment,
             valueExpression,
             elementWrite,
             platformAbiType,
@@ -715,30 +717,37 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         )
     }
 
-    private fun arrayElementSize(
+    private fun arrayElementLayout(
         type: WinRtTypeRef,
         typesByName: Map<String, WinRtTypeDefinition>,
-    ): Int? =
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): Pair<CodeBlock, CodeBlock>? =
         fundamentalType(type.typeName)?.let { fundamental ->
             when (fundamental) {
                 WinRtFundamentalType.Boolean,
                 WinRtFundamentalType.Int8,
-                WinRtFundamentalType.UInt8 -> 1
+                WinRtFundamentalType.UInt8 -> CodeBlock.of("1") to CodeBlock.of("1")
                 WinRtFundamentalType.Char,
                 WinRtFundamentalType.Int16,
-                WinRtFundamentalType.UInt16 -> 2
+                WinRtFundamentalType.UInt16 -> CodeBlock.of("2") to CodeBlock.of("2")
                 WinRtFundamentalType.Int32,
                 WinRtFundamentalType.UInt32,
-                WinRtFundamentalType.Float -> 4
+                WinRtFundamentalType.Float -> CodeBlock.of("4") to CodeBlock.of("4")
                 WinRtFundamentalType.Int64,
                 WinRtFundamentalType.UInt64,
-                WinRtFundamentalType.Double -> 8
-                WinRtFundamentalType.String -> 8
+                WinRtFundamentalType.Double,
+                WinRtFundamentalType.String -> CodeBlock.of("8") to CodeBlock.of("8")
             }
         } ?: when (typesByName[type.qualifiedName]?.kind) {
             WinRtTypeKind.Interface,
             WinRtTypeKind.RuntimeClass,
-            -> 8
+            -> CodeBlock.of("8") to CodeBlock.of("8")
+            WinRtTypeKind.Struct -> {
+                val elementTypeName = type.qualifiedName ?: return null
+                val projectionType = projectionClassName(elementTypeName, semanticHelpers)
+                CodeBlock.of("%T.Metadata.layout.sizeBytes", projectionType) to
+                    CodeBlock.of("%T.Metadata.layout.alignmentBytes", projectionType)
+            }
             else -> null
         }
 
@@ -749,6 +758,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         indexExpression: CodeBlock,
         valueExpression: CodeBlock,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock? =
         when (fundamentalType(type.typeName)) {
             WinRtFundamentalType.Boolean -> CodeBlock.of(
@@ -795,6 +805,20 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                         valueExpression,
                         renderObjectInterfaceId(method, elementTypeName, elementDefinition, typesByName),
                     )
+                    WinRtTypeKind.Struct -> {
+                        val projectionType = projectionClassName(elementTypeName, semanticHelpers)
+                        CodeBlock.of(
+                            "%T.Metadata.copyTo(%L as %T, %T.slice(%L, %L.toLong() * %T.Metadata.layout.sizeBytes, %T.Metadata.layout.sizeBytes))",
+                            projectionType,
+                            valueExpression,
+                            projectionType,
+                            platformAbiType,
+                            dataExpression,
+                            indexExpression,
+                            projectionType,
+                            projectionType,
+                        )
+                    }
                     else -> null
                 }
             }
