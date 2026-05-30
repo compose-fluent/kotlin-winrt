@@ -3477,6 +3477,12 @@ class KotlinWinRtIrGenerationExtension(
         role: String,
         report: (String) -> Unit,
     ) {
+        val typeName = type.classFqName?.asString()
+        if (typeName in unsupportedAuthoredExposedTypeNames) {
+            report(
+                "WinRT authored member ${authoredType.sourceTypeName}.$memberName $role must not expose unsupported type $typeName.",
+            )
+        }
         if (!type.isKotlinArrayType()) {
             return
         }
@@ -3509,6 +3515,13 @@ class KotlinWinRtIrGenerationExtension(
         "kotlin.UIntArray",
         "kotlin.ULongArray",
         "kotlin.UShortArray",
+    )
+
+    private val unsupportedAuthoredExposedTypeNames = setOf(
+        "kotlin.Throwable",
+        "kotlin.Exception",
+        "java.lang.Throwable",
+        "java.lang.Exception",
     )
 
     private val authoredMemberValidationSyntheticFunctionNames = setOf(

@@ -5638,6 +5638,24 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_exception_authored_runtime_members() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/ExceptionThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class ExceptionThing {
+                    fun lastFailure(): Throwable = RuntimeException("failed")
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "must not expose unsupported type kotlin.Throwable",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_suspend_authored_runtime_members() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/SuspendThing.kt",
