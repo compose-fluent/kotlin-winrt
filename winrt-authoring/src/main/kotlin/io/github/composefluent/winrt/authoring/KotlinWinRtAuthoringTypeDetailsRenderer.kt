@@ -728,7 +728,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 WinRtFundamentalType.Int64,
                 WinRtFundamentalType.UInt64,
                 WinRtFundamentalType.Double -> 8
-                WinRtFundamentalType.String -> null
+                WinRtFundamentalType.String -> 8
             }
         }
 
@@ -758,7 +758,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtFundamentalType.Int64 -> CodeBlock.of("%T.writeInt64(%T.slice(%L, %L.toLong() * 8, 8), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
             WinRtFundamentalType.UInt64 -> CodeBlock.of("%T.writeInt64(%T.slice(%L, %L.toLong() * 8, 8), %L.toLong())", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
             WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%T.slice(%L, %L.toLong() * 8, 8), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
-            WinRtFundamentalType.String,
+            WinRtFundamentalType.String -> CodeBlock.of(
+                "%T.writePointer(%T.slice(%L, %L.toLong() * 8, 8), %T.create(%L).handle)",
+                platformAbiType,
+                platformAbiType,
+                dataExpression,
+                indexExpression,
+                hStringType,
+                valueExpression,
+            )
             null -> null
         }
 
