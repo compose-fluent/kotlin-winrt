@@ -41,6 +41,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val iInspectableReferenceType = ClassName("io.github.composefluent.winrt.runtime", "IInspectableReference")
     private val iWinRtObjectType = ClassName("io.github.composefluent.winrt.runtime", "IWinRTObject")
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
+    private val exceptionHelpersType = ClassName("io.github.composefluent.winrt.runtime", "ExceptionHelpers")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
     private val marshalDelegateType = ClassName("io.github.composefluent.winrt.runtime", "MarshalDelegate")
     private val parameterizedInterfaceIdType = ClassName("io.github.composefluent.winrt.runtime", "ParameterizedInterfaceId")
@@ -318,6 +319,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         return CodeBlock.builder()
             .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method, typesByName, semanticHelpers))
             .indent()
+            .add("try {\n")
+            .indent()
             .apply {
                 var rawIndex = 0
                 method.parameters.forEachIndexed { index, parameter ->
@@ -377,6 +380,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 }
             }
             .addStatement("%T.S_OK.value", knownHResultsType)
+            .unindent()
+            .add("} catch (__exception: %T) {\n", Throwable::class.asClassName())
+            .indent()
+            .addStatement("%T.setErrorInfo(__exception)", exceptionHelpersType)
+            .addStatement("%T.getHRForException(__exception).value", exceptionHelpersType)
+            .unindent()
+            .add("}\n")
+            .unindent()
             .add("}")
             .build()
     }
