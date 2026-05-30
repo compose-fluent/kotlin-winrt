@@ -3431,6 +3431,11 @@ class KotlinWinRtIrGenerationExtension(
                         "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} must not overload Kotlin operators.",
                     )
                 }
+                if (function.typeParameters.isNotEmpty()) {
+                    report(
+                        "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} must not be generic.",
+                    )
+                }
                 validateAuthoredExposedType(
                     type = function.returnType,
                     authoredType = authoredType,
@@ -3445,6 +3450,18 @@ class KotlinWinRtIrGenerationExtension(
                             report(
                                 "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} parameter '${parameter.name.asString()}' " +
                                     "must not use the generated return-value parameter name.",
+                            )
+                        }
+                        if (parameter.varargElementType != null) {
+                            report(
+                                "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} parameter '${parameter.name.asString()}' " +
+                                    "must not be vararg.",
+                            )
+                        }
+                        if (parameter.defaultValue != null) {
+                            report(
+                                "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} parameter '${parameter.name.asString()}' " +
+                                    "must not declare a Kotlin default value.",
                             )
                         }
                         validateAuthoredExposedType(
