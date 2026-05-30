@@ -1342,6 +1342,12 @@ class KotlinWinRtAuthoringSourceScannerTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample",
+                            name = "IThing",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("55555555-3333-2222-1111-000000000000"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
                             name = "IBufferOwnerOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = io.github.composefluent.winrt.runtime.Guid("44444444-3333-2222-1111-000000000000"),
@@ -1374,6 +1380,20 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                         ),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetThings",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "things",
+                                            typeName = "Array<Sample.IThing>",
+                                            direction = io.github.composefluent.winrt.metadata.WinRtParameterDirection.Out,
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Sample.IThing"), isByRef = true),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1402,6 +1422,9 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() * 8"))
         assertTrue(generated, generated.contains("PlatformAbi.writePointer(PlatformAbi.slice(__returnArrayData, __index.toLong() *"))
         assertTrue(generated, generated.contains("8, 8), HString.create(__element).handle)"))
+        assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetThings()"))
+        assertTrue(generated, generated.contains("ComWrappersSupport.detachCCWForObject(__element"))
+        assertTrue(generated, generated.contains("Guid(\"55555555-3333-2222-1111-000000000000\")"))
     }
 
     @Test

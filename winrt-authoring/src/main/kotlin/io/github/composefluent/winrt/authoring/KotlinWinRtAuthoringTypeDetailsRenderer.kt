@@ -341,6 +341,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                                 lengthOutExpression = CodeBlock.of("rawArgs[%L] as %T", receiveArrayRawIndex, rawAddressType),
                                 dataOutExpression = CodeBlock.of("rawArgs[%L] as %T", receiveArrayRawIndex + 1, rawAddressType),
                                 valueExpression = "__result",
+                                typesByName = typesByName,
                             ),
                         )
                     } else {
@@ -678,6 +679,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         lengthOutExpression: CodeBlock,
         dataOutExpression: CodeBlock,
         valueExpression: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
         val arrayType = parameter.type.normalized()
         val elementType = arrayType.elementType?.normalized()
@@ -689,11 +691,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 "Authored WinRT override ${method.name} returns array '${parameter.typeName}' with unsupported rank ${arrayType.arrayRank}.",
             )
         }
-        val elementSize = arrayElementSize(elementType)
+        val elementSize = arrayElementSize(elementType, typesByName)
             ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns unsupported array element type '${elementType.typeName}'.",
             )
-        val elementWrite = renderArrayElementWrite(elementType, CodeBlock.of("__returnArrayData"), CodeBlock.of("__index"), CodeBlock.of("__element"))
+        val elementWrite = renderArrayElementWrite(method, elementType, CodeBlock.of("__returnArrayData"), CodeBlock.of("__index"), CodeBlock.of("__element"), typesByName)
             ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns unsupported array element type '${elementType.typeName}'.",
             )
@@ -713,7 +715,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         )
     }
 
-    private fun arrayElementSize(type: WinRtTypeRef): Int? =
+    private fun arrayElementSize(
+        type: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): Int? =
         fundamentalType(type.typeName)?.let { fundamental ->
             when (fundamental) {
                 WinRtFundamentalType.Boolean,
@@ -730,13 +735,20 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 WinRtFundamentalType.Double -> 8
                 WinRtFundamentalType.String -> 8
             }
+        } ?: when (typesByName[type.qualifiedName]?.kind) {
+            WinRtTypeKind.Interface,
+            WinRtTypeKind.RuntimeClass,
+            -> 8
+            else -> null
         }
 
     private fun renderArrayElementWrite(
+        method: WinRtMethodDefinition,
         type: WinRtTypeRef,
         dataExpression: CodeBlock,
         indexExpression: CodeBlock,
         valueExpression: CodeBlock,
+        typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock? =
         when (fundamentalType(type.typeName)) {
             WinRtFundamentalType.Boolean -> CodeBlock.of(
@@ -767,7 +779,25 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 hStringType,
                 valueExpression,
             )
-            null -> null
+            null -> {
+                val elementTypeName = type.qualifiedName ?: return null
+                val elementDefinition = typesByName[elementTypeName] ?: return null
+                when (elementDefinition.kind) {
+                    WinRtTypeKind.Interface,
+                    WinRtTypeKind.RuntimeClass,
+                    -> CodeBlock.of(
+                        "%T.writePointer(%T.slice(%L, %L.toLong() * 8, 8), %T.detachCCWForObject(%L, %L))",
+                        platformAbiType,
+                        platformAbiType,
+                        dataExpression,
+                        indexExpression,
+                        comWrappersSupportType,
+                        valueExpression,
+                        renderObjectInterfaceId(method, elementTypeName, elementDefinition, typesByName),
+                    )
+                    else -> null
+                }
+            }
         }
 
     private fun isWinRtStringTypeName(typeName: String): Boolean =
@@ -1100,37 +1130,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
-        val interfaceId = when (returnType?.kind) {
-            WinRtTypeKind.RuntimeClass -> {
-                val defaultInterfaceName = returnType.defaultInterfaceName
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' without default interface metadata.",
-                    )
-                val defaultInterface = typesByName[defaultInterfaceName]
-                    ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' whose default interface '$defaultInterfaceName' is missing.",
-                    )
-                val iid = defaultInterface.iid
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' whose default interface '$defaultInterfaceName' has no IID.",
-                    )
-                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
-            }
-            WinRtTypeKind.Interface -> {
-                val iid = returnType.iid
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override ${method.name} returns interface '${method.returnTypeName}' without IID metadata.",
-                    )
-                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
-            }
-            null -> throw IllegalArgumentException(
-                "Authored WinRT override ${method.name} returns '${method.returnTypeName}' without metadata.",
-            )
-            else -> throw IllegalArgumentException(
-                "Authored WinRT override ${method.name} returns unsupported object type '${method.returnTypeName}'.",
-            )
-        }
+        val interfaceId = renderObjectInterfaceId(method, method.returnTypeName, returnType, typesByName)
         return CodeBlock.of(
             "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
             platformAbiType,
@@ -1140,6 +1140,44 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             interfaceId,
         )
     }
+
+    private fun renderObjectInterfaceId(
+        method: WinRtMethodDefinition,
+        typeName: String,
+        type: WinRtTypeDefinition?,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock =
+        when (type?.kind) {
+            WinRtTypeKind.RuntimeClass -> {
+                val defaultInterfaceName = type.defaultInterfaceName
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns runtime class '$typeName' without default interface metadata.",
+                    )
+                val defaultInterface = typesByName[defaultInterfaceName]
+                    ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns runtime class '$typeName' whose default interface '$defaultInterfaceName' is missing.",
+                    )
+                val iid = defaultInterface.iid
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns runtime class '$typeName' whose default interface '$defaultInterfaceName' has no IID.",
+                    )
+                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+            }
+            WinRtTypeKind.Interface -> {
+                val iid = type.iid
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns interface '$typeName' without IID metadata.",
+                    )
+                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+            }
+            null -> throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns '$typeName' without metadata.",
+            )
+            else -> throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns unsupported object type '$typeName'.",
+            )
+        }
 
     private fun renderEnumReturnProjection(
         typeName: String,
