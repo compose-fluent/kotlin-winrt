@@ -15,6 +15,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import org.gradle.api.GradleException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -1293,6 +1294,74 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
+    }
+
+    @Test
+    fun renders_receive_array_returns_through_two_abi_out_slots() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-receive-array-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalBufferOwner",
+            sourceTypeName = "sample.LocalBufferOwner",
+            winRtBaseClassName = "Sample.BufferOwner",
+            winRtInterfaceNames = listOf("Sample.IBufferOwnerOverrides"),
+            overridableInterfaceNames = listOf("Sample.IBufferOwnerOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "BufferOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IBufferOwnerOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("44444444-3333-2222-1111-000000000000"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetNumbers",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "numbers",
+                                            typeName = "Array<Int32>",
+                                            direction = io.github.composefluent.winrt.metadata.WinRtParameterDirection.Out,
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Int32"), isByRef = true),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalBufferOwner_TypeDetails.kt").readText()
+        assertTrue(generated, generated.contains("ComMethodSignature.of(ComAbiValueKind.Int32"))
+        assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { rawArgs ->"))
+        assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetNumbers()"))
+        assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() * 4, 4)"))
+        assertTrue(generated, generated.contains("__result.forEachIndexed { __index, __element ->"))
+        assertTrue(generated, generated.contains("PlatformAbi.writeInt32(PlatformAbi.slice(__returnArrayData, __index.toLong() * 4"))
+        assertTrue(generated, generated.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress, __result.size)"))
+        assertTrue(generated, generated.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
+        assertTrue(generated, !generated.contains("__arg0"))
+        assertTrue(generated, !generated.contains("rawArgs[2]"))
     }
 
     @Test

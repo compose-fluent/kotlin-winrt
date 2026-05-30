@@ -23,6 +23,7 @@ import io.github.composefluent.winrt.metadata.WinRtParameterDirection
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
@@ -292,17 +293,33 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val dispatchBase = dispatchBaseClassName
             ?: error("Authored WinRT override ${method.name} has no declaring WinRT base class.")
         val bridgeMethodName = authoringInvokeBridgeName(method)
-        val bridgeArguments = method.parameters.indices.joinToString(", ") { index -> "__arg$index" }
+        val receiveArrayParameter = method.receiveArrayResultParameter()
+        val projectedParameterIndexes = method.parameters.indices.filter { index -> method.parameters[index] != receiveArrayParameter }
+        val bridgeArguments = projectedParameterIndexes.joinToString(", ") { index -> "__arg$index" }
         return CodeBlock.builder()
             .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method, typesByName, semanticHelpers))
             .indent()
             .apply {
+                var rawIndex = 0
                 method.parameters.forEachIndexed { index, parameter ->
-                    add("%L", renderParameterProjectionStatement(index, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames))
+                    if (parameter != receiveArrayParameter) {
+                        add(
+                            "%L",
+                            renderParameterProjectionStatement(
+                                index,
+                                rawIndex,
+                                parameter,
+                                typesByName,
+                                semanticHelpers,
+                                authoredRuntimeClassNames,
+                            ),
+                        )
+                    }
+                    rawIndex += abiArgumentCount(parameter)
                 }
             }
             .apply {
-                if (isVoidReturn(method)) {
+                if (isVoidReturn(method) && receiveArrayParameter == null) {
                     addStatement("(value as %T).%L(%L)", projectionClassName(dispatchBase, semanticHelpers), bridgeMethodName, bridgeArguments)
                 } else {
                     addStatement(
@@ -311,22 +328,68 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                         bridgeMethodName,
                         bridgeArguments,
                     )
-                    add(
-                        "%L\n",
-                        renderReturnProjection(
-                            method,
-                            CodeBlock.of("rawArgs[%L] as %T", method.parameters.size, rawAddressType),
-                            "__result",
-                            typesByName,
-                            semanticHelpers,
-                        ),
-                    )
+                    if (receiveArrayParameter != null) {
+                        val receiveArrayRawIndex = rawArgumentIndex(method.parameters, receiveArrayParameter)
+                        add(
+                            "%L\n",
+                            renderArrayReturnProjection(
+                                method = method,
+                                parameter = receiveArrayParameter,
+                                lengthOutExpression = CodeBlock.of("rawArgs[%L] as %T", receiveArrayRawIndex, rawAddressType),
+                                dataOutExpression = CodeBlock.of("rawArgs[%L] as %T", receiveArrayRawIndex + 1, rawAddressType),
+                                valueExpression = "__result",
+                            ),
+                        )
+                    } else {
+                        add(
+                            "%L\n",
+                            renderReturnProjection(
+                                method,
+                                CodeBlock.of("rawArgs[%L] as %T", abiArgumentCount(method.parameters), rawAddressType),
+                                "__result",
+                                typesByName,
+                                semanticHelpers,
+                            ),
+                        )
+                    }
                 }
             }
             .addStatement("%T.S_OK.value", knownHResultsType)
             .add("}")
             .build()
     }
+
+    private fun WinRtMethodDefinition.receiveArrayResultParameter(): WinRtParameterDefinition? {
+        if (returnTypeName != "Unit" && !isWinRtVoidTypeName(returnTypeName)) {
+            return null
+        }
+        val parameter = parameters.singleOrNull { candidate ->
+            candidate.type.normalized().kind == WinRtTypeRefKind.Array &&
+                candidate.typeIsByRef &&
+                candidate.isOutParameter
+        } ?: return null
+        return if (parameters.lastOrNull() == parameter) parameter else null
+    }
+
+    private fun rawArgumentIndex(
+        parameters: List<WinRtParameterDefinition>,
+        target: WinRtParameterDefinition,
+    ): Int {
+        var index = 0
+        parameters.forEach { parameter ->
+            if (parameter == target) {
+                return index
+            }
+            index += abiArgumentCount(parameter)
+        }
+        error("Authored WinRT parameter '${target.name}' is not part of the method parameter list.")
+    }
+
+    private fun abiArgumentCount(parameters: List<WinRtParameterDefinition>): Int =
+        parameters.sumOf(::abiArgumentCount)
+
+    private fun abiArgumentCount(parameter: WinRtParameterDefinition): Int =
+        if (parameter.type.normalized().kind == WinRtTypeRefKind.Array) 2 else 1
 
     private fun renderParameterProjection(
         index: Int,
@@ -352,6 +415,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun renderParameterProjectionStatement(
         index: Int,
+        rawIndex: Int,
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
@@ -363,7 +427,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     "val __hString%L = %T.fromHandle(rawArgs[%L] as %T, owner = false)",
                     index,
                     hStringType,
-                    index,
+                    rawIndex,
                     rawAddressType,
                 )
                 .add("val __arg%L = try {\n", index)
@@ -377,7 +441,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 .add("}\n")
                 .build()
         } else {
-            CodeBlock.of("val __arg%L = %L\n", index, renderParameterProjection(index, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames))
+            CodeBlock.of(
+                "val __arg%L = %L\n",
+                index,
+                renderParameterProjection(rawIndex, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames),
+            )
         }
 
     private fun renderComplexParameterProjection(
@@ -464,8 +532,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
-        val kinds = method.parameters.map { parameter -> abiKindName(parameter, typesByName) } +
-            listOfNotNull("Pointer".takeUnless { isVoidReturn(method) })
+        val kinds = method.parameters.flatMap { parameter -> abiKindNames(parameter, typesByName) } +
+            listOfNotNull("Pointer".takeUnless { isVoidReturn(method) || method.receiveArrayResultParameter() != null })
         return if (kinds.isEmpty()) {
             CodeBlock.of("%T()", comMethodSignatureType)
         } else {
@@ -492,20 +560,23 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
     }
 
-    private fun abiKindName(
+    private fun abiKindNames(
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
-    ): String {
+    ): List<String> {
+        if (parameter.type.normalized().kind == WinRtTypeRefKind.Array) {
+            return listOf("Int32", "Pointer")
+        }
         fundamentalType(parameter.typeName)?.let { type ->
-            return fundamentalAbiKindName(type)
+            return listOf(fundamentalAbiKindName(type))
         }
         val type = typesByName[parameter.typeName]
         return when {
-            type?.kind == WinRtTypeKind.Enum -> enumAbiKindName(type)
+            type?.kind == WinRtTypeKind.Enum -> listOf(enumAbiKindName(type))
             type?.kind == WinRtTypeKind.Struct &&
                 parameter.direction != WinRtParameterDirection.Out &&
-                !parameter.typeIsByRef -> "Struct:${parameter.typeName}"
-            else -> "Pointer"
+                !parameter.typeIsByRef -> listOf("Struct:${parameter.typeName}")
+            else -> listOf("Pointer")
         }
     }
 
@@ -596,6 +667,96 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtFundamentalType.Float -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
             WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
             WinRtFundamentalType.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
+        }
+
+    private fun renderArrayReturnProjection(
+        method: WinRtMethodDefinition,
+        parameter: WinRtParameterDefinition,
+        lengthOutExpression: CodeBlock,
+        dataOutExpression: CodeBlock,
+        valueExpression: String,
+    ): CodeBlock {
+        val arrayType = parameter.type.normalized()
+        val elementType = arrayType.elementType?.normalized()
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns array '${parameter.typeName}' without element type metadata.",
+            )
+        if (arrayType.arrayRank != 1) {
+            throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns array '${parameter.typeName}' with unsupported rank ${arrayType.arrayRank}.",
+            )
+        }
+        val elementSize = arrayElementSize(elementType)
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns unsupported array element type '${elementType.typeName}'.",
+            )
+        val elementWrite = renderArrayElementWrite(elementType, CodeBlock.of("__returnArrayData"), CodeBlock.of("__index"), CodeBlock.of("__element"))
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns unsupported array element type '${elementType.typeName}'.",
+            )
+        return CodeBlock.of(
+            "run {\n·val __returnArrayMemory = %T.allocateBytesOwned(%L.size.toLong() * %L, %L)\n·val __returnArrayData = __returnArrayMemory.pointer\n·%L.forEachIndexed { __index, __element -> %L }\n·%T.writeInt32(%L, %L.size)\n·%T.writePointer(%L, __returnArrayData)\n}",
+            platformAbiType,
+            valueExpression,
+            elementSize,
+            elementSize,
+            valueExpression,
+            elementWrite,
+            platformAbiType,
+            lengthOutExpression,
+            valueExpression,
+            platformAbiType,
+            dataOutExpression,
+        )
+    }
+
+    private fun arrayElementSize(type: WinRtTypeRef): Int? =
+        fundamentalType(type.typeName)?.let { fundamental ->
+            when (fundamental) {
+                WinRtFundamentalType.Boolean,
+                WinRtFundamentalType.Int8,
+                WinRtFundamentalType.UInt8 -> 1
+                WinRtFundamentalType.Char,
+                WinRtFundamentalType.Int16,
+                WinRtFundamentalType.UInt16 -> 2
+                WinRtFundamentalType.Int32,
+                WinRtFundamentalType.UInt32,
+                WinRtFundamentalType.Float -> 4
+                WinRtFundamentalType.Int64,
+                WinRtFundamentalType.UInt64,
+                WinRtFundamentalType.Double -> 8
+                WinRtFundamentalType.String -> null
+            }
+        }
+
+    private fun renderArrayElementWrite(
+        type: WinRtTypeRef,
+        dataExpression: CodeBlock,
+        indexExpression: CodeBlock,
+        valueExpression: CodeBlock,
+    ): CodeBlock? =
+        when (fundamentalType(type.typeName)) {
+            WinRtFundamentalType.Boolean -> CodeBlock.of(
+                "%T.writeInt8(%T.slice(%L, %L.toLong(), 1), if (%L) 1.toByte() else 0.toByte())",
+                platformAbiType,
+                platformAbiType,
+                dataExpression,
+                indexExpression,
+                valueExpression,
+            )
+            WinRtFundamentalType.Int8 -> CodeBlock.of("%T.writeInt8(%T.slice(%L, %L.toLong(), 1), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.UInt8 -> CodeBlock.of("%T.writeInt8(%T.slice(%L, %L.toLong(), 1), %L.toByte())", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.Char -> CodeBlock.of("%T.writeInt16(%T.slice(%L, %L.toLong() * 2, 2), %L.code.toShort())", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.Int16 -> CodeBlock.of("%T.writeInt16(%T.slice(%L, %L.toLong() * 2, 2), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.UInt16 -> CodeBlock.of("%T.writeInt16(%T.slice(%L, %L.toLong() * 2, 2), %L.toShort())", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.Int32 -> CodeBlock.of("%T.writeInt32(%T.slice(%L, %L.toLong() * 4, 4), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.UInt32 -> CodeBlock.of("%T.writeInt32(%T.slice(%L, %L.toLong() * 4, 4), %L.toInt())", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.Float -> CodeBlock.of("%T.writeFloat(%T.slice(%L, %L.toLong() * 4, 4), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.Int64 -> CodeBlock.of("%T.writeInt64(%T.slice(%L, %L.toLong() * 8, 8), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.UInt64 -> CodeBlock.of("%T.writeInt64(%T.slice(%L, %L.toLong() * 8, 8), %L.toLong())", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%T.slice(%L, %L.toLong() * 8, 8), %L)", platformAbiType, platformAbiType, dataExpression, indexExpression, valueExpression)
+            WinRtFundamentalType.String,
+            null -> null
         }
 
     private fun isWinRtStringTypeName(typeName: String): Boolean =
