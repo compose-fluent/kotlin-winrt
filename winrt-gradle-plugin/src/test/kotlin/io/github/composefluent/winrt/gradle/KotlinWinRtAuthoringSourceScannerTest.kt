@@ -1287,6 +1287,37 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     name = "GetNamesCore",
                                     returnTypeName = "Windows.Foundation.Collections.IVector<System.String>",
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "SetNamesCore",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "names",
+                                            typeName = "Windows.Foundation.Collections.IVector<System.String>",
+                                            typeSignature = WinRtTypeRef.named(
+                                                "Windows.Foundation.Collections.IVector",
+                                                typeArguments = listOf(WinRtTypeRef.named("System.String")),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetNamedPeersCore",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "peers",
+                                            typeName = "Windows.Foundation.Collections.IMapView<System.String, Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
+                                            typeSignature = WinRtTypeRef.named(
+                                                "Windows.Foundation.Collections.IMapView",
+                                                typeArguments = listOf(
+                                                    WinRtTypeRef.named("System.String"),
+                                                    WinRtTypeRef.named("Microsoft.UI.Xaml.Automation.Peers.AutomationPeer"),
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1315,6 +1346,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("IAutomationPeer.Metadata.wrap(reference!!)"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))
+        assertTrue(generated.contains("WinRtListProjection.fromAbi(rawArgs[0] as RawAddress"))
+        assertTrue(generated.contains("(value as AutomationPeer).__winrtAuthoringInvokeSetNamesCore(__arg0)"))
+        assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(rawArgs[0]"))
+        assertTrue(generated.contains("as RawAddress, WinRtReferenceValueAdapters.string"))
+        assertTrue(generated.contains("AutomationPeer).__winrtAuthoringInvokeSetNamedPeersCore(__arg0)"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
     }
 
