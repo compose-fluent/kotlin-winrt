@@ -64,6 +64,9 @@ object WinRtProjectionIntrinsic {
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
         intrinsicNotLowered("getBoolean", reference, slot)
 
+    fun getNoExceptionBoolean(reference: ComObjectReference, slot: Int): Boolean =
+        intrinsicNotLowered("getNoExceptionBoolean", reference, slot)
+
     fun getInt32(reference: ComObjectReference, slot: Int): Int =
         intrinsicNotLowered("getInt32", reference, slot)
 

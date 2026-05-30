@@ -1112,11 +1112,12 @@ private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(
 private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
     binding: KotlinProjectionInstanceMemberBinding,
 ): CodeBlock? {
-    if (binding.parameterBindings.isNotEmpty() || binding.suppressHResultCheck) {
+    if (binding.parameterBindings.isNotEmpty()) {
         return null
     }
     val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+        KotlinProjectionAbiValueKind.Boolean ->
+            if (binding.suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
         KotlinProjectionAbiValueKind.Int32 -> "getInt32"
         KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
         KotlinProjectionAbiValueKind.Int64 -> "getInt64"
@@ -1278,13 +1279,14 @@ internal fun KotlinProjectionRenderer.renderBoundInvocation(
 private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
 ): CodeBlock? {
-    if (!useProjectionIntrinsics || binding.parameterBindings.isNotEmpty() || binding.suppressHResultCheck) {
+    if (!useProjectionIntrinsics || binding.parameterBindings.isNotEmpty()) {
         return null
     }
     val helperFunction = when (binding.returnBinding.kind) {
         KotlinProjectionAbiValueKind.Unit -> return null
         KotlinProjectionAbiValueKind.String -> "getString"
-        KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+        KotlinProjectionAbiValueKind.Boolean ->
+            if (binding.suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
         KotlinProjectionAbiValueKind.Int32 -> "getInt32"
         KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
         KotlinProjectionAbiValueKind.Int64 -> "getInt64"
