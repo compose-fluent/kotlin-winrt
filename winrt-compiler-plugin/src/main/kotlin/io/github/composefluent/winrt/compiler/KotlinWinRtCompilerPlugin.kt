@@ -548,6 +548,13 @@ class KotlinWinRtIrGenerationExtension(
                 "setDouble" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Double)
                 "getString" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.String)
                 "getBoolean" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Boolean)
+                "getNoExceptionBoolean" -> lowerNoArgumentGetter(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.Boolean,
+                    checkHResult = false,
+                )
                 "getInt32" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Int32)
                 "getUInt32" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.UInt32)
                 "getInt64" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Int64)
@@ -1785,6 +1792,7 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             returnKind: NoArgumentGetterReturnKind,
+            checkHResult: Boolean = true,
         ): IrExpression? {
             val symbols = jvmFfmSymbols ?: return null
             val scope = builderScope ?: return null
@@ -1824,6 +1832,7 @@ class KotlinWinRtIrGenerationExtension(
                             slot = slot,
                             argumentKinds = listOf(UnitCallAbiArgumentKind.Object),
                             values = listOf(builder.irGet(resultOut)),
+                            checkHResult = checkHResult,
                         )
                         +readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
                     },
@@ -2480,6 +2489,7 @@ class KotlinWinRtIrGenerationExtension(
             argumentKinds: List<UnitCallAbiArgumentKind>,
             values: List<IrExpression>,
             abiShape: String? = null,
+            checkHResult: Boolean = true,
         ): IrExpression =
             builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
                 val hResultValue = irTemporary(
@@ -2497,11 +2507,13 @@ class KotlinWinRtIrGenerationExtension(
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
-                +builder.irCall(hResultRequireSuccess).apply {
-                    arguments[0] = builder.irCall(hResultConstructor).apply {
-                        arguments[0] = builder.irGet(hResultValue)
+                if (checkHResult) {
+                    +builder.irCall(hResultRequireSuccess).apply {
+                        arguments[0] = builder.irCall(hResultConstructor).apply {
+                            arguments[0] = builder.irGet(hResultValue)
+                        }
+                        arguments[1] = builder.irString("WinRT call")
                     }
-                    arguments[1] = builder.irString("WinRT call")
                 }
                 +builder.irUnit()
             }
@@ -4617,6 +4629,7 @@ private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callScalar",
     "getString",
     "getBoolean",
+    "getNoExceptionBoolean",
     "getInt32",
     "getUInt32",
     "getInt64",

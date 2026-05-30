@@ -631,13 +631,14 @@ class KotlinProjectionRenderer(
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
         suppressHResultCheck: Boolean,
     ): CodeBlock? {
-        if (!useProjectionIntrinsics || parameterBindings.isNotEmpty() || suppressHResultCheck) {
+        if (!useProjectionIntrinsics || parameterBindings.isNotEmpty()) {
             return null
         }
         val helperFunction = when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit -> return null
             KotlinProjectionAbiValueKind.String -> "getString"
-            KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+            KotlinProjectionAbiValueKind.Boolean ->
+                if (suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
             KotlinProjectionAbiValueKind.Int32 -> "getInt32"
             KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
             KotlinProjectionAbiValueKind.Int64 -> "getInt64"

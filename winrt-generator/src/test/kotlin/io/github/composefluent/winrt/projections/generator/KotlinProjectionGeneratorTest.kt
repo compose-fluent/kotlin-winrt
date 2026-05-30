@@ -9249,10 +9249,15 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val contents = KotlinProjectionGenerator().generate(model)
+        val generated = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
+        val contents = generated
             .single { it.relativePath == "sample/foundation/Widget.kt" }
             .contents
+        val interfaceContents = generated
+            .single { it.relativePath == "sample/foundation/IWidget.kt" }
+            .contents
 
+        assertTrue(interfaceContents.contains("WinRtProjectionIntrinsic.getNoExceptionBoolean("))
         assertFalse(contents.memberBody("override fun tryRefresh").contains("requireSuccess()"))
         assertFalse(contents.memberBody("override var status").contains("requireSuccess()"))
         assertTrue(
