@@ -450,6 +450,62 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun rejects_authored_type_details_for_static_interface_members() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-static-interface-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalWidget",
+            sourceTypeName = "sample.LocalWidget",
+            winRtBaseClassName = "Sample.Widget",
+            winRtInterfaceNames = listOf("Sample.IWidgetStatics"),
+            overridableInterfaceNames = listOf("Sample.IWidgetStatics"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("33333333-1111-2222-4444-666666666666"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateDefault",
+                                    returnTypeName = "Sample.Widget",
+                                    isStatic = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("static method 'CreateDefault'"))
+            assertTrue(error.message.orEmpty().contains("TypeDetails instance CCW generation cannot expose static interface members"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected authored WinRT static interface members to fail closed.")
+    }
+
+    @Test
     fun renders_object_alias_override_parameters_through_object_marshaller() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-object-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
