@@ -1,15 +1,23 @@
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$GradleArgs
-)
-
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 
 Set-Location -LiteralPath $repoRoot
 
+$gradleArgs = @()
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $arg = [string]$args[$i]
+    if (($arg -match '^-[PD][^.=]+$') -and ($i + 1 -lt $args.Count)) {
+        $next = [string]$args[$i + 1]
+        if ($next.StartsWith(".")) {
+            $arg += $next
+            $i++
+        }
+    }
+    $gradleArgs += $arg
+}
+
 $quotedArgs = @()
-foreach ($arg in $GradleArgs) {
+foreach ($arg in $gradleArgs) {
     $quotedArgs += '"' + ($arg -replace '"', '\"') + '"'
 }
 
