@@ -5692,6 +5692,25 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_authored_runtime_overloaded_members() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/OverloadedThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class OverloadedThing {
+                    fun load(value: String): String = value
+                    fun load(value: Int): String = value.toString()
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "must not be overloaded until DefaultOverload metadata is supported",
+        )
+    }
+
+    @Test
     fun compiler_plugin_warns_on_authored_runtime_class_casts() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-runtime-class-cast-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
