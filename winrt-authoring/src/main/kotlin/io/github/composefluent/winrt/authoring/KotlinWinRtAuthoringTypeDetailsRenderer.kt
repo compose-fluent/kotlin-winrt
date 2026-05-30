@@ -335,6 +335,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             ?: error("Authored WinRT override ${method.name} has no declaring WinRT base class.")
         val bridgeMethodName = authoringInvokeBridgeName(method)
         val receiveArrayParameter = method.receiveArrayResultParameter()
+        validateAuthoredArrayParameterSupport(method, receiveArrayParameter)
         val projectedParameterIndexes = method.parameters.indices.filter { index -> method.parameters[index] != receiveArrayParameter }
         val bridgeArguments = projectedParameterIndexes.joinToString(", ") { index -> "__arg$index" }
         return CodeBlock.builder()
@@ -411,6 +412,22 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .unindent()
             .add("}")
             .build()
+    }
+
+    private fun validateAuthoredArrayParameterSupport(
+        method: WinRtMethodDefinition,
+        receiveArrayParameter: WinRtParameterDefinition?,
+    ) {
+        method.parameters.forEach { parameter ->
+            if (parameter.type.normalized().kind == WinRtTypeRefKind.Array &&
+                (parameter.typeIsByRef || parameter.isOutParameter) &&
+                parameter != receiveArrayParameter
+            ) {
+                throw IllegalArgumentException(
+                    "Authored WinRT override ${method.name} has unsupported array parameter '${parameter.name}' with by-ref/out direction; only trailing receive-array out parameters are supported.",
+                )
+            }
+        }
     }
 
     private fun WinRtMethodDefinition.receiveArrayResultParameter(): WinRtParameterDefinition? {
