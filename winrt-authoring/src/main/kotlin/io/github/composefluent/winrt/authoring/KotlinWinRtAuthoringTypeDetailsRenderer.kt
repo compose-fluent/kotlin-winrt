@@ -174,8 +174,19 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     "Authored type '${candidate.sourceTypeName}' references WinRT interface '$interfaceName' without metadata IID.",
                 )
             }
+            validateAuthoredInterfaceEventSupport(candidate, type)
             type
         }
+    }
+
+    private fun validateAuthoredInterfaceEventSupport(
+        candidate: KotlinWinRtAuthoredTypeCandidate,
+        type: WinRtTypeDefinition,
+    ) {
+        val event = type.events.firstOrNull { event -> !event.isStatic } ?: return
+        throw IllegalArgumentException(
+            "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' event '${event.name}', but TypeDetails event marshaling is not implemented.",
+        )
     }
 
     private fun render(

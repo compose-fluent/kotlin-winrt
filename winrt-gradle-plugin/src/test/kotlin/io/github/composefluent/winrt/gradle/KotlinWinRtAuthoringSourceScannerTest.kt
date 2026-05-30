@@ -8,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefini
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRtEnumMemberDefinition
+import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
@@ -391,6 +392,61 @@ class KotlinWinRtAuthoringSourceScannerTest {
         }
 
         throw AssertionError("Expected authored WinRT interface metadata without IID to fail closed.")
+    }
+
+    @Test
+    fun rejects_authored_type_details_for_interface_events_until_event_marshaling_exists() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-event-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalWidget",
+            sourceTypeName = "sample.LocalWidget",
+            winRtBaseClassName = "Sample.Widget",
+            winRtInterfaceNames = listOf("Sample.IWidgetOverrides"),
+            overridableInterfaceNames = listOf("Sample.IWidgetOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("33333333-1111-2222-4444-555555555555"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Sample.Widget>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("event 'Changed'"))
+            assertTrue(error.message.orEmpty().contains("TypeDetails event marshaling is not implemented"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected authored WinRT interface events to fail closed until event marshaling is implemented.")
     }
 
     @Test
