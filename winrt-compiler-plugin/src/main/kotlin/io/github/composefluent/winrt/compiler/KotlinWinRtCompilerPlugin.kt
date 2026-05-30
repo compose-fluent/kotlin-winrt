@@ -3511,6 +3511,17 @@ class KotlinWinRtIrGenerationExtension(
                     "use a projected WinRT delegate type instead.",
             )
         }
+        (type as? IrSimpleType)?.arguments
+            ?.mapNotNull { argument -> argument.typeOrNull }
+            ?.forEach { argumentType ->
+                validateAuthoredExposedType(
+                    type = argumentType,
+                    authoredType = authoredType,
+                    memberName = memberName,
+                    role = "$role generic argument",
+                    report = report,
+                )
+            }
         if (!type.isKotlinArrayType()) {
             return
         }
