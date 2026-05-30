@@ -101,6 +101,36 @@ class MarshalersTest {
     }
 
     @Test
+    fun delegate_marshaler_projects_delegate_objects_with_delegate_interface() {
+        var callCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999995"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            callCount += 1
+        }
+        val projected = object : WinRtProjectedDelegate {
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle = handle
+        }
+        val abi = MarshalDelegate.fromProjected(projected)
+
+        WinRtDelegateReference(abi, descriptor).use { delegateReference ->
+            try {
+                delegateReference.invoke(emptyList())
+
+                assertEquals(1, callCount)
+            } finally {
+                handle.close()
+            }
+        }
+    }
+
+    @Test
     fun interface_marshaler_reuses_unwrapped_projected_objects() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle("test.IFoo", Guid("66666666-6666-6666-6666-666666666666"))

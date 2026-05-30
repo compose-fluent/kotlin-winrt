@@ -579,6 +579,12 @@ object MarshalDelegate {
     fun fromManaged(value: WinRtDelegateHandle?): RawAddress =
         value?.createReference()?.useAndGetRef() ?: PlatformAbi.nullPointer
 
+    fun fromProjected(value: WinRtProjectedDelegate?): RawAddress {
+        val handle = value?.createWinRtDelegateHandle() ?: return PlatformAbi.nullPointer
+        ProjectedDelegateObjectRoots.retain(handle)
+        return handle.createReference().useAndGetRef()
+    }
+
     fun disposeMarshaler(value: WinRtDelegateReference?) {
         value?.close()
     }

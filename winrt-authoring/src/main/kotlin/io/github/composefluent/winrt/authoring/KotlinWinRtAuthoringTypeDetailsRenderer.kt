@@ -42,6 +42,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val iWinRtObjectType = ClassName("io.github.composefluent.winrt.runtime", "IWinRTObject")
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
+    private val marshalDelegateType = ClassName("io.github.composefluent.winrt.runtime", "MarshalDelegate")
     private val parameterizedInterfaceIdType = ClassName("io.github.composefluent.winrt.runtime", "ParameterizedInterfaceId")
     private val platformAbiType = ClassName("io.github.composefluent.winrt.runtime", "PlatformAbi")
     private val projectionsType = ClassName("io.github.composefluent.winrt.runtime", "Projections")
@@ -53,6 +54,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableMethodDefinition")
     private val winRtCollectionInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRtCollectionInterfaceIds")
+    private val winRtProjectedDelegateType = ClassName("io.github.composefluent.winrt.runtime", "WinRtProjectedDelegate")
     private val winRtAsyncInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncInterfaceIds")
     private val winRtAsyncActionReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncActionReference")
     private val winRtAsyncActionWithProgressReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncActionWithProgressReference")
@@ -428,6 +430,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         renderCollectionParameterProjection(method, rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
             return projection
         }
+        renderDelegateParameterProjection(rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
+            return projection
+        }
         return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames)
     }
 
@@ -690,6 +695,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return it
         }
         val returnType = typesByName[method.returnTypeName]
+        renderDelegateReturnProjection(outExpression, valueExpression, returnType)?.let {
+            return it
+        }
         return when (returnType?.kind) {
             WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression, semanticHelpers)
             WinRtTypeKind.Struct -> CodeBlock.of(
@@ -735,6 +743,44 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
             WinRtFundamentalType.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
         }
+
+    private fun renderDelegateParameterProjection(
+        rawArg: CodeBlock,
+        parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        val parameterType = parameter.type.normalized()
+        val typeName = parameterType.qualifiedName ?: parameter.typeName
+        val definition = typesByName[typeName] ?: return null
+        if (definition.kind != WinRtTypeKind.Delegate) {
+            return null
+        }
+        return CodeBlock.of(
+            "%T.Metadata.fromAbi(%L as %T)",
+            projectionClassName(typeName, semanticHelpers),
+            rawArg,
+            rawAddressType,
+        )
+    }
+
+    private fun renderDelegateReturnProjection(
+        outExpression: CodeBlock,
+        valueExpression: String,
+        returnType: WinRtTypeDefinition?,
+    ): CodeBlock? {
+        if (returnType?.kind != WinRtTypeKind.Delegate) {
+            return null
+        }
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.fromProjected(%L as %T))",
+            platformAbiType,
+            outExpression,
+            marshalDelegateType,
+            valueExpression,
+            winRtProjectedDelegateType,
+        )
+    }
 
     private fun renderCollectionParameterProjection(
         method: WinRtMethodDefinition,
