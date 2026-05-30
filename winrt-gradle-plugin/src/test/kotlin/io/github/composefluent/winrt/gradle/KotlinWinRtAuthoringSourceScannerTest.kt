@@ -1476,6 +1476,17 @@ class KotlinWinRtAuthoringSourceScannerTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample",
+                            name = "IThing",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("77777777-3333-2222-1111-000000000000"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
                             name = "IBufferConsumerOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = io.github.composefluent.winrt.runtime.Guid("66666666-3333-2222-1111-000000000000"),
@@ -1502,6 +1513,28 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                         ),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "SetThings",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "things",
+                                            typeName = "Array<Sample.IThing>",
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Sample.IThing")),
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetPoints",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "points",
+                                            typeName = "Array<Sample.Point>",
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Sample.Point")),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1524,6 +1557,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetNumbers(__arg0)"))
         assertTrue(generated, generated.contains("HString.fromHandle(PlatformAbi.readPointer"))
         assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetNames(__arg0)"))
+        assertTrue(generated, generated.contains("IThing.Metadata.wrap(IInspectableReference"))
+        assertTrue(generated, generated.contains("PlatformAbi.toRawComPtr(PlatformAbi.readPointer"))
+        assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetThings(__arg0)"))
+        assertTrue(generated, generated.contains("Point.Metadata.fromAbi(PlatformAbi.slice(__arrayData"))
+        assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetPoints(__arg0)"))
     }
 
     @Test

@@ -430,7 +430,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             CodeBlock.of(
                 "val __arg%L = %L\n",
                 index,
-                renderArrayParameterProjection(parameter, rawIndex),
+                renderArrayParameterProjection(parameter, rawIndex, typesByName, semanticHelpers, authoredRuntimeClassNames),
             )
         } else if (isWinRtStringTypeName(parameter.typeName)) {
             CodeBlock.builder()
@@ -462,6 +462,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderArrayParameterProjection(
         parameter: WinRtParameterDefinition,
         rawIndex: Int,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
         val arrayType = parameter.type.normalized()
         val elementType = arrayType.elementType?.normalized()
@@ -473,7 +476,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 "Authored WinRT parameter '${parameter.name}' array '${parameter.typeName}' has unsupported rank ${arrayType.arrayRank}.",
             )
         }
-        val elementRead = renderArrayElementRead(elementType, CodeBlock.of("__arrayData"), CodeBlock.of("__index"))
+        val elementRead = renderArrayElementRead(
+            elementType,
+            CodeBlock.of("__arrayData"),
+            CodeBlock.of("__index"),
+            typesByName,
+            semanticHelpers,
+            authoredRuntimeClassNames,
+        )
             ?: throw IllegalArgumentException(
                 "Authored WinRT parameter '${parameter.name}' has unsupported array element type '${elementType.typeName}'.",
             )
@@ -863,6 +873,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         type: WinRtTypeRef,
         dataExpression: CodeBlock,
         indexExpression: CodeBlock,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): CodeBlock? =
         when (fundamentalType(type.typeName)) {
             WinRtFundamentalType.Boolean -> CodeBlock.of(
@@ -891,7 +904,53 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 dataExpression,
                 indexExpression,
             )
-            null -> null
+            null -> {
+                val elementTypeName = type.qualifiedName ?: return null
+                val elementDefinition = typesByName[elementTypeName] ?: return null
+                val elementPointer = CodeBlock.of(
+                    "%T.readPointer(%T.slice(%L, %L.toLong() * 8, 8))",
+                    platformAbiType,
+                    platformAbiType,
+                    dataExpression,
+                    indexExpression,
+                )
+                when (elementDefinition.kind) {
+                    WinRtTypeKind.RuntimeClass,
+                    WinRtTypeKind.Interface,
+                    -> {
+                        if (elementTypeName in authoredRuntimeClassNames) {
+                            CodeBlock.of(
+                                "%T.fromAbi(%L) as %T",
+                                winRtObjectMarshallerType,
+                                elementPointer,
+                                projectionClassName(elementTypeName, semanticHelpers),
+                            )
+                        } else {
+                            CodeBlock.of(
+                                "%T.Metadata.wrap(%T(%T.toRawComPtr(%L), %T.IInspectable, preventReleaseOnDispose = true))",
+                                projectionClassName(elementTypeName, semanticHelpers),
+                                iInspectableReferenceType,
+                                platformAbiType,
+                                elementPointer,
+                                iidType,
+                            )
+                        }
+                    }
+                    WinRtTypeKind.Struct -> {
+                        val projectionType = projectionClassName(elementTypeName, semanticHelpers)
+                        CodeBlock.of(
+                            "%T.Metadata.fromAbi(%T.slice(%L, %L.toLong() * %T.Metadata.layout.sizeBytes, %T.Metadata.layout.sizeBytes))",
+                            projectionType,
+                            platformAbiType,
+                            dataExpression,
+                            indexExpression,
+                            projectionType,
+                            projectionType,
+                        )
+                    }
+                    else -> null
+                }
+            }
         }
 
     private fun isWinRtStringTypeName(typeName: String): Boolean =
