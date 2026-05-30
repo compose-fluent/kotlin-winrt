@@ -12,10 +12,13 @@ val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.sampl
     .orElse("1.8.260416003")
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
+val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projections.includeWinAppSdk")
+    .map(String::toBooleanStrict)
+    .orElse(false)
 
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
-    projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
+    if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
     }
 
@@ -27,13 +30,15 @@ winRt {
     namespace("Windows.System.Display")
     namespace("Windows.UI.ViewManagement")
     namespace("Windows.UI.Xaml.Interop")
-    namespace("Microsoft.UI.Dispatching")
-    namespace("Microsoft.UI.Windowing")
-    namespace("Microsoft.UI.Xaml")
-    namespace("Microsoft.UI.Xaml.Automation")
-    namespace("Microsoft.UI.Xaml.Automation.Peers")
-    namespace("Microsoft.UI.Xaml.Controls")
-    namespace("Microsoft.UI.Xaml.Media")
+    if (projectionIncludeWinAppSdk.get()) {
+        namespace("Microsoft.UI.Dispatching")
+        namespace("Microsoft.UI.Windowing")
+        namespace("Microsoft.UI.Xaml")
+        namespace("Microsoft.UI.Xaml.Automation")
+        namespace("Microsoft.UI.Xaml.Automation.Peers")
+        namespace("Microsoft.UI.Xaml.Controls")
+        namespace("Microsoft.UI.Xaml.Media")
+    }
     namespace("SimpleMathComponent")
     winmd(
         providers.gradleProperty("kotlinWinRt.samples.simpleMathWinmd")
