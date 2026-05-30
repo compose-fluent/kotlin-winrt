@@ -3390,6 +3390,11 @@ class KotlinWinRtIrGenerationExtension(
                     function.name.asString() !in authoredMemberValidationSyntheticFunctionNames
             }
             .forEach { function ->
+                if (function.isSuspend) {
+                    report(
+                        "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} must not be suspend; expose WinRT async interfaces explicitly.",
+                    )
+                }
                 validateAuthoredExposedType(
                     type = function.returnType,
                     authoredType = authoredType,
