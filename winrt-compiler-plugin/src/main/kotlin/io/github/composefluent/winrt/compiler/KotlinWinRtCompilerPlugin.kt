@@ -3404,12 +3404,22 @@ class KotlinWinRtIrGenerationExtension(
         authoredType: KotlinWinRtAuthoredTypeCandidate,
         report: (String) -> Unit,
     ) {
-        klass.declarations.filterIsInstance<IrSimpleFunction>()
+        val publicFunctions = klass.declarations.filterIsInstance<IrSimpleFunction>()
             .filter { function ->
                 function.visibility == DescriptorVisibilities.PUBLIC &&
                     function.origin != IrDeclarationOrigin.FAKE_OVERRIDE &&
                     function.name.asString() !in authoredMemberValidationSyntheticFunctionNames
             }
+        publicFunctions
+            .groupBy { function -> function.name.asString() }
+            .filterValues { overloads -> overloads.size > 1 }
+            .keys
+            .forEach { memberName ->
+                report(
+                    "WinRT authored member ${authoredType.sourceTypeName}.$memberName must not be overloaded until DefaultOverload metadata is supported.",
+                )
+            }
+        publicFunctions
             .forEach { function ->
                 if (function.isSuspend) {
                     report(
