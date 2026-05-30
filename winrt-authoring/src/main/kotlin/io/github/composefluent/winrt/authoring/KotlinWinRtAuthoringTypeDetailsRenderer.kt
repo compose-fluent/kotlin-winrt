@@ -52,9 +52,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableMethodDefinition")
     private val winRtCollectionInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRtCollectionInterfaceIds")
+    private val winRtDictionaryProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtDictionaryProjection")
     private val winRtIterableProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtIterableProjection")
     private val winRtListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtListProjection")
     private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
+    private val winRtReadOnlyDictionaryProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyDictionaryProjection")
     private val winRtReadOnlyListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyListProjection")
     private val winRtReferenceValueAdapterType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapter")
     private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
@@ -779,20 +781,38 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Windows.Foundation.Collections.IIterable" -> winRtIterableProjectionType
             "Windows.Foundation.Collections.IVectorView" -> winRtReadOnlyListProjectionType
             "Windows.Foundation.Collections.IVector" -> winRtListProjectionType
+            "Windows.Foundation.Collections.IMapView" -> winRtReadOnlyDictionaryProjectionType
+            "Windows.Foundation.Collections.IMap" -> winRtDictionaryProjectionType
             else -> return null
         }
-        val elementType = returnType.typeArguments.singleOrNull()?.normalized()
-            ?: throw IllegalArgumentException(
-                "Authored WinRT override ${method.name} returns collection type '$returnTypeName' without exactly one element type.",
-            )
-        val elementAdapter = renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)
+        val adapterArguments = when (collectionTypeName) {
+            "Windows.Foundation.Collections.IMapView",
+            "Windows.Foundation.Collections.IMap" -> {
+                if (returnType.typeArguments.size != 2) {
+                    throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns map collection type '$returnTypeName' without exactly two argument types.",
+                    )
+                }
+                listOf(
+                    renderCollectionElementAdapter(method, returnType.typeArguments[0].normalized(), typesByName, semanticHelpers),
+                    renderCollectionElementAdapter(method, returnType.typeArguments[1].normalized(), typesByName, semanticHelpers),
+                )
+            }
+            else -> {
+                val elementType = returnType.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns collection type '$returnTypeName' without exactly one element type.",
+                    )
+                listOf(renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers))
+            }
+        }
         return CodeBlock.of(
-            "%T.writePointer(%L, %T.fromManaged(%L, %L))",
+            "%T.writePointer(%L, %T.fromManaged(%L%L))",
             platformAbiType,
             outExpression,
             projectionType,
             valueExpression,
-            elementAdapter,
+            CodeBlock.of("%L", adapterArguments.joinToCodeString(prefix = ", ")),
         )
     }
 
@@ -859,45 +879,71 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Windows.Foundation.Collections.IIterable" -> NestedCollectionProjectionDescriptor(
                 projectedType = Iterable::class.asClassName(),
                 projectionType = winRtIterableProjectionType,
-                signatureFunctionName = "iterableSignature",
             )
             "Windows.Foundation.Collections.IVectorView" -> NestedCollectionProjectionDescriptor(
                 projectedType = List::class.asClassName(),
                 projectionType = winRtReadOnlyListProjectionType,
-                signatureFunctionName = "vectorViewSignature",
             )
             "Windows.Foundation.Collections.IVector" -> NestedCollectionProjectionDescriptor(
                 projectedType = MutableList::class.asClassName(),
                 projectionType = winRtListProjectionType,
-                signatureFunctionName = "vectorSignature",
+                typeArgumentCount = 1,
+                emptyValueExpression = "mutableListOf()",
+            )
+            "Windows.Foundation.Collections.IMapView" -> NestedCollectionProjectionDescriptor(
+                projectedType = Map::class.asClassName(),
+                projectionType = winRtReadOnlyDictionaryProjectionType,
+                typeArgumentCount = 2,
+                emptyValueExpression = "emptyMap()",
+            )
+            "Windows.Foundation.Collections.IMap" -> NestedCollectionProjectionDescriptor(
+                projectedType = MutableMap::class.asClassName(),
+                projectionType = winRtDictionaryProjectionType,
+                typeArgumentCount = 2,
+                emptyValueExpression = "linkedMapOf()",
             )
             else -> return null
         }
-        val nestedElementType = elementType.typeArguments.singleOrNull()?.normalized()
-            ?: throw IllegalArgumentException(
-                "Authored WinRT override ${method.name} returns collection element type '${elementType.typeName}' without exactly one nested element type.",
+        if (elementType.typeArguments.size != descriptor.typeArgumentCount) {
+            throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} returns collection element type '${elementType.typeName}' without exactly ${descriptor.typeArgumentCount} nested argument type(s).",
             )
-        val nestedElementAdapter = renderCollectionElementAdapter(method, nestedElementType, typesByName, semanticHelpers)
-        val nestedProjectedType = authoringProjectedTypeName(nestedElementType, typesByName, semanticHelpers)
-        val projectedType = descriptor.projectedType.parameterizedBy(nestedProjectedType)
+        }
+        val nestedArgumentTypes = elementType.typeArguments.map { it.normalized() }
+        val nestedArgumentAdapters = nestedArgumentTypes.map { nestedType ->
+            renderCollectionElementAdapter(method, nestedType, typesByName, semanticHelpers)
+        }
+        val nestedProjectedTypes = nestedArgumentTypes.map { nestedType ->
+            authoringProjectedTypeName(nestedType, typesByName, semanticHelpers)
+        }
+        val projectedType = descriptor.projectedType.parameterizedBy(nestedProjectedTypes)
         val typeSignature = renderWinRtTypeSignature(elementType, typesByName)
         return CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L) ?: emptyList() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) %L else %T.fromAbi(%T.fromRawComPtr(reference.pointer)%L) ?: %L }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value%L)), %T.createFromSignature(%L)) })",
             winRtReferenceValueAdapterType,
             projectedType,
             elementType.typeName,
             typeSignature,
+            descriptor.emptyValueExpression,
             descriptor.projectionType,
             platformAbiType,
-            nestedElementAdapter,
+            CodeBlock.of("%L", nestedArgumentAdapters.joinToCodeString(prefix = ", ")),
+            descriptor.emptyValueExpression,
             iUnknownReferenceType,
             platformAbiType,
             descriptor.projectionType,
-            nestedElementAdapter,
+            CodeBlock.of("%L", nestedArgumentAdapters.joinToCodeString(prefix = ", ")),
             parameterizedInterfaceIdType,
             typeSignature,
         )
     }
+
+    private fun List<CodeBlock>.joinToCodeString(prefix: String = ""): CodeBlock =
+        if (isEmpty()) {
+            CodeBlock.of("")
+        } else {
+            CodeBlock.of(prefix + joinToString(", ") { "%L" }, *toTypedArray())
+        }
 
     private fun authoringProjectedTypeName(
         type: WinRtTypeRef,
@@ -932,11 +978,21 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Windows.Foundation.Collections.IIterable" -> Iterable::class.asClassName()
             "Windows.Foundation.Collections.IVectorView" -> List::class.asClassName()
             "Windows.Foundation.Collections.IVector" -> MutableList::class.asClassName()
+            "Windows.Foundation.Collections.IMapView" -> Map::class.asClassName()
+            "Windows.Foundation.Collections.IMap" -> MutableMap::class.asClassName()
             else -> return null
         }
-        val argument = type.typeArguments.singleOrNull()?.normalized()
-            ?: throw IllegalArgumentException("Authored WinRT collection element type '${type.typeName}' has no projected type argument.")
-        return projectedType.parameterizedBy(authoringProjectedTypeName(argument, typesByName, semanticHelpers))
+        val expectedArgumentCount = when (type.qualifiedName) {
+            "Windows.Foundation.Collections.IMapView",
+            "Windows.Foundation.Collections.IMap" -> 2
+            else -> 1
+        }
+        if (type.typeArguments.size != expectedArgumentCount) {
+            throw IllegalArgumentException("Authored WinRT collection element type '${type.typeName}' does not have $expectedArgumentCount projected type argument(s).")
+        }
+        return projectedType.parameterizedBy(
+            type.typeArguments.map { argument -> authoringProjectedTypeName(argument.normalized(), typesByName, semanticHelpers) },
+        )
     }
 
     private fun renderWinRtTypeSignature(
@@ -957,6 +1013,16 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Windows.Foundation.Collections.IVector" -> {
                 val elementSignature = renderWinRtTypeSignature(type.typeArguments.singleOrNull()?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
                 return CodeBlock.of("%T.vectorSignature(%L)", winRtCollectionInterfaceIdsType, elementSignature)
+            }
+            "Windows.Foundation.Collections.IMapView" -> {
+                val keySignature = renderWinRtTypeSignature(type.typeArguments.getOrNull(0)?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                val valueSignature = renderWinRtTypeSignature(type.typeArguments.getOrNull(1)?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                return CodeBlock.of("%T.mapViewSignature(%L, %L)", winRtCollectionInterfaceIdsType, keySignature, valueSignature)
+            }
+            "Windows.Foundation.Collections.IMap" -> {
+                val keySignature = renderWinRtTypeSignature(type.typeArguments.getOrNull(0)?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                val valueSignature = renderWinRtTypeSignature(type.typeArguments.getOrNull(1)?.normalized() ?: WinRtTypeRef.unknown(), typesByName)
+                return CodeBlock.of("%T.mapSignature(%L, %L)", winRtCollectionInterfaceIdsType, keySignature, valueSignature)
             }
         }
         if (isWinRtObjectTypeName(typeName)) {
@@ -1095,7 +1161,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private data class NestedCollectionProjectionDescriptor(
         val projectedType: ClassName,
         val projectionType: ClassName,
-        val signatureFunctionName: String,
+        val typeArgumentCount: Int = 1,
+        val emptyValueExpression: String = "emptyList()",
     )
 
     private fun sourceClassName(candidate: KotlinWinRtAuthoredTypeCandidate): ClassName {
