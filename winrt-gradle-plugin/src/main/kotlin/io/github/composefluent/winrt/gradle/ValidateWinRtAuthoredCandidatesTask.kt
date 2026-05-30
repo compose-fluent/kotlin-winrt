@@ -14,6 +14,9 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
@@ -57,6 +60,16 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val compilerAuthoredHostManifest: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val scannerAuthoringTypeDetails: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilerAuthoringTypeDetails: ConfigurableFileCollection
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -81,6 +94,11 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
             scannerArtifact = scannerAuthoredHostManifest.singleCandidateFileOrNull(),
             compilerArtifact = compilerAuthoredHostManifest.singleCandidateFileOrNull(),
         )
+        validateAuthoredDirectoryHandoff(
+            description = "authored TypeDetails",
+            scannerDirectory = scannerAuthoringTypeDetails.singleDirectoryOrNull(),
+            compilerDirectory = compilerAuthoringTypeDetails.singleDirectoryOrNull(),
+        )
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
             writeText("ok\n")
@@ -90,6 +108,9 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
 
 private fun ConfigurableFileCollection.singleCandidateFileOrNull(): File? =
     files.singleOrNull()?.takeIf(File::isFile)
+
+private fun ConfigurableFileCollection.singleDirectoryOrNull(): File? =
+    files.singleOrNull()?.takeIf(File::isDirectory)
 
 internal fun validateAuthoredCandidateHandoff(
     scannerCandidates: File?,
@@ -136,6 +157,52 @@ internal fun validateAuthoredArtifactHandoff(
             "Regenerate authored support artifacts from compiler-visible symbols or fix scanner/IR parity.",
     )
 }
+
+internal fun validateAuthoredDirectoryHandoff(
+    description: String,
+    scannerDirectory: File?,
+    compilerDirectory: File?,
+) {
+    val scannerFiles = scannerDirectory?.takeIf(File::isDirectory)?.toPath()?.relativeRegularFiles().orEmpty()
+    val compilerFiles = compilerDirectory?.takeIf(File::isDirectory)?.toPath()?.relativeRegularFiles().orEmpty()
+    if (scannerFiles.isEmpty() && compilerFiles.isEmpty()) {
+        return
+    }
+    val scannerByPath = scannerFiles.associateWith { relativePath ->
+        Files.readAllBytes(scannerDirectory!!.toPath().resolve(relativePath))
+    }
+    val compilerByPath = compilerFiles.associateWith { relativePath ->
+        Files.readAllBytes(compilerDirectory!!.toPath().resolve(relativePath))
+    }
+    if (scannerByPath.keys == compilerByPath.keys &&
+        scannerByPath.all { (relativePath, scannerBytes) ->
+            compilerByPath[relativePath]?.contentEquals(scannerBytes) == true
+        }
+    ) {
+        return
+    }
+    val scannerPaths = scannerByPath.keys
+    val compilerPaths = compilerByPath.keys
+    val changedPaths = (scannerPaths intersect compilerPaths)
+        .filterNot { relativePath -> compilerByPath[relativePath]?.contentEquals(scannerByPath[relativePath]) == true }
+        .sorted()
+    throw GradleException(
+        "kotlin-winrt $description handoff mismatch between source scanner and compiler IR output. " +
+            "Only scanner files: ${(scannerPaths - compilerPaths).sorted().joinToString().ifBlank { "<none>" }}. " +
+            "Only compiler files: ${(compilerPaths - scannerPaths).sorted().joinToString().ifBlank { "<none>" }}. " +
+            "Changed files: ${changedPaths.joinToString().ifBlank { "<none>" }}. " +
+            "Regenerate authored TypeDetails from compiler-visible symbols or fix scanner/IR parity.",
+    )
+}
+
+private fun Path.relativeRegularFiles(): List<String> =
+    Files.walk(this).use { stream ->
+        stream.asSequence()
+            .filter(Files::isRegularFile)
+            .map { file -> relativize(file).toString().replace(File.separatorChar, '/') }
+            .sorted()
+            .toList()
+    }
 
 private fun File?.readCandidates(): List<KotlinWinRtAuthoredTypeCandidate> =
     this
