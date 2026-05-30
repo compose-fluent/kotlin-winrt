@@ -5654,6 +5654,24 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_authored_runtime_operator_members() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/OperatorThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class OperatorThing {
+                    operator fun plus(value: String): String = value
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "must not overload Kotlin operators",
+        )
+    }
+
+    @Test
     fun compiler_plugin_warns_on_authored_runtime_class_casts() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-runtime-class-cast-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
