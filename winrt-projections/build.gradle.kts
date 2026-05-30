@@ -15,6 +15,9 @@ val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.
 val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projections.includeWinAppSdk")
     .map(String::toBooleanStrict)
     .orElse(false)
+val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.projections.includeFullWindowsSdk")
+    .map(String::toBooleanStrict)
+    .orElse(false)
 
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
@@ -22,14 +25,26 @@ winRt {
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
     }
 
-    namespace("Windows.Foundation")
-    namespace("Windows.Foundation.Collections")
-    namespace("Windows.Data.Json")
-    namespace("Windows.System")
-    namespace("Windows.ApplicationModel.DataTransfer")
-    namespace("Windows.System.Display")
-    namespace("Windows.UI.ViewManagement")
-    namespace("Windows.UI.Xaml.Interop")
+    if (projectionIncludeFullWindowsSdk.get()) {
+        namespace("Windows")
+        excludeNamespace("Windows.UI.Xaml")
+        excludeNamespace("Windows.ApplicationModel.Store.Preview")
+        excludeType("Windows.UI.Colors")
+        excludeType("Windows.UI.IColors")
+        excludeType("Windows.UI.ColorHelper")
+        excludeType("Windows.UI.IColorHelper")
+        excludeType("Windows.UI.IColorHelperStatics")
+        excludeType("Windows.UI.IColorHelperStatics2")
+    } else {
+        namespace("Windows.Foundation")
+        namespace("Windows.Foundation.Collections")
+        namespace("Windows.Data.Json")
+        namespace("Windows.System")
+        namespace("Windows.ApplicationModel.DataTransfer")
+        namespace("Windows.System.Display")
+        namespace("Windows.UI.ViewManagement")
+        namespace("Windows.UI.Xaml.Interop")
+    }
     if (projectionIncludeWinAppSdk.get()) {
         namespace("Microsoft.UI.Dispatching")
         namespace("Microsoft.UI.Windowing")
