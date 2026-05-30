@@ -1387,6 +1387,78 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun rejects_authored_delegate_parameter_without_iid_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-delegate-missing-iid-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalWidgetOwner",
+            sourceTypeName = "sample.LocalWidgetOwner",
+            winRtBaseClassName = "Sample.WidgetOwner",
+            winRtInterfaceNames = listOf("Sample.IWidgetOwnerOverrides"),
+            overridableInterfaceNames = listOf("Sample.IWidgetOwnerOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "WidgetOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.IWidgetOwner",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IWidgetOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            methods = listOf(WinRtMethodDefinition(name = "Invoke", returnTypeName = "Unit")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IWidgetOwnerOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetWidgetHandlerCore",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "handler",
+                                            typeName = "Sample.WidgetHandler",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("delegate 'Sample.WidgetHandler' used by 'handler' has no IID metadata"))
+            return
+        }
+
+        throw AssertionError("Expected authored delegate parameter without IID metadata to fail closed.")
+    }
+
+    @Test
     fun renders_authored_collection_returns_through_generic_collection_projection_helpers() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-collection-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(

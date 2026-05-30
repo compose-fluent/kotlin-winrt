@@ -782,6 +782,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (definition.kind != WinRtTypeKind.Delegate) {
             return null
         }
+        requireAuthoredDelegateMetadata(parameter.name, typeName, definition)
         return CodeBlock.of(
             "%T.Metadata.fromAbi(%L as %T)",
             projectionClassName(typeName, semanticHelpers),
@@ -798,6 +799,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (returnType?.kind != WinRtTypeKind.Delegate) {
             return null
         }
+        requireAuthoredDelegateMetadata("return", returnType.qualifiedName, returnType)
         return CodeBlock.of(
             "%T.writePointer(%L, %T.fromProjected(%L as %T))",
             platformAbiType,
@@ -806,6 +808,18 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             valueExpression,
             winRtProjectedDelegateType,
         )
+    }
+
+    private fun requireAuthoredDelegateMetadata(
+        usageName: String,
+        typeName: String,
+        definition: WinRtTypeDefinition,
+    ) {
+        if (definition.iid == null) {
+            throw IllegalArgumentException(
+                "Authored WinRT delegate '$typeName' used by '$usageName' has no IID metadata.",
+            )
+        }
     }
 
     private fun renderReferenceParameterProjection(
