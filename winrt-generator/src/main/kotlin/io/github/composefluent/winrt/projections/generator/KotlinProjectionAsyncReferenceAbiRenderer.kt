@@ -1129,6 +1129,75 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             typeSignature,
         )
     }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedVector && typeBinding.typeArguments.size == 1) {
+        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single()) ?: return null
+        val projectedType = mappedCollectionProjectedType(typeBinding)
+        val typeSignature = abiTypeSignature(typeBinding) ?: return null
+        return CodeBlock.of(
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) mutableListOf() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L) ?: mutableListOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
+            WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
+            projectedType,
+            typeBinding.typeName.trim().removeSuffix("?"),
+            typeSignature,
+            WINRT_LIST_PROJECTION_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            elementAdapter,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            WINRT_LIST_PROJECTION_CLASS_NAME,
+            elementAdapter,
+            PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+            typeSignature,
+        )
+    }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedMapView && typeBinding.typeArguments.size == 2) {
+        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
+        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
+        val projectedType = mappedCollectionProjectedType(typeBinding)
+        val typeSignature = abiTypeSignature(typeBinding) ?: return null
+        return CodeBlock.of(
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyMap() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L, %L) ?: emptyMap() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L)), %T.createFromSignature(%L)) })",
+            WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
+            projectedType,
+            typeBinding.typeName.trim().removeSuffix("?"),
+            typeSignature,
+            WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            keyAdapter,
+            valueAdapter,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
+            keyAdapter,
+            valueAdapter,
+            PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+            typeSignature,
+        )
+    }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedMap && typeBinding.typeArguments.size == 2) {
+        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
+        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
+        val projectedType = mappedCollectionProjectedType(typeBinding)
+        val typeSignature = abiTypeSignature(typeBinding) ?: return null
+        return CodeBlock.of(
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) linkedMapOf() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L, %L) ?: linkedMapOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L)), %T.createFromSignature(%L)) })",
+            WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
+            projectedType,
+            typeBinding.typeName.trim().removeSuffix("?"),
+            typeSignature,
+            WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            keyAdapter,
+            valueAdapter,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
+            keyAdapter,
+            valueAdapter,
+            PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+            typeSignature,
+        )
+    }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair && typeBinding.typeArguments.size == 2) {
         val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
         val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null

@@ -15287,6 +15287,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_nested_mapped_collection_return_element_binding() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INestedCollectionProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "items",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<Windows.Foundation.Collections.IMapView<String, Int>>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NestedCollectionProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INestedCollectionProvider",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "items",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<Windows.Foundation.Collections.IMapView<String, Int>>",
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INestedCollectionProvider",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("INestedCollectionProvider.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("fun items(): List<Map<String, Int>>"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi(__collectionPointer"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(reference.pointer)"))
+        assertFalse(contents, contents.contains("IVectorView.Metadata.GETAT_SLOT"))
+        assertFalse(contents, contents.contains("IMapView.Metadata.LOOKUP_SLOT"))
+    }
+
+    @Test
     fun generator_projects_interface_mapped_collection_return_element_binding() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
