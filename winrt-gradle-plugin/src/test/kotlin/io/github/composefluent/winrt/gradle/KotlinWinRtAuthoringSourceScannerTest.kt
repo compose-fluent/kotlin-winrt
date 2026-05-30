@@ -1360,6 +1360,20 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                         ),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetNames",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "names",
+                                            typeName = "Array<System.String>",
+                                            direction = io.github.composefluent.winrt.metadata.WinRtParameterDirection.Out,
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("System.String"), isByRef = true),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1384,6 +1398,10 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
         assertTrue(generated, !generated.contains("__arg0"))
         assertTrue(generated, !generated.contains("rawArgs[2]"))
+        assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetNames()"))
+        assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() * 8"))
+        assertTrue(generated, generated.contains("PlatformAbi.writePointer(PlatformAbi.slice(__returnArrayData, __index.toLong() *"))
+        assertTrue(generated, generated.contains("8, 8), HString.create(__element).handle)"))
     }
 
     @Test
