@@ -53,6 +53,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableMethodDefinition")
     private val winRtCollectionInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRtCollectionInterfaceIds")
+    private val winRtAsyncInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncInterfaceIds")
+    private val winRtAsyncActionReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncActionReference")
+    private val winRtAsyncActionWithProgressReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncActionWithProgressReference")
+    private val winRtAsyncOperationReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncOperationReference")
+    private val winRtAsyncOperationWithProgressReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncOperationWithProgressReference")
     private val winRtDictionaryProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtDictionaryProjection")
     private val winRtIterableProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtIterableProjection")
     private val winRtListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtListProjection")
@@ -417,6 +422,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 return projection
             }
         }
+        renderAsyncParameterProjection(rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
+            return projection
+        }
         renderCollectionParameterProjection(method, rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
             return projection
         }
@@ -675,6 +683,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         fundamentalType(method.returnTypeName)?.let { type ->
             return renderFundamentalReturnProjection(type, outExpression, valueExpression)
         }
+        renderAsyncReturnProjection(method, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
+            return it
+        }
         renderCollectionReturnProjection(method, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
             return it
         }
@@ -779,6 +790,56 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             rawAddressType,
             CodeBlock.of("%L", adapterArguments.joinToCodeString(prefix = ", ")),
             fallback,
+        )
+    }
+
+    private fun renderAsyncParameterProjection(
+        rawArg: CodeBlock,
+        parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        val parameterType = parameter.type.normalized()
+        val parameterTypeName = parameterType.qualifiedName ?: return null
+        val projectedType = when (parameterTypeName) {
+            "Windows.Foundation.IAsyncAction" -> winRtAsyncActionReferenceType
+            "Windows.Foundation.IAsyncActionWithProgress" -> {
+                val progressType = parameterType.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT parameter '${parameter.name}' async type '${parameter.typeName}' does not have exactly one progress type.",
+                    )
+                winRtAsyncActionWithProgressReferenceType.parameterizedBy(
+                    authoringProjectedTypeName(progressType, typesByName, semanticHelpers),
+                )
+            }
+            "Windows.Foundation.IAsyncOperation" -> {
+                val resultType = parameterType.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT parameter '${parameter.name}' async type '${parameter.typeName}' does not have exactly one result type.",
+                    )
+                winRtAsyncOperationReferenceType.parameterizedBy(
+                    authoringProjectedTypeName(resultType, typesByName, semanticHelpers),
+                )
+            }
+            "Windows.Foundation.IAsyncOperationWithProgress" -> {
+                if (parameterType.typeArguments.size != 2) {
+                    throw IllegalArgumentException(
+                        "Authored WinRT parameter '${parameter.name}' async type '${parameter.typeName}' does not have exactly two argument types.",
+                    )
+                }
+                winRtAsyncOperationWithProgressReferenceType.parameterizedBy(
+                    authoringProjectedTypeName(parameterType.typeArguments[0].normalized(), typesByName, semanticHelpers),
+                    authoringProjectedTypeName(parameterType.typeArguments[1].normalized(), typesByName, semanticHelpers),
+                )
+            }
+            else -> return null
+        }
+        return CodeBlock.of(
+            "%T.fromAbi(%L as %T) as %T",
+            winRtObjectMarshallerType,
+            rawArg,
+            rawAddressType,
+            projectedType,
         )
     }
 
@@ -1071,6 +1132,67 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         )
     }
 
+    private fun renderAsyncReturnProjection(
+        method: WinRtMethodDefinition,
+        outExpression: CodeBlock,
+        valueExpression: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        val returnType = WinRtTypeRef.fromDisplayName(method.returnTypeName).normalized()
+        val returnTypeName = returnType.qualifiedName ?: return null
+        val interfaceId = when (returnTypeName) {
+            "Windows.Foundation.IAsyncAction" -> CodeBlock.of("%T.IAsyncAction", winRtAsyncInterfaceIdsType)
+            "Windows.Foundation.IAsyncActionWithProgress" -> {
+                val progressType = returnType.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns async type '${method.returnTypeName}' without exactly one progress type.",
+                    )
+                CodeBlock.of(
+                    "%T.createFromParameterizedInterface(%T.IAsyncActionWithProgressGeneric, %L)",
+                    parameterizedInterfaceIdType,
+                    winRtAsyncInterfaceIdsType,
+                    renderWinRtTypeSignature(progressType, typesByName),
+                )
+            }
+            "Windows.Foundation.IAsyncOperation" -> {
+                val resultType = returnType.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns async type '${method.returnTypeName}' without exactly one result type.",
+                    )
+                CodeBlock.of(
+                    "%T.createFromParameterizedInterface(%T.IAsyncOperationGeneric, %L)",
+                    parameterizedInterfaceIdType,
+                    winRtAsyncInterfaceIdsType,
+                    renderWinRtTypeSignature(resultType, typesByName),
+                )
+            }
+            "Windows.Foundation.IAsyncOperationWithProgress" -> {
+                if (returnType.typeArguments.size != 2) {
+                    throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns async type '${method.returnTypeName}' without exactly two argument types.",
+                    )
+                }
+                CodeBlock.of(
+                    "%T.createFromParameterizedInterface(%T.IAsyncOperationWithProgressGeneric, %L, %L)",
+                    parameterizedInterfaceIdType,
+                    winRtAsyncInterfaceIdsType,
+                    renderWinRtTypeSignature(returnType.typeArguments[0].normalized(), typesByName),
+                    renderWinRtTypeSignature(returnType.typeArguments[1].normalized(), typesByName),
+                )
+            }
+            else -> return null
+        }
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
+            platformAbiType,
+            outExpression,
+            comWrappersSupportType,
+            valueExpression,
+            interfaceId,
+        )
+    }
+
     private fun WinRtTypeRef.displayName(): String =
         qualifiedName ?: toString()
 
@@ -1224,6 +1346,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     ): TypeName {
         val typeName = type.qualifiedName
             ?: throw IllegalArgumentException("Authored WinRT collection element '${type.displayName()}' has no projected type name.")
+        renderAsyncProjectedType(type, typesByName, semanticHelpers)?.let { return it }
         renderNestedCollectionProjectedType(type, typesByName, semanticHelpers)?.let { return it }
         if (isWinRtObjectTypeName(typeName)) {
             return ANY.copy(nullable = true)
@@ -1238,6 +1361,41 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtTypeKind.Struct -> runtimeMappedClassName(typeName, semanticHelpers)
                 ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
             else -> throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
+        }
+    }
+
+    private fun renderAsyncProjectedType(
+        type: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): TypeName? {
+        val typeName = type.qualifiedName ?: return null
+        return when (typeName) {
+            "Windows.Foundation.IAsyncAction" -> winRtAsyncActionReferenceType
+            "Windows.Foundation.IAsyncActionWithProgress" -> {
+                val progressType = type.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException("Authored WinRT async type '${type.typeName}' does not have exactly one progress type.")
+                winRtAsyncActionWithProgressReferenceType.parameterizedBy(
+                    authoringProjectedTypeName(progressType, typesByName, semanticHelpers),
+                )
+            }
+            "Windows.Foundation.IAsyncOperation" -> {
+                val resultType = type.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException("Authored WinRT async type '${type.typeName}' does not have exactly one result type.")
+                winRtAsyncOperationReferenceType.parameterizedBy(
+                    authoringProjectedTypeName(resultType, typesByName, semanticHelpers),
+                )
+            }
+            "Windows.Foundation.IAsyncOperationWithProgress" -> {
+                if (type.typeArguments.size != 2) {
+                    throw IllegalArgumentException("Authored WinRT async type '${type.typeName}' does not have exactly two argument types.")
+                }
+                winRtAsyncOperationWithProgressReferenceType.parameterizedBy(
+                    authoringProjectedTypeName(type.typeArguments[0].normalized(), typesByName, semanticHelpers),
+                    authoringProjectedTypeName(type.typeArguments[1].normalized(), typesByName, semanticHelpers),
+                )
+            }
+            else -> null
         }
     }
 
