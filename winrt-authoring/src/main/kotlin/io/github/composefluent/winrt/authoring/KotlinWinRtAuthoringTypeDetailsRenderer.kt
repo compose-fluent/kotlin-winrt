@@ -39,6 +39,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val hStringType = ClassName("io.github.composefluent.winrt.runtime", "HString")
     private val iUnknownReferenceType = ClassName("io.github.composefluent.winrt.runtime", "IUnknownReference")
     private val iInspectableReferenceType = ClassName("io.github.composefluent.winrt.runtime", "IInspectableReference")
+    private val iWinRtObjectType = ClassName("io.github.composefluent.winrt.runtime", "IWinRTObject")
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
     private val parameterizedInterfaceIdType = ClassName("io.github.composefluent.winrt.runtime", "ParameterizedInterfaceId")
@@ -849,6 +850,23 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 projectionClassName(elementTypeName, semanticHelpers),
                 projectionClassName(elementTypeName, semanticHelpers),
             )
+            WinRtTypeKind.Interface -> {
+                val iid = elementDefinition.iid
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT override ${method.name} returns interface collection element '$elementTypeName' without IID metadata.",
+                    )
+                CodeBlock.of(
+                    "%T<%T>(projectedTypeName = %S, typeSignature = %T.object_(), projector = { reference -> %T.Metadata.wrap(reference!!) }, marshaller = { value -> (value as %T).nativeObject.queryInterface(%T(%S)).getOrThrow() })",
+                    winRtReferenceValueAdapterType,
+                    projectionClassName(elementTypeName, semanticHelpers),
+                    elementTypeName,
+                    winRtTypeSignatureType,
+                    projectionClassName(elementTypeName, semanticHelpers),
+                    iWinRtObjectType,
+                    guidType,
+                    iid.toString().lowercase(),
+                )
+            }
             WinRtTypeKind.Struct -> {
                 val projectedType = runtimeMappedClassName(elementTypeName, semanticHelpers)
                     ?: throw IllegalArgumentException(
