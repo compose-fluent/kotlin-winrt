@@ -3374,7 +3374,28 @@ class KotlinWinRtIrGenerationExtension(
         if (klass.kind == ClassKind.CLASS && klass.modality != Modality.FINAL) {
             report("WinRT authored class ${authoredType.sourceTypeName} must be final.")
         }
+        validateAuthoredConstructors(klass, authoredType, report)
         validateAuthoredMemberTypes(klass, authoredType, report)
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun validateAuthoredConstructors(
+        klass: IrClass,
+        authoredType: KotlinWinRtAuthoredTypeCandidate,
+        report: (String) -> Unit,
+    ) {
+        val publicConstructorArities = mutableSetOf<Int>()
+        klass.declarations
+            .filterIsInstance<IrConstructor>()
+            .filter { constructor -> constructor.visibility == DescriptorVisibilities.PUBLIC }
+            .forEach { constructor ->
+                val arity = constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular }
+                if (!publicConstructorArities.add(arity)) {
+                    report(
+                        "WinRT authored type ${authoredType.sourceTypeName} must not declare multiple public constructors with $arity parameter(s).",
+                    )
+                }
+            }
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)

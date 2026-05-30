@@ -5584,6 +5584,26 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_authored_runtime_constructors_with_same_arity() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/AmbiguousConstructorThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class AmbiguousConstructorThing {
+                    constructor()
+                    constructor(value: String)
+                    constructor(value: Int)
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "must not declare multiple public constructors with 1 parameter",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_unsealed_authored_runtime_classes() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/OpenStringableThing.kt",
