@@ -1453,6 +1453,80 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_read_only_array_parameters_from_two_abi_slots() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-array-parameter-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalBufferConsumer",
+            sourceTypeName = "sample.LocalBufferConsumer",
+            winRtBaseClassName = "Sample.BufferConsumer",
+            winRtInterfaceNames = listOf("Sample.IBufferConsumerOverrides"),
+            overridableInterfaceNames = listOf("Sample.IBufferConsumerOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "BufferConsumer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IBufferConsumerOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("66666666-3333-2222-1111-000000000000"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetNumbers",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "numbers",
+                                            typeName = "Array<Int32>",
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Int32")),
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetNames",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "names",
+                                            typeName = "Array<System.String>",
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("System.String")),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalBufferConsumer_TypeDetails.kt").readText()
+        assertTrue(generated, generated.contains("ComMethodSignature.of(ComAbiValueKind.Int32"))
+        assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { rawArgs ->"))
+        assertTrue(generated, generated.contains("val __arrayLength = rawArgs[0] as Int"))
+        assertTrue(generated, generated.contains("val __arrayData = rawArgs[1] as RawAddress"))
+        assertTrue(generated, generated.contains("Array(__arrayLength) { __index -> PlatformAbi.readInt32"))
+        assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetNumbers(__arg0)"))
+        assertTrue(generated, generated.contains("HString.fromHandle(PlatformAbi.readPointer"))
+        assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetNames(__arg0)"))
+    }
+
+    @Test
     fun rejects_authored_collection_returns_without_supported_element_adapter() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-bad-collection-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
