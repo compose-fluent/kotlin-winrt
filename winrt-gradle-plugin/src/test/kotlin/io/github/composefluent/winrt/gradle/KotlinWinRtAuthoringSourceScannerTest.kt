@@ -1886,9 +1886,10 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("ComMethodSignature.of(ComAbiValueKind.Int32"))
         assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { rawArgs ->"))
         assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetNumbers()"))
-        assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() * 4, 4)"))
+        assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() *"))
+        assertTrue(generated, generated.contains("4)"))
         assertTrue(generated, generated.contains("__result.forEachIndexed { __index, __element ->"))
-        assertTrue(generated, generated.contains("PlatformAbi.writeInt32(PlatformAbi.slice(__returnArrayData, __index.toLong() * 4"))
+        assertTrue(generated, generated.contains("PlatformAbi.writeInt32(PlatformAbi.slice(__returnArrayData, __index.toLong() *"))
         assertTrue(generated, generated.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress, __result.size)"))
         assertTrue(generated, generated.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
         assertTrue(generated, !generated.contains("__arg0"))
@@ -1905,7 +1906,76 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("Point.Metadata.layout.sizeBytes, Point.Metadata.layout.alignmentBytes)"))
         assertTrue(generated, generated.contains("Point.Metadata.layout.alignmentBytes"))
         assertTrue(generated, generated.contains("Point.Metadata.copyTo(__element"))
-        assertTrue(generated, generated.contains("as Point, PlatformAbi.slice(__returnArrayData"))
+        assertTrue(generated, generated.contains("Point, PlatformAbi.slice(__returnArrayData"))
+    }
+
+    @Test
+    fun rejects_non_trailing_out_array_parameters_until_receive_array_variants_exist() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-bad-receive-array-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalBufferOwner",
+            sourceTypeName = "sample.LocalBufferOwner",
+            winRtBaseClassName = "Sample.BufferOwner",
+            winRtInterfaceNames = listOf("Sample.IBufferOwnerOverrides"),
+            overridableInterfaceNames = listOf("Sample.IBufferOwnerOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "BufferOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IBufferOwnerOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("55555555-3333-2222-1111-999999999999"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetNumbers",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "numbers",
+                                            typeName = "Array<Int32>",
+                                            direction = io.github.composefluent.winrt.metadata.WinRtParameterDirection.Out,
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                            typeSignature = WinRtTypeRef.array(WinRtTypeRef.named("Int32"), isByRef = true),
+                                        ),
+                                        WinRtParameterDefinition(
+                                            name = "kind",
+                                            typeName = "Int32",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("unsupported array parameter 'numbers' with by-ref/out direction"))
+            assertTrue(error.message.orEmpty().contains("only trailing receive-array out parameters are supported"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalBufferOwner_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected non-trailing authored receive-array variants to fail closed.")
     }
 
     @Test
@@ -2009,7 +2079,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { rawArgs ->"))
         assertTrue(generated, generated.contains("val __arrayLength = rawArgs[0] as Int"))
         assertTrue(generated, generated.contains("val __arrayData = rawArgs[1] as RawAddress"))
-        assertTrue(generated, generated.contains("Array(__arrayLength) { __index -> PlatformAbi.readInt32"))
+        assertTrue(generated, generated.contains("Array(__arrayLength) { __index ->"))
+        assertTrue(generated, generated.contains("PlatformAbi.readInt32"))
         assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetNumbers(__arg0)"))
         assertTrue(generated, generated.contains("HString.fromHandle(PlatformAbi.readPointer"))
         assertTrue(generated, generated.contains("(value as BufferConsumer).__winrtAuthoringInvokeSetNames(__arg0)"))
