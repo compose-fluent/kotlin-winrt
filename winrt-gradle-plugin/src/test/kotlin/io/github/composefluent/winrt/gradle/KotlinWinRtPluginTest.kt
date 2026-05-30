@@ -5837,6 +5837,24 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_unsupported_generic_argument_authored_runtime_members() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/GenericArgumentThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class GenericArgumentThing {
+                    fun failures(): List<Throwable> = emptyList()
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "return type generic argument must not expose unsupported type kotlin.Throwable",
+        )
+    }
+
+    @Test
     fun compiler_plugin_warns_on_authored_runtime_class_casts() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-runtime-class-cast-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
