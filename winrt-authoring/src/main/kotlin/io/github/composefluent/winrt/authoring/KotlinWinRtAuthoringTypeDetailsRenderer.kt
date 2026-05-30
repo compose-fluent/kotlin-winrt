@@ -174,16 +174,26 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     "Authored type '${candidate.sourceTypeName}' references WinRT interface '$interfaceName' without metadata IID.",
                 )
             }
-            validateAuthoredInterfaceEventSupport(candidate, type)
+            validateAuthoredInterfaceMemberSupport(candidate, type)
             type
         }
     }
 
-    private fun validateAuthoredInterfaceEventSupport(
+    private fun validateAuthoredInterfaceMemberSupport(
         candidate: KotlinWinRtAuthoredTypeCandidate,
         type: WinRtTypeDefinition,
     ) {
-        val event = type.events.firstOrNull { event -> !event.isStatic } ?: return
+        type.methods.firstOrNull { method -> method.isStatic }?.let { method ->
+            throw IllegalArgumentException(
+                "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' static method '${method.name}', but TypeDetails instance CCW generation cannot expose static interface members.",
+            )
+        }
+        type.properties.firstOrNull { property -> property.isStatic }?.let { property ->
+            throw IllegalArgumentException(
+                "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' static property '${property.name}', but TypeDetails instance CCW generation cannot expose static interface members.",
+            )
+        }
+        val event = type.events.firstOrNull() ?: return
         throw IllegalArgumentException(
             "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' event '${event.name}', but TypeDetails event marshaling is not implemented.",
         )
