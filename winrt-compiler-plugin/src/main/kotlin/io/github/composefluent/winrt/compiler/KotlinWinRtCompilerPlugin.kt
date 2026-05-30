@@ -3505,6 +3505,12 @@ class KotlinWinRtIrGenerationExtension(
                 "WinRT authored member ${authoredType.sourceTypeName}.$memberName $role must not expose unsupported type $typeName.",
             )
         }
+        if (typeName?.startsWith("kotlin.Function") == true) {
+            report(
+                "WinRT authored member ${authoredType.sourceTypeName}.$memberName $role must not expose Kotlin function type $typeName; " +
+                    "use a projected WinRT delegate type instead.",
+            )
+        }
         if (!type.isKotlinArrayType()) {
             return
         }
