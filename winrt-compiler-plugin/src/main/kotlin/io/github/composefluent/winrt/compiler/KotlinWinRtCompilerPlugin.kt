@@ -3405,6 +3405,12 @@ class KotlinWinRtIrGenerationExtension(
                 function.parameters
                     .filter { parameter -> parameter.kind == IrParameterKind.Regular }
                     .forEach { parameter ->
+                        if (parameter.name.asString() == authoredReturnValueParameterName) {
+                            report(
+                                "WinRT authored member ${authoredType.sourceTypeName}.${function.name.asString()} parameter '${parameter.name.asString()}' " +
+                                    "must not use the generated return-value parameter name.",
+                            )
+                        }
                         validateAuthoredExposedType(
                             type = parameter.type,
                             authoredType = authoredType,
@@ -3474,6 +3480,8 @@ class KotlinWinRtIrGenerationExtension(
         "hashCode",
         "toString",
     )
+
+    private val authoredReturnValueParameterName = "__retval"
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun classContextsIn(
