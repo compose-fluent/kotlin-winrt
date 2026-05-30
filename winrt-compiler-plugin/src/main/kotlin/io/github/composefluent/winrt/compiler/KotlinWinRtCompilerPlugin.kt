@@ -3478,6 +3478,11 @@ class KotlinWinRtIrGenerationExtension(
         report: (String) -> Unit,
     ) {
         val typeName = type.classFqName?.asString()
+        if (typeName == "kotlin.Unit" && role != "return type") {
+            report(
+                "WinRT authored member ${authoredType.sourceTypeName}.$memberName $role must not expose kotlin.Unit; Unit is only valid as a void return.",
+            )
+        }
         if (typeName in unsupportedAuthoredExposedTypeNames) {
             report(
                 "WinRT authored member ${authoredType.sourceTypeName}.$memberName $role must not expose unsupported type $typeName.",

@@ -5656,6 +5656,24 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_unit_authored_runtime_parameters() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/UnitParameterThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class UnitParameterThing {
+                    fun accept(value: Unit) = Unit
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "Unit is only valid as a void return",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_suspend_authored_runtime_members() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/SuspendThing.kt",
