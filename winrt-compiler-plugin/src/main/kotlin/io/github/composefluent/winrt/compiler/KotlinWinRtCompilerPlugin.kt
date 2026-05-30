@@ -3523,6 +3523,7 @@ class KotlinWinRtIrGenerationExtension(
     )
 
     private val unsupportedAuthoredExposedTypeNames = setOf(
+        "kotlin.Nothing",
         "kotlin.Throwable",
         "kotlin.Exception",
         "java.lang.Throwable",

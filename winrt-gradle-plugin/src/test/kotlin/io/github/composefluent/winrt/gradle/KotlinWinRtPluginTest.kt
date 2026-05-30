@@ -5656,6 +5656,24 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_nothing_authored_runtime_members() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/NothingThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class NothingThing {
+                    fun impossible(): Nothing = error("no value")
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "must not expose unsupported type kotlin.Nothing",
+        )
+    }
+
+    @Test
     fun compiler_plugin_rejects_unit_authored_runtime_parameters() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/UnitParameterThing.kt",
