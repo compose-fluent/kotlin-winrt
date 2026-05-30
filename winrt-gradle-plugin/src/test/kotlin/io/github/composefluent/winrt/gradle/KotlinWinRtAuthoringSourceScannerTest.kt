@@ -1318,6 +1318,28 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                         ),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "SetPeerGroupsCore",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "peerGroups",
+                                            typeName = "Windows.Foundation.Collections.IVectorView<Windows.Foundation.Collections.IMapView<System.String, Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>>",
+                                            typeSignature = WinRtTypeRef.named(
+                                                "Windows.Foundation.Collections.IVectorView",
+                                                typeArguments = listOf(
+                                                    WinRtTypeRef.named(
+                                                        "Windows.Foundation.Collections.IMapView",
+                                                        typeArguments = listOf(
+                                                            WinRtTypeRef.named("System.String"),
+                                                        WinRtTypeRef.named("Microsoft.UI.Xaml.Automation.Peers.AutomationPeer"),
+                                                        ),
+                                                    ),
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -1351,6 +1373,9 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(rawArgs[0]"))
         assertTrue(generated.contains("as RawAddress, WinRtReferenceValueAdapters.string"))
         assertTrue(generated.contains("AutomationPeer).__winrtAuthoringInvokeSetNamedPeersCore(__arg0)"))
+        assertTrue(generated.contains("WinRtReadOnlyListProjection.fromAbi(rawArgs[0]"))
+        assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(reference.pointer)"))
+        assertTrue(generated.contains("AutomationPeer).__winrtAuthoringInvokeSetPeerGroupsCore(__arg0)"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
     }
 
