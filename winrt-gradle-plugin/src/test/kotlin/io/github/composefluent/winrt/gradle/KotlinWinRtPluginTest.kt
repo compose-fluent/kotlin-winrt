@@ -5765,6 +5765,60 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_plugin_rejects_generic_authored_runtime_members() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/GenericMemberThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class GenericMemberThing {
+                    fun <T> echo(value: T): T = value
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "sample.GenericMemberThing.echo must not be generic",
+        )
+    }
+
+    @Test
+    fun compiler_plugin_rejects_vararg_authored_runtime_parameters() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/VarargThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class VarargThing {
+                    fun join(vararg values: String): String = values.joinToString()
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "parameter 'values' must not be vararg",
+        )
+    }
+
+    @Test
+    fun compiler_plugin_rejects_default_value_authored_runtime_parameters() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/DefaultParameterThing.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+
+                @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                class DefaultParameterThing {
+                    fun greet(value: String = "hello"): String = value
+                }
+            """.trimIndent(),
+            expectedDiagnostic = "parameter 'value' must not declare a Kotlin default value",
+        )
+    }
+
+    @Test
     fun compiler_plugin_warns_on_authored_runtime_class_casts() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-runtime-class-cast-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
