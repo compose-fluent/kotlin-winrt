@@ -13,20 +13,21 @@ foreach ($arg in $GradleArgs) {
     $quotedArgs += '"' + ($arg -replace '"', '\"') + '"'
 }
 
-$commandLine = "call gradlew.bat " + ($quotedArgs -join ' ')
 $stdoutFile = [System.IO.Path]::GetTempFileName()
 $stderrFile = [System.IO.Path]::GetTempFileName()
+$gradleBat = Join-Path $repoRoot "gradlew.bat"
+$commandLine = '"' + $gradleBat + '" ' + ($quotedArgs -join ' ') +
+    ' 1>"' + $stdoutFile + '" 2>"' + $stderrFile + '"'
 
 try {
-    $process = Start-Process `
-        -FilePath "cmd.exe" `
-        -ArgumentList "/d", "/s", "/c", $commandLine `
-        -WorkingDirectory $repoRoot `
-        -RedirectStandardOutput $stdoutFile `
-        -RedirectStandardError $stderrFile `
-        -WindowStyle Hidden `
-        -Wait `
-        -PassThru
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo.FileName = "cmd.exe"
+    $process.StartInfo.Arguments = '/d /c "' + $commandLine + '"'
+    $process.StartInfo.WorkingDirectory = $repoRoot
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.CreateNoWindow = $true
+    [void]$process.Start()
+    $process.WaitForExit()
 
     $exitCode = $process.ExitCode
 

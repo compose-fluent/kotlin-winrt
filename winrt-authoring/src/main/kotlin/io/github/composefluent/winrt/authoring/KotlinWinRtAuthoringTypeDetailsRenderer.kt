@@ -312,6 +312,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                                 index,
                                 rawIndex,
                                 parameter,
+                                method,
                                 typesByName,
                                 semanticHelpers,
                                 authoredRuntimeClassNames,
@@ -399,6 +400,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderParameterProjection(
         index: Int,
         parameter: WinRtParameterDefinition,
+        method: WinRtMethodDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
@@ -415,6 +417,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 return projection
             }
         }
+        renderCollectionParameterProjection(method, rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
+            return projection
+        }
         return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames)
     }
 
@@ -422,6 +427,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         index: Int,
         rawIndex: Int,
         parameter: WinRtParameterDefinition,
+        method: WinRtMethodDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
@@ -455,7 +461,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             CodeBlock.of(
                 "val __arg%L = %L\n",
                 index,
-                renderParameterProjection(rawIndex, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames),
+                renderParameterProjection(rawIndex, parameter, method, typesByName, semanticHelpers, authoredRuntimeClassNames),
             )
         }
 
@@ -718,6 +724,63 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
             WinRtFundamentalType.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
         }
+
+    private fun renderCollectionParameterProjection(
+        method: WinRtMethodDefinition,
+        rawArg: CodeBlock,
+        parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        val parameterType = parameter.type.normalized()
+        val collectionTypeName = parameterType.qualifiedName ?: parameter.typeName.substringBefore('<')
+        val projectionType = when (collectionTypeName) {
+            "Windows.Foundation.Collections.IIterable" -> winRtIterableProjectionType
+            "Windows.Foundation.Collections.IVectorView" -> winRtReadOnlyListProjectionType
+            "Windows.Foundation.Collections.IVector" -> winRtListProjectionType
+            "Windows.Foundation.Collections.IMapView" -> winRtReadOnlyDictionaryProjectionType
+            "Windows.Foundation.Collections.IMap" -> winRtDictionaryProjectionType
+            else -> return null
+        }
+        val fallback = when (collectionTypeName) {
+            "Windows.Foundation.Collections.IIterable",
+            "Windows.Foundation.Collections.IVectorView",
+            -> CodeBlock.of("emptyList()")
+            "Windows.Foundation.Collections.IVector" -> CodeBlock.of("mutableListOf()")
+            "Windows.Foundation.Collections.IMapView" -> CodeBlock.of("emptyMap()")
+            "Windows.Foundation.Collections.IMap" -> CodeBlock.of("linkedMapOf()")
+            else -> return null
+        }
+        val adapterArguments = when (collectionTypeName) {
+            "Windows.Foundation.Collections.IMapView",
+            "Windows.Foundation.Collections.IMap" -> {
+                if (parameterType.typeArguments.size != 2) {
+                    throw IllegalArgumentException(
+                        "Authored WinRT parameter '${parameter.name}' collection type '${parameter.typeName}' does not have exactly two argument types.",
+                    )
+                }
+                listOf(
+                    renderCollectionElementAdapter(method, parameterType.typeArguments[0].normalized(), typesByName, semanticHelpers),
+                    renderCollectionElementAdapter(method, parameterType.typeArguments[1].normalized(), typesByName, semanticHelpers),
+                )
+            }
+            else -> {
+                val elementType = parameterType.typeArguments.singleOrNull()?.normalized()
+                    ?: throw IllegalArgumentException(
+                        "Authored WinRT parameter '${parameter.name}' collection type '${parameter.typeName}' does not have exactly one element type.",
+                    )
+                listOf(renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers))
+            }
+        }
+        return CodeBlock.of(
+            "%T.fromAbi(%L as %T%L) ?: %L",
+            projectionType,
+            rawArg,
+            rawAddressType,
+            CodeBlock.of("%L", adapterArguments.joinToCodeString(prefix = ", ")),
+            fallback,
+        )
+    }
 
     private fun renderArrayReturnProjection(
         method: WinRtMethodDefinition,
