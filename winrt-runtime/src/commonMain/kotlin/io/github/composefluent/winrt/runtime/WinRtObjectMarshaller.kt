@@ -84,7 +84,7 @@ object WinRtObjectMarshaller {
     }
 }
 
-private object ProjectedDelegateObjectRoots {
+internal object ProjectedDelegateObjectRoots {
     private val roots = SnapshotList<WinRtDelegateHandle>()
 
     fun retain(handle: WinRtDelegateHandle) {
