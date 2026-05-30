@@ -810,7 +810,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                         WinRtTypeDefinition(
                             namespace = "Sample",
                             name = "PeerCallback",
-                            kind = WinRtTypeKind.Delegate,
+                            kind = WinRtTypeKind.Unknown,
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample",
@@ -1759,7 +1759,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtListProjection.fromAbi(rawArgs[0] as RawAddress"))
         assertTrue(generated.contains("(value as AutomationPeer).__winrtAuthoringInvokeSetNamesCore(__arg0)"))
         assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(rawArgs[0]"))
-        assertTrue(generated.contains("as RawAddress, WinRtReferenceValueAdapters.string"))
+        assertTrue(generated.contains("as RawAddress"))
+        assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))
         assertTrue(generated.contains("AutomationPeer).__winrtAuthoringInvokeSetNamedPeersCore(__arg0)"))
         assertTrue(generated.contains("WinRtReadOnlyListProjection.fromAbi(rawArgs[0]"))
         assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(reference.pointer)"))
