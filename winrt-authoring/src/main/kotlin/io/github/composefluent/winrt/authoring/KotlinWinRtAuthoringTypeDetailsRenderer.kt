@@ -193,7 +193,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' static property '${property.name}', but TypeDetails instance CCW generation cannot expose static interface members.",
             )
         }
-        val event = type.events.firstOrNull() ?: return
+        val event = type.events.firstOrNull { event ->
+            event.addMethodName == null ||
+                event.removeMethodName == null ||
+                type.methods.none { method -> method.name == event.addMethodName } ||
+                type.methods.none { method -> method.name == event.removeMethodName }
+        } ?: return
         throw IllegalArgumentException(
             "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' event '${event.name}', but TypeDetails event marshaling is not implemented.",
         )
