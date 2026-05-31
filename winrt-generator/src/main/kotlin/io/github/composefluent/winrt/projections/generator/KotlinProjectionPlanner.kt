@@ -118,9 +118,19 @@ import kotlin.io.path.extension
 
 class KotlinProjectionPlanner(
     private val validator: KotlinProjectionContractValidator = KotlinProjectionContractValidator(),
+    private val useWinAppSdkTypeRedirects: Boolean = false,
 ) {
-    fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> =
-        validator.validate(model).let { normalized ->
+    fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> {
+        val normalized = validator.validate(model)
+        if (!useWinAppSdkTypeRedirects && normalized.requiresWinAppSdkTypeRedirects()) {
+            return KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects = true)
+                .planValidated(normalized)
+        }
+        return planValidated(normalized)
+    }
+
+    private fun planValidated(normalized: WinRtMetadataModel): List<KotlinTypeProjectionPlan> =
+        normalized.let {
             val semanticHelpers = normalized.semanticHelpers()
             val typesByQualifiedName = normalized.namespaces
                 .flatMap(WinRtNamespace::types)
@@ -141,6 +151,9 @@ class KotlinProjectionPlanner(
                 )
             }
         }
+
+    private fun WinRtMetadataModel.requiresWinAppSdkTypeRedirects(): Boolean =
+        namespaces.any { namespace -> namespace.name == "Microsoft.UI" || namespace.name.startsWith("Microsoft.UI.") }
 
     fun planNamespace(
         namespace: WinRtNamespace,
@@ -1374,7 +1387,9 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         includeDelegateInvokeShape: Boolean = true,
     ): KotlinProjectionAbiTypeBinding {
-        val normalizedType = WinRtTypeRef.fromDisplayName(typeName).normalized()
+        val normalizedType = WinRtTypeRef
+            .fromDisplayName(redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects))
+            .normalized()
         val trimmedTypeName = normalizedType.typeName
         val rawTypeName = when (normalizedType.kind) {
             WinRtTypeRefKind.Named -> (normalizedType.qualifiedName ?: trimmedTypeName.substringBefore('<')).removeSuffix("?")
