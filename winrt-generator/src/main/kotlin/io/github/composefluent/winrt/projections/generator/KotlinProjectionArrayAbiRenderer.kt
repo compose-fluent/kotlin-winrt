@@ -193,6 +193,31 @@ internal fun KotlinProjectionRenderer.nativeStructClassName(
         ?: runCatching { resolveTypeName(binding.resolvedTypeName) as? ClassName }.getOrNull()
 }
 
+internal fun KotlinProjectionRenderer.nativeStructAdapterClassName(
+    binding: KotlinProjectionAbiTypeBinding,
+): ClassName? {
+    val typeName = binding.typeName.substringBefore('<').removeSuffix("?")
+    val resolvedTypeName = binding.resolvedTypeName.substringBefore('<').removeSuffix("?")
+    val mappedType = mappedTypeByAbiName(typeName) ?: mappedTypeByAbiName(resolvedTypeName)
+    if (mappedType != null) {
+        return mappedNativeStructAdapterClassName(mappedType)
+    }
+    return runCatching { resolveTypeName(binding.typeName) as? ClassName }.getOrNull()
+        ?: runCatching { resolveTypeName(binding.resolvedTypeName) as? ClassName }.getOrNull()
+}
+
+private fun mappedNativeStructAdapterClassName(mappedType: KotlinProjectionMappedType): ClassName? {
+    if (mappedType.abiValueKind != KotlinProjectionAbiValueKind.Struct) {
+        return null
+    }
+    val projectedType = mappedType.projectedTypeResolver(emptyList()) as? ClassName ?: return null
+    val customStructAbi = mappedType.customStructAbi
+    if (customStructAbi != null && customStructAbi.helperTypeName != projectedType.nestedClass("Metadata")) {
+        return null
+    }
+    return projectedType
+}
+
 internal fun customStructAbi(
     binding: KotlinProjectionAbiTypeBinding,
 ): KotlinProjectionCustomStructAbi? =

@@ -140,7 +140,10 @@ object ComWrappersSupport {
     fun registerCcwFactory(
         implementationType: KClass<*>,
         factory: (Any) -> WinRtCcwDefinition,
-    ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
+    ): Boolean {
+        traceCcw("register CCW factory type=${implementationType.qualifiedName}")
+        return ccwFactories.putIfAbsent(implementationType, factory) == null
+    }
 
     fun registerAuthoringTypeDetailsFactory(
         implementationType: KClass<*>,
@@ -684,17 +687,20 @@ object ComWrappersSupport {
 
     private fun createCcwDefinition(value: Any): WinRtCcwDefinition {
         findCcwFactory(value)?.let { factory ->
+            traceCcw("create CCW definition value=${value::class.qualifiedName} source=registered-factory")
             return InteropRuntimeHooks.augmentInspectableDefinition(
                 value,
                 XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, factory(value)),
             )
         }
         platformCreateSyntheticCcwDefinition(value)?.let {
+            traceCcw("create CCW definition value=${value::class.qualifiedName} source=synthetic")
             return InteropRuntimeHooks.augmentInspectableDefinition(
                 value,
                 XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, it),
             )
         }
+        traceCcw("create CCW definition value=${value::class.qualifiedName} source=default-inspectable")
         return InteropRuntimeHooks.augmentInspectableDefinition(
             value,
             XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(

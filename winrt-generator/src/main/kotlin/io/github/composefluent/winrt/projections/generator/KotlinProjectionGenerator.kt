@@ -1664,7 +1664,11 @@ private fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFi
             files
                 .sortedBy(KotlinProjectionFile::relativePath)
                 .map(::parseGeneratedKotlinFile)
-                .chunkByGeneratedBodySize()
+                .let { parsedFiles ->
+                    parsedFiles.chunkByGeneratedBodySizeAndImports(
+                        packageDeclaredNames = parsedFiles.flatMap { it.declaredTopLevelNames() }.toSet(),
+                    )
+                }
                 .mapIndexed { index, parsedFiles ->
             val imports = parsedFiles
                 .flatMap(ParsedGeneratedKotlinFile::imports)
@@ -1707,19 +1711,44 @@ private fun KotlinTypeProjectionPlan.withoutRenderedProjectedAttributes(): Kotli
 
 private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
 
-private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySize(): List<List<ParsedGeneratedKotlinFile>> =
+private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySizeAndImports(
+    packageDeclaredNames: Set<String>,
+): List<List<ParsedGeneratedKotlinFile>> =
     buildList {
         var current = mutableListOf<ParsedGeneratedKotlinFile>()
         var currentSize = 0
-        for (file in this@chunkByGeneratedBodySize) {
+        var currentImportedNames = emptySet<String>()
+        var currentDeclaredNames = emptySet<String>()
+        var currentHasPackageShadowingImport = false
+        for (file in this@chunkByGeneratedBodySizeAndImports) {
             val fileSize = file.body.length
-            if (current.isNotEmpty() && currentSize + fileSize > MAX_GROUPED_PROJECTION_BODY_CHARS) {
+            val fileImportedNames = file.importedSimpleNames()
+            val fileDeclaredNames = file.declaredTopLevelNames()
+            val fileHasPackageShadowingImport = fileImportedNames.any(packageDeclaredNames::contains)
+            val hasImportDeclarationCollision =
+                currentImportedNames.any(fileDeclaredNames::contains) ||
+                    fileImportedNames.any(currentDeclaredNames::contains)
+            if (
+                current.isNotEmpty() &&
+                (
+                    currentSize + fileSize > MAX_GROUPED_PROJECTION_BODY_CHARS ||
+                        hasImportDeclarationCollision ||
+                        currentHasPackageShadowingImport ||
+                        fileHasPackageShadowingImport
+                )
+            ) {
                 add(current)
                 current = mutableListOf()
                 currentSize = 0
+                currentImportedNames = emptySet()
+                currentDeclaredNames = emptySet()
+                currentHasPackageShadowingImport = false
             }
             current += file
             currentSize += fileSize
+            currentImportedNames = currentImportedNames + fileImportedNames
+            currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
+            currentHasPackageShadowingImport = currentHasPackageShadowingImport || fileHasPackageShadowingImport
         }
         if (current.isNotEmpty()) {
             add(current)
@@ -1732,6 +1761,22 @@ private data class ParsedGeneratedKotlinFile(
     val imports: List<String>,
     val body: String,
 )
+
+private fun ParsedGeneratedKotlinFile.importedSimpleNames(): Set<String> =
+    imports.mapNotNullTo(mutableSetOf()) { importLine ->
+        val imported = importLine.removePrefix("import ").trim()
+        imported.substringAfter(" as ", missingDelimiterValue = "")
+            .ifBlank { imported.substringAfterLast('.') }
+            .takeIf(String::isNotBlank)
+    }
+
+private fun ParsedGeneratedKotlinFile.declaredTopLevelNames(): Set<String> =
+    generatedTopLevelDeclarationRegex.findAll(body)
+        .map { match -> match.groupValues[1] }
+        .toSet()
+
+private val generatedTopLevelDeclarationRegex =
+    Regex("""(?m)^(?:public|internal)\s+(?:open\s+|sealed\s+|data\s+|value\s+)?(?:class|interface|enum\s+class|object)\s+([A-Za-z_][A-Za-z0-9_]*)""")
 
 private fun parseGeneratedKotlinFile(file: KotlinProjectionFile): ParsedGeneratedKotlinFile {
     val allLines = file.contents.lines()

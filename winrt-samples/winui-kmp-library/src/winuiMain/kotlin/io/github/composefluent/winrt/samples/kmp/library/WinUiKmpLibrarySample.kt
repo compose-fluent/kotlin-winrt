@@ -67,7 +67,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     @Volatile
     private var timerSmokeCompleted = false
 
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
+    protected override fun onLaunched(args: LaunchActivatedEventArgs) {
         launchWithResources()
     }
 

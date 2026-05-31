@@ -961,7 +961,7 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
             expressions = listOf(CodeBlock.of("%L as %T", parameter.name, IWINRT_OBJECT_CLASS_NAME)),
         )
         shape.startsWith("Struct") -> {
-            val structType = nativeStructClassName(binding) ?: return null
+            val structType = nativeStructAdapterClassName(binding) ?: return null
             DescriptorIntrinsicArgument(
                 shape = shape,
                 expressions = listOf(CodeBlock.of("%L", parameter.name), CodeBlock.of("%T.Metadata", structType)),
@@ -1081,7 +1081,7 @@ internal fun descriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBi
 internal fun KotlinProjectionRenderer.descriptorStructCapableArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
     when (binding.kind) {
         KotlinProjectionAbiValueKind.Struct ->
-            if (binding.typeName.endsWith("?") || customStructAbi(binding) != null || nativeStructClassName(binding) == null) {
+            if (binding.typeName.endsWith("?") || nativeStructAdapterClassName(binding) == null) {
                 null
             } else {
                 descriptorByValueStructArgumentShape(binding)

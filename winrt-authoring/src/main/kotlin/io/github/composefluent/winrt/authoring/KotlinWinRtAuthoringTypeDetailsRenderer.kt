@@ -134,6 +134,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         candidates: List<KotlinWinRtAuthoredTypeCandidate>,
         metadataModel: WinRtMetadataModel,
         outputDirectory: Path,
+        assemblyName: String? = null,
     ) {
         val typesByName = metadataModel.namespaces
             .flatMap { namespace -> namespace.types }
@@ -147,7 +148,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             render(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames).writeTo(outputDirectory)
             candidate
         }
-        renderRegistrar(renderedCandidates).writeTo(outputDirectory)
+        renderRegistrar(renderedCandidates, authoringTypeDetailsRegistrarName(assemblyName)).writeTo(outputDirectory)
     }
 
     private fun resolveAuthoringInterfaces(
@@ -280,10 +281,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .build()
     }
 
-    private fun renderRegistrar(candidates: List<KotlinWinRtAuthoredTypeCandidate>): FileSpec =
-        FileSpec.builder(authoringTypeDetailsRegistrarPackage, authoringTypeDetailsRegistrarName)
+    private fun renderRegistrar(
+        candidates: List<KotlinWinRtAuthoredTypeCandidate>,
+        registrarName: String,
+    ): FileSpec =
+        FileSpec.builder(authoringTypeDetailsRegistrarPackage, registrarName)
             .addType(
-                TypeSpec.objectBuilder(authoringTypeDetailsRegistrarName)
+                TypeSpec.objectBuilder(registrarName)
                     .addModifiers(KModifier.INTERNAL)
                     .addFunction(renderRegistrarRegister(candidates))
                     .build(),
@@ -1873,4 +1877,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
         return ClassName(qualifiedName.substring(0, lastDot), qualifiedName.substring(lastDot + 1))
     }
+}
+
+fun authoringTypeDetailsRegistrarName(assemblyName: String?): String {
+    val suffix = assemblyName
+        ?.map { character -> if (character.isLetterOrDigit()) character else '_' }
+        ?.joinToString("")
+        ?.trim('_')
+        ?.takeIf(String::isNotBlank)
+        ?: return "WinRTAuthoringTypeDetailsRegistrar"
+    val normalizedSuffix = if (suffix.first().isDigit()) "_$suffix" else suffix
+    return "WinRTAuthoringTypeDetailsRegistrar_$normalizedSuffix"
 }

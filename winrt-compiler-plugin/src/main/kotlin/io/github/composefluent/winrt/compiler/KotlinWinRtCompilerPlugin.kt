@@ -11,6 +11,7 @@ import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceName
 import io.github.composefluent.winrt.authoring.projectionPackageToMetadataName
 import io.github.composefluent.winrt.authoring.projectionTypeIndexRecordForSourceType
 import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.authoring.authoringTypeDetailsRegistrarName
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
@@ -3481,7 +3482,10 @@ class KotlinWinRtIrGenerationExtension(
                     }
             }
         klass.declarations.filterIsInstance<IrProperty>()
-            .filter { property -> property.visibility == DescriptorVisibilities.PUBLIC }
+            .filter { property ->
+                property.visibility == DescriptorVisibilities.PUBLIC &&
+                    property.origin != IrDeclarationOrigin.FAKE_OVERRIDE
+            }
             .forEach { property ->
                 val propertyType = property.getter?.returnType ?: property.backingField?.type ?: return@forEach
                 validateAuthoredExposedType(
@@ -4532,8 +4536,9 @@ class KotlinWinRtIrGenerationExtension(
     private fun authoringTypeDetailsRegistrarRegister(
         pluginContext: IrPluginContext,
     ): AuthoringTypeDetailsRegistrar? {
+        val registrarName = authoringTypeDetailsRegistrarName(authoringAssemblyName)
         val registrarClass = pluginContext.referenceClass(
-            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar")),
+            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.$registrarName")),
         ) ?: return null
         val register = registrarClass
             .owner

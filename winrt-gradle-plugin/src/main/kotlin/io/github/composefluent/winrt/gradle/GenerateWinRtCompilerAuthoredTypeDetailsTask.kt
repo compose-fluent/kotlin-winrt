@@ -87,6 +87,9 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:Input
+    abstract val authoringAssemblyName: Property<String>
+
     @TaskAction
     fun generate() {
         val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
@@ -104,14 +107,16 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
+        val exportedCandidates = candidates.filter { candidate -> candidate.isPublic }
         val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             baseModel,
-            candidates.filter { candidate -> candidate.isPublic },
+            exportedCandidates,
         )
         KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-            candidates = candidates.filter { candidate -> candidate.isPublic },
+            candidates = candidates,
             metadataModel = model,
             outputDirectory = outputRoot,
+            assemblyName = authoringAssemblyName.get(),
         )
     }
 

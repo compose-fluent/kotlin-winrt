@@ -11082,6 +11082,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("WinRtSystemProjectionMarshalers.dateTimeFromAbi(__resultOut)"))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtSystemProjectionMarshalers.timeSpanToAbi(delay)"))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtSystemProjectionMarshalers.hResultToAbi(error)"))
+        assertFalse(interfaceContents, interfaceContents.contains("Duration.Metadata"))
         assertFalse(classContents, classContents.contains(".Metadata.fromAbi(__resultOut)"))
         assertFalse(classContents, classContents.contains(".Metadata.copyTo(delay"))
         assertFalse(classContents, classContents.contains(".Metadata.copyTo(error"))
