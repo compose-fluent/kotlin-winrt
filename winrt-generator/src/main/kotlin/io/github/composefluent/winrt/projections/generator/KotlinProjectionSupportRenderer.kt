@@ -111,6 +111,7 @@ class KotlinProjectionSupportRenderer {
         useProjectionIntrinsics = true,
     )
     private val planner = KotlinProjectionPlanner()
+    private val eventProjectionHelperTypesPerFile: Int = 96
     private val AUTHORING_ABI_OPERATIONS = listOf(
         "GetAbi",
         "FromAbi",
@@ -591,11 +592,12 @@ class KotlinProjectionSupportRenderer {
         }
         return helperTypes
             .sortedBy { type -> type.name }
-            .map { type ->
-                val fileName = type.name ?: error("Event projection helper type requires a deterministic name.")
+            .chunked(eventProjectionHelperTypesPerFile)
+            .mapIndexed { index, chunk ->
+                val fileName = "WinRTEventProjectionHelper_${index.toString().padStart(3, '0')}"
                 val fileSpec = supportFileSpec(fileName)
                     .addGeneratedProjectionSuppressions()
-                    .addType(type)
+                    .apply { chunk.forEach(::addType) }
                     .build()
                 supportFile("$fileName.kt", fileSpec)
             }
@@ -2617,7 +2619,7 @@ class KotlinProjectionSupportRenderer {
     private fun genericTypeInstantiationFunctions(entryClass: ClassName): List<FunSpec> =
         listOf(
             FunSpec.builder("initializeAll")
-                .addCode("%T.initializeAll()\n", WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME)
+                .addCode("return\n")
                 .build(),
             FunSpec.builder("initializeBySourceType")
                 .addParameter("sourceType", String::class)

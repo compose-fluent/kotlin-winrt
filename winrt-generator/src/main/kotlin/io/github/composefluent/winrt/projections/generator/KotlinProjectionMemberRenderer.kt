@@ -344,6 +344,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     method: WinRtMethodDefinition,
 ): FunSpec? {
     val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) } ?: return null
+    val slotExpression = binding.slotCodeBlock()
     val objectShape = runtimeObjectMethodShape(method)
     val invocation = if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
         renderObjectEqualsInvocation(binding)
@@ -352,14 +353,14 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
             ?: renderInstanceStructResultIntrinsicInvocation(binding)
             ?: renderInstanceArrayResultIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceEnumResultIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
@@ -367,49 +368,49 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
             ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
             ?: renderInstanceDescriptorUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorBooleanIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorScalarIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorProjectedObjectIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorAsyncIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                slotExpression = slotExpression,
                 returnBinding = binding.returnBinding,
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
@@ -581,6 +582,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     val getterBinding = plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
+    val getterSlotExpression = getterBinding.slotCodeBlock()
     val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
@@ -594,14 +596,14 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         ?: renderInstanceStructResultIntrinsicInvocation(getterBinding)
         ?: renderInstanceArrayResultIntrinsicInvocation(
             referenceExpression = getterBinding.ownerCachePropertyName,
-            slotExpression = CodeBlock.of("Metadata.%L", getterBinding.bindingName),
+            slotExpression = getterSlotExpression,
             returnBinding = getterBinding.returnBinding,
             parameterBindings = getterBinding.parameterBindings,
             suppressHResultCheck = getterBinding.suppressHResultCheck,
         )
         ?: renderInstanceEnumResultIntrinsicInvocation(
             referenceExpression = getterBinding.ownerCachePropertyName,
-            slotExpression = CodeBlock.of("Metadata.%L", getterBinding.bindingName),
+            slotExpression = getterSlotExpression,
             returnBinding = getterBinding.returnBinding,
             parameterBindings = getterBinding.parameterBindings,
             suppressHResultCheck = getterBinding.suppressHResultCheck,
@@ -627,7 +629,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
                             ?: renderInstanceOneArgUnitIntrinsicInvocation(it, argumentExpression = "value")
                             ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
                                 referenceExpression = it.ownerCachePropertyName,
-                                slotExpression = CodeBlock.of("Metadata.%L", it.bindingName),
+                                slotExpression = it.slotCodeBlock(),
                                 returnBinding = it.returnBinding,
                                 parameterBindings = it.parameterBindings,
                                 suppressHResultCheck = it.suppressHResultCheck,
@@ -635,7 +637,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
                             )
                             ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                                 referenceExpression = it.ownerCachePropertyName,
-                                slotExpression = CodeBlock.of("Metadata.%L", it.bindingName),
+                                slotExpression = it.slotCodeBlock(),
                                 returnBinding = it.returnBinding,
                                 parameterBindings = it.parameterBindings,
                                 suppressHResultCheck = it.suppressHResultCheck,
@@ -700,7 +702,7 @@ private fun KotlinProjectionRenderer.renderInstanceOneArgUnitIntrinsicInvocation
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
         .indent()
         .add("%L,\n", binding.ownerCachePropertyName)
-        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%L,\n", argumentExpression ?: parameter.name)
         .unindent()
         .add(")\n")
@@ -1104,7 +1106,7 @@ private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(
     }
     return renderInstanceProjectedObjectGetterInvocation(
         referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+        slotExpression = binding.slotCodeBlock(),
         returnBinding = binding.returnBinding,
     )
 }
@@ -1128,7 +1130,7 @@ private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
     }
     return renderInstanceScalarGetterInvocation(
         referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+        slotExpression = binding.slotCodeBlock(),
         helperFunction = helperFunction,
         intrinsic = useProjectionIntrinsics,
     )
@@ -1203,7 +1205,7 @@ private fun KotlinProjectionRenderer.renderReferencePropertyGetter(
         .add("return %T.getReferenceValue(\n", WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME)
         .indent()
         .add("%L,\n", binding.ownerCachePropertyName)
-        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%L,\n", interfaceId)
         .unindent()
         .add(")\n")
@@ -1227,7 +1229,7 @@ private fun KotlinProjectionRenderer.renderReferencePropertySetter(
         .add("%T.setReferenceValue(\n", WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME)
         .indent()
         .add("%L,\n", binding.ownerCachePropertyName)
-        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("value,\n")
         .add("%L,\n", interfaceId)
         .unindent()
@@ -1240,6 +1242,12 @@ internal fun missingAbiBindingError(memberName: String): CodeBlock =
         "error(%S)",
         "WinRT ABI binding is unavailable for $memberName; projection metadata did not provide a matching interface slot.",
     )
+
+internal fun KotlinProjectionInstanceMemberBinding.slotCodeBlock(): CodeBlock =
+    slot?.let { CodeBlock.of("%L", it) } ?: CodeBlock.of("Metadata.%L", bindingName)
+
+internal fun KotlinProjectionInstanceMemberBinding.slotExpressionString(): String =
+    slot?.toString() ?: "Metadata.$bindingName"
 
 internal fun runtimeClassMemberModifiers(
     plan: KotlinTypeProjectionPlan,
@@ -1271,7 +1279,7 @@ internal fun KotlinProjectionRenderer.renderBoundInvocation(
     )
     return renderInlineAbiInvocation(
         invokeTargetExpression = binding.ownerCachePropertyName,
-        slotExpression = "Metadata.${binding.bindingName}",
+        slotExpression = binding.slotExpressionString(),
         callPlan = callPlan,
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
 }
@@ -1297,7 +1305,7 @@ private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
     }
     return renderInstanceScalarGetterInvocation(
         referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+        slotExpression = binding.slotCodeBlock(),
         helperFunction = helperFunction,
         intrinsic = true,
     )
@@ -1329,7 +1337,7 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
             .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
             .indent()
             .add("%L,\n", binding.ownerCachePropertyName)
-            .add("Metadata.%L,\n", binding.bindingName)
+            .add("%L,\n", binding.slotCodeBlock())
             .add("%S,\n", arguments.joinToString(",") { it.shape })
             .add("%T.Metadata,\n", structType)
             .addDescriptorIntrinsicArgumentExpressions(arguments)
@@ -1342,7 +1350,7 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
         .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", binding.ownerCachePropertyName)
-        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%T.Metadata,\n", structType)
         .unindent()
         .add(")\n")
@@ -1513,7 +1521,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
     )
     return renderInlineAbiInvocation(
         invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
-        slotExpression = binding.bindingName,
+        slotExpression = writeTimeSlotCodeBlock(binding),
         callPlan = callPlan,
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
 }
@@ -1529,10 +1537,19 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocationOrNull(
     ) ?: return null
     return renderInlineAbiInvocation(
         invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
-        slotExpression = binding.bindingName,
+        slotExpression = writeTimeSlotCodeBlock(binding),
         callPlan = callPlan,
     )
 }
+
+private fun KotlinProjectionRenderer.writeTimeSlotCodeBlock(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock =
+    if (suppressProjectedMemberSlotConstants) {
+        binding.slotCodeBlock()
+    } else {
+        CodeBlock.of("%L", binding.bindingName)
+    }
 
 internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
     plan: KotlinTypeProjectionPlan,
@@ -1797,18 +1814,23 @@ internal fun KotlinProjectionRenderer.metadataSlotExpression(
 internal fun KotlinProjectionRenderer.metadataSlotExpression(
     slotInterfaceQualifiedName: String,
     slotConstantName: String,
-): CodeBlock =
-    if (slotInterfaceQualifiedName == "Windows.Foundation.IClosable" && slotConstantName == "CLOSE_SLOT") {
+): CodeBlock {
+    val rawInterfaceName = slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")
+    projectedSlotLiterals[KotlinProjectionSlotLiteralKey(rawInterfaceName, slotConstantName)]?.let { slot ->
+        return CodeBlock.of("%L", slot)
+    }
+    return if (slotInterfaceQualifiedName == "Windows.Foundation.IClosable" && slotConstantName == "CLOSE_SLOT") {
         CodeBlock.of("6")
-    } else if (mappedTypeByAbiName(slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")) != null) {
+    } else if (mappedTypeByAbiName(rawInterfaceName) != null) {
         CodeBlock.of(
             "%T.Metadata.%L",
-            projectionClassName(slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+            projectionClassName(rawInterfaceName),
             slotConstantName,
         )
     } else {
         CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceQualifiedName), slotConstantName)
     }
+}
 
 private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     plan: KotlinTypeProjectionPlan,
@@ -1832,7 +1854,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         ) ?: return null
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = requiredForwardOwnerCache(getter.ownerInterfaceName, plan.defaultInterfaceName),
-            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(getter.slotInterfaceType.qualifiedName), "${getter.property.name.uppercase()}_GETTER_SLOT"),
+            slotExpression = metadataSlotExpression(getter.slotInterfaceType.qualifiedName, "${getter.property.name.uppercase()}_GETTER_SLOT"),
             callPlan = callPlan,
         ) ?: return null
         builder.getter(FunSpec.getterBuilder().addCode("%L\n", invocation).build())
@@ -1846,7 +1868,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         ) ?: return null
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = requiredForwardOwnerCache(setter.ownerInterfaceName, plan.defaultInterfaceName),
-            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(setter.slotInterfaceType.qualifiedName), "${setter.property.name.uppercase()}_SETTER_SLOT"),
+            slotExpression = metadataSlotExpression(setter.slotInterfaceType.qualifiedName, "${setter.property.name.uppercase()}_SETTER_SLOT"),
             callPlan = callPlan,
         ) ?: return null
         builder.setter(FunSpec.setterBuilder().addParameter("value", propertyType).addCode("%L\n", invocation).build())

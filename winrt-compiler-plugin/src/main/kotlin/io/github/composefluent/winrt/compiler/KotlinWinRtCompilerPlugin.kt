@@ -259,6 +259,8 @@ class KotlinWinRtIrGenerationExtension(
         val genericTypeInstantiationEntries = readGenericTypeInstantiationEntries(compilerSupportEntries)
         val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries)
+        val genericTypeInstantiationIntrinsicCalls =
+            collectGenericTypeInstantiationSupportIntrinsicCalls(moduleFragment)
         val projectionSupportInitialize = addProjectionSupportInitializerFunction(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
@@ -268,6 +270,8 @@ class KotlinWinRtIrGenerationExtension(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
             entries = genericTypeInstantiationEntries,
+            includeInitializeAll = "initializeAll" in genericTypeInstantiationIntrinsicCalls,
+            includeInitializeBySourceType = "initializeBySourceType" in genericTypeInstantiationIntrinsicCalls,
         )
         val genericAbiSupport = addGenericAbiSupportFunctions(
             moduleFragment = moduleFragment,
@@ -418,6 +422,9 @@ class KotlinWinRtIrGenerationExtension(
                         ?.key
                         ?: call.projectionIntrinsicFunctionName()
                         ?: return call
+                    if (intrinsicName in RUNTIME_OWNED_PROJECTION_INTRINSICS) {
+                        return call
+                    }
                     if (directLowerings == null) {
                         if (!reportedMissingDirectLowering) {
                             reportedMissingDirectLowering = true
@@ -3731,12 +3738,31 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun collectGenericTypeInstantiationSupportIntrinsicCalls(
+        moduleFragment: IrModuleFragment,
+    ): Set<String> {
+        val calls = mutableSetOf<String>()
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    call.genericTypeInstantiationSupportIntrinsicCallName()?.let(calls::add)
+                    return call
+                }
+            },
+        )
+        return calls
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun addGenericTypeInstantiationSupportFunctions(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
         entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
+        includeInitializeAll: Boolean,
+        includeInitializeBySourceType: Boolean,
     ): GenericTypeInstantiationSupportFunctions? {
-        if (entries.isEmpty()) {
+        if (entries.isEmpty() || (!includeInitializeAll && !includeInitializeBySourceType)) {
             return null
         }
         val file = requireCompilerSupportPrerequisite(
@@ -3803,46 +3829,98 @@ class KotlinWinRtIrGenerationExtension(
             compareBy(KotlinWinRtGenericTypeInstantiationEntry::sourceType, KotlinWinRtGenericTypeInstantiationEntry::className),
         )
         val entryChunks = sortedEntries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
-        val initializeAllChunks = entryChunks.mapIndexed { index, chunk ->
+        val initializeAllChunks = if (includeInitializeAll) {
+            entryChunks.mapIndexed { index, chunk ->
+                pluginContext.irFactory.buildFun {
+                    name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeAll_${index.toString().padStart(3, '0')}")
+                    returnType = pluginContext.irBuiltIns.unitType
+                    visibility = DescriptorVisibilities.INTERNAL
+                    modality = Modality.FINAL
+                }.apply {
+                    parent = file
+                    val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
+                    body = chunkBuilder.irBlockBody {
+                        chunk.forEach { entry ->
+                            +chunkBuilder.genericTypeInstantiationInitializeEntryCall(
+                                pluginContext = pluginContext,
+                                supportClass = supportClass,
+                                initializeEntry = initializeEntry,
+                                entryConstructor = entryConstructor,
+                                listOf = listOf,
+                                entry = entry,
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            emptyList()
+        }
+        val initializeAll = if (includeInitializeAll) {
             pluginContext.irFactory.buildFun {
-                name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeAll_${index.toString().padStart(3, '0')}")
+                name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeAll")
                 returnType = pluginContext.irBuiltIns.unitType
                 visibility = DescriptorVisibilities.INTERNAL
                 modality = Modality.FINAL
             }.apply {
                 parent = file
-                val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
-                body = chunkBuilder.irBlockBody {
-                    chunk.forEach { entry ->
-                        +chunkBuilder.genericTypeInstantiationInitializeEntryCall(
-                            pluginContext = pluginContext,
-                            supportClass = supportClass,
-                            initializeEntry = initializeEntry,
-                            entryConstructor = entryConstructor,
-                            listOf = listOf,
-                            entry = entry,
-                        )
+            }.also { function ->
+                val initializeAllBuilder = DeclarationIrBuilder(pluginContext, function.symbol)
+                function.body = initializeAllBuilder.irBlockBody {
+                    initializeAllChunks.forEach { chunkFunction ->
+                        +initializeAllBuilder.irCall(chunkFunction.symbol)
                     }
                 }
             }
+        } else {
+            null
         }
-        val initializeAll = pluginContext.irFactory.buildFun {
-            name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeAll")
-            returnType = pluginContext.irBuiltIns.unitType
-            visibility = DescriptorVisibilities.INTERNAL
-            modality = Modality.FINAL
-        }.apply {
-            parent = file
-        }
-        val initializeAllBuilder = DeclarationIrBuilder(pluginContext, initializeAll.symbol)
-        initializeAll.body = initializeAllBuilder.irBlockBody {
-            initializeAllChunks.forEach { chunkFunction ->
-                +initializeAllBuilder.irCall(chunkFunction.symbol)
+        val initializeBySourceTypeChunks = if (includeInitializeBySourceType) {
+            entryChunks.mapIndexed { index, chunk ->
+                pluginContext.irFactory.buildFun {
+                    name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeBySourceType_${index.toString().padStart(3, '0')}")
+                    returnType = pluginContext.irBuiltIns.unitType
+                    visibility = DescriptorVisibilities.INTERNAL
+                    modality = Modality.FINAL
+                }.apply {
+                    parent = file
+                    parameters = listOf(
+                        pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                            name = Name.identifier("sourceType")
+                            type = pluginContext.irBuiltIns.stringType
+                            kind = IrParameterKind.Regular
+                        }, this),
+                    )
+                    val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
+                    val chunkSourceTypeParameter = parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+                    body = chunkBuilder.irBlockBody {
+                        chunk.forEach { entry ->
+                            +chunkBuilder.irIfThen(
+                                type = pluginContext.irBuiltIns.unitType,
+                                condition = chunkBuilder.irEquals(
+                                    chunkBuilder.irGet(chunkSourceTypeParameter),
+                                    chunkBuilder.irString(entry.sourceType),
+                                ),
+                                thenPart = chunkBuilder.genericTypeInstantiationInitializeEntryCall(
+                                    pluginContext = pluginContext,
+                                    supportClass = supportClass,
+                                    initializeEntry = initializeEntry,
+                                    entryConstructor = entryConstructor,
+                                    listOf = listOf,
+                                    entry = entry,
+                                ),
+                            )
+                        }
+                    }
+                }
             }
+        } else {
+            emptyList()
         }
-        val initializeBySourceTypeChunks = entryChunks.mapIndexed { index, chunk ->
+
+        val initializeBySourceType = if (includeInitializeBySourceType) {
             pluginContext.irFactory.buildFun {
-                name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeBySourceType_${index.toString().padStart(3, '0')}")
+                name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeBySourceType")
                 returnType = pluginContext.irBuiltIns.unitType
                 visibility = DescriptorVisibilities.INTERNAL
                 modality = Modality.FINAL
@@ -3855,61 +3933,27 @@ class KotlinWinRtIrGenerationExtension(
                         kind = IrParameterKind.Regular
                     }, this),
                 )
-                val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
-                val chunkSourceTypeParameter = parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-                body = chunkBuilder.irBlockBody {
-                    chunk.forEach { entry ->
-                        +chunkBuilder.irIfThen(
-                            type = pluginContext.irBuiltIns.unitType,
-                            condition = chunkBuilder.irEquals(
-                                chunkBuilder.irGet(chunkSourceTypeParameter),
-                                chunkBuilder.irString(entry.sourceType),
-                            ),
-                            thenPart = chunkBuilder.genericTypeInstantiationInitializeEntryCall(
-                                pluginContext = pluginContext,
-                                supportClass = supportClass,
-                                initializeEntry = initializeEntry,
-                                entryConstructor = entryConstructor,
-                                listOf = listOf,
-                                entry = entry,
-                            ),
-                        )
+            }.also { function ->
+                val initializeBySourceTypeBuilder = DeclarationIrBuilder(pluginContext, function.symbol)
+                val sourceTypeParameter = function.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+                function.body = initializeBySourceTypeBuilder.irBlockBody {
+                    initializeBySourceTypeChunks.forEach { chunkFunction ->
+                        +initializeBySourceTypeBuilder.irCall(chunkFunction.symbol).apply {
+                            arguments[0] = initializeBySourceTypeBuilder.irGet(sourceTypeParameter)
+                        }
                     }
                 }
             }
-        }
-
-        val initializeBySourceType = pluginContext.irFactory.buildFun {
-            name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeBySourceType")
-            returnType = pluginContext.irBuiltIns.unitType
-            visibility = DescriptorVisibilities.INTERNAL
-            modality = Modality.FINAL
-        }.apply {
-            parent = file
-            parameters = listOf(
-                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
-                    name = Name.identifier("sourceType")
-                    type = pluginContext.irBuiltIns.stringType
-                    kind = IrParameterKind.Regular
-                }, this),
-            )
-        }
-        val initializeBySourceTypeBuilder = DeclarationIrBuilder(pluginContext, initializeBySourceType.symbol)
-        val sourceTypeParameter = initializeBySourceType.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-        initializeBySourceType.body = initializeBySourceTypeBuilder.irBlockBody {
-            initializeBySourceTypeChunks.forEach { chunkFunction ->
-                +initializeBySourceTypeBuilder.irCall(chunkFunction.symbol).apply {
-                    arguments[0] = initializeBySourceTypeBuilder.irGet(sourceTypeParameter)
-                }
-            }
+        } else {
+            null
         }
         file.declarations += initializeAllChunks
         file.declarations += initializeBySourceTypeChunks
-        file.declarations += initializeAll
-        file.declarations += initializeBySourceType
+        initializeAll?.let(file.declarations::add)
+        initializeBySourceType?.let(file.declarations::add)
         return GenericTypeInstantiationSupportFunctions(
-            initializeAll = initializeAll.symbol,
-            initializeBySourceType = initializeBySourceType.symbol,
+            initializeAll = initializeAll?.symbol,
+            initializeBySourceType = initializeBySourceType?.symbol,
         )
     }
 
@@ -3974,9 +4018,9 @@ class KotlinWinRtIrGenerationExtension(
                         }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
                     return when (genericCall) {
-                        "initializeAll" -> support?.let { builder.irCall(it.initializeAll) } ?: builder.irUnit()
-                        "initializeBySourceType" -> support?.let {
-                            builder.irCall(it.initializeBySourceType).apply {
+                        "initializeAll" -> support?.initializeAll?.let(builder::irCall) ?: builder.irUnit()
+                        "initializeBySourceType" -> support?.initializeBySourceType?.let { initializeBySourceType ->
+                            builder.irCall(initializeBySourceType).apply {
                                 arguments[0] = call.arguments[1]
                             }
                         } ?: builder.irUnit()
@@ -4002,8 +4046,8 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     private data class GenericTypeInstantiationSupportFunctions(
-        val initializeAll: IrSimpleFunctionSymbol,
-        val initializeBySourceType: IrSimpleFunctionSymbol,
+        val initializeAll: IrSimpleFunctionSymbol?,
+        val initializeBySourceType: IrSimpleFunctionSymbol?,
     )
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -4764,6 +4808,24 @@ private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS
+
+private val RUNTIME_OWNED_PROJECTION_INTRINSICS =
+    setOf(
+        "getString",
+        "getBoolean",
+        "getNoExceptionBoolean",
+        "getInt32",
+        "getUInt32",
+        "getInt64",
+        "getUInt64",
+        "getFloat",
+        "getDouble",
+        "setString",
+        "setInt32",
+        "setUInt32",
+        "setInt64",
+        "setUInt64",
+    )
 
 internal fun isProjectionIntrinsicFunction(
     name: String,

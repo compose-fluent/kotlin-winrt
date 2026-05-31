@@ -272,6 +272,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         )
         KotlinProjectionGenerator(
             emitSupportFiles = true,
+            groupProjectionFilesByPackageOnWrite = true,
             projectionContext = WinRtMetadataProjectionContext(
                 sources = sources,
                 include = parameters.includeNamespaces.get().toSet() + parameters.includeTypes.get().toSet(),

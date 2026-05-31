@@ -338,7 +338,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         KotlinProjectionAbiValueKind.ProjectedInterface -> projectedInterfaceParameterMarshaler(parameterName, parameterBinding)
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> projectedRuntimeClassParameterMarshaler(parameterName, parameterBinding)
         KotlinProjectionAbiValueKind.Object -> {
-            val marshalerName = "__${parameterName}Marshaler"
+            val marshalerName = generatedLocalIdentifier("__", parameterName, "Marshaler")
             KotlinProjectionAbiMarshalerPlan(
                 name = parameterName,
                 typeBinding = parameterBinding.typeBinding,

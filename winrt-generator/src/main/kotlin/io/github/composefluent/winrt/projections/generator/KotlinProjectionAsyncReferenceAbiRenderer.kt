@@ -112,7 +112,7 @@ internal fun KotlinProjectionRenderer.asyncActionWithProgressReturnReadback(
         returnBinding = returnBinding,
         pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
     ) ?: return null
-    return CodeBlock.of("return %L\n", expression)
+    return CodeBlock.of("val __result = %L\nreturn __result\n", expression)
 }
 
 internal fun KotlinProjectionRenderer.asyncOperationReturnReadback(
@@ -122,7 +122,7 @@ internal fun KotlinProjectionRenderer.asyncOperationReturnReadback(
         returnBinding = returnBinding,
         pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
     ) ?: return null
-    return CodeBlock.of("return %L\n", expression)
+    return CodeBlock.of("val __result = %L\nreturn __result\n", expression)
 }
 
 internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
@@ -132,7 +132,7 @@ internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
         returnBinding = returnBinding,
         pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
     ) ?: return null
-    return CodeBlock.of("return %L\n", expression)
+    return CodeBlock.of("val __result = %L\nreturn __result\n", expression)
 }
 
 internal fun KotlinProjectionRenderer.asyncReferenceExpression(
@@ -233,7 +233,8 @@ internal fun KotlinProjectionRenderer.referenceParameterMarshaler(
 ): KotlinProjectionAbiMarshalerPlan? {
     val interfaceId = referenceInterfaceIdCode(parameterBinding.typeBinding) ?: return null
     val parameterName = parameterBinding.name
-    val abiLocalName = "__${parameterName}Abi"
+    val abiLocalName = generatedLocalIdentifier("__", parameterName, "Abi")
+    val marshalerLocalName = generatedLocalIdentifier("__", parameterName, "Marshaler")
     return KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
@@ -241,7 +242,15 @@ internal fun KotlinProjectionRenderer.referenceParameterMarshaler(
         abiArgumentExpression = CodeBlock.of("%L?.abi ?: %T.nullPointer", abiLocalName, PLATFORM_ABI_CLASS_NAME),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
-            CodeBlock.of("%T.createMarshaler(%L, %L).use { %L ->", projectionClass, parameterName, interfaceId, abiLocalName),
+            CodeBlock.of(
+                "val %L = %T.createMarshaler(%L, %L)\n%L.use { %L ->",
+                marshalerLocalName,
+                projectionClass,
+                parameterName,
+                interfaceId,
+                marshalerLocalName,
+                abiLocalName,
+            ),
         ),
     )
 }
@@ -1008,8 +1017,8 @@ internal fun KotlinProjectionRenderer.bindableCollectionParameterMarshaler(
         else -> return null
     }
     val parameterName = parameterBinding.name
-    val abiLocalName = "__${parameterName}Abi"
-    val marshalerLocalName = "__${parameterName}Marshaler"
+    val abiLocalName = generatedLocalIdentifier("__", parameterName, "Abi")
+    val marshalerLocalName = generatedLocalIdentifier("__", parameterName, "Marshaler")
     return KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
@@ -1034,8 +1043,8 @@ internal fun KotlinProjectionRenderer.mappedCollectionParameterMarshaler(
     parameterBinding: KotlinProjectionAbiParameterBinding,
 ): KotlinProjectionAbiMarshalerPlan? {
     val parameterName = parameterBinding.name
-    val abiLocalName = "__${parameterName}Abi"
-    val marshalerLocalName = "__${parameterName}Marshaler"
+    val abiLocalName = generatedLocalIdentifier("__", parameterName, "Abi")
+    val marshalerLocalName = generatedLocalIdentifier("__", parameterName, "Marshaler")
     val projectionClass = when (parameterBinding.typeBinding.kind) {
         KotlinProjectionAbiValueKind.MappedIterable -> WINRT_ITERABLE_PROJECTION_CLASS_NAME
         KotlinProjectionAbiValueKind.MappedVector -> WINRT_LIST_PROJECTION_CLASS_NAME

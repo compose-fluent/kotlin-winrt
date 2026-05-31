@@ -117,6 +117,8 @@ import kotlin.io.path.extension
 class KotlinProjectionRenderer(
     internal val useInterfaceProjectionArtifacts: Boolean = false,
     internal val useProjectionIntrinsics: Boolean = false,
+    internal val suppressProjectedMemberSlotConstants: Boolean = false,
+    internal val projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
@@ -762,6 +764,7 @@ class KotlinProjectionRenderer(
 
     internal fun canRenderInterfaceProxy(plan: KotlinTypeProjectionPlan): Boolean =
         !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
+            !(suppressProjectedMemberSlotConstants && plan.type.isExclusiveTo) &&
             mappedTypeByAbiName(plan.type.qualifiedName)?.abiValueKind != KotlinProjectionAbiValueKind.MappedKeyValuePair &&
             (!isMappedCollectionInterfaceName(plan.type.qualifiedName) || plan.readOnlyCollectionBindings.isNotEmpty() || plan.mutableCollectionBindings.isNotEmpty()) &&
             collectInterfaceProxyTypes(plan).all { interfaceType ->
@@ -1307,7 +1310,7 @@ class KotlinProjectionRenderer(
                     },
                     eventSourceObjectReference = addBinding?.let { CodeBlock.of(it.ownerCachePropertyName) },
                     eventSourceAddSlot = addBinding?.let {
-                        CodeBlock.of("%T.Metadata.%L", resolveTypeName(it.slotInterfaceQualifiedName), it.slotConstantName)
+                        metadataSlotExpression(it.slotInterfaceQualifiedName, it.slotConstantName)
                     },
                     fallbackToAddRemove = addBinding == null,
                 ),
@@ -1375,7 +1378,7 @@ class KotlinProjectionRenderer(
         val parameterSpecs = method.projectedKotlinParameters().map { parameter ->
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
-        val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
+        val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name.escapeAsKotlinIdentifierIfNeeded() }
         val returns = if (isWinRtVoidTypeName(method.projectedKotlinReturnTypeName())) {
             UNIT
         } else {
@@ -1398,6 +1401,9 @@ class KotlinProjectionRenderer(
         builder: TypeSpec.Builder,
         plan: KotlinTypeProjectionPlan,
     ) {
+        if (suppressProjectedMemberSlotConstants) {
+            return
+        }
         val delegatedTargets = runtimeClassDelegatedInterfaceTargets(plan).keys
         runtimeClassInterfaceProjectionForwardTargets(plan).values
             .filterNot { it.interfaceName in delegatedTargets }
@@ -1455,6 +1461,9 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         method: WinRtMethodDefinition,
     ): FunSpec? {
+        if (suppressProjectedMemberSlotConstants) {
+            return null
+        }
         val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
             ?: return null
         val target = runtimeClassInterfaceProjectionForwardTargets(plan)[binding.ownerInterfaceQualifiedName.substringBefore('<')]
@@ -1466,7 +1475,7 @@ class KotlinProjectionRenderer(
         val parameterSpecs = objectShape?.parameters ?: method.projectedKotlinParameters().map { parameter ->
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
-        val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
+        val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name.escapeAsKotlinIdentifierIfNeeded() }
         val returns = objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName())
         return FunSpec.builder(functionName)
             .addProjectedAttributeAnnotations(binding.projectedAttributes)
@@ -1491,6 +1500,9 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         property: WinRtPropertyDefinition,
     ): PropertySpec? {
+        if (suppressProjectedMemberSlotConstants) {
+            return null
+        }
         val getterBinding = plan.instanceMemberBindings.firstOrNull {
             it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
         } ?: return null
@@ -1519,7 +1531,7 @@ class KotlinProjectionRenderer(
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", resolveTypeName(propertyTypeName))
-                    .addCode("%L.%N = value\n", setterTarget.projectionPropertyName, propertyName)
+                    .addCode("%L.%N=value\n", setterTarget.projectionPropertyName, propertyName)
                     .build(),
             )
         }
@@ -1535,6 +1547,9 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         event: WinRtEventDefinition,
     ): RuntimeClassForwardEvent? {
+        if (suppressProjectedMemberSlotConstants) {
+            return null
+        }
         val addBinding = plan.instanceMemberBindings.firstOrNull {
             it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
         } ?: return null
@@ -1675,7 +1690,7 @@ class KotlinProjectionRenderer(
                     .addParameter("other", ANY.copy(nullable = true))
                     .returns(Boolean::class)
                     .addCode(
-                        "if (other !is %T) return false\nreturn nativeObject.pointer == other.nativeObject.pointer\n",
+                        "if (other !is %T) {\nreturn false\n}\nreturn nativeObject.pointer == other.nativeObject.pointer\n",
                         projectionClassName(plan.type.qualifiedName),
                     )
                     .build(),
@@ -2163,10 +2178,34 @@ class KotlinProjectionRenderer(
         builder: TypeSpec.Builder,
         plan: KotlinTypeProjectionPlan,
     ) {
+        val objectReferencePlansByInterface = plan.objectReferenceSurfaceDescriptor
+            ?.objectReferencePlans
+            .orEmpty()
+            .associateBy { it.interfaceName.substringBefore('<') }
+        val defaultObjectReferencePlan = plan.defaultInterfaceName
+            ?.substringBefore('<')
+            ?.let(objectReferencePlansByInterface::get)
         val existingCacheNames = buildSet {
-            plan.defaultInterfaceName?.let { add(requiredForwardOwnerCache(it, plan.defaultInterfaceName)) }
-            plan.implementedInterfaceBindings.mapTo(this) { requiredForwardOwnerCache(it.qualifiedName, plan.defaultInterfaceName) }
-            requiredInterfaceCacheBindings(plan).mapTo(this) { requiredForwardOwnerCache(it.qualifiedName, plan.defaultInterfaceName) }
+            val defaultInterfaceIsRuntimeOwnedMapped = plan.defaultInterfaceName
+                ?.let(::isRuntimeOwnedMappedTypeName) == true
+            if (!defaultInterfaceIsRuntimeOwnedMapped &&
+                (plan.defaultInterfaceIid != null ||
+                    (defaultObjectReferencePlan != null && defaultObjectReferencePlan.skippedReason == null) ||
+                    isMappedCollectionInterfaceName(plan.defaultInterfaceName.orEmpty()))
+            ) {
+                plan.defaultInterfaceName?.let { add(requiredForwardOwnerCache(it, plan.defaultInterfaceName)) }
+            }
+            plan.implementedInterfaceBindings
+                .filter { it.iid != null }
+                .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
+                .filter { binding ->
+                    objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]?.skippedReason == null
+                }
+                .mapTo(this) { requiredForwardOwnerCache(it.qualifiedName, plan.defaultInterfaceName) }
+            requiredInterfaceCacheBindings(plan)
+                .filter { it.iid != null }
+                .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
+                .mapTo(this) { requiredForwardOwnerCache(it.qualifiedName, plan.defaultInterfaceName) }
         }
         val collectionCacheBindings =
             (plan.mutableCollectionBindings.map(::KotlinProjectionCollectionSlotBinding) +
@@ -2178,6 +2217,17 @@ class KotlinProjectionRenderer(
                 .filterNot { it.ownerCachePropertyName in existingCacheNames }
                 .distinctBy { it.ownerCachePropertyName }
 
+        val instanceMemberOwnerCacheBindings = plan.instanceMemberBindings
+            .asSequence()
+            .map { binding -> binding.ownerCachePropertyName to binding.ownerInterfaceQualifiedName }
+            .filterNot { (ownerCachePropertyName, _) -> ownerCachePropertyName == "nativeObject" }
+            .filterNot { (ownerCachePropertyName, _) -> ownerCachePropertyName in existingCacheNames }
+            .filterNot { (ownerCachePropertyName, _) ->
+                collectionCacheBindings.any { binding -> binding.ownerCachePropertyName == ownerCachePropertyName }
+            }
+            .distinctBy { (ownerCachePropertyName, _) -> ownerCachePropertyName }
+            .toList()
+
         collectionCacheBindings.forEach { binding ->
             builder.addProperty(
                 PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
@@ -2187,6 +2237,20 @@ class KotlinProjectionRenderer(
                             "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
                             runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
+                        ),
+                    )
+                    .build(),
+            )
+        }
+        instanceMemberOwnerCacheBindings.forEach { (ownerCachePropertyName, ownerInterfaceName) ->
+            builder.addProperty(
+                PropertySpec.builder(ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .delegate(
+                        CodeBlock.of(
+                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
+                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                            runtimeClassInterfaceIdCode(ownerInterfaceName, plan),
                         ),
                     )
                     .build(),
@@ -2389,7 +2453,7 @@ class KotlinProjectionRenderer(
                     FunSpec.builder("hasFlag")
                         .addParameter("flag", resolveTypeName(plan.type.qualifiedName))
                         .returns(Boolean::class)
-                        .addCode("return flag in this\n")
+                        .addCode("return (flag in this)\n")
                         .build(),
                 )
                 addFunction(
