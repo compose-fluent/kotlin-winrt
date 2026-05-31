@@ -444,7 +444,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 candidate.typeIsByRef &&
                 candidate.isOutParameter
         } ?: return null
-        return if (parameters.lastOrNull() == parameter) parameter else null
+        return parameter
     }
 
     private fun rawArgumentIndex(

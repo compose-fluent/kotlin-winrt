@@ -2026,8 +2026,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
-    fun rejects_non_trailing_out_array_parameters_until_receive_array_variants_exist() {
-        val output = Files.createTempDirectory("kotlin-winrt-authoring-bad-receive-array-details-")
+    fun renders_non_trailing_receive_array_returns() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-non-trailing-receive-array-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
             packageName = "sample",
             className = "LocalBufferOwner",
@@ -2078,20 +2078,17 @@ class KotlinWinRtAuthoringSourceScannerTest {
             ),
         )
 
-        try {
-            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-                candidates = listOf(candidate),
-                metadataModel = metadataModel,
-                outputDirectory = output,
-            )
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("unsupported array parameter 'numbers' with by-ref/out direction"))
-            assertTrue(error.message.orEmpty().contains("only trailing receive-array out parameters are supported"))
-            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalBufferOwner_TypeDetails.kt")))
-            return
-        }
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
 
-        throw AssertionError("Expected non-trailing authored receive-array variants to fail closed.")
+        val generated = output.resolve("sample/WinRT_LocalBufferOwner_TypeDetails.kt").readText()
+        assertTrue(generated, generated.contains("val __arg1 = rawArgs[2] as Int"))
+        assertTrue(generated, generated.contains("val __result = (value as BufferOwner).__winrtAuthoringInvokeGetNumbers(__arg1)"))
+        assertTrue(generated, generated.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress, __result.size)"))
+        assertTrue(generated, generated.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
     }
 
     @Test
