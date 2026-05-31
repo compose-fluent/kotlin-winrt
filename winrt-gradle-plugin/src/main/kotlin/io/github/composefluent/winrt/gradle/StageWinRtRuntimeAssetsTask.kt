@@ -246,12 +246,13 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
+        val resolvedPackageRoots = resolvedNuGetPackageManifestFiles.files
+            .flatMap(::readResolvedRuntimeNuGetPackageRoots)
+            .map(Path::of)
         val resolvedPackages = resolveNuGetPackages(
             identities = identities,
-            modeledPackageRoots = (
-                resolvedNuGetPackageManifestFiles.files.flatMap(::readResolvedRuntimeNuGetPackageRoots).map(Path::of) +
-                    nugetPackageContentFiles.files.map { it.toPath() }
-                ),
+            resolvedPackageRoots = resolvedPackageRoots,
+            modeledPackageRoots = nugetPackageContentFiles.files.map { it.toPath() },
         )
         val rid = runtimeIdentifier.get()
         resolvedPackages.forEach { resolved ->
@@ -306,8 +307,21 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
 
     private fun resolveNuGetPackages(
         identities: List<WinRtNuGetPackageIdentity>,
+        resolvedPackageRoots: List<Path>,
         modeledPackageRoots: List<Path>,
     ): List<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage> {
+        if (resolvedPackageRoots.isNotEmpty()) {
+            return resolvedPackageRoots
+                .asSequence()
+                .filter { it.isDirectory() }
+                .mapNotNull { root ->
+                    runCatching {
+                        io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver.resolvePackageRoot(root)
+                    }.getOrNull()
+                }
+                .distinctBy { it.packageRoot.toAbsolutePath().normalize().toString().lowercase() }
+                .toList()
+        }
         if (identities.isEmpty()) {
             return emptyList()
         }

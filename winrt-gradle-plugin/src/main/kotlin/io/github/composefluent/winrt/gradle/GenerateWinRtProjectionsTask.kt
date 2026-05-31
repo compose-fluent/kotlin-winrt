@@ -222,11 +222,12 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         cleanDirectory(generatedRoot)
         cleanDirectory(authoringTypeDetailsRoot)
         val sources = metadataSources()
+        val effectiveExcludeTypes = parameters.excludeTypes.get() + automaticProjectionExcludeTypes(parameters.nugetPackages.get())
         val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
             namespaces = parameters.includeNamespaces.get().toSet(),
             types = parameters.includeTypes.get().toSet(),
             excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
-            excludedTypes = parameters.excludeTypes.get().toSet(),
+            excludedTypes = effectiveExcludeTypes.toSet(),
         )
         val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
         Files.createDirectories(authoringMetadataIndex.parent)
@@ -276,7 +277,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             projectionContext = WinRtMetadataProjectionContext(
                 sources = sources,
                 include = parameters.includeNamespaces.get().toSet() + parameters.includeTypes.get().toSet(),
-                exclude = parameters.excludeNamespaces.get().toSet() + parameters.excludeTypes.get().toSet(),
+                exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
                 additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
             ),
             suppressedProjectionTypeNames = (
@@ -291,6 +292,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             candidates = authoringCandidates,
             metadataModel = model,
             outputDirectory = authoringTypeDetailsRoot,
+            assemblyName = parameters.authoringAssemblyName.get(),
         )
     }
 
@@ -546,6 +548,13 @@ private fun dependencyProjectedTypeNames(
         excludedTypes = identity.excludeTypes.toSet(),
     ).namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) }
 }
+
+private fun automaticProjectionExcludeTypes(nugetPackages: List<String>): List<String> =
+    if (nugetPackages.any { packageSpec -> packageSpec.substringBefore('@').equals("Microsoft.WindowsAppSDK", ignoreCase = true) }) {
+        listOf("Windows.UI.Composition")
+    } else {
+        emptyList()
+    }
 
 internal data class ProjectionSurfaceIdentity(
     val includeNamespaces: List<String>,

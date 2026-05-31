@@ -129,7 +129,7 @@ class KotlinProjectionRenderer(
                 if (useKotlinDurationAlias) {
                     addAliasedImport(KOTLIN_DURATION_CLASS_NAME, KOTLIN_DURATION_ALIAS_CLASS_NAME.simpleName)
                 }
-                if (useWinAppSdkTypeRedirects) {
+                if (useWinAppSdkTypeRedirects && plan.requiresApplicationModelCoreAliasImports()) {
                     addAliasedImport(WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME, "WindowsApplicationModelCoreIFrameworkView")
                     addAliasedImport(
                         WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME,
@@ -3285,6 +3285,9 @@ private val WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME =
 
 private val WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME =
     ClassName("windows.applicationmodel.core", "IFrameworkViewSource")
+
+private fun KotlinTypeProjectionPlan.requiresApplicationModelCoreAliasImports(): Boolean =
+    winAppSdkCoveredApplicationModelCoreInterface(type.qualifiedName) != null
 
 internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
     (
