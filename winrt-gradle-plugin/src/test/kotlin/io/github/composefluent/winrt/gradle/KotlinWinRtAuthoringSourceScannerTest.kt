@@ -9,6 +9,7 @@ import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRtEnumMemberDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
+import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
 import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
@@ -418,6 +419,21 @@ class KotlinWinRtAuthoringSourceScannerTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = io.github.composefluent.winrt.runtime.Guid("44444444-1111-2222-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(name = "sender", typeName = "Sample.Widget"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
                             name = "IWidgetOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = io.github.composefluent.winrt.runtime.Guid("33333333-1111-2222-4444-555555555555"),
@@ -447,6 +463,105 @@ class KotlinWinRtAuthoringSourceScannerTest {
         }
 
         throw AssertionError("Expected authored WinRT interface events to fail closed until event marshaling is implemented.")
+    }
+
+    @Test
+    fun renders_authored_type_details_for_event_accessor_methods() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-event-accessor-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalWidget",
+            sourceTypeName = "sample.LocalWidget",
+            winRtBaseClassName = "Sample.Widget",
+            winRtInterfaceNames = listOf("Sample.IWidgetOverrides"),
+            overridableInterfaceNames = listOf("Sample.IWidgetOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = io.github.composefluent.winrt.runtime.Guid("44444444-1111-2222-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(name = "sender", typeName = "Sample.Widget"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("33333333-1111-2222-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "add_Changed",
+                                    returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(name = "handler", typeName = "Sample.WidgetChangedHandler"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "remove_Changed",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(name = "token", typeName = "Windows.Foundation.EventRegistrationToken"),
+                                    ),
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.WidgetChangedHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventRegistrationToken",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition(name = "Value", typeName = "Int64"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt").readText()
+        assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeadd_Changed(__arg0)"))
+        assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
+        assertTrue(generated.contains("EventRegistrationToken.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
     @Test
