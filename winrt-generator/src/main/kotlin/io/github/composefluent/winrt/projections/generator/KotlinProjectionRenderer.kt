@@ -119,10 +119,24 @@ class KotlinProjectionRenderer(
     internal val useProjectionIntrinsics: Boolean = false,
     internal val suppressProjectedMemberSlotConstants: Boolean = false,
     internal val projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
+    internal val useWinAppSdkTypeRedirects: Boolean = false,
+    internal val useKotlinDurationAlias: Boolean = false,
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
+            .apply {
+                if (useKotlinDurationAlias) {
+                    addAliasedImport(KOTLIN_DURATION_CLASS_NAME, KOTLIN_DURATION_ALIAS_CLASS_NAME.simpleName)
+                }
+                if (useWinAppSdkTypeRedirects) {
+                    addAliasedImport(WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME, "WindowsApplicationModelCoreIFrameworkView")
+                    addAliasedImport(
+                        WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME,
+                        "WindowsApplicationModelCoreIFrameworkViewSource",
+                    )
+                }
+            }
             .apply { addType(renderType(plan)) }
             .build()
             .toString()
@@ -144,6 +158,9 @@ class KotlinProjectionRenderer(
     internal fun renderInterfaceShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
+        winAppSdkCoveredApplicationModelCoreInterface(plan.type.qualifiedName)?.let { coveredInterface ->
+            builder.addSuperinterface(resolveTypeName(coveredInterface))
+        }
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
@@ -908,8 +925,8 @@ class KotlinProjectionRenderer(
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
         currentNamespace: String? = null,
     ): KotlinProjectionAbiTypeBinding =
-        KotlinProjectionPlanner().classifyAbiTypeBinding(
-            typeName = typeName,
+        KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects).classifyAbiTypeBinding(
+            typeName = redirectedAbiTypeExpression(typeName),
             currentNamespace = currentNamespace.orEmpty(),
             typesByQualifiedName = typesByQualifiedName,
         )
@@ -1164,6 +1181,12 @@ class KotlinProjectionRenderer(
             }
             .filterNot { implemented ->
                 implemented.interfaceName.isMappedRuntimeHelperInterfaceName()
+            }
+            .filterNot { implemented ->
+                plan.defaultInterfaceName?.let { defaultInterfaceName ->
+                    winAppSdkCoveredApplicationModelCoreInterface(defaultInterfaceName) ==
+                        implemented.interfaceName.substringBefore('<').removeSuffix("?")
+                } == true
             }
             .forEach { implemented ->
                 builder.addRuntimeClassSuperinterface(
@@ -2510,7 +2533,7 @@ class KotlinProjectionRenderer(
                         plan.type.fields
                             .filterNot { it.isStatic || it.isLiteral }
                             .map { field ->
-                                ParameterSpec.builder(field.name.replaceFirstChar(Char::lowercase), resolveTypeName(field.typeName)).build()
+                                ParameterSpec.builder(field.name.replaceFirstChar(Char::lowercase), resolveStructFieldTypeName(plan, field.typeName)).build()
                             },
                     )
                     .build(),
@@ -2521,7 +2544,7 @@ class KotlinProjectionRenderer(
                     .filterNot { it.isStatic || it.isLiteral }
                     .forEach { field ->
                         addProperty(
-                            PropertySpec.builder(field.name.replaceFirstChar(Char::lowercase), resolveTypeName(field.typeName))
+                            PropertySpec.builder(field.name.replaceFirstChar(Char::lowercase), resolveStructFieldTypeName(plan, field.typeName))
                                 .initializer(field.name.replaceFirstChar(Char::lowercase))
                                 .build(),
                         )
@@ -3107,8 +3130,11 @@ class KotlinProjectionRenderer(
         interfaceName: String,
         plan: KotlinTypeProjectionPlan,
     ): CodeBlock {
-        val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
+        val rawInterfaceName = redirectedAbiTypeName(interfaceName.substringBefore('<').removeSuffix("?"))
         if ('<' !in interfaceName) {
+            mappedTypeByAbiName(rawInterfaceName)?.customObjectAbi?.let { customObjectAbi ->
+                return CodeBlock.of("%T(%S)", GUID_CLASS_NAME, customObjectAbi.interfaceId.toString())
+            }
             return CodeBlock.of("%T.Metadata.IID", projectionClassName(rawInterfaceName))
         }
         runtimeClassMappedIteratorInterfaceIdCode(interfaceName, plan)?.let { return it }
@@ -3246,6 +3272,19 @@ class KotlinProjectionRenderer(
         return builder.build()
     }
 }
+
+private fun winAppSdkCoveredApplicationModelCoreInterface(interfaceName: String): String? =
+    when (interfaceName.substringBefore('<').removeSuffix("?")) {
+        "Microsoft.UI.Xaml.IFrameworkView" -> "Windows.ApplicationModel.Core.IFrameworkView"
+        "Microsoft.UI.Xaml.IFrameworkViewSource" -> "Windows.ApplicationModel.Core.IFrameworkViewSource"
+        else -> null
+    }
+
+private val WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME =
+    ClassName("windows.applicationmodel.core", "IFrameworkView")
+
+private val WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME =
+    ClassName("windows.applicationmodel.core", "IFrameworkViewSource")
 
 internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
     (

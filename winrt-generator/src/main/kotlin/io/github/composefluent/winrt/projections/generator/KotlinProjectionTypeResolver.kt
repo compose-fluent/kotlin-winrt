@@ -113,7 +113,7 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         return ANY.copy(nullable = true)
     }
     val nullable = trimmed.endsWith("?")
-    val effectiveTypeName = trimmed.removeSuffix("?")
+    val effectiveTypeName = redirectedAbiTypeName(trimmed.removeSuffix("?"))
     val genericStart = effectiveTypeName.indexOf('<')
     if (genericStart >= 0 && effectiveTypeName.endsWith('>')) {
         val rawType = effectiveTypeName.substring(0, genericStart)
@@ -159,6 +159,71 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         else -> if ('.' in effectiveTypeName) projectionClassName(effectiveTypeName) else ClassName.bestGuess(effectiveTypeName)
     }.withOuterNullability(nullable)
 }
+
+internal fun redirectedWinAppSdkAbiTypeName(typeName: String, useWinAppSdkTypeRedirects: Boolean): String {
+    if (!useWinAppSdkTypeRedirects) {
+        return typeName
+    }
+    return when {
+        typeName.startsWith("Windows.UI.Composition.") ->
+            "Microsoft.UI.Composition.${typeName.removePrefix("Windows.UI.Composition.")}"
+        typeName == "Windows.UI.Xaml.Data.INotifyPropertyChanged" ->
+            "Microsoft.UI.Xaml.Data.INotifyPropertyChanged"
+        typeName == "Windows.UI.Xaml.Data.INotifyDataErrorInfo" ->
+            "Microsoft.UI.Xaml.Data.INotifyDataErrorInfo"
+        typeName == "Windows.UI.Xaml.Input.ICommand" ->
+            "Microsoft.UI.Xaml.Input.ICommand"
+        typeName == "Windows.UI.Xaml.Interop.ICommand" ->
+            "Microsoft.UI.Xaml.Interop.ICommand"
+        typeName == "Windows.UI.Xaml.Interop.INotifyCollectionChanged" ->
+            "Microsoft.UI.Xaml.Interop.INotifyCollectionChanged"
+        typeName == "Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs" ->
+            "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs"
+        typeName == "Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler" ->
+            "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler"
+        else -> typeName
+    }
+}
+
+internal fun redirectedWinAppSdkAbiTypeExpression(typeName: String, useWinAppSdkTypeRedirects: Boolean): String {
+    val trimmed = typeName.trim()
+    val nullableSuffix = if (trimmed.endsWith("?")) "?" else ""
+    val effectiveTypeName = trimmed.removeSuffix("?")
+    val genericStart = effectiveTypeName.indexOf('<')
+    if (genericStart >= 0 && effectiveTypeName.endsWith('>')) {
+        val rawType = redirectedWinAppSdkAbiTypeName(
+            effectiveTypeName.substring(0, genericStart),
+            useWinAppSdkTypeRedirects,
+        )
+        val arguments = splitGenericArguments(effectiveTypeName.substring(genericStart + 1, effectiveTypeName.length - 1))
+            .joinToString(", ") { argument ->
+                redirectedWinAppSdkAbiTypeExpression(argument, useWinAppSdkTypeRedirects)
+            }
+        return "$rawType<$arguments>$nullableSuffix"
+    }
+    return redirectedWinAppSdkAbiTypeName(effectiveTypeName, useWinAppSdkTypeRedirects) + nullableSuffix
+}
+
+internal fun KotlinProjectionRenderer.redirectedAbiTypeName(typeName: String): String =
+    redirectedWinAppSdkAbiTypeName(typeName, useWinAppSdkTypeRedirects)
+
+internal fun KotlinProjectionRenderer.redirectedAbiTypeExpression(typeName: String): String =
+    redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects)
+
+internal fun KotlinProjectionRenderer.resolveStructFieldTypeName(
+    @Suppress("UNUSED_PARAMETER") plan: KotlinTypeProjectionPlan,
+    typeName: String,
+): TypeName {
+    return resolveTypeName(typeName)
+}
+
+internal fun KotlinTypeProjectionPlan.requiresKotlinDurationAlias(): Boolean =
+    type.kind == WinRtTypeKind.Struct &&
+        type.fields.any { field ->
+                !field.isStatic &&
+                !field.isLiteral &&
+                mappedTypeByAbiName(field.typeName.substringBefore('<').removeSuffix("?"))?.descriptionName == "TimeSpan"
+        }
 
 private fun TypeName.withOuterNullability(nullable: Boolean): TypeName =
     if (nullable) copy(nullable = true) else this

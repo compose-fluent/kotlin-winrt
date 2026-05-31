@@ -725,7 +725,7 @@ class KotlinProjectionGenerator(
             parameterBindings = parameters.map { parameter ->
                 KotlinProjectionAbiParameterBinding(
                     name = parameter.name,
-                    typeBinding = KotlinProjectionPlanner().classifyAbiTypeBinding(
+                    typeBinding = KotlinProjectionPlanner(useWinAppSdkTypeRedirects = plan.requiresWinAppSdkTypeRedirects()).classifyAbiTypeBinding(
                         typeName = parameter.typeName,
                         currentNamespace = factoryType.namespace,
                         typesByQualifiedName = plan.typesByQualifiedName,
@@ -1551,12 +1551,15 @@ class KotlinProjectionGenerator(
     private fun projectionFileRenderer(plans: List<KotlinTypeProjectionPlan>? = null): KotlinProjectionFileRenderer =
         when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(projectionRendererForLayout(plans).render(plan))
+                listOf(projectionRendererForLayout(plans, plan).render(plan))
             }
             KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinExpectActualProjectionRenderer(renderer)
         }
 
-    private fun projectionRendererForLayout(plans: List<KotlinTypeProjectionPlan>? = null): KotlinProjectionRenderer =
+    private fun projectionRendererForLayout(
+        plans: List<KotlinTypeProjectionPlan>? = null,
+        currentPlan: KotlinTypeProjectionPlan? = null,
+    ): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
                 useInterfaceProjectionArtifacts = true,
@@ -1567,10 +1570,27 @@ class KotlinProjectionGenerator(
                 } else {
                     emptyMap()
                 },
+                useWinAppSdkTypeRedirects = plans?.requiresWinAppSdkTypeRedirects() == true,
+                useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
             )
         } else {
             renderer
         }
+
+    private fun List<KotlinTypeProjectionPlan>.requiresWinAppSdkTypeRedirects(): Boolean =
+        any { plan -> plan.type.qualifiedName.startsWith("Microsoft.UI.") }
+
+    private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
+        type.qualifiedName.startsWith("Microsoft.UI.") ||
+            typesByQualifiedName.keys.any { typeName -> typeName.startsWith("Microsoft.UI.") }
+
+    private fun List<KotlinTypeProjectionPlan>.requiresKotlinDurationAlias(currentPlan: KotlinTypeProjectionPlan?): Boolean =
+        currentPlan != null &&
+            any { plan ->
+                plan.packageName == currentPlan.packageName &&
+                    plan.type.kind == WinRtTypeKind.Struct &&
+                    plan.type.name == "Duration"
+            }
 
     private fun projectedSlotLiteralMap(plans: List<KotlinTypeProjectionPlan>): Map<KotlinProjectionSlotLiteralKey, Int> =
         plans

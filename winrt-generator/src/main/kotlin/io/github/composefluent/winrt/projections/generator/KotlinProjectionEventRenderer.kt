@@ -1085,7 +1085,8 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
             val parameterBindings = method.parameters.map { parameter ->
                 KotlinProjectionAbiParameterBinding(
                     parameter.name,
-                    KotlinProjectionPlanner().classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+                    KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
+                        .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
                 )
             }
             val callPlan = requireAbiCallPlan(
@@ -1207,7 +1208,8 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
     val parameterBindings = userParameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             parameter.name,
-            KotlinProjectionPlanner().classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+            KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
+                .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }
     val callPlan = requireAbiCallPlan(
@@ -1300,7 +1302,8 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     val parameterBindings = userParameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             parameter.name,
-            KotlinProjectionPlanner().classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+            KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
+                .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }
     val callPlan = requireAbiCallPlan(

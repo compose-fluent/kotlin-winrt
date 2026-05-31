@@ -46,6 +46,8 @@ winRt {
         namespace("Windows.UI.Xaml.Interop")
     }
     if (projectionIncludeWinAppSdk.get()) {
+        excludeNamespace("Windows.UI.Composition")
+        excludeType("Windows.UI.Composition")
         namespace("Microsoft.UI.Dispatching")
         namespace("Microsoft.UI.Windowing")
         namespace("Microsoft.UI.Xaml")

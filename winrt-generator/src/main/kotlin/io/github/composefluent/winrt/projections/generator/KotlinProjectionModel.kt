@@ -244,6 +244,7 @@ internal val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "
 internal val WINRT_URI_CLASS_NAME = WinRtUri::class.asClassName()
 internal val KOTLIN_INSTANT_CLASS_NAME = ClassName("kotlin.time", "Instant")
 internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
+internal val KOTLIN_DURATION_ALIAS_CLASS_NAME = ClassName("", "TimeDuration")
 internal val KCLASS_STAR_TYPE_NAME = KClass::class.asClassName().parameterizedBy(STAR)
 internal val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
 internal val ILLEGAL_STATE_EXCEPTION_CLASS_NAME = IllegalStateException::class.asClassName()
