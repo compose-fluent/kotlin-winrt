@@ -121,6 +121,7 @@ class KotlinProjectionGenerator(
     private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
+    private val groupProjectionFilesByPackageOnWrite: Boolean = false,
 ) {
     init {
         require(emitSupportFiles || projectionContext.sources.isEmpty()) {
@@ -147,7 +148,12 @@ class KotlinProjectionGenerator(
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
-        val projectionRenderer = projectionFileRenderer()
+        val renderedPlans = if (groupProjectionFilesByPackageOnWrite) {
+            plans.map(KotlinTypeProjectionPlan::withoutRenderedProjectedAttributes)
+        } else {
+            plans
+        }
+        val projectionRenderer = projectionFileRenderer(renderedPlans)
         var rendered = 0
         var written = 0
         val expectedPaths = mutableSetOf<String>()
@@ -158,9 +164,17 @@ class KotlinProjectionGenerator(
                 written += 1
             }
         }
-        plans.filterNot { it.type.qualifiedName in authoredTypeNames }.forEach { plan ->
-            projectionRenderer.render(plan).forEach(::write)
-        }
+        val projectionFiles = renderedPlans
+            .filterNot { it.type.qualifiedName in authoredTypeNames }
+            .flatMap(projectionRenderer::render)
+            .let { files ->
+                if (groupProjectionFilesByPackageOnWrite && generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet) {
+                    files.groupByPackage()
+                } else {
+                    files
+                }
+            }
+        projectionFiles.forEach(::write)
         if (emitSupportFiles) {
             supportFiles(normalizedModel, plans).forEach(::write)
         }
@@ -1534,23 +1548,40 @@ class KotlinProjectionGenerator(
             type.properties.any { !it.isStatic } ||
             type.events.any { !it.isStatic }
 
-    private fun projectionFileRenderer(): KotlinProjectionFileRenderer =
+    private fun projectionFileRenderer(plans: List<KotlinTypeProjectionPlan>? = null): KotlinProjectionFileRenderer =
         when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(projectionRendererForLayout().render(plan))
+                listOf(projectionRendererForLayout(plans).render(plan))
             }
             KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinExpectActualProjectionRenderer(renderer)
         }
 
-    private fun projectionRendererForLayout(): KotlinProjectionRenderer =
+    private fun projectionRendererForLayout(plans: List<KotlinTypeProjectionPlan>? = null): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
                 useInterfaceProjectionArtifacts = true,
                 useProjectionIntrinsics = true,
+                suppressProjectedMemberSlotConstants = groupProjectionFilesByPackageOnWrite,
+                projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite && plans != null) {
+                    projectedSlotLiteralMap(plans)
+                } else {
+                    emptyMap()
+                },
             )
         } else {
             renderer
         }
+
+    private fun projectedSlotLiteralMap(plans: List<KotlinTypeProjectionPlan>): Map<KotlinProjectionSlotLiteralKey, Int> =
+        plans
+            .asSequence()
+            .filter { plan -> plan.type.kind == WinRtTypeKind.Interface }
+            .flatMap { plan ->
+                plan.abiSlotBindings.asSequence().map { binding ->
+                    KotlinProjectionSlotLiteralKey(plan.type.qualifiedName, binding.constantName) to binding.slot
+                }
+            }
+            .toMap()
 
     private fun supportFiles(
         model: WinRtMetadataModel,
@@ -1604,4 +1635,114 @@ class KotlinProjectionGenerator(
 
 internal fun interface KotlinProjectionFileRenderer {
     fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile>
+}
+
+private fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFile> =
+    groupBy(KotlinProjectionFile::packageName)
+        .toSortedMap()
+        .flatMap { (packageName, files) ->
+            files
+                .sortedBy(KotlinProjectionFile::relativePath)
+                .map(::parseGeneratedKotlinFile)
+                .chunkByGeneratedBodySize()
+                .mapIndexed { index, parsedFiles ->
+            val imports = parsedFiles
+                .flatMap(ParsedGeneratedKotlinFile::imports)
+                .toSortedSet()
+            val body = parsedFiles
+                .joinToString("\n") { it.body.trim() }
+                .trim()
+            KotlinProjectionFile(
+                relativePath = packageName.replace('.', '/') + "/${packageName.split('.').joinToString("_")}${if (index == 0) "" else "_$index"}.kt",
+                packageName = packageName,
+                contents = buildString {
+                    append(parsedFiles.first().fileAnnotations.trimEnd())
+                    append("\n\n")
+                    append(parsedFiles.first().packageDeclaration)
+                    append("\n\n")
+                    if (imports.isNotEmpty()) {
+                        imports.forEach { importLine ->
+                            append(importLine)
+                            append('\n')
+                        }
+                        append('\n')
+                    }
+                    append(body)
+                    append('\n')
+                },
+            )
+                }
+        }
+
+private fun KotlinTypeProjectionPlan.withoutRenderedProjectedAttributes(): KotlinTypeProjectionPlan =
+    copy(
+        projectedAttributes = emptyList(),
+        instanceMemberBindings = instanceMemberBindings.map { binding ->
+            binding.copy(projectedAttributes = emptyList())
+        },
+        staticMemberBindings = staticMemberBindings.map { binding ->
+            binding.copy(projectedAttributes = emptyList())
+        },
+    )
+
+private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
+
+private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySize(): List<List<ParsedGeneratedKotlinFile>> =
+    buildList {
+        var current = mutableListOf<ParsedGeneratedKotlinFile>()
+        var currentSize = 0
+        for (file in this@chunkByGeneratedBodySize) {
+            val fileSize = file.body.length
+            if (current.isNotEmpty() && currentSize + fileSize > MAX_GROUPED_PROJECTION_BODY_CHARS) {
+                add(current)
+                current = mutableListOf()
+                currentSize = 0
+            }
+            current += file
+            currentSize += fileSize
+        }
+        if (current.isNotEmpty()) {
+            add(current)
+        }
+    }
+
+private data class ParsedGeneratedKotlinFile(
+    val fileAnnotations: String,
+    val packageDeclaration: String,
+    val imports: List<String>,
+    val body: String,
+)
+
+private fun parseGeneratedKotlinFile(file: KotlinProjectionFile): ParsedGeneratedKotlinFile {
+    val allLines = file.contents.lines()
+    val packageLineIndex = allLines.indexOfFirst { it.trim().startsWith("package ") }
+    require(packageLineIndex >= 0) {
+        "Generated file ${file.relativePath} does not contain a package declaration."
+    }
+    val annotations = allLines.take(packageLineIndex).joinToString("\n").trim()
+    val lines = allLines.drop(packageLineIndex + 1).dropWhile(String::isBlank)
+    val imports = mutableListOf<String>()
+    var index = 0
+    while (index < lines.size) {
+        val line = lines[index]
+        when {
+            line.startsWith("import ") -> {
+                imports += line
+                index += 1
+            }
+            line.isBlank() -> {
+                index += 1
+                if (imports.isNotEmpty()) {
+                    break
+                }
+            }
+            else -> break
+        }
+    }
+    return ParsedGeneratedKotlinFile(
+        fileAnnotations = annotations,
+        packageDeclaration = allLines[packageLineIndex].trim(),
+        imports = imports,
+        body = lines.drop(index).joinToString("\n"),
+    )
 }

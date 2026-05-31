@@ -8,6 +8,8 @@ import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.winRtEventHandlerKindForTypeName
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 
 internal fun KotlinProjectionPlanner.eventSourceDescriptors(
     model: WinRtMetadataModel,
@@ -24,6 +26,13 @@ internal fun KotlinProjectionPlanner.eventSourceDescriptors(
     return (metadataDescriptors + plans.flatMap { plan ->
         boundRuntimeClassCollectionEventSourceDescriptors(plan, typesByQualifiedName)
     })
+        .map { descriptor ->
+            if (descriptor.usesSharedEventHandlerSource) {
+                descriptor
+            } else {
+                descriptor.copy(sourceClassName = eventSourceSubclassName(descriptor.ownerTypeName, descriptor.eventTypeName))
+            }
+        }
         .distinctBy { it.eventTypeName to it.ownerTypeName }
         .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
 }
@@ -89,7 +98,7 @@ private fun KotlinProjectionPlanner.boundRuntimeClassCollectionEventSourceDescri
                 projectedEventTypeName = eventTypeName,
                 abiEventTypeName = renderEventSourceAbiTypeName(runtimeEventType),
                 ownerTypeName = ownerTypeName,
-                sourceClassName = escapeEventSourceIdentifier("_EventSource_$eventTypeName"),
+                sourceClassName = eventSourceSubclassName(ownerTypeName, eventTypeName),
                 genericArgumentTypeNames = runtimeEventType.typeArguments.map { it.normalized().typeName },
                 usesSharedEventHandlerSource = false,
                 interfaceId = closedDelegateInterfaceId(eventTypeName, plan.type.namespace, typesByQualifiedName),
@@ -197,5 +206,8 @@ private fun renderEventSourceAbiTypeName(type: WinRtTypeRef): String {
     return "ABI.${normalized.typeName.substringBefore('<')}<${normalized.typeArguments.joinToString(", ") { renderEventSourceAbiTypeName(it).removePrefix("ABI.") }}>"
 }
 
-private fun escapeEventSourceIdentifier(typeName: String): String =
-    typeName.replace(Regex("""[\s:<>,.]"""), "_")
+private fun eventSourceSubclassName(ownerTypeName: String, eventTypeName: String): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest("$ownerTypeName\t$eventTypeName".toByteArray(StandardCharsets.UTF_8))
+    return "_EventSource_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
+}

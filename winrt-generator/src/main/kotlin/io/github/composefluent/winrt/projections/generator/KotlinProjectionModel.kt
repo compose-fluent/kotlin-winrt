@@ -405,12 +405,18 @@ data class KotlinProjectionAbiSlotBinding(
     val descriptor: WinRtMethodVtableDescriptor? = null,
 )
 
+data class KotlinProjectionSlotLiteralKey(
+    val interfaceQualifiedName: String,
+    val slotConstantName: String,
+)
+
 data class KotlinProjectionInstanceMemberBinding(
     val bindingName: String,
     val ownerInterfaceQualifiedName: String,
     val ownerCachePropertyName: String,
     val slotInterfaceQualifiedName: String,
     val slotConstantName: String,
+    val slot: Int? = null,
     val returnBinding: KotlinProjectionAbiTypeBinding,
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
     val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
@@ -426,6 +432,7 @@ data class KotlinProjectionStaticMemberBinding(
     val ownerCachePropertyName: String,
     val slotInterfaceQualifiedName: String,
     val slotConstantName: String,
+    val slot: Int? = null,
     val returnBinding: KotlinProjectionAbiTypeBinding,
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
     val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
@@ -893,6 +900,13 @@ internal fun isRuntimeOwnedMappedTypeName(typeName: String): Boolean {
 internal fun kotlinPoetNameLiteral(identifier: String): String =
     identifier.removeSurrounding("`")
 
+internal fun String.escapeAsKotlinIdentifierIfNeeded(): String {
+    if (startsWith("`") && endsWith("`")) {
+        return this
+    }
+    return if (this in KOTLIN_CODE_IDENTIFIER_KEYWORDS) "`$this`" else this
+}
+
 internal fun generatedLocalIdentifier(prefix: String, identifier: String, suffix: String = ""): String {
     val raw = kotlinPoetNameLiteral(identifier)
     val sanitized = raw.map { char ->
@@ -900,6 +914,37 @@ internal fun generatedLocalIdentifier(prefix: String, identifier: String, suffix
     }.joinToString("")
     return prefix + sanitized.ifEmpty { "value" } + suffix
 }
+
+private val KOTLIN_CODE_IDENTIFIER_KEYWORDS = setOf(
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
+)
 
 internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(
     WinRtIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(

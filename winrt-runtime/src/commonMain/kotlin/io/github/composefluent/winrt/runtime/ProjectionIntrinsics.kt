@@ -59,31 +59,65 @@ object WinRtProjectionIntrinsic {
         intrinsicNotLowered("callObject", reference, slot, abiShape, *arguments)
 
     fun getString(reference: ComObjectReference, slot: Int): String =
-        intrinsicNotLowered("getString", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+                .requireSuccess("WinRT getString")
+            HString.fromHandle(PlatformAbi.readPointer(resultOut), owner = true).use(HString::toKString)
+        }
 
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        intrinsicNotLowered("getBoolean", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt8Slot(scope)
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+                .requireSuccess("WinRT getBoolean")
+            BooleanMarshaller.fromAbi(PlatformAbi.readInt8(resultOut))
+        }
 
     fun getNoExceptionBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        intrinsicNotLowered("getNoExceptionBoolean", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt8Slot(scope)
+            ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+            BooleanMarshaller.fromAbi(PlatformAbi.readInt8(resultOut))
+        }
 
     fun getInt32(reference: ComObjectReference, slot: Int): Int =
-        intrinsicNotLowered("getInt32", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt32Slot(scope)
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+                .requireSuccess("WinRT getInt32")
+            PlatformAbi.readInt32(resultOut)
+        }
 
     fun getUInt32(reference: ComObjectReference, slot: Int): UInt =
-        intrinsicNotLowered("getUInt32", reference, slot)
+        getInt32(reference, slot).toUInt()
 
     fun getInt64(reference: ComObjectReference, slot: Int): Long =
-        intrinsicNotLowered("getInt64", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt64Slot(scope)
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+                .requireSuccess("WinRT getInt64")
+            PlatformAbi.readInt64(resultOut)
+        }
 
     fun getUInt64(reference: ComObjectReference, slot: Int): ULong =
-        intrinsicNotLowered("getUInt64", reference, slot)
+        getInt64(reference, slot).toULong()
 
     fun getFloat(reference: ComObjectReference, slot: Int): Float =
-        intrinsicNotLowered("getFloat", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateBytes(scope, sizeBytes = 4, alignmentBytes = 4)
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+                .requireSuccess("WinRT getFloat")
+            PlatformAbi.readFloat(resultOut)
+        }
 
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
-        intrinsicNotLowered("getDouble", reference, slot)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateDoubleSlot(scope)
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+                .requireSuccess("WinRT getDouble")
+            PlatformAbi.readDouble(resultOut)
+        }
 
     fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
         intrinsicNotLowered("getStruct", reference, slot, adapter)
@@ -132,22 +166,33 @@ object WinRtProjectionIntrinsic {
         intrinsicNotLowered("getNullableProjectedInterface", reference, slot, wrap)
 
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
-        intrinsicNotLowered("setString", reference, slot, value)
+        HString.create(value).use { hString ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, hString.handle))
+                .requireSuccess("WinRT setString")
+        }
 
     fun setBoolean(reference: ComObjectReference, slot: Int, value: Boolean): Unit =
         intrinsicNotLowered("setBoolean", reference, slot, value)
 
-    fun setInt32(reference: ComObjectReference, slot: Int, value: Int): Unit =
-        intrinsicNotLowered("setInt32", reference, slot, value)
+    fun setInt32(reference: ComObjectReference, slot: Int, value: Int) {
+        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value))
+            .requireSuccess("WinRT setInt32")
+    }
 
-    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt): Unit =
-        intrinsicNotLowered("setUInt32", reference, slot, value)
+    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt) {
+        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value))
+            .requireSuccess("WinRT setUInt32")
+    }
 
-    fun setInt64(reference: ComObjectReference, slot: Int, value: Long): Unit =
-        intrinsicNotLowered("setInt64", reference, slot, value)
+    fun setInt64(reference: ComObjectReference, slot: Int, value: Long) {
+        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value))
+            .requireSuccess("WinRT setInt64")
+    }
 
-    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong): Unit =
-        intrinsicNotLowered("setUInt64", reference, slot, value)
+    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong) {
+        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value.toLong()))
+            .requireSuccess("WinRT setUInt64")
+    }
 
     fun setFloat(reference: ComObjectReference, slot: Int, value: Float): Unit =
         intrinsicNotLowered("setFloat", reference, slot, value)

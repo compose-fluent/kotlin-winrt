@@ -354,7 +354,7 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
                         abstract = false,
                         eventSourceOwnerTypeName = addBinding?.ownerInterfaceQualifiedName,
                         eventSourceObjectReference = addBinding?.let { CodeBlock.of("StaticInterfaces.%L()", it.ownerAccessorName) },
-                        eventSourceAddSlot = addBinding?.let { CodeBlock.of("%L", it.bindingName) },
+                        eventSourceAddSlot = addBinding?.slotCodeBlock(),
                         fallbackToAddRemove = addBinding == null,
                     ),
                 )
@@ -498,7 +498,7 @@ private fun KotlinProjectionRenderer.renderStaticArrayResultIntrinsicInvocation(
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
     binding.parameterBindings.singleOrNull()?.let { parameter ->
         code.add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
     }
@@ -536,7 +536,7 @@ private fun KotlinProjectionRenderer.renderStaticStringProjectedObjectIntrinsicI
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%L,\n", parameter.name)
         .add("%T.Metadata::wrap,\n", returnType)
         .unindent()
@@ -566,7 +566,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorUnitIntrinsicInvocati
         .add("return %T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%S,\n", arguments.joinToString(",") { it.shape })
         .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
@@ -597,7 +597,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorBooleanIntrinsicInvoc
         .add("return %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%S,\n", arguments.joinToString(",") { it.shape })
         .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
@@ -633,7 +633,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrin
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%S,\n", arguments.joinToString(",") { it.shape })
         .add("%T.Metadata::wrap,\n", returnType)
         .addDescriptorIntrinsicArgumentExpressions(arguments)
@@ -665,7 +665,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
         .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%S,\n", returnShape)
         .add("%S,\n", arguments.joinToString(",") { it.shape })
         .addDescriptorIntrinsicArgumentExpressions(arguments)
@@ -688,7 +688,12 @@ internal fun staticMethodBindingName(
         }
     return if (declaringStaticMethod != null) {
         val (staticInterface, staticMethod) = declaringStaticMethod
-        "STATIC_${staticMethod.abiSlotConstantName(staticInterface.methods)}"
+        val staticInterfaces = plan.staticInterfaceNames.mapNotNull(plan.typesByQualifiedName::get)
+        val staticMethodNameCounts = staticInterfaces
+            .flatMap { interfaceType -> interfaceType.methods.filter(WinRtMethodDefinition::isProjectedCallableMethod) }
+            .groupingBy(WinRtMethodDefinition::name)
+            .eachCount()
+        "STATIC_${staticMethod.staticBindingSlotConstantName(staticInterface.methods, staticMethodNameCounts)}"
     } else {
         "STATIC_${method.abiSlotConstantName(plan.type.methods)}"
     }
@@ -774,7 +779,7 @@ private fun KotlinProjectionRenderer.renderStaticIntrinsicSetter(
         .add("%T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", binding.slotCodeBlock())
         .add("%L,\n", parameterBinding.name)
         .unindent()
         .add(")\n")
@@ -810,7 +815,7 @@ private fun KotlinProjectionRenderer.renderStaticIntrinsicGetter(
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L", binding.bindingName)
+        .add("%L", binding.slotCodeBlock())
     if (binding.returnBinding.kind in setOf(
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
             KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -1098,7 +1103,7 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
                 suppressHResultCheck = method.isNoException,
             ) ?: renderInlineAbiInvocation(
                 invokeTargetExpression = "acquire()",
-                slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
                 callPlan = callPlan,
             ) ?: error("Generator ABI marshaler parity failed to emit factory ${factoryType.qualifiedName}.${method.name}")
             FunSpec.builder(factoryCreateFunctionName(method))
@@ -1137,7 +1142,7 @@ private fun KotlinProjectionRenderer.renderActivationFactoryCreateIntrinsicInvoc
         .add("return %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("acquire(),\n")
-        .add("%T.Metadata.%L,\n", factoryClassName, method.abiSlotConstantName(factoryType.methods))
+        .add("%L,\n", metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)))
         .add("%S,\n", arguments.joinToString(",") { it.shape })
         .add("{ __result -> __result.use { it.asInspectable() } },\n")
         .addDescriptorIntrinsicArgumentExpressions(arguments)
@@ -1234,7 +1239,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
     val intrinsicInvocation = if (!callPlan.suppressHResultCheck) {
         renderInlineDescriptorUnitIntrinsicInvocation(
             invokeTargetExpression = "__factory",
-            slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+            slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
             abiArguments = abiArguments,
         )
     } else {
@@ -1255,7 +1260,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
         code.add(
             renderComVtableInvocation(
                 invokeTargetExpression = "__factory",
-                slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
                 abiArguments = abiArguments,
             ),
         )
@@ -1346,7 +1351,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         code.add(
             renderComVtableInvocation(
                 invokeTargetExpression = "__factory",
-                slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
                 abiArguments = abiArguments,
             ),
         )
@@ -1401,7 +1406,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInspectableIntrinsic
     code.add("val __result = %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
     code.indent()
     code.add("__factory,\n")
-    code.add("%T.Metadata.%L,\n", factoryClassName, method.abiSlotConstantName(factoryType.methods))
+    code.add("%L,\n", metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)))
     code.add("%S,\n", argumentShapes.joinToString(","))
     code.add("{ __result -> __result.use { %T.initializeComposableReference(it, DEFAULT_INTERFACE_IID) } },\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
     abiArguments.forEach { argument ->
@@ -1542,7 +1547,17 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 )
                 .apply {
                     plan.defaultInterfaceName?.let { defaultInterfaceName ->
-                        val defaultInterfaceSignature = abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName, plan.type.namespace))
+                        val defaultInterfaceSignature = plan.typesByQualifiedName[defaultInterfaceName]
+                            ?.iid
+                            ?.let { iid ->
+                                CodeBlock.of(
+                                    "%T.guid(%T(%S))",
+                                    WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                                    GUID_CLASS_NAME,
+                                    iid.toString(),
+                                )
+                            }
+                            ?: abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName, plan.type.namespace))
                         if (defaultInterfaceSignature != null) {
                             addCode(
                                 "%T.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE, %L.render())\n",
@@ -1619,53 +1634,9 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .build(),
         )
     }
-    plan.type.methods.forEach { method ->
-        method.methodRowId?.let { rowId ->
-            builder.addProperty(
-                PropertySpec.builder(method.methodRowConstantName(plan.type.methods), Int::class)
-                    .addModifiers(KModifier.CONST)
-                    .initializer("%L", rowId)
-                    .build(),
-            )
-        }
-    }
-    plan.type.properties.forEach { property ->
-        property.getterMethodRowId?.let { rowId ->
-            builder.addProperty(
-                PropertySpec.builder("${property.name.uppercase()}_GETTER_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.CONST)
-                    .initializer("%L", rowId)
-                    .build(),
-            )
-        }
-        property.setterMethodRowId?.let { rowId ->
-            builder.addProperty(
-                PropertySpec.builder("${property.name.uppercase()}_SETTER_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.CONST)
-                    .initializer("%L", rowId)
-                    .build(),
-            )
-        }
-    }
-    plan.type.events.forEach { event ->
-        event.addMethodRowId?.let { rowId ->
-            builder.addProperty(
-                PropertySpec.builder("${event.name.uppercase()}_ADD_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.CONST)
-                    .initializer("%L", rowId)
-                    .build(),
-            )
-        }
-        event.removeMethodRowId?.let { rowId ->
-            builder.addProperty(
-                PropertySpec.builder("${event.name.uppercase()}_REMOVE_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.CONST)
-                    .initializer("%L", rowId)
-                    .build(),
-            )
-        }
-    }
-    plan.abiSlotBindings.forEach { binding ->
+    plan.abiSlotBindings
+        .filterNot { suppressProjectedMemberSlotConstants && mappedTypeByAbiName(plan.type.qualifiedName) == null }
+        .forEach { binding ->
         builder.addProperty(
             PropertySpec.builder(binding.constantName, Int::class)
                 .addModifiers(KModifier.CONST)
@@ -1678,55 +1649,48 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         .filterNot { it.bindingName in abiSlotBindingNames }
         .filterNot(KotlinProjectionInstanceMemberBinding::isRuntimeOwnedMappedBinding)
         .filterNot(KotlinProjectionInstanceMemberBinding::isMappedRuntimeHelperBinding)
+        .filterNot { suppressProjectedMemberSlotConstants && it.slot != null }
         .filterNot { binding ->
             plan.requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyPropertyChanged") &&
                 mappedTypeByAbiName(binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?"))?.descriptionName == "INotifyPropertyChanged"
         }
         .forEach { binding ->
         builder.addProperty(
-            PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
-                .addModifiers(KModifier.CONST)
-                .initializer("%S", binding.ownerInterfaceQualifiedName)
-                .build(),
-        )
-        builder.addProperty(
-            PropertySpec.builder("${binding.bindingName}_OWNER_CACHE", String::class)
-                .addModifiers(KModifier.CONST)
-                .initializer("%S", binding.ownerCachePropertyName)
-                .build(),
-        )
-        builder.addProperty(
             PropertySpec.builder(binding.bindingName, Int::class)
-                .initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
+                .apply {
+                    if (binding.slot != null) {
+                        addModifiers(KModifier.CONST)
+                        initializer("%L", binding.slot)
+                    } else {
+                        initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
+                    }
+                }
                 .build(),
         )
     }
-    plan.staticMemberBindings.forEach { binding ->
-        builder.addProperty(
-            PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
-                .addModifiers(KModifier.CONST)
-                .initializer("%S", binding.ownerInterfaceQualifiedName)
-                .build(),
-        )
-        builder.addProperty(
-            PropertySpec.builder("${binding.bindingName}_OWNER_ACCESSOR", String::class)
-                .addModifiers(KModifier.CONST)
-                .initializer("%S", binding.ownerAccessorName)
-                .build(),
-        )
-        builder.addProperty(
-            PropertySpec.builder("${binding.bindingName}_OWNER_CACHE", String::class)
-                .addModifiers(KModifier.CONST)
-                .initializer("%S", binding.ownerCachePropertyName)
-                .build(),
-        )
+    plan.staticMemberBindings
+        .filterNot { suppressProjectedMemberSlotConstants && it.slot != null }
+        .forEach { binding ->
         builder.addProperty(
             PropertySpec.builder(binding.bindingName, Int::class)
-                .initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
+                .apply {
+                    if (binding.slot != null) {
+                        addModifiers(KModifier.CONST)
+                        initializer("%L", binding.slot)
+                    } else {
+                        initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
+                    }
+                }
                 .build(),
         )
     }
 }
+
+internal fun KotlinProjectionStaticMemberBinding.slotCodeBlock(): CodeBlock =
+    slot?.let { CodeBlock.of("%L", it) } ?: CodeBlock.of("%L", bindingName)
+
+internal fun KotlinProjectionStaticMemberBinding.slotExpressionString(): String =
+    slot?.toString() ?: bindingName
 
 internal fun KotlinProjectionRenderer.canRenderInterfaceWrapper(plan: KotlinTypeProjectionPlan): Boolean =
     canRenderInterfaceProxy(plan)

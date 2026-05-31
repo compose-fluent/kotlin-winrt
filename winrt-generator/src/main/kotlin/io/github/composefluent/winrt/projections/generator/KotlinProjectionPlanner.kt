@@ -128,7 +128,18 @@ class KotlinProjectionPlanner(
             val interfaceIidsByName = normalized.namespaces
                 .flatMap(WinRtNamespace::types)
                 .associate { it.qualifiedName to it.iid }
-            normalized.namespaces.flatMap { planNamespace(it, interfaceIidsByName, typesByQualifiedName, semanticHelpers) }
+            val abiSlotBindingCache = mutableMapOf<String, List<KotlinProjectionAbiSlotBinding>>()
+            val abiMemberCountCache = mutableMapOf<String, Int>()
+            normalized.namespaces.flatMap {
+                planNamespace(
+                    namespace = it,
+                    interfaceIidsByName = interfaceIidsByName,
+                    typesByQualifiedName = typesByQualifiedName,
+                    semanticHelpers = semanticHelpers,
+                    abiSlotBindingCache = abiSlotBindingCache,
+                    abiMemberCountCache = abiMemberCountCache,
+                )
+            }
         }
 
     fun planNamespace(
@@ -136,11 +147,13 @@ class KotlinProjectionPlanner(
         interfaceIidsByName: Map<String, Guid?> = emptyMap(),
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
         semanticHelpers: WinRtMetadataSemanticHelpers? = null,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>> = mutableMapOf(),
+        abiMemberCountCache: MutableMap<String, Int> = mutableMapOf(),
     ): List<KotlinTypeProjectionPlan> =
         namespace.normalized().let { normalizedNamespace ->
             val helpers = semanticHelpers ?: WinRtMetadataModel(listOf(normalizedNamespace)).semanticHelpers()
             normalizedNamespace.types.mapNotNull { type ->
-                planType(type, interfaceIidsByName, typesByQualifiedName, helpers)
+                planType(type, interfaceIidsByName, typesByQualifiedName, helpers, abiSlotBindingCache, abiMemberCountCache)
             }
         }
 
@@ -149,6 +162,8 @@ class KotlinProjectionPlanner(
         interfaceIidsByName: Map<String, Guid?>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
     ): KotlinTypeProjectionPlan? {
         val typeDeclarationDescriptor = semanticHelpers.typeDeclarationDescriptor(type)
         if (!typeDeclarationDescriptor.writesProjectedDeclaration) {
@@ -207,9 +222,9 @@ class KotlinProjectionPlanner(
             activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(::interfaceIidFor),
             composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
             composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(::interfaceIidFor),
-            abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName, semanticHelpers),
-            instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName, semanticHelpers),
-            staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName, semanticHelpers),
+            abiSlotBindings = cachedAbiSlotBindings(type, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache),
+            instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache),
+            staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache),
             readOnlyCollectionBindings = planReadOnlyCollectionBindings(type, typesByQualifiedName, semanticHelpers),
             mutableCollectionBindings = planMutableCollectionBindings(type, typesByQualifiedName, semanticHelpers),
             delegateInvokeShape =
@@ -303,10 +318,26 @@ class KotlinProjectionPlanner(
         return true
     }
 
+    private fun cachedAbiSlotBindings(
+        type: WinRtTypeDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
+    ): List<KotlinProjectionAbiSlotBinding> {
+        if (type.kind != WinRtTypeKind.Interface) {
+            return emptyList()
+        }
+        return abiSlotBindingCache.getOrPut(type.qualifiedName) {
+            planAbiSlotBindings(type, typesByQualifiedName, semanticHelpers, abiMemberCountCache)
+        }
+    }
+
     private fun planAbiSlotBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiMemberCountCache: MutableMap<String, Int>,
     ): List<KotlinProjectionAbiSlotBinding> {
         if (type.kind != WinRtTypeKind.Interface) {
             return emptyList()
@@ -319,7 +350,7 @@ class KotlinProjectionPlanner(
                 descriptor.methodRowId?.let(methodSlotNamesByRowId::get) ?: descriptor.methodName.methodSlotConstantName()
             }
         val baseSlotCount = type.implementedInterfaces.sumOf { implemented ->
-            interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, mutableSetOf())
+            interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, mutableSetOf(), abiMemberCountCache)
         }
         val fastAbiSlotStart = semanticHelpers.getFastAbiClassForInterface(type)
             ?.interfaceSlots
@@ -348,24 +379,42 @@ class KotlinProjectionPlanner(
         interfaceName: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         visiting: MutableSet<String>,
+        abiMemberCountCache: MutableMap<String, Int>,
     ): Int {
+        abiMemberCountCache[interfaceName]?.let { return it }
         val type = typesByQualifiedName[interfaceName] ?: return 0
         if (type.kind != WinRtTypeKind.Interface || !visiting.add(interfaceName)) {
             return 0
         }
-        return try {
+        val count = try {
             type.implementedInterfaces.sumOf { implemented ->
-                interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, visiting)
+                interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, visiting, abiMemberCountCache)
             } + type.localAbiMemberOrders().map(AbiMemberOrder::rowId).distinct().size
         } finally {
             visiting.remove(interfaceName)
         }
+        abiMemberCountCache[interfaceName] = count
+        return count
     }
+
+    private fun slotValueOrNull(
+        slotInterfaceType: WinRtTypeDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
+        slotConstantName: String,
+    ): Int? =
+        cachedAbiSlotBindings(slotInterfaceType, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache)
+            .firstOrNull { binding -> binding.constantName == slotConstantName }
+            ?.slot
 
     private fun planInstanceMemberBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
     ): List<KotlinProjectionInstanceMemberBinding> {
         if (type.kind != WinRtTypeKind.RuntimeClass && type.kind != WinRtTypeKind.Interface) {
             return emptyList()
@@ -387,6 +436,9 @@ class KotlinProjectionPlanner(
                 resolveInstanceMemberBinding(
                     candidateInterfaces = candidateInterfaces,
                     typesByQualifiedName = typesByQualifiedName,
+                    semanticHelpers = semanticHelpers,
+                    abiSlotBindingCache = abiSlotBindingCache,
+                    abiMemberCountCache = abiMemberCountCache,
                     bindingName = method.abiSlotConstantName(type.methods),
                     slotConstantName = method.abiSlotConstantName(type.methods),
                     returnBinding = classifyAbiTypeBinding(method.projectedKotlinReturnTypeName(), type.namespace, typesByQualifiedName),
@@ -424,6 +476,9 @@ class KotlinProjectionPlanner(
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
                         returnBinding = classifyAbiTypeBinding(propertyTypeName, type.namespace, typesByQualifiedName),
                         parameterBindings = emptyList(),
@@ -447,6 +502,9 @@ class KotlinProjectionPlanner(
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         slotConstantName = "${property.name.uppercase()}_SETTER_SLOT",
                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                         parameterBindings = listOf(
@@ -478,6 +536,9 @@ class KotlinProjectionPlanner(
                         resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
                         returnBinding = classifyAbiTypeBinding(
                             "Windows.Foundation.EventRegistrationToken",
@@ -508,6 +569,10 @@ class KotlinProjectionPlanner(
                         },
                         ) ?: resolveMappedCollectionEventBinding(
                             candidateInterfaces = candidateInterfaces,
+                            typesByQualifiedName = typesByQualifiedName,
+                            semanticHelpers = semanticHelpers,
+                            abiSlotBindingCache = abiSlotBindingCache,
+                            abiMemberCountCache = abiMemberCountCache,
                             event = event,
                             slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
                             returnBinding = classifyAbiTypeBinding(
@@ -530,6 +595,9 @@ class KotlinProjectionPlanner(
                         resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                         parameterBindings = listOf(
@@ -560,6 +628,10 @@ class KotlinProjectionPlanner(
                         },
                         ) ?: resolveMappedCollectionEventBinding(
                             candidateInterfaces = candidateInterfaces,
+                            typesByQualifiedName = typesByQualifiedName,
+                            semanticHelpers = semanticHelpers,
+                            abiSlotBindingCache = abiSlotBindingCache,
+                            abiMemberCountCache = abiMemberCountCache,
                             event = event,
                             slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
@@ -585,6 +657,8 @@ class KotlinProjectionPlanner(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
     ): List<KotlinProjectionStaticMemberBinding> {
         if (type.kind != WinRtTypeKind.RuntimeClass) {
             return emptyList()
@@ -592,16 +666,24 @@ class KotlinProjectionPlanner(
         val candidateInterfaces = type.activation.staticInterfaceNames.distinct()
         return buildList {
             val staticInterfaces = candidateInterfaces.mapNotNull(typesByQualifiedName::get)
+            val staticMethodNameCounts = staticInterfaces
+                .flatMap { staticInterface -> staticInterface.methods.filter(WinRtMethodDefinition::isProjectedCallableMethod) }
+                .groupingBy(WinRtMethodDefinition::name)
+                .eachCount()
             staticInterfaces.flatMap { staticInterface ->
                 staticInterface.methods
                     .filter(WinRtMethodDefinition::isProjectedCallableMethod)
                     .map { method -> staticInterface to method.copy(isStatic = true) }
             }.forEach { (staticInterface, method) ->
                 val signatureDescriptor = semanticHelpers.signatureWriterDescriptor(method)
+                val bindingSlotConstantName = method.staticBindingSlotConstantName(staticInterface.methods, staticMethodNameCounts)
                 resolveStaticMemberBinding(
                     candidateInterfaces = candidateInterfaces,
                     typesByQualifiedName = typesByQualifiedName,
-                    bindingName = "STATIC_${method.abiSlotConstantName(staticInterface.methods)}",
+                    semanticHelpers = semanticHelpers,
+                    abiSlotBindingCache = abiSlotBindingCache,
+                    abiMemberCountCache = abiMemberCountCache,
+                    bindingName = "STATIC_$bindingSlotConstantName",
                     slotConstantName = method.abiSlotConstantName(staticInterface.methods),
                     returnBinding = classifyAbiTypeBinding(signatureDescriptor.projectionReturnTypeName, type.namespace, typesByQualifiedName),
                     parameterBindings = signatureDescriptor.parameters.map { parameter ->
@@ -637,6 +719,9 @@ class KotlinProjectionPlanner(
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         bindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT",
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
                         returnBinding = classifyAbiTypeBinding(propertyTypeName, type.namespace, typesByQualifiedName),
@@ -656,6 +741,9 @@ class KotlinProjectionPlanner(
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         bindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT",
                         slotConstantName = "${property.name.uppercase()}_SETTER_SLOT",
                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
@@ -684,6 +772,9 @@ class KotlinProjectionPlanner(
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         bindingName = "STATIC_${event.name.uppercase()}_ADD_SLOT",
                         slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
                         returnBinding = classifyAbiTypeBinding(
@@ -719,6 +810,9 @@ class KotlinProjectionPlanner(
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
+                        semanticHelpers = semanticHelpers,
+                        abiSlotBindingCache = abiSlotBindingCache,
+                        abiMemberCountCache = abiMemberCountCache,
                         bindingName = "STATIC_${event.name.uppercase()}_REMOVE_SLOT",
                         slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
@@ -1123,6 +1217,9 @@ class KotlinProjectionPlanner(
     private fun resolveInstanceMemberBinding(
         candidateInterfaces: List<String>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
         bindingName: String? = null,
         slotConstantName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
@@ -1145,12 +1242,21 @@ class KotlinProjectionPlanner(
                 signatureMatcher = signatureMatcher,
             ) ?: return@forEach
             val slotInterfaceType = typesByQualifiedName.getValue(slotInterfaceQualifiedName)
+            val resolvedSlotConstantName = slotConstantNameResolver(slotInterfaceType) ?: slotConstantName
             return KotlinProjectionInstanceMemberBinding(
                 bindingName = bindingName ?: slotConstantName,
                 ownerInterfaceQualifiedName = candidateInterface,
                 ownerCachePropertyName = ownerCachePropertyNameResolver(candidateInterface, slotInterfaceQualifiedName),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
-                slotConstantName = slotConstantNameResolver(slotInterfaceType) ?: slotConstantName,
+                slotConstantName = resolvedSlotConstantName,
+                slot = slotValueOrNull(
+                    slotInterfaceType,
+                    typesByQualifiedName,
+                    semanticHelpers,
+                    abiSlotBindingCache,
+                    abiMemberCountCache,
+                    resolvedSlotConstantName,
+                ),
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
                 signatureDescriptor = signatureDescriptor,
@@ -1165,6 +1271,10 @@ class KotlinProjectionPlanner(
 
     private fun resolveMappedCollectionEventBinding(
         candidateInterfaces: List<String>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
         event: WinRtEventDefinition,
         slotConstantName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
@@ -1179,12 +1289,21 @@ class KotlinProjectionPlanner(
         val ownerInterface = candidateInterfaces.firstOrNull { candidate ->
             candidate.normalizedRawTypeName() == slotInterfaceQualifiedName
         } ?: return null
+        val slotInterfaceType = typesByQualifiedName[slotInterfaceQualifiedName] ?: return null
         return KotlinProjectionInstanceMemberBinding(
             bindingName = slotConstantName,
             ownerInterfaceQualifiedName = ownerInterface,
             ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName = null),
             slotInterfaceQualifiedName = slotInterfaceQualifiedName,
             slotConstantName = slotConstantName,
+            slot = slotValueOrNull(
+                slotInterfaceType,
+                typesByQualifiedName,
+                semanticHelpers,
+                abiSlotBindingCache,
+                abiMemberCountCache,
+                slotConstantName,
+            ),
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = suppressHResultCheck,
@@ -1199,6 +1318,9 @@ class KotlinProjectionPlanner(
     private fun resolveStaticMemberBinding(
         candidateInterfaces: List<String>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
+        abiMemberCountCache: MutableMap<String, Int>,
         bindingName: String,
         slotConstantName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
@@ -1218,13 +1340,22 @@ class KotlinProjectionPlanner(
                 signatureMatcher = signatureMatcher,
             ) ?: return@forEach
             val slotInterfaceType = typesByQualifiedName.getValue(slotInterfaceQualifiedName)
+            val resolvedSlotConstantName = slotConstantNameResolver(slotInterfaceType) ?: slotConstantName
             return KotlinProjectionStaticMemberBinding(
                 bindingName = bindingName,
                 ownerInterfaceQualifiedName = candidateInterface,
                 ownerAccessorName = staticOwnerAccessorName(candidateInterface),
                 ownerCachePropertyName = staticOwnerCachePropertyName(candidateInterface),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
-                slotConstantName = slotConstantNameResolver(slotInterfaceType) ?: slotConstantName,
+                slotConstantName = resolvedSlotConstantName,
+                slot = slotValueOrNull(
+                    slotInterfaceType,
+                    typesByQualifiedName,
+                    semanticHelpers,
+                    abiSlotBindingCache,
+                    abiMemberCountCache,
+                    resolvedSlotConstantName,
+                ),
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
                 signatureDescriptor = signatureDescriptor,
@@ -2134,6 +2265,17 @@ internal fun WinRtMethodDefinition.abiSlotConstantName(methods: List<WinRtMethod
     val baseName = "${name.uppercase()}_SLOT"
     if (methods.count { it.name == name } == 1) {
         return baseName
+    }
+    val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_SLOT"
+    return "${name.uppercase()}_${rowId}_SLOT"
+}
+
+internal fun WinRtMethodDefinition.staticBindingSlotConstantName(
+    staticInterfaceMethods: List<WinRtMethodDefinition>,
+    staticMethodNameCounts: Map<String, Int>,
+): String {
+    if ((staticMethodNameCounts[name] ?: 0) <= 1) {
+        return abiSlotConstantName(staticInterfaceMethods)
     }
     val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_SLOT"
     return "${name.uppercase()}_${rowId}_SLOT"
