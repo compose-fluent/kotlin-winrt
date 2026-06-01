@@ -1063,7 +1063,7 @@ private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
         project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
     } else {
         kotlinWinRtCompilerPluginClasspathJar(project)
-            ?: "io.github.composefluent.winrt:winrt-compiler-plugin:${kotlinWinRtPluginVersion()}"
+            ?: "io.github.compose-fluent:winrt-compiler-plugin:${kotlinWinRtPluginVersion()}"
     }
 }
 

@@ -2,6 +2,29 @@ plugins {
     id("com.vanniktech.maven.publish")
 }
 
+val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")
+
+fun resolveWinRtVersion() = providers
+    .gradleProperty("winrt.baseVersion")
+    .orElse("0.1.0")
+    .zip(
+        providers
+            .environmentVariable("GITHUB_REF_TYPE")
+            .zip(providers.environmentVariable("GITHUB_REF_NAME")) { refType, refName ->
+                if (refType == "tag") refName else ""
+            }
+            .orElse(providers.gradleProperty("winrt.releaseTag").orElse("")),
+    ) { baseVersion, releaseTag ->
+        if (releaseTag.isNotBlank() && releaseTag.matches(releaseTagRegex)) {
+            releaseTag.removePrefix("v")
+        } else {
+            "$baseVersion-SNAPSHOT"
+        }
+    }
+
+group = "io.github.compose-fluent"
+version = resolveWinRtVersion().get()
+
 mavenPublishing {
     publishToMavenCentral()
     // Sign only when a real in-memory key and password are present. GitHub Actions maps
