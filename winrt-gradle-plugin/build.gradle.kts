@@ -4,9 +4,13 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     `java-gradle-plugin`
+    id("build-convention")
+    id("winrt.publish")
 }
 
 apply(plugin = "org.jetbrains.kotlin.jvm")
+
+description = "Gradle plugin for Kotlin WinRT and WinUI projection generation, compiler wiring, and packaging"
 
 java {
     toolchain {
