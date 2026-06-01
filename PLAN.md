@@ -5,7 +5,6 @@
 - [x] `.cswinrt/` is the implementation baseline for runtime, metadata, generator, authoring, projections, packaging evidence, and samples.
 - [x] Keep dependency order: `winrt-runtime` -> `winrt-metadata` -> `winrt-generator` / `winrt-compiler-plugin` -> `winrt-projections` -> `winrt-authoring` -> `winrt-samples`.
 - [x] Tests validate `.cswinrt` parity; do not derive runtime or generator rules from sample failures.
-- [x] Remove the legacy `sample-jvm-winui3` module; any useful WinUI sample behavior must live under `winrt-samples`.
 - [x] Keep Gradle configuration cache and build cache enabled; cache failures are implementation issues to fix, not flags to bypass.
 - [x] Keep `mingwX64` implementation frozen for the current queue. Shared contracts must stay native-viable, but no native actual work starts until the JVM/generator/packaging focus items are closed.
 - [x] Keep codebase slimming frozen until functional completeness is reached. Current work may remove duplication only when that is required to implement a parity slice; do not run deletion-only refactors, source-count targets, module-collapse work, or standalone slimming plans before projection behavior is complete.
