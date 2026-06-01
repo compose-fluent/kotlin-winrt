@@ -176,32 +176,64 @@ internal object XamlSystemProjectionRuntimeHooks {
         if (FeatureSwitches.traceCcw) {
             println("winrt-xaml-metadata: forward slot=$slot")
         }
-        val provider = WinUiXamlMetadataProviderCache.getOrCreate()
-            ?: return KnownHResults.E_NOINTERFACE.value.also {
+        val providers = WinUiXamlMetadataProviderCache.getOrCreateAll()
+        if (providers.isEmpty()) {
+            return KnownHResults.E_NOINTERFACE.value.also {
                 if (FeatureSwitches.traceCcw) {
                     println("winrt-xaml-metadata: provider unavailable hr=$it")
                 }
             }
-        val hr = ComVtableInvoker.invokeArgs(
-            instance = provider.pointer,
-            slot = slot,
-            arg0 = arg0,
-            arg1 = arg1,
-        )
-        if (FeatureSwitches.traceCcw) {
-            println("winrt-xaml-metadata: forward slot=$slot hr=$hr")
         }
-        return hr
+        var lastHr = KnownHResults.E_NOINTERFACE.value
+        for (provider in providers) {
+            if (slot == WinUiXamlMetadataProviderSlots.GetXamlType || slot == WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName) {
+                PlatformAbi.writePointer(arg1, PlatformAbi.nullPointer)
+            }
+            val hr = ComVtableInvoker.invokeArgs(
+                instance = provider.pointer,
+                slot = slot,
+                arg0 = arg0,
+                arg1 = arg1,
+            )
+            lastHr = hr
+            if (HResult(hr).isSuccess && (slot == WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions || !PlatformAbi.isNull(PlatformAbi.readPointer(arg1)))) {
+                if (FeatureSwitches.traceCcw) {
+                    println("winrt-xaml-metadata: forward slot=$slot hr=$hr")
+                }
+                return hr
+            }
+        }
+        if (FeatureSwitches.traceCcw) {
+            println("winrt-xaml-metadata: forward slot=$slot hr=$lastHr")
+        }
+        return lastHr
     }
 
     private object WinUiXamlMetadataProviderCache {
         private val lock = PlatformLock()
-        private var provider: WinUiXamlMetadataProviderReference? = null
+        private var cacheKey: List<String> = emptyList()
+        private var providers: List<WinUiXamlMetadataProviderReference> = emptyList()
 
-        fun getOrCreate(): WinUiXamlMetadataProviderReference? {
-            provider?.let { return it }
+        fun getOrCreateAll(): List<WinUiXamlMetadataProviderReference> {
+            val runtimeClassNames = listOf(WinUiXamlMetadataProvider.providerRuntimeClassName) +
+                WinUiXamlMetadataProviderRegistry.registeredRuntimeClassNames()
+            if (runtimeClassNames == cacheKey) {
+                return providers
+            }
             return lock.withLock {
-                provider ?: WinUiXamlMetadataProvider.tryCreate()?.also { provider = it }
+                if (runtimeClassNames == cacheKey) {
+                    return@withLock providers
+                }
+                providers.forEach { it.close() }
+                providers = runtimeClassNames.mapNotNull { runtimeClassName ->
+                    WinUiXamlMetadataProvider.tryCreate(runtimeClassName).also { provider ->
+                        if (FeatureSwitches.traceCcw) {
+                            println("winrt-xaml-metadata: provider $runtimeClassName available=${provider != null}")
+                        }
+                    }
+                }
+                cacheKey = runtimeClassNames
+                providers
             }
         }
     }

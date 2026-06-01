@@ -35,10 +35,12 @@ object WinUiXamlMetadataProvider {
     private val initializationLock = PlatformLock()
     private var initialized = false
 
-    fun create(): WinUiXamlMetadataProviderReference {
-        val factory = ActivationFactory.get(providerRuntimeClassName)
+    fun create(runtimeClassName: String = providerRuntimeClassName): WinUiXamlMetadataProviderReference {
+        val factory = ActivationFactory.get(runtimeClassName)
         return factory.use { activationFactory ->
-            initialize(activationFactory)
+            if (runtimeClassName == providerRuntimeClassName) {
+                initialize(activationFactory)
+            }
             activationFactory.activateInstance().use { instance ->
                 instance.queryInterface(WinUiXamlInterfaceIds.IXamlMetadataProvider)
                     .getOrThrow()
@@ -53,8 +55,8 @@ object WinUiXamlMetadataProvider {
         }
     }
 
-    fun tryCreate(): WinUiXamlMetadataProviderReference? =
-        runCatching(::create).getOrNull()
+    fun tryCreate(runtimeClassName: String = providerRuntimeClassName): WinUiXamlMetadataProviderReference? =
+        runCatching { create(runtimeClassName) }.getOrNull()
 
     private fun initialize(factory: ActivationFactoryReference) {
         if (initialized) {
@@ -76,5 +78,26 @@ object WinUiXamlMetadataProvider {
                 }
             initialized = true
         }
+    }
+}
+
+object WinUiXamlMetadataProviderRegistry {
+    private val lock = PlatformLock()
+    private val runtimeClassNames = mutableListOf<String>()
+
+    fun register(runtimeClassName: String) {
+        require(runtimeClassName.isNotBlank()) { "XAML metadata provider runtime class name must not be blank." }
+        lock.withLock {
+            if (runtimeClassName !in runtimeClassNames) {
+                runtimeClassNames += runtimeClassName
+            }
+        }
+    }
+
+    fun registeredRuntimeClassNames(): List<String> =
+        lock.withLock { runtimeClassNames.toList() }
+
+    internal fun clearForTests() {
+        lock.withLock { runtimeClassNames.clear() }
     }
 }
