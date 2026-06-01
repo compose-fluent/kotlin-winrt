@@ -140,6 +140,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val skipObjectContent = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipObjectContent")
         val skipSettingsCard = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipSettingsCard")
         val skipShimmer = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipShimmer")
+        val enableShimmerLoading = java.lang.Boolean.getBoolean("kotlin.winrt.samples.enableShimmerLoading")
+        val skipShimmerSizing = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipShimmerSizing")
         println("winui-controls: create StackPanel")
         val root = StackPanel()
         println("winui-controls: set StackPanel padding")
@@ -218,9 +220,13 @@ class WinUiControlsApp : Application(), AutoCloseable {
         if (!skipShimmer) {
             println("winui-controls: add WinUIEssential Shimmer")
             rootChildren.add(Shimmer().apply {
-                isLoading = true
-                width = 320.0
-                height = 56.0
+                if (enableShimmerLoading) {
+                    isLoading = true
+                }
+                if (!skipShimmerSizing) {
+                    width = 320.0
+                    height = 56.0
+                }
                 if (!skipObjectContent) {
                     content = TextBlock().apply {
                         text = "Loading projected WinUI content"
