@@ -7,7 +7,7 @@ plugins {
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRt.samples.winUIEssentialVersion")
-    .orElse("1.4.2")
+    .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRt.samples.nugetGlobalPackagesRoot")
 
 kotlin {
@@ -131,6 +131,14 @@ tasks.named<JavaExec>("run") {
     systemProperty(
         "kotlin.winrt.samples.skipShimmer",
         providers.systemProperty("kotlin.winrt.samples.skipShimmer").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.enableShimmerLoading",
+        providers.systemProperty("kotlin.winrt.samples.enableShimmerLoading").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipShimmerSizing",
+        providers.systemProperty("kotlin.winrt.samples.skipShimmerSizing").orElse("false").get(),
     )
     systemProperty(
         "kotlin.winrt.samples.skipMica",
