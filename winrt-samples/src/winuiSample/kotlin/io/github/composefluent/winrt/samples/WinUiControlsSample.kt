@@ -3,6 +3,8 @@ package io.github.composefluent.winrt.samples
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.ActivationFactory
+import io.github.composefluent.winrt.runtime.WinUiXamlResourceDictionaryRegistry
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
@@ -129,11 +131,25 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")
         mergedDictionaries.add(controlsResources)
+        installComponentXamlResources(mergedDictionaries)
         println("winui-controls: install resources done")
     }
 
     private fun loadXamlControlsResources(): ResourceDictionary {
         return XamlControlsResources()
+    }
+
+    private fun installComponentXamlResources(mergedDictionaries: MutableList<ResourceDictionary>) {
+        WinUiXamlResourceDictionaryRegistry.registeredRuntimeClassNames().forEach { runtimeClassName ->
+            val dictionary = runCatching {
+                ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(runtimeClassName))
+            }.getOrElse { error ->
+                println("winui-controls: skip component XAML resources $runtimeClassName: ${error.message}")
+                return@forEach
+            }
+            mergedDictionaries.add(dictionary)
+            println("winui-controls: install component XAML resources $runtimeClassName")
+        }
     }
 
     private fun createControlsSurface(): UIElement {
@@ -265,13 +281,9 @@ class WinUiControlsApp : Application(), AutoCloseable {
     private fun applyLoadedShimmerLoading(shimmer: Shimmer) {
         println("winui-controls: apply WinUIEssential Shimmer loading after Loaded")
         shimmer.applyTemplate()
-        val container = shimmer.findName("Container")
-        if (container == null) {
-            println("winui-controls: skip WinUIEssential Shimmer loading because template Container is unavailable")
-            return
-        }
         shimmer.updateLayout()
         shimmer.isLoading = true
+        println("winui-controls: applied WinUIEssential Shimmer loading")
     }
 
     private fun exitAfterDeferredShimmerLoadingIfReady() {

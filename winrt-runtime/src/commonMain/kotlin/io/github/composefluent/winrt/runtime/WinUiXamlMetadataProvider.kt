@@ -120,3 +120,43 @@ object WinUiXamlMetadataProviderRegistry {
         runtimeAssetProvidersLoaded = true
     }
 }
+
+object WinUiXamlResourceDictionaryRegistry {
+    private val lock = PlatformLock()
+    private val runtimeClassNames = mutableListOf<String>()
+    private var runtimeAssetDictionariesLoaded = false
+
+    fun register(runtimeClassName: String) {
+        require(runtimeClassName.isNotBlank()) { "XAML resource dictionary runtime class name must not be blank." }
+        lock.withLock {
+            if (runtimeClassName !in runtimeClassNames) {
+                runtimeClassNames += runtimeClassName
+            }
+        }
+    }
+
+    fun registeredRuntimeClassNames(): List<String> =
+        lock.withLock {
+            loadRuntimeAssetDictionaries()
+            runtimeClassNames.toList()
+        }
+
+    internal fun clearForTests() {
+        lock.withLock {
+            runtimeClassNames.clear()
+            runtimeAssetDictionariesLoaded = false
+        }
+    }
+
+    private fun loadRuntimeAssetDictionaries() {
+        if (runtimeAssetDictionariesLoaded) {
+            return
+        }
+        WinUiXamlResourceDictionaryRuntimeAssets.loadResourceDictionaryRuntimeClassNames().forEach { runtimeClassName ->
+            if (runtimeClassName !in runtimeClassNames) {
+                runtimeClassNames += runtimeClassName
+            }
+        }
+        runtimeAssetDictionariesLoaded = true
+    }
+}
