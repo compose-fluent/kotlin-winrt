@@ -281,16 +281,6 @@ internal val WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME = ClassName("io.github.
 internal val WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtDataErrorsChangedEventArgs")
 internal val WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtDataErrorsChangedHandler")
 internal val WINRT_SERVICE_PROVIDER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtServiceProvider")
-internal val WINRT_POINT_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Point")
-internal val WINRT_SIZE_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Size")
-internal val WINRT_RECT_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Rect")
-internal val WINRT_VECTOR2_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Vector2")
-internal val WINRT_VECTOR3_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Vector3")
-internal val WINRT_VECTOR4_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Vector4")
-internal val WINRT_QUATERNION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Quaternion")
-internal val WINRT_MATRIX3X2_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Matrix3x2")
-internal val WINRT_MATRIX4X4_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Matrix4x4")
-internal val WINRT_PLANE_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "Plane")
 internal val WINRT_ATTRIBUTE_USAGE_CLASS_NAME = WinRtAttributeUsage::class.asClassName()
 internal val WINRT_CONTRACT_VERSION_CLASS_NAME = WinRtContractVersion::class.asClassName()
 internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRtDefaultOverload::class.asClassName()
@@ -562,26 +552,6 @@ internal data class KotlinProjectionIntegralAbiDescriptor(
     val literalRenderer: (ULong) -> CodeBlock,
 )
 
-private fun runtimeStructMappedType(
-    abiQualifiedName: String,
-    typeName: ClassName,
-    sizeBytes: Int,
-    descriptionName: String = abiQualifiedName.substringAfterLast('.'),
-): KotlinProjectionMappedType =
-    KotlinProjectionMappedType(
-        abiQualifiedName,
-        { typeName },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(
-            helperTypeName = typeName.nestedClass("Metadata"),
-            sizeBytes = sizeBytes.toLong(),
-            fromAbiFunctionName = "fromAbi",
-            copyToFunctionName = "copyTo",
-        ),
-        runtimeOwnedProjection = true,
-        descriptionName = descriptionName,
-    )
-
 /**
  * `.cswinrt/src/cswinrt/helpers.h` converges mapped WinRT type decisions through `mapped_type` plus
  * `get_mapped_type(...)`. Keep Kotlin projection planning on the same ownership model instead of
@@ -652,9 +622,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         simpleAbiLookup = true,
         descriptionName = "EventRegistrationToken",
     ),
-    runtimeStructMappedType("Windows.Foundation.Point", WINRT_POINT_CLASS_NAME, 8),
-    runtimeStructMappedType("Windows.Foundation.Size", WINRT_SIZE_CLASS_NAME, 8),
-    runtimeStructMappedType("Windows.Foundation.Rect", WINRT_RECT_CLASS_NAME, 16),
     KotlinProjectionMappedType(
         "Windows.Foundation.HResult",
         { EXCEPTION_CLASS_NAME },
@@ -706,13 +673,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         simpleAbiLookup = true,
         descriptionName = "IReferenceArray",
     ),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Matrix3x2", WINRT_MATRIX3X2_CLASS_NAME, 24),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Matrix4x4", WINRT_MATRIX4X4_CLASS_NAME, 64),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Plane", WINRT_PLANE_CLASS_NAME, 16),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Quaternion", WINRT_QUATERNION_CLASS_NAME, 16),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Vector2", WINRT_VECTOR2_CLASS_NAME, 8),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Vector3", WINRT_VECTOR3_CLASS_NAME, 12),
-    runtimeStructMappedType("Windows.Foundation.Numerics.Vector4", WINRT_VECTOR4_CLASS_NAME, 16),
     KotlinProjectionMappedType(
         "Windows.Foundation.Collections.IIterable",
         projectedTypeResolver = { arguments -> Iterable::class.asClassName().parameterizedBy(arguments) },

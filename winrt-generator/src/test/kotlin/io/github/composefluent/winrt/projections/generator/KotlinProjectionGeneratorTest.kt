@@ -7780,12 +7780,12 @@ class KotlinProjectionGeneratorTest {
         if (contents.contains("_iAdvancedColorInfoProjection")) {
             assertTrue(contents, contents.contains("_iAdvancedColorInfoProjection.redPrimary"))
         } else {
-            assertTrue(contents, contents.contains("import io.github.composefluent.winrt.runtime.Point"))
+            assertTrue(contents, contents.contains("import windows.foundation.Point"))
             assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, 8L)"))
             assertTrue(contents, contents.contains("val __result = Point.Metadata.fromAbi(__resultOut)"))
             assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
         }
-        assertFalse(filesByName.containsKey("Point.kt"))
+        assertTrue(filesByName.containsKey("Point.kt"))
     }
 
     @Test
@@ -10784,8 +10784,8 @@ class KotlinProjectionGeneratorTest {
 
         val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
 
-        assertFalse(filesByName.containsKey("Point.kt"))
-        assertFalse(filesByName.containsKey("Vector3.kt"))
+        assertTrue(filesByName.getValue("Point.kt").contents.contains("package windows.foundation"))
+        assertTrue(filesByName.getValue("Vector3.kt").contents.contains("package windows.foundation.numerics"))
         assertTrue(filesByName.getValue("Color.kt").contents.contains("public class Color("))
         assertTrue(filesByName.getValue("CornerRadius.kt").contents.contains("public class CornerRadius("))
         val durationContents = filesByName.getValue("Duration.kt").contents
@@ -10807,14 +10807,8 @@ class KotlinProjectionGeneratorTest {
         assertFalse(filesByName.containsKey("KeyTimeHelper.kt"))
         assertFalse(filesByName.containsKey("Matrix3DHelper.kt"))
         assertFalse(filesByName.containsKey("IXamlServiceProvider.kt"))
-        assertEquals("Point", mappedTypeByAbiName("Windows.Foundation.Point")?.descriptionName)
-        assertEquals("Vector3", mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3")?.descriptionName)
-        assertEquals(WINRT_POINT_CLASS_NAME, mappedTypeByAbiName("Windows.Foundation.Point")?.projectedTypeResolver?.invoke(emptyList()))
-        assertEquals(WINRT_VECTOR3_CLASS_NAME, mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3")?.projectedTypeResolver?.invoke(emptyList()))
-        assertEquals(8L, mappedTypeByAbiName("Windows.Foundation.Point")?.customStructAbi?.sizeBytes)
-        assertEquals(12L, mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3")?.customStructAbi?.sizeBytes)
-        assertEquals(WINRT_POINT_CLASS_NAME.nestedClass("Metadata"), mappedTypeByAbiName("Windows.Foundation.Point")?.customStructAbi?.helperTypeName)
-        assertEquals(WINRT_VECTOR3_CLASS_NAME.nestedClass("Metadata"), mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3")?.customStructAbi?.helperTypeName)
+        assertEquals(null, mappedTypeByAbiName("Windows.Foundation.Point"))
+        assertEquals(null, mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3"))
         assertEquals(null, mappedTypeByAbiName("Windows.UI.Color"))
         assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.CornerRadius"))
         assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Duration"))
