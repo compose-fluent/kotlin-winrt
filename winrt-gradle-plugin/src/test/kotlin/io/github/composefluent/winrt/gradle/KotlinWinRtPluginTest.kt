@@ -1793,6 +1793,11 @@ class KotlinWinRtPluginTest {
                     runtimeClassName = "WinUI3Package.Shimmer",
                     interfaceNames = listOf("WinUI3Package.IShimmer"),
                 ),
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "WinUI3Package.Shimmer_Resource",
+                    baseRuntimeClassName = "Microsoft.UI.Xaml.ResourceDictionary",
+                    interfaceNames = listOf("Microsoft.UI.Xaml.IResourceDictionary"),
+                ),
             ),
             outputFile = nativeRoot.resolve("WinUI3Package.winmd"),
         )
@@ -1822,6 +1827,10 @@ class KotlinWinRtPluginTest {
             task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
         )
         assertEquals(listOf("WinUI3Package.XamlMetaDataProvider"), providers)
+        val resourceDictionaries = Files.readAllLines(
+            task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlResourceDictionariesFileName),
+        )
+        assertEquals(listOf("WinUI3Package.Shimmer_Resource"), resourceDictionaries)
 
         val registration = Files.readString(
             task.outputDirectory.get().asFile.toPath()
@@ -1830,6 +1839,7 @@ class KotlinWinRtPluginTest {
         assertTrue(registration.contains("<Path>WinUI3Package.dll</Path>"))
         assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.XamlMetaDataProvider""""))
         assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.Shimmer""""))
+        assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.Shimmer_Resource""""))
     }
 
     @Test

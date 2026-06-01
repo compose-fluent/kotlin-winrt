@@ -272,8 +272,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 outputRoot,
             )
         }
-        stageXamlMetadataProviderManifest(outputRoot)
         stageGeneratedComponentRegistrations(outputRoot)
+        stageXamlMetadataProviderManifest(outputRoot)
+        stageXamlResourceDictionaryManifest(outputRoot)
         generateProjectPri(outputRoot)
     }
 
@@ -459,6 +460,44 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             type.name == "XamlMetadataProvider" ||
             type.qualifiedName.endsWith(".XamlTypeInfo.XamlMetaDataProvider") ||
             type.qualifiedName.endsWith("_XamlTypeInfo.XamlMetaDataProvider")
+    }
+
+    private fun stageXamlResourceDictionaryManifest(outputRoot: Path) {
+        val dictionaries = Files.walk(outputRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() && it.name.endsWith(".winmd", ignoreCase = true) }
+                .flatMap { winmd -> discoverXamlResourceDictionaries(winmd).asSequence() }
+                .distinct()
+                .sorted()
+                .toList()
+        }
+        if (dictionaries.isEmpty()) {
+            return
+        }
+        Files.writeString(
+            outputRoot.resolve(WinUiRuntimeAssetManifests.xamlResourceDictionariesFileName),
+            dictionaries.joinToString(separator = System.lineSeparator(), postfix = System.lineSeparator()),
+        )
+    }
+
+    private fun discoverXamlResourceDictionaries(winmd: Path): List<String> =
+        runCatching {
+            WinRtMetadataLoader.load(winmd)
+                .namespaces
+                .flatMap { namespace -> namespace.types }
+                .filter(::isXamlResourceDictionaryType)
+                .map(WinRtTypeDefinition::qualifiedName)
+        }.getOrElse { error ->
+            logger.warn("Skipping XAML resource dictionary discovery for ${winmd.fileName}: ${error.message}")
+            emptyList()
+        }
+
+    private fun isXamlResourceDictionaryType(type: WinRtTypeDefinition): Boolean {
+        if (type.kind != WinRtTypeKind.RuntimeClass) {
+            return false
+        }
+        return type.baseTypeName == "Microsoft.UI.Xaml.ResourceDictionary" ||
+            type.baseTypeName == "Windows.UI.Xaml.ResourceDictionary"
     }
 
     private fun stageGeneratedComponentRegistrations(outputRoot: Path) {
