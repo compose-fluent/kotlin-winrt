@@ -1,6 +1,10 @@
 package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageIdentity
+import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -268,6 +272,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 outputRoot,
             )
         }
+        stageXamlMetadataProviderManifest(outputRoot)
+        stageGeneratedComponentRegistrations(outputRoot)
         generateProjectPri(outputRoot)
     }
 
@@ -410,6 +416,116 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 }
         }
     }
+
+    private fun stageXamlMetadataProviderManifest(outputRoot: Path) {
+        val providers = Files.walk(outputRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() && it.name.endsWith(".winmd", ignoreCase = true) }
+                .flatMap { winmd -> discoverXamlMetadataProviders(winmd).asSequence() }
+                .filterNot { it == "Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider" }
+                .distinct()
+                .sorted()
+                .toList()
+        }
+        if (providers.isEmpty()) {
+            return
+        }
+        Files.writeString(
+            outputRoot.resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
+            providers.joinToString(separator = System.lineSeparator(), postfix = System.lineSeparator()),
+        )
+    }
+
+    private fun discoverXamlMetadataProviders(winmd: Path): List<String> =
+        runCatching {
+            WinRtMetadataLoader.load(winmd)
+                .namespaces
+                .flatMap { namespace -> namespace.types }
+                .filter(::isXamlMetadataProviderType)
+                .map(WinRtTypeDefinition::qualifiedName)
+        }.getOrElse { error ->
+            logger.warn("Skipping XAML metadata provider discovery for ${winmd.fileName}: ${error.message}")
+            emptyList()
+        }
+
+    private fun isXamlMetadataProviderType(type: WinRtTypeDefinition): Boolean {
+        if (type.kind != WinRtTypeKind.RuntimeClass) {
+            return false
+        }
+        return type.implementedInterfaces.any { implementation ->
+            implementation.interfaceName == "Microsoft.UI.Xaml.Markup.IXamlMetadataProvider" ||
+                implementation.interfaceName == "Windows.UI.Xaml.Markup.IXamlMetadataProvider"
+        } || type.name == "XamlMetaDataProvider" ||
+            type.name == "XamlMetadataProvider" ||
+            type.qualifiedName.endsWith(".XamlTypeInfo.XamlMetaDataProvider") ||
+            type.qualifiedName.endsWith("_XamlTypeInfo.XamlMetaDataProvider")
+    }
+
+    private fun stageGeneratedComponentRegistrations(outputRoot: Path) {
+        Files.walk(outputRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() && it.name.endsWith(".winmd", ignoreCase = true) }
+                .mapNotNull { winmd -> generatedRegistrationForWinmd(outputRoot, winmd) }
+                .forEach { registration ->
+                    val output = outputRoot
+                        .resolve("registrations")
+                        .resolve("generated")
+                        .resolve(registration.dllFileName.removeSuffix(".dll"))
+                        .resolve("LiftedWinRTClassRegistrations.xml")
+                    Files.createDirectories(output.parent)
+                    Files.writeString(output, renderLiftedRegistration(registration))
+                }
+        }
+    }
+
+    private fun generatedRegistrationForWinmd(outputRoot: Path, winmd: Path): ComponentRegistration? {
+        val dllFileName = "${winmd.name.substringBeforeLast('.')}.dll"
+        if (!outputRoot.resolve(dllFileName).isRegularFile()) {
+            return null
+        }
+        val classes = runCatching {
+            WinRtMetadataLoader.load(winmd)
+                .namespaces
+                .flatMap { namespace -> namespace.types }
+                .filter { type -> type.kind == WinRtTypeKind.RuntimeClass }
+                .map(WinRtTypeDefinition::qualifiedName)
+                .filterNot { className -> className.startsWith("Microsoft.") || className.startsWith("Windows.") }
+                .distinct()
+                .sorted()
+        }.getOrElse { error ->
+            logger.warn("Skipping WinRT activatable class registration discovery for ${winmd.fileName}: ${error.message}")
+            emptyList()
+        }
+        return classes.takeIf(List<String>::isNotEmpty)?.let { ComponentRegistration(dllFileName, it) }
+    }
+
+    private fun renderLiftedRegistration(registration: ComponentRegistration): String =
+        buildString {
+            appendLine("""<?xml version="1.0" encoding="utf-8"?>""")
+            appendLine("""<Registrations xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">""")
+            appendLine("  <Extension Category=\"windows.activatableClass.inProcessServer\">")
+            appendLine("    <InProcessServer>")
+            appendLine("      <Path>${escapeXml(registration.dllFileName)}</Path>")
+            registration.classNames.forEach { className ->
+                appendLine("""      <ActivatableClass ActivatableClassId="${escapeXml(className)}" ThreadingModel="both" />""")
+            }
+            appendLine("    </InProcessServer>")
+            appendLine("  </Extension>")
+            appendLine("</Registrations>")
+        }
+
+    private data class ComponentRegistration(
+        val dllFileName: String,
+        val classNames: List<String>,
+    )
+
+    private fun escapeXml(value: String): String =
+        value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
 
     private fun generateProjectPri(outputRoot: Path) {
         if (!generateProjectPri.get() || !isWindowsHost()) {

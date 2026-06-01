@@ -84,6 +84,7 @@ object WinUiXamlMetadataProvider {
 object WinUiXamlMetadataProviderRegistry {
     private val lock = PlatformLock()
     private val runtimeClassNames = mutableListOf<String>()
+    private var runtimeAssetProvidersLoaded = false
 
     fun register(runtimeClassName: String) {
         require(runtimeClassName.isNotBlank()) { "XAML metadata provider runtime class name must not be blank." }
@@ -95,9 +96,27 @@ object WinUiXamlMetadataProviderRegistry {
     }
 
     fun registeredRuntimeClassNames(): List<String> =
-        lock.withLock { runtimeClassNames.toList() }
+        lock.withLock {
+            loadRuntimeAssetProviders()
+            runtimeClassNames.toList()
+        }
 
     internal fun clearForTests() {
-        lock.withLock { runtimeClassNames.clear() }
+        lock.withLock {
+            runtimeClassNames.clear()
+            runtimeAssetProvidersLoaded = false
+        }
+    }
+
+    private fun loadRuntimeAssetProviders() {
+        if (runtimeAssetProvidersLoaded) {
+            return
+        }
+        WinUiXamlMetadataProviderRuntimeAssets.loadProviderRuntimeClassNames().forEach { runtimeClassName ->
+            if (runtimeClassName !in runtimeClassNames) {
+                runtimeClassNames += runtimeClassName
+            }
+        }
+        runtimeAssetProvidersLoaded = true
     }
 }
