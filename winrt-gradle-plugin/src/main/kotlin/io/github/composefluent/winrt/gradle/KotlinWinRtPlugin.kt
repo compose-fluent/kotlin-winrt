@@ -9,6 +9,7 @@ import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.distribution.DistributionContainer
@@ -1026,9 +1027,12 @@ private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
                         kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
                     )
                 }
-                if (kotlinWinRtCodeSourceFile(com.squareup.kotlinpoet.ClassName::class.java) == null) {
-                    project.dependencies.add(configuration.name, "com.squareup:kotlinpoet:1.18.1")
-                }
+                project.dependencies.add(
+                    configuration.name,
+                    project.dependencies.create("com.squareup:kotlinpoet-jvm:1.18.1").also { dependency ->
+                        (dependency as? ExternalModuleDependency)?.isTransitive = false
+                    },
+                )
             },
     )
 
@@ -1095,7 +1099,6 @@ private fun kotlinWinRtLocalGeneratorWorkerClasspath(project: Project): List<Fil
         kotlinWinRtCodeSourceFile(Guid::class.java),
         kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java),
         kotlinWinRtCodeSourceFile(KotlinProjectionGenerator::class.java),
-        kotlinWinRtCodeSourceFile(com.squareup.kotlinpoet.ClassName::class.java),
     )
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
         .filter { file -> file.exists() }

@@ -82,8 +82,73 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun generation_worker_uses_isolated_kotlinpoet_when_buildscript_classpath_contains_older_kotlinpoet() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-generator-isolation-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-generator-isolation-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            buildscript {
+                repositories {
+                    mavenCentral()
+                }
+                dependencies {
+                    classpath("com.squareup:kotlinpoet:1.3.0")
+                }
+            }
+
+            plugins {
+                id("io.github.composefluent.winrt")
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRtProjections", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertTrue(result.output.contains("kotlin-winrt generator worker runtime: KotlinPoet="))
+        assertTrue(result.output.contains("1.18.1"))
+        assertFalse(result.output.contains("kotlinpoet/1.3.0"))
+    }
+
+    @Test
     fun plugin_wires_extension_inputs_to_generation_task() {
         val project = ProjectBuilder.builder().build()
+        project.repositories.mavenCentral()
         val nugetPackageRoot = project.projectDir
             .toPath()
             .resolve("nuget-cache/microsoft.windowsappsdk/1.8.260416003")
@@ -161,9 +226,10 @@ class KotlinWinRtPluginTest {
         assertTrue(generatorWorkerConfiguration.isCanBeResolved)
         assertFalse(generatorWorkerConfiguration.isCanBeConsumed)
         val generatorWorkerDependencyNames = generatorWorkerConfiguration.dependencies.mapTo(mutableSetOf()) { it.name }
-        val publishedWorkerDependencyNames = setOf("winrt-runtime", "winrt-metadata", "winrt-generator", "kotlinpoet")
+        assertTrue("kotlinpoet-jvm" in generatorWorkerDependencyNames)
+        val publishedWorkerDependencyNames = setOf("winrt-runtime", "winrt-metadata", "winrt-generator")
         if (generatorWorkerDependencyNames.any { it in publishedWorkerDependencyNames }) {
-            assertEquals(publishedWorkerDependencyNames, generatorWorkerDependencyNames)
+            assertEquals(publishedWorkerDependencyNames + "kotlinpoet-jvm", generatorWorkerDependencyNames)
         } else {
             val generatorCodeSource = KotlinProjectionGenerator::class.java.protectionDomain.codeSource.location
                 .toURI()
