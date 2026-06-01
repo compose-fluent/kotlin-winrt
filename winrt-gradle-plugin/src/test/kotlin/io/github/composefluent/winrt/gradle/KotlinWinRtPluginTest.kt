@@ -181,6 +181,52 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun generation_task_includes_component_xaml_resource_dictionaries_when_resource_dictionary_is_projected() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "ResourceDictionary",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "WinUI3Package",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "WinUI3Package",
+                            name = "Shimmer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "WinUI3Package",
+                            name = "Shimmer_Resource",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Microsoft.UI.Xaml.ResourceDictionary",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("WinUI3Package.Shimmer_Resource"),
+            automaticXamlComponentResourceDictionaryTypes(
+                model,
+                setOf("Microsoft.UI.Xaml.ResourceDictionary", "WinUI3Package.Shimmer"),
+            ),
+        )
+        assertEquals(
+            emptyList<String>(),
+            automaticXamlComponentResourceDictionaryTypes(model, setOf("WinUI3Package.Shimmer")),
+        )
+    }
+
+    @Test
     fun generation_task_uses_gradle_jar_archive_name_for_authoring_target_artifact() {
         val project = ProjectBuilder.builder().withName("mapped-component").build()
         project.version = "1.2.3"
@@ -1827,11 +1873,6 @@ class KotlinWinRtPluginTest {
             task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
         )
         assertEquals(listOf("WinUI3Package.XamlMetaDataProvider"), providers)
-        val resourceDictionaries = Files.readAllLines(
-            task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlResourceDictionariesFileName),
-        )
-        assertEquals(listOf("WinUI3Package.Shimmer_Resource"), resourceDictionaries)
-
         val registration = Files.readString(
             task.outputDirectory.get().asFile.toPath()
                 .resolve("registrations/generated/WinUI3Package/LiftedWinRTClassRegistrations.xml"),

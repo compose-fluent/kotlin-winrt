@@ -8,11 +8,6 @@ internal actual object WinUiXamlMetadataProviderRuntimeAssets {
     }
 }
 
-internal actual object WinUiXamlResourceDictionaryRuntimeAssets {
-    actual fun loadResourceDictionaryRuntimeClassNames(): List<String> =
-        loadRuntimeClassNames(WinUiRuntimeAssetManifests.xamlResourceDictionariesFileName)
-}
-
 private fun loadRuntimeClassNames(fileName: String): List<String> {
     val manifest = WinRtRuntimeAssets.resolveAssetPath(fileName) ?: return emptyList()
     return Files.readAllLines(manifest)
