@@ -3,10 +3,13 @@ package io.github.composefluent.winrt.gradle
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtNamespace
+import io.github.composefluent.winrt.metadata.WinRtAuthoredRuntimeClassDescriptor
+import io.github.composefluent.winrt.metadata.WinRtPortableExecutableMetadataWriter
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
+import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.testfixtures.ProjectBuilder
@@ -1757,6 +1760,76 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xaml")))
+    }
+
+    @Test
+    fun runtime_assets_task_discovers_xaml_metadata_providers_from_cpp_winui_package_winmd() {
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.cppwinui").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.CppWinUI.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.CppWinUI</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        val nativeRoot = packageRoot.resolve("lib/native/Release/x64")
+        Files.createDirectories(nativeRoot)
+        Files.writeString(nativeRoot.resolve("WinUI3Package.dll"), "dll")
+        WinRtPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "WinUI3Package",
+            runtimeClasses = listOf(
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "WinUI3Package.XamlMetaDataProvider",
+                    interfaceNames = listOf("Microsoft.UI.Xaml.Markup.IXamlMetadataProvider"),
+                ),
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "WinUI3Package.Shimmer",
+                    interfaceNames = listOf("WinUI3Package.IShimmer"),
+                ),
+            ),
+            outputFile = nativeRoot.resolve("WinUI3Package.winmd"),
+        )
+
+        val task = project.tasks.register(
+            "stageCppWinUiNativeAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("cppwinui-assets"))
+            registeredTask.nugetPackages.set(listOf("Sample.CppWinUI@1.0.0"))
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        val providers = Files.readAllLines(
+            task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
+        )
+        assertEquals(listOf("WinUI3Package.XamlMetaDataProvider"), providers)
+
+        val registration = Files.readString(
+            task.outputDirectory.get().asFile.toPath()
+                .resolve("registrations/generated/WinUI3Package/LiftedWinRTClassRegistrations.xml"),
+        )
+        assertTrue(registration.contains("<Path>WinUI3Package.dll</Path>"))
+        assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.XamlMetaDataProvider""""))
+        assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.Shimmer""""))
     }
 
     @Test
