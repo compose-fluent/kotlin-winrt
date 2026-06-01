@@ -125,6 +125,14 @@ tasks.named<JavaExec>("run") {
         providers.systemProperty("kotlin.winrt.samples.skipObjectContent").orElse("false").get(),
     )
     systemProperty(
+        "kotlin.winrt.samples.skipSettingsCard",
+        providers.systemProperty("kotlin.winrt.samples.skipSettingsCard").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipShimmer",
+        providers.systemProperty("kotlin.winrt.samples.skipShimmer").orElse("false").get(),
+    )
+    systemProperty(
         "kotlin.winrt.samples.skipMica",
         providers.systemProperty("kotlin.winrt.samples.skipMica").orElse("false").get(),
     )

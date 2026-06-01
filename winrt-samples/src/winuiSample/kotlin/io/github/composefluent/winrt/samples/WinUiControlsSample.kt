@@ -138,6 +138,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
 
     private fun createControlsSurface(): UIElement {
         val skipObjectContent = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipObjectContent")
+        val skipSettingsCard = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipSettingsCard")
+        val skipShimmer = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipShimmer")
         println("winui-controls: create StackPanel")
         val root = StackPanel()
         println("winui-controls: set StackPanel padding")
@@ -201,27 +203,31 @@ class WinUiControlsApp : Application(), AutoCloseable {
                 content = "Apply"
             }
         })
-        println("winui-controls: add WinUIEssential SettingsCard")
-        rootChildren.add(SettingsCard().apply {
-            header = "WinUIEssential SettingsCard"
-            description = "Projected from WinUIEssential.WinUI3"
-            if (!skipObjectContent) {
-                content = ToggleSwitch().apply {
-                    isOn = true
+        if (!skipSettingsCard) {
+            println("winui-controls: add WinUIEssential SettingsCard")
+            rootChildren.add(SettingsCard().apply {
+                header = "WinUIEssential SettingsCard"
+                description = "Projected from WinUIEssential.WinUI3"
+                if (!skipObjectContent) {
+                    content = ToggleSwitch().apply {
+                        isOn = true
+                    }
                 }
-            }
-        })
-        println("winui-controls: add WinUIEssential Shimmer")
-        rootChildren.add(Shimmer().apply {
-            isLoading = true
-            width = 320.0
-            height = 56.0
-            if (!skipObjectContent) {
-                content = TextBlock().apply {
-                    text = "Loading projected WinUI content"
+            })
+        }
+        if (!skipShimmer) {
+            println("winui-controls: add WinUIEssential Shimmer")
+            rootChildren.add(Shimmer().apply {
+                isLoading = true
+                width = 320.0
+                height = 56.0
+                if (!skipObjectContent) {
+                    content = TextBlock().apply {
+                        text = "Loading projected WinUI content"
+                    }
                 }
-            }
-        })
+            })
+        }
 
         return root
     }
