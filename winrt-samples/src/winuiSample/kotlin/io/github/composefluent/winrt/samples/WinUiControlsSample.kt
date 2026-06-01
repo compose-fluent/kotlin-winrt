@@ -63,6 +63,7 @@ object WinUiControlsSample {
 
 class WinUiControlsApp : Application(), AutoCloseable {
     private var myWindow: Window? = null
+    private val deferredLoadingShimmers = mutableListOf<Shimmer>()
 
     fun launchWithResources(): WinUiControlsSampleResult {
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipXamlResources")) {
@@ -98,6 +99,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
         myWindow = window
         window.activate()
         println("winui-controls: window activated native")
+        applyDeferredShimmerLoading()
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
             checkNotNull(Application.current) { "Expected current WinUI application before auto-exit." }.exit()
         }
@@ -142,6 +144,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val skipShimmer = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipShimmer")
         val enableShimmerLoading = java.lang.Boolean.getBoolean("kotlin.winrt.samples.enableShimmerLoading")
         val skipShimmerSizing = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipShimmerSizing")
+        deferredLoadingShimmers.clear()
         println("winui-controls: create StackPanel")
         val root = StackPanel()
         println("winui-controls: set StackPanel padding")
@@ -221,7 +224,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
             println("winui-controls: add WinUIEssential Shimmer")
             rootChildren.add(Shimmer().apply {
                 if (enableShimmerLoading) {
-                    isLoading = true
+                    deferredLoadingShimmers.add(this)
                 }
                 if (!skipShimmerSizing) {
                     width = 320.0
@@ -236,6 +239,20 @@ class WinUiControlsApp : Application(), AutoCloseable {
         }
 
         return root
+    }
+
+    private fun applyDeferredShimmerLoading() {
+        if (deferredLoadingShimmers.isEmpty()) {
+            return
+        }
+        deferredLoadingShimmers.forEach { shimmer ->
+            println("winui-controls: apply WinUIEssential Shimmer loading after template")
+            shimmer.applyTemplate()
+            shimmer.findName("Container")
+            shimmer.updateLayout()
+            shimmer.isLoading = true
+        }
+        deferredLoadingShimmers.clear()
     }
 
     private fun label(text: String): TextBlock =
