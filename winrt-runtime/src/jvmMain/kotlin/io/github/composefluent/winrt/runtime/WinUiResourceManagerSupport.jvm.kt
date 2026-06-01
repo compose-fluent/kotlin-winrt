@@ -106,6 +106,7 @@ object WinUiResourceManagerSupport {
 
     internal fun preferredPriPath(runtimeAssetsRoot: Path): Path? =
         listOf(
+            runtimeAssetsRoot.resolve("resources.pri"),
             runtimeAssetsRoot.resolve("Microsoft.UI.pri"),
             runtimeAssetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri"),
         ).firstOrNull(Files::isRegularFile)

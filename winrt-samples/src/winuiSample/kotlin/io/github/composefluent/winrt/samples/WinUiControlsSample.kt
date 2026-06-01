@@ -1,11 +1,12 @@
 package io.github.composefluent.winrt.samples
 
+import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinRtUri
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
+import microsoft.ui.xaml.RoutedEventHandler
 import microsoft.ui.xaml.Thickness
 import microsoft.ui.xaml.UIElement
 import microsoft.ui.xaml.Window
@@ -64,6 +65,7 @@ object WinUiControlsSample {
 class WinUiControlsApp : Application(), AutoCloseable {
     private var myWindow: Window? = null
     private val deferredLoadingShimmers = mutableListOf<Shimmer>()
+    private val deferredLoadingShimmerTokens = mutableMapOf<Shimmer, EventRegistrationToken>()
 
     fun launchWithResources(): WinUiControlsSampleResult {
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipXamlResources")) {
@@ -73,6 +75,11 @@ class WinUiControlsApp : Application(), AutoCloseable {
     }
 
     override fun close() {
+        deferredLoadingShimmerTokens.forEach { (shimmer, token) ->
+            runCatching { shimmer.removeLoaded(token) }
+        }
+        deferredLoadingShimmerTokens.clear()
+        deferredLoadingShimmers.clear()
         myWindow = null
     }
 
@@ -99,8 +106,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
         myWindow = window
         window.activate()
         println("winui-controls: window activated native")
-        applyDeferredShimmerLoading()
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+        val pendingDeferredLoading = applyDeferredShimmerLoading()
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi") && !pendingDeferredLoading) {
             checkNotNull(Application.current) { "Expected current WinUI application before auto-exit." }.exit()
         }
 
@@ -122,21 +129,12 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")
         mergedDictionaries.add(controlsResources)
-        println("winui-controls: install WinUIEssential SettingsCard resources")
-        mergedDictionaries.add(resourceDictionary("ms-appx:///WinUI3Package/SettingsCard_Resource.xaml"))
-        println("winui-controls: install WinUIEssential Shimmer resources")
-        mergedDictionaries.add(resourceDictionary("ms-appx:///WinUI3Package/Shimmer_Resource.xaml"))
         println("winui-controls: install resources done")
     }
 
     private fun loadXamlControlsResources(): ResourceDictionary {
         return XamlControlsResources()
     }
-
-    private fun resourceDictionary(source: String): ResourceDictionary =
-        ResourceDictionary().apply {
-            this.source = WinRtUri(source)
-        }
 
     private fun createControlsSurface(): UIElement {
         val skipObjectContent = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipObjectContent")
@@ -241,18 +239,45 @@ class WinUiControlsApp : Application(), AutoCloseable {
         return root
     }
 
-    private fun applyDeferredShimmerLoading() {
+    private fun applyDeferredShimmerLoading(): Boolean {
         if (deferredLoadingShimmers.isEmpty()) {
-            return
+            return false
         }
-        deferredLoadingShimmers.forEach { shimmer ->
-            println("winui-controls: apply WinUIEssential Shimmer loading after template")
-            shimmer.applyTemplate()
-            shimmer.findName("Container")
-            shimmer.updateLayout()
-            shimmer.isLoading = true
+        deferredLoadingShimmers.toList().forEach { shimmer ->
+            println("winui-controls: defer WinUIEssential Shimmer loading until Loaded")
+            if (shimmer.isLoaded) {
+                applyLoadedShimmerLoading(shimmer)
+            } else {
+                var token = EventRegistrationToken()
+                token = shimmer.addLoaded(RoutedEventHandler { _, _ ->
+                    shimmer.removeLoaded(token)
+                    deferredLoadingShimmerTokens.remove(shimmer)
+                    applyLoadedShimmerLoading(shimmer)
+                    exitAfterDeferredShimmerLoadingIfReady()
+                })
+                deferredLoadingShimmerTokens[shimmer] = token
+            }
         }
         deferredLoadingShimmers.clear()
+        return deferredLoadingShimmerTokens.isNotEmpty()
+    }
+
+    private fun applyLoadedShimmerLoading(shimmer: Shimmer) {
+        println("winui-controls: apply WinUIEssential Shimmer loading after Loaded")
+        shimmer.applyTemplate()
+        val container = shimmer.findName("Container")
+        if (container == null) {
+            println("winui-controls: skip WinUIEssential Shimmer loading because template Container is unavailable")
+            return
+        }
+        shimmer.updateLayout()
+        shimmer.isLoading = true
+    }
+
+    private fun exitAfterDeferredShimmerLoadingIfReady() {
+        if (deferredLoadingShimmerTokens.isEmpty() && java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+            checkNotNull(Application.current) { "Expected current WinUI application after deferred Shimmer loading." }.exit()
+        }
     }
 
     private fun label(text: String): TextBlock =

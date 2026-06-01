@@ -30,8 +30,9 @@ class WinUiRuntimeHooksTest {
     }
 
     @Test
-    fun resource_manager_prefers_microsoft_ui_pri_then_controls_pri() {
+    fun resource_manager_prefers_application_pri_then_microsoft_ui_pri_then_controls_pri() {
         val root = Files.createTempDirectory("kotlin-winrt-winui-pri-")
+        val applicationPri = root.resolve("resources.pri")
         val controlsPri = root.resolve("Microsoft.UI.Xaml.Controls.pri")
         val microsoftUiPri = root.resolve("Microsoft.UI.pri")
         Files.writeString(controlsPri, "controls")
@@ -41,6 +42,10 @@ class WinUiRuntimeHooksTest {
         Files.writeString(microsoftUiPri, "ui")
 
         assertEquals(microsoftUiPri, WinUiResourceManagerSupport.preferredPriPath(root))
+
+        Files.writeString(applicationPri, "application")
+
+        assertEquals(applicationPri, WinUiResourceManagerSupport.preferredPriPath(root))
     }
 
     @Test
