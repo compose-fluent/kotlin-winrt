@@ -4917,7 +4917,7 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
 }
 
 private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
-    setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry")
+    setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry", "xaml-component-resource")
 
 private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
     "kind\tclassName\tsourceFile\tentries"
@@ -4935,6 +4935,10 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
         "generic-abi-registry" to CompilerSupportManifestExpectedEntry(
             className = "io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
             sourceFile = "generic-abi-registry.tsv",
+        ),
+        "xaml-component-resource" to CompilerSupportManifestExpectedEntry(
+            className = "io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources",
+            sourceFile = "xaml-component-resources.tsv",
         ),
     )
 

@@ -723,6 +723,9 @@ private fun configureWinRtGeneration(
                 },
             )
             task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"))
+            task.emitXamlComponentResourceSources.set(
+                (extension as? WinRtExtension)?.applicationEnabled ?: project.provider { false },
+            )
             task.dependsOn(generateTask)
         },
     )
@@ -730,6 +733,7 @@ private fun configureWinRtGeneration(
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
         configureKotlinWinRtCompilerPluginClasspath(project)
         addGeneratedSourcesToKotlinMain(project, generatedSources)
+        addGeneratedSourcesToKotlinMain(project, mergeCompilerSupportTask.flatMap { it.outputDirectory })
         addGeneratedSourcesToKotlinMain(project, generatedAuthoringSources)
         configureKotlinWinRtCompilerPluginOptions(
             project = project,
@@ -755,6 +759,7 @@ private fun configureWinRtGeneration(
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
         }
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
+        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, mergeCompilerSupportTask.flatMap { it.outputDirectory })
         addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(project, generatedAuthoringSources, generateTask)
         configureKotlinWinRtCompilerPluginOptions(
             project = project,
