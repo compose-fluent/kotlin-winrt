@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.samples
 
 import io.github.composefluent.winrt.runtime.RuntimeScope
+import io.github.composefluent.winrt.runtime.WinRtUri
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
@@ -18,6 +19,8 @@ import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.ToggleSwitch
 import microsoft.ui.xaml.controls.XamlControlsResources
 import microsoft.ui.xaml.media.MicaBackdrop
+import winui3package.SettingsCard
+import winui3package.Shimmer
 
 data class WinUiControlsSampleResult(
     val xamlResourcesInstalled: Boolean,
@@ -102,7 +105,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
         return WinUiControlsSampleResult(
             xamlResourcesInstalled = true,
             micaBackdropApplied = true,
-            controlsComposed = 7,
+            controlsComposed = 9,
         )
     }
 
@@ -117,12 +120,21 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")
         mergedDictionaries.add(controlsResources)
+        println("winui-controls: install WinUIEssential SettingsCard resources")
+        mergedDictionaries.add(resourceDictionary("ms-appx:///WinUI3Package/SettingsCard_Resource.xaml"))
+        println("winui-controls: install WinUIEssential Shimmer resources")
+        mergedDictionaries.add(resourceDictionary("ms-appx:///WinUI3Package/Shimmer_Resource.xaml"))
         println("winui-controls: install resources done")
     }
 
     private fun loadXamlControlsResources(): ResourceDictionary {
         return XamlControlsResources()
     }
+
+    private fun resourceDictionary(source: String): ResourceDictionary =
+        ResourceDictionary().apply {
+            this.source = WinRtUri(source)
+        }
 
     private fun createControlsSurface(): UIElement {
         val skipObjectContent = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipObjectContent")
@@ -187,6 +199,27 @@ class WinUiControlsApp : Application(), AutoCloseable {
         rootChildren.add(Button().apply {
             if (!skipObjectContent) {
                 content = "Apply"
+            }
+        })
+        println("winui-controls: add WinUIEssential SettingsCard")
+        rootChildren.add(SettingsCard().apply {
+            header = "WinUIEssential SettingsCard"
+            description = "Projected from WinUIEssential.WinUI3"
+            if (!skipObjectContent) {
+                content = ToggleSwitch().apply {
+                    isOn = true
+                }
+            }
+        })
+        println("winui-controls: add WinUIEssential Shimmer")
+        rootChildren.add(Shimmer().apply {
+            isLoading = true
+            width = 320.0
+            height = 56.0
+            if (!skipObjectContent) {
+                content = TextBlock().apply {
+                    text = "Loading projected WinUI content"
+                }
             }
         })
 

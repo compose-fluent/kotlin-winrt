@@ -18,6 +18,8 @@ import microsoft.ui.xaml.markup.XamlReader
 import microsoft.ui.xaml.media.MicaBackdrop
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import winui3package.SettingsCard
+import winui3package.Shimmer
 
 class WinUiDesktopSampleTest {
     @Test
@@ -38,6 +40,8 @@ class WinUiDesktopSampleTest {
         assertEquals("Microsoft.UI.Xaml.Controls.ComboBox", ComboBox.Metadata.TYPE_NAME)
         assertEquals("Microsoft.UI.Xaml.Controls.ListView", ListView.Metadata.TYPE_NAME)
         assertEquals("Microsoft.UI.Xaml.Markup.XamlReader", XamlReader.Metadata.TYPE_NAME)
+        assertEquals("WinUI3Package.SettingsCard", SettingsCard.Metadata.TYPE_NAME)
+        assertEquals("WinUI3Package.Shimmer", Shimmer.Metadata.TYPE_NAME)
         assertEquals(false, shouldRunWinUiSmoke())
     }
 }

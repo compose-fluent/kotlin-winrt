@@ -6,6 +6,9 @@ plugins {
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRt.samples.winUIEssentialVersion")
+    .orElse("1.4.2")
+val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRt.samples.nugetGlobalPackagesRoot")
 
 kotlin {
     if (sampleWindowsAppSdkVersion.orNull != null) {
@@ -35,8 +38,14 @@ winRt {
     application {
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
+        sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
+            nugetGlobalPackagesRoots.add(globalPackagesRoot)
+            useNuGetCliGlobalPackages.set(false)
+            restoreNuGetPackages.set(false)
+        }
         windowsSdk(includeExtensions = true)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
+        nugetPackage("WinUIEssential.WinUI3", sampleWinUIEssentialVersion.get())
         type("Microsoft.UI.Xaml.Application")
         type("Microsoft.UI.Xaml.DependencyProperty")
         type("Microsoft.UI.Xaml.FrameworkElement")
@@ -73,6 +82,8 @@ winRt {
         type("Microsoft.UI.Xaml.Markup.XamlReader")
         type("Microsoft.UI.Xaml.Media.MicaBackdrop")
         type("Microsoft.UI.Xaml.Media.SystemBackdrop")
+        type("WinUI3Package.SettingsCard")
+        type("WinUI3Package.Shimmer")
         type("Windows.UI.Xaml.Interop.Type")
         type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
     }
