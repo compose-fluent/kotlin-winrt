@@ -258,6 +258,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
+            stageLibNativeAssets(resolved.packageRoot.resolve("lib").resolve("native"), rid, outputRoot)
             if (resolved.identity.isWindowsAppSdkRootPackage()) {
                 stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
             }
@@ -351,6 +352,24 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
                 .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
+        }
+    }
+
+    private fun stageLibNativeAssets(nativeRoot: Path, runtimeIdentifier: String, outputRoot: Path) {
+        if (!nativeRoot.isDirectory()) {
+            return
+        }
+        val arch = runtimeIdentifier.substringAfter("win-", missingDelimiterValue = runtimeIdentifier)
+        val candidates = listOf(
+            nativeRoot.resolve("Release").resolve(arch),
+            nativeRoot.resolve("Debug").resolve(arch),
+            nativeRoot.resolve(arch),
+        )
+        val selectedRoot = candidates.firstOrNull { it.isDirectory() } ?: return
+        Files.walk(selectedRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(selectedRoot))) }
         }
     }
 

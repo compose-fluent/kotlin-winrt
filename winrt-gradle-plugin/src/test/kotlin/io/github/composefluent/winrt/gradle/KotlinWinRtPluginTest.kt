@@ -1706,6 +1706,60 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_stages_lib_native_release_assets_for_cpp_winrt_packages() {
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.cppwinrt").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.CppWinRT.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.CppWinRT</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        val nativeRoot = packageRoot.resolve("lib/native/Release/x64")
+        Files.createDirectories(nativeRoot.resolve("WinUI3Package"))
+        Files.writeString(nativeRoot.resolve("WinUI3Package.dll"), "dll")
+        Files.writeString(nativeRoot.resolve("WinUI3Package.winmd"), "winmd")
+        Files.writeString(nativeRoot.resolve("WinUI3Package.pri"), "pri")
+        Files.writeString(nativeRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml"), "xaml")
+        Files.writeString(nativeRoot.resolve("WinUI3Package/Shimmer_Resource.xaml"), "xaml")
+
+        val task = project.tasks.register(
+            "stageCppWinRtNativeAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("cppwinrt-assets"))
+            registeredTask.nugetPackages.set(listOf("Sample.CppWinRT@1.0.0"))
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.dll")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.winmd")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xaml")))
+    }
+
+    @Test
     fun runtime_assets_task_stages_windowsappsdk_self_contained_framework_assets() {
         val project = ProjectBuilder.builder().build()
         val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
