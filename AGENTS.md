@@ -105,12 +105,6 @@ If submodules are needed under any of the names above for JVM and later `mingwX6
 
 Do not treat previous module naming or half-finished structure as the long-term design target. If older modules exist, rename them into the exact layout above or delete them once their responsibilities are absorbed.
 
-## Removed Legacy Sample Rule
-
-1. The old `sample-jvm-winui3` module has been removed and must not be restored as a first-class target.
-2. If functionality from the removed legacy sample is still useful, reintroduce it under `winrt-samples` after the owning runtime, metadata, generator, projection, or authoring slice exists.
-3. Do not block runtime, metadata, authoring, projections, or plan updates on recreating the removed legacy sample surface.
-
 ## CsWinRT Responsibility Mapping
 
 The required correspondence is strict by responsibility ownership. Use the following mapping as the minimum baseline:
