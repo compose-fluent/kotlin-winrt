@@ -1,10 +1,9 @@
 package io.github.composefluent.winrt.samples
 
+import io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
-import io.github.composefluent.winrt.runtime.ActivationFactory
-import io.github.composefluent.winrt.runtime.WinUiXamlResourceDictionaryRegistry
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
@@ -140,16 +139,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
     }
 
     private fun installComponentXamlResources(mergedDictionaries: MutableList<ResourceDictionary>) {
-        WinUiXamlResourceDictionaryRegistry.registeredRuntimeClassNames().forEach { runtimeClassName ->
-            val dictionary = runCatching {
-                ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(runtimeClassName))
-            }.getOrElse { error ->
-                println("winui-controls: skip component XAML resources $runtimeClassName: ${error.message}")
-                return@forEach
-            }
-            mergedDictionaries.add(dictionary)
-            println("winui-controls: install component XAML resources $runtimeClassName")
-        }
+        WinUiXamlComponentResources.installInto(mergedDictionaries)
+        println("winui-controls: install component XAML resources")
     }
 
     private fun createControlsSurface(): UIElement {

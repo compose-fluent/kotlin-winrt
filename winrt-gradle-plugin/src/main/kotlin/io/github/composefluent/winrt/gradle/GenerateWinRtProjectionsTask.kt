@@ -13,6 +13,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageIdentity
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import org.gradle.api.DefaultTask
@@ -223,9 +224,12 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         cleanDirectory(authoringTypeDetailsRoot)
         val sources = metadataSources()
         val effectiveExcludeTypes = parameters.excludeTypes.get() + automaticProjectionExcludeTypes(parameters.nugetPackages.get())
-        val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
+        val unfilteredModel = WinRtMetadataLoader.loadSources(sources)
+        val effectiveIncludeTypes = parameters.includeTypes.get() +
+            automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
+        val baseModel = unfilteredModel.filterProjectionSurface(
             namespaces = parameters.includeNamespaces.get().toSet(),
-            types = parameters.includeTypes.get().toSet(),
+            types = effectiveIncludeTypes.toSet(),
             excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
             excludedTypes = effectiveExcludeTypes.toSet(),
         )
@@ -276,7 +280,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             groupProjectionFilesByPackageOnWrite = true,
             projectionContext = WinRtMetadataProjectionContext(
                 sources = sources,
-                include = parameters.includeNamespaces.get().toSet() + parameters.includeTypes.get().toSet(),
+                include = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet(),
                 exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
                 additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
             ),
@@ -547,6 +551,30 @@ private fun dependencyProjectedTypeNames(
         excludedNamespaces = identity.excludeNamespaces.toSet(),
         excludedTypes = identity.excludeTypes.toSet(),
     ).namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) }
+}
+
+internal fun automaticXamlComponentResourceDictionaryTypes(
+    model: WinRtMetadataModel,
+    includeTypes: Set<String>,
+): List<String> {
+    val xamlResourceDictionaryProjected = "Microsoft.UI.Xaml.ResourceDictionary" in includeTypes ||
+        "Windows.UI.Xaml.ResourceDictionary" in includeTypes
+    if (!xamlResourceDictionaryProjected) {
+        return emptyList()
+    }
+    return model.namespaces
+        .asSequence()
+        .flatMap { namespace -> namespace.types.asSequence() }
+        .filter { type -> type.kind == WinRtTypeKind.RuntimeClass }
+        .filter { type ->
+            type.baseTypeName == "Microsoft.UI.Xaml.ResourceDictionary" ||
+                type.baseTypeName == "Windows.UI.Xaml.ResourceDictionary"
+        }
+        .map(WinRtTypeDefinition::qualifiedName)
+        .filterNot { typeName -> typeName.startsWith("Microsoft.") || typeName.startsWith("Windows.") }
+        .distinct()
+        .sorted()
+        .toList()
 }
 
 private fun automaticProjectionExcludeTypes(nugetPackages: List<String>): List<String> =

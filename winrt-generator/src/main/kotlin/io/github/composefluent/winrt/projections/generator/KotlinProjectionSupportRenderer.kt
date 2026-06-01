@@ -154,6 +154,7 @@ class KotlinProjectionSupportRenderer {
                 renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
                 renderGenericTypeInstantiations(genericInstantiationWriters),
                 renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
+                renderWinUiXamlComponentResources(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
                 renderAuthoringWrapperPlan(inventory, plans),
                 renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
@@ -173,6 +174,56 @@ class KotlinProjectionSupportRenderer {
                 allPlans = plans,
             ))
         }
+    }
+
+    private fun renderWinUiXamlComponentResources(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): KotlinProjectionFile? {
+        if (plans.none { plan -> plan.type.qualifiedName == "Microsoft.UI.Xaml.ResourceDictionary" }) {
+            return null
+        }
+        val resourceDictionaryRuntimeClassNames = model.namespaces
+            .asSequence()
+            .flatMap { namespace -> namespace.types.asSequence() }
+            .filter { type -> type.kind == WinRtTypeKind.RuntimeClass }
+            .filter { type -> type.baseTypeName == "Microsoft.UI.Xaml.ResourceDictionary" }
+            .map(WinRtTypeDefinition::qualifiedName)
+            .filterNot { runtimeClassName ->
+                runtimeClassName.startsWith("Microsoft.") || runtimeClassName.startsWith("Windows.")
+            }
+            .distinct()
+            .sorted()
+            .toList()
+        if (resourceDictionaryRuntimeClassNames.isEmpty()) {
+            return null
+        }
+
+        val resourceDictionaryType = ClassName("microsoft.ui.xaml", "ResourceDictionary")
+        val mergedDictionariesType = ClassName("kotlin.collections", "MutableList")
+            .parameterizedBy(resourceDictionaryType)
+        val fileSpec = supportFileSpec("WinUiXamlComponentResources")
+            .addType(
+                TypeSpec.objectBuilder("WinUiXamlComponentResources")
+                    .addFunction(
+                        FunSpec.builder("installInto")
+                            .addParameter("mergedDictionaries", mergedDictionariesType)
+                            .apply {
+                                resourceDictionaryRuntimeClassNames.forEach { runtimeClassName ->
+                                    addStatement(
+                                        "mergedDictionaries.add(%T.Metadata.wrap(%T.activateInstance(%S)))",
+                                        resourceDictionaryType,
+                                        ActivationFactory::class,
+                                        runtimeClassName,
+                                    )
+                                }
+                            }
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinUiXamlComponentResources.kt", fileSpec)
     }
 
     private fun validateAuthoringMetadataProjectionPlans(

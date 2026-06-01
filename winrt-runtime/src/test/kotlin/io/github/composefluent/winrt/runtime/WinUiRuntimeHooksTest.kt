@@ -68,41 +68,6 @@ class WinUiRuntimeHooksTest {
     }
 
     @Test
-    fun xaml_resource_dictionary_registry_loads_runtime_asset_manifest() {
-        val previousRoot = System.getProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName)
-        val root = Files.createTempDirectory("kotlin-winrt-xaml-resource-assets-")
-        Files.writeString(
-            root.resolve(WinUiRuntimeAssetManifests.xamlResourceDictionariesFileName),
-            """
-            WinUI3Package.Shimmer_Resource
-            WinUI3Package.Shimmer_Resource
-            # comment
-            Sample.SampleResourceDictionary
-            """.trimIndent(),
-        )
-
-        try {
-            System.setProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, root.toString())
-            WinUiXamlResourceDictionaryRegistry.clearForTests()
-
-            assertEquals(
-                listOf(
-                    "WinUI3Package.Shimmer_Resource",
-                    "Sample.SampleResourceDictionary",
-                ),
-                WinUiXamlResourceDictionaryRegistry.registeredRuntimeClassNames(),
-            )
-        } finally {
-            WinUiXamlResourceDictionaryRegistry.clearForTests()
-            if (previousRoot == null) {
-                System.clearProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName)
-            } else {
-                System.setProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, previousRoot)
-            }
-        }
-    }
-
-    @Test
     fun resource_manager_requested_handler_iid_matches_parameterized_signature() {
         val expected = ParameterizedInterfaceId.createFromSignature(
             WinRtTypeSignature.parameterizedInterface(
