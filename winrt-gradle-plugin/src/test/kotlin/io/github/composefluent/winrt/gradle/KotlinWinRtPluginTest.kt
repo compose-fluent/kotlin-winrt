@@ -6130,6 +6130,7 @@ class KotlinWinRtPluginTest {
 
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
                 type("Windows.Foundation.IStringable")
+                type("Windows.Foundation.Point")
             }
 
             val writeIntrinsicProbe = tasks.register("writeIntrinsicProbe") {
@@ -6144,10 +6145,10 @@ class KotlinWinRtPluginTest {
                             package sample
 
                             import io.github.composefluent.winrt.runtime.ComObjectReference
-                            import io.github.composefluent.winrt.runtime.Point
                             import io.github.composefluent.winrt.runtime.RawAddress
                             import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
                             import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
+                            import windows.foundation.Point
 
                             object IntrinsicProbe {
                                 fun call(reference: ComObjectReference, value: RawAddress) {

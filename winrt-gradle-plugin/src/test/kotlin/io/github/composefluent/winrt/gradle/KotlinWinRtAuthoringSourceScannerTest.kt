@@ -679,7 +679,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
-    fun renders_runtime_mapped_struct_overrides_through_runtime_projection_types() {
+    fun renders_projected_struct_overrides_through_projection_metadata_types() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-mapped-struct-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
             packageName = "sample",
@@ -754,16 +754,16 @@ class KotlinWinRtAuthoringSourceScannerTest {
         )
 
         val generated = output.resolve("sample/WinRT_LocalShape_TypeDetails.kt").readText()
-        assertTrue(generated.contains("import io.github.composefluent.winrt.runtime.Point"))
-        assertTrue(generated.contains("import io.github.composefluent.winrt.runtime.Rect"))
-        assertTrue(generated.contains("import io.github.composefluent.winrt.runtime.Size"))
+        assertTrue(generated.contains("import windows.foundation.Point"))
+        assertTrue(generated.contains("import windows.foundation.Rect"))
+        assertTrue(generated.contains("import windows.foundation.Size"))
         assertTrue(generated.contains("ComAbiValueKind.Struct(Size.Metadata.layout.abiLayout)"))
         assertTrue(generated.contains("Size.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("Point.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("Rect.Metadata.copyTo(__result as Rect"))
-        assertTrue(generated, !generated.contains("import windows.foundation.Point"))
-        assertTrue(generated, !generated.contains("import windows.foundation.Rect"))
-        assertTrue(generated, !generated.contains("import windows.foundation.Size"))
+        assertTrue(generated, !generated.contains("import io.github.composefluent.winrt.runtime.Point"))
+        assertTrue(generated, !generated.contains("import io.github.composefluent.winrt.runtime.Rect"))
+        assertTrue(generated, !generated.contains("import io.github.composefluent.winrt.runtime.Size"))
     }
 
     @Test

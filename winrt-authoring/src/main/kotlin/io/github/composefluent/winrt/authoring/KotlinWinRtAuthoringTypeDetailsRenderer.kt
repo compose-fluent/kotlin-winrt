@@ -1437,10 +1437,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 )
             }
             WinRtTypeKind.Struct -> {
-                val projectedType = runtimeMappedClassName(elementTypeName, semanticHelpers)
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override ${method.name} returns unsupported collection element type '$elementTypeName'.",
-                    )
+                val projectedType = projectionClassName(elementTypeName, semanticHelpers)
                 CodeBlock.of(
                     "%T.valueType(%T::class, %S, %L)",
                     winRtReferenceValueAdaptersType,
@@ -1553,8 +1550,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         return when (definition.kind) {
             WinRtTypeKind.RuntimeClass -> projectionClassName(typeName, semanticHelpers)
             WinRtTypeKind.Enum -> projectionClassName(typeName, semanticHelpers)
-            WinRtTypeKind.Struct -> runtimeMappedClassName(typeName, semanticHelpers)
-                ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
+            WinRtTypeKind.Struct -> projectionClassName(typeName, semanticHelpers)
             else -> throw IllegalArgumentException("Authored WinRT collection element type '$typeName' is not projectable.")
         }
     }
