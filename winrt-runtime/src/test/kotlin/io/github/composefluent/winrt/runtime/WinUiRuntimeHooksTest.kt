@@ -14,6 +14,25 @@ class WinUiRuntimeHooksTest {
     }
 
     @Test
+    fun xaml_metadata_provider_registry_preserves_registration_order_without_duplicates() {
+        WinUiXamlMetadataProviderRegistry.clearForTests()
+
+        WinUiXamlMetadataProviderRegistry.register("WinUI3Package.XamlMetaDataProvider")
+        WinUiXamlMetadataProviderRegistry.register("WinUI3Package.XamlMetaDataProvider")
+        WinUiXamlMetadataProviderRegistry.register("Sample.Sample_XamlTypeInfo.XamlMetaDataProvider")
+
+        assertEquals(
+            listOf(
+                "WinUI3Package.XamlMetaDataProvider",
+                "Sample.Sample_XamlTypeInfo.XamlMetaDataProvider",
+            ),
+            WinUiXamlMetadataProviderRegistry.registeredRuntimeClassNames(),
+        )
+
+        WinUiXamlMetadataProviderRegistry.clearForTests()
+    }
+
+    @Test
     fun resource_manager_requested_handler_iid_matches_parameterized_signature() {
         val expected = ParameterizedInterfaceId.createFromSignature(
             WinRtTypeSignature.parameterizedInterface(

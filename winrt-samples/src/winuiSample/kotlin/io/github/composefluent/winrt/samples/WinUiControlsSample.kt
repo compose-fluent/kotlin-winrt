@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.samples
 
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
+import io.github.composefluent.winrt.runtime.WinUiXamlMetadataProviderRegistry
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
@@ -47,18 +48,25 @@ object WinUiControlsSample {
 
     fun launchForSmoke(): WinUiControlsSampleResult =
         RuntimeScope.initializeSingleThreaded().use {
+            registerWinUiEssentialXamlMetadataProviders()
             WinUiControlsApp().use { app ->
                 app.launchWithResources()
             }
         }
 
     private fun startApplication() {
+        registerWinUiEssentialXamlMetadataProviders()
         Application.start {
             activeApplication = WinUiControlsApp()
             println("winui-controls: application composed")
         }
         activeApplication?.close()
         activeApplication = null
+    }
+
+    private fun registerWinUiEssentialXamlMetadataProviders() {
+        WinUiXamlMetadataProviderRegistry.register("WinUI3Package.XamlMetaDataProvider")
+        WinUiXamlMetadataProviderRegistry.register("WinUI3Package.WinUI3Package_XamlTypeInfo.XamlMetaDataProvider")
     }
 }
 
