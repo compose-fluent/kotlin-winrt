@@ -37,7 +37,6 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
-import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
 import io.github.composefluent.winrt.runtime.Guid
@@ -154,7 +153,7 @@ class KotlinProjectionSupportRenderer {
                 renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
                 renderGenericTypeInstantiations(genericInstantiationWriters),
                 renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
-                renderWinUiXamlComponentResources(model, plans),
+                renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
                 renderAuthoringWrapperPlan(inventory, plans),
                 renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
@@ -176,14 +175,33 @@ class KotlinProjectionSupportRenderer {
         }
     }
 
-    private fun renderWinUiXamlComponentResources(
+    private fun renderWinUiXamlComponentResourceInput(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ): KotlinProjectionFile? {
-        if (plans.none { plan -> plan.type.qualifiedName == "Microsoft.UI.Xaml.ResourceDictionary" }) {
+        val resourceDictionaryRuntimeClassNames = winUiXamlComponentResourceDictionaryRuntimeClassNames(model, plans)
+        if (resourceDictionaryRuntimeClassNames.isEmpty()) {
             return null
         }
-        val resourceDictionaryRuntimeClassNames = model.namespaces
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/xaml-component-resources.tsv",
+            packageName = "",
+            contents = resourceDictionaryRuntimeClassNames.joinToString(
+                separator = "\n",
+                postfix = "\n",
+                prefix = "runtimeClassName\n",
+            ),
+        )
+    }
+
+    private fun winUiXamlComponentResourceDictionaryRuntimeClassNames(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): List<String> {
+        if (plans.none { plan -> plan.type.qualifiedName == "Microsoft.UI.Xaml.ResourceDictionary" }) {
+            return emptyList()
+        }
+        return model.namespaces
             .asSequence()
             .flatMap { namespace -> namespace.types.asSequence() }
             .filter { type -> type.kind == WinRtTypeKind.RuntimeClass }
@@ -195,35 +213,6 @@ class KotlinProjectionSupportRenderer {
             .distinct()
             .sorted()
             .toList()
-        if (resourceDictionaryRuntimeClassNames.isEmpty()) {
-            return null
-        }
-
-        val resourceDictionaryType = ClassName("microsoft.ui.xaml", "ResourceDictionary")
-        val mergedDictionariesType = ClassName("kotlin.collections", "MutableList")
-            .parameterizedBy(resourceDictionaryType)
-        val fileSpec = supportFileSpec("WinUiXamlComponentResources")
-            .addType(
-                TypeSpec.objectBuilder("WinUiXamlComponentResources")
-                    .addFunction(
-                        FunSpec.builder("installInto")
-                            .addParameter("mergedDictionaries", mergedDictionariesType)
-                            .apply {
-                                resourceDictionaryRuntimeClassNames.forEach { runtimeClassName ->
-                                    addStatement(
-                                        "mergedDictionaries.add(%T.Metadata.wrap(%T.activateInstance(%S)))",
-                                        resourceDictionaryType,
-                                        ActivationFactory::class,
-                                        runtimeClassName,
-                                    )
-                                }
-                            }
-                            .build(),
-                    )
-                    .build(),
-            )
-            .build()
-        return supportFile("WinUiXamlComponentResources.kt", fileSpec)
     }
 
     private fun validateAuthoringMetadataProjectionPlans(
@@ -409,6 +398,7 @@ class KotlinProjectionSupportRenderer {
         val genericInstantiationEntries = genericInstantiationWriters.size
         val genericAbiRegistryEntries = inventory.genericAbiInventory.genericAbiDelegates.size +
             inventory.genericAbiInventory.derivedGenericInterfaces.size
+        val xamlComponentResourceEntries = winUiXamlComponentResourceDictionaryRuntimeClassNames(model, plans).size
         val rows = listOf(
             compilerSupportManifestRow(
                 kind = "projection-registrar",
@@ -427,6 +417,12 @@ class KotlinProjectionSupportRenderer {
                 className = WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "generic-abi-registry.tsv",
                 entries = genericAbiRegistryEntries,
+            ),
+            compilerSupportManifestRow(
+                kind = "xaml-component-resource",
+                className = "$SUPPORT_PACKAGE.WinUiXamlComponentResources",
+                sourceFile = "xaml-component-resources.tsv",
+                entries = xamlComponentResourceEntries,
             ),
         ).filterNot { row -> row.endsWith("\t0") }
         if (rows.isEmpty()) {

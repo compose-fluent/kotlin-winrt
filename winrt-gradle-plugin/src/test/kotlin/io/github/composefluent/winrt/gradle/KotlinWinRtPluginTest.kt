@@ -549,6 +549,7 @@ class KotlinWinRtPluginTest {
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
             future-support	io.github.composefluent.winrt.projections.support.FutureSupport	future-support.tsv	1
+            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1
             """.trimIndent(),
         )
         Files.writeString(
@@ -566,11 +567,19 @@ class KotlinWinRtPluginTest {
             """.trimIndent(),
         )
         Files.writeString(
+            localRoot.resolve("xaml-component-resources.tsv"),
+            """
+            runtimeClassName
+            WinUI3Package.Shimmer_Resource
+            """.trimIndent(),
+        )
+        Files.writeString(
             dependencyRoot.resolve("compiler-support.tsv"),
             """
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
             generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations	generic-instantiations.tsv	1
+            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1
             """.trimIndent(),
         )
         Files.writeString(
@@ -585,6 +594,13 @@ class KotlinWinRtPluginTest {
             """
             typeName	typeSignature
             Windows.Foundation.IReference`1<String>	pinterface({61c17706-2d65-11e0-9ae8-d48564015472};string)
+            """.trimIndent(),
+        )
+        Files.writeString(
+            dependencyRoot.resolve("xaml-component-resources.tsv"),
+            """
+            runtimeClassName
+            WinUI3Package.ModernDialogBoxContent_Resource
             """.trimIndent(),
         )
         val dependencyIdentity = root.resolve("dependency-identity.json")
@@ -603,6 +619,7 @@ class KotlinWinRtPluginTest {
             registeredTask.localCompilerSupportManifest.set(localRoot.resolve("compiler-support.tsv").toFile())
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
             registeredTask.outputDirectory.set(outputRoot.toFile())
+            registeredTask.emitXamlComponentResourceSources.set(true)
         }.get()
 
         task.merge()
@@ -614,11 +631,20 @@ class KotlinWinRtPluginTest {
         assertTrue(manifest.contains("projection-registrar"))
         assertTrue(manifest.contains("future-support\tio.github.composefluent.winrt.projections.support.FutureSupport"))
         assertTrue(manifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
+        assertTrue(manifest.contains("xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUiXamlComponentResources"))
         assertFalse(manifest.contains("WinRTGenericTypeInstantiationRegistry"))
         assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
         assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
         assertTrue(genericSupport.contains("Windows.Foundation.IReference`1<String>"))
         assertTrue(futureSupport.contains("alpha\tbeta"))
+        val xamlResources = Files.readString(outputRoot.resolve("xaml-component-resources.tsv"))
+        assertTrue(xamlResources.contains("WinUI3Package.ModernDialogBoxContent_Resource"))
+        assertTrue(xamlResources.contains("WinUI3Package.Shimmer_Resource"))
+        val xamlBootstrap = Files.readString(
+            outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+        )
+        assertTrue(xamlBootstrap.contains("ActivationFactory.activateInstance(\"WinUI3Package.ModernDialogBoxContent_Resource\")"))
+        assertTrue(xamlBootstrap.contains("ActivationFactory.activateInstance(\"WinUI3Package.Shimmer_Resource\")"))
     }
 
     @Test
@@ -6520,6 +6546,18 @@ class KotlinWinRtPluginTest {
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
                 type("Windows.Foundation.Uri")
             }
+
+            tasks.named("generateWinRtProjections") {
+                doLast {
+                    val supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support").get().asFile
+                    supportRoot.resolve("xaml-component-resources.tsv").writeText(
+                        "runtimeClassName\nWinUI3Package.Shimmer_Resource\n",
+                    )
+                    supportRoot.resolve("compiler-support.tsv").appendText(
+                        "xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUiXamlComponentResources\txaml-component-resources.tsv\t1\n",
+                    )
+                }
+            }
             """.trimIndent(),
         )
         writeGradleFile(
@@ -6589,6 +6627,12 @@ class KotlinWinRtPluginTest {
                     val mergedProjectionRegistrar = layout.buildDirectory.file(
                         "generated/kotlin-winrt/compiler-support/merged/projection-registrar.tsv",
                     ).get().asFile.readText()
+                    val mergedXamlResources = layout.buildDirectory.file(
+                        "generated/kotlin-winrt/compiler-support/merged/xaml-component-resources.tsv",
+                    ).get().asFile.readText()
+                    val mergedXamlBootstrap = layout.buildDirectory.file(
+                        "generated/kotlin-winrt/compiler-support/merged/io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt",
+                    ).get().asFile.readText()
                     listOf(
                         "Windows.Foundation.IClosable",
                         "Windows.Foundation.IUriRuntimeClass",
@@ -6597,6 +6641,12 @@ class KotlinWinRtPluginTest {
                         check(mergedProjectionRegistrar.contains(typeName)) {
                             "Merged app compiler support is missing " + typeName
                         }
+                    }
+                    check(mergedXamlResources.contains("WinUI3Package.Shimmer_Resource")) {
+                        "Merged app compiler support is missing dependency XAML component resources."
+                    }
+                    check(mergedXamlBootstrap.contains("ActivationFactory.activateInstance(\"WinUI3Package.Shimmer_Resource\")")) {
+                        "Merged app compiler support did not generate dependency XAML component resource bootstrap."
                     }
 
                     val classRoot = layout.buildDirectory.dir("classes/kotlin/winuiJvm/main").get().asFile
