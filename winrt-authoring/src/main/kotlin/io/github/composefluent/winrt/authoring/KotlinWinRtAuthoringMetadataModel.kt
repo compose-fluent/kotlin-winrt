@@ -45,6 +45,7 @@ object KotlinWinRtAuthoringMetadataModel {
     fun writeHostManifest(
         assemblyName: String,
         targetArtifactName: String = "$assemblyName.jar",
+        hostExportsClassName: String = "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports",
         candidates: List<KotlinWinRtAuthoredTypeCandidate>,
         outputFile: Path,
     ) {
@@ -57,7 +58,7 @@ object KotlinWinRtAuthoringMetadataModel {
                 appendLine("  \"schemaVersion\": 1,")
                 appendLine("  \"model\": \"jvm-authoring-host\",")
                 appendLine("  \"assemblyName\": ${assemblyName.toJsonString()},")
-                appendLine("  \"hostExportsClass\": \"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports\",")
+                appendLine("  \"hostExportsClass\": ${hostExportsClassName.toJsonString()},")
                 appendLine("  \"targetArtifact\": ${targetArtifactName.toJsonString()},")
                 appendLine("  \"activatableClasses\": ${runtimeClassNames.toJsonArray()},")
                 appendLine("  \"activatableClassTargets\": ${runtimeClassNames.associateWith { targetArtifactName }.toJsonObject()}")

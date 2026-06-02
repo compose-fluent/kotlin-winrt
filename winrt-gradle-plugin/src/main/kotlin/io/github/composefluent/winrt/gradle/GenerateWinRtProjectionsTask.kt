@@ -272,6 +272,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         KotlinWinRtAuthoringMetadataModel.writeHostManifest(
             assemblyName = parameters.authoringAssemblyName.get(),
             targetArtifactName = parameters.authoringTargetArtifactName.get(),
+            hostExportsClassName = winRtAuthoringHostExportsClassName(parameters.authoringTargetArtifactName.get()),
             candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
@@ -309,6 +310,26 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
         }
     }
+
+    private fun winRtAuthoringHostExportsClassName(ownerIdentity: String): String {
+        val suffix = ownerIdentity.toKotlinSupportIdentifierSuffix()
+        return if (suffix.isBlank()) {
+            "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports"
+        } else {
+            "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_$suffix"
+        }
+    }
+
+    private fun String.toKotlinSupportIdentifierSuffix(): String =
+        buildString {
+            this@toKotlinSupportIdentifierSuffix.trim().forEach { char ->
+                append(if (char.isLetterOrDigit()) char else '_')
+            }
+        }.trim('_')
+            .replace(Regex("_+"), "_")
+            .let { suffix ->
+                if (suffix.firstOrNull()?.isDigit() == true) "_$suffix" else suffix
+            }
 
     private fun metadataSources(): List<WinRtMetadataSource> {
         val applicationPackagingOnly = parameters.projectModel.get() == "application" &&

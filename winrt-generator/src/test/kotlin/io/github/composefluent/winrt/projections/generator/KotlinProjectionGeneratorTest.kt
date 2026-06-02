@@ -14301,6 +14301,23 @@ class KotlinProjectionGeneratorTest {
         assertTrue(hostExports.contains("fun dllCanUnloadNow(): Int"))
         assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllCanUnloadNow()"))
         assertTrue(hostExports.contains("fun dllCanUnloadNowAddress(): Int"))
+        val scopedHostFilesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            supportOwnerIdentity = "sample-component.jar",
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val scopedModuleActivationFactoryPlan = scopedHostFilesByName.getValue("WinRTAuthoringModuleActivationFactoryPlan_sample_component_jar.kt").contents
+        val scopedServerActivationFactories = scopedHostFilesByName.getValue("WinRTAuthoringServerActivationFactories_sample_component_jar.kt").contents
+        val scopedHostExports = scopedHostFilesByName.getValue("WinRTAuthoringHostExports_sample_component_jar.kt").contents
+        assertTrue(scopedModuleActivationFactoryPlan.contains("object WinRTAuthoringModuleActivationFactoryPlan_sample_component_jar"))
+        assertTrue(scopedServerActivationFactories.contains("object WinRTAuthoringServerActivationFactories_sample_component_jar"))
+        assertTrue(scopedServerActivationFactories.contains("WinRTAuthoringModuleActivationFactoryPlan_sample_component_jar.registerModuleActivationFactories"))
+        assertTrue(scopedHostExports.contains("object WinRTAuthoringHostExports_sample_component_jar"))
+        assertTrue(scopedHostExports.contains("\"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_sample_component_jar\""))
+        assertTrue(scopedHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_jar.register()"))
+        assertFalse(scopedHostFilesByName.containsKey("WinRTAuthoringHostExports.kt"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         assertTrue(ccwFactories.contains("object WinRTAuthoringCcwFactories"))
         assertTrue(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class)"))

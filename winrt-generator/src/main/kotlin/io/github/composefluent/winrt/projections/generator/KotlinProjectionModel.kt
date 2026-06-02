@@ -164,6 +164,12 @@ internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectabl
 internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRtInspectableMethodDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTGenericTypeInstantiations")
+internal val WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringHostExports")
+internal val WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringServerActivationFactories")
+internal val WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringModuleActivationFactoryPlan")
 internal fun winRtGenericTypeInstantiationsClassName(ownerIdentity: String?): ClassName {
     val suffix = ownerIdentity
         ?.trim()
@@ -175,6 +181,25 @@ internal fun winRtGenericTypeInstantiationsClassName(ownerIdentity: String?): Cl
         "io.github.composefluent.winrt.projections.support",
         "WinRTGenericTypeInstantiations_$suffix",
     )
+}
+
+internal fun winRtAuthoringHostExportsClassName(ownerIdentity: String?): ClassName =
+    winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME)
+
+internal fun winRtAuthoringServerActivationFactoriesClassName(ownerIdentity: String?): ClassName =
+    winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME)
+
+internal fun winRtAuthoringModuleActivationFactoryPlanClassName(ownerIdentity: String?): ClassName =
+    winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME)
+
+private fun winRtSupportOwnerClassName(ownerIdentity: String?, defaultClassName: ClassName): ClassName {
+    val suffix = ownerIdentity
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.toKotlinSupportIdentifierSuffix()
+        ?.takeIf(String::isNotEmpty)
+        ?: return defaultClassName
+    return ClassName(defaultClassName.packageName, "${defaultClassName.simpleName}_$suffix")
 }
 
 private fun String.toKotlinSupportIdentifierSuffix(): String =
