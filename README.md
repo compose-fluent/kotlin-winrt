@@ -93,7 +93,7 @@ For example, a JVM project that uses `Windows.Data.Json` can configure projectio
 ```kotlin
 plugins {
     kotlin("jvm")
-    id("io.github.composefluent.winrt")
+    id("io.github.compose-fluent.winrt")
 }
 
 dependencies {

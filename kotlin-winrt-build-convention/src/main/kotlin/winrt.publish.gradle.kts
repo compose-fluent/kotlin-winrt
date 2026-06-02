@@ -53,7 +53,7 @@ mavenPublishing {
         }
         developers {
             developer {
-                id.set("composefluent")
+                id.set("compose-fluent")
                 name.set("Compose Fluent")
                 url.set("https://github.com/compose-fluent")
             }
