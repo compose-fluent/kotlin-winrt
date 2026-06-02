@@ -125,6 +125,9 @@ class KotlinProjectionGenerator(
     private val supportOwnerIdentity: String? = null,
 ) {
     private val genericTypeInstantiationsClassName = winRtGenericTypeInstantiationsClassName(supportOwnerIdentity)
+    private val authoringHostExportsClassName = winRtAuthoringHostExportsClassName(supportOwnerIdentity)
+    private val authoringServerActivationFactoriesClassName = winRtAuthoringServerActivationFactoriesClassName(supportOwnerIdentity)
+    private val authoringModuleActivationFactoryPlanClassName = winRtAuthoringModuleActivationFactoryPlanClassName(supportOwnerIdentity)
 
     init {
         require(emitSupportFiles || projectionContext.sources.isEmpty()) {
@@ -1618,6 +1621,9 @@ class KotlinProjectionGenerator(
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
             excludedProjectionTypeNames = authoredProjectedTypeNames(model),
             genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
+            authoringHostExportsClassName = authoringHostExportsClassName,
+            authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
+            authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
         )
         return when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> files

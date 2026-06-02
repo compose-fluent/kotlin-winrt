@@ -55,9 +55,7 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
         if (manifests.isEmpty()) {
             return
         }
-        val hostSource = sourceRoot.resolve("kotlin_winrt_authoring_host.c")
         val moduleDefinition = sourceRoot.resolve("kotlin_winrt_authoring_host.def")
-        Files.writeString(hostSource, authoringHostSource())
         Files.writeString(
             moduleDefinition,
             """
@@ -79,6 +77,8 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
             throw IllegalStateException("No Windows SDK installation found. Kotlin/WinRT authoring host DLLs require Windows SDK headers and libraries.")
         }
         manifests.forEach { manifest ->
+            val hostSource = sourceRoot.resolve("${manifest.assemblyName.toGeneratedFileStem()}_kotlin_winrt_authoring_host.c")
+            Files.writeString(hostSource, authoringHostSource(manifest.hostExportsClass))
             val dll = outputRoot.resolve("${manifest.assemblyName}.dll")
             compileHostDll(
                 compiler = compiler,
@@ -138,7 +138,15 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
         if (classNames.none { it.isNotBlank() }) {
             throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' does not declare any activatable classes.")
         }
-        return HostBuildManifest(assemblyName)
+        val hostExportsClass = readJsonString(content, "hostExportsClass")
+            ?: throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' is missing hostExportsClass.")
+        if (hostExportsClass.isBlank()) {
+            throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' has blank hostExportsClass.")
+        }
+        if (!hostExportsClass.matches(JVM_CLASS_NAME_REGEX)) {
+            throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' has invalid hostExportsClass '$hostExportsClass'.")
+        }
+        return HostBuildManifest(assemblyName, hostExportsClass)
     }
 
     private fun findExecutable(name: String): Path? {
@@ -191,6 +199,7 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
 
 private data class HostBuildManifest(
     val assemblyName: String,
+    val hostExportsClass: String,
 )
 
 private data class ProcessResult(
@@ -198,7 +207,15 @@ private data class ProcessResult(
     val output: String,
 )
 
-private fun authoringHostSource(): String =
+private val JVM_CLASS_NAME_REGEX = Regex("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
+
+private fun String.toGeneratedFileStem(): String =
+    map { char -> if (char.isLetterOrDigit()) char else '_' }
+        .joinToString("")
+        .trim('_')
+        .ifBlank { "authoring_host" }
+
+private fun authoringHostSource(hostExportsClass: String): String =
     """
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
@@ -351,7 +368,7 @@ private fun authoringHostSource(): String =
         if (FAILED(hr)) {
             return hr;
         }
-        jclass exports_class = (*env)->FindClass(env, "io/github/composefluent/winrt/projections/support/WinRTAuthoringHostExports");
+        jclass exports_class = (*env)->FindClass(env, "${hostExportsClass.replace('.', '/')}");
         if (exports_class == NULL) {
             (*env)->ExceptionClear(env);
             return KOTLIN_WINRT_REGDB_E_READREGDB;

@@ -1493,7 +1493,7 @@ class KotlinWinRtPluginTest {
         Files.writeString(appWinmd, "app-winmd")
         Files.writeString(
             appHostManifest,
-            """{"assemblyName":"AppComponent","targetArtifact":"AppComponent.jar","activatableClasses":["sample.AppComponent"],"activatableClassTargets":{"sample.AppComponent":"AppComponent.jar"}}""",
+            """{"assemblyName":"AppComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_AppComponent_jar","targetArtifact":"AppComponent.jar","activatableClasses":["sample.AppComponent"],"activatableClassTargets":{"sample.AppComponent":"AppComponent.jar"}}""",
         )
         Files.writeString(appJar, "app-jar")
         Files.writeString(appHostDll, "app-host-dll")
@@ -1501,7 +1501,7 @@ class KotlinWinRtPluginTest {
         Files.writeString(dependencyWinmd, "winmd")
         Files.writeString(
             dependencyHostManifest,
-            """{"assemblyName":"DependencyComponent","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}""",
+            """{"assemblyName":"DependencyComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_DependencyComponent_jar","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}""",
         )
         Files.writeString(dependencyJar, "dependency-jar")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
@@ -1723,7 +1723,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(manifest.parent)
         Files.writeString(
             manifest,
-            """{"assemblyName":"SampleComponent","targetArtifact":"SampleComponent.jar","activatableClasses":["sample.Component"],"activatableClassTargets":{"sample.Component":"SampleComponent.jar"}}""",
+            """{"assemblyName":"SampleComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_SampleComponent_jar","targetArtifact":"SampleComponent.jar","activatableClasses":["sample.Component"],"activatableClassTargets":{"sample.Component":"SampleComponent.jar"}}""",
         )
         val task = project.tasks.register(
             "buildAuthoringHost",
@@ -1740,10 +1740,11 @@ class KotlinWinRtPluginTest {
         task.build()
 
         val sourceRoot = task.generatedSourceDirectory.get().asFile.toPath()
-        val source = Files.readString(sourceRoot.resolve("kotlin_winrt_authoring_host.c"))
+        val source = Files.readString(sourceRoot.resolve("SampleComponent_kotlin_winrt_authoring_host.c"))
         assertTrue(source.contains("DllGetActivationFactory"))
         assertTrue(source.contains("DllCanUnloadNow"))
         assertTrue(source.contains("JNI_GetCreatedJavaVMs"))
+        assertTrue(source.contains("io/github/composefluent/winrt/projections/support/WinRTAuthoringHostExports_SampleComponent_jar"))
         assertTrue(Files.readString(sourceRoot.resolve("kotlin_winrt_authoring_host.def")).contains("DllGetActivationFactory"))
         if (System.getProperty("os.name").contains("Windows", ignoreCase = true) && commandExists("clang-cl.exe")) {
             assertTrue(Files.isRegularFile(task.outputDirectory.get().asFile.toPath().resolve("SampleComponent.dll")))
@@ -1778,7 +1779,7 @@ class KotlinWinRtPluginTest {
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("does not declare any activatable classes"),
         )
-        assertFalse(Files.exists(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_authoring_host.c")))
+        assertFalse(Files.exists(task.generatedSourceDirectory.get().asFile.toPath().resolve("SampleComponent_kotlin_winrt_authoring_host.c")))
     }
 
     @Test
@@ -5241,7 +5242,7 @@ class KotlinWinRtPluginTest {
         assertTrue(
             Files.isRegularFile(
                 projectDir.resolve(
-                    "build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IStringable.kt",
+                    "build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
                 ),
             ),
         )
@@ -5282,7 +5283,7 @@ class KotlinWinRtPluginTest {
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.UP_TO_DATE, secondResult.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, secondResult.task(":generateWinRtProjections")?.outcome)
     }
 
     @Test
@@ -5455,6 +5456,10 @@ class KotlinWinRtPluginTest {
                     check(authoredHostManifestText.contains("sample.PublicStringableThing")) {
                         "Expected public compiler-authored host manifest entry in: " + authoredHostManifestText
                     }
+                    check(authoredHostManifestText.contains("WinRTAuthoringHostExports_kotlin_winrt_kmp_plugin_test_jar")) {
+                        "Expected artifact-scoped host exports class in compiler-authored host manifest: " +
+                            authoredHostManifestText
+                    }
                     check(!authoredHostManifestText.contains("sample.InternalStringableThing")) {
                         "Internal authored types must not be exported in compiler-authored host manifest: " +
                             authoredHostManifestText
@@ -5611,7 +5616,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun authored_candidate_validation_rejects_compiler_only_authored_candidates_before_identity() {
+    fun authored_candidate_validation_allows_generated_authored_candidates_without_interfaces() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-authored-candidate-mismatch-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
             .toAbsolutePath()
@@ -5676,7 +5681,7 @@ class KotlinWinRtPluginTest {
 
                             import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
 
-                            @WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+                            @WinRtAuthoredRuntimeClass
                             internal class LateStringableThing
                             ${"\"\"\""}.trimIndent()
                         )
@@ -5703,12 +5708,12 @@ class KotlinWinRtPluginTest {
             .withPluginClasspath()
             .withArguments("generateWinRtIdentity", "--stacktrace")
             .forwardOutput()
-            .buildAndFail()
+            .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
-        assertEquals(TaskOutcome.FAILED, result.task(":validateCompileKotlinWinRtAuthoredCandidates")?.outcome)
-        assertTrue(result.output.contains("Only compiler candidates: sample.LateStringableThing"))
+        assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRtAuthoredCandidates")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtIdentity")?.outcome)
     }
 
     @Test

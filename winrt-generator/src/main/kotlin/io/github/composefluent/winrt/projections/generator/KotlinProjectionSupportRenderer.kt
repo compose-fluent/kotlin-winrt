@@ -139,6 +139,9 @@ class KotlinProjectionSupportRenderer {
         emitProjectionRegistrar: Boolean = true,
         excludedProjectionTypeNames: Set<String> = emptySet(),
         genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
+        authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
+        authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
+        authoringModuleActivationFactoryPlanClassName: ClassName = WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME,
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         validateAuthoringMetadataProjectionPlans(inventory, plans)
@@ -170,9 +173,21 @@ class KotlinProjectionSupportRenderer {
                 renderAuthoringAbiClasses(inventory, plans, semanticHelpers),
                 renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
                 renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
-                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
-                renderAuthoringServerActivationFactories(inventory, plans, semanticHelpers),
-                renderAuthoringHostExports(inventory, plans, semanticHelpers),
+                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName),
+                renderAuthoringServerActivationFactories(
+                    inventory,
+                    plans,
+                    semanticHelpers,
+                    authoringServerActivationFactoriesClassName,
+                    authoringModuleActivationFactoryPlanClassName,
+                ),
+                renderAuthoringHostExports(
+                    inventory,
+                    plans,
+                    semanticHelpers,
+                    authoringHostExportsClassName,
+                    authoringServerActivationFactoriesClassName,
+                ),
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
                 renderNamespaceAdditions(inventory),
             ).forEach(::add)
@@ -1225,6 +1240,7 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoringModuleActivationFactoryPlanClassName: ClassName,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
@@ -1237,7 +1253,7 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringModuleActivationFactoryEntry")
-        val fileSpec = supportFileSpec("WinRTAuthoringModuleActivationFactoryPlan")
+        val fileSpec = supportFileSpec(authoringModuleActivationFactoryPlanClassName.simpleName)
             .addType(
                 dataClass(
                     className = "AuthoringModuleActivationFactoryEntry",
@@ -1248,7 +1264,7 @@ class KotlinProjectionSupportRenderer {
                 ),
             )
             .addType(
-                TypeSpec.objectBuilder("WinRTAuthoringModuleActivationFactoryPlan")
+                TypeSpec.objectBuilder(authoringModuleActivationFactoryPlanClassName.simpleName)
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
@@ -1306,13 +1322,15 @@ class KotlinProjectionSupportRenderer {
                     .build(),
             )
             .build()
-        return supportFile("WinRTAuthoringModuleActivationFactoryPlan.kt", fileSpec)
+        return supportFile("${authoringModuleActivationFactoryPlanClassName.simpleName}.kt", fileSpec)
     }
 
     private fun renderAuthoringServerActivationFactories(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoringServerActivationFactoriesClassName: ClassName,
+        authoringModuleActivationFactoryPlanClassName: ClassName,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
@@ -1324,23 +1342,25 @@ class KotlinProjectionSupportRenderer {
         if (entries.isEmpty()) {
             return null
         }
-        val fileBuilder = supportFileSpec("WinRTAuthoringServerActivationFactories")
+        val fileBuilder = supportFileSpec(authoringServerActivationFactoriesClassName.simpleName)
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers))
         }
         fileBuilder.addType(
-            TypeSpec.objectBuilder("WinRTAuthoringServerActivationFactories")
+            TypeSpec.objectBuilder(authoringServerActivationFactoriesClassName.simpleName)
                 .addModifiers(KModifier.INTERNAL)
-                .addFunction(authoringServerActivationFactoryRegisterFunction(entries))
+                .addFunction(authoringServerActivationFactoryRegisterFunction(entries, authoringModuleActivationFactoryPlanClassName))
                 .build(),
         )
-        return supportFile("WinRTAuthoringServerActivationFactories.kt", fileBuilder.build())
+        return supportFile("${authoringServerActivationFactoriesClassName.simpleName}.kt", fileBuilder.build())
     }
 
     private fun renderAuthoringHostExports(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoringHostExportsClassName: ClassName,
+        authoringServerActivationFactoriesClassName: ClassName,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
@@ -1355,22 +1375,22 @@ class KotlinProjectionSupportRenderer {
         val hostBridgeClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostBridge")
         val hostExportsInterface = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostExports")
         val hostManifestLoaderClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostManifestLoader")
-        val fileSpec = supportFileSpec("WinRTAuthoringHostExports")
+        val fileSpec = supportFileSpec(authoringHostExportsClassName.simpleName)
             .addType(
-                TypeSpec.objectBuilder("WinRTAuthoringHostExports")
+                TypeSpec.objectBuilder(authoringHostExportsClassName.simpleName)
                     .addModifiers(KModifier.INTERNAL)
                     .addSuperinterface(hostExportsInterface)
                     .addInitializerBlock(
                         CodeBlock.of(
                             "%T.registerHostExports(%S, this)\n",
                             hostManifestLoaderClass,
-                            "$SUPPORT_PACKAGE.WinRTAuthoringHostExports",
+                            authoringHostExportsClassName.canonicalName,
                         ),
                     )
                     .addFunction(
                         FunSpec.builder("registerActivationFactories")
                             .addModifiers(KModifier.OVERRIDE)
-                            .addStatement("%T.register()", ClassName(SUPPORT_PACKAGE, "WinRTAuthoringServerActivationFactories"))
+                            .addStatement("%T.register()", authoringServerActivationFactoriesClassName)
                             .build(),
                     )
                     .addFunction(
@@ -1408,7 +1428,7 @@ class KotlinProjectionSupportRenderer {
                     .build(),
             )
             .build()
-        return supportFile("WinRTAuthoringHostExports.kt", fileSpec)
+        return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileSpec)
     }
 
     private fun authoringServerActivationFactoryClass(
@@ -1442,9 +1462,10 @@ class KotlinProjectionSupportRenderer {
 
     private fun authoringServerActivationFactoryRegisterFunction(
         entries: List<KotlinTypeProjectionPlan>,
+        authoringModuleActivationFactoryPlanClassName: ClassName,
     ): FunSpec {
         val code = CodeBlock.builder()
-        code.add("%T.registerModuleActivationFactories { entry ->\n", ClassName(SUPPORT_PACKAGE, "WinRTAuthoringModuleActivationFactoryPlan"))
+        code.add("%T.registerModuleActivationFactories { entry ->\n", authoringModuleActivationFactoryPlanClassName)
         code.indent()
         code.add("when (entry.runtimeClassName) {\n")
         code.indent()

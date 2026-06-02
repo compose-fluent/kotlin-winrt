@@ -3237,6 +3237,9 @@ class KotlinWinRtIrGenerationExtension(
                 KotlinWinRtAuthoringMetadataModel.writeHostManifest(
                     assemblyName = assemblyName,
                     targetArtifactName = authoringTargetArtifactName?.takeIf(String::isNotBlank) ?: "$assemblyName.jar",
+                    hostExportsClassName = winRtAuthoringHostExportsClassName(
+                        authoringTargetArtifactName?.takeIf(String::isNotBlank) ?: "$assemblyName.jar",
+                    ),
                     candidates = exportedCandidates,
                     outputFile = outputPath,
                 )
@@ -4929,6 +4932,26 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
         entries = entries,
     )
 }
+
+private fun winRtAuthoringHostExportsClassName(ownerIdentity: String): String {
+    val suffix = ownerIdentity.toKotlinSupportIdentifierSuffix()
+    return if (suffix.isBlank()) {
+        "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports"
+    } else {
+        "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_$suffix"
+    }
+}
+
+private fun String.toKotlinSupportIdentifierSuffix(): String =
+    buildString {
+        this@toKotlinSupportIdentifierSuffix.trim().forEach { char ->
+            append(if (char.isLetterOrDigit()) char else '_')
+        }
+    }.trim('_')
+        .replace(Regex("_+"), "_")
+        .let { suffix ->
+            if (suffix.firstOrNull()?.isDigit() == true) "_$suffix" else suffix
+        }
 
 private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
     setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry", "xaml-component-resource")
