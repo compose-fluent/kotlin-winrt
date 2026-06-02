@@ -122,7 +122,10 @@ class KotlinProjectionGenerator(
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
     private val groupProjectionFilesByPackageOnWrite: Boolean = false,
+    private val supportOwnerIdentity: String? = null,
 ) {
+    private val genericTypeInstantiationsClassName = winRtGenericTypeInstantiationsClassName(supportOwnerIdentity)
+
     init {
         require(emitSupportFiles || projectionContext.sources.isEmpty()) {
             "KotlinProjectionGenerator requires emitSupportFiles=true when a projection context is supplied."
@@ -1572,6 +1575,7 @@ class KotlinProjectionGenerator(
                 },
                 useWinAppSdkTypeRedirects = plans?.requiresWinAppSdkTypeRedirects() == true,
                 useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
+                genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
             )
         } else {
             renderer
@@ -1613,6 +1617,7 @@ class KotlinProjectionGenerator(
             projectionContext,
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
             excludedProjectionTypeNames = authoredProjectedTypeNames(model),
+            genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
         )
         return when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> files

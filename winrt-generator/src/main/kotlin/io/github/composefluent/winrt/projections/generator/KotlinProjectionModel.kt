@@ -164,6 +164,29 @@ internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectabl
 internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRtInspectableMethodDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTGenericTypeInstantiations")
+internal fun winRtGenericTypeInstantiationsClassName(ownerIdentity: String?): ClassName {
+    val suffix = ownerIdentity
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.toKotlinSupportIdentifierSuffix()
+        ?.takeIf(String::isNotEmpty)
+        ?: return WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME
+    return ClassName(
+        "io.github.composefluent.winrt.projections.support",
+        "WinRTGenericTypeInstantiations_$suffix",
+    )
+}
+
+private fun String.toKotlinSupportIdentifierSuffix(): String =
+    buildString {
+        this@toKotlinSupportIdentifierSuffix.forEach { char ->
+            append(if (char.isLetterOrDigit()) char else '_')
+        }
+    }.trim('_')
+        .replace(Regex("_+"), "_")
+        .let { suffix ->
+            if (suffix.firstOrNull()?.isDigit() == true) "_$suffix" else suffix
+        }
 internal val JVM_INLINE_CLASS_NAME = JvmInline::class.asClassName()
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
 internal val HSTRING_CLASS_NAME = HString::class.asClassName()

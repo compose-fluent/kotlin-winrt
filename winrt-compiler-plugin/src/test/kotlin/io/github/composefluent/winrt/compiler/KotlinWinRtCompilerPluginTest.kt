@@ -400,6 +400,26 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_allows_artifact_scoped_generic_instantiation_class_names() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-generic-owner-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_lib_jar	generic-instantiations.tsv	2
+            """.trimIndent() + "\n",
+        )
+
+        val entries = readCompilerSupportManifest(manifest)
+
+        assertEquals(1, entries.size)
+        assertEquals(
+            "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_lib_jar",
+            entries.single().className,
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_mismatched_source_files() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-mismatched-source-", ".tsv")
         Files.writeString(
@@ -450,6 +470,40 @@ class KotlinWinRtCompilerPluginTest {
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("duplicate compiler support manifest entry"),
         )
+    }
+
+    @Test
+    fun compiler_support_input_reader_reads_merged_source_file_once_for_multiple_generic_owners() {
+        val root = Files.createTempDirectory("kotlin-winrt-merged-generic-support-")
+        val manifest = root.resolve("compiler-support.tsv")
+        val genericInstantiations = root.resolve("generic-instantiations.tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency	generic-instantiations.tsv	1
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample	generic-instantiations.tsv	2
+            """.trimIndent() + "\n",
+        )
+        Files.writeString(
+            genericInstantiations,
+            """
+            className	sourceType	isDelegate	rcwFunctions	vtableFunctions	propertyAccessors	genericReturnOnlyRcwFunctions	projectedGenericFallbacks	dependencies
+            ClassA	TypeA	false	RcwA	VtableA	PropertyA	ReturnA	FallbackA	DepA
+            ClassB	TypeB	false	RcwB	VtableB	PropertyB	ReturnB	FallbackB	DepB
+            """.trimIndent() + "\n",
+        )
+
+        val entries = readCompilerSupportInputEntries(
+            manifestPath = manifest,
+            manifestEntries = readCompilerSupportManifest(manifest),
+            kind = "generic-type-instantiation",
+            description = "generic type instantiation input",
+            read = ::readGenericTypeInstantiationEntries,
+        )
+
+        assertEquals(2, entries.size)
+        assertEquals(listOf("TypeA", "TypeB"), entries.map(KotlinWinRtGenericTypeInstantiationEntry::sourceType))
     }
 
     @Test
