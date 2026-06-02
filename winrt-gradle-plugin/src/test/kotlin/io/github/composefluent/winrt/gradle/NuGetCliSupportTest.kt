@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.logging.Logging
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -8,7 +9,7 @@ import java.nio.file.Files
 
 class NuGetCliSupportTest {
     @Test
-    fun install_uses_isolated_caches_and_stable_download_arguments() {
+    fun install_keeps_global_package_cache_and_disables_nuget_internal_parallelism() {
         assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
         val root = Files.createTempDirectory("kotlin-winrt-nuget-cli-test-")
         val logFile = root.resolve("nuget-invocation.txt")
@@ -45,9 +46,9 @@ class NuGetCliSupportTest {
         )
 
         val invocation = Files.readString(logFile)
-        assertTrue(invocation.contains("-DirectDownload"))
         assertTrue(invocation.contains("-DisableParallelProcessing"))
-        assertTrue(invocation.contains("NUGET_PACKAGES=${scratchDirectory.resolve("global-packages")}"))
-        assertTrue(invocation.contains("NUGET_HTTP_CACHE_PATH=${scratchDirectory.resolve("http-cache")}"))
+        assertFalse(invocation.contains("-DirectDownload"))
+        assertFalse(invocation.contains("NUGET_PACKAGES=${scratchDirectory.resolve("global-packages")}"))
+        assertFalse(invocation.contains("NUGET_HTTP_CACHE_PATH=${scratchDirectory.resolve("http-cache")}"))
     }
 }
