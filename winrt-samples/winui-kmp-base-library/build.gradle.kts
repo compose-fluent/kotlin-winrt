@@ -2,7 +2,7 @@ import io.github.composefluent.winrt.gradle.GenerateWinRtProjectionsTask
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("io.github.composefluent.winrt")
+    id("io.github.compose-fluent.winrt")
 }
 
 tasks.named<GenerateWinRtProjectionsTask>("generateWinRtProjections") {
