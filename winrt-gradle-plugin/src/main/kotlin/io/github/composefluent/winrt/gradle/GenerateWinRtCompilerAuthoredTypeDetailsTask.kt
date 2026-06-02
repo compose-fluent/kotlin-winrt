@@ -147,11 +147,11 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (restoreNuGetPackages.get()) {
             packageIdentities.filter { identity ->
-                isNuGetPackageAvailable(identity, nugetRoots)
+                isNuGetPackageClosureAvailable(identity, nugetRoots)
             }
         } else {
             val missingNuGetIdentities = packageIdentities.filterNot { identity ->
-                isNuGetPackageAvailable(identity, nugetRoots)
+                isNuGetPackageClosureAvailable(identity, nugetRoots)
             }
             require(missingNuGetIdentities.isEmpty()) {
                 "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingNuGetIdentities.joinToString()}"
@@ -184,13 +184,13 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         }
     }
 
-    private fun isNuGetPackageAvailable(
+    private fun isNuGetPackageClosureAvailable(
         identity: WinRtNuGetPackageIdentity,
         globalPackagesRoots: List<Path>,
     ): Boolean {
         val roots = WinRtNuGetPackageResolver.globalPackagesRoots(explicitRoots = globalPackagesRoots)
         return runCatching {
-            WinRtNuGetPackageResolver.packageRoot(identity, roots)
+            WinRtNuGetPackageResolver.resolveClosure(identity, roots)
         }.isSuccess
     }
 
