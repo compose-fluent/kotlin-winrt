@@ -258,6 +258,10 @@ class KotlinWinRtIrGenerationExtension(
         val compilerSupportEntries = readCompilerSupportManifest()
         val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
         val genericTypeInstantiationEntries = readGenericTypeInstantiationEntries(compilerSupportEntries)
+        val genericTypeInstantiationSupportClassName = compilerSupportEntries
+            .filter { entry -> entry.kind == "generic-type-instantiation" }
+            .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
+            ?.className
         val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries)
         val genericTypeInstantiationIntrinsicCalls =
@@ -271,6 +275,7 @@ class KotlinWinRtIrGenerationExtension(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
             entries = genericTypeInstantiationEntries,
+            supportClassName = genericTypeInstantiationSupportClassName,
             includeInitializeAll = "initializeAll" in genericTypeInstantiationIntrinsicCalls,
             includeInitializeBySourceType = "initializeBySourceType" in genericTypeInstantiationIntrinsicCalls,
         )
@@ -3763,12 +3768,18 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
         entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
+        supportClassName: String?,
         includeInitializeAll: Boolean,
         includeInitializeBySourceType: Boolean,
     ): GenericTypeInstantiationSupportFunctions? {
         if (entries.isEmpty() || (!includeInitializeAll && !includeInitializeBySourceType)) {
             return null
         }
+        val supportClassFqName = requireCompilerSupportPrerequisite(
+            description = "generic type instantiation",
+            prerequisite = "compiler support manifest className",
+            value = supportClassName?.takeIf(String::isNotBlank),
+        )
         val file = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
             prerequisite = "module file",
@@ -3776,9 +3787,9 @@ class KotlinWinRtIrGenerationExtension(
         )
         val supportClass = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
-            prerequisite = "class io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations",
+            prerequisite = "class $supportClassFqName",
             value = pluginContext.referenceClass(
-                ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations")),
+                ClassId.topLevel(FqName(supportClassFqName)),
             ),
         )
         val entryClass = requireCompilerSupportPrerequisite(
@@ -4904,7 +4915,10 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
         return null
     }
     val expected = COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND[parts[0]] ?: return null
-    if (parts[1] != expected.className || parts[2] != expected.sourceFile) {
+    if (expected.className != null && parts[1] != expected.className) {
+        return null
+    }
+    if (parts[2] != expected.sourceFile) {
         return null
     }
     val entries = parts[3].toIntOrNull()?.takeIf { it >= 0 } ?: return null
@@ -4929,7 +4943,7 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
             sourceFile = "projection-registrar.tsv",
         ),
         "generic-type-instantiation" to CompilerSupportManifestExpectedEntry(
-            className = "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations",
+            className = null,
             sourceFile = "generic-instantiations.tsv",
         ),
         "generic-abi-registry" to CompilerSupportManifestExpectedEntry(
@@ -4943,7 +4957,7 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
     )
 
 private data class CompilerSupportManifestExpectedEntry(
-    val className: String,
+    val className: String?,
     val sourceFile: String,
 )
 
@@ -5361,14 +5375,17 @@ fun <T> readCompilerSupportInputEntries(
     return manifestEntries
         .asSequence()
         .filter { it.kind == kind }
-        .flatMap { entry ->
-            val sourcePath = manifestDirectory.resolve(entry.sourceFile)
+        .groupBy(KotlinWinRtCompilerSupportManifestEntry::sourceFile)
+        .asSequence()
+        .flatMap { (sourceFile, entriesForSource) ->
+            val sourcePath = manifestDirectory.resolve(sourceFile)
             require(Files.isRegularFile(sourcePath)) {
                 "kotlin-winrt compiler plugin requires $description file $sourcePath declared by $manifestPath to exist."
             }
+            val expectedEntries = entriesForSource.maxOf(KotlinWinRtCompilerSupportManifestEntry::entries)
             val entries = read(sourcePath)
-            require(entries.size == entry.entries) {
-                "kotlin-winrt compiler plugin expected ${entry.entries} $description entries in $sourcePath declared by $manifestPath, but found ${entries.size}."
+            require(entries.size == expectedEntries) {
+                "kotlin-winrt compiler plugin expected $expectedEntries $description entries in $sourcePath declared by $manifestPath, but found ${entries.size}."
             }
             entries.asSequence()
         }

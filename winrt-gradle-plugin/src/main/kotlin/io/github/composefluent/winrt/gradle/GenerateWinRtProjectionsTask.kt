@@ -290,6 +290,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
                         .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
                         .filterTo(mutableSetOf(), String::isNotBlank)
                 ),
+            supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
         ).generateTo(model, parameters.outputDirectory.get().asFile.toPath())
         writeAuthoringMetadataIndex(model, authoringMetadataIndex)
         KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(

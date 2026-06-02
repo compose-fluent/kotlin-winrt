@@ -121,6 +121,7 @@ class KotlinProjectionRenderer(
     internal val projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
     internal val useWinAppSdkTypeRedirects: Boolean = false,
     internal val useKotlinDurationAlias: Boolean = false,
+    internal val genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
@@ -3097,7 +3098,7 @@ class KotlinProjectionRenderer(
         if (objectReferencePlan?.requiresGenericInstantiation == true) {
             body.addStatement(
                 "%T.initializeBySourceType(%S)",
-                WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
+                genericTypeInstantiationsClassName,
                 objectReferencePlan.interfaceName,
             )
         }

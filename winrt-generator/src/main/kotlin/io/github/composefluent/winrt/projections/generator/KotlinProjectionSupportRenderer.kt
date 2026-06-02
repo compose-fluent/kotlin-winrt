@@ -138,6 +138,7 @@ class KotlinProjectionSupportRenderer {
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
         emitProjectionRegistrar: Boolean = true,
         excludedProjectionTypeNames: Set<String> = emptySet(),
+        genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         validateAuthoringMetadataProjectionPlans(inventory, plans)
@@ -151,8 +152,16 @@ class KotlinProjectionSupportRenderer {
                 renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
                 renderGenericAbiSupportSource(inventory.genericAbiInventory),
                 renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
-                renderGenericTypeInstantiations(genericInstantiationWriters),
-                renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
+                renderGenericTypeInstantiations(genericInstantiationWriters, genericTypeInstantiationsClassName),
+                renderCompilerSupportManifest(
+                    model,
+                    plans,
+                    inventory,
+                    genericInstantiationWriters,
+                    excludedProjectionTypeNames,
+                    emitProjectionRegistrar,
+                    genericTypeInstantiationsClassName,
+                ),
                 renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
                 renderAuthoringWrapperPlan(inventory, plans),
@@ -389,6 +398,7 @@ class KotlinProjectionSupportRenderer {
         genericInstantiationWriters: List<WinRtGenericInstantiationWriterDescriptor>,
         excludedProjectionTypeNames: Set<String>,
         emitProjectionRegistrar: Boolean,
+        genericTypeInstantiationsClassName: ClassName,
     ): KotlinProjectionFile? {
         val registrarEntries = if (emitProjectionRegistrar) {
             registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames).size
@@ -408,7 +418,7 @@ class KotlinProjectionSupportRenderer {
             ),
             compilerSupportManifestRow(
                 kind = "generic-type-instantiation",
-                className = "$SUPPORT_PACKAGE.WinRTGenericTypeInstantiations",
+                className = genericTypeInstantiationsClassName.canonicalName,
                 sourceFile = "generic-instantiations.tsv",
                 entries = genericInstantiationEntries,
             ),
@@ -571,12 +581,13 @@ class KotlinProjectionSupportRenderer {
 
     private fun renderGenericTypeInstantiations(
         descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
+        genericTypeInstantiationsClassName: ClassName,
     ): KotlinProjectionFile? {
         if (descriptors.isEmpty()) {
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "GenericTypeInstantiationEntry")
-        val fileSpec = supportFileSpec("WinRTGenericTypeInstantiations")
+        val fileSpec = supportFileSpec(genericTypeInstantiationsClassName.simpleName)
             .addType(
                 dataClass(
                     className = "GenericTypeInstantiationEntry",
@@ -594,13 +605,13 @@ class KotlinProjectionSupportRenderer {
                 ),
             )
             .addType(
-                TypeSpec.objectBuilder("WinRTGenericTypeInstantiations")
+                TypeSpec.objectBuilder(genericTypeInstantiationsClassName.simpleName)
                     .addModifiers(KModifier.INTERNAL)
                     .addFunctions(genericTypeInstantiationFunctions(entryClass))
                     .build(),
             )
             .build()
-        return supportFile("WinRTGenericTypeInstantiations.kt", fileSpec)
+        return supportFile("${genericTypeInstantiationsClassName.simpleName}.kt", fileSpec)
     }
 
     private fun renderEventProjectionHelpers(
