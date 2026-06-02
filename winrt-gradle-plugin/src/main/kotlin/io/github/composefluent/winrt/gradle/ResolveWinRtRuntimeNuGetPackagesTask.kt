@@ -143,6 +143,7 @@ abstract class ResolveWinRtRuntimeNuGetPackagesTask : DefaultTask() {
         executable = nugetExecutable.get(),
         cliVersion = nugetCliVersion.get(),
         cliCacheDirectory = nugetCliCacheDirectory.get().asFile.toPath(),
+        scratchDirectory = temporaryDir.toPath().resolve("nuget-scratch"),
         logger = logger,
     )
 }
