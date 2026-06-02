@@ -3,9 +3,15 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.GradleException
 import org.gradle.api.logging.Logger
 import java.net.URI
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.util.concurrent.locks.ReentrantLock
 import java.util.zip.ZipInputStream
+import kotlin.concurrent.withLock
 import kotlin.io.path.notExists
 
 internal class NuGetCliSupport(
@@ -18,6 +24,18 @@ internal class NuGetCliSupport(
     fun run(
         arguments: List<String>,
         workingDirectory: Path? = null,
+        description: String,
+    ): NuGetInvocation = if (arguments.isNuGetInstallCommand()) {
+        withNuGetInstallLock(description) {
+            runUnlocked(arguments, workingDirectory, description)
+        }
+    } else {
+        runUnlocked(arguments, workingDirectory, description)
+    }
+
+    private fun runUnlocked(
+        arguments: List<String>,
+        workingDirectory: Path?,
         description: String,
     ): NuGetInvocation {
         val configuredInvocation = invokeNuGet(executable, arguments, workingDirectory)
@@ -40,6 +58,46 @@ internal class NuGetCliSupport(
         }
 
         throw nugetFailure(description, configuredInvocation, cachedInvocation)
+    }
+
+    private fun <T> withNuGetInstallLock(
+        description: String,
+        action: () -> T,
+    ): T = installJvmLock.withLock {
+        val lockFile = cliCacheDirectory.resolve(INSTALL_LOCK_FILE_NAME)
+        Files.createDirectories(lockFile.parent)
+        FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+            acquireNuGetInstallLock(channel, lockFile, description).use {
+                action()
+            }
+        }
+    }
+
+    private fun acquireNuGetInstallLock(
+        channel: FileChannel,
+        lockFile: Path,
+        description: String,
+    ): FileLock {
+        while (true) {
+            val lock = try {
+                channel.tryLock()
+            } catch (_: OverlappingFileLockException) {
+                null
+            }
+            if (lock != null) {
+                return lock
+            }
+            logger.info("Waiting for NuGet install lock at $lockFile before $description.")
+            runCatching {
+                Thread.sleep(INSTALL_LOCK_RETRY_MILLIS)
+            }.onFailure { error ->
+                if (error is InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw GradleException("Interrupted while waiting for NuGet install lock at $lockFile.", error)
+                }
+                throw error
+            }
+        }
     }
 
     private fun invokeNuGet(
@@ -120,6 +178,12 @@ internal class NuGetCliSupport(
         }.orEmpty()
         return GradleException("Microsoft NuGet CLI failed to $description.$LINE_SEPARATOR$configuredMessage$cachedMessage")
     }
+
+    companion object {
+        private const val INSTALL_LOCK_FILE_NAME = "nuget-install.lock"
+        private const val INSTALL_LOCK_RETRY_MILLIS = 250L
+        private val installJvmLock = ReentrantLock()
+    }
 }
 
 internal data class NuGetInvocation(
@@ -132,3 +196,6 @@ internal data class NuGetInvocation(
 }
 
 private val LINE_SEPARATOR: String = System.lineSeparator()
+
+private fun List<String>.isNuGetInstallCommand(): Boolean =
+    firstOrNull()?.equals("install", ignoreCase = true) == true
