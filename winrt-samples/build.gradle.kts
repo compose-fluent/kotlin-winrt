@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
     id("build-convention")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.composefluent.winrt")
     application
 }
 

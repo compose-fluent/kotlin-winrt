@@ -42,8 +42,14 @@ tasks.withType<Test>().configureEach {
 gradlePlugin {
     plugins {
         create("kotlinWinRt") {
-            id = "io.github.compose-fluent.winrt"
+            id = "io.github.composefluent.winrt"
             implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRtPlugin"
         }
     }
+}
+
+tasks.matching { task ->
+    task.name.startsWith("publishKotlinWinRtPluginMarkerMavenPublicationTo")
+}.configureEach {
+    enabled = false
 }
