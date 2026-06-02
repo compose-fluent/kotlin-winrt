@@ -337,11 +337,11 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (parameters.restoreNuGetPackages.get()) {
             packageIdentities.filter { identity ->
-                isNuGetPackageAvailable(identity, nugetRoots)
+                isNuGetPackageClosureAvailable(identity, nugetRoots)
             }
         } else {
             val missingNuGetIdentities = packageIdentities.filterNot { identity ->
-                isNuGetPackageAvailable(identity, nugetRoots)
+                isNuGetPackageClosureAvailable(identity, nugetRoots)
             }
             require(missingNuGetIdentities.isEmpty()) {
                 "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingNuGetIdentities.joinToString()}"
@@ -378,13 +378,13 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         }
     }
 
-    private fun isNuGetPackageAvailable(
+    private fun isNuGetPackageClosureAvailable(
         identity: WinRtNuGetPackageIdentity,
         globalPackagesRoots: List<Path>,
     ): Boolean {
         val roots = WinRtNuGetPackageResolver.globalPackagesRoots(explicitRoots = globalPackagesRoots)
         return runCatching {
-            WinRtNuGetPackageResolver.packageRoot(identity, roots)
+            WinRtNuGetPackageResolver.resolveClosure(identity, roots)
         }.isSuccess
     }
 
