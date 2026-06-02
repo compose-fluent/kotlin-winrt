@@ -6385,7 +6385,7 @@ class KotlinWinRtPluginTest {
                 add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
             }
 
-            apply(plugin = "io.github.composefluent.winrt")
+            apply(plugin = "io.github.compose-fluent.winrt")
 
             kotlin {
                 jvm("winuiJvm")
@@ -6531,7 +6531,7 @@ class KotlinWinRtPluginTest {
                 add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
             }
 
-            apply(plugin = "io.github.composefluent.winrt")
+            apply(plugin = "io.github.compose-fluent.winrt")
         """.trimIndent()
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
