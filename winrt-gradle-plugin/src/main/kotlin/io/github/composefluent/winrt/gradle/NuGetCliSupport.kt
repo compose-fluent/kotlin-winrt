@@ -119,14 +119,6 @@ internal class NuGetCliSupport(
             processBuilder.environment()["TMP"] = scratchPath
             processBuilder.environment()["TMPDIR"] = scratchPath
             processBuilder.environment()["NUGET_SCRATCH"] = scratchPath
-            if (arguments.isNuGetInstallCommand()) {
-                val packageCache = scratchDirectory.resolve("global-packages")
-                val httpCache = scratchDirectory.resolve("http-cache")
-                Files.createDirectories(packageCache)
-                Files.createDirectories(httpCache)
-                processBuilder.environment()["NUGET_PACKAGES"] = packageCache.toString()
-                processBuilder.environment()["NUGET_HTTP_CACHE_PATH"] = httpCache.toString()
-            }
         }
         val process = runCatching { processBuilder.start() }.getOrElse { error ->
             return NuGetInvocation(
@@ -210,7 +202,7 @@ private fun List<String>.isNuGetInstallCommand(): Boolean =
     firstOrNull()?.equals("install", ignoreCase = true) == true
 
 private fun List<String>.withNuGetInstallStabilityArguments(): List<String> =
-    this + listOfMissingNuGetOptions("-DirectDownload", "-DisableParallelProcessing")
+    this + listOfMissingNuGetOptions("-DisableParallelProcessing")
 
 private fun List<String>.listOfMissingNuGetOptions(vararg options: String): List<String> {
     val present = asSequence()
