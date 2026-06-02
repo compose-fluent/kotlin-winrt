@@ -26,8 +26,9 @@ internal class NuGetCliSupport(
         workingDirectory: Path? = null,
         description: String,
     ): NuGetInvocation = if (arguments.isNuGetInstallCommand()) {
+        val effectiveArguments = arguments.withNuGetInstallStabilityArguments()
         withNuGetInstallLock(description) {
-            runUnlocked(arguments, workingDirectory, description)
+            runUnlocked(effectiveArguments, workingDirectory, description)
         }
     } else {
         runUnlocked(arguments, workingDirectory, description)
@@ -118,6 +119,14 @@ internal class NuGetCliSupport(
             processBuilder.environment()["TMP"] = scratchPath
             processBuilder.environment()["TMPDIR"] = scratchPath
             processBuilder.environment()["NUGET_SCRATCH"] = scratchPath
+            if (arguments.isNuGetInstallCommand()) {
+                val packageCache = scratchDirectory.resolve("global-packages")
+                val httpCache = scratchDirectory.resolve("http-cache")
+                Files.createDirectories(packageCache)
+                Files.createDirectories(httpCache)
+                processBuilder.environment()["NUGET_PACKAGES"] = packageCache.toString()
+                processBuilder.environment()["NUGET_HTTP_CACHE_PATH"] = httpCache.toString()
+            }
         }
         val process = runCatching { processBuilder.start() }.getOrElse { error ->
             return NuGetInvocation(
@@ -199,3 +208,14 @@ private val LINE_SEPARATOR: String = System.lineSeparator()
 
 private fun List<String>.isNuGetInstallCommand(): Boolean =
     firstOrNull()?.equals("install", ignoreCase = true) == true
+
+private fun List<String>.withNuGetInstallStabilityArguments(): List<String> =
+    this + listOfMissingNuGetOptions("-DirectDownload", "-DisableParallelProcessing")
+
+private fun List<String>.listOfMissingNuGetOptions(vararg options: String): List<String> {
+    val present = asSequence()
+        .filter { argument -> argument.startsWith("-") }
+        .map { argument -> argument.substringBefore(":").lowercase() }
+        .toSet()
+    return options.filterNot { option -> option.lowercase() in present }
+}
