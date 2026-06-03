@@ -117,6 +117,12 @@ internal object XamlSystemProjectionRuntimeHooks {
         WinUiXamlMetadataProviderCache.close()
     }
 
+    fun prepareForApplicationExit() {
+        WinRtComposableObjectReference.closeRuntimeReferences()
+        closeRuntimeCaches()
+        PlatformFinalization.drain()
+    }
+
     internal fun augmentInspectableDefinition(
         value: Any,
         definition: WinRtCcwDefinition,

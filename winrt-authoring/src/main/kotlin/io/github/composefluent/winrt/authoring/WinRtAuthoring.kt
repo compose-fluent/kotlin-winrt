@@ -151,11 +151,13 @@ object WinRtAuthoring {
     fun createComposableObject(
         value: Any,
         outerInterfaceId: Guid? = null,
+        instanceInterfaceId: Guid? = null,
         createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
     ): WinRtComposableObjectReference =
         ComWrappersSupport.createComposableCCWForObject(
             value = value,
             outerInterfaceId = outerInterfaceId,
+            instanceInterfaceId = instanceInterfaceId,
             createInstance = createInstance,
         )
 

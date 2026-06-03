@@ -1225,7 +1225,10 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
         code.indent()
     }
     code.add("val __factory = acquire()\n")
-    code.add("return %T.createComposableCCWForObject(value, outerInterfaceId) { __baseInterface, __innerOut, __resultOut ->\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+    code.add(
+        "return %T.createComposableCCWForObject(value, outerInterfaceId, DEFAULT_INTERFACE_IID) { __baseInterface, __innerOut, __resultOut ->\n",
+        COM_WRAPPERS_SUPPORT_CLASS_NAME,
+    )
     code.indent()
     val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
         listOf(KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind)) +

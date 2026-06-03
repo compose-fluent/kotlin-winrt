@@ -21,8 +21,11 @@ internal object PlatformRuntimeInitialization {
 
     fun uninitializeWinRt() {
         if (!PlatformRuntime.isWindows) return
+        WinRtComposableObjectReference.closeRuntimeReferences()
         XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
+        ComWrappersSupport.clearRuntimeCache()
         ActivationFactory.clearRuntimeCache()
+        PlatformFinalization.drain()
         WinRtPlatformApi.roUninitializeRaw()
     }
 }

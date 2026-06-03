@@ -1513,6 +1513,9 @@ class KotlinProjectionRenderer(
                 }
                 if (returns == UNIT) {
                     addCode("%L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
+                    if (method.requiresXamlApplicationExitPreparation(plan)) {
+                        addCode("%T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                    }
                 } else {
                     addCode("return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
                 }

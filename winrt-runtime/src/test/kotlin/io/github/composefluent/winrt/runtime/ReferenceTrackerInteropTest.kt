@@ -26,7 +26,7 @@ class ReferenceTrackerInteropTest {
 
             reference.close()
 
-            assertEquals(1, host.trackerReleaseFromSourceCalls.get())
+            assertEquals(2, host.trackerReleaseFromSourceCalls.get())
             assertEquals(1, host.objectReleaseCalls.get())
             assertEquals(2, host.trackerReleaseCalls.get())
         }
@@ -44,9 +44,29 @@ class ReferenceTrackerInteropTest {
 
             initialized.close()
 
-            assertEquals(0, host.trackerReleaseFromSourceCalls.get())
+            assertEquals(1, host.trackerReleaseFromSourceCalls.get())
             assertEquals(1, host.objectReleaseCalls.get())
             assertEquals(2, host.trackerReleaseCalls.get())
+        }
+    }
+
+    @Test
+    fun get_ref_adds_com_reference_without_tracker_source_reference() {
+        FakeReferenceTrackerHost.create().use { host ->
+            val reference = IInspectableReference(host.objectPointer.asRawAddress().asRawComPtr(), IID.IInspectable)
+
+            assertTrue(reference.tryInitializeReferenceTracker())
+            assertEquals(1, host.trackerAddRefFromSourceCalls.get())
+
+            val pointer = reference.getRefPointer()
+
+            assertEquals(host.objectPointer.address(), PlatformAbi.pointerKey(pointer))
+            assertEquals(1, host.objectAddRefCalls.get())
+            assertEquals(1, host.trackerAddRefFromSourceCalls.get())
+
+            WinRtPlatformApi.releaseRaw(pointer.asRawAddress())
+            reference.close()
+            assertEquals(2, host.objectReleaseCalls.get())
         }
     }
 
@@ -54,6 +74,7 @@ class ReferenceTrackerInteropTest {
         private val arena: Arena,
         val objectPointer: MemorySegment,
         private val trackerPointer: MemorySegment,
+        val objectAddRefCalls: AtomicInteger,
         val objectReleaseCalls: AtomicInteger,
         val trackerReleaseCalls: AtomicInteger,
         val trackerAddRefFromSourceCalls: AtomicInteger,
@@ -148,6 +169,7 @@ class ReferenceTrackerInteropTest {
                     arena = arena,
                     objectPointer = objectMemory,
                     trackerPointer = trackerMemory,
+                    objectAddRefCalls = AtomicInteger(0),
                     objectReleaseCalls = AtomicInteger(0),
                     trackerReleaseCalls = AtomicInteger(0),
                     trackerAddRefFromSourceCalls = AtomicInteger(0),
@@ -180,7 +202,13 @@ class ReferenceTrackerInteropTest {
             }
 
             @JvmStatic
-            private fun addRefBridge(thisPointer: MemorySegment): Int = 2
+            private fun addRefBridge(thisPointer: MemorySegment): Int {
+                val host = registry[thisPointer.address()] ?: return 0
+                if (thisPointer.address() == host.objectPointer.address()) {
+                    host.objectAddRefCalls.incrementAndGet()
+                }
+                return 2
+            }
 
             @JvmStatic
             private fun releaseBridge(thisPointer: MemorySegment): Int {

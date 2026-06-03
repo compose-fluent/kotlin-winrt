@@ -56,7 +56,7 @@ internal class ComPtr private constructor(
     fun release(): UInt =
         support.release(::invokeReferenceTrackerReleaseOnPointer)
 
-    fun getRefPointer(): RawComPtr = support.getRef(::invokeReferenceTrackerAddRefOnPointer)
+    fun getRefPointer(): RawComPtr = support.getRef()
 
     fun tryQueryInterface(requestedInterfaceId: Guid): ComPtr? =
         support.tryQueryInterface(requestedInterfaceId, ::wrapQueriedReference)
@@ -83,10 +83,7 @@ internal class ComPtr private constructor(
     }
 
     override fun close() {
-        support.close(
-            releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
-            releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
-        )
+        closeSupport(support)
     }
 
     private fun wrapQueriedReference(
@@ -135,6 +132,13 @@ internal class ComPtr private constructor(
                 )
             }
             return ComPtr(raw, interfaceId, ownershipMode, support)
+        }
+
+        private fun closeSupport(support: RawComObjectReferenceSupport) {
+            support.close(
+                releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
+                releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
+            )
         }
     }
 }

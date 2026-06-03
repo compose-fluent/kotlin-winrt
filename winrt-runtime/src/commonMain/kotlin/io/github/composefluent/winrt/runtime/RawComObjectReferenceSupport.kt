@@ -34,18 +34,19 @@ internal class RawComObjectReferenceSupport(
     fun addRef(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
         val count = WinRtPlatformApi.addRefRaw(pointer.asNativePointer())
-        state.addRefFromTrackerSourceIfNeeded(addRefFromTrackerSourceCallback)
+        state.addRefFromTrackerSource(addRefFromTrackerSourceCallback)
         return count
     }
 
     fun release(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
-        state.releaseFromTrackerSourceIfNeeded(releaseFromTrackerSourceCallback)
+        state.releaseFromTrackerSource(releaseFromTrackerSourceCallback)
         return WinRtPlatformApi.releaseRaw(pointer.asNativePointer())
     }
 
-    fun getRef(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit): RawComPtr {
-        addRef(addRefFromTrackerSourceCallback)
+    fun getRef(): RawComPtr {
+        throwIfDisposed()
+        WinRtPlatformApi.addRefRaw(pointer.asNativePointer())
         return pointer
     }
 
@@ -139,11 +140,11 @@ internal class RawComObjectReferenceSupport(
         if (state.beginDispose()) {
             try {
                 if (!preventReleaseOnDispose) {
-                    state.releaseFromTrackerSourceIfNeeded(releaseFromTrackerSourceCallback)
+                    state.releaseFromTrackerSource(releaseFromTrackerSourceCallback)
                     WinRtPlatformApi.releaseRaw(pointer.asNativePointer())
                 }
             } finally {
-                state.disposeReferenceTracker(releaseTrackerPointer)
+                state.disposeReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
             }
         }
     }
