@@ -7,7 +7,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 internal class ComObjectReferenceState {
     private val disposed = AtomicInt(0)
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
-    private var releaseFromTrackerSourceOnDispose: Boolean = false
+    private var releaseInitialTrackerSourceOnDispose: Boolean = false
 
     val isDisposed: Boolean
         get() = disposed.load() != 0
@@ -33,30 +33,36 @@ internal class ComObjectReferenceState {
         retainTrackerPointer(trackerPointer)
         if (addRefFromTrackerSource) {
             addRefFromTrackerSourceCallback(trackerPointer)
-            releaseFromTrackerSourceOnDispose = true
+            releaseInitialTrackerSourceOnDispose = true
         }
     }
 
-    fun addRefFromTrackerSourceIfNeeded(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit) {
+    fun addRefFromTrackerSource(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit) {
         if (!hasReferenceTracker) {
             return
         }
         addRefFromTrackerSourceCallback(referenceTrackerPointer)
     }
 
-    fun releaseFromTrackerSourceIfNeeded(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit) {
-        if (!hasReferenceTracker || !releaseFromTrackerSourceOnDispose) {
+    fun releaseFromTrackerSource(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit) {
+        if (!hasReferenceTracker) {
             return
         }
         releaseFromTrackerSourceCallback(referenceTrackerPointer)
     }
 
-    fun disposeReferenceTracker(releaseTrackerPointer: (RawComPtr) -> Unit) {
+    fun disposeReferenceTracker(
+        releaseFromTrackerSourceCallback: (RawComPtr) -> Unit,
+        releaseTrackerPointer: (RawComPtr) -> Unit,
+    ) {
         if (!hasReferenceTracker) {
             return
         }
+        if (releaseInitialTrackerSourceOnDispose) {
+            releaseFromTrackerSource(releaseFromTrackerSourceCallback)
+        }
         releaseTrackerPointer(referenceTrackerPointer)
         referenceTrackerPointer = PlatformAbi.nullComPtr
-        releaseFromTrackerSourceOnDispose = false
+        releaseInitialTrackerSourceOnDispose = false
     }
 }

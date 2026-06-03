@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -307,6 +308,63 @@ class ComWrappersSupportTest {
             ComWrappersSupport.createCCWForObject(managed, baseDefaultInterfaceId).use { marshaled ->
                 assertTrue(marshaled.sameIdentity(composed.inner ?: error("Expected aggregated inner reference.")))
             }
+        }
+    }
+
+    @Test
+    fun composable_ccw_initializes_reference_tracker_for_non_aggregated_factory_instance() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val primaryInspectableId = Guid("33333333-3333-3333-3333-333333333333")
+        val defaultInterfaceId = Guid("34343434-3434-3434-3434-343434343434")
+        ComWrappersSupport.registerCcwFactory(TestComposableManagedType::class) {
+            WinRtCcwDefinition(
+                interfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = defaultInterfaceId,
+                        methods = emptyList(),
+                    ),
+                ),
+                defaultInterfaceId = defaultInterfaceId,
+                runtimeClassName = "test.ReferenceTrackedComposable",
+            )
+        }
+        val managed = TestComposableManagedType("tracked")
+        val instanceHost = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = primaryInspectableId,
+                    methods = emptyList(),
+                ),
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = defaultInterfaceId,
+                    methods = emptyList(),
+                ),
+            ),
+            hiddenInterfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = IID.IReferenceTracker,
+                    methods = List(9) { WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { 1 } },
+                ),
+            ),
+            defaultInterfaceId = defaultInterfaceId,
+            runtimeClassName = "test.ReferenceTrackedInstance",
+        )
+        var returnedInstancePointerKey: Long? = null
+
+        ComWrappersSupport.createComposableCCWForObject(
+            value = managed,
+            outerInterfaceId = null,
+            instanceInterfaceId = defaultInterfaceId,
+        ) { _, innerOut, instanceOut ->
+            PlatformAbi.writePointer(innerOut, PlatformAbi.nullPointer)
+            val returnedInstancePointer = instanceHost.detachReference(IID.IInspectable)
+            returnedInstancePointerKey = PlatformAbi.pointerKey(returnedInstancePointer)
+            PlatformAbi.writePointer(instanceOut, returnedInstancePointer)
+            KnownHResults.S_OK.value
+        }.use { composed ->
+            assertEquals(defaultInterfaceId, composed.instance.interfaceId)
+            assertNotEquals(returnedInstancePointerKey, PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(composed.instance.pointer)))
+            assertTrue(composed.instance.hasReferenceTracker)
         }
     }
 

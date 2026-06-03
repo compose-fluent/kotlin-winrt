@@ -431,7 +431,27 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
             }
         }
         .addCode("%L\n", invocation)
+        .apply {
+            if (method.requiresXamlApplicationExitPreparation(plan)) {
+                addCode("%T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+            }
+        }
         .build()
+}
+
+internal fun WinRtMethodDefinition.requiresXamlApplicationExitPreparation(plan: KotlinTypeProjectionPlan): Boolean =
+    plan.type.qualifiedName in setOf("Microsoft.UI.Xaml.Application", "Windows.UI.Xaml.Application") &&
+        name == "Exit" &&
+        parameters.isEmpty() &&
+        isWinRtVoidTypeName(returnTypeName)
+
+internal fun CodeBlock.Builder.addXamlApplicationExitPreparationIfNeeded(
+    plan: KotlinTypeProjectionPlan,
+    method: WinRtMethodDefinition,
+): CodeBlock.Builder = apply {
+    if (method.requiresXamlApplicationExitPreparation(plan)) {
+        add("%T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+    }
 }
 
 internal fun WinRtMethodDefinition.projectedRuntimeClassMethodName(
@@ -1802,7 +1822,12 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         .addModifiers(KModifier.OVERRIDE)
         .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .addCode("%L\n", invocation)
+        .addCode(
+            CodeBlock.builder()
+                .add("%L\n", invocation)
+                .addXamlApplicationExitPreparationIfNeeded(plan, method)
+                .build(),
+        )
         .build()
 }
 

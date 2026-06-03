@@ -7389,6 +7389,13 @@ class KotlinProjectionGeneratorTest {
                             name = "IApplication",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Exit",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 17,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Microsoft.UI.Xaml",
@@ -7461,6 +7468,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(constructor, constructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
         val start = application.substringAfter("public fun start()").substringBefore("}")
         assertFalse(start, start.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
+        assertTrue(application, application.contains("override fun exit()"))
+        val exit = application.substringAfter("override fun exit()").substringBefore("override fun")
+        assertTrue(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()"))
+        val abiCallIndex = exit.indexOf("WinRtProjectionIntrinsic.callUnit(").takeIf { it >= 0 }
+            ?: exit.indexOf("ComVtableInvoker.invoke(").takeIf { it >= 0 }
+            ?: exit.indexOf("ComVtableInvoker.invokeArgs(")
+        assertTrue(exit, abiCallIndex >= 0)
+        assertTrue(exit, exit.indexOf("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()") > abiCallIndex)
     }
 
     @Test
@@ -12770,6 +12785,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(publicConstructor.contains("Metadata.DEFAULT_INTERFACE_IID"))
         assertTrue(createInstanceForSubclass.contains("createComposableCCWForObject"))
         assertTrue(createInstanceForSubclass.contains("outerInterfaceId"))
+        assertTrue(createInstanceForSubclass.contains("DEFAULT_INTERFACE_IID"))
         assertTrue(createInstanceForSubclass.contains("WinRtProjectionIntrinsic.callUnit("))
         assertTrue(createInstanceForSubclass.contains("\"RawAddress,RawAddress,RawAddress\""))
         assertTrue(createInstanceForSubclass.contains("__baseInterface"))
