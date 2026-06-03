@@ -55,6 +55,7 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
                 .forEach(::add)
         }.distinctBy { it.absolutePath }
         val sourceRows = linkedMapOf<CompilerSupportSourceKey, MutableList<String>>()
+        val sourceFileRows = linkedMapOf<String, MutableList<String>>()
         manifests.forEach { manifest ->
             val manifestRoot = manifest.toPath().parent ?: return@forEach
             readCompilerSupportRows(manifest).forEach { row ->
@@ -70,19 +71,27 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
                 val key = CompilerSupportSourceKey(row.kind, row.className, source.name)
                 val targetRows = sourceRows.getOrPut(key) { mutableListOf(lines.first()) }
                 targetRows += lines.asSequence().drop(1).filter(String::isNotBlank)
+                val mergedRows = sourceFileRows.getOrPut(source.name) { mutableListOf(lines.first()) }
+                mergedRows += lines.asSequence().drop(1).filter(String::isNotBlank)
             }
+        }
+        val sourceFileEntryCounts = sourceFileRows.mapValues { (_, lines) ->
+            lines.drop(1).distinct().size
         }
         val manifestRows = mutableListOf("kind\tclassName\tsourceFile\tentries")
         sourceRows.toSortedMap(compareBy<CompilerSupportSourceKey> { it.kind }.thenBy { it.className }.thenBy { it.sourceFile })
             .forEach { (key, lines) ->
-                val distinctLines = lines.take(1) + lines.drop(1).distinct()
-                Files.writeString(outputRoot.resolve(key.sourceFile), distinctLines.joinToString(separator = "\n", postfix = "\n"))
                 manifestRows += listOf(
                     key.kind,
                     key.className,
                     key.sourceFile,
-                    (distinctLines.size - 1).toString(),
+                    sourceFileEntryCounts.getValue(key.sourceFile).toString(),
                 ).joinToString("\t")
+            }
+        sourceFileRows.toSortedMap()
+            .forEach { (sourceFile, lines) ->
+                val distinctLines = lines.take(1) + lines.drop(1).distinct()
+                Files.writeString(outputRoot.resolve(sourceFile), distinctLines.joinToString(separator = "\n", postfix = "\n"))
             }
         Files.writeString(outputRoot.resolve("compiler-support.tsv"), manifestRows.joinToString(separator = "\n", postfix = "\n"))
         if (emitXamlComponentResourceSources.get()) {

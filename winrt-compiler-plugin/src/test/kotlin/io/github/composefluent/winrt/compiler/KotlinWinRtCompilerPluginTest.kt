@@ -481,8 +481,8 @@ class KotlinWinRtCompilerPluginTest {
             manifest,
             """
             kind	className	sourceFile	entries
-            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency	generic-instantiations.tsv	1
-            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample	generic-instantiations.tsv	2
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency	generic-instantiations.tsv	3
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample	generic-instantiations.tsv	3
             """.trimIndent() + "\n",
         )
         Files.writeString(
@@ -491,6 +491,7 @@ class KotlinWinRtCompilerPluginTest {
             className	sourceType	isDelegate	rcwFunctions	vtableFunctions	propertyAccessors	genericReturnOnlyRcwFunctions	projectedGenericFallbacks	dependencies
             ClassA	TypeA	false	RcwA	VtableA	PropertyA	ReturnA	FallbackA	DepA
             ClassB	TypeB	false	RcwB	VtableB	PropertyB	ReturnB	FallbackB	DepB
+            ClassC	TypeC	false	RcwC	VtableC	PropertyC	ReturnC	FallbackC	DepC
             """.trimIndent() + "\n",
         )
 
@@ -502,8 +503,8 @@ class KotlinWinRtCompilerPluginTest {
             read = ::readGenericTypeInstantiationEntries,
         )
 
-        assertEquals(2, entries.size)
-        assertEquals(listOf("TypeA", "TypeB"), entries.map(KotlinWinRtGenericTypeInstantiationEntry::sourceType))
+        assertEquals(3, entries.size)
+        assertEquals(listOf("TypeA", "TypeB", "TypeC"), entries.map(KotlinWinRtGenericTypeInstantiationEntry::sourceType))
     }
 
     @Test
