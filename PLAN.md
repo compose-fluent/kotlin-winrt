@@ -147,6 +147,7 @@
 ## Validation Gates
 
 - [x] Windows-first validation: run targeted Windows Gradle validation for the module touched by each slice before broader sample or integration runs.
+- [x] Kotlin toolchain baseline: version catalog pins Kotlin Gradle plugin and Kotlin test artifacts to `2.4.0`; Gradle wrapper remains `9.4.0` for this upgrade.
 - [x] Cache validation gate: keep configuration cache and build cache enabled for WinRT generation and packaging checks; failures must be fixed in task inputs/actions or Gradle service ownership.
 - [x] Runtime gate: validated ABI, activation, object identity, marshaling, delegate/event, collection, async, custom projections, and WinUI runtime hooks in `winrt-runtime` with targeted Windows `:winrt-runtime:jvmTest`.
 - [x] Metadata gate: validated native WinMD ingestion, normalized symbols, signatures, accessors, custom attributes, and diagnostics in `winrt-metadata` with Windows `:winrt-metadata:test`.
