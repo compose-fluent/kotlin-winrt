@@ -10,6 +10,12 @@ import kotlin.reflect.KClass
 
 class XamlSystemProjectionRuntimeTest {
     @Test
+    fun xaml_runtime_cache_close_is_idempotent() {
+        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
+        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
+    }
+
+    @Test
     fun command_projection_round_trips_methods_and_event_handlers() {
         val command = TestCommand()
 

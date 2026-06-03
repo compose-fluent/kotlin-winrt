@@ -113,6 +113,10 @@ internal object XamlSystemProjectionRuntimeHooks {
         registerCcwFactories()
     }
 
+    fun closeRuntimeCaches() {
+        WinUiXamlMetadataProviderCache.close()
+    }
+
     internal fun augmentInspectableDefinition(
         value: Any,
         definition: WinRtCcwDefinition,
@@ -234,6 +238,16 @@ internal object XamlSystemProjectionRuntimeHooks {
                 }
                 cacheKey = runtimeClassNames
                 providers
+            }
+        }
+
+        fun close() {
+            lock.withLock {
+                providers.forEach { provider ->
+                    runCatching { provider.close() }
+                }
+                providers = emptyList()
+                cacheKey = emptyList()
             }
         }
     }
