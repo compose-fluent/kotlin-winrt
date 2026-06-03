@@ -21,7 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.net.URLClassLoader
 
-@OptIn(ExperimentalCompilerApi::class)
+@OptIn(ExperimentalCompilerApi::class, CompilerConfiguration.Internals::class)
 class KotlinWinRtCompilerPluginTest {
     @Test
     fun command_line_processor_stores_metadata_index_option() {

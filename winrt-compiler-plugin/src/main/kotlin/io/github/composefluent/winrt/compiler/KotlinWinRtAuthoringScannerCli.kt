@@ -565,5 +565,18 @@ object KotlinWinRtAuthoringScannerCli {
     ) : KtSourceFile {
         override fun getContentsAsStream(): InputStream =
             ByteArrayInputStream(contents.toByteArray())
+
+        override fun equals(other: Any?): Boolean =
+            this === other || other is InMemoryKtSourceFile &&
+                name == other.name &&
+                path == other.path &&
+                contents == other.contents
+
+        override fun hashCode(): Int {
+            var result = name.hashCode()
+            result = 31 * result + (path?.hashCode() ?: 0)
+            result = 31 * result + contents.hashCode()
+            return result
+        }
     }
 }
