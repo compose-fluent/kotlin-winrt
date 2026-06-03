@@ -314,7 +314,9 @@ class KotlinWinRtIrGenerationExtension(
             writeAuthoredSupportArtifacts(emptyList())
             return
         }
-        val messageCollector = pluginContext.messageCollector
+        val reportError: (String) -> Unit = { message ->
+            pluginContext.reportCompilerPluginMessage(CompilerMessageSeverity.ERROR, message)
+        }
         val generatedSourceRoot = generatedSourceRootFromMetadataIndex(metadataIndexPath)
         val classContexts = moduleFragment.files
             .asSequence()
@@ -338,9 +340,7 @@ class KotlinWinRtIrGenerationExtension(
                 return@forEach
             }
             val authoredType = authoredTypeFor(klass, winRtTypes, isEffectivelyPublic(context)) ?: return@forEach
-            validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
-                messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
-            }
+            validateAuthoredType(klass, authoredType, pluginContext.afterK2, reportError)
         }
     }
 
@@ -374,10 +374,9 @@ class KotlinWinRtIrGenerationExtension(
                             }
                             val targetName = call.typeOperand.classFqName?.asString() ?: return call
                             val runtimeClassName = runtimeClassCastTarget(targetName, runtimeClassNames) ?: return call
-                            pluginContext.messageCollector.report(
+                            pluginContext.reportCompilerPluginMessage(
                                 CompilerMessageSeverity.WARNING,
                                 "WinRT runtime class cast to $runtimeClassName is not projection-safe; use WinRT projection cast helpers instead.",
-                                null,
                             )
                             return call
                         }
@@ -401,10 +400,11 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
     ) {
+        val lookupFile = moduleFragment.files.firstOrNull()
         val intrinsicClassId = ClassId.topLevel(WINRT_PROJECTION_INTRINSIC_FQ_NAME)
-        val directLowerings = WinRtProjectionIntrinsicIrLowerings.create(pluginContext)
+        val directLowerings = WinRtProjectionIntrinsicIrLowerings.create(pluginContext, lookupFile)
         val intrinsicFunctions = WINRT_PROJECTION_INTRINSIC_FUNCTIONS.associateWith { functionName ->
-            pluginContext.referenceFunctions(CallableId(intrinsicClassId, Name.identifier(functionName)))
+            pluginContext.findFunctionSymbols(CallableId(intrinsicClassId, Name.identifier(functionName)), lookupFile)
                 .singleOrNull()
         }
             .filterValues { symbol -> symbol != null }
@@ -434,10 +434,9 @@ class KotlinWinRtIrGenerationExtension(
                     if (directLowerings == null) {
                         if (!reportedMissingDirectLowering) {
                             reportedMissingDirectLowering = true
-                            pluginContext.messageCollector.report(
+                            pluginContext.reportCompilerPluginMessage(
                                 CompilerMessageSeverity.ERROR,
                                 "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with a JDK that exposes java.lang.foreign. Use JDK 25 for Kotlin/JVM compilation; otherwise generated WinRT projection calls would remain as runtime fallback intrinsics.",
-                                null,
                             )
                         }
                         return call
@@ -445,10 +444,9 @@ class KotlinWinRtIrGenerationExtension(
                     if (!directLowerings.hasJvmFfmSymbols) {
                         if (!reportedMissingDirectLowering) {
                             reportedMissingDirectLowering = true
-                            pluginContext.messageCollector.report(
+                            pluginContext.reportCompilerPluginMessage(
                                 CompilerMessageSeverity.ERROR,
                                 "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with JVM target 25 and a JDK that exposes java.lang.foreign. The compiler plugin loaded, but JVM FFM symbols were not visible to IR lowering; remove lower -Xjdk-release values such as -Xjdk-release=17 for WinRT JVM compilation.",
-                                null,
                             )
                         }
                         return call
@@ -462,10 +460,9 @@ class KotlinWinRtIrGenerationExtension(
                         ?.let { return it }
                     if (!reportedUnloweredIntrinsic) {
                         reportedUnloweredIntrinsic = true
-                        pluginContext.messageCollector.report(
+                        pluginContext.reportCompilerPluginMessage(
                             CompilerMessageSeverity.ERROR,
                             "kotlin-winrt projection intrinsic $intrinsicName was recognized but could not be lowered. This would leave a runtime fallback call in generated projection bytecode.",
-                            null,
                         )
                     }
                     return call
@@ -2690,8 +2687,8 @@ class KotlinWinRtIrGenerationExtension(
             }
 
         companion object {
-            fun create(pluginContext: IrPluginContext): WinRtProjectionIntrinsicIrLowerings? {
-                val hString = pluginContext.referenceClass(WINRT_HSTRING_CLASS_ID)
+            fun create(pluginContext: IrPluginContext, fromFile: IrFile?): WinRtProjectionIntrinsicIrLowerings? {
+                val hString = pluginContext.findClassSymbol(WINRT_HSTRING_CLASS_ID, fromFile)
                     ?: return null
                 val hStringCompanion = hString.owner.declarations
                     .filterIsInstance<IrClass>()
@@ -2702,25 +2699,25 @@ class KotlinWinRtIrGenerationExtension(
                 val hStringFromHandle = hStringCompanion.functionNamed("fromHandle") ?: return null
                 val hStringToKString = hString.functionNamed("toKString") ?: return null
                 val hStringClose = hString.functionNamed("close") ?: return null
-                val referencedHString = pluginContext.referenceClass(WINRT_REFERENCED_HSTRING_CLASS_ID)
+                val referencedHString = pluginContext.findClassSymbol(WINRT_REFERENCED_HSTRING_CLASS_ID, fromFile)
                     ?: return null
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
                 val referencedHStringClose = referencedHString.functionNamed("close") ?: return null
-                val iWinRTObject = pluginContext.referenceClass(WINRT_IWINRT_OBJECT_CLASS_ID)
+                val iWinRTObject = pluginContext.findClassSymbol(WINRT_IWINRT_OBJECT_CLASS_ID, fromFile)
                     ?: return null
                 val iWinRTObjectNativeObjectGetter = iWinRTObject.propertyGetter("nativeObject") ?: return null
-                val comObjectReference = pluginContext.referenceClass(WINRT_COM_OBJECT_REFERENCE_CLASS_ID)
+                val comObjectReference = pluginContext.findClassSymbol(WINRT_COM_OBJECT_REFERENCE_CLASS_ID, fromFile)
                     ?: return null
                 val comObjectReferencePointerGetter = comObjectReference.propertyGetter("pointer") ?: return null
-                val rawComPtr = pluginContext.referenceClass(WINRT_RAW_COM_PTR_CLASS_ID)
+                val rawComPtr = pluginContext.findClassSymbol(WINRT_RAW_COM_PTR_CLASS_ID, fromFile)
                     ?: return null
                 val rawComPtrValueGetter = rawComPtr.propertyGetter("value") ?: return null
-                val rawAddress = pluginContext.referenceClass(WINRT_RAW_ADDRESS_CLASS_ID)
+                val rawAddress = pluginContext.findClassSymbol(WINRT_RAW_ADDRESS_CLASS_ID, fromFile)
                     ?: return null
                 val rawAddressValueGetter = rawAddress.propertyGetter("value") ?: return null
-                val platformAbi = pluginContext.referenceClass(WINRT_PLATFORM_ABI_CLASS_ID)
+                val platformAbi = pluginContext.findClassSymbol(WINRT_PLATFORM_ABI_CLASS_ID, fromFile)
                     ?: return null
-                val nativeScope = pluginContext.referenceClass(WINRT_NATIVE_SCOPE_CLASS_ID)
+                val nativeScope = pluginContext.findClassSymbol(WINRT_NATIVE_SCOPE_CLASS_ID, fromFile)
                     ?: return null
                 val platformAbiConfinedScope = platformAbi.functionNamed("confinedScope") ?: return null
                 val platformAbiFromRawComPtr = platformAbi.functionNamed("fromRawComPtr") ?: return null
@@ -2742,38 +2739,40 @@ class KotlinWinRtIrGenerationExtension(
                 val platformAbiToRawComPtr =
                     platformAbi.functionNamedWithValueParameterTypes("toRawComPtr", WINRT_RAW_ADDRESS_FQ_NAME) ?: return null
                 val nativeScopeClose = nativeScope.functionNamed("close") ?: return null
-                val nativeStructAdapter = pluginContext.referenceClass(WINRT_NATIVE_STRUCT_ADAPTER_CLASS_ID)
+                val nativeStructAdapter = pluginContext.findClassSymbol(WINRT_NATIVE_STRUCT_ADAPTER_CLASS_ID, fromFile)
                     ?: return null
-                val nativeStructLayout = pluginContext.referenceClass(WINRT_NATIVE_STRUCT_LAYOUT_CLASS_ID)
+                val nativeStructLayout = pluginContext.findClassSymbol(WINRT_NATIVE_STRUCT_LAYOUT_CLASS_ID, fromFile)
                     ?: return null
                 val nativeStructAdapterLayoutGetter = nativeStructAdapter.propertyGetter("layout") ?: return null
                 val nativeStructAdapterRead = nativeStructAdapter.functionNamed("read") ?: return null
                 val nativeStructAdapterWrite = nativeStructAdapter.functionNamed("write") ?: return null
                 val nativeStructAdapterDisposeAbi = nativeStructAdapter.functionNamed("disposeAbi") ?: return null
                 val nativeStructLayoutSizeBytesGetter = nativeStructLayout.propertyGetter("sizeBytes") ?: return null
-                val marshaler = pluginContext.referenceClass(WINRT_MARSHALER_CLASS_ID)
+                val marshaler = pluginContext.findClassSymbol(WINRT_MARSHALER_CLASS_ID, fromFile)
                     ?: return null
                 val marshalerFromAbiArray = marshaler.functionNamed("fromAbiArray") ?: return null
                 val marshalerDisposeAbiArray = marshaler.functionNamed("disposeAbiArray") ?: return null
-                val winRtObjectMarshaller = pluginContext.referenceClass(WINRT_OBJECT_MARSHALLER_CLASS_ID)
+                val winRtObjectMarshaller = pluginContext.findClassSymbol(WINRT_OBJECT_MARSHALLER_CLASS_ID, fromFile)
                     ?: return null
                 val winRtObjectMarshallerFromAbi = winRtObjectMarshaller.functionNamed("fromAbi") ?: return null
-                val emptyList = pluginContext.referenceFunctions(
+                val emptyList = pluginContext.findFunctionSymbols(
                     CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+                    fromFile,
                 ).singleOrNull() ?: return null
-                val iUnknownReference = pluginContext.referenceClass(WINRT_IUNKNOWN_REFERENCE_CLASS_ID)
+                val iUnknownReference = pluginContext.findClassSymbol(WINRT_IUNKNOWN_REFERENCE_CLASS_ID, fromFile)
                     ?: return null
                 val iUnknownReferenceConstructor =
                     iUnknownReference.constructorWithRegularParameterCount(5) ?: return null
                 val comObjectReferenceAsInspectable = comObjectReference.functionNamed("asInspectable") ?: return null
                 val comObjectReferenceClose = comObjectReference.functionNamed("close") ?: return null
-                val function1 = pluginContext.referenceClass(KOTLIN_FUNCTION1_CLASS_ID)
+                val function1 = pluginContext.findClassSymbol(KOTLIN_FUNCTION1_CLASS_ID, fromFile)
                     ?: return null
                 val function1Invoke = function1.functionNamed("invoke") ?: return null
-                val kotlinError = pluginContext.referenceFunctions(
+                val kotlinError = pluginContext.findFunctionSymbols(
                     CallableId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("error")),
+                    fromFile,
                 ).singleOrNull() ?: return null
-                val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
+                val hResult = pluginContext.findClassSymbol(WINRT_HRESULT_CLASS_ID, fromFile)
                     ?: return null
                 val hResultConstructor = hResult.owner.declarations
                     .filterIsInstance<IrConstructor>()
@@ -2783,16 +2782,17 @@ class KotlinWinRtIrGenerationExtension(
                 val hResultRequireSuccess = hResult.functionNamed("requireSuccess") ?: return null
                 val jvmFfmSymbols = JvmFfmSymbols.create(
                     pluginContext = pluginContext,
+                    fromFile = fromFile,
                     rawComPtrValueGetter = rawComPtrValueGetter,
                     rawAddressValueGetter = rawAddressValueGetter,
                 )
-                val ubyteConstructor = pluginContext.referenceClass(KOTLIN_UBYTE_CLASS_ID)
+                val ubyteConstructor = pluginContext.findClassSymbol(KOTLIN_UBYTE_CLASS_ID, fromFile)
                     ?.singleValueConstructor()
-                val ushortConstructor = pluginContext.referenceClass(KOTLIN_USHORT_CLASS_ID)
+                val ushortConstructor = pluginContext.findClassSymbol(KOTLIN_USHORT_CLASS_ID, fromFile)
                     ?.singleValueConstructor()
-                val uintConstructor = pluginContext.referenceClass(KOTLIN_UINT_CLASS_ID)
+                val uintConstructor = pluginContext.findClassSymbol(KOTLIN_UINT_CLASS_ID, fromFile)
                     ?.singleValueConstructor()
-                val ulongConstructor = pluginContext.referenceClass(KOTLIN_ULONG_CLASS_ID)
+                val ulongConstructor = pluginContext.findClassSymbol(KOTLIN_ULONG_CLASS_ID, fromFile)
                     ?.singleValueConstructor()
                 return WinRtProjectionIntrinsicIrLowerings(
                     hStringCompanion = hStringCompanion,
@@ -3037,27 +3037,28 @@ class KotlinWinRtIrGenerationExtension(
             companion object {
                 fun create(
                     pluginContext: IrPluginContext,
+                    fromFile: IrFile?,
                     rawComPtrValueGetter: IrSimpleFunctionSymbol,
                     rawAddressValueGetter: IrSimpleFunctionSymbol,
                 ): JvmFfmSymbols? {
                     fun missing(): Nothing? = null
-                    val memorySegment = pluginContext.referenceClass(JAVA_MEMORY_SEGMENT_CLASS_ID) ?: return missing()
-                    val methodHandle = pluginContext.referenceClass(JAVA_METHOD_HANDLE_CLASS_ID) ?: return missing()
-                    val valueLayout = pluginContext.referenceClass(JAVA_VALUE_LAYOUT_CLASS_ID) ?: return missing()
-                    val addressLayout = pluginContext.referenceClass(JAVA_ADDRESS_LAYOUT_CLASS_ID) ?: return missing()
+                    val memorySegment = pluginContext.findClassSymbol(JAVA_MEMORY_SEGMENT_CLASS_ID, fromFile) ?: return missing()
+                    val methodHandle = pluginContext.findClassSymbol(JAVA_METHOD_HANDLE_CLASS_ID, fromFile) ?: return missing()
+                    val valueLayout = pluginContext.findClassSymbol(JAVA_VALUE_LAYOUT_CLASS_ID, fromFile) ?: return missing()
+                    val addressLayout = pluginContext.findClassSymbol(JAVA_ADDRESS_LAYOUT_CLASS_ID, fromFile) ?: return missing()
                     val winRtJvmFfmDowncallHandles =
-                        pluginContext.referenceClass(WINRT_JVM_FFM_DOWNCALL_HANDLES_CLASS_ID) ?: return missing()
+                        pluginContext.findClassSymbol(WINRT_JVM_FFM_DOWNCALL_HANDLES_CLASS_ID, fromFile) ?: return missing()
                     val winRtJvmFfmDowncallHandlesHResult =
                         winRtJvmFfmDowncallHandles.functionNamed("hResult") ?: return missing()
-                    val uint = pluginContext.referenceClass(KOTLIN_UINT_CLASS_ID)
-                    val ulong = pluginContext.referenceClass(KOTLIN_ULONG_CLASS_ID)
+                    val uint = pluginContext.findClassSymbol(KOTLIN_UINT_CLASS_ID, fromFile)
+                    val ulong = pluginContext.findClassSymbol(KOTLIN_ULONG_CLASS_ID, fromFile)
                     fun staticLayoutValue(classId: ClassId, owner: IrClassSymbol, name: String): JvmStaticLayoutValue? {
                         val property = owner.owner.declarations
                             .filterIsInstance<IrProperty>()
                             .singleOrNull { it.name.asString() == name }
                         val field = owner.fieldNamed(name) ?: property?.backingField
                         val getter = property?.getter?.symbol
-                            ?: pluginContext.referenceProperties(CallableId(classId, Name.identifier(name)))
+                            ?: pluginContext.findPropertySymbols(CallableId(classId, Name.identifier(name)), fromFile)
                                 .singleOrNull()
                                 ?.owner
                                 ?.getter
@@ -3650,11 +3651,12 @@ class KotlinWinRtIrGenerationExtension(
         val registerGeneratedProjectionTypeIndex = requireCompilerSupportPrerequisite(
             description = "projection registrar",
             prerequisite = "io.github.composefluent.winrt.runtime.registerGeneratedProjectionTypeIndex with 4 regular parameters",
-            value = pluginContext.referenceFunctions(
+            value = pluginContext.findFunctionSymbols(
                 CallableId(
                     FqName("io.github.composefluent.winrt.runtime"),
                     Name.identifier("registerGeneratedProjectionTypeIndex"),
                 ),
+                file,
             )
                 .map { symbol -> symbol.owner }
                 .singleOrNull { function ->
@@ -3673,7 +3675,7 @@ class KotlinWinRtIrGenerationExtension(
         }
         val builder = DeclarationIrBuilder(pluginContext, function.symbol)
         val resolvedEntries = resolveProjectionRegistrarClasses(entries) { className ->
-            pluginContext.referenceClass(ClassId.topLevel(FqName(className)))
+            pluginContext.findClassSymbol(ClassId.topLevel(FqName(className)), file)
         }
         val chunkFunctions = resolvedEntries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE).mapIndexed { index, chunk ->
             pluginContext.irFactory.buildFun {
@@ -3791,15 +3793,17 @@ class KotlinWinRtIrGenerationExtension(
         val supportClass = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
             prerequisite = "class $supportClassFqName",
-            value = pluginContext.referenceClass(
+            value = pluginContext.findClassSymbol(
                 ClassId.topLevel(FqName(supportClassFqName)),
+                file,
             ),
         )
         val entryClass = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
             prerequisite = "class io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry",
-            value = pluginContext.referenceClass(
+            value = pluginContext.findClassSymbol(
                 ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry")),
+                file,
             ),
         )
         val entryConstructor = entryClass.owner.declarations
@@ -3829,8 +3833,9 @@ class KotlinWinRtIrGenerationExtension(
                     value = symbol,
                 )
             }
-        val listOf = pluginContext.referenceFunctions(
+        val listOf = pluginContext.findFunctionSymbols(
             CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
+            file,
         ).singleOrNull { function ->
             function.owner.parameters
                 .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
@@ -4085,8 +4090,9 @@ class KotlinWinRtIrGenerationExtension(
         val entryClass = requireCompilerSupportPrerequisite(
             description = "generic ABI registry",
             prerequisite = "class io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry",
-            value = pluginContext.referenceClass(
+            value = pluginContext.findClassSymbol(
                 ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry")),
+                file,
             ),
         )
         val entryConstructor = entryClass.owner.declarations
@@ -4105,8 +4111,9 @@ class KotlinWinRtIrGenerationExtension(
         val intrinsicClass = requireCompilerSupportPrerequisite(
             description = "generic ABI registry",
             prerequisite = "class io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
-            value = pluginContext.referenceClass(
+            value = pluginContext.findClassSymbol(
                 ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic")),
+                file,
             ),
         )
         val delegateNamedIntrinsic = requireCompilerSupportPrerequisite(
@@ -4132,8 +4139,9 @@ class KotlinWinRtIrGenerationExtension(
                 prerequisite = "WinRtGenericAbiSupportIntrinsic.registerAbiDelegates with 1 regular parameter",
                 value = intrinsicClass.functionNamedWithRegularParameterCount("registerAbiDelegates", 1),
             )
-        val listOf = pluginContext.referenceFunctions(
+        val listOf = pluginContext.findFunctionSymbols(
             CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
+            file,
         ).singleOrNull { function ->
             function.owner.parameters
                 .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
@@ -4145,8 +4153,9 @@ class KotlinWinRtIrGenerationExtension(
                 value = symbol,
             )
         }
-        val emptyList = pluginContext.referenceFunctions(
+        val emptyList = pluginContext.findFunctionSymbols(
             CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+            file,
         ).singleOrNull().let { symbol ->
             requireCompilerSupportPrerequisite(
                 description = "generic ABI registry",
@@ -4157,7 +4166,7 @@ class KotlinWinRtIrGenerationExtension(
         val function2 = requireCompilerSupportPrerequisite(
             description = "generic ABI registry",
             prerequisite = "class kotlin.Function2",
-            value = pluginContext.referenceClass(KOTLIN_FUNCTION2_CLASS_ID),
+            value = pluginContext.findClassSymbol(KOTLIN_FUNCTION2_CLASS_ID, file),
         )
         val function2Invoke = requireCompilerSupportPrerequisite(
             description = "generic ABI registry",
@@ -4370,6 +4379,7 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
         support: GenericAbiSupportFunctions?,
     ) {
+        val lookupFile = moduleFragment.files.firstOrNull()
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
@@ -4393,8 +4403,9 @@ class KotlinWinRtIrGenerationExtension(
                                 arguments[0] = call.arguments[1]
                             }
                         } ?: builder.irCall(
-                            pluginContext.referenceFunctions(
+                            pluginContext.findFunctionSymbols(
                                 CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+                                lookupFile,
                             ).single(),
                         )
                         "isDerivedGenericInterface" -> support?.let {
@@ -4440,7 +4451,8 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
     ) {
-        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext)
+        val lookupFile = moduleFragment.files.firstOrNull()
+        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext, lookupFile)
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
@@ -4480,7 +4492,7 @@ class KotlinWinRtIrGenerationExtension(
         val registrar = requireCompilerSupportPrerequisite(
             description = "authoring type-details registrar",
             prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
-            value = authoringTypeDetailsRegistrarRegister(pluginContext),
+            value = authoringTypeDetailsRegistrarRegister(pluginContext, moduleFragment.files.firstOrNull()),
         )
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
@@ -4517,7 +4529,7 @@ class KotlinWinRtIrGenerationExtension(
         val registrar = requireCompilerSupportPrerequisite(
             description = "authoring type-details registrar",
             prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
-            value = authoringTypeDetailsRegistrarRegister(pluginContext),
+            value = authoringTypeDetailsRegistrarRegister(pluginContext, moduleFragment.files.firstOrNull()),
         )
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
@@ -4549,10 +4561,12 @@ class KotlinWinRtIrGenerationExtension(
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun authoringTypeDetailsRegistrarRegister(
         pluginContext: IrPluginContext,
+        fromFile: IrFile?,
     ): AuthoringTypeDetailsRegistrar? {
         val registrarName = authoringTypeDetailsRegistrarName(authoringAssemblyName)
-        val registrarClass = pluginContext.referenceClass(
+        val registrarClass = pluginContext.findClassSymbol(
             ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.$registrarName")),
+            fromFile,
         ) ?: return null
         val register = registrarClass
             .owner
@@ -4573,10 +4587,9 @@ class KotlinWinRtIrGenerationExtension(
     )
 
     private fun IrPluginContext.reportUnloweredCompilerPluginIntrinsic(description: String) {
-        messageCollector.report(
+        reportCompilerPluginMessage(
             CompilerMessageSeverity.ERROR,
             "kotlin-winrt compiler plugin recognized $description but could not lower it from the current IR scope.",
-            null,
         )
     }
 
@@ -4594,6 +4607,38 @@ class KotlinWinRtIrGenerationExtension(
 
 private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic")
+
+@Suppress("DEPRECATION")
+private fun IrPluginContext.reportCompilerPluginMessage(
+    severity: CompilerMessageSeverity,
+    message: String,
+) {
+    messageCollector.report(severity, message, null)
+}
+
+private fun IrPluginContext.findClassSymbol(classId: ClassId, fromFile: IrFile? = null): IrClassSymbol? =
+    fromFile
+        ?.let { file -> finderForSource(file).findClass(classId) }
+        ?: finderForBuiltins().findClass(classId)
+
+private fun IrPluginContext.findFunctionSymbols(
+    callableId: CallableId,
+    fromFile: IrFile? = null,
+): Collection<IrSimpleFunctionSymbol> {
+    val sourceSymbols = fromFile
+        ?.let { file -> finderForSource(file).findFunctions(callableId) }
+        .orEmpty()
+    return sourceSymbols.ifEmpty { finderForBuiltins().findFunctions(callableId) }
+}
+
+private fun IrPluginContext.findPropertySymbols(
+    callableId: CallableId,
+    fromFile: IrFile? = null,
+) =
+    fromFile
+        ?.let { file -> finderForSource(file).findProperties(callableId) }
+        .orEmpty()
+        .ifEmpty { finderForBuiltins().findProperties(callableId) }
 
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 private fun IrClassSymbol.functionNamed(name: String): IrSimpleFunctionSymbol? =
