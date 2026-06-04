@@ -618,7 +618,8 @@ object ComWrappersSupport {
         }
 
         if (staticallyDeterminedType != null) {
-            val typedReference = IUnknownReference(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId)
+            val typedReference =
+                IUnknownReference(ComPtr.create(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId))
             resolveInterfaceProjectionFactory(staticallyDeterminedType, staticallyDeterminedType.projectedTypeName)?.let { factory ->
                 return factory(typedReference)
             }
@@ -728,7 +729,13 @@ object ComWrappersSupport {
 
     private fun wrapInspectable(pointer: RawAddress): IInspectableReference? {
         val existingInspectable = runCatching {
-            val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
+            val borrowed = IUnknownReference(
+                ComPtr.create(
+                    raw = pointer.asRawComPtr(),
+                    interfaceId = IID.IInspectable,
+                    ownershipMode = ComOwnershipMode.Borrowed,
+                ),
+            )
             try {
                 borrowed.asInspectable()
             } finally {
@@ -740,7 +747,7 @@ object ComWrappersSupport {
         }
         return getInspectableInfo(pointer)?.let {
             if (it.interfaceIds.contains(IID.IInspectable)) {
-                IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+                IInspectableReference(ComPtr.create(pointer.asRawComPtr(), IID.IInspectable))
             } else {
                 null
             }

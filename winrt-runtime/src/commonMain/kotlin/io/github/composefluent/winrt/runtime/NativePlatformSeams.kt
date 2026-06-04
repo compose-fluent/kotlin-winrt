@@ -199,6 +199,10 @@ expect object WinRtPlatformApi {
 
     fun freeLibraryRaw(moduleHandle: RawAddress): Boolean
 
+    fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress
+
+    fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean
+
     fun tryFormatMessageRaw(hResultValue: Int): String?
 
     fun lastErrorAsHResultRaw(): Int

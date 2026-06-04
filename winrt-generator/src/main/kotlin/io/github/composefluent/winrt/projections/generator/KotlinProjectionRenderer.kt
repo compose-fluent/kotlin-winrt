@@ -1121,6 +1121,12 @@ class KotlinProjectionRenderer(
             }
             .forEach { binding ->
                 val objectReferencePlan = objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]
+                val acquireExpression =
+                    if (plan.composableFactoryInterfaceName != null && plan.isOverridableRuntimeClassInterface(binding.qualifiedName)) {
+                        "Metadata.acquireInterface(winRtComposableObjectReference?.inner ?: _inner, %T.Metadata.IID)"
+                    } else {
+                        "Metadata.acquireInterface(_inner, %T.Metadata.IID)"
+                    }
                 builder.addProperty(
                     PropertySpec.builder(
                         "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
@@ -1131,7 +1137,7 @@ class KotlinProjectionRenderer(
                             runtimeClassObjectReferenceCacheInitializer(
                                 objectReferencePlan,
                                 plan.typesByQualifiedName,
-                                "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
+                                acquireExpression,
                                 projectionClassName(binding.qualifiedName.substringBefore('<')),
                             ),
                         )
@@ -1511,13 +1517,23 @@ class KotlinProjectionRenderer(
                 if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
                     addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
                 }
-                if (returns == UNIT) {
-                    addCode("%L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
-                    if (method.requiresXamlApplicationExitPreparation(plan)) {
-                        addCode("%T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                if (method.requiresXamlApplicationExitPreparation(plan)) {
+                    addCode("try {\n")
+                    addCode("  %T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                    if (returns == UNIT) {
+                        addCode("  %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
+                    } else {
+                        addCode("  return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
                     }
+                    addCode("} finally {\n")
+                    addCode("  %T.completeApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                    addCode("}\n")
                 } else {
-                    addCode("return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
+                    if (returns == UNIT) {
+                        addCode("%L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
+                    } else {
+                        addCode("return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
+                    }
                 }
             }
             .build()
@@ -1692,6 +1708,16 @@ class KotlinProjectionRenderer(
             ?.interfaceDescriptors
             ?.firstOrNull { it.interfaceTypeName == rawName }
         return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
+    }
+
+    private fun KotlinTypeProjectionPlan.isOverridableRuntimeClassInterface(interfaceName: String): Boolean {
+        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        return type.implementedInterfaces.any { implementation ->
+            implementation.interfaceName == rawName && implementation.isOverridable
+        } ||
+            classMemberMergeDescriptor
+            ?.interfaceDescriptors
+            ?.any { descriptor -> descriptor.interfaceTypeName == rawName && descriptor.isOverridableInterface } == true
     }
 
     private val KotlinTypeProjectionPlan.hasRuntimeClassDerivedTypes: Boolean
@@ -2246,13 +2272,21 @@ class KotlinProjectionRenderer(
 
         val instanceMemberOwnerCacheBindings = plan.instanceMemberBindings
             .asSequence()
-            .map { binding -> binding.ownerCachePropertyName to binding.ownerInterfaceQualifiedName }
-            .filterNot { (ownerCachePropertyName, _) -> ownerCachePropertyName == "nativeObject" }
-            .filterNot { (ownerCachePropertyName, _) -> ownerCachePropertyName in existingCacheNames }
-            .filterNot { (ownerCachePropertyName, _) ->
-                collectionCacheBindings.any { binding -> binding.ownerCachePropertyName == ownerCachePropertyName }
+            .map { binding ->
+                InstanceMemberOwnerCacheBinding(
+                    ownerCachePropertyName = binding.ownerCachePropertyName,
+                    ownerInterfaceName = binding.ownerInterfaceQualifiedName,
+                    slotInterfaceName = binding.slotInterfaceQualifiedName,
+                )
             }
-            .distinctBy { (ownerCachePropertyName, _) -> ownerCachePropertyName }
+            .filterNot { binding -> binding.ownerCachePropertyName == "nativeObject" }
+            .filterNot { binding -> binding.ownerCachePropertyName in existingCacheNames }
+            .filterNot { ownerBinding ->
+                collectionCacheBindings.any { collectionBinding ->
+                    collectionBinding.ownerCachePropertyName == ownerBinding.ownerCachePropertyName
+                }
+            }
+            .distinctBy { binding -> binding.ownerCachePropertyName }
             .toList()
 
         collectionCacheBindings.forEach { binding ->
@@ -2269,21 +2303,34 @@ class KotlinProjectionRenderer(
                     .build(),
             )
         }
-        instanceMemberOwnerCacheBindings.forEach { (ownerCachePropertyName, ownerInterfaceName) ->
+        instanceMemberOwnerCacheBindings.forEach { binding ->
+            val acquisitionTarget =
+                if (plan.composableFactoryInterfaceName != null && plan.isOverridableRuntimeClassInterface(binding.slotInterfaceName)) {
+                    CodeBlock.of("winRtComposableObjectReference?.inner ?: _inner")
+                } else {
+                    CodeBlock.of("_inner")
+                }
             builder.addProperty(
-                PropertySpec.builder(ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
+                PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
+                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(%L, %L) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            runtimeClassInterfaceIdCode(ownerInterfaceName, plan),
+                            acquisitionTarget,
+                            runtimeClassInterfaceIdCode(binding.ownerInterfaceName, plan),
                         ),
                     )
                     .build(),
             )
         }
     }
+
+    private data class InstanceMemberOwnerCacheBinding(
+        val ownerCachePropertyName: String,
+        val ownerInterfaceName: String,
+        val slotInterfaceName: String,
+    )
 
     internal fun renderAttributeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec =
         TypeSpec.annotationBuilder(plan.type.name)

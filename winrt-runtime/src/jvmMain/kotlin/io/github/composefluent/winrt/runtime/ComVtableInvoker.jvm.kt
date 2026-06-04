@@ -594,10 +594,20 @@ actual object ComVtableInvoker {
     }
 }
 
-private data class ComDowncallKey(
+private class ComDowncallKey(
     val functionAddress: Long,
     val descriptor: FunctionDescriptor,
-)
+) {
+    private val descriptorKey: String = descriptor.toString()
+
+    override fun equals(other: Any?): Boolean =
+        other is ComDowncallKey &&
+            functionAddress == other.functionAddress &&
+            descriptorKey == other.descriptorKey
+
+    override fun hashCode(): Int =
+        31 * functionAddress.hashCode() + descriptorKey.hashCode()
+}
 
 private data class CallbackSignature(
     val resultKind: ComAbiValueKind,

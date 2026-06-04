@@ -256,6 +256,12 @@ internal class WinRtInspectableComObject(
         rawArguments: List<Any?>,
     ): Int = runCatching {
         trace("Invoke interface=$interfaceId methodIndex=$methodIndex runtimeClassName=$runtimeClassName")
+        if (interfaceId == IID.IReferenceTrackerTarget) {
+            when (methodIndex) {
+                0 -> return@runCatching state.addTrackerReference()
+                1 -> return@runCatching state.releaseTrackerReference()
+            }
+        }
         allInterfaces.getValue(interfaceId).methods[methodIndex].handler(rawArguments)
     }.getOrElse { error ->
         platformSetErrorInfo(error)

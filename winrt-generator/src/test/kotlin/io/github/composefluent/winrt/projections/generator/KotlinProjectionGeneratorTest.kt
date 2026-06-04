@@ -7399,6 +7399,38 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Microsoft.UI.Xaml",
+                            name = "IApplicationInitializationCallbackParams",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("66666666-6666-6666-6666-666666666666"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "ApplicationInitializationCallbackParams",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IApplicationInitializationCallbackParams",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Microsoft.UI.Xaml.IApplicationInitializationCallbackParams",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "ApplicationInitializationCallback",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("55555555-5555-5555-5555-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("p", "Microsoft.UI.Xaml.ApplicationInitializationCallbackParams")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
                             name = "IApplicationOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("22222222-2222-2222-2222-222222222222"),
@@ -7428,6 +7460,9 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(
                                     name = "Start",
                                     returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("callback", "Microsoft.UI.Xaml.ApplicationInitializationCallback"),
+                                    ),
                                 ),
                             ),
                         ),
@@ -7466,8 +7501,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(application, application.contains("public constructor()"))
         val constructor = application.substringAfter("public constructor()").substringBefore("override fun equals")
         assertTrue(constructor, constructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
-        val start = application.substringAfter("public fun start()").substringBefore("}")
+        val start = application.substringAfter("public fun start(").substringBefore("override fun")
         assertFalse(start, start.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
+        assertTrue(start, start.contains("WinRtXamlProjectionSupportIntrinsic.runWithApplicationStart"))
+        val startAbiCallIndex = start.indexOf("WinRtProjectionIntrinsic.callUnit(").takeIf { it >= 0 }
+            ?: start.indexOf("ComVtableInvoker.invoke(").takeIf { it >= 0 }
+            ?: start.indexOf("ComVtableInvoker.invokeArgs(")
+        assertTrue(start, startAbiCallIndex >= 0)
+        assertTrue(start, start.indexOf("WinRtXamlProjectionSupportIntrinsic.runWithApplicationStart") < startAbiCallIndex)
         assertTrue(application, application.contains("override fun exit()"))
         val exit = application.substringAfter("override fun exit()").substringBefore("override fun")
         assertTrue(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()"))
@@ -7475,7 +7516,9 @@ class KotlinProjectionGeneratorTest {
             ?: exit.indexOf("ComVtableInvoker.invoke(").takeIf { it >= 0 }
             ?: exit.indexOf("ComVtableInvoker.invokeArgs(")
         assertTrue(exit, abiCallIndex >= 0)
-        assertTrue(exit, exit.indexOf("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()") > abiCallIndex)
+        assertTrue(exit, exit.indexOf("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()") < abiCallIndex)
+        assertTrue(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic.completeApplicationExit()"))
+        assertTrue(exit, abiCallIndex < exit.indexOf("WinRtXamlProjectionSupportIntrinsic.completeApplicationExit()"))
     }
 
     @Test
@@ -12794,6 +12837,87 @@ class KotlinProjectionGeneratorTest {
         assertTrue(createInstanceForSubclass.contains("KnownHResults.S_OK.value"))
         assertFalse(createInstanceForSubclass.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(createInstanceForSubclass.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
+    fun generator_queries_composable_overridable_interfaces_from_non_delegating_inner() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "OnPulse", returnTypeName = "Unit", methodRowId = 27),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555587"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "System.Object"),
+                                        WinRtParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                    methodRowId = 28,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.UI.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IWidgetOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "OnPulse", returnTypeName = "Unit", methodRowId = 27),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+        val overrideCache = contents.substringAfter("private val _iWidgetOverrides")
+            .substringBefore("protected open fun onPulse")
+
+        assertTrue(
+            overrideCache,
+            overrideCache.contains("Metadata.acquireInterface(winRtComposableObjectReference?.inner ?: _inner"),
+        )
+        assertFalse(overrideCache.contains("Metadata.acquireInterface(_inner"))
+        assertTrue(contents.contains("protected open fun onPulse()"))
+        assertTrue(contents.contains("__winrtAuthoringInvokeOnPulse"))
     }
 
     @Test
