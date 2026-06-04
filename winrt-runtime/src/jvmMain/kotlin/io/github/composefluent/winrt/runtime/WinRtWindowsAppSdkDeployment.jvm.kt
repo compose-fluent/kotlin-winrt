@@ -214,10 +214,13 @@ object WinRtWindowsAppSdkDeployment {
     }
 }
 
-@Deprecated(
-    message = "Use WinRtWindowsAppSdkDeployment. Bootstrap is only one unpackaged deployment mode; packaged apps should not bootstrap.",
-    replaceWith = ReplaceWith("WinRtWindowsAppSdkDeployment"),
-)
+/**
+ * Convenience bootstrap entry point for custom unpackaged JVM launchers.
+ *
+ * Gradle application projects should normally run through `runWinRtApplicationHost`,
+ * which performs this before starting the JVM. Use this API only when the app owns a
+ * custom JavaExec/native launcher path and cannot use the generated host.
+ */
 object WinRtWindowsAppSdkBootstrap {
     fun initialize(runtimeAssetsRoot: Path? = WinRtWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()): WinRtWindowsAppSdkDeployment.Scope? =
         WinRtWindowsAppSdkDeployment.initializeForUnpackagedApp(runtimeAssetsRoot)

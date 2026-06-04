@@ -19,7 +19,10 @@ import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.JavaExec
+import org.gradle.process.CommandLineArgumentProvider
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
@@ -161,7 +164,7 @@ private fun configureWinRtApplicationTasks(
     if (project.configurations.findByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION) != null) {
         return
     }
-    val packagedMode = extension.application.packageMode.get() == WinRtApplicationPackageMode.Packaged
+    val unpackagedMode = extension.application.packageMode.map { it == WinRtApplicationPackageMode.Unpackaged }
     val identityDependencies = project.configurations.create(
         KOTLIN_WINRT_IDENTITY_CONFIGURATION,
         Action { configuration ->
@@ -626,15 +629,25 @@ private fun configureWinRtApplicationTasks(
             }
         }
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
-            if (!packagedMode) {
+            if (unpackagedMode.get()) {
                 task.dependsOn(stageApplicationPackageTask)
             }
             if (task is Copy) {
-                if (!packagedMode) {
+                if (unpackagedMode.get()) {
                     task.from(stageApplicationPackageTask.flatMap { it.outputDirectory }, Action<CopySpec> { spec ->
                         spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
                     })
                 }
+            }
+        })
+        project.tasks.withType(JavaExec::class.java).configureEach(Action<JavaExec> { task ->
+            if (unpackagedMode.get()) {
+                task.dependsOn(stageApplicationPackageTask)
+                task.jvmArgumentProviders.add(
+                    RuntimeAssetsRootJvmArgumentProvider(
+                        stageApplicationPackageTask.flatMap { it.outputDirectory }.map { it.asFile.absolutePath },
+                    ),
+                )
             }
         })
     }
@@ -644,7 +657,7 @@ private fun configureWinRtApplicationTasks(
                 task.mainClass.set(extension.application.mainClass.orElse(application.mainClass))
             }
         })
-        if (!packagedMode) {
+        if (unpackagedMode.get()) {
             project.extensions.configure(DistributionContainer::class.java, Action<DistributionContainer> { distributions ->
                 distributions.getByName("main").contents(Action<CopySpec> { contents ->
                     contents.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY, Action<CopySpec> { spec ->
@@ -671,6 +684,14 @@ private fun configureWinRtApplicationTasks(
     project.extensions.extraProperties["kotlinWinRtVerifyPackageTask"] = verifyPackageTask.name
     project.extensions.extraProperties["kotlinWinRtSignPackageTask"] = signPackageTask.name
     project.extensions.extraProperties["kotlinWinRtInstallPackageTask"] = installPackageTask.name
+}
+
+private class RuntimeAssetsRootJvmArgumentProvider(
+    @get:Input
+    private val runtimeAssetsRoot: Provider<String>,
+) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> =
+        listOf("-Dkotlin.winrt.runtimeAssetsRoot=${runtimeAssetsRoot.get()}")
 }
 
 private fun configureWinRtGeneration(

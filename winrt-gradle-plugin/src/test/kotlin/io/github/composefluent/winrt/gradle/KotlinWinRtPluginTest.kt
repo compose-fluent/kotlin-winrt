@@ -12,6 +12,7 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.tasks.JavaExec
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -1090,6 +1091,126 @@ class KotlinWinRtPluginTest {
 
         assertEquals("sample.MainKt", task.mainClass.get())
         assertEquals("sample-app", task.executableBaseName.get())
+    }
+
+    @Test
+    fun application_plugin_wires_unpacked_java_exec_for_manual_bootstrap() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val runTask = project.tasks.register("runSample", JavaExec::class.java).get()
+        project.extensions.getByType(WinRtExtension::class.java).application {}
+
+        val stageTask = project.tasks.named("stageWinRtApplicationPackage").get()
+
+        assertTrue(runTask.taskDependencies.getDependencies(runTask).contains(stageTask))
+        assertTrue(
+            runTask.jvmArgumentProviders
+                .any { provider -> provider.javaClass.name.contains("RuntimeAssetsRootJvmArgumentProvider") },
+        )
+    }
+
+    @Test
+    fun packaged_application_plugin_does_not_wire_java_exec_for_unpackaged_bootstrap() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val runTask = project.tasks.register("runSample", JavaExec::class.java).get()
+        project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.packaged()
+        }
+
+        val dependencies = runTask.taskDependencies.getDependencies(runTask).map { it.name }
+
+        assertFalse("stageWinRtApplicationPackage" in dependencies)
+        assertFalse(
+            runTask.jvmArgumentProviders
+                .any { provider -> provider.javaClass.name.contains("RuntimeAssetsRootJvmArgumentProvider") },
+        )
+    }
+
+    @Test
+    fun application_plugin_passes_runtime_assets_root_to_java_exec() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-javaexec-assets-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-javaexec-assets-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                java
+                id("io.github.composefluent.winrt")
+            }
+
+            winRt {
+                application {
+                    generateProjectPri.set(false)
+                }
+            }
+
+            tasks.register<JavaExec>("runSample") {
+                classpath = sourceSets.main.get().runtimeClasspath
+                mainClass.set("sample.Main")
+            }
+            """.trimIndent(),
+        )
+        val source = projectDir.resolve("src/main/java/sample/Main.java")
+        Files.createDirectories(source.parent)
+        Files.writeString(
+            source,
+            """
+            package sample;
+
+            public final class Main {
+                public static void main(String[] args) {
+                    System.out.println("runtimeAssetsRoot=" + System.getProperty("kotlin.winrt.runtimeAssetsRoot"));
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("runSample", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtApplicationPackage")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":runSample")?.outcome)
+        assertTrue(
+            result.output,
+            result.output.contains(
+                "runtimeAssetsRoot=${projectDir.resolve("build/kotlin-winrt/application-package").toAbsolutePath()}",
+            ),
+        )
     }
 
     @Test
