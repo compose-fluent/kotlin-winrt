@@ -146,15 +146,34 @@ winRt {
 }
 ```
 
-The `application {}` block belongs in the final executable app module, not in reusable projection libraries. It switches the WinRT identity model from library to application and enables application-oriented tasks such as `generateWinRtApplicationIdentity`, `stageWinRtRuntimeAssets`, `buildWinRtAuthoringHost`, `buildWinRtApplicationHost`, and `runWinRtApplicationHost`. For unpackaged apps, the generated native application host owns Windows App SDK deployment before it starts the JVM and calls the app `main` through JNI. If an app is launched from a custom distribution or packaging task, make that task consume the staged runtime assets, authoring host outputs, and application host outputs; otherwise WinUI activation or Windows App SDK deployment can fail at runtime even though compilation succeeds.
+The `application {}` block belongs in the final executable app module, not in reusable projection libraries. It switches the WinRT identity model from library to application and creates the application tasks needed for WinUI runtime assets, authored host DLLs, optional packaging, and the native JVM application host.
 
-For a Gradle `application` project, use the generated native host as the application entry point:
+For an unpackaged Gradle application, configure the main class and run the generated host:
 
 ```kotlin
-tasks.named("runWinRtApplicationHost")
+plugins {
+    application
+    id("io.github.composefluent.winrt")
+}
+
+application {
+    mainClass = "sample.MainKt"
+}
+
+winRt {
+    application {
+        // Unpackaged is the default.
+    }
+}
 ```
 
-A minimal WinUI entry point starts XAML directly. Do not put Windows App SDK deployment or WinRT apartment scopes in user application code:
+```powershell
+.\gradlew.bat runWinRtApplicationHost
+```
+
+`runWinRtApplicationHost` depends on the required staging/build tasks automatically. The generated host stages the JVM classpath, WinRT runtime assets, authored host DLLs, and Windows App SDK payload, initializes unpackaged Windows App SDK deployment before creating the JVM, and then calls the app `main` through JNI. You should not wire `stageWinRtRuntimeAssets`, `buildWinRtAuthoringHost`, or `buildWinRtApplicationHost` manually for the normal run path.
+
+A minimal WinUI entry point starts XAML directly:
 
 ```kotlin
 import microsoft.ui.xaml.Application
@@ -199,6 +218,25 @@ class DemoApp : Application() {
 }
 ```
 
+Do not wrap `Application.start` in `RuntimeScope.initializeSingleThreaded()`. XAML application startup owns its WinRT module lifetime; `RuntimeScope` remains the normal scope for non-XAML WinRT API calls.
+
+If you own a custom launcher or a Gradle `JavaExec` task and intentionally do not use `runWinRtApplicationHost`, call the unpackaged bootstrap API before `Application.start`:
+
+```kotlin
+import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import microsoft.ui.xaml.Application
+
+fun main() {
+    WinRtWindowsAppSdkBootstrap.initialize().use {
+        Application.start {
+            DemoApp()
+        }
+    }
+}
+```
+
+When `winRt { application {} }` is enabled, the plugin automatically wires unpackaged `JavaExec` tasks to the staged application payload and passes `-Dkotlin.winrt.runtimeAssetsRoot=...`, so the bootstrap can find the Windows App SDK payload without hand-written task dependencies. Custom native launchers or external packaging tools still need to place the staged `kotlin-winrt-runtime-assets` directory beside the launcher or pass `-Dkotlin.winrt.runtimeAssetsRoot=<path>`.
+
 For packaged apps, the same user entry point is used; package identity and manifest registrations provide the Windows App SDK dependency instead of an unpackaged deployment bootstrap:
 
 ```kotlin
@@ -208,8 +246,6 @@ fun main() {
     }
 }
 ```
-
-Do not wrap `Application.start` in `RuntimeScope.initializeSingleThreaded()`. XAML application startup owns its WinRT module lifetime; `RuntimeScope` remains the normal scope for non-XAML WinRT API calls.
 
 ## Projection references
 
