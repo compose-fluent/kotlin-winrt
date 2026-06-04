@@ -186,6 +186,10 @@ actual object WinRtPlatformApi {
 
     actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean = TODO()
 
+    actual fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress = RawAddress.Null
+
+    actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean = false
+
     actual fun tryFormatMessageRaw(hResultValue: Int): String? = TODO()
 
     actual fun lastErrorAsHResultRaw(): Int = TODO()

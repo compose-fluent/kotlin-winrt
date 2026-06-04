@@ -11,7 +11,21 @@ internal object PlatformRuntimeInitialization {
     }
 
     fun uninitializeCom() {
-        if (PlatformRuntime.isWindows) WinRtPlatformApi.coUninitializeRaw()
+        if (!PlatformRuntime.isWindows) return
+        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
+        WinRtComposableObjectReference.closeRuntimeReferences()
+        ComWrappersSupport.clearRuntimeCache()
+        PlatformFinalization.drain()
+        uninitializeComApartment()
+    }
+
+    fun uninitializeComApartment() {
+        if (!PlatformRuntime.isWindows) return
+        try {
+            WinRtPlatformApi.coUninitializeRaw()
+        } finally {
+            PlatformFinalization.drain()
+        }
     }
 
     fun initializeWinRt(apartmentType: ApartmentType): HResult {
@@ -21,11 +35,6 @@ internal object PlatformRuntimeInitialization {
 
     fun uninitializeWinRt() {
         if (!PlatformRuntime.isWindows) return
-        WinRtComposableObjectReference.closeRuntimeReferences()
-        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
-        ComWrappersSupport.clearRuntimeCache()
-        ActivationFactory.clearRuntimeCache()
-        PlatformFinalization.drain()
         WinRtPlatformApi.roUninitializeRaw()
     }
 }

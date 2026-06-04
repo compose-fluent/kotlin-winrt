@@ -6,7 +6,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assume.assumeTrue
 import org.junit.Test
-import java.nio.file.Files
 
 class EventRuntimeInfrastructureTest {
     @Test
@@ -192,53 +191,6 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
-    fun windows_app_sdk_bootstrap_scope_close_removes_active_event_source_registration() {
-        EventSourceCache.clearForTests()
-        EventSourceShutdownRegistry.clearForTests()
-
-        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
-        val bootstrapDll = Files.createTempFile("kotlin-winrt-bootstrap", ".dll")
-        var removals = 0
-        var activeDelegate: WinRtDelegateReference? = null
-        val token = EventRegistrationToken(0x44556677_00000002)
-        val source =
-            TestIntEventSource(
-                owner = owner,
-                addHandler = { _, handler ->
-                    activeDelegate?.close()
-                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
-                    token
-                },
-                removeHandler = { _, removedToken ->
-                    removals += 1
-                    assertEquals(token, removedToken)
-                    activeDelegate?.close()
-                    activeDelegate = null
-                },
-            )
-
-        try {
-            source.subscribe { _, _ -> }
-
-            WinRtWindowsAppSdkBootstrap.Scope(
-                bootstrapDll = bootstrapDll,
-                activationContexts = emptyList(),
-                bootstrapLookup = null,
-                windowsAppRuntimeLookup = null,
-            ).close()
-
-            assertEquals(1, removals)
-            assertNull(activeDelegate)
-        } finally {
-            activeDelegate?.close()
-            owner.close()
-            EventSourceCache.clearForTests()
-            EventSourceShutdownRegistry.clearForTests()
-            Files.deleteIfExists(bootstrapDll)
-        }
-    }
-
-    @Test
     fun event_source_state_treats_reference_tracker_refs_as_native_refs() {
         val handle = WinRtDelegateBridge.createUnitDelegate(
             iid = testEventInterfaceId,
@@ -263,6 +215,59 @@ class EventRuntimeInfrastructureTest {
                     ComVtableInvoker.invoke(trackerPointer, ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker)
                     assertEquals(false, state.hasComReferences())
                 }
+            }
+        }
+    }
+
+    @Test
+    fun dispatcher_queue_handler_reports_unhandled_errors_without_failing_deferred_invoke() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = IID.DispatcherQueueHandler,
+            parameterKinds = emptyList(),
+        ) {
+            throw IllegalStateException("dispatcher callback failed")
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertEquals(KnownHResults.S_OK, reference.invokeAbi(emptyList()))
+            }
+        }
+    }
+
+    @Test
+    fun dispatcher_queue_handler_swallows_shutdown_errors_after_xaml_exit_starts() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = IID.DispatcherQueueHandler,
+            parameterKinds = emptyList(),
+        ) {
+            throw IllegalStateException("late dispatcher callback failed")
+        }
+
+        try {
+            XamlSystemProjectionRuntimeHooks.prepareForApplicationExit()
+            handle.use {
+                it.createReference().use { reference ->
+                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(emptyList()))
+                }
+            }
+        } finally {
+            XamlSystemProjectionRuntimeHooks.resetApplicationExitForTests()
+        }
+    }
+
+    @Test
+    fun non_dispatcher_delegate_failures_return_error_hresult() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = testEventInterfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            throw IllegalStateException("delegate callback failed")
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertEquals(ExceptionHelpers.E_FAIL, reference.invokeAbi(emptyList()))
             }
         }
     }

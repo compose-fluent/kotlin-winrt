@@ -44,4 +44,16 @@ class ManagedComHostStateTest {
         assertEquals(0, state.releaseReference())
         assertEquals(1, cleaned)
     }
+
+    @Test
+    fun `reference tracker references keep host alive until tracker release`() {
+        var cleaned = 0
+        val state = ManagedComHostState { cleaned += 1 }
+
+        assertEquals(1, state.addTrackerReference())
+        assertEquals(1, state.releaseReference())
+        assertEquals(0, cleaned)
+        assertEquals(0, state.releaseTrackerReference())
+        assertEquals(1, cleaned)
+    }
 }

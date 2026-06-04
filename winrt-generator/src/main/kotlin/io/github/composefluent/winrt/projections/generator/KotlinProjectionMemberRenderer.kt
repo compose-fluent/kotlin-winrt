@@ -429,11 +429,15 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
             if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
                 addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
             }
-        }
-        .addCode("%L\n", invocation)
-        .apply {
             if (method.requiresXamlApplicationExitPreparation(plan)) {
-                addCode("%T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                addCode("try {\n")
+                addCode("  %T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                addCode("  %L\n", invocation)
+                addCode("} finally {\n")
+                addCode("  %T.completeApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                addCode("}\n")
+            } else {
+                addCode("%L\n", invocation)
             }
         }
         .build()
@@ -443,6 +447,12 @@ internal fun WinRtMethodDefinition.requiresXamlApplicationExitPreparation(plan: 
     plan.type.qualifiedName in setOf("Microsoft.UI.Xaml.Application", "Windows.UI.Xaml.Application") &&
         name == "Exit" &&
         parameters.isEmpty() &&
+        isWinRtVoidTypeName(returnTypeName)
+
+internal fun WinRtMethodDefinition.requiresXamlApplicationStartLifetime(plan: KotlinTypeProjectionPlan): Boolean =
+    plan.type.qualifiedName in setOf("Microsoft.UI.Xaml.Application", "Windows.UI.Xaml.Application") &&
+        name == "Start" &&
+        parameters.size == 1 &&
         isWinRtVoidTypeName(returnTypeName)
 
 internal fun CodeBlock.Builder.addXamlApplicationExitPreparationIfNeeded(
@@ -1823,10 +1833,20 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode(
-            CodeBlock.builder()
-                .add("%L\n", invocation)
-                .addXamlApplicationExitPreparationIfNeeded(plan, method)
-                .build(),
+            if (method.requiresXamlApplicationExitPreparation(plan)) {
+                CodeBlock.builder()
+                    .add("try {\n")
+                    .add("  %T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                    .add("  %L\n", invocation)
+                    .add("} finally {\n")
+                    .add("  %T.completeApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
+                    .add("}\n")
+                    .build()
+            } else {
+                CodeBlock.builder()
+                    .add("%L\n", invocation)
+                    .build()
+            },
         )
         .build()
 }

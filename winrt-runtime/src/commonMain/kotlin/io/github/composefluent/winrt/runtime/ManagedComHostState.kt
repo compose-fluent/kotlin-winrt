@@ -14,6 +14,7 @@ internal class ManagedComHostState(
 ) {
     private val cleanedUp = AtomicInt(0)
     private val referenceCount = AtomicInt(1)
+    private val trackerReferenceCount = AtomicInt(0)
 
     fun addReference(): Int = updateReferenceCount(1)
 
@@ -23,6 +24,32 @@ internal class ManagedComHostState(
             cleanupOnce()
         }
         return updated
+    }
+
+    fun addTrackerReference(): Int {
+        while (true) {
+            val current = trackerReferenceCount.load()
+            val next = if (current == Int.MAX_VALUE) current else current + 1
+            if (trackerReferenceCount.compareAndSet(current, next)) {
+                if (next != current) {
+                    addReference()
+                }
+                return next
+            }
+        }
+    }
+
+    fun releaseTrackerReference(): Int {
+        while (true) {
+            val current = trackerReferenceCount.load()
+            val next = if (current <= 0) 0 else current - 1
+            if (trackerReferenceCount.compareAndSet(current, next)) {
+                if (next != current) {
+                    releaseReference()
+                }
+                return next
+            }
+        }
     }
 
     fun <T> queryInterface(

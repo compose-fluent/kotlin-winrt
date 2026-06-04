@@ -36,6 +36,12 @@ internal class WinRtDelegateComObject(
                 println("winrt-delegate: Invoke failed for ${descriptor.runtimeClassName ?: descriptor.interfaceId}: ${error::class.qualifiedName}: ${error.message}")
                 error.printStackTrace()
             }
+            if (descriptor.isDispatcherQueueHandler()) {
+                if (!XamlSystemProjectionRuntimeHooks.isApplicationExitInProgress()) {
+                    ExceptionHelpers.reportUnhandledError(error)
+                }
+                return KnownHResults.S_OK.value
+            }
             platformSetErrorInfo(error)
             platformHResultFromThrowable(error).value
         }
@@ -86,6 +92,11 @@ internal class WinRtDelegateComObject(
         )
     }
 }
+
+private fun WinRtDelegateDescriptor.isDispatcherQueueHandler(): Boolean =
+    interfaceId == IID.DispatcherQueueHandler &&
+        parameterKinds.isEmpty() &&
+        returnKind == WinRtDelegateValueKind.UNIT
 
 class WinRtDelegateReference internal constructor(
     comPtr: ComPtr,

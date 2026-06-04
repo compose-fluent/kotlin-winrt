@@ -22,6 +22,15 @@ actual object WinRtPlatformApi {
     private const val roInitSingleThreaded = 0
     private const val roInitMultithreaded = 1
     private const val loadLibrarySearchSystem32 = 0x00000800
+    private const val getModuleHandleExFlagFromAddress = 0x00000004
+    private const val memCommit = 0x00001000
+    private const val pageNoAccess = 0x01
+    private const val pageGuard = 0x100
+    private const val pageReadableMask = 0x0E
+    private const val memoryBasicInformationStateOffset = 32L
+    private const val memoryBasicInformationProtectOffset = 36L
+    private const val memoryBasicInformationRegionSizeOffset = 24L
+    private const val memoryBasicInformationSize = 48L
 
     private val linker: Linker by lazy { Linker.nativeLinker() }
     private val kernel32Lookup: SymbolLookup by lazy { SymbolLookup.libraryLookup("kernel32", Arena.global()) }
@@ -302,6 +311,32 @@ actual object WinRtPlatformApi {
                 ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val getModuleHandleExWHandle: MethodHandle by lazy {
+        downcall(
+            kernel32Lookup,
+            "GetModuleHandleExW",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val virtualQueryHandle: MethodHandle by lazy {
+        downcall(
+            kernel32Lookup,
+            "VirtualQuery",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_LONG,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_LONG,
             ),
         )
     }
@@ -606,6 +641,12 @@ actual object WinRtPlatformApi {
     actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean =
         freeLibrary(moduleHandle.asMemorySegment())
 
+    actual fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress =
+        tryGetModuleHandleExFromAddress(address.asMemorySegment()).asRawAddress()
+
+    actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean =
+        isReadableMemory(address.asMemorySegment(), sizeBytes)
+
     actual fun tryFormatMessageRaw(hResultValue: Int): String? =
         tryFormatMessage(HResult(hResultValue))
 
@@ -880,6 +921,52 @@ actual object WinRtPlatformApi {
             return false
         }
         return (freeLibraryHandle.invokeWithArguments(moduleHandle) as Int) != 0
+    }
+
+    fun tryGetModuleHandleExFromAddress(address: MemorySegment): MemorySegment {
+        ensureWindows()
+        if (address == MemorySegment.NULL) {
+            return MemorySegment.NULL
+        }
+        Arena.ofConfined().use { arena ->
+            val moduleOut = arena.allocate(ValueLayout.ADDRESS)
+            val ok = getModuleHandleExWHandle.invokeWithArguments(
+                getModuleHandleExFlagFromAddress,
+                address,
+                moduleOut,
+            ) as Int
+            return if (ok == 0) {
+                MemorySegment.NULL
+            } else {
+                moduleOut.get(ValueLayout.ADDRESS, 0)
+            }
+        }
+    }
+
+    fun isReadableMemory(address: MemorySegment, sizeBytes: Long): Boolean {
+        ensureWindows()
+        if (address == MemorySegment.NULL || sizeBytes <= 0L) {
+            return false
+        }
+        Arena.ofConfined().use { arena ->
+            val info = arena.allocate(memoryBasicInformationSize)
+            val bytes = virtualQueryHandle.invokeWithArguments(
+                address,
+                info,
+                memoryBasicInformationSize,
+            ) as Long
+            if (bytes == 0L) {
+                return false
+            }
+            val state = info.get(ValueLayout.JAVA_INT, memoryBasicInformationStateOffset)
+            val protect = info.get(ValueLayout.JAVA_INT, memoryBasicInformationProtectOffset)
+            val regionSize = info.get(ValueLayout.JAVA_LONG, memoryBasicInformationRegionSizeOffset)
+            return state == memCommit &&
+                protect and pageNoAccess == 0 &&
+                protect and pageGuard == 0 &&
+                protect and pageReadableMask != 0 &&
+                regionSize >= sizeBytes
+        }
     }
 
     fun tryFormatMessage(hResult: HResult): String? {

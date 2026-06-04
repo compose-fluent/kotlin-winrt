@@ -74,7 +74,7 @@ open class ComObjectReference internal constructor(
                 KnownHResults.E_POINTER,
             )
         }
-        return IUnknownReference(pointer.asRawComPtr())
+        return IUnknownReference(ComPtr.create(pointer.asRawComPtr(), IID.IUnknown))
     }
 
     fun tryAsInspectable(): IInspectableReference? =
