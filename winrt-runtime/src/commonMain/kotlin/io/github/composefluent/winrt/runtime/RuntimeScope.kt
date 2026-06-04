@@ -17,10 +17,6 @@ class RuntimeScope private constructor(
             return
         }
         closed = true
-        if (XamlSystemProjectionRuntimeHooks.consumeApplicationStartOwnedRuntimeScopeClose()) {
-            RuntimeScopeThreadInitialization.recordScopeClose()
-            return
-        }
         if (winRtInitialized) {
             RuntimeScopeThreadInitialization.recordWinRtUninitialize()
             PlatformRuntimeInitialization.uninitializeWinRt()
@@ -73,18 +69,5 @@ internal object RuntimeScopeThreadInitialization {
 
     fun recordComUninitialize() {
         comInitializations.set((comInitializations.get() - 1).coerceAtLeast(0))
-    }
-
-    fun transferCurrentThreadScopesToApplicationStart(): Int {
-        val scopeCount = activeScopes.get()
-        repeat(winRtInitializations.get()) {
-            PlatformRuntimeInitialization.uninitializeWinRt()
-        }
-        repeat(comInitializations.get()) {
-            PlatformRuntimeInitialization.uninitializeComApartment()
-        }
-        winRtInitializations.set(0)
-        comInitializations.set(0)
-        return scopeCount
     }
 }

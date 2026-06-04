@@ -96,7 +96,6 @@ import io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationSuppor
 import io.github.composefluent.winrt.runtime.WinRtAuthoringSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
 import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
-import io.github.composefluent.winrt.runtime.WinRtXamlProjectionSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRtPlatformApi
 import io.github.composefluent.winrt.runtime.WinRtSystemProjectionMarshalers
 import io.github.composefluent.winrt.runtime.WinRtTypeSignature
@@ -257,8 +256,6 @@ internal val WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME =
 internal val WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME = WinRtAuthoringSupportIntrinsic::class.asClassName()
 internal val WINRT_PROJECTION_INTRINSIC_CLASS_NAME = WinRtProjectionIntrinsic::class.asClassName()
 internal val WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME = WinRtProjectionSupportIntrinsic::class.asClassName()
-internal val WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME =
-    WinRtXamlProjectionSupportIntrinsic::class.asClassName()
 internal val WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRtKeyValuePairAdapter")
 internal val WINRT_OBJECT_MARSHALER_FUNCTION_NAME =

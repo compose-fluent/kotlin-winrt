@@ -461,19 +461,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         .addMethodGenericParameters(method)
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .addCode(
-            if (method.requiresXamlApplicationStartLifetime(plan)) {
-                CodeBlock.builder()
-                    .add("%T.runWithApplicationStart {\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
-                    .add("  %L\n", invocation)
-                    .add("}\n")
-                    .build()
-            } else {
-                CodeBlock.builder()
-                    .add("%L\n", invocation)
-                    .build()
-            },
-        )
+        .addCode("%L\n", invocation)
         .build()
 }
 
