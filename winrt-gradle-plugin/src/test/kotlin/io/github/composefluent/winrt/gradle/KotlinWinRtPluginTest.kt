@@ -1070,6 +1070,26 @@ class KotlinWinRtPluginTest {
         val stageRuntimeAssets = project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
         assertTrue(stageRuntimeAssets.runtimeAssetFiles.files.any { it.name == "SimpleMathComponent.dll" })
         project.tasks.named("buildWinRtAuthoringHost", BuildWinRtAuthoringHostTask::class.java).get()
+        project.tasks.named("buildWinRtApplicationHost", BuildWinRtApplicationHostTask::class.java).get()
+        project.tasks.named("runWinRtApplicationHost").get()
+        assertEquals("buildWinRtApplicationHost", project.extensions.extraProperties["kotlinWinRtApplicationHostTask"])
+        assertEquals("runWinRtApplicationHost", project.extensions.extraProperties["kotlinWinRtRunApplicationHostTask"])
+    }
+
+    @Test
+    fun application_plugin_uses_gradle_application_main_class_for_native_host() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply("application")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(org.gradle.api.plugins.JavaApplication::class.java).mainClass.set("sample.MainKt")
+        project.extensions.getByType(WinRtExtension::class.java).application {}
+
+        val task = project.tasks.named("buildWinRtApplicationHost", BuildWinRtApplicationHostTask::class.java).get()
+
+        assertEquals("sample.MainKt", task.mainClass.get())
+        assertEquals("sample-app", task.executableBaseName.get())
     }
 
     @Test
@@ -1767,6 +1787,80 @@ class KotlinWinRtPluginTest {
         if (System.getProperty("os.name").contains("Windows", ignoreCase = true) && commandExists("clang-cl.exe")) {
             assertTrue(Files.isRegularFile(task.outputDirectory.get().asFile.toPath().resolve("SampleComponent.dll")))
         }
+    }
+
+    @Test
+    fun application_host_task_generates_direct_jni_unpackage_launcher() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+        val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
+        val assets = project.layout.buildDirectory.dir("application-package").get().asFile.toPath()
+        Files.createDirectories(jar.parent)
+        Files.writeString(jar, "jar")
+        Files.createDirectories(assets)
+        Files.writeString(assets.resolve("WindowsAppSDK-SelfContained.manifest"), "manifest")
+        val task = project.tasks.register(
+            "buildApplicationHost",
+            BuildWinRtApplicationHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("application-host/src"))
+            registeredTask.mainClass.set("sample.MainKt")
+            registeredTask.executableBaseName.set("sample-app")
+            registeredTask.runtimeClasspath.from(jar)
+            registeredTask.runtimeAssetsDirectory.from(assets)
+            registeredTask.packageMode.set(WinRtApplicationPackageMode.Unpackaged.name)
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.commandWorkingDirectory.set(project.layout.projectDirectory)
+        }.get()
+
+        withSystemProperty("os.name", "Linux") {
+            task.build()
+        }
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
+        assertTrue(source.contains("JNI_CreateJavaVM"))
+        assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
+        assertTrue(source.contains("WinRtWindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("KOTLIN_WINRT_JVM_OPTIONS"))
+        assertTrue(source.contains(System.getProperty("java.home").replace("\\", "\\\\")))
+        assertFalse(source.contains("java/lang/reflect"))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("lib").resolve(jar.fileName)))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-runtime-assets/WindowsAppSDK-SelfContained.manifest")))
+    }
+
+    @Test
+    fun application_host_task_omits_windows_app_sdk_launcher_for_packaged_apps() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+        val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
+        Files.createDirectories(jar.parent)
+        Files.writeString(jar, "jar")
+        val task = project.tasks.register(
+            "buildPackagedApplicationHost",
+            BuildWinRtApplicationHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("packaged-application-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("packaged-application-host/src"))
+            registeredTask.mainClass.set("sample.MainKt")
+            registeredTask.executableBaseName.set("sample-app")
+            registeredTask.runtimeClasspath.from(jar)
+            registeredTask.packageMode.set(WinRtApplicationPackageMode.Packaged.name)
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.commandWorkingDirectory.set(project.layout.projectDirectory)
+        }.get()
+
+        withSystemProperty("os.name", "Linux") {
+            task.build()
+        }
+
+        val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
+        assertFalse(source.contains("WinRtWindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("return NULL;"))
+        assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
     }
 
     @Test
@@ -7018,6 +7112,20 @@ private fun commandExists(name: String): Boolean =
             .start()
             .waitFor() == 0
     }.getOrDefault(false)
+
+private inline fun <T> withSystemProperty(name: String, value: String, block: () -> T): T {
+    val previous = System.getProperty(name)
+    System.setProperty(name, value)
+    return try {
+        block()
+    } finally {
+        if (previous == null) {
+            System.clearProperty(name)
+        } else {
+            System.setProperty(name, previous)
+        }
+    }
+}
 
 private fun writeFakeMakePri(path: Path, log: Path, languagePri: String = ""): Path {
     Files.createDirectories(path.parent)

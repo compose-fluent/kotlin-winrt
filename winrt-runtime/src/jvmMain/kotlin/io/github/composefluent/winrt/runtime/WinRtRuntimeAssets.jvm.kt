@@ -55,8 +55,8 @@ internal object WinRtRuntimeAssets {
             ?.takeIf { it.isRegularFile() }
 
     private fun workingDirectoryRuntimeAssetsRoot(): Path? =
-        Path.of(System.getProperty("user.dir") ?: ".", runtimeAssetsDirectoryName)
-            .takeIf { it.isDirectory() }
+        workingDirectoryRuntimeAssetsRootCandidates()
+            .firstOrNull { it.isDirectory() }
 
     private fun classLoaders(): Sequence<ClassLoader> =
         sequenceOf(
@@ -78,11 +78,20 @@ internal object WinRtRuntimeAssets {
     private fun runtimeAssetsRootCandidates(classpathEntry: Path): Sequence<Path> = sequence {
         if (classpathEntry.isDirectory()) {
             yield(classpathEntry.resolve(runtimeAssetsDirectoryName))
+            yield(classpathEntry.resolve("kotlin-winrt").resolve("runtime-assets"))
         }
         val applicationHome = classpathEntry.parent?.parent
         if (applicationHome != null) {
             yield(applicationHome.resolve(runtimeAssetsDirectoryName))
+            yield(applicationHome.resolve("kotlin-winrt").resolve("runtime-assets"))
         }
+    }
+
+    private fun workingDirectoryRuntimeAssetsRootCandidates(): Sequence<Path> = sequence {
+        val workingDirectory = Path.of(System.getProperty("user.dir") ?: ".")
+        yield(workingDirectory.resolve(runtimeAssetsDirectoryName))
+        yield(workingDirectory.resolve("kotlin-winrt").resolve("runtime-assets"))
+        yield(workingDirectory.resolve("build").resolve("kotlin-winrt").resolve("runtime-assets"))
     }
 
     private fun java.net.URL.toFilePath(): Path? {

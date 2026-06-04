@@ -93,77 +93,38 @@ application {
     mainClass = "io.github.composefluent.winrt.samples.MainKt"
 }
 
+val sampleJvmOptionProperties = listOf(
+    "kotlin.winrt.samples.runNativeSmoke",
+    "kotlin.winrt.samples.runComponentSmoke",
+    "kotlin.winrt.samples.runWinUiSmoke",
+    "kotlin.winrt.samples.autoNavigateWinUi",
+    "kotlin.winrt.samples.autoExitWinUi",
+    "kotlin.winrt.samples.minimalWinUiSurface",
+    "kotlin.winrt.samples.skipObjectContent",
+    "kotlin.winrt.samples.skipSettingsCard",
+    "kotlin.winrt.samples.skipShimmer",
+    "kotlin.winrt.samples.enableShimmerLoading",
+    "kotlin.winrt.samples.skipShimmerSizing",
+    "kotlin.winrt.samples.skipMica",
+    "kotlin.winrt.samples.noWinUiContent",
+    "kotlin.winrt.samples.skipXamlResources",
+    "kotlin.winrt.samples.skipWinUiResourceManager",
+    "KOTLIN_WINRT_TRACE_CCW",
+)
+
 tasks.named<JavaExec>("run") {
     dependsOn(tasks.named("buildWinRtAuthoringHost"))
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    systemProperty(
-        "kotlin.winrt.samples.runNativeSmoke",
-        providers.systemProperty("kotlin.winrt.samples.runNativeSmoke").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.runComponentSmoke",
-        providers.systemProperty("kotlin.winrt.samples.runComponentSmoke").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.runWinUiSmoke",
-        providers.systemProperty("kotlin.winrt.samples.runWinUiSmoke").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.autoNavigateWinUi",
-        providers.systemProperty("kotlin.winrt.samples.autoNavigateWinUi").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.autoExitWinUi",
-        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.minimalWinUiSurface",
-        providers.systemProperty("kotlin.winrt.samples.minimalWinUiSurface").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipObjectContent",
-        providers.systemProperty("kotlin.winrt.samples.skipObjectContent").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipSettingsCard",
-        providers.systemProperty("kotlin.winrt.samples.skipSettingsCard").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipShimmer",
-        providers.systemProperty("kotlin.winrt.samples.skipShimmer").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.enableShimmerLoading",
-        providers.systemProperty("kotlin.winrt.samples.enableShimmerLoading").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipShimmerSizing",
-        providers.systemProperty("kotlin.winrt.samples.skipShimmerSizing").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipMica",
-        providers.systemProperty("kotlin.winrt.samples.skipMica").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.noWinUiContent",
-        providers.systemProperty("kotlin.winrt.samples.noWinUiContent").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipXamlResources",
-        providers.systemProperty("kotlin.winrt.samples.skipXamlResources").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipWinUiResourceManager",
-        providers.systemProperty("kotlin.winrt.samples.skipWinUiResourceManager").orElse("false").get(),
-    )
-    systemProperty(
-        "kotlin.winrt.samples.skipRuntimeScope",
-        providers.systemProperty("kotlin.winrt.samples.skipRuntimeScope").orElse("false").get(),
-    )
-    systemProperty(
-        "KOTLIN_WINRT_TRACE_CCW",
-        providers.systemProperty("KOTLIN_WINRT_TRACE_CCW").orElse("false").get(),
-    )
+    sampleJvmOptionProperties.forEach { name ->
+        systemProperty(name, providers.systemProperty(name).orElse("false").get())
+    }
+}
+
+tasks.named<Exec>("runWinRtApplicationHost") {
+    val hostJvmOptions = sampleJvmOptionProperties.joinToString(";") { name ->
+        "-D$name=${providers.systemProperty(name).orElse("false").get()}"
+    }
+    environment("KOTLIN_WINRT_JVM_OPTIONS", hostJvmOptions)
 }
 
 val verifyWinRtSampleIdentity by tasks.registering {
@@ -228,8 +189,8 @@ val verifyWinRtSampleDistribution by tasks.registering {
 
 val verifyWinRtSampleRun by tasks.registering {
     group = "verification"
-    description = "Runs the sample application bootstrap without opt-in native WinRT smoke tests."
-    dependsOn(tasks.named("run"))
+    description = "Runs the sample application through the native Kotlin/WinRT host without opt-in native WinRT smoke tests."
+    dependsOn(tasks.named("runWinRtApplicationHost"))
 }
 
 tasks.named("check") {

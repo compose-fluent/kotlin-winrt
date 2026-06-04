@@ -14,9 +14,11 @@ import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.file.CopySpec
+import org.gradle.api.plugins.JavaApplication
 import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
@@ -477,6 +479,42 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn(stageRuntimeAssetsTask)
         },
     )
+    val applicationHostTask = project.tasks.register(
+        "buildWinRtApplicationHost",
+        BuildWinRtApplicationHostTask::class.java,
+        Action<BuildWinRtApplicationHostTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Builds the native Kotlin/WinRT JVM application host with Windows App SDK deployment initialization."
+            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-host/bin"))
+            task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-host/src"))
+            task.packageMode.set(project.provider { extension.application.packageMode.get().name })
+            task.executableBaseName.set(project.name)
+            task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.commandWorkingDirectory.set(project.layout.projectDirectory)
+            task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
+            task.dependsOn(stageApplicationPackageTask)
+        },
+    )
+    val runApplicationHostTask = project.tasks.register(
+        "runWinRtApplicationHost",
+        Exec::class.java,
+        Action<Exec> { task ->
+            task.group = "application"
+            task.description = "Runs the native Kotlin/WinRT JVM application host."
+            task.dependsOn(applicationHostTask)
+            task.onlyIf {
+                System.getProperty("os.name").contains("Windows", ignoreCase = true)
+            }
+            task.doFirst {
+                val hostDirectory = applicationHostTask.get().outputDirectory.get().asFile
+                val hostExecutable = hostDirectory.resolve("${applicationHostTask.get().executableBaseName.get()}.exe")
+                task.executable = hostExecutable.absolutePath
+                task.workingDir = hostDirectory
+            }
+        },
+    )
     val packageApplicationTask = project.tasks.register(
         "packageWinRtApplication",
         PackageWinRtApplicationTask::class.java,
@@ -576,6 +614,17 @@ private fun configureWinRtApplicationTasks(
         },
     )
     project.plugins.withId("java") {
+        project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> { sourceSets ->
+            applicationHostTask.configure { task ->
+                task.runtimeClasspath.from(sourceSets.getByName("main").runtimeClasspath)
+            }
+        })
+        project.tasks.named("jar", Jar::class.java).let { jar ->
+            applicationHostTask.configure { task ->
+                task.runtimeClasspath.from(jar.flatMap { it.archiveFile })
+                task.dependsOn(jar)
+            }
+        }
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             if (!packagedMode) {
                 task.dependsOn(stageApplicationPackageTask)
@@ -590,23 +639,34 @@ private fun configureWinRtApplicationTasks(
         })
     }
     project.plugins.withId("application") {
+        project.extensions.configure(JavaApplication::class.java, Action<JavaApplication> { application ->
+            applicationHostTask.configure { task ->
+                task.mainClass.set(extension.application.mainClass.orElse(application.mainClass))
+            }
+        })
         if (!packagedMode) {
             project.extensions.configure(DistributionContainer::class.java, Action<DistributionContainer> { distributions ->
-                distributions.named("main").configure { distribution ->
-                    distribution.contents(Action<CopySpec> { contents ->
-                        contents.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY, Action<CopySpec> { spec ->
-                            spec.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
-                        })
+                distributions.getByName("main").contents(Action<CopySpec> { contents ->
+                    contents.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY, Action<CopySpec> { spec ->
+                        spec.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
                     })
-                }
+                    contents.into("kotlin-winrt-application-host", Action<CopySpec> { spec ->
+                        spec.from(applicationHostTask.flatMap { it.outputDirectory })
+                    })
+                })
             })
         }
+    }
+    applicationHostTask.configure { task ->
+        task.mainClass.convention(extension.application.mainClass)
     }
     project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
     project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
     project.extensions.extraProperties["kotlinWinRtRuntimeNuGetPackagesTask"] = resolveRuntimeNuGetPackagesTask.name
     project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
     project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
+    project.extensions.extraProperties["kotlinWinRtApplicationHostTask"] = applicationHostTask.name
+    project.extensions.extraProperties["kotlinWinRtRunApplicationHostTask"] = runApplicationHostTask.name
     project.extensions.extraProperties["kotlinWinRtPackageTask"] = packageApplicationTask.name
     project.extensions.extraProperties["kotlinWinRtVerifyPackageTask"] = verifyPackageTask.name
     project.extensions.extraProperties["kotlinWinRtSignPackageTask"] = signPackageTask.name

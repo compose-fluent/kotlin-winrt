@@ -1,8 +1,6 @@
 package io.github.composefluent.winrt.samples.kmp.library
 
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
-import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import io.github.composefluent.winrt.samples.kmp.base.WinUiKmpBaseLibrarySample
 import microsoft.ui.dispatching.DispatcherQueue
 import microsoft.ui.dispatching.DispatcherQueueHandler
@@ -36,18 +34,13 @@ object WinUiKmpLibrarySample {
     private var activeApplication: WinUiKmpLibraryApp? = null
 
     fun start() {
-        WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
-            println("winui-kmp-library: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
-            RuntimeScope.initializeSingleThreaded().use {
-                Application.start {
-                    println("winui-kmp-library: application callback invoked")
-                    activeApplication = WinUiKmpLibraryApp()
-                    println("winui-kmp-library: application created")
-                }
-            }
-            activeApplication?.close()
-            activeApplication = null
+        Application.start {
+            println("winui-kmp-library: application callback invoked")
+            activeApplication = WinUiKmpLibraryApp()
+            println("winui-kmp-library: application created")
         }
+        activeApplication?.close()
+        activeApplication = null
     }
 
     @Suppress("unused")

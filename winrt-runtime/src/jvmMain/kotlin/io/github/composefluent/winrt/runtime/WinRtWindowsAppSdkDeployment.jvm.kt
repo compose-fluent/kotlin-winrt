@@ -12,7 +12,16 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 
-object WinRtWindowsAppSdkBootstrap {
+/**
+ * Windows App SDK deployment visibility for JVM WinUI apps.
+ *
+ * This deliberately mirrors the C++/WinRT split between normal WinRT apartment/runtime
+ * initialization and package deployment. Packaged apps already have identity and manifest
+ * registration, so Kotlin code starts XAML directly just like C++/WinRT packaged apps.
+ * Unpackaged apps need either self-contained activation context registration or the
+ * Windows App Runtime Dynamic Dependency bootstrap before WinUI activation.
+ */
+object WinRtWindowsAppSdkDeployment {
     private const val defaultMajorMinorVersion = 0x00010008
     private const val defaultMinVersion = 0x1F40032608CC0000L
     private const val bootstrapDllName = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
@@ -24,15 +33,20 @@ object WinRtWindowsAppSdkBootstrap {
     private val arena: Arena = Arena.ofAuto()
     private val linker by lazy { java.lang.foreign.Linker.nativeLinker() }
 
+    enum class Mode {
+        DynamicDependency,
+        SelfContained,
+    }
+
     class Scope internal constructor(
-        val bootstrapDll: Path,
+        val mode: Mode,
+        val bootstrapDll: Path?,
         private val activationContexts: List<WinRtWindowsActivationContext.Scope>,
         private val bootstrapLookup: SymbolLookup?,
         @Suppress("unused")
         private val windowsAppRuntimeLookup: SymbolLookup?,
     ) : AutoCloseable {
         override fun close() {
-            EventSourceShutdownRegistry.closeAllActiveRegistrations()
             bootstrapLookup?.let(::shutdown)
             activationContexts.asReversed().forEach { context ->
                 context.close()
@@ -46,7 +60,14 @@ object WinRtWindowsAppSdkBootstrap {
         val minVersion: Long,
     )
 
-    fun initialize(runtimeAssetsRoot: Path? = discoverRuntimeAssetsRoot()): Scope? {
+    /**
+     * Make Windows App SDK classes visible for an unpackaged app.
+     *
+     * Self-contained Windows App SDK layouts are handled through an activation context and
+     * `WindowsAppRuntime_EnsureIsLoaded`. Otherwise this falls back to the Dynamic Dependency
+     * bootstrap API (`MddBootstrapInitialize2` / `MddBootstrapShutdown`).
+     */
+    fun initializeForUnpackagedApp(runtimeAssetsRoot: Path? = discoverRuntimeAssetsRoot()): Scope? {
         if (!PlatformRuntime.isWindows) {
             return null
         }
@@ -59,6 +80,7 @@ object WinRtWindowsAppSdkBootstrap {
         if (activationContext != null) {
             val runtimeLookup = loadSelfContainedWindowsAppRuntime(root)
             return Scope(
+                mode = Mode.SelfContained,
                 bootstrapDll = bootstrapDll,
                 activationContexts = listOfNotNull(processCompatibilityContext, activationContext),
                 bootstrapLookup = null,
@@ -97,12 +119,20 @@ object WinRtWindowsAppSdkBootstrap {
             ).requireSuccess("MddBootstrapInitialize2")
         }
         return Scope(
+            mode = Mode.DynamicDependency,
             bootstrapDll = bootstrapDll,
             activationContexts = listOfNotNull(processCompatibilityContext),
             bootstrapLookup = lookup,
             windowsAppRuntimeLookup = null,
         )
     }
+
+    @Deprecated(
+        message = "Use initializeForUnpackagedApp only for unpackaged apps. Packaged apps should start XAML directly.",
+        replaceWith = ReplaceWith("initializeForUnpackagedApp(runtimeAssetsRoot)"),
+    )
+    fun initialize(runtimeAssetsRoot: Path? = discoverRuntimeAssetsRoot()): Scope? =
+        initializeForUnpackagedApp(runtimeAssetsRoot)
 
     fun discoverRuntimeAssetsRoot(): Path? {
         return WinRtRuntimeAssets.discoverRuntimeAssetsRoot(bootstrapDllName)
@@ -182,4 +212,16 @@ object WinRtWindowsAppSdkBootstrap {
         val bytes = (value + '\u0000').toByteArray(StandardCharsets.UTF_16LE)
         return arena.allocate(bytes.size.toLong(), 2).copyFrom(MemorySegment.ofArray(bytes))
     }
+}
+
+@Deprecated(
+    message = "Use WinRtWindowsAppSdkDeployment. Bootstrap is only one unpackaged deployment mode; packaged apps should not bootstrap.",
+    replaceWith = ReplaceWith("WinRtWindowsAppSdkDeployment"),
+)
+object WinRtWindowsAppSdkBootstrap {
+    fun initialize(runtimeAssetsRoot: Path? = WinRtWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()): WinRtWindowsAppSdkDeployment.Scope? =
+        WinRtWindowsAppSdkDeployment.initializeForUnpackagedApp(runtimeAssetsRoot)
+
+    fun discoverRuntimeAssetsRoot(): Path? =
+        WinRtWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()
 }
