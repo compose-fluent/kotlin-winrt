@@ -7503,22 +7503,18 @@ class KotlinProjectionGeneratorTest {
         assertTrue(constructor, constructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
         val start = application.substringAfter("public fun start(").substringBefore("override fun")
         assertFalse(start, start.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
-        assertTrue(start, start.contains("WinRtXamlProjectionSupportIntrinsic.runWithApplicationStart"))
+        assertFalse(start, start.contains("WinRtXamlProjectionSupportIntrinsic"))
         val startAbiCallIndex = start.indexOf("WinRtProjectionIntrinsic.callUnit(").takeIf { it >= 0 }
             ?: start.indexOf("ComVtableInvoker.invoke(").takeIf { it >= 0 }
             ?: start.indexOf("ComVtableInvoker.invokeArgs(")
         assertTrue(start, startAbiCallIndex >= 0)
-        assertTrue(start, start.indexOf("WinRtXamlProjectionSupportIntrinsic.runWithApplicationStart") < startAbiCallIndex)
         assertTrue(application, application.contains("override fun exit()"))
         val exit = application.substringAfter("override fun exit()").substringBefore("override fun")
-        assertTrue(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()"))
+        assertFalse(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic"))
         val abiCallIndex = exit.indexOf("WinRtProjectionIntrinsic.callUnit(").takeIf { it >= 0 }
             ?: exit.indexOf("ComVtableInvoker.invoke(").takeIf { it >= 0 }
             ?: exit.indexOf("ComVtableInvoker.invokeArgs(")
         assertTrue(exit, abiCallIndex >= 0)
-        assertTrue(exit, exit.indexOf("WinRtXamlProjectionSupportIntrinsic.prepareForApplicationExit()") < abiCallIndex)
-        assertTrue(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic.completeApplicationExit()"))
-        assertTrue(exit, abiCallIndex < exit.indexOf("WinRtXamlProjectionSupportIntrinsic.completeApplicationExit()"))
     }
 
     @Test

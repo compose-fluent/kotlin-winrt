@@ -236,27 +236,6 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
-    fun dispatcher_queue_handler_swallows_shutdown_errors_after_xaml_exit_starts() {
-        val handle = WinRtDelegateBridge.createUnitDelegate(
-            iid = IID.DispatcherQueueHandler,
-            parameterKinds = emptyList(),
-        ) {
-            throw IllegalStateException("late dispatcher callback failed")
-        }
-
-        try {
-            XamlSystemProjectionRuntimeHooks.prepareForApplicationExit()
-            handle.use {
-                it.createReference().use { reference ->
-                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(emptyList()))
-                }
-            }
-        } finally {
-            XamlSystemProjectionRuntimeHooks.resetApplicationExitForTests()
-        }
-    }
-
-    @Test
     fun non_dispatcher_delegate_failures_return_error_hresult() {
         val handle = WinRtDelegateBridge.createUnitDelegate(
             iid = testEventInterfaceId,

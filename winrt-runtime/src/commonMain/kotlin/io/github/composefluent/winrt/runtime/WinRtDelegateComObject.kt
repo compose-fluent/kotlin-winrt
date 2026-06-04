@@ -37,9 +37,7 @@ internal class WinRtDelegateComObject(
                 error.printStackTrace()
             }
             if (descriptor.isDispatcherQueueHandler()) {
-                if (!XamlSystemProjectionRuntimeHooks.isApplicationExitInProgress()) {
-                    ExceptionHelpers.reportUnhandledError(error)
-                }
+                ExceptionHelpers.reportUnhandledError(error)
                 return KnownHResults.S_OK.value
             }
             platformSetErrorInfo(error)

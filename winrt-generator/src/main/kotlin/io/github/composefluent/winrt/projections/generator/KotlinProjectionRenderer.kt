@@ -1517,23 +1517,10 @@ class KotlinProjectionRenderer(
                 if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
                     addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
                 }
-                if (method.requiresXamlApplicationExitPreparation(plan)) {
-                    addCode("try {\n")
-                    addCode("  %T.prepareForApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
-                    if (returns == UNIT) {
-                        addCode("  %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
-                    } else {
-                        addCode("  return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
-                    }
-                    addCode("} finally {\n")
-                    addCode("  %T.completeApplicationExit()\n", WINRT_XAML_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME)
-                    addCode("}\n")
+                if (returns == UNIT) {
+                    addCode("%L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
                 } else {
-                    if (returns == UNIT) {
-                        addCode("%L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
-                    } else {
-                        addCode("return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
-                    }
+                    addCode("return %L.%L(%L)\n", target.projectionPropertyName, targetFunctionName, arguments)
                 }
             }
             .build()

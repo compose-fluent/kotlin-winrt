@@ -108,10 +108,6 @@ private fun dataErrorsChangedHandlerIid(): Guid =
     )
 
 internal object XamlSystemProjectionRuntimeHooks {
-    private val applicationStartOwnedRuntimeScopeCloses = PlatformThreadLocalInt()
-    private var applicationExitStarted = false
-    private var applicationExitCompleted = false
-
     fun ensureRegistered() {
         registerRcwFactories()
         registerCcwFactories()
@@ -119,49 +115,6 @@ internal object XamlSystemProjectionRuntimeHooks {
 
     fun closeRuntimeCaches() {
         WinUiXamlMetadataProviderCache.close()
-    }
-
-    fun runWithApplicationStart(block: () -> Unit) {
-        WinRtModule.ensureInitialized()
-        val transferredScopes = RuntimeScopeThreadInitialization.transferCurrentThreadScopesToApplicationStart()
-        try {
-            block()
-        } finally {
-            if (PlatformRuntime.isWindows) {
-                applicationStartOwnedRuntimeScopeCloses.set(
-                    applicationStartOwnedRuntimeScopeCloses.get() + transferredScopes,
-                )
-            }
-        }
-    }
-
-    fun consumeApplicationStartOwnedRuntimeScopeClose(): Boolean {
-        val pending = applicationStartOwnedRuntimeScopeCloses.get()
-        if (pending <= 0) {
-            return false
-        }
-        applicationStartOwnedRuntimeScopeCloses.set(pending - 1)
-        return true
-    }
-
-    fun prepareForApplicationExit() {
-        applicationExitStarted = true
-        EventSourceShutdownRegistry.closeAllActiveRegistrations()
-        PlatformFinalization.drain()
-    }
-
-    fun completeApplicationExit() {
-        PlatformFinalization.drain()
-        applicationExitCompleted = true
-    }
-
-    fun isApplicationExitCompleted(): Boolean = applicationExitCompleted
-
-    fun isApplicationExitInProgress(): Boolean = applicationExitStarted
-
-    internal fun resetApplicationExitForTests() {
-        applicationExitStarted = false
-        applicationExitCompleted = false
     }
 
     internal fun augmentInspectableDefinition(
