@@ -146,23 +146,17 @@ winRt {
 }
 ```
 
-The `application {}` block belongs in the final executable app module, not in reusable projection libraries. It switches the WinRT identity model from library to application and enables application-oriented tasks such as `generateWinRtApplicationIdentity`, `stageWinRtRuntimeAssets`, and `buildWinRtAuthoringHost`. If an app is launched from a custom Gradle `JavaExec`, distribution, or packaging task, make that task consume the staged runtime assets and authoring host outputs; otherwise WinUI activation or Windows App SDK bootstrap can fail at runtime even though compilation succeeds.
+The `application {}` block belongs in the final executable app module, not in reusable projection libraries. It switches the WinRT identity model from library to application and enables application-oriented tasks such as `generateWinRtApplicationIdentity`, `stageWinRtRuntimeAssets`, `buildWinRtAuthoringHost`, `buildWinRtApplicationHost`, and `runWinRtApplicationHost`. For unpackaged apps, the generated native application host owns Windows App SDK deployment before it starts the JVM and calls the app `main` through JNI. If an app is launched from a custom distribution or packaging task, make that task consume the staged runtime assets, authoring host outputs, and application host outputs; otherwise WinUI activation or Windows App SDK deployment can fail at runtime even though compilation succeeds.
 
-For a Gradle `application` project, the run task should also enable JVM native access:
+For a Gradle `application` project, use the generated native host as the application entry point:
 
 ```kotlin
-tasks.named<JavaExec>("run") {
-    dependsOn(tasks.named("stageWinRtRuntimeAssets"))
-    dependsOn(tasks.named("buildWinRtAuthoringHost"))
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
-}
+tasks.named("runWinRtApplicationHost")
 ```
 
-A minimal WinUI entry point looks like this:
+A minimal WinUI entry point starts XAML directly. Do not put Windows App SDK deployment or WinRT apartment scopes in user application code:
 
 ```kotlin
-import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.Thickness
@@ -173,12 +167,8 @@ import microsoft.ui.xaml.controls.TextBlock
 import microsoft.ui.xaml.controls.XamlControlsResources
 
 fun main() {
-    WinRtWindowsAppSdkBootstrap.initialize().use {
-        RuntimeScope.initializeSingleThreaded().use {
-            Application.start {
-                DemoApp()
-            }
-        }
+    Application.start {
+        DemoApp()
     }
 }
 
@@ -208,6 +198,18 @@ class DemoApp : Application() {
     }
 }
 ```
+
+For packaged apps, the same user entry point is used; package identity and manifest registrations provide the Windows App SDK dependency instead of an unpackaged deployment bootstrap:
+
+```kotlin
+fun main() {
+    Application.start {
+        DemoApp()
+    }
+}
+```
+
+Do not wrap `Application.start` in `RuntimeScope.initializeSingleThreaded()`. XAML application startup owns its WinRT module lifetime; `RuntimeScope` remains the normal scope for non-XAML WinRT API calls.
 
 ## Projection references
 

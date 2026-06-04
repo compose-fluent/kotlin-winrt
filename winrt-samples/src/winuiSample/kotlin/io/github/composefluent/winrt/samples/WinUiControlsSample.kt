@@ -3,7 +3,6 @@ package io.github.composefluent.winrt.samples
 import io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
@@ -34,16 +33,7 @@ object WinUiControlsSample {
     private var activeApplication: WinUiControlsApp? = null
 
     fun start() {
-        WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
-            println("winui-controls: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
-            if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipRuntimeScope")) {
-                startApplication()
-                return
-            }
-            RuntimeScope.initializeSingleThreaded().use {
-                startApplication()
-            }
-        }
+        startApplication()
     }
 
     fun launchForSmoke(): WinUiControlsSampleResult =

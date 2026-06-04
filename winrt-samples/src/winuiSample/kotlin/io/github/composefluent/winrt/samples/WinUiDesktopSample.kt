@@ -15,7 +15,6 @@ import microsoft.ui.xaml.input.TappedEventHandler
 import microsoft.ui.xaml.input.TappedRoutedEventArgs
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 
 data class WinUiDesktopSampleResult(
     val dependencyPropertyUnsetValueAvailable: Boolean,
@@ -27,16 +26,11 @@ object WinUiDesktopSample {
     private var activeDesktopApplication: WinUiDesktopApp? = null
 
     fun start() {
-        WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
-            println("winui: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
-            RuntimeScope.initializeSingleThreaded().use {
-                Application.start {
-                    println("winui: application callback invoked")
-                    val desktopApplication = WinUiDesktopApp()
-                    activeDesktopApplication = desktopApplication
-                    println("winui: application composed")
-                }
-            }
+        Application.start {
+            println("winui: application callback invoked")
+            val desktopApplication = WinUiDesktopApp()
+            activeDesktopApplication = desktopApplication
+            println("winui: application composed")
         }
     }
 
