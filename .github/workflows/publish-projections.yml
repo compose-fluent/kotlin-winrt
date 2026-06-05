@@ -123,13 +123,20 @@ jobs:
             }
           }
 
+      - name: Normalize projection cache key
+        id: projection-cache-key
+        shell: pwsh
+        run: |
+          $windowsSdkVersions = "${{ inputs.windowsSdkVersions }}" -replace '[^A-Za-z0-9_.-]', '_'
+          "windowsSdkVersions=$windowsSdkVersions" >> $env:GITHUB_OUTPUT
+
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: |
             ~\.nuget\packages
             ~\.gradle\caches\kotlin-winrt\nuget
-          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-${{ inputs.windowsAppSdkVersion }}-sdk-${{ inputs.windowsSdkVersions }}-${{ inputs.windowsAppSdkWindowsSdkVersion }}
+          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-${{ inputs.windowsAppSdkVersion }}-sdk-${{ steps.projection-cache-key.outputs.windowsSdkVersions }}-${{ inputs.windowsAppSdkWindowsSdkVersion }}
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Setup Gradle
