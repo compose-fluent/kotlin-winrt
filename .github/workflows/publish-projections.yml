@@ -78,43 +78,35 @@ jobs:
               return
             }
 
-            $componentId = switch ($version) {
-              "10.0.19041.0" { "Microsoft.VisualStudio.Component.Windows10SDK.19041" }
-              "10.0.22000.0" { "Microsoft.VisualStudio.Component.Windows10SDK.22000" }
-              "10.0.22621.0" { "Microsoft.VisualStudio.Component.Windows11SDK.22621" }
-              "10.0.26100.0" { "Microsoft.VisualStudio.Component.Windows11SDK.26100" }
+            $installerUrl = switch ($version) {
+              "10.0.19041.0" { "https://go.microsoft.com/fwlink/?linkid=2120843" }
+              "10.0.22000.0" { "https://go.microsoft.com/fwlink/?linkid=2173743" }
+              "10.0.22621.0" { "https://go.microsoft.com/fwlink/?linkid=2196241" }
+              "10.0.26100.0" { "https://go.microsoft.com/fwlink/?linkid=2324781" }
               default { "" }
             }
-            if (-not $componentId) {
-              Write-Error "No Visual Studio Installer component mapping is configured for Windows SDK $version, and winget is unavailable."
+            if (-not $installerUrl) {
+              Write-Error "No Windows SDK installer mapping is configured for Windows SDK $version, and winget is unavailable."
               exit 1
             }
-            $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-            $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-            if (-not (Test-Path $vsWhere) -or -not (Test-Path $vsInstaller)) {
-              Write-Error "Cannot install Windows SDK $version because neither winget nor Visual Studio Installer is available."
-              exit 1
-            }
-            $installPath = & $vsWhere -latest -property installationPath
-            if (-not $installPath) {
-              Write-Error "Cannot install Windows SDK $version because Visual Studio installation path was not found."
-              exit 1
-            }
-            Write-Host "Installing $componentId for Windows SDK $version via Visual Studio Installer"
+            $installer = Join-Path $env:RUNNER_TEMP "winsdksetup-$packageVersion.exe"
+            Write-Host "Downloading Windows SDK $version installer from $installerUrl"
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installer
+            Write-Host "Installing Windows SDK $version via standalone installer"
             $process = Start-Process `
-              -FilePath $vsInstaller `
+              -FilePath $installer `
               -ArgumentList @(
-                "modify",
-                "--installPath", $installPath,
-                "--add", $componentId,
-                "--quiet",
-                "--norestart",
-                "--nocache"
+                "/features",
+                "OptionId.UWPManaged",
+                "OptionId.UWPCPP",
+                "OptionId.UWPLocalized",
+                "/quiet",
+                "/norestart"
               ) `
               -Wait `
               -PassThru
             if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
-              Write-Error "Visual Studio Installer exited with code $($process.ExitCode) while installing $componentId."
+              Write-Error "Windows SDK standalone installer exited with code $($process.ExitCode) while installing $version."
               exit $process.ExitCode
             }
           }
