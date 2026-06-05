@@ -122,9 +122,13 @@ fun readProfile(json: String): String =
     }
 ```
 
-For Windows App SDK or WinUI projection work, add the corresponding WinMD sources, opt into the specific types that the application needs, and enable the application model:
+For the default Windows App SDK or WinUI surface, depend on the prebuilt projection artifact and use NuGet declarations for runtime asset staging. Enable the application model in the final executable app module:
 
 ```kotlin
+dependencies {
+    implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:<kotlin-winrt-version>")
+}
+
 winRt {
     application {
         // Defaults generate the project PRI inputs needed by a WinUI app.
@@ -132,7 +136,19 @@ winRt {
     }
 
     windowsSdk(includeExtensions = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "1.8.260317003")
+    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3")
+}
+```
+
+When a project intentionally needs a local projection from a NuGet package, opt in on that package declaration:
+
+```kotlin
+winRt {
+    windowsSdk(includeExtensions = true)
+    nugetPackage("Microsoft.WindowsAppSDK") {
+        version.set("2.1.3")
+        generateProjection.set(true)
+    }
 
     type("Microsoft.UI.Xaml.LaunchActivatedEventArgs")
     type("Microsoft.UI.Xaml.Application")

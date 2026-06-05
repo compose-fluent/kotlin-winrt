@@ -12,10 +12,12 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.JavaExec
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -173,7 +175,10 @@ class KotlinWinRtPluginTest {
         extension.useNuGetCliGlobalPackages.set(false)
         extension.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
         extension.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+        extension.nugetPackage("Microsoft.WindowsAppSDK") { pkg ->
+            pkg.version.set("1.8.260416003")
+            pkg.generateProjection.set(true)
+        }
         extension.namespace("Microsoft")
         extension.type("Windows.UI.Xaml.Interop.Type")
         extension.excludeNamespace("Windows")
@@ -247,6 +252,21 @@ class KotlinWinRtPluginTest {
         }
         assertEquals(project.name, task.authoringAssemblyName.get())
         assertEquals("${project.name}.jar", task.authoringTargetArtifactName.get())
+    }
+
+    @Test
+    fun nuget_package_defaults_to_runtime_asset_without_projection_generation() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+
+        val generationTask = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
+        val identityTask = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+
+        assertEquals(emptyList<String>(), generationTask.nugetPackages.get())
+        assertEquals(listOf("Microsoft.WindowsAppSDK@1.8.260416003"), identityTask.nugetPackages.get())
     }
 
     @Test
@@ -849,7 +869,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun dependency_identity_projection_surface_suppresses_downstream_projection_types() {
+    fun legacy_dependency_identity_without_projected_types_does_not_suppress_downstream_projection_types() {
         val project = ProjectBuilder.builder().build()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
@@ -915,14 +935,7 @@ class KotlinWinRtPluginTest {
             ),
         )
 
-        assertEquals(
-            listOf(
-                "Microsoft.UI.Xaml.Automation.AutomationProperties",
-                "Microsoft.UI.Xaml.DependencyProperty",
-                "Windows.ApplicationModel.DataTransfer.DataPackageView",
-            ),
-            dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
-        )
+        assertEquals(emptyList<String>(), dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList())
     }
 
     @Test
@@ -5919,6 +5932,30 @@ class KotlinWinRtPluginTest {
                 validationTaskName in dependencies,
             )
         }
+    }
+
+    @Test
+    fun authoring_target_artifact_name_uses_configured_jar_archive_name_consistently() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(BasePluginExtension::class.java).archivesName.set("custom-projection")
+
+        val generateTask = project.tasks.named(
+            "generateWinRtProjections",
+            GenerateWinRtProjectionsTask::class.java,
+        ).get()
+        val compileTask = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java).get()
+        val compilerArgs = compileTask.compilerOptions.freeCompilerArgs.get()
+
+        assertEquals("custom-projection.jar", generateTask.authoringTargetArtifactName.get())
+        assertTrue(
+            compilerArgs.joinToString(separator = "\n"),
+            compilerArgs.any { arg ->
+                arg == "plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=custom-projection.jar"
+            },
+        )
     }
 
     @Test

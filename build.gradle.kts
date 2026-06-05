@@ -84,6 +84,8 @@ val validateWinRtProjectionCompile by tasks.registering {
     description = "Compiles plugin-generated projection output after generator and plugin validation."
     dependsOn(validateWinRtPluginGraph)
     dependsOn(":winrt-projections:compileKotlin")
+    dependsOn(":winrt-projections:windows-sdk:compileKotlin")
+    dependsOn(":winrt-projections:windows-app-sdk:compileKotlin")
 }
 
 val validateWinRtSampleSmoke by tasks.registering {

@@ -3677,6 +3677,7 @@ class KotlinWinRtIrGenerationExtension(
         val resolvedEntries = resolveProjectionRegistrarClasses(entries) { className ->
             pluginContext.findClassSymbol(ClassId.topLevel(FqName(className)), file)
         }
+        val moduleFiles = moduleFragment.files.takeIf { it.isNotEmpty() } ?: listOf(file)
         val chunkFunctions = resolvedEntries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE).mapIndexed { index, chunk ->
             pluginContext.irFactory.buildFun {
                 name = Name.identifier("kotlinWinRtProjectionSupportInitialize_${initializerHash}_${index.toString().padStart(3, '0')}")
@@ -3684,7 +3685,7 @@ class KotlinWinRtIrGenerationExtension(
                 visibility = DescriptorVisibilities.INTERNAL
                 modality = Modality.FINAL
             }.apply {
-                parent = file
+                parent = moduleFiles[index % moduleFiles.size]
                 val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
                 body = chunkBuilder.irBlockBody {
                     chunk.forEach { (entry, projectedClass) ->
@@ -3704,7 +3705,9 @@ class KotlinWinRtIrGenerationExtension(
                 }
             }
         }
-        file.declarations += chunkFunctions
+        chunkFunctions.forEach { chunkFunction ->
+            (chunkFunction.parent as? IrFile ?: file).declarations += chunkFunction
+        }
         function.body = builder.irBlockBody {
             chunkFunctions.forEach { chunkFunction ->
                 +builder.irCall(chunkFunction.symbol)
@@ -5201,8 +5204,8 @@ fun writeProjectionSupportInitializerClass(
     chunks.indices.forEach { index ->
         initialize.visitMethodInsn(
             Opcodes.INVOKESTATIC,
-            internalName,
-            projectionRegistrarChunkName(index),
+            projectionRegistrarChunkInternalName(internalName, index),
+            "register",
             "()V",
             false,
         )
@@ -5212,14 +5215,18 @@ fun writeProjectionSupportInitializerClass(
     initialize.visitMaxs(0, 0)
     initialize.visitEnd()
 
-    chunks.forEachIndexed { index, chunk ->
-        classWriter.addProjectionRegistrarChunk(projectionRegistrarChunkName(index), chunk)
-    }
     classWriter.visitEnd()
 
     val target = outputDirectory.resolve("$internalName.class")
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
+    chunks.forEachIndexed { index, chunk ->
+        writeProjectionRegistrarChunkClass(
+            internalName = projectionRegistrarChunkInternalName(internalName, index),
+            entries = chunk,
+            outputDirectory = outputDirectory,
+        )
+    }
     return internalName
 }
 
@@ -5275,15 +5282,42 @@ fun projectionSupportInitializerHash(
         .joinToString(separator = "") { byte -> "%02x".format(byte) }
         .take(16)
 
-private fun projectionRegistrarChunkName(index: Int): String =
-    "registerChunk${index.toString().padStart(3, '0')}"
+private fun projectionRegistrarChunkInternalName(
+    initializerInternalName: String,
+    index: Int,
+): String =
+    "${initializerInternalName}_Chunk${index.toString().padStart(3, '0')}"
+
+private fun writeProjectionRegistrarChunkClass(
+    internalName: String,
+    entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    outputDirectory: Path,
+) {
+    val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
+    classWriter.visit(
+        Opcodes.V17,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+        internalName,
+        null,
+        "java/lang/Object",
+        null,
+    )
+    classWriter.visitSource("compiler-support.tsv", null)
+    classWriter.addDefaultConstructor()
+    classWriter.addProjectionRegistrarChunk("register", entries, Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC)
+    classWriter.visitEnd()
+    val target = outputDirectory.resolve("$internalName.class")
+    Files.createDirectories(target.parent)
+    Files.write(target, classWriter.toByteArray())
+}
 
 private fun ClassWriter.addProjectionRegistrarChunk(
     name: String,
     entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    access: Int = Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
 ) {
     val method = visitMethod(
-        Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
+        access,
         name,
         "()V",
         null,

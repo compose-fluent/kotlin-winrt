@@ -567,16 +567,8 @@ private fun dependencyProjectedTypeNames(
     model: WinRtMetadataModel,
     identity: ProjectionSurfaceIdentity,
 ): List<String> {
-    identity.projectedTypes?.let { projectedTypes ->
-        return projectedTypes
-            .filter { typeName -> model.namespaces.any { namespace -> namespace.types.any { it.qualifiedName == typeName } } }
-    }
-    return model.filterProjectionSurface(
-        namespaces = identity.includeNamespaces.toSet(),
-        types = identity.includeTypes.toSet(),
-        excludedNamespaces = identity.excludeNamespaces.toSet(),
-        excludedTypes = identity.excludeTypes.toSet(),
-    ).namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) }
+    return identity.projectedTypes.orEmpty()
+        .filter { typeName -> model.namespaces.any { namespace -> namespace.types.any { it.qualifiedName == typeName } } }
 }
 
 internal fun automaticXamlComponentResourceDictionaryTypes(

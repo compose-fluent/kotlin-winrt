@@ -9,7 +9,7 @@ dependencies {
 }
 
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
-    .orElse("1.8.260416003")
+    .orElse("2.1.3")
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projections.includeWinAppSdk")
@@ -22,7 +22,10 @@ val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.proj
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
     if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
-        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
+        nugetPackage("Microsoft.WindowsAppSDK") {
+            version.set(windowsAppSdkVersion)
+            generateProjection.set(true)
+        }
     }
 
     if (projectionIncludeFullWindowsSdk.get()) {

@@ -80,9 +80,7 @@ private fun configureWinRtLibraryModel(
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
             task.nugetPackages.set(
                 project.provider {
-                    extension.nugetPackages.map { pkg ->
-                        "${pkg.packageId}@${pkg.version.get()}"
-                    }
+                    allNuGetPackageSpecs(extension)
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
@@ -200,9 +198,7 @@ private fun configureWinRtApplicationTasks(
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
             task.nugetPackages.set(
                 project.provider {
-                    extension.nugetPackages.map { pkg ->
-                        "${pkg.packageId}@${pkg.version.get()}"
-                    }
+                    allNuGetPackageSpecs(extension)
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
@@ -237,9 +233,7 @@ private fun configureWinRtApplicationTasks(
             )
             task.nugetPackages.set(
                 project.provider {
-                    extension.nugetPackages.map { pkg ->
-                        "${pkg.packageId}@${pkg.version.get()}"
-                    }
+                    allNuGetPackageSpecs(extension)
                 },
             )
             task.dependencyIdentityFiles.from(identityDependencies)
@@ -279,9 +273,7 @@ private fun configureWinRtApplicationTasks(
             task.outputDirectory.set(runtimeAssetsDirectory)
             task.nugetPackages.set(
                 project.provider {
-                    extension.nugetPackages.map { pkg ->
-                        "${pkg.packageId}@${pkg.version.get()}"
-                    }
+                    allNuGetPackageSpecs(extension)
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
@@ -703,6 +695,7 @@ private fun configureWinRtGeneration(
     val generatedAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
     val generatorWorkerClasspath = kotlinWinRtGeneratorWorkerClasspath(project)
+    val authoringTargetArtifactName = kotlinWinRtAuthoringTargetArtifactName(project)
     val generateTask = project.tasks.register(
         "generateWinRtProjections",
         GenerateWinRtProjectionsTask::class.java,
@@ -738,9 +731,7 @@ private fun configureWinRtGeneration(
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.nugetPackages.set(
                 project.provider {
-                    extension.nugetPackages.map { pkg ->
-                        "${pkg.packageId}@${pkg.version.get()}"
-                    }
+                    projectionNuGetPackageSpecs(extension)
                 },
             )
             task.nugetPackageContentFiles.from(
@@ -757,11 +748,7 @@ private fun configureWinRtGeneration(
                 },
             )
             task.authoringAssemblyName.set(project.name)
-            task.authoringTargetArtifactName.set(
-                project.provider {
-                    (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
-                },
-            )
+            task.authoringTargetArtifactName.set(authoringTargetArtifactName)
             task.authoringScannerJvmArgs.convention(
                 listOf(
                     "-Xmx128m",
@@ -824,9 +811,7 @@ private fun configureWinRtGeneration(
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
             },
             authoringAssemblyName = project.provider { project.name },
-            authoringTargetArtifactName = project.provider {
-                (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
-            },
+            authoringTargetArtifactName = authoringTargetArtifactName,
             compilerSupportManifest = mergeCompilerSupportTask.flatMap { it.outputDirectory.file("compiler-support.tsv") },
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
@@ -850,9 +835,7 @@ private fun configureWinRtGeneration(
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
             },
             authoringAssemblyName = project.provider { project.name },
-            authoringTargetArtifactName = project.provider {
-                (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
-            },
+            authoringTargetArtifactName = authoringTargetArtifactName,
             compilerSupportManifest = mergeCompilerSupportTask.flatMap { it.outputDirectory.file("compiler-support.tsv") },
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
@@ -994,9 +977,7 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.nugetPackages.set(
                 project.provider {
-                    extension.nugetPackages.map { pkg ->
-                        "${pkg.packageId}@${pkg.version.get()}"
-                    }
+                    projectionNuGetPackageSpecs(extension)
                 },
             )
             task.authoringAssemblyName.set(projectName)
@@ -1225,6 +1206,16 @@ private fun explicitMetadataInputFiles(inputs: List<String>): List<File> =
         }
     }.filter { it.exists() }
 
+private fun allNuGetPackageSpecs(extension: BaseWinRtExtension): List<String> =
+    extension.nugetPackages.map { pkg ->
+        "${pkg.packageId}@${pkg.version.get()}"
+    }
+
+private fun projectionNuGetPackageSpecs(extension: BaseWinRtExtension): List<String> =
+    extension.nugetPackages
+        .filter { pkg -> pkg.generateProjection.get() }
+        .map { pkg -> "${pkg.packageId}@${pkg.version.get()}" }
+
 private fun addGeneratedSourcesToKotlinMain(
     project: Project,
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
@@ -1316,6 +1307,11 @@ private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
     }
 }
 
+private fun kotlinWinRtAuthoringTargetArtifactName(project: Project): Provider<String> =
+    runCatching {
+        project.tasks.named("jar", Jar::class.java).flatMap { task -> task.archiveFileName }
+    }.getOrNull() ?: project.provider { "${project.name}.jar" }
+
 private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
@@ -1358,13 +1354,13 @@ private fun configureKotlinWinRtCompilerPluginOptions(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredHostManifestOutput=${outputDirectory.file("kotlin-winrt-authoring/${authoringAssemblyName.get()}.host.json").asFile.absolutePath}"
         })
         freeCompilerArgs.add("-P")
-        freeCompilerArgs.add(
-            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringAssemblyName=${authoringAssemblyName.get()}",
-        )
+        freeCompilerArgs.add(authoringAssemblyName.map { assemblyName ->
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringAssemblyName=$assemblyName"
+        })
         freeCompilerArgs.add("-P")
-        freeCompilerArgs.add(
-            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringTargetArtifactName=${authoringTargetArtifactName.get()}",
-        )
+        freeCompilerArgs.add(authoringTargetArtifactName.map { targetArtifactName ->
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringTargetArtifactName=$targetArtifactName"
+        })
         val compilerSupportManifestPath = compilerSupportManifest.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
         freeCompilerArgs.add(

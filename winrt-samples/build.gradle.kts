@@ -44,8 +44,14 @@ winRt {
             restoreNuGetPackages.set(false)
         }
         windowsSdk(includeExtensions = true)
-        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
-        nugetPackage("WinUIEssential.WinUI3", sampleWinUIEssentialVersion.get())
+        nugetPackage("Microsoft.WindowsAppSDK") {
+            version.set(windowsAppSdkVersion)
+            generateProjection.set(true)
+        }
+        nugetPackage("WinUIEssential.WinUI3") {
+            version.set(sampleWinUIEssentialVersion.get())
+            generateProjection.set(true)
+        }
         type("Microsoft.UI.Xaml.Application")
         type("Microsoft.UI.Xaml.DependencyProperty")
         type("Microsoft.UI.Xaml.FrameworkElement")

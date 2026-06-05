@@ -54,7 +54,7 @@ jobs:
           path: |
             ~\.nuget\packages
             ~\.gradle\caches\kotlin-winrt\nuget
-          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-1.8.260317003
+          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-2.1.3
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Setup Gradle
@@ -62,20 +62,43 @@ jobs:
 
       - name: Build
         shell: bash
-        run: ./gradlew assemble --no-configuration-cache
+        run: |
+          ./gradlew \
+            :winrt-runtime:assemble \
+            :winrt-metadata:assemble \
+            :winrt-generator:assemble \
+            :winrt-authoring:assemble \
+            :winrt-compiler-plugin:assemble \
+            :winrt-projections:assemble \
+            --no-configuration-cache
 
       - name: Test
         shell: bash
         env:
           WINDOWS_KITS_10_DIR: C:\Program Files (x86)\Windows Kits\10
-        run: ./gradlew test -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@1.8.260317003 --no-configuration-cache
+        run: |
+          ./gradlew \
+            :winrt-runtime:jvmTest \
+            :winrt-metadata:test \
+            :winrt-generator:test \
+            :winrt-authoring:test \
+            :winrt-compiler-plugin:test \
+            :winrt-projections:test \
+            -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.1.3 \
+            --no-configuration-cache
 
       - name: Verify Publish to Maven Local
         # Verify that the publication artifacts can be generated locally without signing.
         # This catches POM/metadata configuration issues before attempting the real publish.
         shell: bash
         run: |
-          ./gradlew publishToMavenLocal --no-configuration-cache
+          ./gradlew \
+            :winrt-runtime:publishToMavenLocal \
+            :winrt-metadata:publishToMavenLocal \
+            :winrt-generator:publishToMavenLocal \
+            :winrt-authoring:publishToMavenLocal \
+            :winrt-compiler-plugin:publishToMavenLocal \
+            --no-configuration-cache
           ./gradlew -p winrt-gradle-plugin :publishToMavenLocal --no-configuration-cache
 
       - name: Check Maven Central snapshot secrets
@@ -107,5 +130,11 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
         run: |
-          ./gradlew publishAllPublicationsToMavenCentralRepository --no-configuration-cache
+          ./gradlew \
+            :winrt-runtime:publishAllPublicationsToMavenCentralRepository \
+            :winrt-metadata:publishAllPublicationsToMavenCentralRepository \
+            :winrt-generator:publishAllPublicationsToMavenCentralRepository \
+            :winrt-authoring:publishAllPublicationsToMavenCentralRepository \
+            :winrt-compiler-plugin:publishAllPublicationsToMavenCentralRepository \
+            --no-configuration-cache
           ./gradlew -p winrt-gradle-plugin :publishAllPublicationsToMavenCentralRepository --no-configuration-cache
