@@ -144,6 +144,8 @@ winRt {
 }
 ```
 
+Prebuilt projection coordinates are immutable by metadata baseline. New Windows SDK baselines are published as additional `winrt-projections-windows-sdk` versions instead of replacing existing ones. Windows App SDK updates are monitored from NuGet and first published through snapshot projection coordinates, then promoted to release coordinates manually with a kotlin-winrt release tag.
+
 When a project intentionally needs a local projection from a NuGet package, opt in on that package declaration:
 
 ```kotlin
