@@ -29,6 +29,8 @@ include(
     ":winrt-authoring",
     ":winrt-compiler-plugin",
     ":winrt-projections",
+    ":winrt-projections:windows-sdk",
+    ":winrt-projections:windows-app-sdk",
     ":winrt-samples",
     ":winrt-samples:winui-kmp-base-library",
     ":winrt-samples:winui-kmp-library",

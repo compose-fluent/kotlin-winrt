@@ -629,7 +629,26 @@ class KotlinWinRtCompilerPluginTest {
             0,
         )
         assertTrue(methodNames.contains("initialize"))
-        assertTrue(methodNames.contains("registerChunk000"))
+        assertFalse(methodNames.contains("registerChunk000"))
+        val chunkClass = outputDirectory.resolve("${internalName}_Chunk000.class")
+        assertTrue(Files.isRegularFile(chunkClass))
+        val chunkMethodNames = mutableSetOf<String>()
+        ClassReader(Files.readAllBytes(chunkClass)).accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(
+                    access: Int,
+                    name: String?,
+                    descriptor: String?,
+                    signature: String?,
+                    exceptions: Array<out String>?,
+                ): MethodVisitor? {
+                    name?.let(chunkMethodNames::add)
+                    return null
+                }
+            },
+            0,
+        )
+        assertTrue(chunkMethodNames.contains("register"))
     }
 
     @Test
@@ -658,7 +677,9 @@ class KotlinWinRtCompilerPluginTest {
         assertNotNull(staleInternalName)
         assertNotNull(currentInternalName)
         assertFalse(Files.exists(outputDirectory.resolve("$staleInternalName.class")))
+        assertFalse(Files.exists(outputDirectory.resolve("${staleInternalName}_Chunk000.class")))
         assertTrue(Files.isRegularFile(outputDirectory.resolve("$currentInternalName.class")))
+        assertTrue(Files.isRegularFile(outputDirectory.resolve("${currentInternalName}_Chunk000.class")))
     }
 
     @Test
@@ -680,6 +701,7 @@ class KotlinWinRtCompilerPluginTest {
         assertNotNull(staleInternalName)
         assertNull(currentInternalName)
         assertFalse(Files.exists(outputDirectory.resolve("$staleInternalName.class")))
+        assertFalse(Files.exists(outputDirectory.resolve("${staleInternalName}_Chunk000.class")))
     }
 
     @Test

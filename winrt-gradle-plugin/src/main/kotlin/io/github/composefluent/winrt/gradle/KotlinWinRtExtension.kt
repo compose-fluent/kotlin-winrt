@@ -287,6 +287,7 @@ abstract class KotlinWinRtNuGetPackage @Inject constructor(
     objects: ObjectFactory,
 ) : Named {
     val version: Property<String> = objects.property(String::class.java)
+    val generateProjection: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
     override fun getName(): String = packageId
 }

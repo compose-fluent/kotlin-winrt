@@ -6,7 +6,7 @@ plugins {
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
-    .orElse("1.8.260416003")
+    .orElse("2.1.3")
 val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 

@@ -10,7 +10,7 @@ tasks.named<GenerateWinRtProjectionsTask>("generateWinRtProjections") {
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
-    .orElse("1.8.260416003")
+    .orElse("2.1.3")
 val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 
@@ -37,7 +37,10 @@ kotlin {
 winRt {
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
-        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
+        nugetPackage("Microsoft.WindowsAppSDK") {
+            version.set(windowsAppSdkVersion)
+            generateProjection.set(true)
+        }
         type("Windows.Foundation.IStringable")
         type("Windows.ApplicationModel.DataTransfer.Clipboard")
         type("Windows.ApplicationModel.DataTransfer.DataPackage")

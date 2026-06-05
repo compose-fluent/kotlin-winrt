@@ -61,7 +61,7 @@ jobs:
           path: |
             ~\.nuget\packages
             ~\.gradle\caches\kotlin-winrt\nuget
-          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-1.8.260317003
+          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-2.1.3
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Setup Gradle
@@ -69,7 +69,16 @@ jobs:
 
       - name: Build
         shell: bash
-        run: ./gradlew assemble --no-configuration-cache
+        run: |
+          ./gradlew \
+            :winrt-runtime:assemble \
+            :winrt-metadata:assemble \
+            :winrt-generator:assemble \
+            :winrt-authoring:assemble \
+            :winrt-compiler-plugin:assemble \
+            :winrt-projections:assemble \
+            :winrt-samples:assemble \
+            --no-configuration-cache
 
       - name: Test
         # Pass winmd.nugetComponents so that:
@@ -80,4 +89,14 @@ jobs:
         shell: bash
         env:
           WINDOWS_KITS_10_DIR: C:\Program Files (x86)\Windows Kits\10
-        run: ./gradlew test -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@1.8.260317003 --no-configuration-cache
+        run: |
+          ./gradlew \
+            :winrt-runtime:jvmTest \
+            :winrt-metadata:test \
+            :winrt-generator:test \
+            :winrt-authoring:test \
+            :winrt-compiler-plugin:test \
+            :winrt-projections:test \
+            :winrt-samples:test \
+            -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.1.3 \
+            --no-configuration-cache
