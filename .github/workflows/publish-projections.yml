@@ -15,8 +15,12 @@ on:
         description: 'Microsoft.WindowsAppSDK version used for the prebuilt projection'
         required: true
         default: '2.1.3'
-      windowsSdkVersion:
-        description: 'Windows SDK metadata version used for the prebuilt projection'
+      windowsSdkVersions:
+        description: 'Comma-separated Windows SDK metadata versions to publish as windows-sdk projection versions'
+        required: true
+        default: '10.0.26100.0,10.0.22621.0,10.0.22000.0,10.0.19041.0'
+      windowsAppSdkWindowsSdkVersion:
+        description: 'Windows SDK projection version used by the Windows App SDK projection'
         required: true
         default: '10.0.26100.0'
 
@@ -27,7 +31,7 @@ jobs:
   publish-projections:
     name: Publish Prebuilt Projections
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
@@ -39,19 +43,28 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
-      - name: Install Windows SDK 10.0.26100.0
+      - name: Install Windows SDK baselines
         shell: pwsh
         run: |
-          $sdkPath = "C:\Program Files (x86)\Windows Kits\10\References\${{ inputs.windowsSdkVersion }}"
-          if (Test-Path $sdkPath) {
-            Write-Host "Windows SDK ${{ inputs.windowsSdkVersion }} already installed at $sdkPath"
-          } else {
-            winget install --id Microsoft.WindowsSDK.10.0.26100 `
+          $versions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
+            | ForEach-Object { $_.Trim() }
+            | Where-Object { $_ }
+            | Select-Object -Unique
+          foreach ($version in $versions) {
+            $sdkPath = "C:\Program Files (x86)\Windows Kits\10\References\$version"
+            if (Test-Path $sdkPath) {
+              Write-Host "Windows SDK $version already installed at $sdkPath"
+              continue
+            }
+            $packageVersion = $version -replace '\.0$', ''
+            $packageId = "Microsoft.WindowsSDK.$packageVersion"
+            Write-Host "Installing $packageId for Windows SDK $version"
+            winget install --id $packageId `
               --silent `
               --accept-source-agreements `
               --accept-package-agreements
             if ($LASTEXITCODE -ne 0) {
-              Write-Host "winget exited with code $LASTEXITCODE (may indicate already installed)"
+              Write-Host "winget exited with code $LASTEXITCODE for $packageId (may indicate already installed)"
             }
           }
 
@@ -61,20 +74,33 @@ jobs:
           path: |
             ~\.nuget\packages
             ~\.gradle\caches\kotlin-winrt\nuget
-          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-${{ inputs.windowsAppSdkVersion }}
+          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-${{ inputs.windowsAppSdkVersion }}-sdk-${{ inputs.windowsSdkVersions }}-${{ inputs.windowsAppSdkWindowsSdkVersion }}
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Verify Projection Publications Locally
-        shell: bash
+        shell: pwsh
         run: |
-          ./gradlew \
-            :winrt-projections:windows-sdk:publishToMavenLocal \
-            :winrt-projections:windows-app-sdk:publishToMavenLocal \
-            -PkotlinWinRt.projections.windowsSdkVersion="${{ inputs.windowsSdkVersion }}" \
-            -PkotlinWinRt.projections.windowsAppSdkVersion="${{ inputs.windowsAppSdkVersion }}" \
+          $sdkVersions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
+            | ForEach-Object { $_.Trim() }
+            | Where-Object { $_ }
+            | Select-Object -Unique
+          foreach ($sdkVersion in $sdkVersions) {
+            .\gradlew.bat `
+              :winrt-projections:windows-sdk:publishToMavenLocal `
+              "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              "-PkotlinWinRt.projections.windowsSdkArtifactVersion=$sdkVersion" `
+              --no-configuration-cache
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          .\gradlew.bat `
+            :winrt-projections:windows-app-sdk:publishToMavenLocal `
+            "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsSdkArtifactVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsAppSdkArtifactVersion=${{ inputs.windowsAppSdkVersion }}" `
             --no-configuration-cache
 
       - name: Check Maven Central secrets
@@ -100,7 +126,7 @@ jobs:
 
       - name: Publish Projection Artifacts
         if: inputs.publish == 'true'
-        shell: bash
+        shell: pwsh
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
@@ -108,9 +134,22 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
         run: |
-          ./gradlew \
-            :winrt-projections:windows-sdk:publishAllPublicationsToMavenCentralRepository \
-            :winrt-projections:windows-app-sdk:publishAllPublicationsToMavenCentralRepository \
-            -PkotlinWinRt.projections.windowsSdkVersion="${{ inputs.windowsSdkVersion }}" \
-            -PkotlinWinRt.projections.windowsAppSdkVersion="${{ inputs.windowsAppSdkVersion }}" \
+          $sdkVersions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
+            | ForEach-Object { $_.Trim() }
+            | Where-Object { $_ }
+            | Select-Object -Unique
+          foreach ($sdkVersion in $sdkVersions) {
+            .\gradlew.bat `
+              :winrt-projections:windows-sdk:publishAllPublicationsToMavenCentralRepository `
+              "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              "-PkotlinWinRt.projections.windowsSdkArtifactVersion=$sdkVersion" `
+              --no-configuration-cache
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          .\gradlew.bat `
+            :winrt-projections:windows-app-sdk:publishAllPublicationsToMavenCentralRepository `
+            "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsSdkArtifactVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsAppSdkArtifactVersion=${{ inputs.windowsAppSdkVersion }}" `
             --no-configuration-cache

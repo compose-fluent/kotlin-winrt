@@ -11,6 +11,13 @@ base {
     archivesName.set("winrt-projections-windows-sdk")
 }
 
+val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkVersion")
+    .orElse("10.0.26100.0")
+val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkArtifactVersion")
+    .orElse(projectionWindowsSdkVersion)
+
+version = projectionWindowsSdkArtifactVersion.get()
+
 mavenPublishing {
     coordinates(group.toString(), "winrt-projections-windows-sdk", version.toString())
 }
@@ -18,9 +25,6 @@ mavenPublishing {
 dependencies {
     implementation(projects.winrtRuntime)
 }
-
-val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkVersion")
-    .orElse("10.0.26100.0")
 
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
