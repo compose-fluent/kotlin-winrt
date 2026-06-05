@@ -127,6 +127,8 @@ For the default Windows App SDK or WinUI surface, depend on the prebuilt project
 ```kotlin
 dependencies {
     // Projection artifact versions follow their metadata baseline, CsWinRT-style.
+    // Snapshot builds append the kotlin-winrt snapshot, for example
+    // 10.0.26100.0-kotlin-winrt-0.1.0-SNAPSHOT.
     implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
     implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.1.3")
 }
