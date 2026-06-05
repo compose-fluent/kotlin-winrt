@@ -14,11 +14,11 @@ base {
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkVersion")
     .orElse("10.0.26100.0")
 val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkArtifactVersion")
-    .orElse(projectionWindowsSdkVersion)
+    .orElse(providers.provider { projectionArtifactVersion(projectionWindowsSdkVersion.get(), rootProject.version.toString()) })
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsAppSdkVersion")
     .orElse("2.1.3")
 val projectionWindowsAppSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsAppSdkArtifactVersion")
-    .orElse(projectionWindowsAppSdkVersion)
+    .orElse(providers.provider { projectionArtifactVersion(projectionWindowsAppSdkVersion.get(), rootProject.version.toString()) })
 
 version = projectionWindowsAppSdkArtifactVersion.get()
 project(":winrt-projections:windows-sdk").version = projectionWindowsSdkArtifactVersion.get()
@@ -69,3 +69,13 @@ winRt {
     excludeType("Microsoft.UI.Xaml.Automation.Peers.WebView")
     excludeAdditionNamespace("Windows.UI.Xaml.Media.Animation")
 }
+
+fun projectionArtifactVersion(
+    metadataVersion: String,
+    kotlinWinRtVersion: String,
+): String =
+    if (kotlinWinRtVersion.endsWith("-SNAPSHOT")) {
+        "$metadataVersion-kotlin-winrt-$kotlinWinRtVersion"
+    } else {
+        metadataVersion
+    }

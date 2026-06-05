@@ -91,16 +91,13 @@ jobs:
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishToMavenLocal `
               "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
-              "-PkotlinWinRt.projections.windowsSdkArtifactVersion=$sdkVersion" `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           .\gradlew.bat `
             :winrt-projections:windows-app-sdk:publishToMavenLocal `
             "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsSdkArtifactVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
             "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsAppSdkArtifactVersion=${{ inputs.windowsAppSdkVersion }}" `
             --no-configuration-cache
 
       - name: Check Maven Central secrets
@@ -142,14 +139,11 @@ jobs:
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishAllPublicationsToMavenCentralRepository `
               "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
-              "-PkotlinWinRt.projections.windowsSdkArtifactVersion=$sdkVersion" `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           .\gradlew.bat `
             :winrt-projections:windows-app-sdk:publishAllPublicationsToMavenCentralRepository `
             "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsSdkArtifactVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
             "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsAppSdkArtifactVersion=${{ inputs.windowsAppSdkVersion }}" `
             --no-configuration-cache

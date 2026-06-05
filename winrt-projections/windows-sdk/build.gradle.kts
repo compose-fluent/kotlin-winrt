@@ -14,7 +14,7 @@ base {
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkVersion")
     .orElse("10.0.26100.0")
 val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkArtifactVersion")
-    .orElse(projectionWindowsSdkVersion)
+    .orElse(providers.provider { projectionArtifactVersion(projectionWindowsSdkVersion.get(), rootProject.version.toString()) })
 
 version = projectionWindowsSdkArtifactVersion.get()
 
@@ -43,3 +43,13 @@ winRt {
     type("Windows.UI.Text.UnderlineType")
     type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
 }
+
+fun projectionArtifactVersion(
+    metadataVersion: String,
+    kotlinWinRtVersion: String,
+): String =
+    if (kotlinWinRtVersion.endsWith("-SNAPSHOT")) {
+        "$metadataVersion-kotlin-winrt-$kotlinWinRtVersion"
+    } else {
+        metadataVersion
+    }
