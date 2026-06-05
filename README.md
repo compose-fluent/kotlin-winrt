@@ -2,6 +2,8 @@
 
 [![Publish Snapshot](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml/badge.svg?branch=master)](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml)
 [![Snapshot](https://img.shields.io/maven-metadata/v?label=snapshot&metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Fcompose-fluent%2Fwinrt-runtime%2Fmaven-metadata.xml)](https://central.sonatype.com/repository/maven-snapshots/io/github/compose-fluent/winrt-runtime/maven-metadata.xml)
+[![Windows SDK](https://img.shields.io/badge/Windows%20SDK-10.0.26100.0-blue)](gradle.properties)
+[![WindowsAppSDK](https://img.shields.io/badge/WindowsAppSDK-2.1.3-blue)](gradle.properties)
 
 `kotlin-winrt` is a Windows-focused Kotlin workspace for building WinRT and WinUI 3 applications from:
 
