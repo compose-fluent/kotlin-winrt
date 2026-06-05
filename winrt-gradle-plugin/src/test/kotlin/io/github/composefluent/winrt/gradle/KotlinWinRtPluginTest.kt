@@ -22,6 +22,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.jar.JarFile
 
 class KotlinWinRtPluginTest {
@@ -1091,6 +1093,23 @@ class KotlinWinRtPluginTest {
 
         assertEquals("sample.MainKt", task.mainClass.get())
         assertEquals("sample-app", task.executableBaseName.get())
+        assertFalse(task.console.get())
+    }
+
+    @Test
+    fun application_plugin_can_enable_console_native_host() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+            application.console.set(true)
+        }
+
+        val task = project.tasks.named("buildWinRtApplicationHost", BuildWinRtApplicationHostTask::class.java).get()
+
+        assertTrue(task.console.get())
     }
 
     @Test
@@ -1950,6 +1969,60 @@ class KotlinWinRtPluginTest {
         assertFalse(source.contains("java/lang/reflect"))
         assertTrue(Files.isRegularFile(outputRoot.resolve("lib").resolve(jar.fileName)))
         assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-runtime-assets/WindowsAppSDK-SelfContained.manifest")))
+    }
+
+    @Test
+    fun application_host_task_defaults_to_windows_subsystem_and_can_enable_console_subsystem() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true) || !commandExists("clang-cl.exe")) {
+            return
+        }
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+        val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
+        Files.createDirectories(jar.parent)
+        Files.writeString(jar, "jar")
+        val guiTask = project.tasks.register(
+            "buildGuiApplicationHost",
+            BuildWinRtApplicationHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("gui-application-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("gui-application-host/src"))
+            registeredTask.mainClass.set("sample.MainKt")
+            registeredTask.executableBaseName.set("sample-gui")
+            registeredTask.runtimeClasspath.from(jar)
+            registeredTask.packageMode.set(WinRtApplicationPackageMode.Packaged.name)
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.commandWorkingDirectory.set(project.layout.projectDirectory)
+        }.get()
+        val consoleTask = project.tasks.register(
+            "buildConsoleApplicationHost",
+            BuildWinRtApplicationHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("console-application-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("console-application-host/src"))
+            registeredTask.mainClass.set("sample.MainKt")
+            registeredTask.executableBaseName.set("sample-console")
+            registeredTask.runtimeClasspath.from(jar)
+            registeredTask.packageMode.set(WinRtApplicationPackageMode.Packaged.name)
+            registeredTask.console.set(true)
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.commandWorkingDirectory.set(project.layout.projectDirectory)
+        }.get()
+
+        guiTask.build()
+        consoleTask.build()
+
+        assertEquals(
+            2,
+            readPeSubsystem(guiTask.outputDirectory.get().asFile.toPath().resolve("sample-gui.exe")),
+        )
+        assertEquals(
+            3,
+            readPeSubsystem(consoleTask.outputDirectory.get().asFile.toPath().resolve("sample-console.exe")),
+        )
     }
 
     @Test
@@ -7233,6 +7306,14 @@ private fun commandExists(name: String): Boolean =
             .start()
             .waitFor() == 0
     }.getOrDefault(false)
+
+private fun readPeSubsystem(executable: Path): Int {
+    val bytes = Files.readAllBytes(executable)
+    val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+    val peHeaderOffset = buffer.getInt(0x3c)
+    val optionalHeaderOffset = peHeaderOffset + 24
+    return buffer.getShort(optionalHeaderOffset + 0x44).toInt() and 0xffff
+}
 
 private inline fun <T> withSystemProperty(name: String, value: String, block: () -> T): T {
     val previous = System.getProperty(name)

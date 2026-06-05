@@ -157,6 +157,7 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val packageMode: Property<WinRtApplicationPackageMode> =
         objects.property(WinRtApplicationPackageMode::class.java).convention(WinRtApplicationPackageMode.Unpackaged)
     val mainClass: Property<String> = objects.property(String::class.java)
+    val console: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     val generateProjectPri: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val projectPriIndexName: Property<String> = objects.property(String::class.java).convention("")
     val projectPriInitialPath: Property<String> = objects.property(String::class.java).convention("")

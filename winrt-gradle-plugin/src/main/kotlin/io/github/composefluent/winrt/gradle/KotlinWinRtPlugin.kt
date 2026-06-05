@@ -491,6 +491,7 @@ private fun configureWinRtApplicationTasks(
             task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-host/bin"))
             task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-host/src"))
             task.packageMode.set(project.provider { extension.application.packageMode.get().name })
+            task.console.set(extension.application.console)
             task.executableBaseName.set(project.name)
             task.javaHome.set(project.provider { System.getProperty("java.home") })
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })

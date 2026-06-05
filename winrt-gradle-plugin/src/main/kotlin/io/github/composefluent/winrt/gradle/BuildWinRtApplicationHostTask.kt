@@ -20,6 +20,7 @@ import kotlin.io.path.isRegularFile
 abstract class BuildWinRtApplicationHostTask : DefaultTask() {
     init {
         packageMode.convention(WinRtApplicationPackageMode.Unpackaged.name)
+        console.convention(false)
         windowsSdkVersion.convention("")
     }
 
@@ -46,6 +47,9 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
 
     @get:Input
     abstract val packageMode: Property<String>
+
+    @get:Input
+    abstract val console: Property<Boolean>
 
     @get:Input
     abstract val javaHome: Property<String>
@@ -137,30 +141,39 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
         val useLlvmLinker = compiler.fileName.toString().equals("clang-cl.exe", ignoreCase = true) &&
             findExecutable("lld-link.exe") != null
         val arguments = buildList {
-            add(
-            compiler.toString(),
-            )
+            add(compiler.toString())
             if (useLlvmLinker) {
                 add("-fuse-ld=lld")
             }
-            addAll(listOf(
-            "/nologo",
-            source.toString(),
-            "/Fe:${output}",
-            "/I${javaHomePath.resolve("include")}",
-            "/I${javaHomePath.resolve("include").resolve("win32")}",
-            "/I${sdk.includeRoot.resolve("shared")}",
-            "/I${sdk.includeRoot.resolve("um")}",
-            "/I${sdk.includeRoot.resolve("ucrt")}",
-            "/link",
-            "/NOLOGO",
-            "/SUBSYSTEM:CONSOLE",
-            "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
-            "/LIBPATH:${sdk.libRoot.resolve("ucrt").resolve(architecture)}",
-            "kernel32.lib",
-            "shell32.lib",
-            "user32.lib",
-            ))
+            addAll(
+                listOf(
+                    "/nologo",
+                    source.toString(),
+                    "/Fe:${output}",
+                    "/I${javaHomePath.resolve("include")}",
+                    "/I${javaHomePath.resolve("include").resolve("win32")}",
+                    "/I${sdk.includeRoot.resolve("shared")}",
+                    "/I${sdk.includeRoot.resolve("um")}",
+                    "/I${sdk.includeRoot.resolve("ucrt")}",
+                    "/link",
+                    "/NOLOGO",
+                ),
+            )
+            if (console.get()) {
+                add("/SUBSYSTEM:CONSOLE")
+            } else {
+                add("/SUBSYSTEM:WINDOWS")
+                add("/ENTRY:wmainCRTStartup")
+            }
+            addAll(
+                listOf(
+                    "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
+                    "/LIBPATH:${sdk.libRoot.resolve("ucrt").resolve(architecture)}",
+                    "kernel32.lib",
+                    "shell32.lib",
+                    "user32.lib",
+                ),
+            )
         }
         val result = runProcess(arguments, output.parent)
         if (result.exitCode != 0) {
