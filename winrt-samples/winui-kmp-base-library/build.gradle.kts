@@ -16,11 +16,6 @@ kotlin {
     jvmToolchain(25)
     jvm("winuiJvm")
     sourceSets {
-        commonMain {
-            dependencies {
-                implementation(project(":winrt-runtime"))
-            }
-        }
         val winuiMain by creating {
             dependsOn(commonMain.get())
         }
@@ -31,7 +26,7 @@ kotlin {
 }
 
 winRt {
-    windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
+    windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     type("Windows.Foundation.IStringable")
     type("Windows.Foundation.Uri")
     type("Windows.System.Launcher")

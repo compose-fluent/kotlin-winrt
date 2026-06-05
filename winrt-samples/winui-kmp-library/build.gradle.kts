@@ -20,7 +20,6 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                implementation(project(":winrt-runtime"))
                 implementation(project(":winrt-authoring"))
                 api(project(":winrt-samples:winui-kmp-base-library"))
             }
@@ -36,10 +35,9 @@ kotlin {
 
 winRt {
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
-        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
-        nugetPackage("Microsoft.WindowsAppSDK") {
-            version.set(windowsAppSdkVersion)
-            generateProjection.set(true)
+        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
+            generateProjection = true
         }
         type("Windows.Foundation.IStringable")
         type("Windows.ApplicationModel.DataTransfer.Clipboard")

@@ -25,6 +25,7 @@ interface BaseWinRtExtension {
     val metadataInputs: ListProperty<String>
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
+    val generateWindowsSdkProjection: Property<Boolean>
     val nugetExecutable: Property<String>
     val nugetCliVersion: Property<String>
     val restoreNuGetPackages: Property<Boolean>
@@ -47,9 +48,15 @@ interface BaseWinRtExtension {
 
     fun runtimeAsset(input: Any)
 
-    fun windowsSdk(version: String? = null, includeExtensions: Boolean = false)
+    fun windowsSdk(
+        version: String? = null,
+        includeExtensions: Boolean = false,
+        generateProjection: Boolean = false,
+    )
 
     fun nugetPackage(packageId: String, version: String)
+
+    fun nugetPackage(packageId: String, version: String, action: Action<in KotlinWinRtNuGetPackage>)
 
     fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>)
 }
@@ -65,6 +72,8 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
     override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+    override val generateWindowsSdkProjection: Property<Boolean> =
+        objects.property(Boolean::class.java).convention(false)
     override val nugetExecutable: Property<String> = objects.property(String::class.java).convention("nuget")
     override val nugetCliVersion: Property<String> = objects.property(String::class.java).convention("7.3.1")
     override val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
@@ -75,7 +84,9 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
     @get:Nested
     override val nugetPackages: NamedNuGetPackageContainer =
         objects.domainObjectContainer(KotlinWinRtNuGetPackage::class.java) { name ->
-            objects.newInstance(KotlinWinRtNuGetPackage::class.java, name)
+            objects.newInstance(KotlinWinRtNuGetPackage::class.java, name).also { nugetPackage ->
+                nugetPackage.generateProjectionProperty.convention(defaultNuGetPackageGenerateProjection(name))
+            }
         }
 
     override fun namespace(name: String) {
@@ -106,15 +117,32 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
         runtimeAssets.add(input.toString())
     }
 
-    override fun windowsSdk(version: String?, includeExtensions: Boolean) {
+    override fun windowsSdk(
+        version: String?,
+        includeExtensions: Boolean,
+        generateProjection: Boolean,
+    ) {
         version?.let(windowsSdkVersion::set)
         includeWindowsSdkExtensions.set(includeExtensions)
+        generateWindowsSdkProjection.set(generateProjection)
     }
 
     override fun nugetPackage(packageId: String, version: String) {
         val versionValue = version
         nugetPackages.create(packageId, Action<KotlinWinRtNuGetPackage> { nugetPackage ->
             nugetPackage.version.set(versionValue)
+        })
+    }
+
+    override fun nugetPackage(
+        packageId: String,
+        version: String,
+        action: Action<in KotlinWinRtNuGetPackage>,
+    ) {
+        val versionValue = version
+        nugetPackages.create(packageId, Action<KotlinWinRtNuGetPackage> { nugetPackage ->
+            nugetPackage.version.set(versionValue)
+            action.execute(nugetPackage)
         })
     }
 
@@ -287,7 +315,17 @@ abstract class KotlinWinRtNuGetPackage @Inject constructor(
     objects: ObjectFactory,
 ) : Named {
     val version: Property<String> = objects.property(String::class.java)
-    val generateProjection: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+    internal val generateProjectionProperty: Property<Boolean> = objects.property(Boolean::class.java)
+    var generateProjection: Boolean
+        get() = generateProjectionProperty.get()
+        set(value) = generateProjectionProperty.set(value)
 
     override fun getName(): String = packageId
+}
+
+internal fun defaultNuGetPackageGenerateProjection(packageId: String): Boolean {
+    val normalizedPackageId = packageId.lowercase()
+    return normalizedPackageId != "microsoft.windowsappsdk" &&
+        normalizedPackageId != "microsoft.windowssdk" &&
+        !normalizedPackageId.startsWith("microsoft.windows.sdk")
 }

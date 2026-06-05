@@ -34,7 +34,7 @@ The native JVM and WinUI 3 runtime bridge is intentionally kept behind interface
 ## Using Snapshot Builds
 
 Snapshot artifacts are published to Maven Central's snapshot repository under the group `io.github.compose-fluent`.
-Add the snapshot repository only for snapshot versions, then add the runtime dependency:
+Add the snapshot repository only for snapshot versions:
 
 ```kotlin
 repositories {
@@ -49,7 +49,7 @@ repositories {
 }
 ```
 
-Use the runtime from a Kotlin/JVM project:
+The `io.github.composefluent.winrt` Gradle plugin adds the runtime dependency automatically. Add the runtime dependency manually only when using `winrt-runtime` without the plugin from a Kotlin/JVM project:
 
 ```kotlin
 dependencies {
@@ -57,7 +57,7 @@ dependencies {
 }
 ```
 
-Use the runtime from a Kotlin Multiplatform project when sharing WinRT-facing code between JVM and `mingwX64`:
+Without the plugin, use the runtime from a Kotlin Multiplatform project when sharing WinRT-facing code between JVM and `mingwX64`:
 
 ```kotlin
 kotlin {
@@ -86,7 +86,7 @@ dependencies {
 
 `kotlin-winrt` projects normally have three parts:
 
-- add `winrt-runtime`
+- apply the `io.github.composefluent.winrt` Gradle plugin, which adds `winrt-runtime`
 - declare the WinRT namespaces or types that should be projected
 - initialize the WinRT runtime before calling projected APIs
 
@@ -98,11 +98,8 @@ plugins {
     id("io.github.composefluent.winrt")
 }
 
-dependencies {
-    implementation("io.github.compose-fluent:winrt-runtime-jvm:0.1.0-SNAPSHOT")
-}
-
 winRt {
+    windowsSdk(generateProjection = true)
     namespace("Windows.Data.Json")
 }
 ```
@@ -152,10 +149,9 @@ When a project intentionally needs a local projection from a NuGet package, opt 
 
 ```kotlin
 winRt {
-    windowsSdk(includeExtensions = true)
-    nugetPackage("Microsoft.WindowsAppSDK") {
-        version.set("2.1.3")
-        generateProjection.set(true)
+    windowsSdk(includeExtensions = true, generateProjection = true)
+    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+        generateProjection = true
     }
 
     type("Microsoft.UI.Xaml.LaunchActivatedEventArgs")

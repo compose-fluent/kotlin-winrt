@@ -28,6 +28,10 @@ private class WinmdBuilder(
     private val assemblyName: String,
     private val runtimeClasses: List<WinRtAuthoredRuntimeClassDescriptor>,
 ) {
+    private val authoredInterfaceNames = runtimeClasses
+        .flatMap(WinRtAuthoredRuntimeClassDescriptor::interfaceNames)
+        .distinct()
+
     private val strings = IndexedStringHeap()
     private val blobs = IndexedBlobHeap()
     private val guid = byteArrayOf(
@@ -43,6 +47,9 @@ private class WinmdBuilder(
             if (runtimeClasses.isNotEmpty()) {
                 add(WINDOWS_FOUNDATION_METADATA_VERSION)
             }
+            if (authoredInterfaceNames.isNotEmpty()) {
+                add(SYSTEM_RUNTIME_INTEROP_SERVICES_GUID)
+            }
             runtimeClasses.forEach { descriptor ->
                 if (descriptor.isActivatable) {
                     add(WINDOWS_FOUNDATION_METADATA_ACTIVATABLE)
@@ -56,9 +63,7 @@ private class WinmdBuilder(
             }
         }
         val baseTypeRefs = runtimeClasses
-            .flatMap { descriptor ->
-                listOf(descriptor.baseRuntimeClassName ?: "System.Object") + descriptor.interfaceNames
-            }
+            .map { descriptor -> descriptor.baseRuntimeClassName ?: "System.Object" }
             .plus(attributeTypeNames)
             .distinct()
             .map { qualifiedName -> TypeRefRow(qualifiedName) }
@@ -119,7 +124,7 @@ private class WinmdBuilder(
         if (typeRefs.isNotEmpty()) {
             writer.int32(typeRefs.size)
         }
-        writer.int32(1 + runtimeClasses.size)
+        writer.int32(1 + authoredInterfaceNames.size + runtimeClasses.size)
         if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) {
             writer.int32(runtimeClasses.sumOf { it.interfaceNames.size })
         }
@@ -146,6 +151,16 @@ private class WinmdBuilder(
         writer.index(0)
         writer.index(1)
         writer.index(1)
+        authoredInterfaceNames.forEach { interfaceName ->
+            val namespace = interfaceName.substringBeforeLast('.', missingDelimiterValue = "")
+            val name = interfaceName.substringAfterLast('.')
+            writer.int32(TYPE_ATTRIBUTES_PUBLIC or TYPE_ATTRIBUTES_WINDOWS_RUNTIME or TYPE_ATTRIBUTES_INTERFACE or TYPE_ATTRIBUTES_ABSTRACT)
+            writer.index(strings.index(name))
+            writer.index(strings.index(namespace))
+            writer.index(0)
+            writer.index(1)
+            writer.index(1)
+        }
         runtimeClasses.forEach { descriptor ->
             val namespace = descriptor.runtimeClassName.substringBeforeLast('.', missingDelimiterValue = "")
             val name = descriptor.runtimeClassName.substringAfterLast('.')
@@ -160,9 +175,9 @@ private class WinmdBuilder(
         }
         runtimeClasses.forEachIndexed { classIndex, descriptor ->
             descriptor.interfaceNames.forEach { interfaceName ->
-                val interfaceTypeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == interfaceName } + 1
-                writer.index(classIndex + 2)
-                writer.index((interfaceTypeRefRowId shl 2) or CODED_TYPE_DEF_OR_REF_TYPE_REF)
+                val interfaceTypeDefRowId = authoredInterfaceNames.indexOf(interfaceName) + 2
+                writer.index(classIndex + 2 + authoredInterfaceNames.size)
+                writer.index(interfaceTypeDefRowId shl 2)
             }
         }
         attributeMemberRefs.forEach { memberRef ->
@@ -193,6 +208,7 @@ private class WinmdBuilder(
             WINDOWS_FOUNDATION_METADATA_OVERRIDABLE to emptyList(),
             WINDOWS_FOUNDATION_METADATA_ACTIVATABLE to listOf(ELEMENT_TYPE_U4),
             WINDOWS_FOUNDATION_METADATA_VERSION to listOf(ELEMENT_TYPE_U4),
+            SYSTEM_RUNTIME_INTEROP_SERVICES_GUID to listOf(ELEMENT_TYPE_STRING),
         )
             .mapNotNull { typeName ->
                 val typeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == typeName.first } + 1
@@ -249,8 +265,31 @@ private class WinmdBuilder(
             .mapIndexed { index, memberRef -> memberRef.attributeTypeName to index + 1 }
             .toMap()
         val rows = mutableListOf<CustomAttributeRow>()
-        runtimeClasses.forEachIndexed { index, descriptor ->
+        authoredInterfaceNames.forEachIndexed { index, _ ->
             val typeDefRowId = index + 2
+            memberRefRowIds[SYSTEM_RUNTIME_INTEROP_SERVICES_GUID]?.let { memberRefRowId ->
+                rows += CustomAttributeRow(
+                    parentToken = hasCustomAttributeToken(
+                        rowId = typeDefRowId,
+                        tag = CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF,
+                    ),
+                    memberRefRowId = memberRefRowId,
+                    valueBlobIndex = blobs.index(guidStringCustomAttributeBlob(AUTHORED_INTERFACE_GUID)),
+                )
+            }
+            memberRefRowIds[WINDOWS_FOUNDATION_METADATA_VERSION]?.let { memberRefRowId ->
+                rows += CustomAttributeRow(
+                    parentToken = hasCustomAttributeToken(
+                        rowId = typeDefRowId,
+                        tag = CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF,
+                    ),
+                    memberRefRowId = memberRefRowId,
+                    valueBlobIndex = blobs.index(uint32CustomAttributeBlob(DEFAULT_VERSION)),
+                )
+            }
+        }
+        runtimeClasses.forEachIndexed { index, descriptor ->
+            val typeDefRowId = index + 2 + authoredInterfaceNames.size
             memberRefRowIds[WINDOWS_FOUNDATION_METADATA_VERSION]?.let { memberRefRowId ->
                 rows += CustomAttributeRow(
                     parentToken = hasCustomAttributeToken(
@@ -307,6 +346,19 @@ private class WinmdBuilder(
             0x00,
             0x00,
         )
+
+    private fun guidStringCustomAttributeBlob(value: String): ByteArray {
+        val encoded = value.toByteArray(StandardCharsets.UTF_8)
+        require(encoded.size < 0x80) { "Test GUID attribute value is too long." }
+        return byteArrayOf(
+            0x01,
+            0x00,
+            encoded.size.toByte(),
+            *encoded,
+            0x00,
+            0x00,
+        )
+    }
 
     private fun metadataRoot(
         tables: ByteArray,
@@ -460,15 +512,20 @@ private class WinmdBuilder(
         const val CALL_CONV_HASTHIS = 0x20
         const val ELEMENT_TYPE_VOID = 0x01
         const val ELEMENT_TYPE_U4 = 0x09
+        const val ELEMENT_TYPE_STRING = 0x0e
         const val DEFAULT_VERSION = 1
+        const val AUTHORED_INTERFACE_GUID = "11111111-2222-3333-4444-555555555555"
         const val TYPE_ATTRIBUTES_PUBLIC = 0x00000001
         const val TYPE_ATTRIBUTES_WINDOWS_RUNTIME = 0x00004000
         const val TYPE_ATTRIBUTES_SEALED = 0x00000100
+        const val TYPE_ATTRIBUTES_INTERFACE = 0x00000020
+        const val TYPE_ATTRIBUTES_ABSTRACT = 0x00000080
         const val TYPE_ATTRIBUTES_BEFORE_FIELD_INIT = 0x00100000
         const val WINDOWS_FOUNDATION_METADATA_DEFAULT = "Windows.Foundation.Metadata.DefaultAttribute"
         const val WINDOWS_FOUNDATION_METADATA_OVERRIDABLE = "Windows.Foundation.Metadata.OverridableAttribute"
         const val WINDOWS_FOUNDATION_METADATA_ACTIVATABLE = "Windows.Foundation.Metadata.ActivatableAttribute"
         const val WINDOWS_FOUNDATION_METADATA_VERSION = "Windows.Foundation.Metadata.VersionAttribute"
+        const val SYSTEM_RUNTIME_INTEROP_SERVICES_GUID = "System.Runtime.InteropServices.GuidAttribute"
     }
 }
 

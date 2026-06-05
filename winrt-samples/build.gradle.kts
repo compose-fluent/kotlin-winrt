@@ -26,7 +26,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(projects.winrtRuntime)
     implementation(projects.winrtAuthoring)
     implementation(projects.winrtProjections)
     testImplementation(libs.junit)
@@ -43,15 +42,11 @@ winRt {
             useNuGetCliGlobalPackages.set(false)
             restoreNuGetPackages.set(false)
         }
-        windowsSdk(includeExtensions = true)
-        nugetPackage("Microsoft.WindowsAppSDK") {
-            version.set(windowsAppSdkVersion)
-            generateProjection.set(true)
+        windowsSdk(includeExtensions = true, generateProjection = true)
+        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
+            generateProjection = true
         }
-        nugetPackage("WinUIEssential.WinUI3") {
-            version.set(sampleWinUIEssentialVersion.get())
-            generateProjection.set(true)
-        }
+        nugetPackage("WinUIEssential.WinUI3", sampleWinUIEssentialVersion.get())
         type("Microsoft.UI.Xaml.Application")
         type("Microsoft.UI.Xaml.DependencyProperty")
         type("Microsoft.UI.Xaml.FrameworkElement")

@@ -28,15 +28,13 @@ mavenPublishing {
 }
 
 dependencies {
-    implementation(projects.winrtRuntime)
     implementation(project(":winrt-projections:windows-sdk"))
 }
 
 winRt {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
-    nugetPackage("Microsoft.WindowsAppSDK") {
-        version.set(projectionWindowsAppSdkVersion.get())
-        generateProjection.set(true)
+    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+    nugetPackage("Microsoft.WindowsAppSDK", projectionWindowsAppSdkVersion.get()) {
+        generateProjection = true
     }
     excludeNamespace("Windows")
     excludeNamespace("Microsoft.Windows.Internal")

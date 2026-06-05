@@ -22,12 +22,8 @@ mavenPublishing {
     coordinates(group.toString(), "winrt-projections-windows-sdk", version.toString())
 }
 
-dependencies {
-    implementation(projects.winrtRuntime)
-}
-
 winRt {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
+    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     namespace("Windows")
     excludeNamespace("Windows.UI.Xaml")
     excludeNamespace("Windows.ApplicationModel.Store.Preview")

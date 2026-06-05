@@ -94,6 +94,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     abstract val includeWindowsSdkExtensions: Property<Boolean>
 
     @get:Input
+    abstract val generateWindowsSdkProjection: Property<Boolean>
+
+    @get:Input
     abstract val nugetExecutable: Property<String>
 
     @get:Input
@@ -162,6 +165,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             parameters.dependencyIdentityFiles.from(dependencyIdentityFiles)
             parameters.windowsSdkVersion.set(windowsSdkVersion)
             parameters.includeWindowsSdkExtensions.set(includeWindowsSdkExtensions)
+            parameters.generateWindowsSdkProjection.set(generateWindowsSdkProjection)
             parameters.nugetExecutable.set(nugetExecutable)
             parameters.nugetCliVersion.set(nugetCliVersion)
             parameters.nugetCliCacheDirectory.set(nugetCliCacheDirectory)
@@ -193,6 +197,7 @@ internal interface GenerateWinRtProjectionsWorkParameters : WorkParameters {
     val dependencyIdentityFiles: ConfigurableFileCollection
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
+    val generateWindowsSdkProjection: Property<Boolean>
     val nugetExecutable: Property<String>
     val nugetCliVersion: Property<String>
     val nugetCliCacheDirectory: DirectoryProperty
@@ -336,10 +341,9 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             parameters.metadataInputs.get().isEmpty() &&
             parameters.includeNamespaces.get().isEmpty() &&
             parameters.includeTypes.get().isEmpty() &&
-            !parameters.windowsSdkVersion.isPresent &&
-            !parameters.includeWindowsSdkExtensions.get()
+            !parameters.generateWindowsSdkProjection.get()
         val explicitSources = parameters.metadataInputs.get().map(WinRtMetadataSource::parse)
-        val sdkSource = if (parameters.windowsSdkVersion.isPresent || parameters.includeWindowsSdkExtensions.get()) {
+        val sdkSource = if (parameters.generateWindowsSdkProjection.get()) {
             listOf(
                 WinRtMetadataSource.windowsSdk(
                     version = parameters.windowsSdkVersion.orNull,
@@ -391,7 +395,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             sources
         } else {
             sources.ifEmpty {
-                if (hasProjectionFilter) {
+                if (hasProjectionFilter && parameters.generateWindowsSdkProjection.get()) {
                     listOf(WinRtMetadataSource.windowsSdk())
                 } else {
                     emptyList()
