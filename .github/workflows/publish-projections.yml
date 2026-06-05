@@ -11,6 +11,18 @@ on:
         options:
           - 'false'
           - 'true'
+      publicationKind:
+        description: 'Projection publication kind; snapshot appends the kotlin-winrt snapshot suffix, release uses metadata baseline artifact versions'
+        required: true
+        default: 'snapshot'
+        type: choice
+        options:
+          - 'snapshot'
+          - 'release'
+      releaseTag:
+        description: 'kotlin-winrt release tag used for release projection dependencies, for example v0.1.0; required when publicationKind is release'
+        required: false
+        default: ''
       windowsAppSdkVersion:
         description: 'Microsoft.WindowsAppSDK version used for the prebuilt projection'
         required: true
@@ -80,9 +92,47 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Validate Publication Kind
+        shell: pwsh
+        run: |
+          if ("${{ inputs.publicationKind }}" -eq "release" -and "${{ inputs.releaseTag }}" -notmatch '^v\d+\.\d+\.\d+(-.*)?$') {
+            Write-Error "releaseTag must look like vX.Y.Z when publicationKind is release."
+            exit 1
+          }
+
+      - name: Compile Projection Artifacts
+        shell: pwsh
+        run: |
+          $releaseArgs = @()
+          if ("${{ inputs.publicationKind }}" -eq "release") {
+            $releaseArgs += "-Pwinrt.releaseTag=${{ inputs.releaseTag }}"
+          }
+          $sdkVersions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
+            | ForEach-Object { $_.Trim() }
+            | Where-Object { $_ }
+            | Select-Object -Unique
+          foreach ($sdkVersion in $sdkVersions) {
+            .\gradlew.bat `
+              :winrt-projections:windows-sdk:compileKotlin `
+              "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              $releaseArgs `
+              --no-configuration-cache
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          .\gradlew.bat `
+            :winrt-projections:windows-app-sdk:compileKotlin `
+            "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            $releaseArgs `
+            --no-configuration-cache
+
       - name: Verify Projection Publications Locally
         shell: pwsh
         run: |
+          $releaseArgs = @()
+          if ("${{ inputs.publicationKind }}" -eq "release") {
+            $releaseArgs += "-Pwinrt.releaseTag=${{ inputs.releaseTag }}"
+          }
           $sdkVersions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
             | ForEach-Object { $_.Trim() }
             | Where-Object { $_ }
@@ -91,6 +141,7 @@ jobs:
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishToMavenLocal `
               "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -98,6 +149,7 @@ jobs:
             :winrt-projections:windows-app-sdk:publishToMavenLocal `
             "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
             "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            $releaseArgs `
             --no-configuration-cache
 
       - name: Check Maven Central secrets
@@ -131,6 +183,10 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
         run: |
+          $releaseArgs = @()
+          if ("${{ inputs.publicationKind }}" -eq "release") {
+            $releaseArgs += "-Pwinrt.releaseTag=${{ inputs.releaseTag }}"
+          }
           $sdkVersions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
             | ForEach-Object { $_.Trim() }
             | Where-Object { $_ }
@@ -139,6 +195,7 @@ jobs:
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishAllPublicationsToMavenCentralRepository `
               "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -146,4 +203,5 @@ jobs:
             :winrt-projections:windows-app-sdk:publishAllPublicationsToMavenCentralRepository `
             "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
             "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            $releaseArgs `
             --no-configuration-cache
