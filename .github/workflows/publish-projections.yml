@@ -109,8 +109,7 @@ jobs:
                 "--add", $componentId,
                 "--quiet",
                 "--norestart",
-                "--nocache",
-                "--wait"
+                "--nocache"
               ) `
               -Wait `
               -PassThru
