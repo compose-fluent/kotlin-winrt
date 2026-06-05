@@ -1,0 +1,98 @@
+name: Monitor WindowsAppSDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      publishSnapshot:
+        description: 'Publish snapshot prebuilt projections when a newer stable WindowsAppSDK is found'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      forceWindowsAppSdkVersion:
+        description: 'Optional WindowsAppSDK version to test instead of the latest NuGet stable version'
+        required: false
+        default: ''
+  schedule:
+    # Check once per day for new stable Microsoft.WindowsAppSDK packages.
+    - cron: '30 2 * * *'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  monitor:
+    name: Monitor WindowsAppSDK NuGet updates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect latest stable WindowsAppSDK
+        id: detect
+        shell: pwsh
+        run: |
+          $current = (Select-String `
+              -Path "gradle.properties" `
+              -Pattern '^kotlinWinRt\.projections\.windowsAppSdkVersion=(.+)$').Matches[0].Groups[1].Value.Trim()
+          $windowsSdkVersion = (Select-String `
+              -Path "gradle.properties" `
+              -Pattern '^kotlinWinRt\.projections\.windowsSdkVersion=(.+)$').Matches[0].Groups[1].Value.Trim()
+          $windowsSdkVersions = (Select-String `
+              -Path "gradle.properties" `
+              -Pattern '^kotlinWinRt\.projections\.windowsSdkVersions=(.+)$').Matches[0].Groups[1].Value.Trim()
+
+          $forced = "${{ inputs.forceWindowsAppSdkVersion }}".Trim()
+          if ($forced) {
+            $latest = $forced
+          } else {
+            $index = Invoke-RestMethod "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk/index.json"
+            $latest = $index.versions `
+              | Where-Object { $_ -match '^\d+\.\d+\.\d+(\.\d+)?$' } `
+              | Sort-Object { [version]$_ } `
+              | Select-Object -Last 1
+          }
+
+          if (-not $latest) {
+            Write-Error "No stable Microsoft.WindowsAppSDK version was found."
+            exit 1
+          }
+
+          $shouldRun = [version]$latest -gt [version]$current
+          $publishSnapshot = "true"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $publishSnapshot = "${{ inputs.publishSnapshot }}"
+          }
+
+          "current=$current" >> $env:GITHUB_OUTPUT
+          "latest=$latest" >> $env:GITHUB_OUTPUT
+          "windowsSdkVersion=$windowsSdkVersion" >> $env:GITHUB_OUTPUT
+          "windowsSdkVersions=$windowsSdkVersions" >> $env:GITHUB_OUTPUT
+          "shouldRun=$($shouldRun.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "publishSnapshot=$publishSnapshot" >> $env:GITHUB_OUTPUT
+
+          if ($shouldRun) {
+            Write-Host "Detected newer Microsoft.WindowsAppSDK $latest; current default is $current."
+          } else {
+            Write-Host "Microsoft.WindowsAppSDK is current enough: $current; latest stable is $latest."
+          }
+
+      - name: Trigger prebuilt projection workflow
+        if: steps.detect.outputs.shouldRun == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run publish-projections.yml \
+            --repo "${{ github.repository }}" \
+            --ref master \
+            -f publish="${{ steps.detect.outputs.publishSnapshot }}" \
+            -f publicationKind=snapshot \
+            -f releaseTag= \
+            -f windowsAppSdkVersion="${{ steps.detect.outputs.latest }}" \
+            -f windowsSdkVersions="${{ steps.detect.outputs.windowsSdkVersions }}" \
+            -f windowsAppSdkWindowsSdkVersion="${{ steps.detect.outputs.windowsSdkVersion }}"
