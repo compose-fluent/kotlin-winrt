@@ -163,6 +163,7 @@ application {
 winRt {
     application {
         // Unpackaged is the default.
+        // console.set(true) enables a console window for diagnostics.
     }
 }
 ```
@@ -171,7 +172,7 @@ winRt {
 .\gradlew.bat runWinRtApplicationHost
 ```
 
-`runWinRtApplicationHost` depends on the required staging/build tasks automatically. The generated host stages the JVM classpath, WinRT runtime assets, authored host DLLs, and Windows App SDK payload, initializes unpackaged Windows App SDK deployment before creating the JVM, and then calls the app `main` through JNI. You should not wire `stageWinRtRuntimeAssets`, `buildWinRtAuthoringHost`, or `buildWinRtApplicationHost` manually for the normal run path.
+`runWinRtApplicationHost` depends on the required staging/build tasks automatically. The generated host stages the JVM classpath, WinRT runtime assets, authored host DLLs, and Windows App SDK payload, initializes unpackaged Windows App SDK deployment before creating the JVM, and then calls the app `main` through JNI. You should not wire `stageWinRtRuntimeAssets`, `buildWinRtAuthoringHost`, or `buildWinRtApplicationHost` manually for the normal run path. The native host is linked as a Windows GUI executable by default, so launching it does not open an extra console window. Set `winRt { application { console.set(true) } }` when you want console output during diagnostics.
 
 A minimal WinUI entry point starts XAML directly:
 
