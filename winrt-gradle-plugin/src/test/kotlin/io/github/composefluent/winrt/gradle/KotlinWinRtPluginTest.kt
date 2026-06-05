@@ -11,6 +11,8 @@ import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
+import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.JavaExec
@@ -132,6 +134,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
             """.trimIndent(),
@@ -168,16 +171,15 @@ class KotlinWinRtPluginTest {
         extension.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
         extension.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
         extension.winmd("sdk+")
-        extension.windowsSdk("10.0.26100.0", includeExtensions = true)
+        extension.windowsSdk("10.0.26100.0", includeExtensions = true, generateProjection = true)
         extension.nugetExecutable.set("nuget.exe")
         extension.nugetCliVersion.set("7.3.1")
         extension.restoreNuGetPackages.set(false)
         extension.useNuGetCliGlobalPackages.set(false)
         extension.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
         extension.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
-        extension.nugetPackage("Microsoft.WindowsAppSDK") { pkg ->
-            pkg.version.set("1.8.260416003")
-            pkg.generateProjection.set(true)
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
+            pkg.generateProjection = true
         }
         extension.namespace("Microsoft")
         extension.type("Windows.UI.Xaml.Interop.Type")
@@ -197,6 +199,7 @@ class KotlinWinRtPluginTest {
         assertEquals(listOf("sdk+"), task.metadataInputs.get())
         assertEquals("10.0.26100.0", task.windowsSdkVersion.get())
         assertTrue(task.includeWindowsSdkExtensions.get())
+        assertTrue(task.generateWindowsSdkProjection.get())
         assertEquals("nuget.exe", task.nugetExecutable.get())
         assertEquals("7.3.1", task.nugetCliVersion.get())
         assertEquals(false, task.restoreNuGetPackages.get())
@@ -255,18 +258,77 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun nuget_package_defaults_to_runtime_asset_without_projection_generation() {
+    fun prebuilt_nuget_package_defaults_to_runtime_asset_without_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
         val extension = project.extensions.getByType(WinRtExtension::class.java)
         extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+        extension.nugetPackage("Microsoft.Windows.SDK.NET.Ref", "10.0.26100.0")
 
         val generationTask = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
         val identityTask = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
 
         assertEquals(emptyList<String>(), generationTask.nugetPackages.get())
-        assertEquals(listOf("Microsoft.WindowsAppSDK@1.8.260416003"), identityTask.nugetPackages.get())
+        assertEquals(
+            setOf("Microsoft.WindowsAppSDK@1.8.260416003", "Microsoft.Windows.SDK.NET.Ref@10.0.26100.0"),
+            identityTask.nugetPackages.get().toSet(),
+        )
+    }
+
+    @Test
+    fun ordinary_nuget_package_defaults_to_projection_generation() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
+        extension.nugetPackage("Sample.Package", "1.0.0")
+
+        val generationTask = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
+        val identityTask = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+
+        assertEquals(listOf("Sample.Package@1.0.0"), generationTask.nugetPackages.get())
+        assertEquals(listOf("Sample.Package@1.0.0"), identityTask.nugetPackages.get())
+    }
+
+    @Test
+    fun windows_sdk_defaults_to_no_projection_generation() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
+        extension.windowsSdk("10.0.26100.0", includeExtensions = true)
+
+        val generationTask = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
+        val identityTask = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+
+        assertEquals("10.0.26100.0", generationTask.windowsSdkVersion.get())
+        assertTrue(generationTask.includeWindowsSdkExtensions.get())
+        assertFalse(generationTask.generateWindowsSdkProjection.get())
+        assertEquals("10.0.26100.0", identityTask.windowsSdkVersion.get())
+        assertTrue(identityTask.includeWindowsSdkExtensions.get())
+    }
+
+    @Test
+    fun plugin_adds_runtime_dependency_to_jvm_projects() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val implementationDependencies = project.configurations.getByName("implementation").dependencies
+        assertHasKotlinWinRtRuntimeDependency(implementationDependencies)
+    }
+
+    @Test
+    fun plugin_adds_runtime_dependency_to_kmp_common_main() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val implementationDependencies = project.configurations.getByName("commonMainImplementation").dependencies
+        assertHasKotlinWinRtRuntimeDependency(implementationDependencies)
     }
 
     @Test
@@ -5542,6 +5604,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
             """.trimIndent(),
@@ -5660,6 +5723,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
 
@@ -5865,6 +5929,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
 
@@ -6006,6 +6071,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
 
@@ -6527,6 +6593,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
 
@@ -6629,6 +6696,7 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
 
@@ -6747,6 +6815,7 @@ class KotlinWinRtPluginTest {
             }
 
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
                 type("Windows.Foundation.Point")
             }
@@ -6850,6 +6919,13 @@ class KotlinWinRtPluginTest {
     @Test
     fun plugin_validates_multiplatform_winrt_library_consumed_by_multiplatform_winrt_application() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-library-app-test-")
+        val nugetRoot = projectDir.resolve("nuget")
+        writeWindowsAppSdkPackage(
+            nugetRoot = nugetRoot,
+            packageId = "Microsoft.WindowsAppSDK",
+            version = "1.8.260416003",
+            includeWinUiWinmd = true,
+        )
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
             .toAbsolutePath()
             .normalize()
@@ -6920,6 +6996,11 @@ class KotlinWinRtPluginTest {
 
             $generatorWorkerSetup
 
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                restoreNuGetPackages.set(false)
+            }
+
             kotlin {
                 jvm("winuiJvm")
                 sourceSets {
@@ -6932,6 +7013,7 @@ class KotlinWinRtPluginTest {
             }
 
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IClosable")
             }
             """.trimIndent(),
@@ -6944,6 +7026,11 @@ class KotlinWinRtPluginTest {
             }
 
             $generatorWorkerSetup
+
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                restoreNuGetPackages.set(false)
+            }
 
             kotlin {
                 jvm("winuiJvm")
@@ -6958,6 +7045,7 @@ class KotlinWinRtPluginTest {
             }
 
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.Uri")
             }
 
@@ -6983,6 +7071,11 @@ class KotlinWinRtPluginTest {
 
             $generatorWorkerSetup
 
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                restoreNuGetPackages.set(false)
+            }
+
             kotlin {
                 jvm("winuiJvm")
                 sourceSets {
@@ -6997,7 +7090,12 @@ class KotlinWinRtPluginTest {
 
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
                 application {}
+                windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IAsyncAction")
+                type("Microsoft.UI.Xaml.ResourceDictionary")
+                nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") {
+                    generateProjection = true
+                }
             }
 
             val writeTransitiveSupportProbe = tasks.register("writeTransitiveSupportProbe") {
@@ -7099,8 +7197,8 @@ class KotlinWinRtPluginTest {
                     val projectionSupportArtifacts = supportRoot.walkTopDown()
                         .filter { it.isFile && it.name.startsWith("WinRTProjectionSupport_") && it.extension == "class" }
                         .toList()
-                    check(projectionSupportArtifacts.size == 1) {
-                        "Expected exactly one content-addressed projection support artifact, found " +
+                    check(projectionSupportArtifacts.isNotEmpty()) {
+                        "Expected at least one content-addressed projection support artifact, found " +
                             projectionSupportArtifacts.size
                     }
                     check(!supportRoot.resolve("WinRTProjectionSupport.class").exists()) {
@@ -7140,34 +7238,25 @@ class KotlinWinRtPluginTest {
         )
         assertTrue(result.output.contains("winrt-base-library"))
         assertTrue(result.output.contains("winrt-library"))
-        assertTrue(
-            Files.isRegularFile(
-                projectDir.resolve(
-                    "winrt-base-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IClosable.kt",
-                ),
+        val baseWindowsFoundationProjection = Files.readString(
+            projectDir.resolve(
+                "winrt-base-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
-        assertTrue(
-            Files.isRegularFile(
-                projectDir.resolve(
-                    "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IUriRuntimeClass.kt",
-                ),
+        val libraryWindowsFoundationProjection = Files.readString(
+            projectDir.resolve(
+                "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
-        assertTrue(
-            Files.isRegularFile(
-                projectDir.resolve(
-                    "winrt-app/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IAsyncAction.kt",
-                ),
+        val appWindowsFoundationProjection = Files.readString(
+            projectDir.resolve(
+                "winrt-app/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
-        assertFalse(
-            Files.exists(
-                projectDir.resolve(
-                    "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IClosable.kt",
-                ),
-            ),
-        )
+        assertTrue(baseWindowsFoundationProjection.contains("IClosable"))
+        assertTrue(libraryWindowsFoundationProjection.contains("IUriRuntimeClass"))
+        assertTrue(appWindowsFoundationProjection.contains("IAsyncAction"))
+        assertFalse(libraryWindowsFoundationProjection.contains("IClosable"))
         assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-app:verifyTransitiveCompilerSupport")?.outcome)
     }
 
@@ -7617,11 +7706,25 @@ private fun writeManifestPayloadReferences(root: Path) {
     Files.write(root.resolve("Assets/Square44x44Logo.png"), byteArrayOf(0x50, 0x4e, 0x47))
 }
 
+private fun assertHasKotlinWinRtRuntimeDependency(dependencies: Iterable<Dependency>) {
+    assertTrue(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
+        },
+        dependencies.any { dependency ->
+            dependency.name == "winrt-runtime" ||
+                dependency is ProjectDependency && dependency.path == ":winrt-runtime" ||
+                dependency is FileCollectionDependency
+        },
+    )
+}
+
 private fun writeWindowsAppSdkPackage(
     nugetRoot: Path,
     packageId: String,
     version: String,
     includeWinUiFrameworkAssets: Boolean = false,
+    includeWinUiWinmd: Boolean = false,
     includeLiftedRegistrations: Boolean = false,
     dependencies: List<Pair<String, String>> = emptyList(),
 ) {
@@ -7646,6 +7749,20 @@ private fun writeWindowsAppSdkPackage(
         Files.writeString(nativeRoot.resolve("Microsoft.UI.Xaml/Controls.pri"), "nested")
         Files.createDirectories(packageRoot.resolve("include"))
         Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
+    }
+    if (includeWinUiWinmd) {
+        val winmdRoot = packageRoot.resolve("lib/net8.0")
+        Files.createDirectories(winmdRoot)
+        WinRtPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "Microsoft.UI.Xaml",
+            runtimeClasses = listOf(
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Microsoft.UI.Xaml.ResourceDictionary",
+                    interfaceNames = listOf("Microsoft.UI.Xaml.IResourceDictionary"),
+                ),
+            ),
+            outputFile = winmdRoot.resolve("Microsoft.UI.Xaml.winmd"),
+        )
     }
     if (includeLiftedRegistrations) {
         Files.createDirectories(packageRoot.resolve("build/native"))

@@ -67,6 +67,9 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
     abstract val includeWindowsSdkExtensions: Property<Boolean>
 
     @get:Input
+    abstract val generateWindowsSdkProjection: Property<Boolean>
+
+    @get:Input
     abstract val nugetExecutable: Property<String>
 
     @get:Input
@@ -131,7 +134,7 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
 
     private fun metadataSources(): List<WinRtMetadataSource> {
         val explicitSources = metadataInputs.get().map(WinRtMetadataSource::parse)
-        val sdkSource = if (windowsSdkVersion.isPresent || includeWindowsSdkExtensions.get()) {
+        val sdkSource = if (generateWindowsSdkProjection.get()) {
             listOf(
                 WinRtMetadataSource.windowsSdk(
                     version = windowsSdkVersion.orNull,
@@ -176,7 +179,7 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
         val hasProjectionFilter = includeNamespaces.get().isNotEmpty() || includeTypes.get().isNotEmpty()
         return sources.ifEmpty {
-            if (hasProjectionFilter) {
+            if (hasProjectionFilter && generateWindowsSdkProjection.get()) {
                 listOf(WinRtMetadataSource.windowsSdk())
             } else {
                 emptyList()

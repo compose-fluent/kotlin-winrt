@@ -110,7 +110,7 @@ class WinRtAuthoringMetadataTest {
             .namespaces
             .single { namespace -> namespace.name == "Sample.Component" }
             .types
-            .single()
+            .single { type -> type.name == "Widget" }
         assertEquals("Widget", runtimeClass.name)
         assertEquals(WinRtTypeKind.RuntimeClass, runtimeClass.kind)
         assertEquals("Sample.Component.BaseWidget", runtimeClass.baseTypeName)
@@ -120,5 +120,14 @@ class WinRtAuthoringMetadataTest {
         assertTrue(runtimeClass.activation.isActivatable)
         assertEquals(1L, runtimeClass.availability.version)
         assertTrue(runtimeClass.isSealedType)
+
+        val defaultInterface = WinRtMetadataLoader.load(output)
+            .namespaces
+            .single { namespace -> namespace.name == "Sample.Component" }
+            .types
+            .single { type -> type.name == "IWidget" }
+        assertEquals(WinRtTypeKind.Interface, defaultInterface.kind)
+        assertEquals(1L, defaultInterface.availability.version)
+        assertEquals("11111111-2222-3333-4444-555555555555", defaultInterface.iid?.toString())
     }
 }

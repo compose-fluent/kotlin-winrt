@@ -36,6 +36,7 @@ import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("winRt", WinRtExtension::class.java, project)
+        configureWinRtRuntimeDependency(project)
         configureWinRtGeneration(project, extension)
         configureWinRtLibraryModel(project, extension)
         configureWinRtApplicationModel(project, extension)
@@ -50,6 +51,26 @@ const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
 private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRtLibraryDependencyIdentity"
+
+private fun configureWinRtRuntimeDependency(project: Project) {
+    val configuredConfigurations = mutableSetOf<String>()
+    fun addRuntimeDependency(configurationName: String) {
+        if (configuredConfigurations.add(configurationName)) {
+            project.dependencies.add(
+                configurationName,
+                kotlinWinRtRuntimeDependency(project),
+            )
+        }
+    }
+    project.configurations
+        .matching { configuration ->
+            configuration.name == "implementation" ||
+                configuration.name == "commonMainImplementation"
+        }
+        .configureEach { configuration ->
+            addRuntimeDependency(configuration.name)
+        }
+}
 
 private fun configureWinRtLibraryModel(
     project: Project,
@@ -717,6 +738,7 @@ private fun configureWinRtGeneration(
             task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)
             task.windowsSdkVersion.set(extension.windowsSdkVersion)
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
+            task.generateWindowsSdkProjection.set(extension.generateWindowsSdkProjection)
             task.nugetExecutable.set(extension.nugetExecutable)
             task.nugetCliVersion.set(extension.nugetCliVersion)
             task.nugetCliCacheDirectory.set(
@@ -963,6 +985,7 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.excludeTypes.set(extension.excludeTypes)
             task.windowsSdkVersion.set(extension.windowsSdkVersion)
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
+            task.generateWindowsSdkProjection.set(extension.generateWindowsSdkProjection)
             task.nugetExecutable.set(extension.nugetExecutable)
             task.nugetCliVersion.set(extension.nugetCliVersion)
             task.nugetCliCacheDirectory.set(
@@ -1130,6 +1153,19 @@ private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
     }
 }
 
+private fun kotlinWinRtRuntimeDependency(project: Project): Any {
+    val localRuntimeProject = project.rootProject.findProject(":winrt-runtime")
+    if (localRuntimeProject != null) {
+        return project.dependencies.project(mapOf("path" to localRuntimeProject.path))
+    }
+    val runtimeClasspath = kotlinWinRtCodeSourceFile(Guid::class.java)
+    return if (runtimeClasspath != null) {
+        project.files(runtimeClasspath)
+    } else {
+        "io.github.compose-fluent:winrt-runtime:${kotlinWinRtPluginVersion()}"
+    }
+}
+
 private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List<Any> {
     val runtimeDependencies = mutableListOf<Any>()
     val localAuthoringProject = project.rootProject.findProject(":winrt-authoring")
@@ -1213,7 +1249,7 @@ private fun allNuGetPackageSpecs(extension: BaseWinRtExtension): List<String> =
 
 private fun projectionNuGetPackageSpecs(extension: BaseWinRtExtension): List<String> =
     extension.nugetPackages
-        .filter { pkg -> pkg.generateProjection.get() }
+        .filter { pkg -> pkg.generateProjection }
         .map { pkg -> "${pkg.packageId}@${pkg.version.get()}" }
 
 private fun addGeneratedSourcesToKotlinMain(

@@ -4,10 +4,6 @@ plugins {
     id("io.github.composefluent.winrt")
 }
 
-dependencies {
-    implementation(projects.winrtRuntime)
-}
-
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
     .orElse("2.1.3")
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
@@ -20,11 +16,10 @@ val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.proj
     .orElse(false)
 
 winRt {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false)
+    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
-        nugetPackage("Microsoft.WindowsAppSDK") {
-            version.set(windowsAppSdkVersion)
-            generateProjection.set(true)
+        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
+            generateProjection = true
         }
     }
 

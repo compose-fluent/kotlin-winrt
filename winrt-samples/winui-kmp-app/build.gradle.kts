@@ -16,7 +16,6 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                implementation(project(":winrt-runtime"))
                 implementation(project(":winrt-samples:winui-kmp-library"))
             }
         }
