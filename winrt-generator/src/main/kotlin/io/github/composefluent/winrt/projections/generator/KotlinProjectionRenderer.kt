@@ -122,6 +122,7 @@ class KotlinProjectionRenderer(
     internal val useWinAppSdkTypeRedirects: Boolean = false,
     internal val useKotlinDurationAlias: Boolean = false,
     internal val genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
+    internal val modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
@@ -671,6 +672,7 @@ class KotlinProjectionRenderer(
             slotExpression = slotExpression,
             helperFunction = helperFunction,
             intrinsic = true,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
         )
     }
 
@@ -703,6 +705,12 @@ class KotlinProjectionRenderer(
             KotlinProjectionAbiValueKind.Double -> "setDouble"
             else -> return null
         }
+        modulePlatformAbiCalls?.scalarSetter(
+            referenceExpression = "nativeObject",
+            slotExpression = slotExpression,
+            helperFunction = helperFunction,
+            argumentExpression = CodeBlock.of("%L", parameter.name),
+        )?.let { return it }
         return CodeBlock.builder()
             .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
             .indent()
@@ -755,6 +763,7 @@ class KotlinProjectionRenderer(
             slotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_GETTER_SLOT"),
             helperFunction = helperFunction,
             intrinsic = useProjectionIntrinsics,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
         )
     }
 

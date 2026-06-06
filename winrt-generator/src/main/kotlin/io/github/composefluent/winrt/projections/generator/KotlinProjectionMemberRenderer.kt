@@ -751,6 +751,12 @@ private fun KotlinProjectionRenderer.renderInstanceOneArgUnitIntrinsicInvocation
         KotlinProjectionAbiValueKind.Double -> "setDouble"
         else -> return null
     }
+    modulePlatformAbiCalls?.scalarSetter(
+        referenceExpression = binding.ownerCachePropertyName,
+        slotExpression = binding.slotCodeBlock(),
+        helperFunction = helperFunction,
+        argumentExpression = CodeBlock.of("%L", argumentExpression ?: parameter.name),
+    )?.let { return it }
     return CodeBlock.builder()
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
         .indent()
@@ -787,6 +793,12 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
     if (arguments.count { it.shape == "String" } > 1) {
         return null
     }
+    modulePlatformAbiCalls?.descriptorUnit(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        arguments = arguments,
+        includeReturn = includeReturn,
+    )?.let { return it }
     return CodeBlock.builder()
         .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("%L%T.callUnit(\n", if (includeReturn) "return " else "", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -822,6 +834,12 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorScalarIntrinsicInv
         }
         descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
+    modulePlatformAbiCalls?.descriptorScalar(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        returnShape = returnShape,
+        arguments = arguments,
+    )?.let { return it }
     return CodeBlock.builder()
         .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -858,6 +876,11 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorBooleanIntrinsicIn
         }
         descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
+    modulePlatformAbiCalls?.descriptorBoolean(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        arguments = arguments,
+    )?.let { return it }
     return CodeBlock.builder()
         .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("return %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -898,6 +921,16 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorProjectedObjectInt
             return null
         }
         descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
+    }
+    if (returnBinding.typeArguments.isEmpty()) {
+        modulePlatformAbiCalls?.descriptorProjectedObject(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            helperFunction = helperFunction,
+            returnType = resolveTypeName(returnBinding.typeName),
+            wrapType = returnType,
+            arguments = arguments,
+        )?.let { return it }
     }
     return CodeBlock.builder()
         .openDescriptorIntrinsicArgumentScopes(arguments)
@@ -1186,6 +1219,7 @@ private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
         slotExpression = binding.slotCodeBlock(),
         helperFunction = helperFunction,
         intrinsic = useProjectionIntrinsics,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
     )
 }
 
@@ -1195,7 +1229,13 @@ internal fun renderInstanceScalarGetterInvocation(
     helperFunction: String,
     @Suppress("UNUSED_PARAMETER")
     intrinsic: Boolean = false,
+    modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
 ): CodeBlock {
+    modulePlatformAbiCalls?.scalarGetter(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        helperFunction = helperFunction,
+    )?.let { return it }
     return CodeBlock.builder()
         .add(
             "return %T.%L(\n",
@@ -1228,6 +1268,15 @@ internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocat
         else -> return null
     }
     val returnType = resolvedReturnClassName(returnBinding) ?: return null
+    if (returnBinding.typeArguments.isEmpty()) {
+        modulePlatformAbiCalls?.projectedObjectGetter(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            helperFunction = helperFunction,
+            returnType = resolveTypeName(returnBinding.typeName),
+            wrapType = returnType,
+        )?.let { return it }
+    }
     return CodeBlock.builder()
         .add(
             "return %T.%L(\n",
@@ -1364,6 +1413,7 @@ private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
         slotExpression = binding.slotCodeBlock(),
         helperFunction = helperFunction,
         intrinsic = true,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
     )
 }
 
@@ -1403,6 +1453,12 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
             }
             descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
         }
+        modulePlatformAbiCalls?.descriptorStruct(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            adapterExpression = CodeBlock.of("%T.Metadata", structType),
+            arguments = arguments,
+        )?.let { return it }
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -1417,6 +1473,11 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
             .closeDescriptorIntrinsicArgumentScopes(arguments)
             .build()
     }
+    modulePlatformAbiCalls?.structGetter(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        adapterExpression = CodeBlock.of("%T.Metadata", structType),
+    )?.let { return it }
     return CodeBlock.builder()
         .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
@@ -1568,6 +1629,12 @@ internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInv
         return null
     }
     val structType = nativeStructClassName(parameter.typeBinding) ?: return null
+    modulePlatformAbiCalls?.structSetter(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        valueExpression = CodeBlock.of("%L", argumentExpression ?: parameter.name),
+        adapterExpression = CodeBlock.of("%T.Metadata", structType),
+    )?.let { return it }
     return CodeBlock.builder()
         .add("return %T.setStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
@@ -1583,6 +1650,7 @@ internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInv
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
     binding: KotlinProjectionStaticMemberBinding,
 ): CodeBlock {
+    renderStaticIntrinsicInvocation(binding)?.let { return it }
     val callPlan = requireAbiCallPlan(
         bindingName = binding.bindingName,
         returnBinding = binding.returnBinding,
@@ -1600,6 +1668,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocationOrNull(
     binding: KotlinProjectionStaticMemberBinding,
 ): CodeBlock? {
+    renderStaticIntrinsicInvocation(binding)?.let { return it }
     val callPlan = buildAbiCallPlan(
         returnBinding = binding.returnBinding,
         parameterBindings = binding.parameterBindings,
@@ -1610,6 +1679,97 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocationOrNull(
         invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
         slotExpression = writeTimeSlotCodeBlock(binding),
         callPlan = callPlan,
+    )
+}
+
+private fun KotlinProjectionRenderer.renderStaticIntrinsicInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    val referenceExpression = "StaticInterfaces.${binding.ownerAccessorName}()"
+    val slotExpression = writeTimeSlotCodeBlock(binding)
+    return renderStaticNoArgIntrinsicInvocation(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        returnBinding = binding.returnBinding,
+        parameterBindings = binding.parameterBindings,
+        suppressHResultCheck = binding.suppressHResultCheck,
+    )
+        ?: renderInstanceStructResultIntrinsicInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = binding.returnBinding,
+            parameterBindings = binding.parameterBindings,
+            suppressHResultCheck = binding.suppressHResultCheck,
+        )
+        ?: renderInstanceDescriptorUnitIntrinsicInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = binding.returnBinding,
+            parameterBindings = binding.parameterBindings,
+            suppressHResultCheck = binding.suppressHResultCheck,
+        )
+        ?: renderInstanceDescriptorBooleanIntrinsicInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = binding.returnBinding,
+            parameterBindings = binding.parameterBindings,
+            suppressHResultCheck = binding.suppressHResultCheck,
+        )
+        ?: renderInstanceDescriptorScalarIntrinsicInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = binding.returnBinding,
+            parameterBindings = binding.parameterBindings,
+            suppressHResultCheck = binding.suppressHResultCheck,
+        )
+        ?: renderInstanceDescriptorProjectedObjectIntrinsicInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = binding.returnBinding,
+            parameterBindings = binding.parameterBindings,
+            suppressHResultCheck = binding.suppressHResultCheck,
+        )
+        ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = binding.returnBinding,
+            parameterBindings = binding.parameterBindings,
+            suppressHResultCheck = binding.suppressHResultCheck,
+        )
+}
+
+private fun KotlinProjectionRenderer.renderStaticNoArgIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (!useProjectionIntrinsics || parameterBindings.isNotEmpty()) {
+        return null
+    }
+    val helperFunction = when (returnBinding.kind) {
+        KotlinProjectionAbiValueKind.String -> "getString"
+        KotlinProjectionAbiValueKind.Boolean ->
+            if (suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
+        KotlinProjectionAbiValueKind.Float -> "getFloat"
+        KotlinProjectionAbiValueKind.Double -> "getDouble"
+        else -> return renderInstanceProjectedObjectGetterInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+        )
+    }
+    return renderInstanceScalarGetterInvocation(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        helperFunction = helperFunction,
+        intrinsic = true,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
     )
 }
 
