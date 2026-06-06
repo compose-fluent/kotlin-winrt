@@ -1514,6 +1514,11 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     plan.defaultInterfaceIid?.let { iid ->
         builder.addProperty(
             PropertySpec.builder("DEFAULT_INTERFACE_IID", GUID_CLASS_NAME)
+                .apply {
+                    if (plan.declarationKind == KotlinProjectionDeclarationKind.Class) {
+                        addJvmFieldAnnotation()
+                    }
+                }
                 .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                 .build(),
         )

@@ -14219,6 +14219,20 @@ class KotlinProjectionGeneratorTest {
         )
         assertTrue(artifactScopedGenericSupport.contains("object WinRTGenericTypeInstantiations_sample_lib_jar"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations.kt"))
+        val secondArtifactScopedFilesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            supportOwnerIdentity = "sample-app.jar",
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations_sample_app_jar.kt"))
+        assertFalse(secondArtifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations.kt"))
+        assertTrue(
+            secondArtifactScopedFilesByName.getValue("compiler-support.tsv").contents.contains(
+                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_app_jar\tgeneric-instantiations.tsv",
+            ),
+        )
         val eventProjectionHelpers = filesByName.values
             .filter { file -> file.relativePath.contains("/WinRTEventProjectionHelper_") || file.relativePath.contains("/_EventSource_") }
             .joinToString("\n") { file -> file.contents }
