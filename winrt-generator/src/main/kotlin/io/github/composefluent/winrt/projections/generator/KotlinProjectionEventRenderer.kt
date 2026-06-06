@@ -1497,8 +1497,8 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addParameter("iid", GUID_CLASS_NAME)
                 .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
                 .addCode(
-                    "return instance.queryInterface(iid).getOrThrow().use({ %T(it.getRefPointer(), iid) })\n",
-                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    "return %M(instance, iid)\n",
+                    ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
                 )
                 .build(),
         )
@@ -1514,11 +1514,6 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     plan.defaultInterfaceIid?.let { iid ->
         builder.addProperty(
             PropertySpec.builder("DEFAULT_INTERFACE_IID", GUID_CLASS_NAME)
-                .apply {
-                    if (plan.declarationKind == KotlinProjectionDeclarationKind.Class) {
-                        addJvmFieldAnnotation()
-                    }
-                }
                 .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                 .build(),
         )

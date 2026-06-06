@@ -134,6 +134,11 @@ open class IUnknownReference internal constructor(
 
 }
 
+fun acquireInterfaceReference(instance: ComObjectReference, iid: Guid): IUnknownReference =
+    instance.queryInterface(iid).getOrThrow().use { reference ->
+        IUnknownReference(reference.getRefPointer(), iid)
+    }
+
 class ActivationFactoryReference internal constructor(
     comPtr: ComPtr,
 ) : IUnknownReference(comPtr) {
