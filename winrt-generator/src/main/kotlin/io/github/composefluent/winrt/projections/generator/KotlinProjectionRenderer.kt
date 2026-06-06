@@ -281,10 +281,9 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { nativeObject.queryInterface(%L).getOrThrow().use({ %T(it.getRefPointer(), %L) }) }",
+                            "lazy(%T.PUBLICATION) { %M(nativeObject, %L) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
-                            IUNKNOWN_REFERENCE_CLASS_NAME,
+                            ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
                             runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                         ),
                     )
