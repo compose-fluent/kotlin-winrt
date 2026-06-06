@@ -27,6 +27,7 @@
 - [x] Full-module CsWinRT alignment planning: compare `.cswinrt/src/WinRT.Runtime`, `.cswinrt/src/cswinrt`, `.cswinrt/src/Projections`, `.cswinrt/src/Authoring`, `.cswinrt/src/Samples`, and `.cswinrt/src/Tests` against the Kotlin module layout and fold the gaps into phase-owned plan items.
 - [x] Phase 1 runtime parity audit: `winrt-runtime` has been audited against `.cswinrt/src/WinRT.Runtime` for ABI primitives, object identity/activation, generic IID/signature support, delegates/events, collections/async, HRESULT/error-info, weak/agile/reference-tracker support, and custom runtime projections; remaining runtime work is the explicit WinUI hook slice and later `mingwX64` actuals.
 - [x] Functional completeness before structure cleanup: audited as a guardrail; structure cleanup remains frozen until the real implementation gaps in this plan are closed.
+- [ ] Generated projection size reduction 正在做: on branch `reduce_generated_size`, reduce repeated generated `.class` output for the prebuilt Windows SDK and Windows App SDK projection artifacts without changing Maven coordinates, projected API surface, runtime hot-path behavior, or multi-module classpath safety. Detailed measurements, implementation order, and validation checkpoints live in `reduce_plan.md`.
 
 ## Current Completed Baseline
 
