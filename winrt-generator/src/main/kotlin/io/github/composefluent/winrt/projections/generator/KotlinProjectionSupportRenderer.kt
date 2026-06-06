@@ -142,6 +142,9 @@ class KotlinProjectionSupportRenderer {
         authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
         authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
         authoringModuleActivationFactoryPlanClassName: ClassName = WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME,
+        genericAbiSupportFileName: String = "WinRTGenericAbiSupport",
+        eventProjectionHelperFilePrefix: String = "WinRTEventProjectionHelper",
+        namespaceAdditionsClassName: ClassName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME,
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         validateAuthoringMetadataProjectionPlans(inventory, plans)
@@ -153,7 +156,7 @@ class KotlinProjectionSupportRenderer {
                 renderTypeShapeDescriptorCompilerInput(plans),
                 renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
                 renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
-                renderGenericAbiSupportSource(inventory.genericAbiInventory),
+                renderGenericAbiSupportSource(inventory.genericAbiInventory, genericAbiSupportFileName),
                 renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
                 renderGenericTypeInstantiations(genericInstantiationWriters, genericTypeInstantiationsClassName),
                 renderCompilerSupportManifest(
@@ -189,12 +192,13 @@ class KotlinProjectionSupportRenderer {
                     authoringServerActivationFactoriesClassName,
                 ),
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
-                renderNamespaceAdditions(inventory),
+                renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
             addAll(renderEventProjectionHelpers(
                 model,
                 eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
                 allPlans = plans,
+                eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             ))
         }
     }
@@ -572,11 +576,14 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
-    private fun renderGenericAbiSupportSource(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
+    private fun renderGenericAbiSupportSource(
+        inventory: WinRtGenericAbiInventory,
+        genericAbiSupportFileName: String,
+    ): KotlinProjectionFile? {
         if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
             return null
         }
-        val fileSpec = supportFileSpec("WinRTGenericAbiSupport")
+        val fileSpec = supportFileSpec(genericAbiSupportFileName)
             .addType(
                 dataClass(
                     className = "GenericAbiDelegateEntry",
@@ -591,7 +598,7 @@ class KotlinProjectionSupportRenderer {
                 ),
             )
             .build()
-        return supportFile("WinRTGenericAbiSupport.kt", fileSpec)
+        return supportFile("$genericAbiSupportFileName.kt", fileSpec)
     }
 
     private fun renderGenericTypeInstantiations(
@@ -633,6 +640,7 @@ class KotlinProjectionSupportRenderer {
         model: WinRtMetadataModel,
         eventOwnerPlans: List<KotlinTypeProjectionPlan>,
         allPlans: List<KotlinTypeProjectionPlan>,
+        eventProjectionHelperFilePrefix: String,
     ): List<KotlinProjectionFile> {
         val eventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
         val delegateEventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
@@ -667,7 +675,7 @@ class KotlinProjectionSupportRenderer {
             .sortedBy { type -> type.name }
             .chunked(eventProjectionHelperTypesPerFile)
             .mapIndexed { index, chunk ->
-                val fileName = "WinRTEventProjectionHelper_${index.toString().padStart(3, '0')}"
+                val fileName = "${eventProjectionHelperFilePrefix}_${index.toString().padStart(3, '0')}"
                 val fileSpec = supportFileSpec(fileName)
                     .addGeneratedProjectionSuppressions()
                     .apply { chunk.forEach(::addType) }
@@ -1207,12 +1215,15 @@ class KotlinProjectionSupportRenderer {
         return supportFile("WinRTAuthoringActivationFactoryPlan.kt", fileSpec)
     }
 
-    private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
+    private fun renderNamespaceAdditions(
+        inventory: WinRtMetadataProjectionInventory,
+        namespaceAdditionsClassName: ClassName,
+    ): KotlinProjectionFile? {
         if (inventory.namespaceAdditions.isEmpty()) {
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "NamespaceAdditionEntry")
-        val fileSpec = supportFileSpec("WinRTNamespaceAdditions")
+        val fileSpec = supportFileSpec(namespaceAdditionsClassName.simpleName)
             .addType(
                 dataClass(
                     className = "NamespaceAdditionEntry",
@@ -1223,7 +1234,7 @@ class KotlinProjectionSupportRenderer {
                 ),
             )
             .addType(
-                TypeSpec.objectBuilder("WinRTNamespaceAdditions")
+                TypeSpec.objectBuilder(namespaceAdditionsClassName.simpleName)
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
@@ -1253,7 +1264,7 @@ class KotlinProjectionSupportRenderer {
                     .build(),
             )
             .build()
-        return supportFile("WinRTNamespaceAdditions.kt", fileSpec)
+        return supportFile("${namespaceAdditionsClassName.simpleName}.kt", fileSpec)
     }
 
     private fun renderAuthoringModuleActivationFactoryPlan(

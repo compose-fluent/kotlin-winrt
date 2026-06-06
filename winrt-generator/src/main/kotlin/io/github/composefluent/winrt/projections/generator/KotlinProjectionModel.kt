@@ -171,6 +171,8 @@ internal val WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringServerActivationFactories")
 internal val WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringModuleActivationFactoryPlan")
+internal val WINRT_NAMESPACE_ADDITIONS_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.projections.support", "WinRTNamespaceAdditions")
 internal fun winRtGenericTypeInstantiationsClassName(ownerIdentity: String?): ClassName {
     val suffix = ownerIdentity
         ?.trim()
@@ -193,15 +195,36 @@ internal fun winRtAuthoringServerActivationFactoriesClassName(ownerIdentity: Str
 internal fun winRtAuthoringModuleActivationFactoryPlanClassName(ownerIdentity: String?): ClassName =
     winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME)
 
+internal fun winRtModulePlatformAbiCallClassName(ownerIdentity: String?): ClassName =
+    winRtSupportOwnerClassName(
+        ownerIdentity,
+        ClassName("io.github.composefluent.winrt.projections.support", "WinRTModulePlatformAbiCall"),
+    )
+
+internal fun winRtGenericAbiSupportFileName(ownerIdentity: String?): String {
+    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTGenericAbiSupport"
+    return "WinRTGenericAbiSupport_$suffix"
+}
+
+internal fun winRtEventProjectionHelperFilePrefix(ownerIdentity: String?): String {
+    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTEventProjectionHelper"
+    return "WinRTEventProjectionHelper_$suffix"
+}
+
+internal fun winRtNamespaceAdditionsClassName(ownerIdentity: String?): ClassName =
+    winRtSupportOwnerClassName(ownerIdentity, WINRT_NAMESPACE_ADDITIONS_CLASS_NAME)
+
 private fun winRtSupportOwnerClassName(ownerIdentity: String?, defaultClassName: ClassName): ClassName {
-    val suffix = ownerIdentity
+    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return defaultClassName
+    return ClassName(defaultClassName.packageName, "${defaultClassName.simpleName}_$suffix")
+}
+
+internal fun winRtSupportOwnerIdentifierSuffix(ownerIdentity: String?): String? =
+    ownerIdentity
         ?.trim()
         ?.takeIf(String::isNotEmpty)
         ?.toKotlinSupportIdentifierSuffix()
         ?.takeIf(String::isNotEmpty)
-        ?: return defaultClassName
-    return ClassName(defaultClassName.packageName, "${defaultClassName.simpleName}_$suffix")
-}
 
 private fun String.toKotlinSupportIdentifierSuffix(): String =
     buildString {

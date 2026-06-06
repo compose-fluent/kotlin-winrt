@@ -128,6 +128,10 @@ class KotlinProjectionGenerator(
     private val authoringHostExportsClassName = winRtAuthoringHostExportsClassName(supportOwnerIdentity)
     private val authoringServerActivationFactoriesClassName = winRtAuthoringServerActivationFactoriesClassName(supportOwnerIdentity)
     private val authoringModuleActivationFactoryPlanClassName = winRtAuthoringModuleActivationFactoryPlanClassName(supportOwnerIdentity)
+    private val modulePlatformAbiCallClassName = winRtModulePlatformAbiCallClassName(supportOwnerIdentity)
+    private val genericAbiSupportFileName = winRtGenericAbiSupportFileName(supportOwnerIdentity)
+    private val eventProjectionHelperFilePrefix = winRtEventProjectionHelperFilePrefix(supportOwnerIdentity)
+    private val namespaceAdditionsClassName = winRtNamespaceAdditionsClassName(supportOwnerIdentity)
 
     init {
         require(emitSupportFiles || projectionContext.sources.isEmpty()) {
@@ -139,14 +143,15 @@ class KotlinProjectionGenerator(
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
-        val projectionRenderer = projectionFileRenderer()
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport()
+        val projectionRenderer = projectionFileRenderer(modulePlatformAbiCalls = modulePlatformAbiCalls)
         val projectionFiles = plans
             .filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
             .flatMap(projectionRenderer::render)
         if (!emitSupportFiles) {
             return projectionFiles
         }
-        return projectionFiles + supportFiles(normalizedModel, plans)
+        return projectionFiles + supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
     }
 
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
@@ -159,7 +164,8 @@ class KotlinProjectionGenerator(
         } else {
             plans
         }
-        val projectionRenderer = projectionFileRenderer(renderedPlans)
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport()
+        val projectionRenderer = projectionFileRenderer(renderedPlans, modulePlatformAbiCalls)
         var rendered = 0
         var written = 0
         val expectedPaths = mutableSetOf<String>()
@@ -182,7 +188,7 @@ class KotlinProjectionGenerator(
             }
         projectionFiles.forEach(::write)
         if (emitSupportFiles) {
-            supportFiles(normalizedModel, plans).forEach(::write)
+            supportFiles(normalizedModel, plans, modulePlatformAbiCalls).forEach(::write)
         }
         val deleted = deleteStaleGeneratedFiles(outputRoot, expectedPaths)
         return KotlinProjectionWriteSummary(
@@ -1554,17 +1560,25 @@ class KotlinProjectionGenerator(
             type.properties.any { !it.isStatic } ||
             type.events.any { !it.isStatic }
 
-    private fun projectionFileRenderer(plans: List<KotlinTypeProjectionPlan>? = null): KotlinProjectionFileRenderer =
+    private fun projectionFileRenderer(
+        plans: List<KotlinTypeProjectionPlan>? = null,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
+    ): KotlinProjectionFileRenderer =
         when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(projectionRendererForLayout(plans, plan).render(plan))
+                listOf(projectionRendererForLayout(plans, plan, modulePlatformAbiCalls).render(plan))
             }
-            KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinExpectActualProjectionRenderer(renderer)
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinProjectionFileRenderer { plan ->
+                KotlinExpectActualProjectionRenderer(
+                    projectionRendererForLayout(plans, plan, modulePlatformAbiCalls),
+                ).render(plan)
+            }
         }
 
     private fun projectionRendererForLayout(
         plans: List<KotlinTypeProjectionPlan>? = null,
         currentPlan: KotlinTypeProjectionPlan? = null,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
     ): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
@@ -1579,6 +1593,7 @@ class KotlinProjectionGenerator(
                 useWinAppSdkTypeRedirects = plans?.requiresWinAppSdkTypeRedirects() == true,
                 useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
                 genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
+                modulePlatformAbiCalls = modulePlatformAbiCalls,
             )
         } else {
             renderer
@@ -1613,8 +1628,9 @@ class KotlinProjectionGenerator(
     private fun supportFiles(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     ): List<KotlinProjectionFile> {
-        val files = supportRenderer.render(
+        val supportRendererFiles = supportRenderer.render(
             model,
             plans,
             projectionContext,
@@ -1624,10 +1640,13 @@ class KotlinProjectionGenerator(
             authoringHostExportsClassName = authoringHostExportsClassName,
             authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
             authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
+            genericAbiSupportFileName = genericAbiSupportFileName,
+            eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
+            namespaceAdditionsClassName = namespaceAdditionsClassName,
         )
-        return when (generationLayout) {
-            KotlinProjectionGenerationLayout.SingleSourceSet -> files
-            KotlinProjectionGenerationLayout.ExpectActualJvm -> files.map { file ->
+        val files = when (generationLayout) {
+            KotlinProjectionGenerationLayout.SingleSourceSet -> supportRendererFiles
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> supportRendererFiles.map { file ->
                 KotlinProjectionFile(
                     relativePath = "commonMain/kotlin/${file.relativePath}",
                     packageName = file.packageName,
@@ -1635,7 +1654,14 @@ class KotlinProjectionGenerator(
                 )
             }
         }
+        return files + modulePlatformAbiCalls.orEmptyFiles()
     }
+
+    private fun modulePlatformAbiCallSupport(): KotlinModulePlatformAbiCallSupport? =
+        if (emitSupportFiles) KotlinModulePlatformAbiCallSupport(modulePlatformAbiCallClassName) else null
+
+    private fun KotlinModulePlatformAbiCallSupport?.orEmptyFiles(): List<KotlinProjectionFile> =
+        this?.renderFiles(generationLayout).orEmpty()
 
     private fun deleteStaleGeneratedFiles(outputRoot: Path, expectedPaths: Set<String>): Int {
         if (!Files.isDirectory(outputRoot)) {
