@@ -1,4 +1,5 @@
 import org.gradle.api.tasks.JavaExec
+import org.gradle.jvm.tasks.Jar
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -30,6 +31,7 @@ kotlin {
 
 winRt {
     application {
+        mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
@@ -94,6 +96,13 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     providers.systemProperty("KOTLIN_WINRT_TRACE_CCW").orNull?.let { value ->
         systemProperty("KOTLIN_WINRT_TRACE_CCW", value)
     }
+}
+
+tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>("buildWinRtApplicationHost") {
+    val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
+    dependsOn(winuiJvmJar)
+    runtimeClasspath.from(winuiJvmJar.flatMap { it.archiveFile })
+    runtimeClasspath.from(configurations.named("winuiJvmRuntimeClasspath"))
 }
 
 tasks.named("check") {
