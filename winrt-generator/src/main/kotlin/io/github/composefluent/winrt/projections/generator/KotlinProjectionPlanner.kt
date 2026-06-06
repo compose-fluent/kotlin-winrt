@@ -2269,7 +2269,7 @@ internal fun WinRtMethodDefinition.methodRowConstantName(methods: List<WinRtMeth
     if (methods.count { it.name == name } == 1) {
         return baseName
     }
-    val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_METHOD_ROW_ID"
+    val rowId = methodRowId ?: return "${name.uppercase()}_${overloadOrdinal(methods)}_METHOD_ROW_ID"
     return "${name.uppercase()}_${rowId}_METHOD_ROW_ID"
 }
 
@@ -2281,7 +2281,7 @@ internal fun WinRtMethodDefinition.abiSlotConstantName(methods: List<WinRtMethod
     if (methods.count { it.name == name } == 1) {
         return baseName
     }
-    val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_SLOT"
+    val rowId = methodRowId ?: return "${name.uppercase()}_${overloadOrdinal(methods)}_SLOT"
     return "${name.uppercase()}_${rowId}_SLOT"
 }
 
@@ -2292,8 +2292,24 @@ internal fun WinRtMethodDefinition.staticBindingSlotConstantName(
     if ((staticMethodNameCounts[name] ?: 0) <= 1) {
         return abiSlotConstantName(staticInterfaceMethods)
     }
-    val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_SLOT"
+    val rowId = methodRowId ?: return "${name.uppercase()}_${overloadOrdinal(staticInterfaceMethods)}_SLOT"
     return "${name.uppercase()}_${rowId}_SLOT"
+}
+
+private fun WinRtMethodDefinition.overloadOrdinal(methods: List<WinRtMethodDefinition>): Int {
+    val sameName = methods.filter { it.name == name }
+    val identityIndex = sameName.indexOfFirst { it === this }
+    if (identityIndex >= 0) {
+        return identityIndex
+    }
+    val structuralIndex = sameName.indexOf(this)
+    if (structuralIndex >= 0) {
+        return structuralIndex
+    }
+    return sameName.indexOfFirst { candidate ->
+        candidate.parameters.map { it.type.normalized().typeName } == parameters.map { it.type.normalized().typeName } &&
+            candidate.returnType.normalized().typeName == returnType.normalized().typeName
+    }.coerceAtLeast(0)
 }
 
 internal fun TypeSpec.Builder.addStringListProperty(

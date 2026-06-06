@@ -343,79 +343,110 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     plan: KotlinTypeProjectionPlan,
     method: WinRtMethodDefinition,
 ): FunSpec? {
-    val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) } ?: return null
+    val binding = matchingMethodBinding(plan, method) ?: return null
     val slotExpression = binding.slotCodeBlock()
     val objectShape = runtimeObjectMethodShape(method)
+    val methodReturnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, plan.type.namespace)
+    val methodParameterBindings = method.projectedKotlinParameters().map { parameter ->
+        KotlinProjectionAbiParameterBinding(
+            name = parameter.name,
+            typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, plan.type.namespace),
+            category = metadataParameterCategoryFor(parameter),
+        )
+    }
+    val effectiveReturnBinding = methodReturnBinding.takeUnless { it.kind == KotlinProjectionAbiValueKind.Unsupported } ?: binding.returnBinding
+    val effectiveParameterBindings = methodParameterBindings.mapIndexed { index, parameter ->
+        if (parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Unsupported) {
+            binding.parameterBindings.getOrNull(index) ?: parameter
+        } else {
+            parameter
+        }
+    }
+    val effectiveMarshalerPlanDescriptor =
+        binding.marshalerPlanDescriptor.takeIf {
+            effectiveReturnBinding == binding.returnBinding && effectiveParameterBindings == binding.parameterBindings
+        }
     val invocation = if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
         renderObjectEqualsInvocation(binding)
     } else {
         renderInstanceNoArgIntrinsicInvocation(binding)
-            ?: renderInstanceStructResultIntrinsicInvocation(binding)
+            ?: renderInstanceStructResultIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = slotExpression,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceArrayResultIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceEnumResultIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
             ?: renderInstanceDescriptorUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorBooleanIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorScalarIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorProjectedObjectIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceDescriptorAsyncIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = slotExpression,
-                returnBinding = binding.returnBinding,
-                parameterBindings = binding.parameterBindings,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
-            ?: renderBoundInvocation(binding)
+            ?: renderBoundInvocation(
+                binding = binding,
+                returnBinding = effectiveReturnBinding,
+                parameterBindings = effectiveParameterBindings,
+                marshalerPlanDescriptor = effectiveMarshalerPlanDescriptor,
+            )
     }
     val modifiers = objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding)
     val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
@@ -432,6 +463,28 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
             addCode("%L\n", invocation)
         }
         .build()
+}
+
+private fun KotlinProjectionRenderer.matchingMethodBinding(
+    plan: KotlinTypeProjectionPlan,
+    method: WinRtMethodDefinition,
+): KotlinProjectionInstanceMemberBinding? {
+    val bindingName = method.abiSlotConstantName(plan.type.methods)
+    val candidates = plan.instanceMemberBindings.filter { it.bindingName == bindingName }
+    if (candidates.size <= 1) {
+        return candidates.firstOrNull()
+    }
+    val returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, plan.type.namespace)
+    val parameterBindings = method.projectedKotlinParameters().map { parameter ->
+        KotlinProjectionAbiParameterBinding(
+            name = parameter.name,
+            typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, plan.type.namespace),
+            category = metadataParameterCategoryFor(parameter),
+        )
+    }
+    return candidates.firstOrNull { candidate ->
+        candidate.returnBinding == returnBinding && candidate.parameterBindings == parameterBindings
+    } ?: candidates.firstOrNull()
 }
 
 internal fun WinRtMethodDefinition.projectedRuntimeClassMethodName(
@@ -1269,12 +1322,15 @@ internal fun authoringInvokeBridgeName(method: WinRtMethodDefinition): String =
 
 internal fun KotlinProjectionRenderer.renderBoundInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
+    returnBinding: KotlinProjectionAbiTypeBinding = binding.returnBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding> = binding.parameterBindings,
+    marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = binding.marshalerPlanDescriptor,
 ): CodeBlock {
     val callPlan = requireAbiCallPlan(
         bindingName = binding.bindingName,
-        returnBinding = binding.returnBinding,
-        parameterBindings = binding.parameterBindings,
-        marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
+        returnBinding = returnBinding,
+        parameterBindings = parameterBindings,
+        marshalerPlanDescriptor = marshalerPlanDescriptor,
         suppressHResultCheck = binding.suppressHResultCheck,
     )
     return renderInlineAbiInvocation(
@@ -1313,20 +1369,35 @@ private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
 
 private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? =
+    renderInstanceStructResultIntrinsicInvocation(
+        referenceExpression = binding.ownerCachePropertyName,
+        slotExpression = binding.slotCodeBlock(),
+        returnBinding = binding.returnBinding,
+        parameterBindings = binding.parameterBindings,
+        suppressHResultCheck = binding.suppressHResultCheck,
+    )
+
+private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
 ): CodeBlock? {
     if (
         !useProjectionIntrinsics ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Struct ||
-        binding.suppressHResultCheck
+        returnBinding.kind != KotlinProjectionAbiValueKind.Struct ||
+        suppressHResultCheck
     ) {
         return null
     }
-    if (customStructAbi(binding.returnBinding) != null) {
+    if (customStructAbi(returnBinding) != null) {
         return null
     }
-    val structType = nativeStructClassName(binding.returnBinding) ?: return null
-    if (binding.parameterBindings.isNotEmpty()) {
-        val arguments = binding.parameterBindings.map { parameter ->
+    val structType = nativeStructClassName(returnBinding) ?: return null
+    if (parameterBindings.isNotEmpty()) {
+        val arguments = parameterBindings.map { parameter ->
             if (parameter.category != WinRtMetadataParameterCategory.In) {
                 return null
             }
@@ -1336,8 +1407,8 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
             .indent()
-            .add("%L,\n", binding.ownerCachePropertyName)
-            .add("%L,\n", binding.slotCodeBlock())
+            .add("%L,\n", referenceExpression)
+            .add("%L,\n", slotExpression)
             .add("%S,\n", arguments.joinToString(",") { it.shape })
             .add("%T.Metadata,\n", structType)
             .addDescriptorIntrinsicArgumentExpressions(arguments)
@@ -1349,8 +1420,8 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
     return CodeBlock.builder()
         .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
-        .add("%L,\n", binding.ownerCachePropertyName)
-        .add("%L,\n", binding.slotCodeBlock())
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
         .add("%T.Metadata,\n", structType)
         .unindent()
         .add(")\n")
