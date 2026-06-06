@@ -29,13 +29,13 @@
 ## Validation Checklist
 
 - [x] Run generator tests.
-- [ ] Run Gradle plugin tests.
+- [x] Run Gradle plugin tests.
 - [x] Run compiler plugin tests.
 - [x] Compile prebuilt projection modules.
 - [x] Publish Windows SDK and Windows App SDK projection artifacts to Maven Local.
 - [x] Compare before/after jar size, class count, class category totals, and compressed class bytes.
 - [x] Run a multi-module projection consumption regression to verify classpath collision safety.
-- [ ] Run the WinUI sample compile/run path after any generator behavior change that affects WinAppSDK output.
+- [x] Run the WinUI sample compile/run path after any generator behavior change that affects WinAppSDK output.
 
 ## Constraints
 

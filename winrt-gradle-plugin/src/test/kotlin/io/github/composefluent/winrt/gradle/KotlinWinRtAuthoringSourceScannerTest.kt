@@ -2205,7 +2205,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
-    fun rejects_authored_collection_returns_without_supported_element_adapter() {
+    fun supports_authored_collection_returns_with_struct_element_adapter() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-bad-collection-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
             packageName = "sample",
@@ -2248,19 +2248,17 @@ class KotlinWinRtAuthoringSourceScannerTest {
             ),
         )
 
-        try {
-            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-                candidates = listOf(candidate),
-                metadataModel = metadataModel,
-                outputDirectory = output,
-            )
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("unsupported collection element type 'Sample.Value'"))
-            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalShape_TypeDetails.kt")))
-            return
-        }
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
 
-        throw AssertionError("Expected unsupported authored collection return element adapters to fail closed.")
+        val generated = output.resolve("sample/WinRT_LocalShape_TypeDetails.kt").readText()
+        assertTrue(generated, generated.contains("WinRtReferenceValueAdapters.valueType("))
+        assertTrue(generated, generated.contains("Value::class"))
+        assertTrue(generated, generated.contains("WinRtTypeSignature.struct(\"Sample.Value\")"))
+        assertTrue(generated, generated.contains("WinRtListProjection.fromManaged("))
     }
 
     @Test
