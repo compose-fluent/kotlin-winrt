@@ -110,7 +110,7 @@ class KotlinProjectionSupportRenderer {
         useProjectionIntrinsics = true,
     )
     private val planner = KotlinProjectionPlanner()
-    private val eventProjectionHelperTypesPerFile: Int = 96
+    private val eventProjectionHelperTypesPerFile: Int = 256
     private val AUTHORING_ABI_OPERATIONS = listOf(
         "GetAbi",
         "FromAbi",
@@ -693,11 +693,13 @@ class KotlinProjectionSupportRenderer {
             .addModifiers(KModifier.INTERNAL)
             .addProperty(
                 PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                    .addJvmFieldAnnotation()
                     .initializer(abiEntriesBuildListCode(chunkedAbiPlans.indices))
                     .build(),
             )
             .addProperty(
                 PropertySpec.builder("ENTRIES_BY_TYPE_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                    .addJvmFieldAnnotation()
                     .initializer("ENTRIES.associateBy({ it.typeName })")
                     .build(),
             )
@@ -789,21 +791,25 @@ class KotlinProjectionSupportRenderer {
                     .addProperty(stringListProperty("AUTHORING_METADATA_MAPPINGS", inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" }))
                     .addProperty(
                         PropertySpec.builder("TYPES", List::class.asClassName().parameterizedBy(entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer(typeShapeEntriesCode(plans.sortedBy { it.type.qualifiedName }, entryClass))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("TYPES_BY_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("TYPES.associateBy({ it.typeName })")
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("BASE_TYPE_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+                            .addJvmFieldAnnotation()
                             .initializer("BASE_TYPE_MAPPINGS.toArrowMap()")
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("AUTHORING_METADATA_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+                            .addJvmFieldAnnotation()
                             .initializer("AUTHORING_METADATA_MAPPINGS.toArrowMap()")
                             .build(),
                     )
@@ -833,6 +839,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("AUTHORING_METADATA_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+                            .addJvmFieldAnnotation()
                             .addModifiers(KModifier.PRIVATE)
                             .initializer("AUTHORING_METADATA_MAPPINGS.toArrowMap()")
                             .build(),
@@ -880,11 +887,13 @@ class KotlinProjectionSupportRenderer {
             .addModifiers(KModifier.INTERNAL)
             .addProperty(
                 PropertySpec.builder("WRAPPERS", List::class.asClassName().parameterizedBy(entryClass))
+                    .addJvmFieldAnnotation()
                     .initializer(authoringWrapperEntriesCode(entries, entryClass))
                     .build(),
             )
             .addProperty(
                 PropertySpec.builder("WRAPPERS_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                    .addJvmFieldAnnotation()
                     .initializer("WRAPPERS.associateBy({ it.projectedTypeName })")
                     .build(),
             )
@@ -950,16 +959,19 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("ABI_OPERATIONS", stringListTypeName())
+                            .addJvmFieldAnnotation()
                             .initializer(stringListCode(AUTHORING_ABI_OPERATIONS))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("CLASSES", List::class.asClassName().parameterizedBy(entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer(authoringAbiClassEntriesCode(entries, semanticHelpers, entryClass))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("CLASSES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("CLASSES.associateBy({ it.projectedTypeName })")
                             .build(),
                     )
@@ -1082,16 +1094,19 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("NOT_HANDLED_INTERFACE_NAMES", stringListTypeName())
+                            .addJvmFieldAnnotation()
                             .initializer(stringListCode(AUTHORING_CUSTOM_QI_NOT_HANDLED_INTERFACES))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer(authoringCustomQiEntriesCode(entries, semanticHelpers, entryClass))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("ENTRIES.associateBy({ it.projectedTypeName })")
                             .build(),
                     )
@@ -1150,16 +1165,19 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("FACTORIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer(authoringActivationFactoryEntriesCode(entries, semanticHelpers, entryClass))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("FACTORIES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("FACTORIES.associateBy({ it.projectedTypeName })")
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("FACTORIES_BY_SERVER_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("FACTORIES.associateBy({ it.serverFactoryTypeName })")
                             .build(),
                     )
@@ -1209,11 +1227,13 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer(namespaceAdditionEntriesCode(inventory, entryClass))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_NAMESPACE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("ENTRIES.associateBy({ it.namespace })")
                             .build(),
                     )
@@ -1268,11 +1288,13 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.INTERNAL)
                     .addProperty(
                         PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer(authoringModuleActivationFactoryEntriesCode(entries, entryClass))
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_RUNTIME_CLASS_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .addJvmFieldAnnotation()
                             .initializer("ENTRIES.associateBy({ it.runtimeClassName })")
                             .build(),
                     )

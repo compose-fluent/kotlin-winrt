@@ -145,6 +145,7 @@ import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
+import kotlin.jvm.JvmField
 import kotlin.jvm.JvmInline
 import kotlin.reflect.KClass
 
@@ -213,6 +214,7 @@ private fun String.toKotlinSupportIdentifierSuffix(): String =
             if (suffix.firstOrNull()?.isDigit() == true) "_$suffix" else suffix
         }
 internal val JVM_INLINE_CLASS_NAME = JvmInline::class.asClassName()
+internal val JVM_FIELD_CLASS_NAME = JvmField::class.asClassName()
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
 internal val HSTRING_CLASS_NAME = HString::class.asClassName()
 internal val IID_CLASS_NAME = IID::class.asClassName()
