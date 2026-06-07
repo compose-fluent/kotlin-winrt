@@ -12666,7 +12666,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("HString.createReference(title).use { __titleAbi ->"))
         assertTrue(contents.contains("winRtObjectMarshaler(value).use { __valueMarshaler ->"))
         assertTrue(contents.contains("Color.Metadata.copyTo(color, __colorAbi)"))
-        assertTrue(contents.contains("WinRtDelegateBridge.createDelegate("))
+        assertTrue(contents.contains("WinRtDelegateBridge.createDelegateArgument("))
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
         assertTrue(contents.contains("\"RawAddress,RawAddress,RawAddress,RawAddress\""))
         assertTrue(contents.contains("{ __result -> __result.use { it.asInspectable() } },"))
