@@ -1916,11 +1916,29 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun runtime_assets_task_rejects_unpackaged_application_without_app_windowsappsdk_package() {
+    fun runtime_assets_task_stages_nuget_packages_from_dependency_identity() {
         val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.runtime").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.Runtime.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Runtime</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("Sample.Runtime.dll"), "runtime")
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.Runtime@1.0.0"]}""")
 
         val task = project.tasks.register(
-            "stageMissingWindowsAppSdkAssets",
+            "stageDependencyWindowsAppSdkAssets",
             StageWinRtRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
@@ -1928,13 +1946,13 @@ class KotlinWinRtPluginTest {
             registeredTask.runtimeAssets.set(emptyList())
             registeredTask.runtimeAssetFiles.from(project.files())
             registeredTask.dependencyRuntimeAssetFiles.from(project.files())
-            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
             registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
             registeredTask.authoredMetadataFiles.from(project.files())
             registeredTask.authoredHostManifestFiles.from(project.files())
             registeredTask.authoredTargetArtifactFiles.from(project.files())
             registeredTask.authoredHostDllFiles.from(project.files())
-            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
             registeredTask.appxManifestFiles.from(project.files())
             registeredTask.projectPriResourceFiles.from(project.files())
             registeredTask.projectPriLayoutFiles.from(project.files())
@@ -1944,7 +1962,7 @@ class KotlinWinRtPluginTest {
             registeredTask.defaultProjectPriLayoutFiles.from(project.files())
             registeredTask.defaultProjectPriContentFiles.from(project.files())
             registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
-            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
             registeredTask.nugetCliVersion.set("7.3.1")
@@ -1952,17 +1970,11 @@ class KotlinWinRtPluginTest {
             registeredTask.restoreNuGetPackages.set(false)
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.generateProjectPri.set(false)
-            registeredTask.requireApplicationWindowsAppSdkPackage.set(true)
         }.get()
 
-        val error = runCatching { task.stage() }.exceptionOrNull()
+        task.stage()
 
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            error!!.message.orEmpty(),
-            error.message.orEmpty().contains("nugetPackage(\"Microsoft.WindowsAppSDK\", <version>)"),
-        )
-        assertTrue(error.message.orEmpty().contains("final executable app module"))
+        assertTrue(Files.isRegularFile(task.outputDirectory.get().asFile.toPath().resolve("Sample.Runtime.dll")))
     }
 
     @Test
