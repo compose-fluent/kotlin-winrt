@@ -482,6 +482,159 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_consumes_external_maven_winrt_identity_variant() {
+        val root = Files.createTempDirectory("kotlin-winrt-external-identity-test-")
+        val repository = root.resolve("repo")
+        val producer = root.resolve("producer")
+        val consumer = root.resolve("consumer")
+
+        writeGradleFile(
+            producer.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "producer"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            producer.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            producer.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.jvm") version "2.3.20"
+                id("maven-publish")
+                id("io.github.composefluent.winrt")
+            }
+
+            group = "test.winrt"
+            version = "1.0"
+
+            kotlin {
+                jvmToolchain(25)
+            }
+
+            winRt {
+                runtimeAsset("UpstreamComponent.dll")
+            }
+
+            publishing {
+                publications {
+                    create<MavenPublication>("maven") {
+                        from(components["java"])
+                    }
+                }
+                repositories {
+                    maven {
+                        url = uri("${repository.toUri()}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val publishResult = GradleRunner.create()
+            .withProjectDir(producer.toFile())
+            .withPluginClasspath()
+            .withArguments("publishMavenPublicationToMavenRepository", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, publishResult.task(":generateWinRtIdentity")?.outcome)
+        assertTrue(
+            Files.isRegularFile(
+                repository.resolve("test/winrt/producer/1.0/producer-1.0.module"),
+            ),
+        )
+        val moduleMetadata = Files.readString(repository.resolve("test/winrt/producer/1.0/producer-1.0.module"))
+        assertTrue(moduleMetadata.contains(KOTLIN_WINRT_IDENTITY_USAGE))
+        assertTrue(Files.readString(repository.resolve("test/winrt/producer/1.0/producer-1.0.json")).contains("UpstreamComponent.dll"))
+
+        writeGradleFile(
+            consumer.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    maven {
+                        url = uri("${repository.toUri()}")
+                    }
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "consumer"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            consumer.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            consumer.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.jvm") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvmToolchain(25)
+            }
+
+            dependencies {
+                implementation("test.winrt:producer:1.0")
+            }
+
+            winRt {
+                application { }
+            }
+            """.trimIndent(),
+        )
+
+        val consumeResult = GradleRunner.create()
+            .withProjectDir(consumer.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRtApplicationIdentity", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, consumeResult.task(":generateWinRtApplicationIdentity")?.outcome)
+        val applicationIdentity = Files.readString(
+            consumer.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt-application.json"),
+        )
+        assertTrue(applicationIdentity.contains("producer-1.0.json"))
+        assertTrue(applicationIdentity.contains("dependencyIdentityFiles"))
+    }
+
+    @Test
     fun identity_task_writes_projection_identity_json() {
         val project = ProjectBuilder.builder().build()
 
@@ -507,6 +660,8 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
         assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
         assertTrue(json.contains("\"authoredMetadata\": ["))
+        assertTrue(json.contains("\"authoringMetadataIndexes\": ["))
+        assertTrue(json.contains("\"authoringMetadataIndexRows\": ["))
         assertTrue(json.contains("\"authoredHostManifests\": ["))
         assertTrue(json.contains("\"authoredTargetArtifacts\": ["))
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
@@ -1000,6 +1155,32 @@ class KotlinWinRtPluginTest {
         )
 
         assertEquals(emptyList<String>(), dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList())
+    }
+
+    @Test
+    fun dependency_identity_authoring_metadata_index_participates_in_downstream_authoring_discovery() {
+        val project = ProjectBuilder.builder().build()
+        val root = project.layout.buildDirectory.dir("dependency-authoring-index").get().asFile.toPath()
+        val dependencyIdentity = root.resolve("kotlin-winrt.json")
+        Files.createDirectories(root)
+        Files.writeString(
+            dependencyIdentity,
+            """
+            {
+              "authoringMetadataIndexes": [${root.resolve("missing-metadata-index.tsv").toString().toJsonString()}],
+              "authoringMetadataIndexRows": ["Microsoft.UI.Xaml.Application\tRuntimeClass\tMicrosoft.UI.Xaml.IApplicationOverrides\t"]
+            }
+            """.trimIndent(),
+        )
+
+        val merged = mergedAuthoringMetadataIndexTypes(
+            WinRtMetadataModel(emptyList()),
+            listOf(dependencyIdentity.toFile()),
+        )
+
+        assertEquals(listOf("Microsoft.UI.Xaml.Application"), merged.map { it.qualifiedName })
+        assertEquals("RuntimeClass", merged.single().kind)
+        assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), merged.single().overridableInterfaces)
     }
 
     @Test

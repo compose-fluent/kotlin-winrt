@@ -106,77 +106,78 @@ object KotlinWinRtAuthoringScannerCli {
         if (sourceTypeName in sourceSubtypedNames && source.isUnsealedAuthoredClass(klass)) {
             return null
         }
-            if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
-                projectionPackageToMetadataName(sourceTypeName) in winRtTypes
-            ) {
-                return null
-            }
-            val annotation = source.authoredRuntimeClassAnnotation(klass, packageName, imports)
-            val inheritedWinRtTypes = inheritedWinRtTypes(sourceClass, sourceClassIndex, winRtTypes)
-            val annotatedBase = annotation.baseClassName
-                ?.let { typeName ->
-                    resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
-                        require(type.kind == "RuntimeClass") {
-                            "WinRT authored type $sourceTypeName annotation baseClassName must reference a WinRT runtime class: $typeName."
-                        }
+        val projectedMetadataName = projectionPackageToMetadataName(sourceTypeName)
+        if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
+            (projectedMetadataName != sourceTypeName && projectedMetadataName in winRtTypes)
+        ) {
+            return null
+        }
+        val annotation = source.authoredRuntimeClassAnnotation(klass, packageName, imports)
+        val inheritedWinRtTypes = inheritedWinRtTypes(sourceClass, sourceClassIndex, winRtTypes)
+        val annotatedBase = annotation.baseClassName
+            ?.let { typeName ->
+                resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                    require(type.kind == "RuntimeClass") {
+                        "WinRT authored type $sourceTypeName annotation baseClassName must reference a WinRT runtime class: $typeName."
                     }
                 }
-            val annotatedInterfaces = annotation.interfaceNames
-                .map { typeName ->
-                    resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
-                        require(type.kind == "Interface") {
-                            "WinRT authored type $sourceTypeName annotation interfaceNames must reference WinRT interfaces: $typeName."
-                        }
+            }
+        val annotatedInterfaces = annotation.interfaceNames
+            .map { typeName ->
+                resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type $sourceTypeName annotation interfaceNames must reference WinRT interfaces: $typeName."
                     }
                 }
-            val annotatedOverridableInterfaces = annotation.overridableInterfaceNames
-                .map { typeName ->
-                    resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
-                        require(type.kind == "Interface") {
-                            "WinRT authored type $sourceTypeName annotation overridableInterfaceNames must reference WinRT interfaces: $typeName."
-                        }
+            }
+        val annotatedOverridableInterfaces = annotation.overridableInterfaceNames
+            .map { typeName ->
+                resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type $sourceTypeName annotation overridableInterfaceNames must reference WinRT interfaces: $typeName."
                     }
                 }
-                .map(IndexedWinRtType::qualifiedName)
-            val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
-            if (resolvedWinRtTypes.isEmpty()) {
-                return null
             }
-            require(source.isRuntimeClassDeclaration(klass)) {
-                "WinRT authored type $sourceTypeName must be a concrete Kotlin class."
-            }
-            require(!source.isValueClass(klass)) {
-                "WinRT authored type $sourceTypeName must not be a Kotlin value class."
-            }
-            require(!source.isEffectivelyPublicClass(klass) || source.hasPublicDefaultActivationConstructor(klass)) {
-                "Public WinRT authored type $sourceTypeName must declare an accessible zero-argument constructor for default activation."
-            }
-            require(!source.hasTypeParameters(klass)) {
-                "WinRT authored type $sourceTypeName must not be generic."
-            }
-            require(!source.isUnsealedAuthoredClass(klass)) {
-                "WinRT authored class $sourceTypeName must be final."
-            }
-            require(!source.isNestedClass(klass)) {
-                "WinRT authored type $sourceTypeName must be a top-level Kotlin type; " +
-                    "nested authored runtime classes are not supported."
-            }
-            val winRtBase = resolvedWinRtTypes.firstOrNull { type -> type.kind == "RuntimeClass" }
-            val directInterfaces = resolvedWinRtTypes
-                .filter { type -> type.kind == "Interface" }
-                .map { type -> type.qualifiedName }
-            val overridableInterfaces = (annotatedOverridableInterfaces + inheritedOverridableInterfaceNames(winRtBase, winRtTypes))
-                .distinct()
-                .sorted()
-            return KotlinWinRtAuthoredTypeCandidate(
-                packageName = packageName,
-                className = className,
-                sourceTypeName = sourceTypeName,
-                winRtBaseClassName = winRtBase?.qualifiedName,
-                winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
-                overridableInterfaceNames = overridableInterfaces,
-                isPublic = source.isEffectivelyPublicClass(klass),
-            )
+            .map(IndexedWinRtType::qualifiedName)
+        val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
+        if (resolvedWinRtTypes.isEmpty()) {
+            return null
+        }
+        require(source.isRuntimeClassDeclaration(klass)) {
+            "WinRT authored type $sourceTypeName must be a concrete Kotlin class."
+        }
+        require(!source.isValueClass(klass)) {
+            "WinRT authored type $sourceTypeName must not be a Kotlin value class."
+        }
+        require(!source.isEffectivelyPublicClass(klass) || source.hasPublicDefaultActivationConstructor(klass)) {
+            "Public WinRT authored type $sourceTypeName must declare an accessible zero-argument constructor for default activation."
+        }
+        require(!source.hasTypeParameters(klass)) {
+            "WinRT authored type $sourceTypeName must not be generic."
+        }
+        require(!source.isUnsealedAuthoredClass(klass)) {
+            "WinRT authored class $sourceTypeName must be final."
+        }
+        require(!source.isNestedClass(klass)) {
+            "WinRT authored type $sourceTypeName must be a top-level Kotlin type; " +
+                "nested authored runtime classes are not supported."
+        }
+        val winRtBase = resolvedWinRtTypes.firstOrNull { type -> type.kind == "RuntimeClass" }
+        val directInterfaces = resolvedWinRtTypes
+            .filter { type -> type.kind == "Interface" }
+            .map { type -> type.qualifiedName }
+        val overridableInterfaces = (annotatedOverridableInterfaces + inheritedOverridableInterfaceNames(winRtBase, winRtTypes))
+            .distinct()
+            .sorted()
+        return KotlinWinRtAuthoredTypeCandidate(
+            packageName = packageName,
+            className = className,
+            sourceTypeName = sourceTypeName,
+            winRtBaseClassName = winRtBase?.qualifiedName,
+            winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
+            overridableInterfaceNames = overridableInterfaces,
+            isPublic = source.isEffectivelyPublicClass(klass),
+        )
     }
 
     private fun inheritedWinRtTypes(

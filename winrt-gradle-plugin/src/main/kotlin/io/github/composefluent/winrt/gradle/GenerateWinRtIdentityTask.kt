@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
+import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.authoring.renderAuthoringMetadataIndexRow
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -66,6 +68,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoringMetadataIndexFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredHostManifestFiles: ConfigurableFileCollection
 
     @get:InputFiles
@@ -102,6 +109,8 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
                 appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
                 appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
+                appendLine("  \"authoringMetadataIndexes\": ${authoringMetadataIndexFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
+                appendLine("  \"authoringMetadataIndexRows\": ${readAuthoringMetadataIndexRows(authoringMetadataIndexFiles.files).toJsonArray()},")
                 appendLine("  \"authoredHostManifests\": ${authoredHostManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
                 appendLine("  \"authoredTargetArtifacts\": ${authoredTargetArtifactFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
                 appendLine("  \"compilerSupportManifests\": ${compilerSupportManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
@@ -165,7 +174,29 @@ private fun splitProjectionRegistrarRow(line: String): List<String> {
 
 internal fun readCompilerSupportManifests(identityFile: File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val match = Regex(""""compilerSupportManifests"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+    return readIdentityJsonStringArray(content, "compilerSupportManifests")
+}
+
+internal fun readAuthoringMetadataIndexes(identityFile: File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    return readIdentityJsonStringArray(content, "authoringMetadataIndexes")
+}
+
+internal fun readAuthoringMetadataIndexRows(identityFile: File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    return readIdentityJsonStringArray(content, "authoringMetadataIndexRows")
+}
+
+private fun readAuthoringMetadataIndexRows(authoringMetadataIndexFiles: Iterable<File>): List<String> =
+    authoringMetadataIndexFiles
+        .filter(File::isFile)
+        .flatMap { file -> readAuthoringMetadataIndex(file.toPath()).values }
+        .distinctBy { type -> type.qualifiedName }
+        .sortedBy { type -> type.qualifiedName }
+        .map(::renderAuthoringMetadataIndexRow)
+
+private fun readIdentityJsonStringArray(content: String, propertyName: String): List<String> {
+    val match = Regex(""""${Regex.escape(propertyName)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
         .find(content) ?: return emptyList()
     return Regex(""""((?:\\.|[^"\\])*)"""")
         .findAll(match.groupValues[1])
@@ -174,7 +205,28 @@ internal fun readCompilerSupportManifests(identityFile: File): List<String> {
 }
 
 private fun String.decodeIdentityJsonString(): String =
-    replace("\\\"", "\"").replace("\\\\", "\\")
+    buildString {
+        var index = 0
+        while (index < this@decodeIdentityJsonString.length) {
+            val char = this@decodeIdentityJsonString[index++]
+            if (char != '\\' || index >= this@decodeIdentityJsonString.length) {
+                append(char)
+                continue
+            }
+            when (val escaped = this@decodeIdentityJsonString[index++]) {
+                '\\' -> append('\\')
+                '"' -> append('"')
+                'b' -> append('\b')
+                'n' -> append('\n')
+                'r' -> append('\r')
+                't' -> append('\t')
+                else -> {
+                    append('\\')
+                    append(escaped)
+                }
+            }
+        }
+    }
 
 internal fun List<String>.toJsonArray(): String =
     joinToString(prefix = "[", postfix = "]") { it.toJsonString() }

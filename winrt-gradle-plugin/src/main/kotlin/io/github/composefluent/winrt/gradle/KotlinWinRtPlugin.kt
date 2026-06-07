@@ -12,6 +12,7 @@ import org.gradle.api.Task
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
+import org.gradle.api.component.AdhocComponentWithVariants
 import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.file.CopySpec
 import org.gradle.api.plugins.JavaApplication
@@ -109,6 +110,11 @@ private fun configureWinRtLibraryModel(
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
+            task.authoringMetadataIndexFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
+                ),
+            )
             task.compilerSupportManifestFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/compiler-support.tsv",
@@ -133,7 +139,14 @@ private fun configureWinRtLibraryModel(
             })
         },
     )
-    configureWinRtIdentityProjectDependencies(project, identityElements)
+    project.plugins.withId("maven-publish") {
+        project.components.withType(AdhocComponentWithVariants::class.java).configureEach { component ->
+            component.addVariantsFromConfiguration(identityElements) { details ->
+                details.mapToOptional()
+            }
+        }
+    }
+    configureWinRtIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
     val dependencyIdentities = project.configurations.create(
         KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION,
         Action { configuration ->
@@ -145,12 +158,16 @@ private fun configureWinRtLibraryModel(
             )
         },
     )
-    configureWinRtIdentityProjectDependencies(project, dependencyIdentities)
+    configureWinRtIdentityProjectDependencies(project, dependencyIdentities, includeExternalModules = true)
+    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project, dependencyIdentities)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentities)
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
     project.tasks.named("mergeWinRtCompilerSupport", MergeWinRtCompilerSupportTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentities)
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+    }
+    project.tasks.withType(GenerateWinRtCompilerAuthoredTypeDetailsTask::class.java).configureEach { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
     project.extensions.extraProperties["kotlinWinRtIdentityElements"] = identityElements.name
     extension.whenApplicationConfigured {
@@ -199,12 +216,16 @@ private fun configureWinRtApplicationTasks(
             )
         },
     )
-    configureWinRtIdentityProjectDependencies(project, identityDependencies)
+    configureWinRtIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
+    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project, identityDependencies)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(identityDependencies)
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
     project.tasks.named("mergeWinRtCompilerSupport", MergeWinRtCompilerSupportTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(identityDependencies)
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+    }
+    project.tasks.withType(GenerateWinRtCompilerAuthoredTypeDetailsTask::class.java).configureEach { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
     val applicationIdentityTask = project.tasks.register(
         "generateWinRtApplicationIdentity",
@@ -227,7 +248,7 @@ private fun configureWinRtApplicationTasks(
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
-            task.dependencyIdentityFiles.from(identityDependencies)
+            task.dependencyIdentityFiles.from(dependencyIdentityFiles)
         },
     )
     val runtimeAssetsDirectory = project.layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
@@ -242,7 +263,7 @@ private fun configureWinRtApplicationTasks(
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.javaHome.set(project.provider { System.getProperty("java.home") })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
-            task.dependencyIdentityFiles.from(identityDependencies)
+            task.dependencyIdentityFiles.from(dependencyIdentityFiles)
         },
     )
     val resolveRuntimeNuGetPackagesTask = project.tasks.register(
@@ -261,8 +282,8 @@ private fun configureWinRtApplicationTasks(
                     allNuGetPackageSpecs(extension)
                 },
             )
-            task.dependencyIdentityFiles.from(identityDependencies)
-            val dependencyNuGetPackages = identityDependencies.elements.map { elements ->
+            task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+            val dependencyNuGetPackages = dependencyIdentityFiles.elements.map { elements ->
                 elements.map { it.asFile }.flatMap(::readNuGetPackages)
             }
             task.existingPackageContentFiles.from(
@@ -304,11 +325,11 @@ private fun configureWinRtApplicationTasks(
             task.runtimeAssets.set(extension.runtimeAssets)
             task.runtimeAssetFiles.from(extension.runtimeAssets)
             task.dependencyRuntimeAssetFiles.from(
-                identityDependencies.elements.map { elements ->
+                dependencyIdentityFiles.elements.map { elements ->
                     elements.map { it.asFile }.flatMap(::readRuntimeAssets)
                 },
             )
-            val dependencyNuGetPackages = identityDependencies.elements.map { elements ->
+            val dependencyNuGetPackages = dependencyIdentityFiles.elements.map { elements ->
                 elements.map { it.asFile }.flatMap(::readNuGetPackages)
             }
             task.nugetPackageContentFiles.from(
@@ -403,9 +424,9 @@ private fun configureWinRtApplicationTasks(
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
-            task.dependencyIdentityFiles.from(identityDependencies)
+            task.dependencyIdentityFiles.from(dependencyIdentityFiles)
             task.authoredTargetArtifactFiles.from(
-                identityDependencies.elements.map { elements ->
+                dependencyIdentityFiles.elements.map { elements ->
                     elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
                 },
             )
@@ -1272,8 +1293,10 @@ private fun addGeneratedSourcesToKotlinMain(
 private fun configureWinRtIdentityProjectDependencies(
     project: Project,
     identityDependencies: org.gradle.api.artifacts.Configuration,
+    includeExternalModules: Boolean,
 ) {
     val registeredProjectPaths = linkedSetOf<String>()
+    val registeredExternalModules = linkedSetOf<String>()
     fun registerDependency(dependency: ProjectDependency) {
         val dependencyProject = project.findProject(dependency.path)
         if (dependencyProject?.hasKotlinWinRtIdentityMetadata() == true &&
@@ -1282,19 +1305,27 @@ private fun configureWinRtIdentityProjectDependencies(
             identityDependencies.dependencies.add(dependency.copy())
         }
     }
+    fun registerDependency(dependency: ExternalModuleDependency) {
+        val key = listOf(dependency.group, dependency.name, dependency.version).joinToString(":")
+        if (registeredExternalModules.add(key)) {
+            identityDependencies.dependencies.add(dependency.copy())
+        }
+    }
     fun observeConfiguration(configurationName: String) {
         project.configurations.matching { it.name == configurationName }.configureEach { configuration ->
             configuration.allDependencies.configureEach { dependency ->
-                if (dependency is ProjectDependency) {
-                    registerDependency(dependency)
+                when (dependency) {
+                    is ProjectDependency -> registerDependency(dependency)
+                    is ExternalModuleDependency -> if (includeExternalModules) registerDependency(dependency)
                 }
             }
         }
     }
     fun scanConfiguration(configurationName: String) {
         project.configurations.findByName(configurationName)?.allDependencies?.forEach { dependency ->
-            if (dependency is ProjectDependency) {
-                registerDependency(dependency)
+            when (dependency) {
+                is ProjectDependency -> registerDependency(dependency)
+                is ExternalModuleDependency -> if (includeExternalModules) registerDependency(dependency)
             }
         }
     }
@@ -1322,6 +1353,18 @@ private fun configureWinRtIdentityProjectDependencies(
         }
     }
 }
+
+private fun kotlinWinRtIdentityFiles(
+    project: Project,
+    identityDependencies: org.gradle.api.artifacts.Configuration,
+): org.gradle.api.file.FileCollection =
+    identityDependencies.incoming.artifactView { view ->
+        view.isLenient = true
+        view.attributes.attribute(
+            Usage.USAGE_ATTRIBUTE,
+            project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+        )
+    }.files
 
 private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     project: Project,

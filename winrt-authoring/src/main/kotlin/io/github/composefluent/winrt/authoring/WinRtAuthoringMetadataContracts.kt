@@ -129,19 +129,25 @@ fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtType> {
     require(Files.isRegularFile(path)) {
         "kotlin-winrt authoring metadata index $path does not exist."
     }
+    return readAuthoringMetadataIndexRows(Files.readAllLines(path), path.toString())
+}
+
+fun readAuthoringMetadataIndexRows(
+    lines: Iterable<String>,
+    sourceName: String,
+): Map<String, IndexedWinRtType> {
     val types = linkedMapOf<String, IndexedWinRtType>()
-    Files.readAllLines(path)
-        .asSequence()
+    lines.asSequence()
         .forEachIndexed { index, line ->
             if (line.isBlank()) {
                 return@forEachIndexed
             } else {
                 val type = parseAuthoringMetadataIndexLine(line)
                     ?: throw IllegalArgumentException(
-                        "kotlin-winrt authoring metadata index row ${index + 1} in $path must contain type name and kind columns.",
+                        "kotlin-winrt authoring metadata index row ${index + 1} in $sourceName must contain type name and kind columns.",
                     )
                 require(!types.containsKey(type.qualifiedName)) {
-                    "kotlin-winrt authoring metadata index row ${index + 1} in $path duplicates type ${type.qualifiedName}."
+                    "kotlin-winrt authoring metadata index row ${index + 1} in $sourceName duplicates type ${type.qualifiedName}."
                 }
                 types[type.qualifiedName] = type
             }
@@ -153,24 +159,43 @@ fun writeAuthoringMetadataIndex(
     model: WinRtMetadataModel,
     output: Path,
 ) {
-    val lines = model.namespaces
-        .flatMap { namespace -> namespace.types }
-        .sortedBy { type -> type.qualifiedName }
-        .map { type ->
-            listOf(
-                type.qualifiedName,
-                type.kind.name,
-                type.implementedInterfaces
-                    .filter { implementation -> implementation.isOverridable }
-                    .map { implementation -> implementation.interfaceName }
-                    .distinct()
-                    .sorted()
-                    .joinToString(";"),
-                type.baseTypeName.orEmpty(),
-            ).joinToString("\t")
-        }
+    writeAuthoringMetadataIndex(
+        model.namespaces
+            .flatMap { namespace -> namespace.types }
+            .map { type ->
+                IndexedWinRtType(
+                    qualifiedName = type.qualifiedName,
+                    kind = type.kind.name,
+                    overridableInterfaces = type.implementedInterfaces
+                        .filter { implementation -> implementation.isOverridable }
+                        .map { implementation -> implementation.interfaceName }
+                        .distinct()
+                        .sorted(),
+                    baseTypeName = type.baseTypeName.orEmpty(),
+                )
+            },
+        output,
+    )
+}
+
+fun writeAuthoringMetadataIndex(
+    types: Iterable<IndexedWinRtType>,
+    output: Path,
+) {
+    val lines = types
+        .distinctBy(IndexedWinRtType::qualifiedName)
+        .sortedBy(IndexedWinRtType::qualifiedName)
+        .map(::renderAuthoringMetadataIndexRow)
     Files.write(output, lines)
 }
+
+fun renderAuthoringMetadataIndexRow(type: IndexedWinRtType): String =
+    listOf(
+        type.qualifiedName,
+        type.kind,
+        type.overridableInterfaces.distinct().sorted().joinToString(";"),
+        type.baseTypeName,
+    ).joinToString("\t")
 
 private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
     val parts = line.split('\t')

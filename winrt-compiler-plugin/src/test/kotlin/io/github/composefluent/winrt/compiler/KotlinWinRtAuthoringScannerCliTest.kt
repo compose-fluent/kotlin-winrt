@@ -326,6 +326,45 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun keeps_source_authored_type_when_metadata_index_already_contains_same_runtime_class() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-source-runtime-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package Sample
+
+            import microsoft.ui.xaml.Application
+
+            class App : Application()
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Application	RuntimeClass	Microsoft.UI.Xaml.IApplicationOverrides	System.Object
+            Microsoft.UI.Xaml.IApplicationOverrides	Interface
+            Sample.App	RuntimeClass	Microsoft.UI.Xaml.IApplicationOverrides	Microsoft.UI.Xaml.Application
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            "Sample\tApp\tSample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\n",
+            output.readText(),
+        )
+    }
+
+    @Test
     fun rejects_generic_authored_runtime_class_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-generic-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")

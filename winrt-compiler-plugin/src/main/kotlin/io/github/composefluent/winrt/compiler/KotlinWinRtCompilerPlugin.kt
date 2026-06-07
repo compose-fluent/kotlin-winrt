@@ -3281,8 +3281,9 @@ class KotlinWinRtIrGenerationExtension(
         if (sourceTypeName in sourceSubtypedNames && klass.modality != Modality.FINAL) {
             return null
         }
+        val projectedMetadataName = projectionPackageToMetadataName(sourceTypeName)
         if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
-            projectionPackageToMetadataName(sourceTypeName) in winRtTypes
+            (projectedMetadataName != sourceTypeName && projectedMetadataName in winRtTypes)
         ) {
             return null
         }

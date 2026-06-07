@@ -6,6 +6,8 @@ import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.authoring.authoringTypeDetailsRegistrarName
+import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
 import io.github.composefluent.winrt.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
@@ -233,15 +235,33 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val unfilteredModel = WinRtMetadataLoader.loadSources(sources)
         val effectiveIncludeTypes = parameters.includeTypes.get() +
             automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
-        val baseModel = unfilteredModel.filterProjectionSurface(
+        val applicationPackagingOnly = parameters.projectModel.get() == "application" &&
+            parameters.metadataInputs.get().isEmpty() &&
+            parameters.includeNamespaces.get().isEmpty() &&
+            parameters.includeTypes.get().isEmpty() &&
+            !parameters.generateWindowsSdkProjection.get()
+        val baseModel = if (applicationPackagingOnly) {
+            WinRtMetadataModel(emptyList())
+        } else {
+            unfilteredModel.filterProjectionSurface(
+                namespaces = parameters.includeNamespaces.get().toSet(),
+                types = effectiveIncludeTypes.toSet(),
+                excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
+                excludedTypes = effectiveExcludeTypes.toSet(),
+            )
+        }
+        val authoringMetadataBaseModel = unfilteredModel.filterProjectionSurface(
             namespaces = parameters.includeNamespaces.get().toSet(),
-            types = effectiveIncludeTypes.toSet(),
+            types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypeNames(parameters.dependencyIdentityFiles.files)).toSet(),
             excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
             excludedTypes = effectiveExcludeTypes.toSet(),
         )
         val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
         Files.createDirectories(authoringMetadataIndex.parent)
-        writeAuthoringMetadataIndex(baseModel, authoringMetadataIndex)
+        writeAuthoringMetadataIndex(
+            mergedAuthoringMetadataIndexTypes(authoringMetadataBaseModel, parameters.dependencyIdentityFiles.files),
+            authoringMetadataIndex,
+        )
         val authoringSourceRoots = parameters.sourceRoots.files
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
@@ -266,6 +286,10 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files)
         val exportedAuthoringCandidates = authoringCandidates.filter(KotlinWinRtAuthoredTypeCandidate::isPublic)
         val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
+        val authoringModel = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
+            authoringMetadataBaseModel,
+            exportedAuthoringCandidates,
+        )
         KotlinWinRtAuthoringMetadataModel.writeDescriptor(
             candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/authored-metadata.tsv"),
@@ -282,6 +306,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
+        val projectionModel = if (parameters.projectModel.get() == "application") baseModel else model
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             groupProjectionFilesByPackageOnWrite = true,
@@ -299,11 +324,14 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
                         .filterTo(mutableSetOf(), String::isNotBlank)
                 ),
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
-        ).generateTo(model, parameters.outputDirectory.get().asFile.toPath())
-        writeAuthoringMetadataIndex(model, authoringMetadataIndex)
+        ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
+        writeAuthoringMetadataIndex(
+            mergedAuthoringMetadataIndexTypes(authoringModel, parameters.dependencyIdentityFiles.files),
+            authoringMetadataIndex,
+        )
         KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
             candidates = authoringCandidates,
-            metadataModel = model,
+            metadataModel = authoringModel,
             outputDirectory = authoringTypeDetailsRoot,
             assemblyName = parameters.authoringAssemblyName.get(),
         )
@@ -390,11 +418,10 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         }
         val explicitNuGetRoots = parameters.nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
-        val packageIdentities = if (applicationPackagingOnly) {
-            emptyList()
-        } else {
-            parameters.nugetPackages.get().map(::parseNuGetPackageIdentity)
-        }
+        val packageSpecs = (parameters.nugetPackages.get() + parameters.dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
+            .distinct()
+            .sorted()
+        val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (parameters.restoreNuGetPackages.get()) {
             packageIdentities.filter { identity ->
@@ -601,6 +628,47 @@ internal fun dependencyProjectedTypeNames(
     identityFiles
         .flatMap { identityFile -> dependencyProjectedTypeNames(model, readProjectionSurfaceIdentity(identityFile)) }
         .toSortedSet()
+
+internal fun dependencyProjectionSurfaceTypeNames(
+    identityFiles: Iterable<java.io.File>,
+): List<String> =
+    identityFiles
+        .flatMap { identityFile ->
+            val identity = readProjectionSurfaceIdentity(identityFile)
+            identity.projectedTypes?.takeIf(List<String>::isNotEmpty) ?: identity.includeTypes
+        }
+        .distinct()
+        .sorted()
+
+internal fun mergedAuthoringMetadataIndexTypes(
+    model: WinRtMetadataModel,
+    identityFiles: Iterable<java.io.File>,
+) = (
+    model.namespaces
+        .flatMap { namespace -> namespace.types }
+        .map { type ->
+            io.github.composefluent.winrt.authoring.IndexedWinRtType(
+                qualifiedName = type.qualifiedName,
+                kind = type.kind.name,
+                overridableInterfaces = type.implementedInterfaces
+                    .filter { implementation -> implementation.isOverridable }
+                    .map { implementation -> implementation.interfaceName }
+                    .distinct()
+                    .sorted(),
+                baseTypeName = type.baseTypeName.orEmpty(),
+            )
+        } +
+        identityFiles
+            .flatMap(::readAuthoringMetadataIndexRows)
+            .let { rows -> parseAuthoringMetadataIndexRows(rows, "dependency identity authoringMetadataIndexRows").values } +
+        identityFiles
+            .flatMap(::readAuthoringMetadataIndexes)
+            .map(Path::of)
+            .filter(Files::isRegularFile)
+            .flatMap { path -> readAuthoringMetadataIndex(path).values }
+    )
+    .distinctBy { type -> type.qualifiedName }
+    .sortedBy { type -> type.qualifiedName }
 
 private fun dependencyProjectedTypeNames(
     model: WinRtMetadataModel,
