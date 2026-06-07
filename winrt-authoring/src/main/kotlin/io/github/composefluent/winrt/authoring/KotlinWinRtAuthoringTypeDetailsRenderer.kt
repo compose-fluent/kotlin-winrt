@@ -288,7 +288,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         FileSpec.builder(authoringTypeDetailsRegistrarPackage, registrarName)
             .addType(
                 TypeSpec.objectBuilder(registrarName)
-                    .addModifiers(KModifier.INTERNAL)
                     .addFunction(renderRegistrarRegister(candidates))
                     .build(),
             )
