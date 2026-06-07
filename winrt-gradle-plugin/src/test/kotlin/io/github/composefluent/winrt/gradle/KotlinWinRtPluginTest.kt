@@ -318,6 +318,7 @@ class KotlinWinRtPluginTest {
 
         val implementationDependencies = project.configurations.getByName("implementation").dependencies
         assertHasKotlinWinRtRuntimeDependency(implementationDependencies)
+        assertHasKotlinWinRtAuthoringDependency(implementationDependencies)
     }
 
     @Test
@@ -329,6 +330,7 @@ class KotlinWinRtPluginTest {
 
         val implementationDependencies = project.configurations.getByName("commonMainImplementation").dependencies
         assertHasKotlinWinRtRuntimeDependency(implementationDependencies)
+        assertHasKotlinWinRtAuthoringDependency(implementationDependencies)
     }
 
     @Test
@@ -7728,6 +7730,19 @@ private fun assertHasKotlinWinRtRuntimeDependency(dependencies: Iterable<Depende
         dependencies.any { dependency ->
             dependency.name == "winrt-runtime" ||
                 dependency is ProjectDependency && dependency.path == ":winrt-runtime" ||
+                dependency is FileCollectionDependency
+        },
+    )
+}
+
+private fun assertHasKotlinWinRtAuthoringDependency(dependencies: Iterable<Dependency>) {
+    assertTrue(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
+        },
+        dependencies.any { dependency ->
+            dependency.name == "winrt-authoring" ||
+                dependency is ProjectDependency && dependency.path == ":winrt-authoring" ||
                 dependency is FileCollectionDependency
         },
     )
