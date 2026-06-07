@@ -47,6 +47,11 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataInputFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val dependencyIdentityFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
 
@@ -106,7 +111,7 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         val sources = metadataSources()
         val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
             namespaces = includeNamespaces.get().toSet(),
-            types = includeTypes.get().toSet(),
+            types = (includeTypes.get() + dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles.files)).toSet(),
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
@@ -146,7 +151,10 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         }
         val explicitNuGetRoots = nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
-        val packageIdentities = nugetPackages.get().map(::parseNuGetPackageIdentity)
+        val packageSpecs = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
+            .distinct()
+            .sorted()
+        val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (restoreNuGetPackages.get()) {
             packageIdentities.filter { identity ->
