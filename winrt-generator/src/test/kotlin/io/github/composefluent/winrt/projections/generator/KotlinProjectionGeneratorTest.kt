@@ -13107,6 +13107,14 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "ConvertLocalToScreen",
+                                    returnTypeName = "Sample.Foundation.PointInt32",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("localPoint", "Sample.Foundation.Point"),
+                                    ),
+                                    methodRowId = 30,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ConvertLocalToScreen",
                                     returnTypeName = "Array<Sample.Foundation.PointInt32>",
                                     parameters = listOf(
                                         WinRtParameterDefinition("localPoints", "Array<Sample.Foundation.Point>"),
@@ -13138,6 +13146,14 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "ConvertLocalToScreen",
+                                    returnTypeName = "Sample.Foundation.PointInt32",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("localPoint", "Sample.Foundation.Point"),
+                                    ),
+                                    methodRowId = 30,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ConvertLocalToScreen",
                                     returnTypeName = "Array<Sample.Foundation.PointInt32>",
                                     parameters = listOf(
                                         WinRtParameterDefinition("localPoints", "Array<Sample.Foundation.Point>"),
@@ -13160,11 +13176,11 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+        val files = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("CoordinateConverter.kt")
-            .contents
+        val contents = files.getValue("CoordinateConverter.kt").contents
+        val interfaceContents = files.getValue("ICoordinateConverter.kt").contents
 
         if (contents.contains("_iCoordinateConverterProjection")) {
             assertTrue(contents.contains("_iCoordinateConverterProjection.convert"))
@@ -13177,6 +13193,12 @@ class KotlinProjectionGeneratorTest {
             assertTrue(contents.contains("roundingMode.abiValue"))
             assertTrue(contents.contains("Array(__arrayLength) { __index ->"))
         }
+        assertTrue(interfaceContents.contains("fun convertLocalToScreen(localPoint: Point): PointInt32"))
+        assertTrue(interfaceContents.contains("localPoint"))
+        assertTrue(interfaceContents.contains("ICoordinateConverter.Metadata.CONVERTLOCALTOSCREEN_30_SLOT"))
+        assertTrue(interfaceContents.contains("\"RawAddress,RawAddress\""))
+        assertTrue(interfaceContents.contains("PointInt32.Metadata.fromAbi(__resultOut)"))
+        assertTrue(interfaceContents.contains("fun convertLocalToScreen(localPoints: Array<Point>): Array<PointInt32>"))
         assertTrue(
             contents.contains("PointInt32.Metadata.fromAbi(") ||
                 contents.contains("_iCoordinateConverterProjection"),
