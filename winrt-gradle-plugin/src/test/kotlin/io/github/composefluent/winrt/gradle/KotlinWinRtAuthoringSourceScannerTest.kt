@@ -24,6 +24,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
@@ -221,6 +222,62 @@ class KotlinWinRtAuthoringSourceScannerTest {
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("authored host manifest handoff mismatch"),
         )
+    }
+
+    @Test
+    fun validates_type_details_handoff_when_only_formatting_differs() {
+        val scanner = Files.createTempDirectory("kotlin-winrt-scanner-typedetails-")
+        val compiler = Files.createTempDirectory("kotlin-winrt-compiler-typedetails-")
+        val relativePath = Path.of("sample/WinRT_App_TypeDetails.kt")
+        Files.createDirectories(scanner.resolve(relativePath).parent)
+        Files.createDirectories(compiler.resolve(relativePath).parent)
+        scanner.resolve(relativePath).writeText(
+            """
+            object WinRT_App_TypeDetails {
+                val names = listOf("A", "B")
+            }
+            """.trimIndent(),
+        )
+        compiler.resolve(relativePath).writeText(
+            """
+            object WinRT_App_TypeDetails
+            {
+                val names =
+                    listOf(
+                        "A",
+                        "B"
+                    )
+            }
+            """.trimIndent(),
+        )
+
+        validateAuthoredDirectoryHandoff(
+            description = "authored TypeDetails",
+            scannerDirectory = scanner.toFile(),
+            compilerDirectory = compiler.toFile(),
+        )
+    }
+
+    @Test
+    fun rejects_type_details_handoff_when_tokens_differ() {
+        val scanner = Files.createTempDirectory("kotlin-winrt-scanner-typedetails-")
+        val compiler = Files.createTempDirectory("kotlin-winrt-compiler-typedetails-")
+        val relativePath = Path.of("sample/WinRT_App_TypeDetails.kt")
+        Files.createDirectories(scanner.resolve(relativePath).parent)
+        Files.createDirectories(compiler.resolve(relativePath).parent)
+        scanner.resolve(relativePath).writeText("object WinRT_App_TypeDetails { val name = \"A\" }")
+        compiler.resolve(relativePath).writeText("object WinRT_App_TypeDetails { val name = \"B\" }")
+
+        val error = runCatching {
+            validateAuthoredDirectoryHandoff(
+                description = "authored TypeDetails",
+                scannerDirectory = scanner.toFile(),
+                compilerDirectory = compiler.toFile(),
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is GradleException)
+        assertTrue(error!!.message.orEmpty(), error.message.orEmpty().contains("Changed files: sample/WinRT_App_TypeDetails.kt"))
     }
 
     @Test

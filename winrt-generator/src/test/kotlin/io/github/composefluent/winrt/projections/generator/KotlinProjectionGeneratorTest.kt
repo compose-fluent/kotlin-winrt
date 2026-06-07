@@ -7572,6 +7572,10 @@ class KotlinProjectionGeneratorTest {
             ?: start.indexOf("ComVtableInvoker.invoke(").takeIf { it >= 0 }
             ?: start.indexOf("ComVtableInvoker.invokeArgs(")
         assertTrue(start, startAbiCallIndex >= 0)
+        assertTrue(start, start.contains("WinRtDelegateBridge.createDelegateArgument("))
+        assertTrue(start, start.contains("callback = { __args ->"))
+        assertTrue(start, start.contains("__callbackAbi.abi"))
+        assertFalse(start, start.contains("createReference().use"))
         assertTrue(application, application.contains("override fun exit()"))
         val exit = application.substringAfter("override fun exit()").substringBefore("override fun")
         assertFalse(exit, exit.contains("WinRtXamlProjectionSupportIntrinsic"))
@@ -8136,7 +8140,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("parameterKinds = listOf(WinRtDelegateValueKind.HSTRING)"))
         assertTrue(widgetContents.contains("WinRtDelegateValueKind.UNIT"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
-        assertTrue(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
+        assertTrue(widgetContents.contains("WinRtDelegateBridge.createDelegateArgument("))
+        assertTrue(widgetContents.contains("__handlerAbi.abi"))
+        assertFalse(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"WinRT ABI binding is unavailable\")"))
         assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken = error(\"WinRT ABI binding is unavailable\")"))
     }
