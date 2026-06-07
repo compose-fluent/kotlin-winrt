@@ -129,17 +129,16 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
     if (parameterBinding.typeBinding.isNullableAbiTypeName) {
         return nullableDelegateParameterMarshaler(parameterBinding, invokeShape, delegateIid)
     }
-    val handleName = "__${parameterBinding.name}Handle"
-    val abiReferenceName = "__${parameterBinding.name}Abi"
+    val abiName = "__${parameterBinding.name}Abi"
     return KotlinProjectionAbiMarshalerPlan(
         name = parameterBinding.name,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, abiReferenceName),
+        abiArgumentExpression = CodeBlock.of("%L.abi", abiName),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(
-                "%T.createDelegate(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L) { __args ->\n%L(%L)\n}.use { %L ->",
+                "%T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, callback = { __args ->\n%L(%L)\n}).use { %L ->",
                 WINRT_DELEGATE_BRIDGE_CLASS_NAME,
                 delegateIid,
                 delegateParameterKindsCode(invokeShape.parameterBindings),
@@ -148,9 +147,8 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
                 delegateReturnStructAdapterCode(invokeShape.returnBinding),
                 parameterBinding.name,
                 delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
-                handleName,
+                abiName,
             ),
-            CodeBlock.of("%L.createReference().use { %L ->", handleName, abiReferenceName),
         ),
     )
 }

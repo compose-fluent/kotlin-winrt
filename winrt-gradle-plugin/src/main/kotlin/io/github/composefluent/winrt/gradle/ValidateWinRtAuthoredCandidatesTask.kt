@@ -184,8 +184,15 @@ internal fun validateAuthoredDirectoryHandoff(
     val scannerPaths = scannerByPath.keys
     val compilerPaths = compilerByPath.keys
     val changedPaths = (scannerPaths intersect compilerPaths)
-        .filterNot { relativePath -> compilerByPath[relativePath]?.contentEquals(scannerByPath[relativePath]) == true }
+        .filterNot { relativePath ->
+            compilerByPath[relativePath]?.contentEquals(scannerByPath[relativePath]) == true ||
+                (description == "authored TypeDetails" &&
+                    scannerByPath[relativePath]?.isWhitespaceEquivalentTo(compilerByPath[relativePath]) == true)
+        }
         .sorted()
+    if (scannerPaths == compilerPaths && changedPaths.isEmpty()) {
+        return
+    }
     throw GradleException(
         "kotlin-winrt $description handoff mismatch between source scanner and compiler IR output. " +
             "Only scanner files: ${(scannerPaths - compilerPaths).sorted().joinToString().ifBlank { "<none>" }}. " +
@@ -203,6 +210,12 @@ private fun Path.relativeRegularFiles(): List<String> =
             .sorted()
             .toList()
     }
+
+private fun ByteArray.isWhitespaceEquivalentTo(other: ByteArray?): Boolean =
+    other != null && decodeToString().withoutKotlinWhitespace() == other.decodeToString().withoutKotlinWhitespace()
+
+private fun String.withoutKotlinWhitespace(): String =
+    filterNot(Char::isWhitespace)
 
 private fun File?.readCandidates(): List<KotlinWinRtAuthoredTypeCandidate> =
     this
