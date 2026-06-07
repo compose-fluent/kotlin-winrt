@@ -420,6 +420,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_allows_artifact_scoped_authoring_type_details_registrar_class_names() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-authoring-registrar-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            authoring-type-details-registrar	io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar_sample_lib	authoring-type-details-registrars.tsv	1
+            """.trimIndent() + "\n",
+        )
+
+        val entries = readCompilerSupportManifest(manifest)
+
+        assertEquals(1, entries.size)
+        assertEquals("authoring-type-details-registrar", entries.single().kind)
+        assertEquals(
+            "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar_sample_lib",
+            entries.single().className,
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_mismatched_source_files() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-mismatched-source-", ".tsv")
         Files.writeString(

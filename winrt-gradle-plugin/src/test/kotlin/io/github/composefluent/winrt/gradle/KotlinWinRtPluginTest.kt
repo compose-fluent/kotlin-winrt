@@ -5788,6 +5788,20 @@ class KotlinWinRtPluginTest {
                     check(supportRoot.walkTopDown().any { it.name.startsWith("WinRTProjectionSupport_") && it.extension == "class" }) {
                         "Expected compiler-generated projection support initializer under: " + supportRoot
                     }
+                    val generatedCompilerSupportRoot = layout.buildDirectory.dir(
+                        "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support",
+                    ).get().asFile
+                    val generatedCompilerSupportManifest = generatedCompilerSupportRoot.resolve("compiler-support.tsv")
+                    check(
+                        generatedCompilerSupportManifest.readText().contains(
+                            "authoring-type-details-registrar\t" +
+                                "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar_kotlin_winrt_kmp_plugin_test\t" +
+                                "authoring-type-details-registrars.tsv\t1",
+                        ),
+                    ) {
+                        "Expected generated compiler support to publish authoring TypeDetails registrar: " +
+                            generatedCompilerSupportManifest.readText()
+                    }
                     val legacyInterfaceRegistry = supportRoot.resolve("WinRTInterfaceProjectionRegistry.class")
                     check(!legacyInterfaceRegistry.exists()) {
                         "Legacy interface projection registry must not be generated: " + legacyInterfaceRegistry

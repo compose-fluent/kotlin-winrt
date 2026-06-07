@@ -58,6 +58,7 @@ import org.jetbrains.kotlin.ir.builders.irByte
 import org.jetbrains.kotlin.ir.builders.declarations.buildFun
 import org.jetbrains.kotlin.ir.builders.declarations.buildValueParameter
 import org.jetbrains.kotlin.ir.builders.declarations.IrValueParameterBuilder
+import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
@@ -263,6 +264,7 @@ class KotlinWinRtIrGenerationExtension(
             .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
             ?.className
         val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
+        val authoringRegistrarEntries = readAuthoringTypeDetailsRegistrarEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries)
         val genericTypeInstantiationIntrinsicCalls =
             collectGenericTypeInstantiationSupportIntrinsicCalls(moduleFragment)
@@ -299,7 +301,7 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext = pluginContext,
             support = genericAbiSupport,
         )
-        lowerAuthoringSupportIntrinsicCalls(moduleFragment, pluginContext)
+        lowerAuthoringSupportIntrinsicCalls(moduleFragment, pluginContext, authoringRegistrarEntries)
         lowerProjectionIntrinsics(moduleFragment, pluginContext)
         if (metadataIndexPath.isNullOrBlank()) {
             writeProjectionTypeIndex(emptyList(), emptyMap())
@@ -323,14 +325,22 @@ class KotlinWinRtIrGenerationExtension(
             .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
             .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
             .toList()
+        val sourceSubtypedNames = sourceSubtypedNames(classContexts)
         val authoredTypeNames = classContexts
             .filter(::isEffectivelyAuthorable)
-            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes, isEffectivelyPublic(context))?.sourceTypeName }
+            .mapNotNull { context ->
+                authoredTypeFor(
+                    klass = context.klass,
+                    winRtTypes = winRtTypes,
+                    isPublic = isEffectivelyPublic(context),
+                    sourceSubtypedNames = sourceSubtypedNames,
+                )?.sourceTypeName
+            }
             .toSet()
         lowerAuthoredTypeConstructors(moduleFragment, pluginContext, authoredTypeNames)
         lowerAuthoredTypeConstructorCalls(moduleFragment, pluginContext, authoredTypeNames)
         writeProjectionTypeIndex(classContexts, winRtTypes)
-        val authoredCandidates = authoredCandidates(classContexts, winRtTypes)
+        val authoredCandidates = authoredCandidates(classContexts, winRtTypes, sourceSubtypedNames)
         writeAuthoredCandidates(authoredCandidates)
         writeAuthoredSupportArtifacts(authoredCandidates)
         reportRuntimeClassCastDiagnostics(moduleFragment, pluginContext, winRtTypes, authoredCandidates, generatedSourceRoot)
@@ -339,7 +349,7 @@ class KotlinWinRtIrGenerationExtension(
             if (!isEffectivelyAuthorable(context)) {
                 return@forEach
             }
-            val authoredType = authoredTypeFor(klass, winRtTypes, isEffectivelyPublic(context)) ?: return@forEach
+            val authoredType = authoredTypeFor(klass, winRtTypes, isEffectivelyPublic(context), sourceSubtypedNames) ?: return@forEach
             validateAuthoredType(klass, authoredType, pluginContext.afterK2, reportError)
         }
     }
@@ -3164,6 +3174,19 @@ class KotlinWinRtIrGenerationExtension(
         )
     }
 
+    private fun readAuthoringTypeDetailsRegistrarEntries(
+        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    ): List<KotlinWinRtAuthoringTypeDetailsRegistrarEntry> {
+        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
+        return readCompilerSupportInputEntries(
+            manifestPath = manifestPath,
+            manifestEntries = manifestEntries,
+            kind = "authoring-type-details-registrar",
+            description = "authoring type-details registrar input",
+            read = ::readAuthoringTypeDetailsRegistrarEntries,
+        )
+    }
+
     private fun writeProjectionTypeIndex(
         classContexts: List<AuthoredIrClassContext>,
         winRtTypes: Map<String, IndexedWinRtType>,
@@ -3191,11 +3214,12 @@ class KotlinWinRtIrGenerationExtension(
     private fun authoredCandidates(
         classContexts: List<AuthoredIrClassContext>,
         winRtTypes: Map<String, IndexedWinRtType>,
+        sourceSubtypedNames: Set<String> = sourceSubtypedNames(classContexts),
     ): List<KotlinWinRtAuthoredTypeCandidate> =
         classContexts
             .asSequence()
             .filter(::isEffectivelyAuthorable)
-            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes, isEffectivelyPublic(context)) }
+            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes, isEffectivelyPublic(context), sourceSubtypedNames) }
             .distinctBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .sortedBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .toList()
@@ -3251,18 +3275,19 @@ class KotlinWinRtIrGenerationExtension(
         klass: IrClass,
         winRtTypes: Map<String, IndexedWinRtType>,
         isPublic: Boolean = true,
+        sourceSubtypedNames: Set<String> = emptySet(),
     ): KotlinWinRtAuthoredTypeCandidate? {
         val sourceTypeName = klass.fqNameWhenAvailable?.asString() ?: return null
+        if (sourceTypeName in sourceSubtypedNames && klass.modality != Modality.FINAL) {
+            return null
+        }
         if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
             projectionPackageToMetadataName(sourceTypeName) in winRtTypes
         ) {
             return null
         }
         val annotation = authoredRuntimeClassAnnotation(klass, winRtTypes)
-        val inheritedWinRtTypes = klass.superTypes
-            .mapNotNull { type -> type.classFqName?.asString() }
-            .map(::projectionPackageToMetadataName)
-            .mapNotNull(winRtTypes::get)
+        val inheritedWinRtTypes = inheritedWinRtTypes(klass, winRtTypes)
         val resolvedWinRtTypes = annotation.resolvedTypes + inheritedWinRtTypes
         if (resolvedWinRtTypes.isEmpty()) {
             return null
@@ -3286,6 +3311,34 @@ class KotlinWinRtIrGenerationExtension(
             isPublic = isPublic,
         )
     }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun sourceSubtypedNames(classContexts: List<AuthoredIrClassContext>): Set<String> {
+        val sourceClassNames = classContexts
+            .mapNotNullTo(mutableSetOf()) { context -> context.klass.fqNameWhenAvailable?.asString() }
+        return classContexts
+            .asSequence()
+            .flatMap { context -> context.klass.superTypes.asSequence() }
+            .mapNotNull { type -> type.classOrNull?.owner?.fqNameWhenAvailable?.asString() }
+            .filterTo(mutableSetOf()) { typeName -> typeName in sourceClassNames }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun inheritedWinRtTypes(
+        klass: IrClass,
+        winRtTypes: Map<String, IndexedWinRtType>,
+        visitedSourceTypes: MutableSet<String> = mutableSetOf(),
+    ): List<IndexedWinRtType> =
+        klass.superTypes.flatMap { type ->
+            val superTypeName = type.classFqName?.asString() ?: return@flatMap emptyList()
+            winRtTypes[projectionPackageToMetadataName(superTypeName)]?.let { return@flatMap listOf(it) }
+            val superClass = type.classOrNull?.owner ?: return@flatMap emptyList()
+            val sourceTypeName = superClass.fqNameWhenAvailable?.asString() ?: return@flatMap emptyList()
+            if (!visitedSourceTypes.add(sourceTypeName)) {
+                return@flatMap emptyList()
+            }
+            inheritedWinRtTypes(superClass, winRtTypes, visitedSourceTypes)
+        }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun authoredRuntimeClassAnnotation(
@@ -4453,9 +4506,10 @@ class KotlinWinRtIrGenerationExtension(
     private fun lowerAuthoringSupportIntrinsicCalls(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
+        manifestEntries: List<KotlinWinRtAuthoringTypeDetailsRegistrarEntry>,
     ) {
         val lookupFile = moduleFragment.files.firstOrNull()
-        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext, lookupFile)
+        val registrars = authoringTypeDetailsRegistrarRegisters(pluginContext, lookupFile, manifestEntries)
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
@@ -4470,13 +4524,17 @@ class KotlinWinRtIrGenerationExtension(
                             )
                         }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
-                    val resolvedRegistrar = requireCompilerSupportPrerequisite(
+                    val resolvedRegistrars = requireCompilerSupportPrerequisite(
                         description = "authoring type-details registrar",
                         prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
-                        value = registrar,
+                        value = registrars.takeIf(List<*>::isNotEmpty),
                     )
-                    return builder.irCall(resolvedRegistrar.register).apply {
-                        dispatchReceiver = builder.irGetObject(resolvedRegistrar.registrarClass)
+                    return builder.irBlock(resultType = call.type) {
+                        resolvedRegistrars.forEach { resolvedRegistrar ->
+                            +builder.irCall(resolvedRegistrar.register).apply {
+                                dispatchReceiver = builder.irGetObject(resolvedRegistrar.registrarClass)
+                            }
+                        }
                     }
                 }
             },
@@ -4569,6 +4627,43 @@ class KotlinWinRtIrGenerationExtension(
         val registrarName = authoringTypeDetailsRegistrarName(authoringAssemblyName)
         val registrarClass = pluginContext.findClassSymbol(
             ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.$registrarName")),
+            fromFile,
+        ) ?: return null
+        val register = registrarClass
+            .owner
+            .declarations
+            .filterIsInstance<IrSimpleFunction>()
+            .singleOrNull { function ->
+                function.name.asString() == "register" &&
+                    function.parameters.none { parameter -> parameter.kind == IrParameterKind.Regular }
+            }
+            ?.symbol
+            ?: return null
+        return AuthoringTypeDetailsRegistrar(registrarClass, register)
+    }
+
+    private fun authoringTypeDetailsRegistrarRegisters(
+        pluginContext: IrPluginContext,
+        fromFile: IrFile?,
+        manifestEntries: List<KotlinWinRtAuthoringTypeDetailsRegistrarEntry>,
+    ): List<AuthoringTypeDetailsRegistrar> {
+        val currentRegistrarName = authoringTypeDetailsRegistrarName(authoringAssemblyName)
+        val classNames = (manifestEntries.map(KotlinWinRtAuthoringTypeDetailsRegistrarEntry::className) +
+            "io.github.composefluent.winrt.projections.support.$currentRegistrarName")
+            .distinct()
+        return classNames.mapNotNull { className ->
+            authoringTypeDetailsRegistrarRegister(pluginContext, fromFile, className)
+        }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun authoringTypeDetailsRegistrarRegister(
+        pluginContext: IrPluginContext,
+        fromFile: IrFile?,
+        className: String,
+    ): AuthoringTypeDetailsRegistrar? {
+        val registrarClass = pluginContext.findClassSymbol(
+            ClassId.topLevel(FqName(className)),
             fromFile,
         ) ?: return null
         val register = registrarClass
@@ -5002,7 +5097,13 @@ private fun String.toKotlinSupportIdentifierSuffix(): String =
         }
 
 private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
-    setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry", "xaml-component-resource")
+    setOf(
+        "projection-registrar",
+        "generic-type-instantiation",
+        "generic-abi-registry",
+        "xaml-component-resource",
+        "authoring-type-details-registrar",
+    )
 
 private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
     "kind\tclassName\tsourceFile\tentries"
@@ -5024,6 +5125,10 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
         "xaml-component-resource" to CompilerSupportManifestExpectedEntry(
             className = "io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources",
             sourceFile = "xaml-component-resources.tsv",
+        ),
+        "authoring-type-details-registrar" to CompilerSupportManifestExpectedEntry(
+            className = null,
+            sourceFile = "authoring-type-details-registrars.tsv",
         ),
     )
 
@@ -5087,6 +5192,10 @@ data class KotlinWinRtProjectionRegistrarEntry(
     val kind: String,
     val baseTypeName: String,
     val metadataClassName: String,
+)
+
+data class KotlinWinRtAuthoringTypeDetailsRegistrarEntry(
+    val className: String,
 )
 
 fun <T : Any> resolveProjectionRegistrarClasses(
@@ -5158,6 +5267,35 @@ private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionReg
 
 private val PROJECTION_REGISTRAR_KINDS: Set<String> =
     setOf("Interface", "RuntimeClass", "Enum", "Struct", "Delegate")
+
+fun readAuthoringTypeDetailsRegistrarEntries(path: Path): List<KotlinWinRtAuthoringTypeDetailsRegistrarEntry> {
+    val entries = readRequiredTsvRows(
+        path = path,
+        description = "authoring type-details registrar input",
+        expectedHeader = AUTHORING_TYPE_DETAILS_REGISTRAR_HEADER,
+        parse = ::parseAuthoringTypeDetailsRegistrarLine,
+    )
+    val duplicate = entries
+        .groupBy(KotlinWinRtAuthoringTypeDetailsRegistrarEntry::className)
+        .entries
+        .firstOrNull { (_, values) -> values.size > 1 }
+        ?.key
+    require(duplicate == null) {
+        "kotlin-winrt compiler plugin found duplicate authoring type-details registrar input for class $duplicate in $path."
+    }
+    return entries
+}
+
+private const val AUTHORING_TYPE_DETAILS_REGISTRAR_HEADER: String =
+    "className"
+
+private fun parseAuthoringTypeDetailsRegistrarLine(line: String): KotlinWinRtAuthoringTypeDetailsRegistrarEntry? {
+    val parts = line.split('\t')
+    if (parts.size != 1 || parts[0].isBlank()) {
+        return null
+    }
+    return KotlinWinRtAuthoringTypeDetailsRegistrarEntry(parts[0])
+}
 
 fun writeProjectionSupportInitializerClass(
     entries: List<KotlinWinRtProjectionRegistrarEntry>,

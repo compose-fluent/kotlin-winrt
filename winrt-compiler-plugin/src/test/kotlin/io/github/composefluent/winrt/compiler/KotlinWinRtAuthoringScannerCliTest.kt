@@ -207,6 +207,51 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun scans_leaf_runtime_class_candidates_through_source_application_base() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-indirect-application-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Base.kt").writeText(
+            """
+            package sample
+
+            import microsoft.ui.xaml.Application
+
+            internal open class ComposeApplicationBase : Application()
+            """.trimIndent(),
+        )
+        root.resolve("App.kt").writeText(
+            """
+            package sample
+
+            internal class WinUIXamlApplication : ComposeApplicationBase()
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Application	RuntimeClass	Microsoft.UI.Xaml.IApplicationOverrides
+            Microsoft.UI.Xaml.IApplicationOverrides	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            "sample\tWinUIXamlApplication\tsample.WinUIXamlApplication\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\tfalse",
+            output.readText().trimEnd(),
+        )
+    }
+
+    @Test
     fun rejects_nested_authored_runtime_class_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-nested-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")

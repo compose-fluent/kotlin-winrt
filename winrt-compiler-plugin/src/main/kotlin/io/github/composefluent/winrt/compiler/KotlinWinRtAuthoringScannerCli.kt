@@ -55,8 +55,27 @@ object KotlinWinRtAuthoringScannerCli {
             .flatMap(::kotlinSourceFiles)
             .distinct()
             .sorted()
-        val candidates = sourceFiles
-            .flatMap { source -> scanSource(parseSource(source), winRtTypes) }
+        val sources = sourceFiles.map(::parseSource)
+        val sourceClasses = sources.flatMap { source ->
+            val packageName = source.packageName()
+            val imports = parseImports(source)
+            source.classes().mapNotNull { klass ->
+                val className = source.className(klass) ?: return@mapNotNull null
+                val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
+                SourceClass(source, klass, packageName, imports, className, sourceTypeName)
+            }
+        }
+        val sourceClassIndex = sourceClasses.associateBy(SourceClass::sourceTypeName)
+        val sourceSubtypedNames = sourceClasses
+            .flatMap { sourceClass ->
+                sourceClass.source.superTypeNames(sourceClass.klass)
+                    .mapNotNull { superType ->
+                        resolveSourceTypeName(superType, sourceClass.packageName, sourceClass.imports, sourceClassIndex)
+                    }
+            }
+            .toSet()
+        val candidates = sourceClasses
+            .mapNotNull { sourceClass -> scanSourceClass(sourceClass, sourceClassIndex, sourceSubtypedNames, winRtTypes) }
         val duplicateTypeNames = candidates
             .groupBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
             .filterValues { matches -> matches.size > 1 }
@@ -69,23 +88,31 @@ object KotlinWinRtAuthoringScannerCli {
         return candidates.sortedBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
     }
 
-    private fun scanSource(
-        source: KotlinLightSource,
+    private fun scanSourceClass(
+        sourceClass: SourceClass,
+        sourceClassIndex: Map<String, SourceClass>,
+        sourceSubtypedNames: Set<String>,
         winRtTypes: Map<String, IndexedWinRtType>,
-    ): List<KotlinWinRtAuthoredTypeCandidate> {
-        val packageName = source.packageName()
-        val imports = parseImports(source)
-        return source.classes().filter(source::isEffectivelyAuthorableClass).mapNotNull { klass ->
-            val className = source.className(klass) ?: return@mapNotNull null
-            val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
+    ): KotlinWinRtAuthoredTypeCandidate? {
+        val source = sourceClass.source
+        val klass = sourceClass.klass
+        val packageName = sourceClass.packageName
+        val imports = sourceClass.imports
+        val className = sourceClass.className
+        val sourceTypeName = sourceClass.sourceTypeName
+        if (!source.isEffectivelyAuthorableClass(klass)) {
+            return null
+        }
+        if (sourceTypeName in sourceSubtypedNames && source.isUnsealedAuthoredClass(klass)) {
+            return null
+        }
             if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX) ||
                 projectionPackageToMetadataName(sourceTypeName) in winRtTypes
             ) {
-                return@mapNotNull null
+                return null
             }
             val annotation = source.authoredRuntimeClassAnnotation(klass, packageName, imports)
-            val inheritedWinRtTypes = source.superTypeNames(klass)
-                .mapNotNull { superType -> resolveIndexedWinRtType(superType, packageName, imports, winRtTypes) }
+            val inheritedWinRtTypes = inheritedWinRtTypes(sourceClass, sourceClassIndex, winRtTypes)
             val annotatedBase = annotation.baseClassName
                 ?.let { typeName ->
                     resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
@@ -113,7 +140,7 @@ object KotlinWinRtAuthoringScannerCli {
                 .map(IndexedWinRtType::qualifiedName)
             val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
             if (resolvedWinRtTypes.isEmpty()) {
-                return@mapNotNull null
+                return null
             }
             require(source.isRuntimeClassDeclaration(klass)) {
                 "WinRT authored type $sourceTypeName must be a concrete Kotlin class."
@@ -141,7 +168,7 @@ object KotlinWinRtAuthoringScannerCli {
             val overridableInterfaces = (annotatedOverridableInterfaces + inheritedOverridableInterfaceNames(winRtBase, winRtTypes))
                 .distinct()
                 .sorted()
-            KotlinWinRtAuthoredTypeCandidate(
+            return KotlinWinRtAuthoredTypeCandidate(
                 packageName = packageName,
                 className = className,
                 sourceTypeName = sourceTypeName,
@@ -150,8 +177,55 @@ object KotlinWinRtAuthoringScannerCli {
                 overridableInterfaceNames = overridableInterfaces,
                 isPublic = source.isEffectivelyPublicClass(klass),
             )
-        }.toList()
     }
+
+    private fun inheritedWinRtTypes(
+        sourceClass: SourceClass,
+        sourceClassIndex: Map<String, SourceClass>,
+        winRtTypes: Map<String, IndexedWinRtType>,
+        visitedSourceTypes: MutableSet<String> = mutableSetOf(),
+    ): List<IndexedWinRtType> =
+        sourceClass.source.superTypeNames(sourceClass.klass).flatMap { superType ->
+            resolveIndexedWinRtType(superType, sourceClass.packageName, sourceClass.imports, winRtTypes)
+                ?.let { return@flatMap listOf(it) }
+            val resolvedSourceTypeName = resolveSourceTypeName(
+                superType,
+                sourceClass.packageName,
+                sourceClass.imports,
+                sourceClassIndex,
+            ) ?: return@flatMap emptyList()
+            if (!visitedSourceTypes.add(resolvedSourceTypeName)) {
+                return@flatMap emptyList()
+            }
+            val resolvedSourceClass = sourceClassIndex[resolvedSourceTypeName] ?: return@flatMap emptyList()
+            inheritedWinRtTypes(resolvedSourceClass, sourceClassIndex, winRtTypes, visitedSourceTypes)
+        }
+
+    private fun resolveSourceTypeName(
+        typeName: String,
+        packageName: String,
+        imports: KotlinImports,
+        sourceClassIndex: Map<String, SourceClass>,
+    ): String? {
+        val candidates = buildList {
+            add(typeName)
+            imports.explicit[typeName]?.let(::add)
+            imports.wildcards.forEach { wildcard -> add("$wildcard.$typeName") }
+            if (packageName.isNotBlank()) {
+                add("$packageName.$typeName")
+            }
+        }
+        return candidates.firstOrNull(sourceClassIndex::containsKey)
+    }
+
+    private data class SourceClass(
+        val source: KotlinLightSource,
+        val klass: LighterASTNode,
+        val packageName: String,
+        val imports: KotlinImports,
+        val className: String,
+        val sourceTypeName: String,
+    )
 
     private fun parseSource(source: Path): KotlinLightSource {
         ensureKotlinApplicationEnvironment()

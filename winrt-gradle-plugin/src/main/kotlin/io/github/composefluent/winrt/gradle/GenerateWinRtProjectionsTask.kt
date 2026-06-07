@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.authoring.authoringTypeDetailsRegistrarName
 import io.github.composefluent.winrt.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
@@ -305,6 +306,39 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             outputDirectory = authoringTypeDetailsRoot,
             assemblyName = parameters.authoringAssemblyName.get(),
         )
+        writeAuthoringTypeDetailsRegistrarSupport(
+            generatedRoot = generatedRoot,
+            assemblyName = parameters.authoringAssemblyName.get(),
+        )
+    }
+
+    private fun writeAuthoringTypeDetailsRegistrarSupport(
+        generatedRoot: Path,
+        assemblyName: String,
+    ) {
+        val supportRoot = generatedRoot.resolve("kotlin-winrt-support")
+        Files.createDirectories(supportRoot)
+        val registrarClassName = "io.github.composefluent.winrt.projections.support." +
+            authoringTypeDetailsRegistrarName(assemblyName)
+        Files.writeString(
+            supportRoot.resolve("authoring-type-details-registrars.tsv"),
+            "className\n$registrarClassName\n",
+        )
+        val manifest = supportRoot.resolve("compiler-support.tsv")
+        val existing = if (Files.isRegularFile(manifest)) {
+            Files.readAllLines(manifest).filter(String::isNotBlank)
+        } else {
+            listOf("kind\tclassName\tsourceFile\tentries")
+        }
+        val row = listOf(
+            "authoring-type-details-registrar",
+            registrarClassName,
+            "authoring-type-details-registrars.tsv",
+            "1",
+        ).joinToString("\t")
+        if (row !in existing.drop(1)) {
+            Files.writeString(manifest, (existing + row).joinToString(separator = "\n", postfix = "\n"))
+        }
     }
 
     private fun cleanDirectory(path: Path) {
