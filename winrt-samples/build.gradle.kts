@@ -26,7 +26,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(projects.winrtAuthoring)
     implementation(projects.winrtProjections)
     testImplementation(libs.junit)
 }

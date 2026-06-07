@@ -20,7 +20,6 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                implementation(project(":winrt-authoring"))
                 api(project(":winrt-samples:winui-kmp-base-library"))
             }
         }

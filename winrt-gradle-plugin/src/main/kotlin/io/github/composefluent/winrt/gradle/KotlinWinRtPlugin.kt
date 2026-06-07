@@ -60,6 +60,10 @@ private fun configureWinRtRuntimeDependency(project: Project) {
                 configurationName,
                 kotlinWinRtRuntimeDependency(project),
             )
+            project.dependencies.add(
+                configurationName,
+                kotlinWinRtAuthoringDependency(project),
+            )
         }
     }
     project.configurations
@@ -1166,19 +1170,22 @@ private fun kotlinWinRtRuntimeDependency(project: Project): Any {
     }
 }
 
-private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List<Any> {
-    val runtimeDependencies = mutableListOf<Any>()
+private fun kotlinWinRtAuthoringDependency(project: Project): Any {
     val localAuthoringProject = project.rootProject.findProject(":winrt-authoring")
     if (localAuthoringProject != null) {
-        runtimeDependencies += project.dependencies.project(mapOf("path" to localAuthoringProject.path))
-    } else {
-        val authoringClasspath = kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate::class.java)
-        runtimeDependencies += if (authoringClasspath != null) {
-            project.files(authoringClasspath)
-        } else {
-            "io.github.compose-fluent:winrt-authoring:${kotlinWinRtPluginVersion()}"
-        }
+        return project.dependencies.project(mapOf("path" to localAuthoringProject.path))
     }
+    val authoringClasspath = kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate::class.java)
+    return if (authoringClasspath != null) {
+        project.files(authoringClasspath)
+    } else {
+        "io.github.compose-fluent:winrt-authoring:${kotlinWinRtPluginVersion()}"
+    }
+}
+
+private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List<Any> {
+    val runtimeDependencies = mutableListOf<Any>()
+    runtimeDependencies += kotlinWinRtAuthoringDependency(project)
     val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
     if (localMetadataProject != null) {
         runtimeDependencies += project.dependencies.project(mapOf("path" to localMetadataProject.path))
