@@ -26,6 +26,7 @@ fun main(args: Array<String>) {
             sources = metadataSources,
             include = options.namespaces + options.types,
             exclude = options.excludedNamespaces + options.excludedTypes,
+            excludedTypes = options.excludedTypes,
             additionExclude = options.additionExcludes,
         ),
     ).generateTo(model, options.outputDirectory)

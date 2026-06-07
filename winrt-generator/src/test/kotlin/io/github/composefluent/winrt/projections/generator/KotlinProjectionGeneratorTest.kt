@@ -17736,6 +17736,102 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_omits_explicitly_excluded_runtime_implemented_interface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "IXamlRoot",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "XamlRoot",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Xaml.IXamlRoot",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Xaml.IXamlRoot", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Xaml.IXamlRoot3"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                exclude = setOf("Sample.Xaml.IXamlRoot3"),
+            ),
+        ).generate(model)
+
+        assertTrue(files.any { file -> file.relativePath.endsWith("sample/xaml/XamlRoot.kt") })
+        files.forEach { file ->
+            assertFalse(file.relativePath, file.contents.contains("IXamlRoot3"))
+        }
+    }
+
+    @Test
+    fun generator_omits_member_that_references_explicitly_excluded_type() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "IXamlRoot",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "CoordinateConverter",
+                                    typeName = "Sample.Content.ContentCoordinateConverter",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "XamlRoot",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Xaml.IXamlRoot",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Xaml.IXamlRoot", isDefault = true),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "CoordinateConverter",
+                                    typeName = "Sample.Content.ContentCoordinateConverter",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                exclude = setOf("Sample.Content"),
+            ),
+        ).generate(model)
+
+        assertTrue(files.any { file -> file.relativePath.endsWith("sample/xaml/XamlRoot.kt") })
+        files.forEach { file ->
+            assertFalse(file.relativePath, file.contents.contains("CoordinateConverter"))
+            assertFalse(file.relativePath, file.contents.contains("ContentCoordinateConverter"))
+        }
+    }
+
+    @Test
     fun generator_rejects_runtime_surface_without_implemented_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

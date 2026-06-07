@@ -34,6 +34,7 @@ import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.projectionInventory
@@ -140,7 +141,7 @@ class KotlinProjectionGenerator(
     }
 
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
-        val normalizedModel = model.normalized()
+        val normalizedModel = model.normalized().withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport()
@@ -155,7 +156,7 @@ class KotlinProjectionGenerator(
     }
 
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
-        val normalizedModel = model.normalized()
+        val normalizedModel = model.normalized().withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
@@ -207,6 +208,70 @@ class KotlinProjectionGenerator(
                 .authoredMetadataTypeMappings
                 .mapTo(suppressedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
         }
+
+    private fun WinRtMetadataModel.withoutExcludedProjectionSurfaceReferences(): WinRtMetadataModel {
+        val excludedProjectionSurfaceNames = projectionContext.excludedTypes + projectionContext.exclude
+        if (excludedProjectionSurfaceNames.isEmpty()) {
+            return this
+        }
+        return copy(
+            namespaces = namespaces.map { namespace ->
+                namespace.copy(
+                    types = namespace.types.filterNot { type ->
+                        type.qualifiedName.isExcludedProjectionSurface(excludedProjectionSurfaceNames)
+                    }.map { type ->
+                        val implementedInterfaces = type.implementedInterfaces.filterNot { implemented ->
+                            !implemented.isDefault && implemented.interfaceName.isExcludedProjectionSurface(excludedProjectionSurfaceNames)
+                        }
+                        val methods = type.methods.filterNot { method ->
+                            method.returnType.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames) ||
+                                method.parameters.any { parameter ->
+                                    parameter.type.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames)
+                                }
+                        }
+                        val properties = type.properties.filterNot { property ->
+                            property.type.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames)
+                        }
+                        val events = type.events.filterNot { event ->
+                            event.delegateType.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames)
+                        }
+                        if (implementedInterfaces.size == type.implementedInterfaces.size &&
+                            methods.size == type.methods.size &&
+                            properties.size == type.properties.size &&
+                            events.size == type.events.size
+                        ) {
+                            type
+                        } else {
+                            type.copy(
+                                implementedInterfaces = implementedInterfaces,
+                                methods = methods,
+                                properties = properties,
+                                events = events,
+                            )
+                        }
+                    },
+                )
+            },
+        )
+    }
+
+    private fun WinRtTypeRef.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames: Set<String>): Boolean =
+        when (kind) {
+            WinRtTypeRefKind.Named ->
+                qualifiedName.orEmpty().isExcludedProjectionSurface(excludedProjectionSurfaceNames) ||
+                    typeArguments.any { argument -> argument.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames) }
+
+            WinRtTypeRefKind.Array ->
+                elementType?.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames) == true
+
+            WinRtTypeRefKind.GenericTypeParameter,
+            WinRtTypeRefKind.MethodTypeParameter,
+            WinRtTypeRefKind.Unknown,
+            -> false
+        }
+
+    private fun String.isExcludedProjectionSurface(excludedProjectionSurfaceNames: Set<String>): Boolean =
+        excludedProjectionSurfaceNames.any { excluded -> this == excluded || startsWith("$excluded.") }
 
     private fun validateGeneratorContracts(
         model: WinRtMetadataModel,

@@ -46,6 +46,7 @@ data class WinRtMetadataProjectionContext(
     val outputFolder: Path? = null,
     val include: Set<String> = emptySet(),
     val exclude: Set<String> = emptySet(),
+    val excludedTypes: Set<String> = emptySet(),
     val additionExclude: Set<String> = emptySet(),
     val target: WinRtMetadataTarget = WinRtMetadataTarget.Net8,
     val component: Boolean = false,
