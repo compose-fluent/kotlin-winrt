@@ -289,6 +289,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
                 sources = sources,
                 include = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet(),
                 exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
+                excludedTypes = effectiveExcludeTypes.toSet(),
                 additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
             ),
             suppressedProjectionTypeNames = (
