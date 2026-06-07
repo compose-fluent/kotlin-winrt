@@ -334,6 +334,7 @@ private fun configureWinRtApplicationTasks(
                 ),
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
+            task.requireApplicationWindowsAppSdkPackage.set(unpackagedMode)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.generateProjectPri.set(extension.application.generateProjectPri)
             task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })

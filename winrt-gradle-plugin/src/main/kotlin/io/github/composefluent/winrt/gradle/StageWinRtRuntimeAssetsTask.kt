@@ -79,6 +79,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val restoreNuGetPackages: Property<Boolean>
 
     @get:Input
+    abstract val requireApplicationWindowsAppSdkPackage: Property<Boolean>
+
+    @get:Input
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
 
     @get:Input
@@ -203,6 +206,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         windowsSdkVersion.convention("")
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
+        requireApplicationWindowsAppSdkPackage.convention(false)
     }
 
     @TaskAction
@@ -250,6 +254,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
+        validateApplicationWindowsAppSdkPackage()
         val resolvedPackageRoots = resolvedNuGetPackageManifestFiles.files
             .flatMap(::readResolvedRuntimeNuGetPackageRoots)
             .map(Path::of)
@@ -275,6 +280,22 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         stageGeneratedComponentRegistrations(outputRoot)
         stageXamlMetadataProviderManifest(outputRoot)
         generateProjectPri(outputRoot)
+    }
+
+    private fun validateApplicationWindowsAppSdkPackage() {
+        if (!requireApplicationWindowsAppSdkPackage.get()) {
+            return
+        }
+        val hasApplicationWindowsAppSdkPackage = nugetPackages.get()
+            .asSequence()
+            .map { packageSpec -> packageSpec.substringBefore('@') }
+            .any { packageId -> packageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) }
+        require(hasApplicationWindowsAppSdkPackage) {
+            "Unpackaged Kotlin/WinRT applications must declare nugetPackage(\"Microsoft.WindowsAppSDK\", <version>) " +
+                "in the final executable app module. The generated unpackaged host uses that root package to stage " +
+                "Windows App SDK deployment/runtime assets before Application.start; projection artifacts or library " +
+                "module NuGet declarations are not a substitute for the app module declaration."
+        }
     }
 
     private fun copyOptionalFiles(
