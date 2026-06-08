@@ -99,10 +99,6 @@ internal object WinRtDelegateInvocationSupport {
                 println("winrt-delegate: Invoke failed for ${descriptor.runtimeClassName ?: descriptor.interfaceId}: ${error::class.qualifiedName}: ${error.message}")
                 error.printStackTrace()
             }
-            if (descriptor.isDispatcherQueueHandler()) {
-                ExceptionHelpers.reportUnhandledError(error)
-                return KnownHResults.S_OK.value
-            }
             platformSetErrorInfo(error)
             platformHResultFromThrowable(error).value
         }

@@ -220,7 +220,7 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
-    fun dispatcher_queue_handler_reports_unhandled_errors_without_failing_deferred_invoke() {
+    fun dispatcher_queue_handler_uses_standard_delegate_failure_hresult_in_runtime() {
         val handle = WinRtDelegateBridge.createUnitDelegate(
             iid = IID.DispatcherQueueHandler,
             parameterKinds = emptyList(),
@@ -230,7 +230,7 @@ class EventRuntimeInfrastructureTest {
 
         handle.use {
             it.createReference().use { reference ->
-                assertEquals(KnownHResults.S_OK, reference.invokeAbi(emptyList()))
+                assertEquals(ExceptionHelpers.E_FAIL, reference.invokeAbi(emptyList()))
             }
         }
     }
