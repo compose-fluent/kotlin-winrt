@@ -17,6 +17,12 @@ object WinRtObjectMarshaller {
     fun createMarshaler(value: Any?): WinRtObjectMarshaler =
         when (value) {
             null -> WinRtObjectMarshaler(PlatformAbi.nullPointer)
+            else -> ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
+                ?: createMarshalerCore(value)
+        }
+
+    private fun createMarshalerCore(value: Any): WinRtObjectMarshaler =
+        when (value) {
             is WinRtProjectedDelegate -> createDelegateMarshaler(value)
             is RawAddress -> WinRtObjectMarshaler(value)
             is RawComPtr -> WinRtObjectMarshaler(value.asRawAddress())
@@ -40,6 +46,13 @@ object WinRtObjectMarshaller {
     fun fromManaged(value: Any?): RawAddress =
         when (value) {
             null -> PlatformAbi.nullPointer
+            else -> ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
+                reference.asInspectable().useAndGetRef()
+            } ?: fromManagedCore(value)
+        }
+
+    private fun fromManagedCore(value: Any): RawAddress =
+        when (value) {
             is WinRtProjectedDelegate -> fromManagedDelegate(value)
             is RawAddress -> value
             is RawComPtr -> value.asRawAddress()
@@ -52,6 +65,9 @@ object WinRtObjectMarshaller {
         val inspectableReference = reference.asInspectable()
         return WinRtObjectMarshaler(inspectableReference.pointer.asRawAddress(), inspectableReference::close)
     }
+
+    private fun createUnwrappedInspectableMarshaler(reference: ComObjectReference): WinRtObjectMarshaler =
+        reference.use(::createInspectableMarshaler)
 
     private fun createDelegateMarshaler(value: WinRtProjectedDelegate): WinRtObjectMarshaler {
         val handle = ProjectedDelegateCcwCache.getOrCreate(value)
