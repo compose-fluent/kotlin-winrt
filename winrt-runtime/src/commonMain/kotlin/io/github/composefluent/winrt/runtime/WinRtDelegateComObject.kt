@@ -91,11 +91,6 @@ internal class WinRtDelegateComObject(
     }
 }
 
-private fun WinRtDelegateDescriptor.isDispatcherQueueHandler(): Boolean =
-    interfaceId == IID.DispatcherQueueHandler &&
-        parameterKinds.isEmpty() &&
-        returnKind == WinRtDelegateValueKind.UNIT
-
 class WinRtDelegateReference internal constructor(
     comPtr: ComPtr,
     val descriptor: WinRtDelegateDescriptor,

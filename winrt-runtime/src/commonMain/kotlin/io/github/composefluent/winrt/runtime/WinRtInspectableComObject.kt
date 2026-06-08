@@ -112,62 +112,11 @@ internal class WinRtInspectableComObject(
         definition: WinRtInspectableInterfaceDefinition,
     ): WinRtInspectableInterfaceEntry {
         val objectMemory = PlatformAbi.allocatePointerSlot(scope)
-        val firstCustomSlot = when (definition.baseKind) {
-            WinRtComInterfaceBaseKind.IUnknown -> IUnknownVftblSlots.Release + 1
-            WinRtComInterfaceBaseKind.IInspectable -> IInspectableVftblSlots.FirstCustom
-        }
-        val vtableMemory = PlatformAbi.allocatePointerArray(scope, firstCustomSlot + definition.methods.size)
-        val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
-            queryInterface(
-                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
-                resultPointer = args[2] as RawAddress,
-            )
-        }
-        val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { addReference() }
-        val releaseCallback = callbackOf(IUnknownVftbl.Release) { releaseReference() }
-        val getIidsCallback = callbackOf(IInspectableVftbl.GetIids) { args ->
-            getIids(countOut = args[1] as RawAddress, idsOut = args[2] as RawAddress)
-        }
-        val getRuntimeClassNameCallback = callbackOf(IInspectableVftbl.GetRuntimeClassName) { args ->
-            getRuntimeClassName(args[1] as RawAddress)
-        }
-        val getTrustLevelCallback = callbackOf(IInspectableVftbl.GetTrustLevel) { args ->
-            getTrustLevel(args[1] as RawAddress)
-        }
-        val methodCallbacks = definition.methods.mapIndexed { index, method ->
-            callbackOf(method.signature) { args ->
-                invokeMethod(
-                    interfaceId = definition.interfaceId,
-                    methodIndex = index,
-                    rawArguments = args.drop(1),
-                )
-            }
-        }
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
-        if (definition.baseKind == WinRtComInterfaceBaseKind.IInspectable) {
-            PlatformAbi.writePointerAt(vtableMemory, IInspectableVftblSlots.GetIids, getIidsCallback.pointer)
-            PlatformAbi.writePointerAt(vtableMemory, IInspectableVftblSlots.GetRuntimeClassName, getRuntimeClassNameCallback.pointer)
-            PlatformAbi.writePointerAt(vtableMemory, IInspectableVftblSlots.GetTrustLevel, getTrustLevelCallback.pointer)
-        }
-        methodCallbacks.forEachIndexed { index, callback ->
-            PlatformAbi.writePointerAt(vtableMemory, firstCustomSlot + index, callback.pointer)
-        }
+        val vtableMemory = SharedInspectableVtables.getOrCreate(definition)
         PlatformAbi.writePointer(objectMemory, vtableMemory)
         return WinRtInspectableInterfaceEntry(
             objectMemory = objectMemory,
-            callbacks = buildList {
-                add(queryInterfaceCallback)
-                add(addRefCallback)
-                add(releaseCallback)
-                if (definition.baseKind == WinRtComInterfaceBaseKind.IInspectable) {
-                    add(getIidsCallback)
-                    add(getRuntimeClassNameCallback)
-                    add(getTrustLevelCallback)
-                }
-                addAll(methodCallbacks)
-            },
+            callbacks = emptyList(),
         )
     }
 
@@ -281,11 +230,6 @@ internal class WinRtInspectableComObject(
         scope.close()
     }
 
-    private fun callbackOf(
-        signature: ComMethodSignature,
-        callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
-
     private data class WinRtInspectableInterfaceEntry(
         val objectMemory: RawAddress,
         val callbacks: List<NativeCallbackHandle>,
@@ -320,5 +264,109 @@ internal class WinRtInspectableComObject(
                 runtimeClassName = runtimeClassName,
                 managedValue = value,
             )
+
+        private fun findHost(pointer: RawAddress): WinRtInspectableComObject? =
+            registry[PlatformAbi.pointerKey(pointer)]
     }
+
+    private object SharedInspectableVtables {
+        private val scope = PlatformAbi.sharedScope()
+        private val vtables = ConcurrentCacheMap<SharedVtableKey, RawAddress>()
+        private val methodCallbacks = ConcurrentCacheMap<SharedMethodCallbackKey, NativeCallbackHandle>()
+
+        private val queryInterfaceCallback =
+            callbackOf(IUnknownVftbl.QueryInterface) { args ->
+                findHost(args[0] as RawAddress)?.queryInterface(
+                    requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
+                    resultPointer = args[2] as RawAddress,
+                ) ?: KnownHResults.E_POINTER.value
+            }
+        private val addRefCallback =
+            callbackOf(IUnknownVftbl.AddRef) { args ->
+                findHost(args[0] as RawAddress)?.addReference() ?: 0
+            }
+        private val releaseCallback =
+            callbackOf(IUnknownVftbl.Release) { args ->
+                findHost(args[0] as RawAddress)?.releaseReference() ?: 0
+            }
+        private val getIidsCallback =
+            callbackOf(IInspectableVftbl.GetIids) { args ->
+                findHost(args[0] as RawAddress)?.getIids(
+                    countOut = args[1] as RawAddress,
+                    idsOut = args[2] as RawAddress,
+                ) ?: KnownHResults.E_POINTER.value
+            }
+        private val getRuntimeClassNameCallback =
+            callbackOf(IInspectableVftbl.GetRuntimeClassName) { args ->
+                findHost(args[0] as RawAddress)?.getRuntimeClassName(args[1] as RawAddress)
+                    ?: KnownHResults.E_POINTER.value
+            }
+        private val getTrustLevelCallback =
+            callbackOf(IInspectableVftbl.GetTrustLevel) { args ->
+                findHost(args[0] as RawAddress)?.getTrustLevel(args[1] as RawAddress)
+                    ?: KnownHResults.E_POINTER.value
+            }
+
+        fun getOrCreate(definition: WinRtInspectableInterfaceDefinition): RawAddress =
+            vtables.computeIfAbsent(SharedVtableKey.from(definition)) { key ->
+                val vtable = PlatformAbi.allocatePointerArray(scope, key.firstCustomSlot + key.methodSignatures.size)
+                PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+                PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+                PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.Release, releaseCallback.pointer)
+                if (key.baseKind == WinRtComInterfaceBaseKind.IInspectable) {
+                    PlatformAbi.writePointerAt(vtable, IInspectableVftblSlots.GetIids, getIidsCallback.pointer)
+                    PlatformAbi.writePointerAt(vtable, IInspectableVftblSlots.GetRuntimeClassName, getRuntimeClassNameCallback.pointer)
+                    PlatformAbi.writePointerAt(vtable, IInspectableVftblSlots.GetTrustLevel, getTrustLevelCallback.pointer)
+                }
+                key.methodSignatures.forEachIndexed { index, signature ->
+                    val methodKey = SharedMethodCallbackKey(key.interfaceId, index, signature)
+                    PlatformAbi.writePointerAt(vtable, key.firstCustomSlot + index, methodCallback(methodKey).pointer)
+                }
+                vtable
+            }
+
+        private fun methodCallback(key: SharedMethodCallbackKey): NativeCallbackHandle =
+            methodCallbacks.computeIfAbsent(key) {
+                callbackOf(key.signature) { args ->
+                    findHost(args[0] as RawAddress)?.invokeMethod(
+                        interfaceId = key.interfaceId,
+                        methodIndex = key.methodIndex,
+                        rawArguments = args.drop(1),
+                    ) ?: KnownHResults.E_POINTER.value
+                }
+            }
+
+        private fun callbackOf(
+            signature: ComMethodSignature,
+            callback: (List<Any?>) -> Int,
+        ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
+    }
+
+    private data class SharedVtableKey(
+        val interfaceId: Guid,
+        val baseKind: WinRtComInterfaceBaseKind,
+        val methodSignatures: List<ComMethodSignature>,
+    ) {
+        val firstCustomSlot: Int
+            get() = when (baseKind) {
+                WinRtComInterfaceBaseKind.IUnknown -> IUnknownVftblSlots.Release + 1
+                WinRtComInterfaceBaseKind.IInspectable -> IInspectableVftblSlots.FirstCustom
+            }
+
+        companion object {
+            fun from(definition: WinRtInspectableInterfaceDefinition): SharedVtableKey =
+                SharedVtableKey(
+                    interfaceId = definition.interfaceId,
+                    baseKind = definition.baseKind,
+                    methodSignatures = definition.methods.map { method -> method.signature },
+                )
+        }
+    }
+
+    private data class SharedMethodCallbackKey(
+        val interfaceId: Guid,
+        val methodIndex: Int,
+        val signature: ComMethodSignature,
+    )
+
 }

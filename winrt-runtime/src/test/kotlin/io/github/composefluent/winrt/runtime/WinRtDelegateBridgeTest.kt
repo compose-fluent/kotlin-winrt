@@ -374,6 +374,76 @@ class WinRtDelegateBridgeTest {
     }
 
     @Test
+    fun dispatcher_queue_handler_instances_share_vtable_callbacks() {
+        val first = WinRtDelegateBridge.createUnitDelegate(
+            iid = IID.DispatcherQueueHandler,
+            parameterKinds = emptyList(),
+        ) { }
+        val second = WinRtDelegateBridge.createUnitDelegate(
+            iid = IID.DispatcherQueueHandler,
+            parameterKinds = emptyList(),
+        ) { }
+
+        first.use { firstHandle ->
+            second.use { secondHandle ->
+                firstHandle.createReference().use { firstReference ->
+                    secondHandle.createReference().use { secondReference ->
+                        assertNotEquals(
+                            PlatformAbi.pointerKey(firstReference.pointer),
+                            PlatformAbi.pointerKey(secondReference.pointer),
+                        )
+
+                        val firstVtable = PlatformAbi.readPointer(firstReference.pointer.asRawAddress())
+                        val secondVtable = PlatformAbi.readPointer(secondReference.pointer.asRawAddress())
+
+                        assertEquals(
+                            PlatformAbi.pointerKey(firstVtable),
+                            PlatformAbi.pointerKey(secondVtable),
+                        )
+                        assertEquals(
+                            PlatformAbi.pointerKey(PlatformAbi.readPointerAt(firstVtable, WinRtDelegateVftblSlots.Invoke)),
+                            PlatformAbi.pointerKey(PlatformAbi.readPointerAt(secondVtable, WinRtDelegateVftblSlots.Invoke)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_instances_with_same_interface_share_vtable_callbacks() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc540")
+        val first = WinRtDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRtDelegateValueKind.INT32),
+        ) { }
+        val second = WinRtDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRtDelegateValueKind.INT32),
+        ) { }
+
+        first.use { firstHandle ->
+            second.use { secondHandle ->
+                firstHandle.createReference().use { firstReference ->
+                    secondHandle.createReference().use { secondReference ->
+                        val firstVtable = PlatformAbi.readPointer(firstReference.pointer.asRawAddress())
+                        val secondVtable = PlatformAbi.readPointer(secondReference.pointer.asRawAddress())
+
+                        assertEquals(
+                            PlatformAbi.pointerKey(firstVtable),
+                            PlatformAbi.pointerKey(secondVtable),
+                        )
+                        assertEquals(
+                            PlatformAbi.pointerKey(PlatformAbi.readPointerAt(firstVtable, WinRtDelegateVftblSlots.Invoke)),
+                            PlatformAbi.pointerKey(PlatformAbi.readPointerAt(secondVtable, WinRtDelegateVftblSlots.Invoke)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun delegate_invoke_returns_callback_hresult_instead_of_throwing_across_abi() {
         val handle = WinRtDelegateBridge.createUnitDelegate(
             iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
