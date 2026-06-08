@@ -342,6 +342,7 @@ private class MetadataTables private constructor(
                     activation = extractActivationShape(typeAttributes),
                     availability = extractAvailability(typeAttributes),
                     methods = readMethodDefinitions(
+                        typeKind = kind,
                         typeIndex = index,
                         typeDefs = typeDefs,
                         rawMethods = rawMethods,
@@ -633,6 +634,7 @@ private class MetadataTables private constructor(
     }
 
     private fun readMethodDefinitions(
+        typeKind: WinRtTypeKind,
         typeIndex: Int,
         typeDefs: List<RawTypeDef>,
         rawMethods: List<RawMethodDef>,
@@ -657,7 +659,10 @@ private class MetadataTables private constructor(
         }
 
         return (start until endExclusive)
-            .filterNot { it in semanticMethodRowIds }
+            .filterNot { methodRowId ->
+                methodRowId in semanticMethodRowIds &&
+                    !(typeKind == WinRtTypeKind.Delegate && rawMethods.getOrNull(methodRowId - 1)?.name == "Invoke")
+            }
             .mapNotNull { methodRowId ->
                 val rawMethod = rawMethods.getOrNull(methodRowId - 1) ?: return@mapNotNull null
                 if (rawMethod.name == ".ctor" || rawMethod.name == ".cctor") {

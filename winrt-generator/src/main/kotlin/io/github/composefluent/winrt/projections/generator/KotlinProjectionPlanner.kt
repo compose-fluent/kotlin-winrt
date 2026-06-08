@@ -2096,8 +2096,16 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionKeyBind
 
 internal fun requireDelegateInvokeMethod(type: WinRtTypeDefinition): WinRtMethodDefinition {
     val invokeMethods = type.methods.filter { it.name == "Invoke" }
-    require(invokeMethods.size == 1 && type.methods.size == 1) {
-        "Delegate(${type.qualifiedName}) must expose exactly one Invoke method in metadata before projection planning."
+    require(invokeMethods.size == 1) {
+        val methodSummary = type.methods.joinToString(prefix = "[", postfix = "]") { method ->
+            buildString {
+                append(method.name)
+                if (method.isSpecialName) append(":special")
+                if (method.isRuntimeSpecialName) append(":runtime-special")
+            }
+        }
+        "Delegate(${type.qualifiedName}) must expose exactly one Invoke method in metadata before projection planning; " +
+            "found ${invokeMethods.size} Invoke methods in $methodSummary."
     }
     return invokeMethods.single()
 }

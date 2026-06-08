@@ -1122,9 +1122,7 @@ private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
                 configuration.isCanBeConsumed = false
                 configuration.isCanBeResolved = true
                 val version = kotlinWinRtPluginVersion()
-                kotlinWinRtLocalGeneratorWorkerClasspath(project).takeIf { it.isNotEmpty() }?.let { files ->
-                    project.dependencies.add(configuration.name, project.files(files))
-                } ?: run {
+                if (kotlinWinRtHasLocalGeneratorWorkerProjects(project)) {
                     project.dependencies.add(
                         configuration.name,
                         kotlinWinRtProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version),
@@ -1137,6 +1135,23 @@ private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
                         configuration.name,
                         kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
                     )
+                } else {
+                    kotlinWinRtLocalGeneratorWorkerClasspath(project).takeIf { it.isNotEmpty() }?.let { files ->
+                        project.dependencies.add(configuration.name, project.files(files))
+                    } ?: run {
+                        project.dependencies.add(
+                            configuration.name,
+                            kotlinWinRtProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version),
+                        )
+                        project.dependencies.add(
+                            configuration.name,
+                            kotlinWinRtProjectOrModuleDependency(project, ":winrt-metadata", "winrt-metadata", version),
+                        )
+                        project.dependencies.add(
+                            configuration.name,
+                            kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
+                        )
+                    }
                 }
                 project.dependencies.add(
                     configuration.name,
@@ -1146,6 +1161,11 @@ private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
                 )
             },
     )
+
+private fun kotlinWinRtHasLocalGeneratorWorkerProjects(project: Project): Boolean =
+    listOf(":winrt-runtime", ":winrt-metadata", ":winrt-generator").all { projectPath ->
+        project.rootProject.findProject(projectPath) != null
+    }
 
 private fun kotlinWinRtProjectOrModuleDependency(
     project: Project,

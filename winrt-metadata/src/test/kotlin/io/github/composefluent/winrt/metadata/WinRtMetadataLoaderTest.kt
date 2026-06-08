@@ -156,6 +156,10 @@ class WinRtMetadataLoaderTest {
                 .map { (it as WinRtCustomAttributeValue.StringValue).value },
         )
 
+        val widgetHandler = sampleNamespace.types.first { it.name == "WidgetHandler" }
+        val widgetHandlerInvokes = widgetHandler.methods.filter { it.name == "Invoke" }
+        assertEquals(1, widgetHandlerInvokes.size)
+
         val iWidget = sampleNamespace.types.first { it.name == "IWidget" }
         assertEquals(Guid("22222222-2222-2222-2222-222222222222"), iWidget.iid)
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })

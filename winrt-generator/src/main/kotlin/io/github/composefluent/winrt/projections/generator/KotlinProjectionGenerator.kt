@@ -210,7 +210,7 @@ class KotlinProjectionGenerator(
         }
 
     private fun WinRtMetadataModel.withoutExcludedProjectionSurfaceReferences(): WinRtMetadataModel {
-        val excludedProjectionSurfaceNames = projectionContext.excludedTypes + projectionContext.exclude
+        val excludedProjectionSurfaceNames = projectionContext.excludedTypes
         if (excludedProjectionSurfaceNames.isEmpty()) {
             return this
         }
