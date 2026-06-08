@@ -580,8 +580,7 @@ object MarshalDelegate {
         value?.createReference()?.useAndGetRef() ?: PlatformAbi.nullPointer
 
     fun fromProjected(value: WinRtProjectedDelegate?): RawAddress {
-        val handle = value?.createWinRtDelegateHandle() ?: return PlatformAbi.nullPointer
-        ProjectedDelegateObjectRoots.retain(handle)
+        val handle = value?.let(ProjectedDelegateCcwCache::getOrCreate) ?: return PlatformAbi.nullPointer
         return handle.createReference().useAndGetRef()
     }
 

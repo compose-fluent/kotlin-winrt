@@ -561,6 +561,8 @@ object ComWrappersSupport {
         helperTypeRegistry.clear()
         ccwFactories.clear()
         rcwCache.clear()
+        ProjectedDelegateCcwCache.clearForTests()
+        ProjectedDelegateObjectRoots.clearForTests()
         runtimeClassNameLookups.clear()
         authoringMetadataTypeLookups.clear()
         FreeThreadedMarshalerSupport.clearForTests()
