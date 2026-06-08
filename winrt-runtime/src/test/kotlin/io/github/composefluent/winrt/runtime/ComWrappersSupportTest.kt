@@ -47,6 +47,43 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun create_ccw_reuses_identity_for_same_managed_object() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val value = Any()
+
+        val first = ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
+        val second = ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
+
+        try {
+            assertEquals(
+                PlatformAbi.pointerKey(first.pointer),
+                PlatformAbi.pointerKey(second.pointer),
+            )
+        } finally {
+            second.close()
+            first.close()
+        }
+    }
+
+    @Test
+    fun detached_ccw_keeps_same_managed_object_identity_cached_until_native_release() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val value = Any()
+        val detached = ComWrappersSupport.detachCCWForObject(value, IID.IInspectable)
+
+        try {
+            ComWrappersSupport.createCCWForObject(value, IID.IInspectable).use { reference ->
+                assertEquals(
+                    PlatformAbi.pointerKey(detached),
+                    PlatformAbi.pointerKey(reference.pointer),
+                )
+            }
+        } finally {
+            ComObjectReference(detached.asRawComPtr(), IID.IInspectable).close()
+        }
+    }
+
+    @Test
     fun create_rcw_cache_uses_com_identity_across_interface_pointers() {
         ComWrappersSupport.clearRegistriesForTests()
         val defaultInterfaceId = Guid("66666666-6666-6666-6666-666666666666")

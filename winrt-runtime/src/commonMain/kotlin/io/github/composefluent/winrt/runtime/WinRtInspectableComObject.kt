@@ -29,6 +29,7 @@ internal class WinRtInspectableComObject(
     private val trustLevel: Int = 0,
     private val managedValue: Any? = null,
     private val queryInterfaceFallback: ((Guid) -> RawAddress?)? = null,
+    private val cleanupAction: (() -> Unit)? = null,
 ) : ManagedReferenceHost, AutoCloseable {
     private val scope = PlatformAbi.sharedScope()
     private val state = ManagedComHostState(::cleanup)
@@ -69,6 +70,10 @@ internal class WinRtInspectableComObject(
             return
         }
         val key = PlatformAbi.pointerKey(pointer)
+        val existing = registry[key]
+        if (existing != null && existing !== this) {
+            return
+        }
         registry[key] = this
         externalPointerAliases.add(key)
     }
@@ -228,6 +233,7 @@ internal class WinRtInspectableComObject(
             entry.callbacks.forEach(NativeCallbackHandle::close)
         }
         scope.close()
+        cleanupAction?.invoke()
     }
 
     private data class WinRtInspectableInterfaceEntry(
