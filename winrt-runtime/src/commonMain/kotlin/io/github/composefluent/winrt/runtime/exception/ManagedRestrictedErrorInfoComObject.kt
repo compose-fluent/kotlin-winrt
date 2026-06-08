@@ -62,47 +62,8 @@ internal class ManagedRestrictedErrorInfoComObject(
 
     private fun createInterfaceEntry(): InterfaceEntry {
         val objectMemory = PlatformAbi.allocatePointerSlot(scope)
-        val vtableMemory = PlatformAbi.allocatePointerArray(scope, 5)
-        val callbacks = mutableListOf<NativeCallbackHandle>()
-        val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
-            queryInterface(
-                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
-                resultPointer = args[2] as RawAddress,
-            )
-        }
-        val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { addReference() }
-        val releaseCallback = callbackOf(IUnknownVftbl.Release) { releaseReference() }
-        val getErrorDetailsCallback =
-            callbackOf(
-                ComMethodSignature.of(
-                    ComAbiValueKind.Pointer,
-                    ComAbiValueKind.Pointer,
-                    ComAbiValueKind.Pointer,
-                    ComAbiValueKind.Pointer,
-                ),
-            ) { args ->
-                getErrorDetails(
-                    descriptionOut = args[1] as RawAddress,
-                    hResultOut = args[2] as RawAddress,
-                    restrictedDescriptionOut = args[3] as RawAddress,
-                    capabilitySidOut = args[4] as RawAddress,
-                )
-            }
-        val getReferenceCallback = callbackOf(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
-            getReference(args[1] as RawAddress)
-        }
-        callbacks += queryInterfaceCallback
-        callbacks += addRefCallback
-        callbacks += releaseCallback
-        callbacks += getErrorDetailsCallback
-        callbacks += getReferenceCallback
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, 3, getErrorDetailsCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, 4, getReferenceCallback.pointer)
-        PlatformAbi.writePointer(objectMemory, vtableMemory)
-        return InterfaceEntry(objectMemory = objectMemory, callbacks = callbacks)
+        PlatformAbi.writePointer(objectMemory, restrictedErrorInfoVtable)
+        return InterfaceEntry(objectMemory = objectMemory)
     }
 
     private fun queryInterface(
@@ -165,21 +126,66 @@ internal class ManagedRestrictedErrorInfoComObject(
 
     private fun cleanup() {
         registry.remove(PlatformAbi.pointerKey(interfaceEntry.objectMemory))
-        interfaceEntry.callbacks.forEach(NativeCallbackHandle::close)
         scope.close()
     }
 
-    private fun callbackOf(
-        signature: ComMethodSignature,
-        callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
-
     private data class InterfaceEntry(
         val objectMemory: RawAddress,
-        val callbacks: List<NativeCallbackHandle>,
     )
 
     companion object {
         private val registry = ConcurrentCacheMap<Long, ManagedRestrictedErrorInfoComObject>()
+        private val sharedScope = PlatformAbi.sharedScope()
+        private val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
+            hostFor(args[0] as RawAddress)?.queryInterface(
+                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
+                resultPointer = args[2] as RawAddress,
+            ) ?: KnownHResults.E_POINTER.value
+        }
+        private val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { args ->
+            hostFor(args[0] as RawAddress)?.addReference() ?: 0
+        }
+        private val releaseCallback = callbackOf(IUnknownVftbl.Release) { args ->
+            hostFor(args[0] as RawAddress)?.releaseReference() ?: 0
+        }
+        private val getErrorDetailsCallback =
+            callbackOf(
+                ComMethodSignature.of(
+                    ComAbiValueKind.Pointer,
+                    ComAbiValueKind.Pointer,
+                    ComAbiValueKind.Pointer,
+                    ComAbiValueKind.Pointer,
+                ),
+            ) { args ->
+                hostFor(args[0] as RawAddress)?.getErrorDetails(
+                    descriptionOut = args[1] as RawAddress,
+                    hResultOut = args[2] as RawAddress,
+                    restrictedDescriptionOut = args[3] as RawAddress,
+                    capabilitySidOut = args[4] as RawAddress,
+                ) ?: KnownHResults.E_POINTER.value
+            }
+        private val getReferenceCallback = callbackOf(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+            hostFor(args[0] as RawAddress)?.getReference(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val restrictedErrorInfoVtable = createRestrictedErrorInfoVtable()
+
+        private fun createRestrictedErrorInfoVtable(): RawAddress {
+            val vtable = PlatformAbi.allocatePointerArray(sharedScope, 5)
+            PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.Release, releaseCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, 3, getErrorDetailsCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, 4, getReferenceCallback.pointer)
+            return vtable
+        }
+
+        private fun hostFor(pointer: RawAddress): ManagedRestrictedErrorInfoComObject? =
+            registry[PlatformAbi.pointerKey(pointer)]
+
+        private fun callbackOf(
+            signature: ComMethodSignature,
+            callback: (List<Any?>) -> Int,
+        ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
     }
 }
