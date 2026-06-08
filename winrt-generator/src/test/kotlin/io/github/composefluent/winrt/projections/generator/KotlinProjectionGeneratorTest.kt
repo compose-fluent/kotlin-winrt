@@ -14659,6 +14659,100 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_reusable_dispatcher_queue_scheduler_addition() {
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(dispatcherQueueModel(includeHandler = true))
+            .associateBy { file -> file.relativePath.substringAfterLast('/') }
+
+        val addition = filesByName.getValue("DispatcherQueueReusableScheduler.kt").contents
+        assertTrue(addition.contains("package microsoft.ui.dispatching"))
+        assertTrue(addition.contains("private val __winRtDispatcherQueueSchedulers"))
+        assertTrue(addition.contains("WinRtDispatcherQueueScheduler<DispatcherQueueHandler>"))
+        assertTrue(addition.contains("tryEnqueueHandler = { handler -> dispatcherQueue.tryEnqueue(handler) }"))
+        assertTrue(addition.contains("handlerFactory = { drain -> DispatcherQueueHandler { drain() } }"))
+        assertTrue(addition.contains("public fun DispatcherQueue.enqueueReusable(action: () -> Unit): Boolean"))
+        assertTrue(addition.contains("__winRtDispatcherQueueScheduler(this).enqueue(action)"))
+    }
+
+    @Test
+    fun generator_skips_reusable_dispatcher_queue_scheduler_without_dispatcher_queue_projection() {
+        val files = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(dispatcherQueueHandlerOnlyModel())
+
+        assertFalse(files.any { file -> file.relativePath.endsWith("DispatcherQueueReusableScheduler.kt") })
+    }
+
+    private fun dispatcherQueueHandlerOnlyModel(): WinRtMetadataModel =
+        WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Dispatching",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Dispatching",
+                            name = "DispatcherQueueHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("2e0872a9-4e29-5f14-b688-fb96d5f9d5f8"),
+                            methods = listOf(WinRtMethodDefinition("Invoke", "Unit")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    private fun dispatcherQueueModel(includeHandler: Boolean): WinRtMetadataModel =
+        WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Dispatching",
+                    types = buildList {
+                        if (includeHandler) {
+                            add(
+                                WinRtTypeDefinition(
+                                    namespace = "Microsoft.UI.Dispatching",
+                                    name = "DispatcherQueueHandler",
+                                    kind = WinRtTypeKind.Delegate,
+                                    iid = Guid("2e0872a9-4e29-5f14-b688-fb96d5f9d5f8"),
+                                    methods = listOf(WinRtMethodDefinition("Invoke", "Unit")),
+                                ),
+                            )
+                        }
+                        add(
+                            WinRtTypeDefinition(
+                                namespace = "Microsoft.UI.Dispatching",
+                                name = "IDispatcherQueue",
+                                kind = WinRtTypeKind.Interface,
+                                iid = Guid("11111111-2222-3333-4444-555555555571"),
+                                methods = listOf(
+                                    WinRtMethodDefinition(
+                                        "TryEnqueue",
+                                        "Boolean",
+                                        parameters = listOf(
+                                            WinRtParameterDefinition(
+                                                "callback",
+                                                "Microsoft.UI.Dispatching.DispatcherQueueHandler",
+                                            ),
+                                        ),
+                                        methodRowId = 6,
+                                    ),
+                                ),
+                            ),
+                        )
+                        add(
+                            WinRtTypeDefinition(
+                                namespace = "Microsoft.UI.Dispatching",
+                                name = "DispatcherQueue",
+                                kind = WinRtTypeKind.RuntimeClass,
+                                iid = Guid("11111111-2222-3333-4444-555555555572"),
+                                defaultInterfaceName = "Microsoft.UI.Dispatching.IDispatcherQueue",
+                            ),
+                        )
+                    },
+                ),
+            ),
+        )
+
+    @Test
     fun generator_projects_mutable_vector_runtime_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
