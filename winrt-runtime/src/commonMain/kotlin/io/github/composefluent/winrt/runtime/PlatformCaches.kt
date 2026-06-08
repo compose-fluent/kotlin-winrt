@@ -71,6 +71,8 @@ expect class WeakKeyStateMap<K : Any, V : Any>() {
 expect class SnapshotList<T>() {
     fun add(value: T)
 
+    fun remove(value: T): Boolean
+
     fun clear()
 
     fun <R : Any> firstNotNullOfOrNull(transform: (T) -> R?): R?

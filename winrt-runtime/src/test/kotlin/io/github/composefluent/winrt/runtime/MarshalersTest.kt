@@ -170,6 +170,42 @@ class MarshalersTest {
     }
 
     @Test
+    fun delegate_marshaler_releases_cached_ccw_after_native_references_dispose() {
+        ComWrappersSupport.clearRegistriesForTests()
+        var createCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999991"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val createdHandles = mutableListOf<WinRtDelegateHandle>()
+        val projected = object : WinRtProjectedDelegate {
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle {
+                createCount += 1
+                return WinRtDelegateBridge.createUnitDelegate(
+                    iid = descriptor.interfaceId,
+                    parameterKinds = emptyList(),
+                ) {
+                }.also(createdHandles::add)
+            }
+        }
+
+        val firstAbi = MarshalDelegate.fromProjected(projected)
+        MarshalDelegate.disposeAbi(firstAbi, descriptor)
+        val staleReference = runCatching { createdHandles.single().createReference() }
+        staleReference.getOrNull()?.close()
+        assertTrue(staleReference.isFailure)
+
+        val secondAbi = MarshalDelegate.fromProjected(projected)
+        try {
+            assertEquals(2, createCount)
+        } finally {
+            MarshalDelegate.disposeAbi(secondAbi, descriptor)
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
     fun delegate_marshaler_unwraps_native_backed_projected_delegate() {
         var callCount = 0
         val descriptor = WinRtDelegateDescriptor(

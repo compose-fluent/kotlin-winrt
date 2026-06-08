@@ -66,6 +66,9 @@ object WinRtDelegateBridge {
         }
         return WinRtDelegateArgumentMarshaler(handle, handle?.createReference())
     }
+
+    fun createProjectedDelegateHandle(delegate: WinRtProjectedDelegate): WinRtDelegateHandle =
+        delegate.createWinRtDelegateHandle()
 }
 
 class WinRtDelegateArgumentMarshaler internal constructor(

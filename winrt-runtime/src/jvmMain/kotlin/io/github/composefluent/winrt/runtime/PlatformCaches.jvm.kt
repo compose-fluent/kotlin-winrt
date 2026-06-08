@@ -121,6 +121,11 @@ actual class SnapshotList<T> actual constructor() {
         }
     }
 
+    actual fun remove(value: T): Boolean =
+        lock.withLock {
+            delegate.remove(value)
+        }
+
     actual fun clear() {
         lock.withLock {
             delegate.clear()

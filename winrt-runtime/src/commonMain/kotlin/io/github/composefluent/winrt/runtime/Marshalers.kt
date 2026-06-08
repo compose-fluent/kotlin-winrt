@@ -583,8 +583,8 @@ object MarshalDelegate {
         ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
             return reference.getRefPointer().asRawAddress()
         }
-        val handle = value?.let(ProjectedDelegateCcwCache::getOrCreate) ?: return PlatformAbi.nullPointer
-        return handle.createReference().useAndGetRef()
+        return value?.let { ProjectedDelegateCcwCache.createReference(it).useAndGetRef() }
+            ?: PlatformAbi.nullPointer
     }
 
     fun disposeMarshaler(value: WinRtDelegateReference?) {
