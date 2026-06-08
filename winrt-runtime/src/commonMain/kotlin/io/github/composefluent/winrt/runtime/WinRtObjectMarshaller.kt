@@ -54,8 +54,7 @@ object WinRtObjectMarshaller {
     }
 
     private fun createDelegateMarshaler(value: WinRtProjectedDelegate): WinRtObjectMarshaler {
-        val handle = value.createWinRtDelegateHandle()
-        ProjectedDelegateObjectRoots.retain(handle)
+        val handle = ProjectedDelegateCcwCache.getOrCreate(value)
         val reference = handle.createReference()
         val inspectableReference = try {
             reference.asInspectable()
@@ -73,8 +72,7 @@ object WinRtObjectMarshaller {
     }
 
     private fun fromManagedDelegate(value: WinRtProjectedDelegate): RawAddress {
-        val handle = value.createWinRtDelegateHandle()
-        ProjectedDelegateObjectRoots.retain(handle)
+        val handle = ProjectedDelegateCcwCache.getOrCreate(value)
         val reference = handle.createReference()
         return try {
             reference.asInspectable().useAndGetRef()
@@ -84,11 +82,28 @@ object WinRtObjectMarshaller {
     }
 }
 
+internal object ProjectedDelegateCcwCache {
+    private val handles = WeakKeyStateMap<WinRtProjectedDelegate, WinRtDelegateHandle>()
+
+    fun getOrCreate(value: WinRtProjectedDelegate): WinRtDelegateHandle =
+        handles.getOrPut(value) {
+            value.createWinRtDelegateHandle().also(ProjectedDelegateObjectRoots::retain)
+        }
+
+    fun clearForTests() {
+        handles.clear()
+    }
+}
+
 internal object ProjectedDelegateObjectRoots {
     private val roots = SnapshotList<WinRtDelegateHandle>()
 
     fun retain(handle: WinRtDelegateHandle) {
         roots.add(handle)
+    }
+
+    fun clearForTests() {
+        roots.clear()
     }
 }
 
