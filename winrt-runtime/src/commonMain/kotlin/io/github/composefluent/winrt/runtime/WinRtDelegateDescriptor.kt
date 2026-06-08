@@ -49,6 +49,11 @@ data class WinRtDelegateDescriptor(
         )
 }
 
+internal fun WinRtDelegateDescriptor.isDispatcherQueueHandler(): Boolean =
+    interfaceId == IID.DispatcherQueueHandler &&
+        parameterKinds.isEmpty() &&
+        returnKind == WinRtDelegateValueKind.UNIT
+
 private fun WinRtDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =
     when (this) {
         WinRtDelegateValueKind.UNIT,
