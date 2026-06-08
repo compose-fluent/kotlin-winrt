@@ -2420,6 +2420,11 @@ class WinRtMetadataModelTest {
             inventory.namespaceAdditions.map { it.namespace },
         )
         assertEquals(WinRtNamespaceAdditionKind.ComInteropAdapter, inventory.namespaceAdditions.first().kind)
+        assertEquals(listOf("interop/Windows.ApplicationModel.DataTransfer.kt"), inventory.namespaceAdditions.first().sourceFiles)
+        assertTrue(
+            "strings/additions/Windows.Foundation/AsyncInfo.kt" in
+                inventory.namespaceAdditions.single { it.namespace == "Windows.Foundation" }.sourceFiles,
+        )
         assertEquals(true, inventory.helperOutputs.namespaceAdditionsRequired)
         assertTrue("WinRTNamespaceAdditions.kt" in inventory.helperOutputs.requiredHelperFileNames)
     }
