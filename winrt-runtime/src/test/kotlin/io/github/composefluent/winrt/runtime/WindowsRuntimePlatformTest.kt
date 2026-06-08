@@ -115,6 +115,29 @@ class WindowsRuntimePlatformTest {
     }
 
     @Test
+    fun managed_error_info_instances_share_vtable_callbacks() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        ManagedErrorInfoComObject(IllegalStateException("first")).detachReference().use { first ->
+            ManagedErrorInfoComObject(IllegalStateException("second")).detachReference().use { second ->
+                assertEquals(
+                    PlatformAbi.pointerKey(PlatformAbi.readPointer(first.pointer.asRawAddress())),
+                    PlatformAbi.pointerKey(PlatformAbi.readPointer(second.pointer.asRawAddress())),
+                )
+
+                first.queryInterface(IID.ISupportErrorInfo).getOrThrow().use { firstSupport ->
+                    second.queryInterface(IID.ISupportErrorInfo).getOrThrow().use { secondSupport ->
+                        assertEquals(
+                            PlatformAbi.pointerKey(PlatformAbi.readPointer(firstSupport.pointer.asRawAddress())),
+                            PlatformAbi.pointerKey(PlatformAbi.readPointer(secondSupport.pointer.asRawAddress())),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun managed_restricted_error_info_can_round_trip_details_through_irestrictederrorinfo_slots() {
         assumeTrue(PlatformRuntime.isWindows)
 
@@ -189,6 +212,26 @@ class WindowsRuntimePlatformTest {
                     WindowsRuntimePlatform.readAndFreeBstr(
                         referenceOut.get(java.lang.foreign.ValueLayout.ADDRESS, 0),
                     ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun managed_restricted_error_info_instances_share_vtable_callbacks() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        val details = WinRtRestrictedErrorInfo(
+            description = "outer message",
+            restrictedDescription = "inner message",
+            reference = "ABC123",
+            capabilitySid = null,
+        )
+        ManagedRestrictedErrorInfoComObject(ExceptionHelpers.E_FAIL, details).detachReference().use { first ->
+            ManagedRestrictedErrorInfoComObject(ExceptionHelpers.E_FAIL, details).detachReference().use { second ->
+                assertEquals(
+                    PlatformAbi.pointerKey(PlatformAbi.readPointer(first.pointer.asRawAddress())),
+                    PlatformAbi.pointerKey(PlatformAbi.readPointer(second.pointer.asRawAddress())),
                 )
             }
         }

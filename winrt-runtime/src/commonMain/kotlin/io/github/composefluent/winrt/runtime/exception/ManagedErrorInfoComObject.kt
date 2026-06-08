@@ -39,11 +39,11 @@ internal class ManagedErrorInfoComObject(
     private val interfaceEntries = mapOf(
         IID.IErrorInfo to createInterfaceEntry(
             slotCount = 8,
-            slotBuilder = ::populateErrorInfoSlots,
+            vtable = errorInfoVtable,
         ),
         IID.ISupportErrorInfo to createInterfaceEntry(
             slotCount = 4,
-            slotBuilder = ::populateSupportErrorInfoSlots,
+            vtable = supportErrorInfoVtable,
         ),
     )
 
@@ -81,70 +81,12 @@ internal class ManagedErrorInfoComObject(
 
     private fun createInterfaceEntry(
         slotCount: Int,
-        slotBuilder: (RawAddress, MutableList<NativeCallbackHandle>) -> Unit,
+        vtable: RawAddress,
     ): InterfaceEntry {
         val objectMemory = PlatformAbi.allocatePointerSlot(scope)
-        val vtableMemory = PlatformAbi.allocatePointerArray(scope, slotCount)
-        val callbacks = mutableListOf<NativeCallbackHandle>()
-        val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
-            queryInterface(
-                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
-                resultPointer = args[2] as RawAddress,
-            )
-        }
-        val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { addReference() }
-        val releaseCallback = callbackOf(IUnknownVftbl.Release) { releaseReference() }
-        callbacks += queryInterfaceCallback
-        callbacks += addRefCallback
-        callbacks += releaseCallback
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
-        slotBuilder(vtableMemory, callbacks)
-        PlatformAbi.writePointer(objectMemory, vtableMemory)
-        return InterfaceEntry(objectMemory = objectMemory, callbacks = callbacks)
-    }
-
-    private fun populateErrorInfoSlots(
-        vtableMemory: RawAddress,
-        callbacks: MutableList<NativeCallbackHandle>,
-    ) {
-        val getGuidCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
-            getGuid(args[1] as RawAddress)
-        }
-        val getSourceCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
-            getSource(args[1] as RawAddress)
-        }
-        val getDescriptionCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
-            getDescription(args[1] as RawAddress)
-        }
-        val getHelpFileCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
-            getHelpFile(args[1] as RawAddress)
-        }
-        val getHelpFileContentCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
-            getHelpFileContent(args[1] as RawAddress)
-        }
-        callbacks += getGuidCallback
-        callbacks += getSourceCallback
-        callbacks += getDescriptionCallback
-        callbacks += getHelpFileCallback
-        callbacks += getHelpFileContentCallback
-        PlatformAbi.writePointerAt(vtableMemory, 3, getGuidCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, 4, getSourceCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, 5, getDescriptionCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, 6, getHelpFileCallback.pointer)
-        PlatformAbi.writePointerAt(vtableMemory, 7, getHelpFileContentCallback.pointer)
-    }
-
-    private fun populateSupportErrorInfoSlots(
-        vtableMemory: RawAddress,
-        callbacks: MutableList<NativeCallbackHandle>,
-    ) {
-        val supportsErrorInfoCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
-            interfaceSupportsErrorInfo(args[1] as RawAddress)
-        }
-        callbacks += supportsErrorInfoCallback
-        PlatformAbi.writePointerAt(vtableMemory, 3, supportsErrorInfoCallback.pointer)
+        require(slotCount > 0)
+        PlatformAbi.writePointer(objectMemory, vtable)
+        return InterfaceEntry(objectMemory = objectMemory)
     }
 
     private fun queryInterface(
@@ -208,22 +150,86 @@ internal class ManagedErrorInfoComObject(
     private fun cleanup() {
         interfaceEntries.values.forEach { entry ->
             registry.remove(PlatformAbi.pointerKey(entry.objectMemory))
-            entry.callbacks.forEach(NativeCallbackHandle::close)
         }
         scope.close()
     }
 
-    private fun callbackOf(
-        signature: ComMethodSignature,
-        callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
-
     private data class InterfaceEntry(
         val objectMemory: RawAddress,
-        val callbacks: List<NativeCallbackHandle>,
     )
 
     companion object {
         private val registry = ConcurrentCacheMap<Long, ManagedErrorInfoComObject>()
+        private val sharedScope = PlatformAbi.sharedScope()
+        private val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
+            hostFor(args[0] as RawAddress)?.queryInterface(
+                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
+                resultPointer = args[2] as RawAddress,
+            ) ?: KnownHResults.E_POINTER.value
+        }
+        private val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { args ->
+            hostFor(args[0] as RawAddress)?.addReference() ?: 0
+        }
+        private val releaseCallback = callbackOf(IUnknownVftbl.Release) { args ->
+            hostFor(args[0] as RawAddress)?.releaseReference() ?: 0
+        }
+        private val getGuidCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            hostFor(args[0] as RawAddress)?.getGuid(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val getSourceCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            hostFor(args[0] as RawAddress)?.getSource(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val getDescriptionCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            hostFor(args[0] as RawAddress)?.getDescription(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val getHelpFileCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            hostFor(args[0] as RawAddress)?.getHelpFile(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val getHelpFileContentCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            hostFor(args[0] as RawAddress)?.getHelpFileContent(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val supportsErrorInfoCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            hostFor(args[0] as RawAddress)?.interfaceSupportsErrorInfo(args[1] as RawAddress)
+                ?: KnownHResults.E_POINTER.value
+        }
+        private val errorInfoVtable = createErrorInfoVtable()
+        private val supportErrorInfoVtable = createSupportErrorInfoVtable()
+
+        private fun createErrorInfoVtable(): RawAddress {
+            val vtable = PlatformAbi.allocatePointerArray(sharedScope, 8)
+            populateUnknownSlots(vtable)
+            PlatformAbi.writePointerAt(vtable, 3, getGuidCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, 4, getSourceCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, 5, getDescriptionCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, 6, getHelpFileCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, 7, getHelpFileContentCallback.pointer)
+            return vtable
+        }
+
+        private fun createSupportErrorInfoVtable(): RawAddress {
+            val vtable = PlatformAbi.allocatePointerArray(sharedScope, 4)
+            populateUnknownSlots(vtable)
+            PlatformAbi.writePointerAt(vtable, 3, supportsErrorInfoCallback.pointer)
+            return vtable
+        }
+
+        private fun populateUnknownSlots(vtable: RawAddress) {
+            PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+            PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.Release, releaseCallback.pointer)
+        }
+
+        private fun hostFor(pointer: RawAddress): ManagedErrorInfoComObject? =
+            registry[PlatformAbi.pointerKey(pointer)]
+
+        private fun callbackOf(
+            signature: ComMethodSignature,
+            callback: (List<Any?>) -> Int,
+        ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
     }
 }
