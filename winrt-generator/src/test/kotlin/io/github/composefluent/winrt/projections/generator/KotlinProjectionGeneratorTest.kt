@@ -14369,6 +14369,8 @@ class KotlinProjectionGeneratorTest {
         assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
         assertTrue(eventProjectionHelpers.contains("EventSource<WidgetHandler>"))
         assertTrue(eventProjectionHelpers.contains("handler.invoke("))
+        assertTrue(eventProjectionHelpers.contains("WinRtDelegateBridge.createProjectedDelegateHandle(handler)"))
+        assertFalse(eventProjectionHelpers.contains("return handler.createWinRtDelegateHandle()"))
         assertFalse(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" ->"))
         assertTrue(eventProjectionHelpers.contains(Regex("""_EventSource_[0-9a-f]{16}\(objectReference, vtableIndexForAddHandler\)""")))
         assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))

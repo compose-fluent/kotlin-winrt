@@ -70,8 +70,7 @@ object WinRtObjectMarshaller {
         reference.use(::createInspectableMarshaler)
 
     private fun createDelegateMarshaler(value: WinRtProjectedDelegate): WinRtObjectMarshaler {
-        val handle = ProjectedDelegateCcwCache.getOrCreate(value)
-        val reference = handle.createReference()
+        val reference = ProjectedDelegateCcwCache.createReference(value)
         val inspectableReference = try {
             reference.asInspectable()
         } catch (throwable: Throwable) {
@@ -88,8 +87,7 @@ object WinRtObjectMarshaller {
     }
 
     private fun fromManagedDelegate(value: WinRtProjectedDelegate): RawAddress {
-        val handle = ProjectedDelegateCcwCache.getOrCreate(value)
-        val reference = handle.createReference()
+        val reference = ProjectedDelegateCcwCache.createReference(value)
         return try {
             reference.asInspectable().useAndGetRef()
         } finally {
@@ -101,9 +99,23 @@ object WinRtObjectMarshaller {
 internal object ProjectedDelegateCcwCache {
     private val handles = WeakKeyStateMap<WinRtProjectedDelegate, WinRtDelegateHandle>()
 
-    fun getOrCreate(value: WinRtProjectedDelegate): WinRtDelegateHandle =
+    fun createReference(value: WinRtProjectedDelegate): WinRtDelegateReference {
+        val handle = getOrCreate(value)
+        return handle.createReference().also {
+            handle.releaseManagedReferenceForNativeOwnership()
+        }
+    }
+
+    private fun getOrCreate(value: WinRtProjectedDelegate): WinRtDelegateHandle =
         handles.getOrPut(value) {
-            value.createWinRtDelegateHandle().also(ProjectedDelegateObjectRoots::retain)
+            value.createWinRtDelegateHandle().also { handle ->
+                ProjectedDelegateObjectRoots.retain(handle)
+                handle.addCleanupAction {
+                    handles.remove(value)
+                    ProjectedDelegateObjectRoots.release(handle)
+                    handle.markClosedAfterNativeCleanup()
+                }
+            }
         }
 
     fun clearForTests() {
@@ -116,6 +128,10 @@ internal object ProjectedDelegateObjectRoots {
 
     fun retain(handle: WinRtDelegateHandle) {
         roots.add(handle)
+    }
+
+    fun release(handle: WinRtDelegateHandle) {
+        roots.remove(handle)
     }
 
     fun clearForTests() {

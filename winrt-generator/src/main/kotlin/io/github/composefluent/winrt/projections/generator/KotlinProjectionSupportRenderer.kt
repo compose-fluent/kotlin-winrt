@@ -2792,7 +2792,7 @@ class KotlinProjectionSupportRenderer {
         return CodeBlock.of(
             """
             if (handler is io.github.composefluent.winrt.runtime.WinRtProjectedDelegate) {
-                return handler.createWinRtDelegateHandle()
+                return io.github.composefluent.winrt.runtime.WinRtDelegateBridge.createProjectedDelegateHandle(handler)
             }
             return io.github.composefluent.winrt.runtime.WinRtDelegateBridge.createDelegate(
                 iid = io.github.composefluent.winrt.runtime.Guid(%S),

@@ -4,6 +4,7 @@ internal class WinRtDelegateComObject(
     private val descriptor: WinRtDelegateDescriptor,
     private val callback: (List<Any?>) -> Any?,
 ) {
+    private val cleanupActions = SnapshotList<() -> Unit>()
     private val host = createHost()
 
     fun createReference(): WinRtDelegateReference {
@@ -13,6 +14,10 @@ internal class WinRtDelegateComObject(
 
     fun releaseManagedReference() {
         host.releaseManagedReference()
+    }
+
+    fun addCleanupAction(action: () -> Unit) {
+        cleanupActions.add(action)
     }
 
     private fun invoke(rawArguments: List<Any?>): Int =
@@ -87,6 +92,9 @@ internal class WinRtDelegateComObject(
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = descriptor.runtimeClassName ?: definition.runtimeClassName,
+            cleanupAction = {
+                cleanupActions.toList().forEach { action -> action() }
+            },
         )
     }
 }

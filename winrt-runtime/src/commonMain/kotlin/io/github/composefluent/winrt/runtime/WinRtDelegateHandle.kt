@@ -11,6 +11,7 @@ class WinRtDelegateHandle internal constructor(
     private val releaseAction: () -> Unit = {},
 ) : AutoCloseable {
     private val closed = AtomicInt(0)
+    private val managedReferenceReleased = AtomicInt(0)
 
     fun invokeForTesting(arguments: List<Any?>): Any? {
         check(closed.load() == 0) { "Delegate handle is already closed." }
@@ -35,9 +36,23 @@ class WinRtDelegateHandle internal constructor(
         return comObject.createReference()
     }
 
+    internal fun releaseManagedReferenceForNativeOwnership() {
+        if (managedReferenceReleased.compareAndSet(0, 1)) {
+            releaseAction()
+        }
+    }
+
+    internal fun addCleanupAction(action: () -> Unit) {
+        comObject.addCleanupAction(action)
+    }
+
+    internal fun markClosedAfterNativeCleanup() {
+        closed.compareAndSet(0, 1)
+    }
+
     override fun close() {
         if (closed.compareAndSet(0, 1)) {
-            releaseAction()
+            releaseManagedReferenceForNativeOwnership()
         }
     }
 }

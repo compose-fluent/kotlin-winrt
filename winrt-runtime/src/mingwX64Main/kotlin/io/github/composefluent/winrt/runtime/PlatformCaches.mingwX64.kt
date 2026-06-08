@@ -114,6 +114,8 @@ actual class SnapshotList<T> actual constructor() {
         delegate += value
     }
 
+    actual fun remove(value: T): Boolean = delegate.remove(value)
+
     actual fun clear() {
         delegate.clear()
     }
