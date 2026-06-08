@@ -234,6 +234,7 @@ internal fun KotlinProjectionRenderer.outboundDelegateInvokeShape(
             }
 
         WinRtEventHandlerKind.VectorChangedEventHandler,
+        WinRtEventHandlerKind.BindableVectorChangedEventHandler,
         WinRtEventHandlerKind.MapChangedEventHandler,
         WinRtEventHandlerKind.AsyncActionProgressHandler,
         WinRtEventHandlerKind.AsyncOperationProgressHandler,

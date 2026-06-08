@@ -211,7 +211,9 @@ object ComWrappersSupport {
         pointer: RawAddress,
         expectedType: KClass<T>,
     ): T? {
-        val managedValue = WinRtInspectableComObject.findManagedValue(pointer) ?: return null
+        val managedValue = rcwCache[PlatformAbi.pointerKey(pointer)]
+            ?: WinRtInspectableComObject.findManagedValue(pointer)
+            ?: return null
         if (!expectedType.isInstance(managedValue)) {
             return null
         }

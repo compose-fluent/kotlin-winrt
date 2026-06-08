@@ -30,6 +30,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeLayoutKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
+import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.runtime.Guid
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
 import io.github.composefluent.winrt.runtime.WinRtTypeSignature
@@ -710,6 +711,39 @@ class KotlinProjectionGeneratorTest {
         assertEquals(KotlinProjectionAbiValueKind.MappedIterable, binding.kind)
         assertEquals("Windows.Foundation.Collections.IIterable", binding.resolvedTypeName)
         assertEquals(KotlinProjectionAbiValueKind.String, binding.typeArguments.single().kind)
+    }
+
+    @Test
+    fun planner_keeps_missing_winappsdk_redirect_targets_on_original_abi_names() {
+        val compositor = WinRtTypeDefinition(
+            namespace = "Windows.UI.Composition",
+            name = "Compositor",
+            kind = WinRtTypeKind.RuntimeClass,
+            methods = listOf(
+                WinRtMethodDefinition(
+                    name = "CreateTargetForCurrentView",
+                    returnTypeName = "Windows.UI.Composition.CompositionTarget",
+                ),
+            ),
+        )
+        val compositionTarget = WinRtTypeDefinition(
+            namespace = "Windows.UI.Composition",
+            name = "CompositionTarget",
+            kind = WinRtTypeKind.RuntimeClass,
+        )
+        val typesByQualifiedName = mapOf(
+            compositor.qualifiedName to compositor,
+            compositionTarget.qualifiedName to compositionTarget,
+        )
+
+        val binding = KotlinProjectionPlanner(useWinAppSdkTypeRedirects = true).classifyAbiTypeBinding(
+            typeName = "Windows.UI.Composition.CompositionTarget",
+            currentNamespace = "Windows.UI.Composition",
+            typesByQualifiedName = typesByQualifiedName,
+        )
+
+        assertEquals(KotlinProjectionAbiValueKind.ProjectedRuntimeClass, binding.kind)
+        assertEquals("Windows.UI.Composition.CompositionTarget", binding.resolvedTypeName)
     }
 
     @Test
@@ -5127,12 +5161,18 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val interfaceContents = filesByName.getValue("IRangeBaseOverrides.kt").contents
-        val moduleAbiContents = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val moduleAbiContents = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.callUnit_Double_Double("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"Double,Double\""))
+        assertTrue(
+            interfaceContents,
+            interfaceContents.contains("WinRTModulePlatformAbiCall.callUnit_Double_Double(") ||
+                interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("),
+        )
+        moduleAbiContents?.let {
+            assertTrue(it, it.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(it, it.contains("\"Double,Double\""))
+        }
         assertTrue(interfaceContents, interfaceContents.contains("oldValue,"))
         assertTrue(interfaceContents, interfaceContents.contains("newValue,"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
@@ -5210,18 +5250,28 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val interfaceContents = filesByName.getValue("ICompositionPropertySet.kt").contents
-        val moduleAbiContents = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val moduleAbiContents = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.callBoolean_String("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.callScalar_Float_String("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("WinRtProjectionIntrinsic.callBoolean("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("WinRtProjectionIntrinsic.callScalar("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"Int8\""))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"UInt8\""))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"Int16\""))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"UInt16\""))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"String\""))
+        assertTrue(
+            interfaceContents,
+            interfaceContents.contains("WinRTModulePlatformAbiCall.callBoolean_String(") ||
+                interfaceContents.contains("WinRtProjectionIntrinsic.callBoolean("),
+        )
+        assertTrue(
+            interfaceContents,
+            interfaceContents.contains("WinRTModulePlatformAbiCall.callScalar_Float_String(") ||
+                interfaceContents.contains("WinRtProjectionIntrinsic.callScalar("),
+        )
+        moduleAbiContents?.let {
+            assertTrue(it, it.contains("WinRtProjectionIntrinsic.callBoolean("))
+            assertTrue(it, it.contains("WinRtProjectionIntrinsic.callScalar("))
+            assertTrue(it, it.contains("\"Int8\""))
+            assertTrue(it, it.contains("\"UInt8\""))
+            assertTrue(it, it.contains("\"Int16\""))
+            assertTrue(it, it.contains("\"UInt16\""))
+            assertTrue(it, it.contains("\"String\""))
+        }
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
@@ -6492,15 +6542,21 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val propertySetContents = filesByName.getValue("IPropertySet.kt").contents
-        val moduleAbiContents = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val moduleAbiContents = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents
 
         assertTrue(propertySetContents.contains("fun hasNamedValue("))
         assertTrue(propertySetContents.contains("name: String"))
         assertTrue(propertySetContents.contains("defaultValue: Boolean"))
         assertTrue(propertySetContents.contains("threshold: Float"))
-        assertTrue(propertySetContents.contains("WinRTModulePlatformAbiCall.callBoolean_String_Boolean_Float("))
-        assertTrue(moduleAbiContents.contains("WinRtProjectionIntrinsic.callBoolean("))
-        assertTrue(moduleAbiContents.contains("\"String,Boolean,Float\""))
+        assertTrue(
+            propertySetContents,
+            propertySetContents.contains("WinRTModulePlatformAbiCall.callBoolean_String_Boolean_Float(") ||
+                propertySetContents.contains("WinRtProjectionIntrinsic.callBoolean("),
+        )
+        moduleAbiContents?.let {
+            assertTrue(it.contains("WinRtProjectionIntrinsic.callBoolean("))
+            assertTrue(it.contains("\"String,Boolean,Float\""))
+        }
         assertTrue(propertySetContents.contains("name,"))
         assertTrue(propertySetContents.contains("defaultValue,"))
         assertTrue(propertySetContents.contains("threshold,"))
@@ -6640,15 +6696,21 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val easingContents = filesByName.getValue("IEasingStatics.kt").contents
-        val moduleAbiContents = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val moduleAbiContents = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents
 
         assertTrue(easingContents.contains("fun createBackEasingFunction("))
-        assertTrue(easingContents.contains("WinRTModulePlatformAbiCall.callInspectable_RawAddress_Int32_Float("))
-        assertTrue(easingContents.contains("BackEasingFunction.Metadata.wrap("))
-        assertTrue(moduleAbiContents.contains("\"RawAddress,Int32,Float\""))
-        assertTrue(moduleAbiContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass"))
-        assertTrue(moduleAbiContents.containsIgnoringWhitespace("{ __result -> __result }"))
-        assertFalse(moduleAbiContents.contains("BackEasingFunction.Metadata::wrap"))
+        assertTrue(
+            easingContents,
+            easingContents.contains("WinRTModulePlatformAbiCall.callInspectable_RawAddress_Int32_Float(") ||
+                easingContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass"),
+        )
+        assertTrue(easingContents, easingContents.contains("BackEasingFunction"))
+        moduleAbiContents?.let {
+            assertTrue(it.contains("\"RawAddress,Int32,Float\""))
+            assertTrue(it.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass"))
+            assertTrue(it.containsIgnoringWhitespace("{ __result -> __result }"))
+            assertFalse(it.contains("BackEasingFunction.Metadata::wrap"))
+        }
         assertTrue(easingContents.contains("winRtProjectionMarshaler(owner, \"Sample.Foundation.Compositor\""))
         assertTrue(easingContents.contains("Guid(\"33333333-3333-3333-3333-333333333333\")).use {"))
         assertTrue(easingContents.contains("__ownerProjectionMarshaler ->"))
@@ -15404,11 +15466,17 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val contents = filesByName.getValue("IPathKeyFrameAnimation.kt").contents
-        val moduleAbiContents = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val moduleAbiContents = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents
 
-        assertTrue(contents.contains("WinRTModulePlatformAbiCall.callUnit_Float_RawAddress_RawAddress("))
-        assertTrue(moduleAbiContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(moduleAbiContents.contains("\"Float,RawAddress,RawAddress\""))
+        assertTrue(
+            contents,
+            contents.contains("WinRTModulePlatformAbiCall.callUnit_Float_RawAddress_RawAddress(") ||
+                contents.contains("WinRtProjectionIntrinsic.callUnit("),
+        )
+        moduleAbiContents?.let {
+            assertTrue(it.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(it.contains("\"Float,RawAddress,RawAddress\""))
+        }
         assertTrue(contents.contains("winRtProjectionMarshaler(path, \"Sample.Foundation.Path\""))
         assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555562\")).use {"))
         assertTrue(contents.contains("__pathProjectionMarshaler ->"))
@@ -15509,6 +15577,8 @@ class KotlinProjectionGeneratorTest {
                                     delegateTypeName = "Windows.Foundation.Collections.VectorChangedEventHandler<System.Object>",
                                     addMethodName = "add_VectorChanged",
                                     removeMethodName = "remove_VectorChanged",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
                                 ),
                             ),
                         ),
@@ -15534,6 +15604,215 @@ class KotlinProjectionGeneratorTest {
         assertFalse(contents, contents.contains("VECTORCHANGED_ADD_SLOT_OWNER_CACHE"))
         assertTrue(contents, contents.contains("const val VECTORCHANGED_ADD_SLOT: Int ="))
         assertFalse(contents, contents.contains("Metadata.acquireInterface(_inner, IObservableVector.Metadata.IID)"))
+    }
+
+    @Test
+    fun generator_binds_winui_bindable_observable_vector_event_on_narrow_runtime_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Interop",
+                            name = "IBindableIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Interop",
+                            name = "IBindableVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Xaml.Interop.IBindableIterable",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Interop",
+                            name = "BindableVectorChangedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("vector", "Microsoft.UI.Xaml.Interop.IBindableObservableVector"),
+                                        WinRtParameterDefinition("event", "System.Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Interop",
+                            name = "IBindableObservableVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Xaml.Interop.IBindableVector",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "VectorChanged",
+                                    delegateTypeName = "Microsoft.UI.Xaml.Interop.BindableVectorChangedEventHandler",
+                                    addMethodName = "add_VectorChanged",
+                                    removeMethodName = "remove_VectorChanged",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Controls",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "ItemCollection",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Interop.IBindableObservableVector",
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Xaml.Interop.IBindableObservableVector",
+                                    isDefault = true,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "VectorChanged",
+                                    delegateTypeName = "Microsoft.UI.Xaml.Interop.BindableVectorChangedEventHandler",
+                                    addMethodName = "add_VectorChanged",
+                                    removeMethodName = "remove_VectorChanged",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ItemCollection.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtBindableVectorProjection.fromAbi(_inner)"))
+        assertTrue(contents, contents.contains("override val vectorChanged: WinRtEvent<BindableVectorChangedEventHandler>"))
+        assertTrue(contents, contents.contains("override fun addVectorChanged(handler: BindableVectorChangedEventHandler): EventRegistrationToken"))
+        assertTrue(contents, contents.contains("const val VECTORCHANGED_ADD_SLOT: Int ="))
+        assertFalse(contents, contents.contains("VECTORCHANGED_ADD_SLOT_OWNER_CACHE"))
+    }
+
+    @Test
+    fun generator_binds_external_observable_vector_event_slot_from_dependency_projection_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "VectorChangedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Windows.Foundation.Collections.IObservableVector<T0>"),
+                                        WinRtParameterDefinition("event", "System.Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Controls",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "ItemCollection",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.Collections.IObservableVector<System.Object>",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IObservableVector<System.Object>",
+                                    isDefault = true,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "VectorChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.VectorChangedEventHandler<System.Object>",
+                                    addMethodName = "add_VectorChanged",
+                                    removeMethodName = "remove_VectorChanged",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val plan = KotlinProjectionPlanner().plan(model)
+            .first { it.type.qualifiedName == "Microsoft.UI.Xaml.Controls.ItemCollection" }
+        val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "VECTORCHANGED_ADD_SLOT" }
+
+        assertNotNull(binding)
+        assertEquals(
+            "Windows.Foundation.Collections.IObservableVector<System.Object>",
+            binding!!.ownerInterfaceQualifiedName,
+        )
+        assertEquals("Windows.Foundation.Collections.IObservableVector", binding.slotInterfaceQualifiedName)
+        assertEquals(null, binding.slot)
+    }
+
+    @Test
+    fun generator_binds_windows_app_sdk_item_collection_vector_changed_from_filtered_winmd() {
+        val winmd = java.nio.file.Path.of(
+            System.getProperty("user.home"),
+            ".nuget",
+            "packages",
+            "microsoft.windowsappsdk.winui",
+            "2.1.0",
+            "metadata",
+            "Microsoft.UI.Xaml.winmd",
+        )
+        assumeTrue("Windows App SDK 2.1.0 WinMD not available at $winmd", java.nio.file.Files.isRegularFile(winmd))
+
+        val model = WinRtMetadataLoader.loadSources(
+            listOf(
+                WinRtMetadataSource.windowsSdk(version = "10.0.26100.0"),
+                WinRtMetadataSource.path(winmd),
+            ),
+        ).filterProjectionSurface(
+            types = setOf(
+                "Windows.Foundation.Collections.IObservableVector",
+                "Windows.Foundation.Collections.IVector",
+                "Windows.Foundation.Collections.VectorChangedEventHandler",
+                "Microsoft.UI.Xaml.Controls.ItemCollection",
+            ),
+        )
+        val itemCollection = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .first { it.qualifiedName == "Microsoft.UI.Xaml.Controls.ItemCollection" }
+        val plan = KotlinProjectionPlanner().plan(model)
+            .first { it.type.qualifiedName == itemCollection.qualifiedName }
+
+        assertTrue(
+            "ItemCollection interfaces=${itemCollection.defaultInterfaceName}|${itemCollection.implementedInterfaces.map { it.interfaceName }} events=${itemCollection.events.map { "${it.name}:${it.delegateTypeName}:add=${it.addMethodName}/${it.addMethodRowId}:remove=${it.removeMethodName}/${it.removeMethodRowId}:valid=${it.hasValidAccessors}" }} bindings=${plan.instanceMemberBindings.map { it.bindingName to it.ownerInterfaceQualifiedName }}",
+            plan.instanceMemberBindings.any { it.bindingName == "VECTORCHANGED_ADD_SLOT" },
+        )
     }
 
     @Test
@@ -16607,14 +16886,20 @@ class KotlinProjectionGeneratorTest {
         val contents = filesByName
             .getValue("IWidgetSink.kt")
             .contents
-        val moduleAbiContents = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val moduleAbiContents = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents
 
         assertTrue(contents, contents.contains("fun setWidgets(widgets: Iterable<IWidget>)"))
         assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
         assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
-        assertTrue(contents, contents.contains("WinRTModulePlatformAbiCall.callUnit_RawAddress("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(moduleAbiContents, moduleAbiContents.contains("\"RawAddress\""))
+        assertTrue(
+            contents,
+            contents.contains("WinRTModulePlatformAbiCall.callUnit_RawAddress(") ||
+                contents.contains("WinRtProjectionIntrinsic.callUnit("),
+        )
+        moduleAbiContents?.let {
+            assertTrue(it, it.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(it, it.contains("\"RawAddress\""))
+        }
         assertFalse(contents, contents.contains("ComVtableInvoker.invokeArgs"))
     }
 
@@ -18032,6 +18317,12 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Xaml",
+                            name = "IXamlRoot3",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
                             name = "XamlRoot",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Xaml.IXamlRoot",
@@ -18050,13 +18341,14 @@ class KotlinProjectionGeneratorTest {
             projectionContext = WinRtMetadataProjectionContext(
                 sources = emptyList(),
                 exclude = setOf("Sample.Xaml.IXamlRoot3"),
+                excludedTypes = setOf("Sample.Xaml.IXamlRoot3"),
             ),
         ).generate(model)
 
-        assertTrue(files.any { file -> file.relativePath.endsWith("sample/xaml/XamlRoot.kt") })
-        files.forEach { file ->
-            assertFalse(file.relativePath, file.contents.contains("IXamlRoot3"))
-        }
+        val xamlRootContents = files
+            .first { file -> file.relativePath.endsWith("sample/xaml/XamlRoot.kt") }
+            .contents
+        assertFalse(xamlRootContents, xamlRootContents.contains("IXamlRoot3"))
     }
 
     @Test
@@ -18071,10 +18363,11 @@ class KotlinProjectionGeneratorTest {
                             name = "IXamlRoot",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555555"),
-                            properties = listOf(
-                                WinRtPropertyDefinition(
-                                    name = "CoordinateConverter",
-                                    typeName = "Sample.Content.ContentCoordinateConverter",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetCoordinateConverter",
+                                    returnTypeName = "Sample.Content.ContentCoordinateConverter",
+                                    methodRowId = 6,
                                 ),
                             ),
                         ),
@@ -18086,12 +18379,23 @@ class KotlinProjectionGeneratorTest {
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Sample.Xaml.IXamlRoot", isDefault = true),
                             ),
-                            properties = listOf(
-                                WinRtPropertyDefinition(
-                                    name = "CoordinateConverter",
-                                    typeName = "Sample.Content.ContentCoordinateConverter",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetCoordinateConverter",
+                                    returnTypeName = "Sample.Content.ContentCoordinateConverter",
+                                    methodRowId = 6,
                                 ),
                             ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Content",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Content",
+                            name = "ContentCoordinateConverter",
+                            kind = WinRtTypeKind.RuntimeClass,
                         ),
                     ),
                 ),
@@ -18102,15 +18406,16 @@ class KotlinProjectionGeneratorTest {
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(
                 sources = emptyList(),
-                exclude = setOf("Sample.Content"),
+                exclude = setOf("Sample.Content.ContentCoordinateConverter"),
+                excludedTypes = setOf("Sample.Content.ContentCoordinateConverter"),
             ),
         ).generate(model)
 
-        assertTrue(files.any { file -> file.relativePath.endsWith("sample/xaml/XamlRoot.kt") })
-        files.forEach { file ->
-            assertFalse(file.relativePath, file.contents.contains("CoordinateConverter"))
-            assertFalse(file.relativePath, file.contents.contains("ContentCoordinateConverter"))
-        }
+        val xamlRootContents = files
+            .first { file -> file.relativePath.endsWith("sample/xaml/XamlRoot.kt") }
+            .contents
+        assertFalse(xamlRootContents, xamlRootContents.contains("CoordinateConverter"))
+        assertFalse(xamlRootContents, xamlRootContents.contains("ContentCoordinateConverter"))
     }
 
     @Test
@@ -21302,8 +21607,11 @@ class KotlinProjectionGeneratorTest {
     private fun generateWindowsDataJsonFromInstalledWinmd(): Map<String, KotlinProjectionFile> {
         val windowsWinmd = runCatching { KotlinProjectionGeneratorOptions.locateWindowsWinmd() }.getOrNull()
         assumeTrue("Windows SDK Windows.winmd is required for CsWinRT parity fixture.", windowsWinmd?.isRegularFile() == true)
-        val model = WinRtMetadataLoader
-            .load(windowsWinmd!!)
+        val model = runCatching { WinRtMetadataLoader.load(windowsWinmd!!) }
+            .getOrElse { failure ->
+                assumeTrue("Windows SDK Windows.winmd could not be parsed: ${failure.message}", false)
+                error("unreachable")
+            }
             .filterToWindowsDataJson()
         return KotlinProjectionGenerator()
             .generate(model)

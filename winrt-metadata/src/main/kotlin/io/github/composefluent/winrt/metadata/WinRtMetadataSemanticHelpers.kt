@@ -2658,6 +2658,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 WinRtEventHandlerKind.PropertyChangedEventHandler,
                 WinRtEventHandlerKind.NotifyCollectionChangedEventHandler,
                 WinRtEventHandlerKind.VectorChangedEventHandler,
+                WinRtEventHandlerKind.BindableVectorChangedEventHandler,
                 WinRtEventHandlerKind.MapChangedEventHandler,
                 -> emptyList()
             }

@@ -186,6 +186,14 @@ internal fun redirectedWinAppSdkAbiTypeName(typeName: String, useWinAppSdkTypeRe
 }
 
 internal fun redirectedWinAppSdkAbiTypeExpression(typeName: String, useWinAppSdkTypeRedirects: Boolean): String {
+    return redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects, emptyMap())
+}
+
+internal fun redirectedWinAppSdkAbiTypeExpression(
+    typeName: String,
+    useWinAppSdkTypeRedirects: Boolean,
+    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+): String {
     val trimmed = typeName.trim()
     val nullableSuffix = if (trimmed.endsWith("?")) "?" else ""
     val effectiveTypeName = trimmed.removeSuffix("?")
@@ -195,13 +203,35 @@ internal fun redirectedWinAppSdkAbiTypeExpression(typeName: String, useWinAppSdk
             effectiveTypeName.substring(0, genericStart),
             useWinAppSdkTypeRedirects,
         )
+        val resolvedRawType = if (rawType != effectiveTypeName.substring(0, genericStart) &&
+            !typesByQualifiedName.containsKey(rawType)
+        ) {
+            effectiveTypeName.substring(0, genericStart)
+        } else {
+            rawType
+        }
         val arguments = splitGenericArguments(effectiveTypeName.substring(genericStart + 1, effectiveTypeName.length - 1))
             .joinToString(", ") { argument ->
-                redirectedWinAppSdkAbiTypeExpression(argument, useWinAppSdkTypeRedirects)
+                redirectedWinAppSdkAbiTypeExpression(argument, useWinAppSdkTypeRedirects, typesByQualifiedName)
             }
-        return "$rawType<$arguments>$nullableSuffix"
+        return "$resolvedRawType<$arguments>$nullableSuffix"
     }
-    return redirectedWinAppSdkAbiTypeName(effectiveTypeName, useWinAppSdkTypeRedirects) + nullableSuffix
+    val redirected = redirectedWinAppSdkAbiTypeName(effectiveTypeName, useWinAppSdkTypeRedirects)
+    val resolved = if (redirected != effectiveTypeName && !typesByQualifiedName.containsKey(redirected)) {
+        effectiveTypeName
+    } else {
+        redirected
+    }
+    return resolved + nullableSuffix
+}
+
+fun redirectedWinAppSdkProjectionSurfaceTypeReferences(type: WinRtTypeRef): List<WinRtTypeRef> {
+    val redirected = redirectedWinAppSdkAbiTypeExpression(type.typeName, useWinAppSdkTypeRedirects = true)
+    return if (redirected == type.typeName) {
+        emptyList()
+    } else {
+        listOf(WinRtTypeRef.fromDisplayName(redirected))
+    }
 }
 
 internal fun KotlinProjectionRenderer.redirectedAbiTypeName(typeName: String): String =
