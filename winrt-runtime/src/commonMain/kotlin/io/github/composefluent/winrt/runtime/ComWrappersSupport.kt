@@ -27,6 +27,7 @@ object ComWrappersSupport {
     private val authoringActivationFactoryFallbacks = SnapshotList<(String, Guid) -> ActivationResult>()
     private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
     private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRtCcwDefinition>()
+    private val ccwHostCache = WeakKeyStateMap<Any, CachedCcwHost>()
     private val rcwCache = WeakValueCache<Long, Any>()
     private val runtimeClassNameLookups = SnapshotList<(KClass<*>) -> String?>()
     private val authoringMetadataTypeLookups = SnapshotList<(String) -> String?>()
@@ -313,6 +314,14 @@ object ComWrappersSupport {
 
         tryCreateComposableCCWForObject(value, interfaceId)?.let { return it }
 
+        val cachedHost = ccwHostCache.getOrPut(value) {
+            createCachedCcwHost(value)
+        }
+        val requestedInterface = interfaceId ?: cachedHost.defaultInterfaceId
+        return cachedHost.createReference(requestedInterface)
+    }
+
+    private fun createCachedCcwHost(value: Any): CachedCcwHost {
         val definition = createCcwDefinition(value)
         val composableInnerReference = (value as? WinRtComposableObject)
             ?.winRtComposableObjectReference
@@ -334,9 +343,11 @@ object ComWrappersSupport {
             } else {
                 null
             },
+            cleanupAction = {
+                ccwHostCache.remove(value)
+            },
         )
-        val requestedInterface = interfaceId ?: definition.defaultInterfaceId
-        return ownedReference(host, requestedInterface)
+        return CachedCcwHost(host, definition.defaultInterfaceId)
     }
 
     private fun tryCreateComposableCCWForObject(
@@ -437,17 +448,18 @@ object ComWrappersSupport {
         platformEnsureInspectableProjectionInteropRegistered()
         val definition = createCcwDefinition(value)
         var innerReference: IInspectableReference? = null
-        val host = WinRtInspectableComObject(
+        lateinit var host: WinRtInspectableComObject
+        host = WinRtInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = definition.runtimeClassName,
             managedValue = value,
             queryInterfaceFallback = { requestedInterfaceId ->
-                definition.queryInterfaceFallback
-                    ?.invoke(value, requestedInterfaceId)
-                    ?.takeUnless(PlatformAbi::isNull)
-                    ?: innerReference
+                    definition.queryInterfaceFallback
+                        ?.invoke(value, requestedInterfaceId)
+                        ?.takeUnless(PlatformAbi::isNull)
+                        ?: innerReference
                     ?.let { queryInterfacePointerForAbi(it, requestedInterfaceId) }
             },
         )
@@ -560,6 +572,7 @@ object ComWrappersSupport {
         authoringActivationFactories.clear()
         helperTypeRegistry.clear()
         ccwFactories.clear()
+        ccwHostCache.clear()
         rcwCache.clear()
         ProjectedDelegateCcwCache.clearForTests()
         ProjectedDelegateObjectRoots.clearForTests()
@@ -822,6 +835,29 @@ object ComWrappersSupport {
                 inner.close()
             } finally {
                 cleanup()
+            }
+        }
+    }
+
+    private class CachedCcwHost(
+        private val host: WinRtInspectableComObject,
+        val defaultInterfaceId: Guid,
+    ) {
+        private val lock = PlatformLock()
+        private var rootReleased = false
+
+        fun createReference(interfaceId: Guid): ComObjectReference {
+            val reference = host.createReference(interfaceId)
+            releaseInitialRootOnce()
+            return reference
+        }
+
+        private fun releaseInitialRootOnce() {
+            lock.withLock {
+                if (!rootReleased) {
+                    rootReleased = true
+                    host.releaseManagedReference()
+                }
             }
         }
     }

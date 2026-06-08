@@ -100,6 +100,8 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
         defaultValue: () -> V,
     ): V = delegate[key] ?: defaultValue().also { value -> delegate[key] = value }
 
+    actual fun remove(key: K): V? = delegate.remove(key)
+
     actual fun clear() {
         delegate.clear()
     }

@@ -63,6 +63,8 @@ expect class WeakKeyStateMap<K : Any, V : Any>() {
         defaultValue: () -> V,
     ): V
 
+    fun remove(key: K): V?
+
     fun clear()
 }
 
