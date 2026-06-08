@@ -109,6 +109,7 @@ private fun namespaceSourceAdditionFiles(namespace: String): List<String> {
             "TaskToAsyncInfoAdapter.kt",
             "TaskToAsyncOperationAdapter.kt",
             "TaskToAsyncOperationWithProgressAdapter.kt",
+            "Windows.Foundation.kt",
             "Windows.Foundation.SR.kt",
         )
         "Windows.Storage.Streams" -> listOf(
@@ -139,6 +140,9 @@ private fun namespaceSourceAdditionFiles(namespace: String): List<String> {
         "Microsoft.UI.Xaml", "Windows.UI.Xaml" -> listOf(
             "$namespace.kt",
             "$namespace.SR.kt",
+        )
+        "Windows.UI.Xaml.Controls.Primitives" -> return listOf(
+            "strings/additions/Windows.UI.Xaml.Controls/Windows.UI.Xaml.Controls.Primitives.kt",
         )
         else -> listOf("$namespace.kt")
     }

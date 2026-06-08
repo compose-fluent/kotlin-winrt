@@ -2389,6 +2389,16 @@ class WinRtMetadataModelTest {
                     ),
                 ),
                 WinRtNamespace(
+                    name = "Windows.UI.Xaml.Controls.Primitives",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Xaml.Controls.Primitives",
+                            name = "SelectorItem",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
                     name = "Windows.ApplicationModel.DataTransfer",
                     types = listOf(
                         WinRtTypeDefinition(
@@ -2410,20 +2420,45 @@ class WinRtMetadataModelTest {
         val inventory = model.projectionInventory(
             WinRtMetadataProjectionContext(
                 sources = emptyList(),
-                include = setOf("Windows.Foundation", "Microsoft.UI.Xaml", "Windows.ApplicationModel.DataTransfer"),
+                include = setOf(
+                    "Windows.Foundation",
+                    "Microsoft.UI.Xaml",
+                    "Windows.ApplicationModel.DataTransfer",
+                    "Windows.UI.Xaml.Controls.Primitives",
+                ),
                 additionExclude = setOf("Microsoft.UI.Xaml.Media.Animation"),
             ),
         )
 
         assertEquals(
-            listOf("Windows.ApplicationModel.DataTransfer", "Windows.Foundation"),
+            listOf(
+                "Windows.ApplicationModel.DataTransfer",
+                "Windows.Foundation",
+                "Windows.UI.Xaml.Controls.Primitives",
+            ),
             inventory.namespaceAdditions.map { it.namespace },
         )
         assertEquals(WinRtNamespaceAdditionKind.ComInteropAdapter, inventory.namespaceAdditions.first().kind)
         assertEquals(listOf("interop/Windows.ApplicationModel.DataTransfer.kt"), inventory.namespaceAdditions.first().sourceFiles)
-        assertTrue(
-            "strings/additions/Windows.Foundation/AsyncInfo.kt" in
-                inventory.namespaceAdditions.single { it.namespace == "Windows.Foundation" }.sourceFiles,
+        assertEquals(
+            listOf(
+                "strings/additions/Windows.Foundation/AsyncInfo.kt",
+                "strings/additions/Windows.Foundation/AsyncInfoIdGenerator.kt",
+                "strings/additions/Windows.Foundation/ExceptionDispatchHelper.kt",
+                "strings/additions/Windows.Foundation/ITaskAwareAsyncInfo.kt",
+                "strings/additions/Windows.Foundation/TaskToAsyncActionAdapter.kt",
+                "strings/additions/Windows.Foundation/TaskToAsyncActionWithProgressAdapter.kt",
+                "strings/additions/Windows.Foundation/TaskToAsyncInfoAdapter.kt",
+                "strings/additions/Windows.Foundation/TaskToAsyncOperationAdapter.kt",
+                "strings/additions/Windows.Foundation/TaskToAsyncOperationWithProgressAdapter.kt",
+                "strings/additions/Windows.Foundation/Windows.Foundation.kt",
+                "strings/additions/Windows.Foundation/Windows.Foundation.SR.kt",
+            ),
+            inventory.namespaceAdditions.single { it.namespace == "Windows.Foundation" }.sourceFiles,
+        )
+        assertEquals(
+            listOf("strings/additions/Windows.UI.Xaml.Controls/Windows.UI.Xaml.Controls.Primitives.kt"),
+            inventory.namespaceAdditions.single { it.namespace == "Windows.UI.Xaml.Controls.Primitives" }.sourceFiles,
         )
         assertEquals(true, inventory.helperOutputs.namespaceAdditionsRequired)
         assertTrue("WinRTNamespaceAdditions.kt" in inventory.helperOutputs.requiredHelperFileNames)
