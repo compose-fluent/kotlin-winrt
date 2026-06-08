@@ -444,6 +444,100 @@ class WinRtDelegateBridgeTest {
     }
 
     @Test
+    fun delegate_argument_uses_lightweight_iunknown_ccw() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc541")
+        var invocationCount = 0
+
+        WinRtDelegateBridge.createDelegateArgument(
+            iid = delegateIid,
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+            callback = {
+                invocationCount += 1
+                Unit
+            },
+        ).use { marshaler ->
+            assertNotEquals(0L, PlatformAbi.pointerKey(marshaler.abi))
+            assertEquals(
+                KnownHResults.S_OK,
+                HResult(
+                    ComVtableInvoker.invokeGeneric(
+                        instance = marshaler.abi.asRawComPtr(),
+                        slot = WinRtDelegateVftblSlots.Invoke,
+                        signature = WinRtDelegateAbiMarshaller.functionSignature(
+                            WinRtDelegateDescriptor(
+                                interfaceId = delegateIid,
+                                parameterKinds = emptyList(),
+                                returnKind = WinRtDelegateValueKind.UNIT,
+                            ),
+                        ),
+                        args = LongArray(0),
+                    ),
+                ),
+            )
+            IUnknownReference(
+                pointer = marshaler.abi.asRawComPtr(),
+                interfaceId = delegateIid,
+                preventReleaseOnDispose = true,
+            ).use { borrowed ->
+                borrowed.queryInterface(IID.IAgileObject).getOrThrow().use { agile ->
+                    assertTrue(agile.sameIdentity(borrowed))
+                }
+                assertNull(borrowed.tryQueryInterface(IID.IInspectable))
+                assertNull(borrowed.tryQueryInterface(IID.IPropertyValue))
+                assertNull(
+                    borrowed.tryQueryInterface(
+                        ParameterizedInterfaceId.createFromParameterizedInterface(
+                            IID.IReference,
+                            WinRtTypeSignature.delegate(delegateIid),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(1, invocationCount)
+    }
+
+    @Test
+    fun delegate_argument_instances_share_lightweight_vtable_callbacks() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc542")
+        val first = WinRtDelegateBridge.createDelegateArgument(
+            iid = delegateIid,
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+            callback = { Unit },
+        )
+        val second = WinRtDelegateBridge.createDelegateArgument(
+            iid = delegateIid,
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+            callback = { Unit },
+        )
+
+        first.use { firstMarshaler ->
+            second.use { secondMarshaler ->
+                assertNotEquals(
+                    PlatformAbi.pointerKey(firstMarshaler.abi),
+                    PlatformAbi.pointerKey(secondMarshaler.abi),
+                )
+
+                val firstVtable = PlatformAbi.readPointer(firstMarshaler.abi)
+                val secondVtable = PlatformAbi.readPointer(secondMarshaler.abi)
+
+                assertEquals(
+                    PlatformAbi.pointerKey(firstVtable),
+                    PlatformAbi.pointerKey(secondVtable),
+                )
+                assertEquals(
+                    PlatformAbi.pointerKey(PlatformAbi.readPointerAt(firstVtable, WinRtDelegateVftblSlots.Invoke)),
+                    PlatformAbi.pointerKey(PlatformAbi.readPointerAt(secondVtable, WinRtDelegateVftblSlots.Invoke)),
+                )
+            }
+        }
+    }
+
+    @Test
     fun delegate_invoke_returns_callback_hresult_instead_of_throwing_across_abi() {
         val handle = WinRtDelegateBridge.createUnitDelegate(
             iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),

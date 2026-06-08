@@ -21,33 +21,7 @@ internal class WinRtDelegateComObject(
     }
 
     private fun invoke(rawArguments: List<Any?>): Int =
-        try {
-            val hasReturnValue = descriptor.returnKind != WinRtDelegateValueKind.UNIT
-            val abiArguments = if (hasReturnValue) rawArguments.dropLast(1) else rawArguments
-            val returnValue = callback(
-                WinRtDelegateAbiMarshaller.decodeArguments(
-                    descriptor = descriptor,
-                    abiArguments = abiArguments,
-                ),
-            )
-            if (hasReturnValue) {
-                val resultOut = rawArguments.last() as? RawAddress
-                    ?: error("Non-unit delegate invocation requires a trailing ABI return buffer.")
-                WinRtDelegateAbiMarshaller.writeReturnValue(descriptor, returnValue, resultOut)
-            }
-            KnownHResults.S_OK.value
-        } catch (error: Throwable) {
-            if (FeatureSwitches.traceCcw) {
-                println("winrt-delegate: Invoke failed for ${descriptor.runtimeClassName ?: descriptor.interfaceId}: ${error::class.qualifiedName}: ${error.message}")
-                error.printStackTrace()
-            }
-            if (descriptor.isDispatcherQueueHandler()) {
-                ExceptionHelpers.reportUnhandledError(error)
-                return KnownHResults.S_OK.value
-            }
-            platformSetErrorInfo(error)
-            platformHResultFromThrowable(error).value
-        }
+        WinRtDelegateInvocationSupport.invoke(descriptor, callback, rawArguments)
 
     private fun createHost(): WinRtInspectableComObject {
         val delegateReferenceInterfaceId = descriptor.referenceInterfaceId()
@@ -97,6 +71,41 @@ internal class WinRtDelegateComObject(
             },
         )
     }
+}
+
+internal object WinRtDelegateInvocationSupport {
+    fun invoke(
+        descriptor: WinRtDelegateDescriptor,
+        callback: (List<Any?>) -> Any?,
+        rawArguments: List<Any?>,
+    ): Int =
+        try {
+            val hasReturnValue = descriptor.returnKind != WinRtDelegateValueKind.UNIT
+            val abiArguments = if (hasReturnValue) rawArguments.dropLast(1) else rawArguments
+            val returnValue = callback(
+                WinRtDelegateAbiMarshaller.decodeArguments(
+                    descriptor = descriptor,
+                    abiArguments = abiArguments,
+                ),
+            )
+            if (hasReturnValue) {
+                val resultOut = rawArguments.last() as? RawAddress
+                    ?: error("Non-unit delegate invocation requires a trailing ABI return buffer.")
+                WinRtDelegateAbiMarshaller.writeReturnValue(descriptor, returnValue, resultOut)
+            }
+            KnownHResults.S_OK.value
+        } catch (error: Throwable) {
+            if (FeatureSwitches.traceCcw) {
+                println("winrt-delegate: Invoke failed for ${descriptor.runtimeClassName ?: descriptor.interfaceId}: ${error::class.qualifiedName}: ${error.message}")
+                error.printStackTrace()
+            }
+            if (descriptor.isDispatcherQueueHandler()) {
+                ExceptionHelpers.reportUnhandledError(error)
+                return KnownHResults.S_OK.value
+            }
+            platformSetErrorInfo(error)
+            platformHResultFromThrowable(error).value
+        }
 }
 
 class WinRtDelegateReference internal constructor(
