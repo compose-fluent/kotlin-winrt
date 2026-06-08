@@ -2905,28 +2905,32 @@ class KotlinProjectionSupportRenderer {
         invokeShape: KotlinProjectionDelegateInvokeShape,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): CodeBlock {
-        val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
-            eventSourceCallbackArgumentCode(index, binding.typeBinding, plansByType).toString()
+        val callbackArguments = CodeBlock.builder()
+        invokeShape.parameterBindings.forEachIndexed { index, binding ->
+            if (index > 0) {
+                callbackArguments.add(", ")
+            }
+            callbackArguments.add(eventSourceCallbackArgumentCode(index, binding.typeBinding, plansByType))
         }
         val interfaceId = descriptor.interfaceId ?: invokeShape.interfaceId
-        return CodeBlock.of(
-            """
-            if (handler is io.github.composefluent.winrt.runtime.WinRtProjectedDelegate) {
-                return io.github.composefluent.winrt.runtime.WinRtDelegateBridge.createProjectedDelegateHandle(handler)
-            }
-            return io.github.composefluent.winrt.runtime.WinRtDelegateBridge.createDelegate(
-                iid = io.github.composefluent.winrt.runtime.Guid(%S),
-                parameterKinds = %L,
-                returnKind = %L,
-            ) { __args ->
-                handler.invoke(%L)
-            }
-            """.trimIndent() + "\n",
-            interfaceId.toString(),
-            eventSourceDelegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding }),
-            delegateValueKindName(invokeShape.returnBinding),
-            callbackArguments.joinToString(", "),
-        )
+        return CodeBlock.builder()
+            .add("if (handler is io.github.composefluent.winrt.runtime.WinRtProjectedDelegate) {\n")
+            .indent()
+            .add("return io.github.composefluent.winrt.runtime.WinRtDelegateBridge.createProjectedDelegateHandle(handler)\n")
+            .unindent()
+            .add("}\n")
+            .add("return io.github.composefluent.winrt.runtime.WinRtDelegateBridge.createDelegate(\n")
+            .indent()
+            .add("iid = io.github.composefluent.winrt.runtime.Guid(%S),\n", interfaceId.toString())
+            .add("parameterKinds = %L,\n", eventSourceDelegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding }))
+            .add("returnKind = %L,\n", delegateValueKindName(invokeShape.returnBinding))
+            .unindent()
+            .add(") { __args ->\n")
+            .indent()
+            .add("handler.invoke(%L)\n", callbackArguments.build())
+            .unindent()
+            .add("}\n")
+            .build()
     }
 
     private fun eventSourceCallbackArgumentCode(
