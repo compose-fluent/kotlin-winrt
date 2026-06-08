@@ -8,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageIdentity
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
+import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -108,14 +109,27 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
             ?.toPath()
             ?.let(KotlinWinRtAuthoringCandidateFile::read)
             .orEmpty()
-        val sources = metadataSources()
-        val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
+        var sources = metadataSources().withWindowsSdkSourceForProjectionRoots(
+            includeNames = includeNamespaces.get().toSet() + includeTypes.get().toSet(),
+            version = windowsSdkVersion.orNull,
+            includeExtensions = includeWindowsSdkExtensions.get(),
+        )
+        var unfilteredModel = WinRtMetadataLoader.loadSources(sources)
+        sources = sources.withWindowsSdkSourceForUnresolvedWindowsReferences(
+            model = unfilteredModel,
+            version = windowsSdkVersion.orNull,
+            includeExtensions = includeWindowsSdkExtensions.get(),
+        )
+        unfilteredModel = WinRtMetadataLoader.loadSources(sources)
+        val exportedCandidates = candidates.filter { candidate -> candidate.isPublic }
+        val authoringCandidateMetadataRoots = authoringCandidateMetadataRootNames(candidates)
+        val baseModel = unfilteredModel.filterProjectionSurface(
             namespaces = includeNamespaces.get().toSet(),
-            types = (includeTypes.get() + dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles.files)).toSet(),
+            types = (includeTypes.get() + dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles.files) + authoringCandidateMetadataRoots).toSet(),
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
+            additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
         )
-        val exportedCandidates = candidates.filter { candidate -> candidate.isPublic }
         val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             baseModel,
             exportedCandidates,
@@ -139,7 +153,18 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
 
     private fun metadataSources(): List<WinRtMetadataSource> {
         val explicitSources = metadataInputs.get().map(WinRtMetadataSource::parse)
-        val sdkSource = if (generateWindowsSdkProjection.get()) {
+        val hasProjectionFilter = includeNamespaces.get().isNotEmpty() || includeTypes.get().isNotEmpty()
+        val packageSpecs = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
+            .distinct()
+            .sorted()
+        val sdkSource = if (
+            generateWindowsSdkProjection.get() ||
+            windowsSdkVersion.isPresent ||
+            explicitSources.isNotEmpty() ||
+            hasProjectionFilter ||
+            packageSpecs.isNotEmpty() ||
+            includeWindowsSdkExtensions.get()
+        ) {
             listOf(
                 WinRtMetadataSource.windowsSdk(
                     version = windowsSdkVersion.orNull,
@@ -151,9 +176,6 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         }
         val explicitNuGetRoots = nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
-        val packageSpecs = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
-            .distinct()
-            .sorted()
         val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (restoreNuGetPackages.get()) {
@@ -185,7 +207,6 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
         val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
-        val hasProjectionFilter = includeNamespaces.get().isNotEmpty() || includeTypes.get().isNotEmpty()
         return sources.ifEmpty {
             if (hasProjectionFilter && generateWindowsSdkProjection.get()) {
                 listOf(WinRtMetadataSource.windowsSdk())

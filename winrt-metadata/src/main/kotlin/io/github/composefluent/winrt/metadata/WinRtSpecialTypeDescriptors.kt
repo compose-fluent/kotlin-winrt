@@ -47,6 +47,7 @@ enum class WinRtEventHandlerKind {
     PropertyChangedEventHandler,
     NotifyCollectionChangedEventHandler,
     VectorChangedEventHandler,
+    BindableVectorChangedEventHandler,
     MapChangedEventHandler,
     AsyncActionProgressHandler,
     AsyncOperationProgressHandler,
@@ -315,6 +316,17 @@ private fun buildEventHandlerDescriptor(
                 elementType = resolvedArguments.singleOrNull(),
             )
 
+        WinRtEventHandlerKind.BindableVectorChangedEventHandler ->
+            WinRtEventHandlerTypeDescriptor(
+                typeName = resolvedType.displayName,
+                type = resolvedType.type,
+                definitionQualifiedName = resolvedType.definitionQualifiedName,
+                definitionType = resolvedType.definitionType,
+                typeArguments = resolvedArguments,
+                kind = kind,
+                elementType = bindableElementType(),
+            )
+
         WinRtEventHandlerKind.MapChangedEventHandler ->
             WinRtEventHandlerTypeDescriptor(
                 typeName = resolvedType.displayName,
@@ -405,6 +417,8 @@ private val EVENT_HANDLER_TYPES = mapOf(
     "System.EventHandler" to WinRtEventHandlerKind.EventHandler,
     "Windows.Foundation.TypedEventHandler" to WinRtEventHandlerKind.TypedEventHandler,
     "Windows.Foundation.Collections.VectorChangedEventHandler" to WinRtEventHandlerKind.VectorChangedEventHandler,
+    "Microsoft.UI.Xaml.Interop.BindableVectorChangedEventHandler" to WinRtEventHandlerKind.BindableVectorChangedEventHandler,
+    "Windows.UI.Xaml.Interop.BindableVectorChangedEventHandler" to WinRtEventHandlerKind.BindableVectorChangedEventHandler,
     "Windows.Foundation.Collections.MapChangedEventHandler" to WinRtEventHandlerKind.MapChangedEventHandler,
     "Windows.Foundation.AsyncActionProgressHandler" to WinRtEventHandlerKind.AsyncActionProgressHandler,
     "Windows.Foundation.AsyncOperationProgressHandler" to WinRtEventHandlerKind.AsyncOperationProgressHandler,

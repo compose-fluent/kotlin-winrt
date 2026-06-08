@@ -108,6 +108,7 @@ private fun KotlinProjectionPlanner.boundRuntimeClassCollectionEventSourceDescri
 
 private fun WinRtEventHandlerKind.isCollectionEventSourceHandler(): Boolean =
     this == WinRtEventHandlerKind.VectorChangedEventHandler ||
+        this == WinRtEventHandlerKind.BindableVectorChangedEventHandler ||
         this == WinRtEventHandlerKind.MapChangedEventHandler
 
 private fun WinRtEventHandlerKind.matchesCollectionEventOwner(
@@ -118,6 +119,12 @@ private fun WinRtEventHandlerKind.matchesCollectionEventOwner(
         WinRtEventHandlerKind.VectorChangedEventHandler ->
             eventName == "VectorChanged" &&
                 ownerTypeName.substringBefore('<').removeSuffix("?") == "Windows.Foundation.Collections.IObservableVector"
+        WinRtEventHandlerKind.BindableVectorChangedEventHandler ->
+            eventName == "VectorChanged" &&
+                ownerTypeName.substringBefore('<').removeSuffix("?") in setOf(
+                    "Microsoft.UI.Xaml.Interop.IBindableObservableVector",
+                    "Windows.UI.Xaml.Interop.IBindableObservableVector",
+                )
         WinRtEventHandlerKind.MapChangedEventHandler ->
             eventName == "MapChanged" &&
                 ownerTypeName.substringBefore('<').removeSuffix("?") == "Windows.Foundation.Collections.IObservableMap"

@@ -22,15 +22,40 @@ fun WinRtMetadataModel.filterProjectionSurface(
     excludedTypes: Set<String> = emptySet(),
 ): WinRtMetadataModel =
     filterProjectionSurface(
+        namespaces = namespaces,
+        types = types,
+        excludedNamespaces = excludedNamespaces,
+        excludedTypes = excludedTypes,
+        additionalTypeReferences = { emptyList() },
+    )
+
+fun WinRtMetadataModel.filterProjectionSurface(
+    namespaces: Set<String> = emptySet(),
+    types: Set<String> = emptySet(),
+    excludedNamespaces: Set<String> = emptySet(),
+    excludedTypes: Set<String> = emptySet(),
+    additionalTypeReferences: (WinRtTypeRef) -> Iterable<WinRtTypeRef> = { emptyList() },
+): WinRtMetadataModel =
+    filterProjectionSurface(
         WinRtProjectionSurfaceFilter(
             namespaces = namespaces,
             types = types,
             excludedNamespaces = excludedNamespaces,
             excludedTypes = excludedTypes,
         ),
+        additionalTypeReferences = additionalTypeReferences,
     )
 
-fun WinRtMetadataModel.filterProjectionSurface(filter: WinRtProjectionSurfaceFilter): WinRtMetadataModel {
+fun WinRtMetadataModel.filterProjectionSurface(filter: WinRtProjectionSurfaceFilter): WinRtMetadataModel =
+    filterProjectionSurface(
+        filter = filter,
+        additionalTypeReferences = { emptyList() },
+    )
+
+fun WinRtMetadataModel.filterProjectionSurface(
+    filter: WinRtProjectionSurfaceFilter,
+    additionalTypeReferences: (WinRtTypeRef) -> Iterable<WinRtTypeRef> = { emptyList() },
+): WinRtMetadataModel {
     val normalizedFilter = filter.normalized()
     if (
         normalizedFilter.namespaces.isEmpty() &&
@@ -56,7 +81,7 @@ fun WinRtMetadataModel.filterProjectionSurface(filter: WinRtProjectionSurfaceFil
     val pending = ArrayDeque(includedNames)
     while (pending.isNotEmpty()) {
         val type = typesByQualifiedName[pending.removeFirst()] ?: continue
-        type.referencedProjectionTypeNames()
+        type.referencedProjectionTypeNames(additionalTypeReferences)
             .filter(typesByQualifiedName::containsKey)
             .filterNot(normalizedFilter::isProjectionDependencyExcluded)
             .forEach { referenced ->
@@ -91,26 +116,50 @@ private fun WinRtProjectionSurfaceFilter.isProjectionDependencyExcluded(qualifie
     // namespace excludes unless a concrete type is explicitly excluded.
     excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) }
 
-private fun WinRtTypeDefinition.referencedProjectionTypeNames(): Set<String> = buildSet {
-    baseType?.let(::addTypeRef)
-    defaultInterface?.let(::addTypeRef)
-    implementedInterfaces.forEach { addTypeRef(it.interfaceType) }
+private fun WinRtTypeDefinition.referencedProjectionTypeNames(
+    additionalTypeReferences: (WinRtTypeRef) -> Iterable<WinRtTypeRef>,
+): Set<String> = buildSet {
+    fun addTypeRefWithAdditionalReferences(type: WinRtTypeRef) {
+        addTypeRef(type)
+        additionalTypeReferences(type).forEach(::addTypeRef)
+    }
+
+    fun addTypeNameWithAdditionalReferences(typeName: String) {
+        addTypeRefWithAdditionalReferences(WinRtTypeRef.fromDisplayName(typeName))
+    }
+
+    baseType?.let(::addTypeRefWithAdditionalReferences)
+    defaultInterface?.let(::addTypeRefWithAdditionalReferences)
+    implementedInterfaces.forEach { addTypeRefWithAdditionalReferences(it.interfaceType) }
     genericParameters.forEach { parameter ->
-        parameter.constraintTypes.forEach(::addTypeRef)
+        parameter.constraintTypes.forEach(::addTypeRefWithAdditionalReferences)
     }
     customAttributes.forEach(::addCustomAttributeRefs)
-    fields.forEach { addTypeRef(it.type) }
+    fields.forEach { field ->
+        addTypeRefWithAdditionalReferences(field.type)
+        addTypeNameWithAdditionalReferences(field.typeName)
+    }
     methods.forEach { method ->
-        addTypeRef(method.returnType)
-        method.parameters.forEach { addTypeRef(it.type) }
+        addTypeRefWithAdditionalReferences(method.returnType)
+        addTypeNameWithAdditionalReferences(method.returnTypeName)
+        method.parameters.forEach { parameter ->
+            addTypeRefWithAdditionalReferences(parameter.type)
+            addTypeNameWithAdditionalReferences(parameter.typeName)
+        }
         method.returnParameterAttributes.forEach(::addCustomAttributeRefs)
     }
-    properties.forEach { addTypeRef(it.type) }
-    events.forEach { addTypeRef(it.delegateType) }
-    activation.activatableFactoryInterface?.let(::addTypeRef)
-    activation.staticInterfaces.forEach(::addTypeRef)
-    activation.composableFactoryInterface?.let(::addTypeRef)
-    activation.factories.forEach { addTypeRef(it.interfaceType) }
+    properties.forEach { property ->
+        addTypeRefWithAdditionalReferences(property.type)
+        addTypeNameWithAdditionalReferences(property.typeName)
+    }
+    events.forEach { event ->
+        addTypeRefWithAdditionalReferences(event.delegateType)
+        addTypeNameWithAdditionalReferences(event.delegateTypeName)
+    }
+    activation.activatableFactoryInterface?.let(::addTypeRefWithAdditionalReferences)
+    activation.staticInterfaces.forEach(::addTypeRefWithAdditionalReferences)
+    activation.composableFactoryInterface?.let(::addTypeRefWithAdditionalReferences)
+    activation.factories.forEach { addTypeRefWithAdditionalReferences(it.interfaceType) }
 }
 
 private fun MutableSet<String>.addCustomAttributeRefs(attribute: WinRtCustomAttributeDefinition) {

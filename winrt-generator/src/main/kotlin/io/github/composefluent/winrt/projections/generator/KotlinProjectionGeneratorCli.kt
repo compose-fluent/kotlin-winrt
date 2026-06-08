@@ -19,6 +19,7 @@ fun main(args: Array<String>) {
         types = options.types,
         excludedNamespaces = options.excludedNamespaces,
         excludedTypes = options.excludedTypes,
+        additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
     )
     val fileCount = KotlinProjectionGenerator(
         emitSupportFiles = true,

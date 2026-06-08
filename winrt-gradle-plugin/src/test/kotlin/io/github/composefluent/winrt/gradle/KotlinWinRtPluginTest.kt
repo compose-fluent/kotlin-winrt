@@ -1,13 +1,18 @@
 package io.github.composefluent.winrt.gradle
 
+import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
+import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtAuthoredRuntimeClassDescriptor
+import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtPortableExecutableMetadataWriter
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
@@ -86,6 +91,71 @@ class KotlinWinRtPluginTest {
         val identity = projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile().readText()
         assertTrue(identity.contains("\"includeTypes\": []"))
         assertTrue(identity.contains("\"projectedTypes\": []"))
+    }
+
+    @Test
+    fun unresolved_windows_sdk_references_trigger_sdk_source_fallback() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    "Sample",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "measure",
+                                    returnTypeName = "Windows.Foundation.Size",
+                                    returnTypeSignature = WinRtTypeRef.unknown(),
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "availableSize",
+                                            typeName = "Windows.Foundation.Size",
+                                            typeSignature = WinRtTypeRef.unknown(),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(model.unresolvedWindowsSdkTypeReferences().contains("Windows.Foundation.Size"))
+
+        val sources = listOf(WinRtMetadataSource.path(Path.of("sample.winmd")))
+            .withWindowsSdkSourceForUnresolvedWindowsReferences(model)
+
+        assertTrue(sources.first() is WinRtMetadataSource.WindowsSdk)
+    }
+
+    @Test
+    fun authoring_metadata_roots_include_internal_type_details_candidates() {
+        val roots = authoringCandidateMetadataRootNames(
+            listOf(
+                KotlinWinRtAuthoredTypeCandidate(
+                    packageName = "sample",
+                    className = "InternalControl",
+                    sourceTypeName = "sample.InternalControl",
+                    winRtBaseClassName = "Microsoft.UI.Xaml.Controls.ContentControl",
+                    winRtInterfaceNames = listOf(
+                        "Microsoft.UI.Xaml.Controls.IContentControlOverrides",
+                        "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                    ),
+                    overridableInterfaceNames = listOf(
+                        "Microsoft.UI.Xaml.Controls.IContentControlOverrides",
+                        "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                    ),
+                    isPublic = false,
+                ),
+            ),
+        )
+
+        assertTrue("Microsoft.UI.Xaml.Controls.ContentControl" in roots)
+        assertTrue("Microsoft.UI.Xaml.IFrameworkElementOverrides" in roots)
     }
 
     @Test

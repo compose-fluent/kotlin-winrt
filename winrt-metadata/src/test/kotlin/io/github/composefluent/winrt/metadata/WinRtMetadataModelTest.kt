@@ -1148,6 +1148,7 @@ class WinRtMetadataModelTest {
                     types = listOf(
                         WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableIterable", kind = WinRtTypeKind.Interface),
                         WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "BindableVectorChangedEventHandler", kind = WinRtTypeKind.Delegate),
                         WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "NotifyCollectionChangedEventHandler", kind = WinRtTypeKind.Delegate),
                     ),
                 ),
@@ -1240,6 +1241,13 @@ class WinRtMetadataModelTest {
             "Sample.Foundation",
         ) as WinRtEventHandlerTypeDescriptor
         assertEquals(WinRtEventHandlerKind.NotifyCollectionChangedEventHandler, collectionChanged.kind)
+
+        val bindableVectorChanged = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Interop.BindableVectorChangedEventHandler"),
+            "Sample.Foundation",
+        ) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.BindableVectorChangedEventHandler, bindableVectorChanged.kind)
+        assertEquals("System.Object", bindableVectorChanged.elementType?.displayName)
     }
     @Test
     fun resolves_type_semantics_like_reference_helper_kernel() {
@@ -2363,6 +2371,54 @@ class WinRtMetadataModelTest {
                 "Microsoft.UI.Xaml.Window",
                 "Windows.UI.Input.PointerPoint",
                 "Windows.UI.ViewManagement.ViewManagementViewScalingContract",
+            ),
+            filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
+        )
+    }
+
+    @Test
+    fun projection_surface_filter_keeps_type_name_dependencies_when_signature_is_unknown() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IFrameworkElementOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "MeasureOverride",
+                                    returnTypeName = "Windows.Foundation.Size",
+                                    returnTypeSignature = WinRtTypeRef.unknown(),
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "availableSize",
+                                            typeName = "Windows.Foundation.Size",
+                                            typeSignature = WinRtTypeRef.unknown(),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "Size", kind = WinRtTypeKind.Struct),
+                    ),
+                ),
+            ),
+        )
+
+        val filtered = model.filterProjectionSurface(types = setOf("Microsoft.UI.Xaml.IFrameworkElementOverrides"))
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                "Windows.Foundation.Size",
             ),
             filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
         )

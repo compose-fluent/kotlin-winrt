@@ -21,6 +21,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
 import io.github.composefluent.winrt.metadata.WinRtMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
@@ -37,6 +38,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
+import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
@@ -141,7 +143,7 @@ class KotlinProjectionGenerator(
     }
 
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
-        val normalizedModel = model.normalized().withoutExcludedProjectionSurfaceReferences()
+        val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
         val renderedPlans = plans.filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
@@ -155,7 +157,7 @@ class KotlinProjectionGenerator(
     }
 
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
-        val normalizedModel = model.normalized().withoutExcludedProjectionSurfaceReferences()
+        val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
@@ -197,6 +199,32 @@ class KotlinProjectionGenerator(
             unchangedFiles = rendered - written,
             deletedStaleFiles = deleted,
         )
+    }
+
+    private fun completeProjectionModel(model: WinRtMetadataModel): WinRtMetadataModel {
+        val normalizedModel = model.normalized()
+        if (projectionContext.sources.isEmpty() || projectionContext.include.isEmpty()) {
+            return normalizedModel
+        }
+        val excludedNamespaces = projectionContext.exclude - projectionContext.excludedTypes
+        val supplementalContext = projectionContext.withWindowsSdkSourceForWindowsProjectionRoots()
+        val supplementalModel = supplementalContext.load().filterProjectionSurface(
+            types = projectionContext.include,
+            excludedNamespaces = excludedNamespaces,
+            excludedTypes = projectionContext.excludedTypes,
+            additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
+        )
+        return WinRtMetadataModel(supplementalModel.namespaces + normalizedModel.namespaces).normalized()
+    }
+
+    private fun WinRtMetadataProjectionContext.withWindowsSdkSourceForWindowsProjectionRoots(): WinRtMetadataProjectionContext {
+        if (sources.any { source -> source is WinRtMetadataSource.WindowsSdk }) {
+            return this
+        }
+        if (include.none { name -> name == "Windows" || name.startsWith("Windows.") }) {
+            return this
+        }
+        return copy(sources = listOf(WinRtMetadataSource.windowsSdk()) + sources)
     }
 
     private fun authoredProjectedTypeNames(model: WinRtMetadataModel): Set<String> =
@@ -998,6 +1026,7 @@ class KotlinProjectionGenerator(
             WinRtEventHandlerKind.MapChangedEventHandler,
             WinRtEventHandlerKind.AsyncOperationProgressHandler -> 2
             WinRtEventHandlerKind.PropertyChangedEventHandler,
+            WinRtEventHandlerKind.BindableVectorChangedEventHandler,
             WinRtEventHandlerKind.NotifyCollectionChangedEventHandler -> 0
         }
         val argumentCount = WinRtTypeRef.fromDisplayName(event.delegateTypeName)

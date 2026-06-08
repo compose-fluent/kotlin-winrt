@@ -1294,31 +1294,43 @@ class KotlinProjectionPlanner(
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
         suppressHResultCheck: Boolean,
     ): KotlinProjectionInstanceMemberBinding? {
-        val slotInterfaceQualifiedName = when (event.name) {
-            "VectorChanged" -> "Windows.Foundation.Collections.IObservableVector"
-            "MapChanged" -> "Windows.Foundation.Collections.IObservableMap"
+        val slotInterfaceCandidates = when (event.name) {
+            "VectorChanged" -> listOf(
+                "Windows.Foundation.Collections.IObservableVector",
+                "Microsoft.UI.Xaml.Interop.IBindableObservableVector",
+                "Windows.UI.Xaml.Interop.IBindableObservableVector",
+            )
+            "MapChanged" -> listOf("Windows.Foundation.Collections.IObservableMap")
             else -> return null
         }
         val ownerInterface = candidateInterfaces.firstOrNull { candidate ->
-            candidate.normalizedRawTypeName() == slotInterfaceQualifiedName
+            candidate.normalizedRawTypeName() in slotInterfaceCandidates
         } ?: return null
-        val slotInterfaceType = typesByQualifiedName[slotInterfaceQualifiedName] ?: return null
+        val slotInterfaceQualifiedName = ownerInterface.normalizedRawTypeName()
+        val slotInterfaceType = typesByQualifiedName[slotInterfaceQualifiedName]
+            ?: typesByQualifiedName[ownerInterface]
         return KotlinProjectionInstanceMemberBinding(
             bindingName = slotConstantName,
             ownerInterfaceQualifiedName = ownerInterface,
             ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName = null),
             slotInterfaceQualifiedName = slotInterfaceQualifiedName,
             slotConstantName = slotConstantName,
-            slot = slotValueOrNull(
-                slotInterfaceType,
-                typesByQualifiedName,
-                semanticHelpers,
-                abiSlotBindingCache,
-                abiMemberCountCache,
-                slotConstantName,
-            ),
+            slot = slotInterfaceType?.let {
+                slotValueOrNull(
+                    it,
+                    typesByQualifiedName,
+                    semanticHelpers,
+                    abiSlotBindingCache,
+                    abiMemberCountCache,
+                    slotConstantName,
+                )
+            },
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
+            projectedAttributes = slotInterfaceType
+                ?.projectedAttributes()
+                .orEmpty()
+                .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute),
             suppressHResultCheck = suppressHResultCheck,
         )
     }
@@ -1388,7 +1400,7 @@ class KotlinProjectionPlanner(
         includeDelegateInvokeShape: Boolean = true,
     ): KotlinProjectionAbiTypeBinding {
         val normalizedType = WinRtTypeRef
-            .fromDisplayName(redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects))
+            .fromDisplayName(redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects, typesByQualifiedName))
             .normalized()
         val trimmedTypeName = normalizedType.typeName
         val rawTypeName = when (normalizedType.kind) {
@@ -1478,7 +1490,7 @@ class KotlinProjectionPlanner(
                     ).withDelegateGenericArgumentProjection(delegateGenericArguments),
                 )
             } else {
-                syntheticEventHandlerDelegateInvokeShape(eventHandlerKind, typeArguments)
+                syntheticEventHandlerDelegateInvokeShape(eventHandlerKind, resolvedTypeName, typeArguments)
             }
         } else {
             null
@@ -1491,7 +1503,8 @@ class KotlinProjectionPlanner(
                 }
                 ?.iid
             else -> resolvedType?.iid
-        } ?: mappedReferenceGenericInterfaceId(kind)
+        } ?: externalProjectedInterfaceId(rawTypeName, resolvedTypeName)
+            ?: mappedReferenceGenericInterfaceId(kind)
         val isNullableDisplayName = typeName.trim().endsWith("?")
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
@@ -1512,12 +1525,14 @@ class KotlinProjectionPlanner(
 
     private fun syntheticEventHandlerDelegateInvokeShape(
         eventHandlerKind: WinRtEventHandlerKind?,
+        eventHandlerTypeName: String,
         typeArguments: List<KotlinProjectionAbiTypeBinding>,
     ): KotlinProjectionDelegateInvokeShape? {
         val interfaceId = when (eventHandlerKind) {
             WinRtEventHandlerKind.EventHandler -> Guid("C50898F6-C536-5F47-8583-8B2C2438A13B")
             WinRtEventHandlerKind.TypedEventHandler -> Guid("9DE1C535-6AE1-11E0-84E1-18A905BCC53F")
             WinRtEventHandlerKind.VectorChangedEventHandler -> Guid("0C051752-9FBF-4C70-AA0C-0E4C82D9A761")
+            WinRtEventHandlerKind.BindableVectorChangedEventHandler -> Guid("624CD4E1-D007-43B1-9C03-AF4D3E6258C4")
             WinRtEventHandlerKind.MapChangedEventHandler -> Guid("179517F3-94EE-41F8-BDDC-768A895544F3")
             else -> null
         }
@@ -1561,6 +1576,24 @@ class KotlinProjectionPlanner(
                     KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
                 ),
             )
+            WinRtEventHandlerKind.BindableVectorChangedEventHandler -> {
+                val ownerTypeName = bindableObservableVectorTypeNameFor(eventHandlerTypeName)
+                listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        "vector",
+                        KotlinProjectionAbiTypeBinding(
+                            KotlinProjectionAbiValueKind.ProjectedInterface,
+                            ownerTypeName,
+                            ownerTypeName,
+                            interfaceId = Guid("FE1EB536-7E7F-4F90-AC9A-474984AAE512"),
+                        ),
+                    ),
+                    KotlinProjectionAbiParameterBinding(
+                        "event",
+                        KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
+                    ),
+                )
+            }
             WinRtEventHandlerKind.MapChangedEventHandler -> {
                 val keyBinding = typeArguments.getOrNull(0)
                     ?: KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unsupported, "T0")
@@ -1598,6 +1631,13 @@ class KotlinProjectionPlanner(
         )
     }
 
+    private fun bindableObservableVectorTypeNameFor(eventHandlerTypeName: String): String =
+        if (eventHandlerTypeName.substringBefore('<').removeSuffix("?").startsWith("Windows.UI.Xaml.Interop.")) {
+            "Windows.UI.Xaml.Interop.IBindableObservableVector"
+        } else {
+            "Microsoft.UI.Xaml.Interop.IBindableObservableVector"
+        }
+
     private fun KotlinProjectionAbiTypeBinding.withDelegateGenericArgumentProjection(
         genericArguments: List<KotlinProjectionAbiTypeBinding>,
     ): KotlinProjectionAbiTypeBinding {
@@ -1614,6 +1654,22 @@ class KotlinProjectionPlanner(
         when (kind) {
             KotlinProjectionAbiValueKind.Reference -> IREFERENCE_GENERIC_INTERFACE_ID
             KotlinProjectionAbiValueKind.ReferenceArray -> IREFERENCE_ARRAY_GENERIC_INTERFACE_ID
+            else -> null
+        }
+
+    private fun externalProjectedInterfaceId(
+        rawTypeName: String,
+        resolvedTypeName: String,
+    ): Guid? =
+        when (resolvedTypeName.substringBefore('<').removeSuffix("?")) {
+            "Windows.Foundation.Collections.IObservableVector",
+            rawTypeName.takeIf { it == "Windows.Foundation.Collections.IObservableVector" } ->
+                Guid("5917EB53-50B4-4A0D-B309-65862B3F1DBC")
+            "Microsoft.UI.Xaml.Interop.IBindableObservableVector",
+            rawTypeName.takeIf { it == "Microsoft.UI.Xaml.Interop.IBindableObservableVector" },
+            "Windows.UI.Xaml.Interop.IBindableObservableVector",
+            rawTypeName.takeIf { it == "Windows.UI.Xaml.Interop.IBindableObservableVector" } ->
+                Guid("FE1EB536-7E7F-4F90-AC9A-474984AAE512")
             else -> null
         }
 
