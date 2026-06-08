@@ -14,8 +14,10 @@ import com.squareup.kotlinpoet.asClassName
 
 class KotlinModulePlatformAbiCallSupport(
     private val className: ClassName,
+    private val enabledCalls: Set<ModulePlatformAbiCall>? = null,
 ) {
     private val calls = linkedSetOf<ModulePlatformAbiCall>()
+    private val observedCallCounts = linkedMapOf<ModulePlatformAbiCall, Int>()
 
     internal fun scalarGetter(
         referenceExpression: String,
@@ -23,7 +25,7 @@ class KotlinModulePlatformAbiCallSupport(
         helperFunction: String,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.Simple(helperFunction)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
@@ -45,7 +47,7 @@ class KotlinModulePlatformAbiCallSupport(
         argumentExpression: CodeBlock,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.Simple(helperFunction)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
@@ -69,7 +71,7 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorUnit(shapes)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .apply {
@@ -102,7 +104,7 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorBoolean(shapes)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
@@ -128,7 +130,7 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorScalar(returnShape, shapes)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
@@ -152,7 +154,7 @@ class KotlinModulePlatformAbiCallSupport(
         adapterExpression: CodeBlock,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.StructGetter
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
@@ -175,7 +177,7 @@ class KotlinModulePlatformAbiCallSupport(
         adapterExpression: CodeBlock,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.StructSetter
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
@@ -200,7 +202,7 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorStruct(shapes)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
@@ -227,7 +229,7 @@ class KotlinModulePlatformAbiCallSupport(
         wrapType: ClassName,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.ProjectedReferenceGetter(helperFunction)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
@@ -254,7 +256,7 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorProjectedReference(helperFunction, shapes)
-        calls += call
+        if (!record(call)) return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
@@ -321,6 +323,21 @@ class KotlinModulePlatformAbiCallSupport(
             packageName = className.packageName,
             contents = contents,
         )
+    }
+
+    internal fun plannedCalls(minDescriptorCallOccurrences: Int = 2): Set<ModulePlatformAbiCall> =
+        observedCallCounts
+            .filter { (call, count) -> !call.requiresFrequencyThreshold || count >= minDescriptorCallOccurrences }
+            .keys
+            .toSet()
+
+    private fun record(call: ModulePlatformAbiCall): Boolean {
+        observedCallCounts[call] = (observedCallCounts[call] ?: 0) + 1
+        if (enabledCalls != null && call !in enabledCalls) {
+            return false
+        }
+        calls += call
+        return true
     }
 
     private fun renderFunction(
@@ -482,6 +499,19 @@ class KotlinModulePlatformAbiCallSupport(
             is ModulePlatformAbiCall.DescriptorProjectedReference -> false
         }
 
+    private val ModulePlatformAbiCall.requiresFrequencyThreshold: Boolean
+        get() = when (this) {
+            is ModulePlatformAbiCall.DescriptorUnit,
+            is ModulePlatformAbiCall.DescriptorBoolean,
+            is ModulePlatformAbiCall.DescriptorScalar,
+            is ModulePlatformAbiCall.DescriptorStruct,
+            is ModulePlatformAbiCall.DescriptorProjectedReference -> true
+            is ModulePlatformAbiCall.Simple,
+            ModulePlatformAbiCall.StructGetter,
+            ModulePlatformAbiCall.StructSetter,
+            is ModulePlatformAbiCall.ProjectedReferenceGetter -> false
+        }
+
     private fun ModulePlatformAbiCall.extraLeadingParameters(): List<ModulePlatformAbiParameter> =
         when (this) {
             ModulePlatformAbiCall.StructGetter,
@@ -551,7 +581,7 @@ class KotlinModulePlatformAbiCallSupport(
             else -> error("Unsupported simple module platform ABI call $helperFunction")
         }
 
-    private sealed class ModulePlatformAbiCall {
+    sealed class ModulePlatformAbiCall {
         abstract val functionName: String
         abstract val arguments: List<String>
 
