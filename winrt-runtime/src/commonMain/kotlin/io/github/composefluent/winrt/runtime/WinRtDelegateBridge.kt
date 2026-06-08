@@ -51,8 +51,12 @@ object WinRtDelegateBridge {
         parameterStructAdapters: List<NativeStructAdapter<*>?> = emptyList(),
         returnStructAdapter: NativeStructAdapter<*>? = null,
         runtimeClassName: String? = null,
+        delegate: Any? = null,
         callback: ((List<Any?>) -> Any?)?,
     ): WinRtDelegateArgumentMarshaler {
+        if (delegate is WinRtProjectedDelegate) {
+            return createProjectedDelegateArgument(delegate)
+        }
         val handle = callback?.let {
             createDelegate(
                 iid = iid,
@@ -69,11 +73,21 @@ object WinRtDelegateBridge {
 
     fun createProjectedDelegateHandle(delegate: WinRtProjectedDelegate): WinRtDelegateHandle =
         delegate.createWinRtDelegateHandle()
+
+    private fun createProjectedDelegateArgument(delegate: WinRtProjectedDelegate): WinRtDelegateArgumentMarshaler {
+        ComWrappersSupport.tryUnwrapObject(delegate)?.let { reference ->
+            return WinRtDelegateArgumentMarshaler(handle = null, reference = reference)
+        }
+        return WinRtDelegateArgumentMarshaler(
+            handle = null,
+            reference = ProjectedDelegateCcwCache.createReference(delegate),
+        )
+    }
 }
 
 class WinRtDelegateArgumentMarshaler internal constructor(
     private val handle: WinRtDelegateHandle?,
-    private val reference: WinRtDelegateReference?,
+    private val reference: ComObjectReference?,
 ) : AutoCloseable {
     val abi: RawAddress =
         reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer

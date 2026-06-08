@@ -8141,6 +8141,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtDelegateValueKind.UNIT"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
         assertTrue(widgetContents.contains("WinRtDelegateBridge.createDelegateArgument("))
+        assertTrue(widgetContents.contains("delegate = handler"))
         assertTrue(widgetContents.contains("__handlerAbi.abi"))
         assertFalse(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"WinRT ABI binding is unavailable\")"))
