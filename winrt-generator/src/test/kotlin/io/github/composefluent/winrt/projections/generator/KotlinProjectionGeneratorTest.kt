@@ -4934,6 +4934,15 @@ class KotlinProjectionGeneratorTest {
                                     methodRowId = 13,
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "InsertExpressionKeyFrame2",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("normalizedProgressKey", "Float"),
+                                        WinRtParameterDefinition("value", "String"),
+                                    ),
+                                    methodRowId = 15,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "InsertExpressionKeyFrame",
                                     returnTypeName = "Unit",
                                     parameters = listOf(
@@ -4942,6 +4951,16 @@ class KotlinProjectionGeneratorTest {
                                         WinRtParameterDefinition("easingFunction", "Sample.Foundation.CompositionEasingFunction"),
                                     ),
                                     methodRowId = 14,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "InsertExpressionKeyFrame2",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("normalizedProgressKey", "Float"),
+                                        WinRtParameterDefinition("value", "String"),
+                                        WinRtParameterDefinition("easingFunction", "Sample.Foundation.CompositionEasingFunction"),
+                                    ),
+                                    methodRowId = 16,
                                 ),
                             ),
                         ),
@@ -4986,6 +5005,47 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("__easingFunctionProjectionMarshaler.abi,"))
         assertFalse(interfaceContents, interfaceContents.contains("easingFunction as IWinRTObject,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(value)"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
+    fun generator_keeps_low_frequency_descriptor_unit_shape_on_direct_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IKeyFrameAnimation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555578"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "InsertExpressionKeyFrame",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("normalizedProgressKey", "Float"),
+                                        WinRtParameterDefinition("value", "String"),
+                                    ),
+                                    methodRowId = 13,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IKeyFrameAnimation.kt").contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Float,String\""))
+        assertFalse(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.callUnit_Float_String("))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 
@@ -5187,6 +5247,15 @@ class KotlinProjectionGeneratorTest {
                                         WinRtParameterDefinition("compositionObject", "Sample.Foundation.CompositionObject"),
                                     ),
                                     methodRowId = 16,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetReferenceParameter2",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("key", "String"),
+                                        WinRtParameterDefinition("compositionObject", "Sample.Foundation.CompositionObject"),
+                                    ),
+                                    methodRowId = 17,
                                 ),
                             ),
                         ),

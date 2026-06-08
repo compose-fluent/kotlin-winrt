@@ -144,11 +144,10 @@ class KotlinProjectionGenerator(
         val normalizedModel = model.normalized().withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel)
         validateGeneratorContracts(normalizedModel, plans)
-        val modulePlatformAbiCalls = modulePlatformAbiCallSupport()
+        val renderedPlans = plans.filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(renderedPlans)
         val projectionRenderer = projectionFileRenderer(modulePlatformAbiCalls = modulePlatformAbiCalls)
-        val projectionFiles = plans
-            .filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
-            .flatMap(projectionRenderer::render)
+        val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
         if (!emitSupportFiles) {
             return projectionFiles
         }
@@ -165,7 +164,8 @@ class KotlinProjectionGenerator(
         } else {
             plans
         }
-        val modulePlatformAbiCalls = modulePlatformAbiCallSupport()
+        val projectionPlans = renderedPlans.filterNot { it.type.qualifiedName in authoredTypeNames }
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(projectionPlans, renderedPlans)
         val projectionRenderer = projectionFileRenderer(renderedPlans, modulePlatformAbiCalls)
         var rendered = 0
         var written = 0
@@ -177,8 +177,7 @@ class KotlinProjectionGenerator(
                 written += 1
             }
         }
-        val projectionFiles = renderedPlans
-            .filterNot { it.type.qualifiedName in authoredTypeNames }
+        val projectionFiles = projectionPlans
             .flatMap(projectionRenderer::render)
             .let { files ->
                 if (groupProjectionFilesByPackageOnWrite && generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet) {
@@ -1722,8 +1721,24 @@ class KotlinProjectionGenerator(
         return files + modulePlatformAbiCalls.orEmptyFiles()
     }
 
-    private fun modulePlatformAbiCallSupport(): KotlinModulePlatformAbiCallSupport? =
-        if (emitSupportFiles) KotlinModulePlatformAbiCallSupport(modulePlatformAbiCallClassName) else null
+    private fun modulePlatformAbiCallSupport(
+        plans: List<KotlinTypeProjectionPlan>,
+        renderedPlans: List<KotlinTypeProjectionPlan> = plans,
+    ): KotlinModulePlatformAbiCallSupport? {
+        if (!emitSupportFiles) {
+            return null
+        }
+        val collector = KotlinModulePlatformAbiCallSupport(
+            className = modulePlatformAbiCallClassName,
+            enabledCalls = emptySet(),
+        )
+        val collectorRenderer = projectionFileRenderer(renderedPlans, collector)
+        plans.forEach { plan -> collectorRenderer.render(plan) }
+        return KotlinModulePlatformAbiCallSupport(
+            className = modulePlatformAbiCallClassName,
+            enabledCalls = collector.plannedCalls(),
+        )
+    }
 
     private fun KotlinModulePlatformAbiCallSupport?.orEmptyFiles(): List<KotlinProjectionFile> =
         this?.renderFiles(generationLayout).orEmpty()
