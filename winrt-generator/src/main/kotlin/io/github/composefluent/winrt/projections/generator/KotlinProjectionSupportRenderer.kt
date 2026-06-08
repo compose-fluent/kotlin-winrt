@@ -79,13 +79,16 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRtDelegateReference
 import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
+import io.github.composefluent.winrt.runtime.WinRtDispatcherQueueScheduler
 import io.github.composefluent.winrt.runtime.WinRtEvent
+import io.github.composefluent.winrt.runtime.WeakKeyStateMap
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.LambdaTypeName
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STAR
@@ -194,6 +197,7 @@ class KotlinProjectionSupportRenderer {
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
+            addAll(renderDispatcherQueueSchedulerAdditions(plans))
             addAll(renderEventProjectionHelpers(
                 model,
                 eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
@@ -201,6 +205,78 @@ class KotlinProjectionSupportRenderer {
                 eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             ))
         }
+    }
+
+    private fun renderDispatcherQueueSchedulerAdditions(plans: List<KotlinTypeProjectionPlan>): List<KotlinProjectionFile> {
+        val planNames = plans.mapTo(linkedSetOf()) { it.type.qualifiedName }
+        return listOf(
+            dispatcherQueueAddition(
+                dispatcherQueueTypeName = "Microsoft.UI.Dispatching.DispatcherQueue",
+                dispatcherQueueHandlerTypeName = "Microsoft.UI.Dispatching.DispatcherQueueHandler",
+                planNames = planNames,
+            ),
+            dispatcherQueueAddition(
+                dispatcherQueueTypeName = "Windows.System.DispatcherQueue",
+                dispatcherQueueHandlerTypeName = "Windows.System.DispatcherQueueHandler",
+                planNames = planNames,
+            ),
+        ).filterNotNull()
+    }
+
+    private fun dispatcherQueueAddition(
+        dispatcherQueueTypeName: String,
+        dispatcherQueueHandlerTypeName: String,
+        planNames: Set<String>,
+    ): KotlinProjectionFile? {
+        if (dispatcherQueueTypeName !in planNames || dispatcherQueueHandlerTypeName !in planNames) {
+            return null
+        }
+        val dispatcherQueueType = projectionClassNameForQualifiedName(dispatcherQueueTypeName)
+        val dispatcherQueueHandlerType = projectionClassNameForQualifiedName(dispatcherQueueHandlerTypeName)
+        val schedulerType = WinRtDispatcherQueueScheduler::class.asClassName().parameterizedBy(dispatcherQueueHandlerType)
+        val schedulerMapType = WeakKeyStateMap::class.asClassName().parameterizedBy(dispatcherQueueType, schedulerType)
+        val actionType = LambdaTypeName.get(returnType = UNIT)
+        val fileName = "DispatcherQueueReusableScheduler"
+        val fileSpec = FileSpec.builder(dispatcherQueueType.packageName, fileName)
+            .addGeneratedProjectionSuppressions()
+            .addProperty(
+                PropertySpec.builder("__winRtDispatcherQueueSchedulers", schedulerMapType, KModifier.PRIVATE)
+                    .initializer("%T()", WeakKeyStateMap::class.asClassName())
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("__winRtDispatcherQueueScheduler")
+                    .addModifiers(KModifier.PRIVATE)
+                    .addParameter("dispatcherQueue", dispatcherQueueType)
+                    .returns(schedulerType)
+                    .addCode(
+                        """
+                        return __winRtDispatcherQueueSchedulers.getOrPut(dispatcherQueue) {
+                            %T(
+                                tryEnqueueHandler = { handler -> dispatcherQueue.tryEnqueue(handler) },
+                                handlerFactory = { drain -> %T { drain() } },
+                            )
+                        }
+                        """.trimIndent() + "\n",
+                        WinRtDispatcherQueueScheduler::class.asClassName(),
+                        dispatcherQueueHandlerType,
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("enqueueReusable")
+                    .receiver(dispatcherQueueType)
+                    .addParameter("action", actionType)
+                    .returns(Boolean::class)
+                    .addStatement("return __winRtDispatcherQueueScheduler(this).enqueue(action)")
+                    .build(),
+            )
+            .build()
+        return KotlinProjectionFile(
+            relativePath = "${dispatcherQueueType.packageName.replace('.', '/')}/$fileName.kt",
+            packageName = dispatcherQueueType.packageName,
+            contents = fileSpec.toString(),
+        )
     }
 
     private fun renderWinUiXamlComponentResourceInput(
