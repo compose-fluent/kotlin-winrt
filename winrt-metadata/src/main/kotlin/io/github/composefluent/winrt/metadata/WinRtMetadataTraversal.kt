@@ -39,6 +39,7 @@ data class WinRtProjectionHelperOutputInventory(
 data class WinRtNamespaceAddition(
     val namespace: String,
     val kind: WinRtNamespaceAdditionKind = WinRtNamespaceAdditionKind.SourceAddition,
+    val sourceFiles: List<String> = defaultNamespaceAdditionSourceFiles(namespace, kind),
 )
 
 enum class WinRtNamespaceAdditionKind {
@@ -84,6 +85,64 @@ object WinRtNamespaceAdditions {
             addition.namespace in namespaceSet && filter.includes(addition.namespace)
         }
     }
+}
+
+private fun defaultNamespaceAdditionSourceFiles(
+    namespace: String,
+    kind: WinRtNamespaceAdditionKind,
+): List<String> =
+    when (kind) {
+        WinRtNamespaceAdditionKind.SourceAddition -> namespaceSourceAdditionFiles(namespace)
+        WinRtNamespaceAdditionKind.ComInteropAdapter -> listOf("interop/$namespace.kt")
+    }
+
+private fun namespaceSourceAdditionFiles(namespace: String): List<String> {
+    val base = "strings/additions/$namespace"
+    val commonFiles = when (namespace) {
+        "Windows.Foundation" -> listOf(
+            "AsyncInfo.kt",
+            "AsyncInfoIdGenerator.kt",
+            "ExceptionDispatchHelper.kt",
+            "ITaskAwareAsyncInfo.kt",
+            "TaskToAsyncActionAdapter.kt",
+            "TaskToAsyncActionWithProgressAdapter.kt",
+            "TaskToAsyncInfoAdapter.kt",
+            "TaskToAsyncOperationAdapter.kt",
+            "TaskToAsyncOperationWithProgressAdapter.kt",
+            "Windows.Foundation.SR.kt",
+        )
+        "Windows.Storage.Streams" -> listOf(
+            "IBufferByteAccess.kt",
+            "IMarshal.kt",
+            "NetFxToWinRtStreamAdapter.kt",
+            "StreamOperationAsyncResult.kt",
+            "StreamOperationsImplementation.kt",
+            "StreamTaskAdaptersImplementation.kt",
+            "Windows.Storage.Streams.SR.kt",
+            "WindowsRuntimeBuffer.kt",
+            "WindowsRuntimeBufferExtensions.kt",
+            "WindowsRuntimeMarshal.kt",
+            "WindowsRuntimeStreamExtensions.kt",
+            "WinRtIOHelper.kt",
+            "WinRtToNetFxStreamAdapter.kt",
+        )
+        "Windows.Storage" -> listOf(
+            "HANDLE_ACCESS_OPTIONS.kt",
+            "HANDLE_CREATION_OPTIONS.kt",
+            "HANDLE_OPTIONS.kt",
+            "HANDLE_SHARING_OPTION.kt",
+            "IStorageFolderHandleAccess.kt",
+            "IStorageItemHandleAccess.kt",
+            "Windows.Storage.SR.kt",
+            "WindowsRuntimeStorageExtensions.kt",
+        )
+        "Microsoft.UI.Xaml", "Windows.UI.Xaml" -> listOf(
+            "$namespace.kt",
+            "$namespace.SR.kt",
+        )
+        else -> listOf("$namespace.kt")
+    }
+    return commonFiles.map { fileName -> "$base/$fileName" }
 }
 
 data class WinRtNamespaceProjectionInventory(
