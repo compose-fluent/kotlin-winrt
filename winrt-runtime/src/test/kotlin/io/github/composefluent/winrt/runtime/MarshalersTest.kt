@@ -170,6 +170,92 @@ class MarshalersTest {
     }
 
     @Test
+    fun delegate_marshaler_unwraps_native_backed_projected_delegate() {
+        var callCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999993"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            callCount += 1
+        }
+        val nativeReference = handle.createReference()
+        val projected = object : WinRtProjectedDelegate, IWinRTObject {
+            override val nativeObject: ComObjectReference
+                get() = nativeReference
+
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle =
+                error("Native-backed projected delegates must marshal by unwrapping their native object.")
+        }
+
+        val abi = MarshalDelegate.fromProjected(projected)
+        try {
+            assertEquals(PlatformAbi.pointerKey(nativeReference.pointer.asRawAddress()), PlatformAbi.pointerKey(abi))
+            WinRtDelegateReference(abi, descriptor).use { delegateReference ->
+                delegateReference.invoke(emptyList())
+            }
+            assertEquals(1, callCount)
+        } finally {
+            nativeReference.close()
+            handle.close()
+        }
+    }
+
+    @Test
+    fun inspectable_marshaler_unwraps_native_backed_projected_delegate() {
+        var callCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999992"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            callCount += 1
+        }
+        val nativeReference = handle.createReference()
+        val projected = object : WinRtProjectedDelegate, IWinRTObject {
+            override val nativeObject: ComObjectReference
+                get() = nativeReference
+
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle =
+                error("Native-backed projected delegates must marshal by unwrapping their native object.")
+        }
+        val marshaler = Marshaler.inspectableAny()
+        val value = marshaler.createMarshaler(projected)
+        try {
+            val abi = marshaler.getAbi(value) as RawAddress
+            ComObjectReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { reference ->
+                reference.queryInterface(descriptor.referenceInterfaceId()).getOrThrow().use { delegateReferenceValue ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val valueOut = PlatformAbi.allocatePointerSlot(scope)
+                        val hr = ComVtableInvoker.invokeArgs(
+                            instance = delegateReferenceValue.pointer,
+                            slot = IInspectableVftblSlots.FirstCustom,
+                            arg0 = valueOut,
+                        )
+                        HResult(hr).requireSuccess()
+                        WinRtDelegateReference(PlatformAbi.readPointer(valueOut), descriptor).use { delegateReference ->
+                            delegateReference.invoke(emptyList())
+                        }
+                    }
+                }
+            }
+            assertEquals(1, callCount)
+        } finally {
+            marshaler.disposeMarshaler(value)
+            nativeReference.close()
+            handle.close()
+        }
+    }
+
+    @Test
     fun interface_marshaler_reuses_unwrapped_projected_objects() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle("test.IFoo", Guid("66666666-6666-6666-6666-666666666666"))
