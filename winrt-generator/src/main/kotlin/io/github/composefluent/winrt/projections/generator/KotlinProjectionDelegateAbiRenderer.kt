@@ -138,13 +138,14 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(
-                "%T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, callback = { __args ->\n%L(%L)\n}).use { %L ->",
+                "%T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, delegate = %L, callback = { __args ->\n%L(%L)\n}).use { %L ->",
                 WINRT_DELEGATE_BRIDGE_CLASS_NAME,
                 delegateIid,
                 delegateParameterKindsCode(invokeShape.parameterBindings),
                 delegateInvokeReturnKindCode(invokeShape.returnBinding),
                 delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
                 delegateReturnStructAdapterCode(invokeShape.returnBinding),
+                parameterBinding.name,
                 parameterBinding.name,
                 delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
                 abiName,
@@ -174,7 +175,7 @@ private fun KotlinProjectionRenderer.nullableDelegateParameterMarshaler(
                 %L(%L)
                 }
                 }
-                %T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, callback = %L).use { %L ->
+                %T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, delegate = %L, callback = %L).use { %L ->
                 """.trimIndent(),
                 callbackName,
                 parameterBinding.name,
@@ -189,6 +190,7 @@ private fun KotlinProjectionRenderer.nullableDelegateParameterMarshaler(
                 delegateInvokeReturnKindCode(invokeShape.returnBinding),
                 delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
                 delegateReturnStructAdapterCode(invokeShape.returnBinding),
+                parameterBinding.name,
                 callbackName,
                 abiName,
             ),

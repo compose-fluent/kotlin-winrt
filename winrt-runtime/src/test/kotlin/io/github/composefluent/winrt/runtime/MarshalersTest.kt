@@ -206,6 +206,47 @@ class MarshalersTest {
     }
 
     @Test
+    fun delegate_argument_marshaler_reuses_projected_delegate_ccw() {
+        ComWrappersSupport.clearRegistriesForTests()
+        var createCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999990"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val projected = object : WinRtProjectedDelegate {
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle {
+                createCount += 1
+                return WinRtDelegateBridge.createUnitDelegate(
+                    iid = descriptor.interfaceId,
+                    parameterKinds = emptyList(),
+                ) {
+                }
+            }
+        }
+
+        WinRtDelegateBridge.createDelegateArgument(
+            iid = descriptor.interfaceId,
+            parameterKinds = descriptor.parameterKinds,
+            returnKind = descriptor.returnKind,
+            delegate = projected,
+            callback = { error("Projected delegate arguments must use the projected delegate CCW path.") },
+        ).use { first ->
+            WinRtDelegateBridge.createDelegateArgument(
+                iid = descriptor.interfaceId,
+                parameterKinds = descriptor.parameterKinds,
+                returnKind = descriptor.returnKind,
+                delegate = projected,
+                callback = { error("Projected delegate arguments must use the projected delegate CCW path.") },
+            ).use { second ->
+                assertEquals(1, createCount)
+                assertEquals(PlatformAbi.pointerKey(first.abi), PlatformAbi.pointerKey(second.abi))
+            }
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+    }
+
+    @Test
     fun delegate_marshaler_unwraps_native_backed_projected_delegate() {
         var callCount = 0
         val descriptor = WinRtDelegateDescriptor(
