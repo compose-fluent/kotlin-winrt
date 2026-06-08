@@ -194,6 +194,7 @@ class KotlinProjectionSupportRenderer {
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
+            addAll(renderDispatcherQueueSynchronizationContextAdditions(plans))
             addAll(renderEventProjectionHelpers(
                 model,
                 eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
@@ -201,6 +202,124 @@ class KotlinProjectionSupportRenderer {
                 eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             ))
         }
+    }
+
+    private fun renderDispatcherQueueSynchronizationContextAdditions(plans: List<KotlinTypeProjectionPlan>): List<KotlinProjectionFile> {
+        val planNames = plans.mapTo(linkedSetOf()) { it.type.qualifiedName }
+        return listOfNotNull(
+            dispatcherQueueSynchronizationContextAddition(
+                dispatcherQueueTypeName = "Microsoft.UI.Dispatching.DispatcherQueue",
+                dispatcherQueueHandlerTypeName = "Microsoft.UI.Dispatching.DispatcherQueueHandler",
+                planNames = planNames,
+            ),
+            dispatcherQueueSynchronizationContextAddition(
+                dispatcherQueueTypeName = "Windows.System.DispatcherQueue",
+                dispatcherQueueHandlerTypeName = "Windows.System.DispatcherQueueHandler",
+                planNames = planNames,
+            ),
+        )
+    }
+
+    private fun dispatcherQueueSynchronizationContextAddition(
+        dispatcherQueueTypeName: String,
+        dispatcherQueueHandlerTypeName: String,
+        planNames: Set<String>,
+    ): KotlinProjectionFile? {
+        if (dispatcherQueueTypeName !in planNames || dispatcherQueueHandlerTypeName !in planNames) {
+            return null
+        }
+        val dispatcherQueueType = projectionClassNameForQualifiedName(dispatcherQueueTypeName)
+        val dispatcherQueueHandlerType = projectionClassNameForQualifiedName(dispatcherQueueHandlerTypeName)
+        val packageName = dispatcherQueueType.packageName
+        val contents = """
+            package $packageName
+
+            import io.github.composefluent.winrt.runtime.ExceptionHelpers
+            import java.util.concurrent.RejectedExecutionException
+            import kotlin.coroutines.CoroutineContext
+            import kotlinx.coroutines.CoroutineDispatcher
+
+            /**
+             * Projection-owned coroutine dispatcher corresponding to CsWinRT's
+             * DispatcherQueueSynchronizationContext source addition.
+             *
+             * Kotlin/JVM uses CoroutineDispatcher instead of System.Threading.SynchronizationContext.
+             * The dispatcher owns one WinRT handler delegate and drains posted coroutine blocks
+             * through it, so repeated dispatches do not allocate a new WinRT delegate callback.
+             */
+            public class DispatcherQueueCoroutineDispatcher(
+              private val dispatcherQueue: ${dispatcherQueueType.simpleName},
+            ) : CoroutineDispatcher() {
+              private val lock: Any = Any()
+              private val pendingPosts: MutableList<() -> Unit> = mutableListOf()
+              private var drainScheduled: Boolean = false
+              private val drainHandler: ${dispatcherQueueHandlerType.simpleName} = ${dispatcherQueueHandlerType.simpleName} {
+                drain()
+              }
+
+              override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (!post { block.run() }) {
+                  ExceptionHelpers.reportUnhandledError(
+                    RejectedExecutionException("DispatcherQueue.TryEnqueue returned false."),
+                  )
+                }
+              }
+
+              public fun post(action: () -> Unit): Boolean {
+                val shouldSchedule = synchronized(lock) {
+                  pendingPosts += action
+                  if (drainScheduled) {
+                    false
+                  } else {
+                    drainScheduled = true
+                    true
+                  }
+                }
+                if (!shouldSchedule) {
+                  return true
+                }
+                if (dispatcherQueue.tryEnqueue(drainHandler)) {
+                  return true
+                }
+                synchronized(lock) {
+                  pendingPosts.remove(action)
+                  if (pendingPosts.isEmpty()) {
+                    drainScheduled = false
+                  }
+                }
+                return false
+              }
+
+              public fun createCopy(): DispatcherQueueCoroutineDispatcher =
+                DispatcherQueueCoroutineDispatcher(dispatcherQueue)
+
+              private fun drain() {
+                while (true) {
+                  val action = synchronized(lock) {
+                    if (pendingPosts.isEmpty()) {
+                      drainScheduled = false
+                      null
+                    } else {
+                      pendingPosts.removeAt(0)
+                    }
+                  } ?: return
+                  try {
+                    action()
+                  } catch (error: Throwable) {
+                    ExceptionHelpers.reportUnhandledError(error)
+                  }
+                }
+              }
+            }
+
+            public fun ${dispatcherQueueType.simpleName}.asCoroutineDispatcher(): DispatcherQueueCoroutineDispatcher =
+              DispatcherQueueCoroutineDispatcher(this)
+        """.trimIndent() + "\n"
+        return KotlinProjectionFile(
+            relativePath = "${packageName.replace('.', '/')}/DispatcherQueueCoroutineDispatcher.kt",
+            packageName = packageName,
+            contents = contents,
+        )
     }
 
     private fun renderWinUiXamlComponentResourceInput(
