@@ -8527,6 +8527,95 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_accepts_winmd_delegate_constructor_method_alongside_invoke() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = ".ctor",
+                                    returnTypeName = "Unit",
+                                    isSpecialName = true,
+                                    isRuntimeSpecialName = true,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .single { it.relativePath.endsWith("WidgetHandler.kt") }
+            .contents
+
+        assertTrue(contents.contains("public fun interface WidgetHandler"))
+        assertTrue(contents.contains("public operator fun invoke()"))
+        assertFalse(contents.contains(".ctor"))
+    }
+
+    @Test
+    fun generator_keeps_delegate_invoke_members_referencing_namespace_excluded_dependencies() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Object"),
+                                        WinRtParameterDefinition("e", "Windows.Foundation.IInspectable"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IInspectable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("af86e2e0-b12d-4c6a-9c5a-d7aa65101e90"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator(
+            projectionContext = WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                exclude = setOf("Windows"),
+            ),
+        ).generate(model)
+
+        assertTrue(files.any { it.relativePath.endsWith("WidgetHandler.kt") })
+    }
+
+    @Test
     fun generator_rejects_delegate_without_iid_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

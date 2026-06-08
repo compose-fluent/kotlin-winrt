@@ -258,6 +258,27 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun generator_worker_prefers_local_project_dependencies_when_available() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        ProjectBuilder.builder().withParent(root).withName("winrt-runtime").build()
+        ProjectBuilder.builder().withParent(root).withName("winrt-metadata").build()
+        ProjectBuilder.builder().withParent(root).withName("winrt-generator").build()
+        val project = ProjectBuilder.builder().withParent(root).withName("app").build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val generatorWorkerConfiguration = project.configurations.getByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
+        val projectDependencyPaths = generatorWorkerConfiguration.dependencies
+            .filterIsInstance<ProjectDependency>()
+            .mapTo(mutableSetOf()) { dependency -> dependency.path }
+
+        assertEquals(
+            setOf(":winrt-runtime", ":winrt-metadata", ":winrt-generator"),
+            projectDependencyPaths,
+        )
+    }
+
+    @Test
     fun prebuilt_nuget_package_defaults_to_runtime_asset_without_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
