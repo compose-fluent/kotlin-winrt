@@ -87,7 +87,7 @@ actual object ComVtableInvoker {
         slot: Int,
         arg0: RawComPtr,
         arg1: RawAddress,
-    ): Int = TODO()
+    ): Int = invokeHResult(instance, slot, arg0.toOpaquePointer(), arg1.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -102,7 +102,7 @@ actual object ComVtableInvoker {
         arg0: Int,
         arg1: RawComPtr,
         arg2: RawAddress,
-    ): Int = TODO()
+    ): Int = invokeHResult(instance, slot, arg0, arg1.toOpaquePointer(), arg2.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
