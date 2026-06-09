@@ -65,7 +65,10 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         arg0: UInt,
-    ): Int = TODO()
+    ): Int {
+        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, UInt) -> Int>>()
+        return method.invoke(instance.toOpaquePointer(), arg0)
+    }
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -132,7 +135,11 @@ actual object ComVtableInvoker {
         arg0: RawAddress,
         arg1: RawAddress,
         arg2: RawAddress,
-    ): Int = TODO()
+    ): Int {
+        val method = vtableEntry(instance, slot)
+            .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
+        return method.invoke(instance.toOpaquePointer(), arg0.toOpaquePointer(), arg1.toOpaquePointer(), arg2.toOpaquePointer())
+    }
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -140,7 +147,11 @@ actual object ComVtableInvoker {
         arg0: Int,
         arg1: RawAddress,
         arg2: RawAddress,
-    ): Int = TODO()
+    ): Int {
+        val method = vtableEntry(instance, slot)
+            .reinterpret<CFunction<(COpaquePointer?, Int, COpaquePointer?, COpaquePointer?) -> Int>>()
+        return method.invoke(instance.toOpaquePointer(), arg0, arg1.toOpaquePointer(), arg2.toOpaquePointer())
+    }
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -174,7 +185,11 @@ actual object ComVtableInvoker {
         arg1: Int,
         arg2: RawAddress,
         arg3: RawAddress,
-    ): Int = TODO()
+    ): Int {
+        val method = vtableEntry(instance, slot)
+            .reinterpret<CFunction<(COpaquePointer?, UInt, Int, COpaquePointer?, COpaquePointer?) -> Int>>()
+        return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2.toOpaquePointer(), arg3.toOpaquePointer())
+    }
 
     actual fun invokeArgs(
         instance: RawComPtr,
