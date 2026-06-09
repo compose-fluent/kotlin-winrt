@@ -5,12 +5,9 @@ import java.nio.file.Path
 
 object WinUiResourceManagerSupport {
     private val iidIApplication2: Guid = guidOf("469e6d36-2e11-5b06-9e0a-c5eef0cf8f12")
-    private val iidIResourceManagerRequestedEventArgs: Guid = guidOf("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a")
     private val iidIResourceManagerFactory: Guid = guidOf("d6acf18f-458a-535b-a5c4-ac2dc4e49099")
     private val iidIResourceManager: Guid = guidOf("ac2291ef-81be-5c99-a0ae-bcee0180b8a8")
     private const val resourceManagerClassName = "Microsoft.Windows.ApplicationModel.Resources.ResourceManager"
-    private const val typedEventHandlerGuid = "9de1c534-6ae1-11e0-84e1-18a905bcc53f"
-    private const val resourceManagerRequestedEventArgsClassName = "Microsoft.UI.Xaml.ResourceManagerRequestedEventArgs"
     private const val addResourceManagerRequestedSlot = 6
     private const val removeResourceManagerRequestedSlot = 7
     private const val createResourceManagerSlot = 6
@@ -59,14 +56,14 @@ object WinUiResourceManagerSupport {
         val resourceManagerReference = createResourceManager(priPath)
         return runCatching {
             val delegateHandle = WinRtDelegateBridge.createUnitDelegate(
-                iid = resourceManagerRequestedHandlerIid(),
+                iid = WinUiResourceManagerRuntime.resourceManagerRequestedHandlerIid(),
                 parameterKinds = listOf(
                     WinRtDelegateValueKind.IUNKNOWN,
                     WinRtDelegateValueKind.IUNKNOWN,
                 ),
             ) { args ->
                 val requestedArgs = (args[1] as? IUnknownReference)
-                    ?.queryInterface(iidIResourceManagerRequestedEventArgs)
+                    ?.queryInterface(WinUiResourceManagerRuntime.resourceManagerRequestedEventArgsIid)
                     ?.getOrThrow()
                     ?: error("ResourceManagerRequested event did not provide event args.")
                 requestedArgs.use { eventArgs ->
@@ -110,19 +107,6 @@ object WinUiResourceManagerSupport {
             runtimeAssetsRoot.resolve("Microsoft.UI.pri"),
             runtimeAssetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri"),
         ).firstOrNull(Files::isRegularFile)
-
-    internal fun resourceManagerRequestedHandlerIid(): Guid {
-        val argsSignature = WinRtTypeSignature.runtimeClass(
-            resourceManagerRequestedEventArgsClassName,
-            WinRtTypeSignature.guid(iidIResourceManagerRequestedEventArgs),
-        )
-        val signature = WinRtTypeSignature.parameterizedInterface(
-            typedEventHandlerGuid,
-            WinRtTypeSignature.object_(),
-            argsSignature,
-        )
-        return ParameterizedInterfaceId.createFromSignature(signature)
-    }
 
     private fun createResourceManager(priPath: Path): ComObjectReference {
         val factory = ActivationFactory.get(resourceManagerClassName, iidIResourceManagerFactory)
