@@ -285,6 +285,16 @@ actual object WinRtPlatformApi {
         GetProcAddress(ole32Module, "CoUninitialize")?.reinterpret()
     }
 
+    private val coIncrementMtaUsageProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(ole32Module, "CoIncrementMTAUsage")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "CoIncrementMTAUsage")?.reinterpret()
+    }
+
+    private val coDecrementMtaUsageProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(ole32Module, "CoDecrementMTAUsage")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "CoDecrementMTAUsage")?.reinterpret()
+    }
+
     private val roInitializeProc: CPointer<CFunction<(Int) -> Int>>? by lazy {
         GetProcAddress(combaseModule, "RoInitialize")?.reinterpret()
     }
@@ -387,9 +397,16 @@ actual object WinRtPlatformApi {
         roUninitializeProc?.invoke()
     }
 
-    actual fun coIncrementMtaUsageRaw(): NativePointerResult = TODO()
+    actual fun coIncrementMtaUsageRaw(): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val cookieOut = PlatformAbi.allocatePointerSlot(scope)
+            val hResult = coIncrementMtaUsageProc?.invoke(cookieOut.toOpaquePointer())
+                ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(cookieOut))
+        }
 
-    actual fun coDecrementMtaUsageRaw(cookie: RawAddress): Int = TODO()
+    actual fun coDecrementMtaUsageRaw(cookie: RawAddress): Int =
+        coDecrementMtaUsageProc?.invoke(cookie.toOpaquePointer()) ?: KnownHResults.E_NOTIMPL.value
 
     actual fun roGetAgileReferenceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
 
