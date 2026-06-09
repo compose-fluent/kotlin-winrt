@@ -307,6 +307,11 @@ actual object WinRtPlatformApi {
         GetProcAddress(combaseModule, "RoGetActivationFactory")?.reinterpret()
     }
 
+    private val roGetAgileReferenceProc:
+        CPointer<CFunction<(Int, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+            GetProcAddress(combaseModule, "RoGetAgileReference")?.reinterpret()
+        }
+
     private val coTaskMemAllocProc: CPointer<CFunction<(ULong) -> COpaquePointer?>>? by lazy {
         GetProcAddress(ole32Module, "CoTaskMemAlloc")?.reinterpret()
     }
@@ -408,7 +413,19 @@ actual object WinRtPlatformApi {
     actual fun coDecrementMtaUsageRaw(cookie: RawAddress): Int =
         coDecrementMtaUsageProc?.invoke(cookie.toOpaquePointer()) ?: KnownHResults.E_NOTIMPL.value
 
-    actual fun roGetAgileReferenceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
+    actual fun roGetAgileReferenceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+            val hResult = roGetAgileReferenceProc?.invoke(
+                0,
+                interfaceIdPointer.toOpaquePointer(),
+                unknown.toOpaquePointer(),
+                resultOut.toOpaquePointer(),
+            ) ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
     actual fun coGetContextTokenRaw(): NativePointerResult = TODO()
 

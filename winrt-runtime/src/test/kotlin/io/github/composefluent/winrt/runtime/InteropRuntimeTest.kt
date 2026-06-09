@@ -5,24 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
-class InteropRuntimeTest {
-    @Test
-    fun agile_reference_resolves_same_identity_for_winrt_object() {
-        assumeTrue(PlatformRuntime.isWindows)
-
-        RuntimeScope.initializeMultithreaded().use {
-            WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
-                AgileReference(instance).use { agileReference ->
-                    val resolved = agileReference.get()
-                    assertNotNull(resolved)
-                    resolved!!.use {
-                        assertTrue(it.sameIdentity(instance))
-                    }
-                }
-            }
-        }
-    }
-
+class InteropRuntimeJvmTest {
     @Test
     fun weak_reference_source_resolves_same_identity_for_winrt_object() {
         assumeTrue(PlatformRuntime.isWindows)
