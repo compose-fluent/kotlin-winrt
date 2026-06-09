@@ -1,11 +1,11 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
-class ComWrappersGeneratedTypeDetailsJvmTest {
+class ComWrappersGeneratedTypeDetailsTest {
     @Test
     fun create_ccw_uses_registered_generated_type_details() {
         ComWrappersSupport.clearRegistriesForTests()
@@ -13,8 +13,9 @@ class ComWrappersGeneratedTypeDetailsJvmTest {
         val managed = GeneratedDetailsComponent("payload")
 
         ComWrappersSupport.createCCWForObject(managed, GENERATED_DETAILS_INTERFACE_ID).use { ccw ->
-            val found = ComWrappersSupport.findObject(ccw.pointer, GeneratedDetailsComponent::class)
-            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
+            val pointer = PlatformAbi.fromRawComPtr(ccw.pointer)
+            val found = ComWrappersSupport.findObject(pointer, GeneratedDetailsComponent::class)
+            val info = ComWrappersSupport.getInspectableInfo(pointer)
 
             assertSame(managed, found)
             assertEquals("test.GeneratedDetailsComponent", info?.runtimeClassName)
@@ -28,7 +29,6 @@ private val GENERATED_DETAILS_INTERFACE_ID = Guid("12121212-1212-1212-1212-12121
 private data class GeneratedDetailsComponent(val name: String)
 
 private object WinRT_GeneratedDetailsComponent_TypeDetails {
-    @JvmStatic
     fun register() {
         ComWrappersSupport.registerAuthoringTypeDetailsFactory(
             GeneratedDetailsComponent::class,
@@ -36,7 +36,6 @@ private object WinRT_GeneratedDetailsComponent_TypeDetails {
         )
     }
 
-    @JvmStatic
     fun createCcwDefinition(value: Any): WinRtCcwDefinition {
         require(value is GeneratedDetailsComponent)
         return WinRtCcwDefinition(
