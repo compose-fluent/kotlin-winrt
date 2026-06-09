@@ -1,16 +1,15 @@
 package io.github.composefluent.winrt.runtime
 
-import java.lang.foreign.Arena
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class WinRtAsyncInteropTest {
     @Test
@@ -40,8 +39,8 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_action_await_completes_immediately_when_already_completed() {
-        Arena.ofConfined().use { arena ->
-            val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Completed)
+        PlatformAbi.confinedScope().use { scope ->
+            val action = FakeAsyncActionReference(scope, WinRtAsyncStatus.Completed)
 
             runBlocking {
                 action.await()
@@ -53,8 +52,8 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_action_await_registers_completed_callback_and_cancels_underlying_info() {
-        Arena.ofConfined().use { arena ->
-            val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started)
+        PlatformAbi.confinedScope().use { scope ->
+            val action = FakeAsyncActionReference(scope, WinRtAsyncStatus.Started)
 
             runBlocking {
                 val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) { action.await() }
@@ -65,7 +64,7 @@ class WinRtAsyncInteropTest {
                 assertTrue(action.resultsCalled)
                 assertTrue(action.completedHandlerClosed())
 
-                val cancelledAction = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started)
+                val cancelledAction = FakeAsyncActionReference(scope, WinRtAsyncStatus.Started)
                 val cancelledJob = launch(start = CoroutineStart.UNDISPATCHED) { cancelledAction.await() }
                 cancelledJob.cancel()
                 cancelledJob.join()
@@ -77,13 +76,13 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_action_when_completed_closes_delegate_when_registration_fails() {
-        Arena.ofConfined().use { arena ->
+        PlatformAbi.confinedScope().use { scope ->
             val failure = WinRtIllegalStateException(
                 "completed handler already assigned",
                 KnownHResults.E_ILLEGAL_DELEGATE_ASSIGNMENT,
             )
             val action = FakeAsyncActionReference(
-                arena = arena,
+                scope = scope,
                 statusState = WinRtAsyncStatus.Started,
                 registrationFailure = failure,
             )
@@ -102,9 +101,9 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_action_await_faults_and_closes_completed_handler_when_get_results_fails() {
-        Arena.ofConfined().use { arena ->
+        PlatformAbi.confinedScope().use { scope ->
             val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
-            val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started, resultsFailure = failure)
+            val action = FakeAsyncActionReference(scope, WinRtAsyncStatus.Started, resultsFailure = failure)
 
             runBlocking {
                 val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -127,13 +126,13 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_join_uses_common_await_owner() {
-        Arena.ofConfined().use { arena ->
-            val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Completed)
+        PlatformAbi.confinedScope().use { scope ->
+            val action = FakeAsyncActionReference(scope, WinRtAsyncStatus.Completed)
             action.join()
             assertTrue(action.resultsCalled)
 
             val operation = FakeAsyncOperationReference(
-                arena = arena,
+                scope = scope,
                 statusState = WinRtAsyncStatus.Completed,
                 result = "joined",
             )
@@ -450,9 +449,9 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_action_with_progress_await_faults_and_closes_completed_handler_when_get_results_fails() {
-        Arena.ofConfined().use { arena ->
+        PlatformAbi.confinedScope().use { scope ->
             val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
-            val action = FakeAsyncActionWithProgressReference(arena, WinRtAsyncStatus.Started, resultsFailure = failure)
+            val action = FakeAsyncActionWithProgressReference(scope, WinRtAsyncStatus.Started, resultsFailure = failure)
 
             runBlocking {
                 val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -475,10 +474,10 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_operation_with_progress_await_faults_and_closes_completed_handler_when_get_results_fails() {
-        Arena.ofConfined().use { arena ->
+        PlatformAbi.confinedScope().use { scope ->
             val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
             val operation = FakeAsyncOperationWithProgressReference(
-                arena = arena,
+                scope = scope,
                 statusState = WinRtAsyncStatus.Started,
                 result = "ignored",
                 resultsFailure = failure,
@@ -505,10 +504,10 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_operation_await_completes_with_result_and_maps_error_status() {
-        Arena.ofConfined().use { arena ->
+        PlatformAbi.confinedScope().use { scope ->
             runBlocking {
                 val operation = FakeAsyncOperationReference(
-                    arena = arena,
+                    scope = scope,
                     statusState = WinRtAsyncStatus.Started,
                     result = "done",
                 )
@@ -522,7 +521,7 @@ class WinRtAsyncInteropTest {
                 assertTrue(operation.completedHandlerClosed())
 
                 val failedOperation = FakeAsyncOperationReference(
-                    arena = arena,
+                    scope = scope,
                     statusState = WinRtAsyncStatus.Error,
                     result = "ignored",
                     errorCode = KnownHResults.E_ACCESSDENIED,
@@ -541,10 +540,10 @@ class WinRtAsyncInteropTest {
 
     @Test
     fun async_operation_await_faults_and_closes_completed_handler_when_get_results_fails() {
-        Arena.ofConfined().use { arena ->
+        PlatformAbi.confinedScope().use { scope ->
             val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
             val operation = FakeAsyncOperationReference(
-                arena = arena,
+                scope = scope,
                 statusState = WinRtAsyncStatus.Started,
                 result = "ignored",
                 resultsFailure = failure,
@@ -570,12 +569,12 @@ class WinRtAsyncInteropTest {
     }
 
     private class FakeAsyncActionReference(
-        arena: Arena,
+        scope: NativeScope,
         private var statusState: WinRtAsyncStatus,
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
         private val registrationFailure: Throwable? = null,
-    ) : WinRtAsyncActionReference(arena.allocate(8).asNativePointer()) {
+    ) : WinRtAsyncActionReference(PlatformAbi.allocateBytes(scope, 8)) {
         var resultsCalled = false
         var cancelCalled = false
         private var completedHandle: WinRtDelegateHandle? = null
@@ -611,13 +610,13 @@ class WinRtAsyncInteropTest {
     }
 
     private class FakeAsyncOperationReference(
-        arena: Arena,
+        scope: NativeScope,
         private var statusState: WinRtAsyncStatus,
         private val result: String,
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
     ) : WinRtAsyncOperationReference<String>(
-        pointer = arena.allocate(8).asNativePointer(),
+        pointer = PlatformAbi.allocateBytes(scope, 8),
         interfaceId = Guid("11111111-2222-3333-4444-555555555555"),
         completedHandlerInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
         resultReader = { error("Fake override should be used.") },
@@ -651,12 +650,12 @@ class WinRtAsyncInteropTest {
     }
 
     private class FakeAsyncActionWithProgressReference(
-        arena: Arena,
+        scope: NativeScope,
         private var statusState: WinRtAsyncStatus,
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
     ) : WinRtAsyncActionWithProgressReference<Int>(
-        pointer = arena.allocate(8).asNativePointer(),
+        pointer = PlatformAbi.allocateBytes(scope, 8),
         interfaceId = Guid("22222222-3333-4444-5555-666666666666"),
         progressHandlerInterfaceId = Guid("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"),
         completedHandlerInterfaceId = Guid("cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"),
@@ -698,13 +697,13 @@ class WinRtAsyncInteropTest {
     }
 
     private class FakeAsyncOperationWithProgressReference(
-        arena: Arena,
+        scope: NativeScope,
         private var statusState: WinRtAsyncStatus,
         private val result: String,
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
     ) : WinRtAsyncOperationWithProgressReference<String, Int>(
-        pointer = arena.allocate(8).asNativePointer(),
+        pointer = PlatformAbi.allocateBytes(scope, 8),
         interfaceId = Guid("33333333-4444-5555-6666-777777777777"),
         progressHandlerInterfaceId = Guid("dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb"),
         completedHandlerInterfaceId = Guid("eeeeeeee-ffff-aaaa-bbbb-cccccccccccc"),
