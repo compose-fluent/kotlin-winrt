@@ -1,8 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class WinRtBindableProjectionTest {
     @Test
@@ -47,7 +47,7 @@ class WinRtBindableProjectionTest {
             }
         }
 
-        assertEquals(listOf("one", "two", null, "three"), managed)
+        assertEquals(listOf<Any?>("one", "two", null, "three"), managed)
     }
 
     @Test
@@ -97,9 +97,9 @@ class WinRtBindableProjectionTest {
             }
         }
 
-        val projected = WinRtBindableObjectMarshaller.fromOwnedAbi(inspectablePointer)
+        val projected = WinRtBindableObjectMarshaller.fromOwnedAbi(inspectablePointer.asRawAddress())
         assertTrue(projected is IWinRTObject)
-        val runtimeClassName = ((projected as IWinRTObject).nativeObject.asInspectable()).use { it.getRuntimeClassName() }
+        val runtimeClassName = projected.nativeObject.asInspectable().use { it.getRuntimeClassName() }
         assertEquals("test.RuntimeClass", runtimeClassName)
         (projected as? AutoCloseable)?.close()
         host.releaseManagedReference()
