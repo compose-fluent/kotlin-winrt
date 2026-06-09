@@ -1,11 +1,12 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class WinRtDelegateBridgeTest {
     private data class DelegateObjectPayload(val value: String)
@@ -591,7 +592,7 @@ class WinRtDelegateBridgeTest {
         assertTrue(signature.render().startsWith("pinterface("))
     }
 
-    @Test(expected = IllegalStateException::class)
+    @Test
     fun closed_delegate_handle_rejects_invocation() {
         val handle = WinRtDelegateBridge.createUnitDelegate(
             iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
@@ -599,7 +600,9 @@ class WinRtDelegateBridgeTest {
         ) { }
 
         handle.close()
-        handle.invokeForTesting(listOf("sender"))
+        assertFailsWith<IllegalStateException> {
+            handle.invokeForTesting(listOf("sender"))
+        }
     }
 
     @Test

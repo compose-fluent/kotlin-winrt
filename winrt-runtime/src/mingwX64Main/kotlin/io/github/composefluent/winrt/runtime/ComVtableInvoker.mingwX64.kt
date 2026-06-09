@@ -304,6 +304,16 @@ actual object ComVtableInvoker {
                     .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>>()
                 method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), args[1].toInt())
             }
+            kinds.size == 2 && kinds[0] == ComAbiValueKind.Int32 && kinds[1] == ComAbiValueKind.Pointer -> {
+                val method = vtableEntry(instance, slot)
+                    .reinterpret<CFunction<(COpaquePointer?, Int, COpaquePointer?) -> Int>>()
+                method.invoke(instance.toOpaquePointer(), args[0].toInt(), RawAddress(args[1]).toOpaquePointer())
+            }
+            kinds.size == 2 && kinds[0] is ComAbiValueKind.Struct && kinds[1] == ComAbiValueKind.Pointer -> {
+                val method = vtableEntry(instance, slot)
+                    .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
+                method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
+            }
             else -> error("Unsupported mingw COM generic signature: $kinds.")
         }
     }
