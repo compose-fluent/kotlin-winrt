@@ -61,7 +61,7 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         arg0: Int,
-    ): Int = TODO()
+    ): Int = invokeHResult(instance, slot, arg0)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -480,6 +480,7 @@ private fun MutableList<Byte>.emitZeroStackWord(stackOffset: Int) {
 private typealias PointerResult0 = CFunction<(COpaquePointer?) -> COpaquePointer?>
 private typealias HResult0 = CFunction<(COpaquePointer?) -> Int>
 private typealias HResultPointer1 = CFunction<(COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultInt1 = CFunction<(COpaquePointer?, Int) -> Int>
 private typealias HResultUInt1 = CFunction<(COpaquePointer?, UInt) -> Int>
 private typealias HResultLong1 = CFunction<(COpaquePointer?, Long) -> Int>
 private typealias HResultPointer2 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
@@ -517,6 +518,15 @@ private fun invokeHResult(
     arg0: COpaquePointer?,
 ): Int {
     val method = vtableEntry(instance, slot).reinterpret<HResultPointer1>()
+    return method.invoke(instance.toOpaquePointer(), arg0)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultInt1>()
     return method.invoke(instance.toOpaquePointer(), arg0)
 }
 
