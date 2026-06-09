@@ -32,6 +32,7 @@ dependencies {
 
 winRt {
     type("Windows.Foundation.IStringable")
+    type("Windows.Foundation.Point")
     namespace("Windows.Data.Json")
     application {
     }
@@ -64,9 +65,13 @@ winRt {
         type("Microsoft.UI.Xaml.Controls.ItemsControl")
         type("Microsoft.UI.Xaml.Controls.ListView")
         type("Microsoft.UI.Xaml.Controls.ListViewItem")
+        type("Microsoft.UI.Xaml.Controls.MenuFlyout")
+        type("Microsoft.UI.Xaml.Controls.MenuFlyoutItem")
+        type("Microsoft.UI.Xaml.Controls.MenuFlyoutItemBase")
         type("Microsoft.UI.Xaml.Controls.Orientation")
         type("Microsoft.UI.Xaml.Controls.Page")
         type("Microsoft.UI.Xaml.Controls.Primitives.ButtonBase")
+        type("Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase")
         type("Microsoft.UI.Xaml.Controls.Primitives.RangeBase")
         type("Microsoft.UI.Xaml.Controls.Primitives.Selector")
         type("Microsoft.UI.Xaml.Controls.Primitives.SelectorItem")
@@ -98,6 +103,7 @@ val sampleJvmOptionProperties = listOf(
     "kotlin.winrt.samples.runComponentSmoke",
     "kotlin.winrt.samples.runWinUiSmoke",
     "kotlin.winrt.samples.autoNavigateWinUi",
+    "kotlin.winrt.samples.autoShowMenuFlyout",
     "kotlin.winrt.samples.autoExitWinUi",
     "kotlin.winrt.samples.minimalWinUiSurface",
     "kotlin.winrt.samples.skipObjectContent",
