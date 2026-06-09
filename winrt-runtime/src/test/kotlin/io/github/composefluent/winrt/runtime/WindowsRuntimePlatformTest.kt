@@ -10,21 +10,6 @@ import org.junit.Test
 
 class WindowsRuntimePlatformJvmTest {
     @Test
-    fun try_load_library_and_try_get_proc_address_cover_platform_loader_flow_on_windows() {
-        assumeTrue(PlatformRuntime.isWindows)
-
-        val kernel32 = WindowsRuntimePlatform.tryLoadLibraryExW("kernel32.dll", 0)
-        try {
-            assertTrue(kernel32 != java.lang.foreign.MemorySegment.NULL)
-            val getLastError = WindowsRuntimePlatform.tryGetProcAddress(kernel32, "GetLastError")
-            assertTrue(getLastError != java.lang.foreign.MemorySegment.NULL)
-            assertEquals(java.lang.foreign.MemorySegment.NULL, WindowsRuntimePlatform.tryGetProcAddress(kernel32, "DefinitelyMissingExport"))
-        } finally {
-            WindowsRuntimePlatform.freeLibrary(kernel32)
-        }
-    }
-
-    @Test
     fun format_message_uses_windows_system_message_table() {
         assumeTrue(PlatformRuntime.isWindows)
 

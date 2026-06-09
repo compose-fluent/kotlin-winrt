@@ -28,9 +28,12 @@ import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.value
 import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
+import platform.windows.FreeLibrary
 import platform.windows.GetLastError
 import platform.windows.GetProcAddress
+import platform.windows.HINSTANCE__
 import platform.windows.LoadLibraryA
+import platform.windows.LoadLibraryExW
 
 actual class NativeScope internal constructor(
     private val ownsAllocations: Boolean,
@@ -384,7 +387,13 @@ actual object WinRtPlatformApi {
     actual fun dllGetActivationFactoryRaw(
         getActivationFactoryProc: RawAddress,
         runtimeClassId: RawAddress,
-    ): NativePointerResult = TODO()
+    ): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val proc = getActivationFactoryProc.asCFunction<(COpaquePointer?, COpaquePointer?) -> Int>()
+            val hResult = proc.invoke(runtimeClassId.toOpaquePointer(), resultOut.toOpaquePointer())
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
     actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult = TODO()
 
@@ -505,15 +514,28 @@ actual object WinRtPlatformApi {
     actual fun windowsGetStringRawBufferRaw(handle: RawAddress, lengthOut: RawAddress): RawAddress =
         windowsGetStringRawBufferProc?.invoke(handle.toOpaquePointer(), lengthOut.toOpaquePointer()).asRawAddress()
 
-    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress = TODO()
+    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress =
+        LoadLibraryExW(absolutePath, null, flags.toUInt()).asRawAddress()
 
-    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress = TODO()
+    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress =
+        tryLoadLibraryExWRaw(absolutePath, flags).also { handle ->
+            if (PlatformAbi.isNull(handle)) {
+                checkSucceededRaw(lastErrorAsHResultRaw())
+            }
+        }
 
-    actual fun tryGetProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress = TODO()
+    actual fun tryGetProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress =
+        GetProcAddress(moduleHandle.asModuleHandle(), procedureName).asRawAddress()
 
-    actual fun getProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress = TODO()
+    actual fun getProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress =
+        tryGetProcAddressRaw(moduleHandle, procedureName).also { address ->
+            if (PlatformAbi.isNull(address)) {
+                checkSucceededRaw(lastErrorAsHResultRaw())
+            }
+        }
 
-    actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean = TODO()
+    actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean =
+        FreeLibrary(moduleHandle.asModuleHandle()) != 0
 
     actual fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress = RawAddress.Null
 
@@ -531,5 +553,11 @@ actual object WinRtPlatformApi {
         }
     }
 
-    actual fun resolveModulePathRaw(fileName: String): String = TODO()
+    actual fun resolveModulePathRaw(fileName: String): String = fileName
 }
+
+private fun <T : Function<Int>> RawAddress.asCFunction(): CPointer<CFunction<T>> =
+    value.toCPointer<CFunction<T>>() ?: error("Cannot call a null native function pointer.")
+
+private fun RawAddress.asModuleHandle(): CPointer<HINSTANCE__>? =
+    if (value == 0L) null else value.toCPointer()

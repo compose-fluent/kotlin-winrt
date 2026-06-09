@@ -60,4 +60,24 @@ class WindowsRuntimePlatformTest {
         assertEquals(Guid("44A9796F-723E-4FDF-A218-033E75B0C084"), IID.UriRuntimeClassFactory)
         assertEquals(Guid("FD416DFB-2A07-52EB-AAE3-DFCE14116C05"), IID.NullableString)
     }
+
+    @Test
+    fun try_load_library_and_try_get_proc_address_cover_platform_loader_flow_on_windows() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        val kernel32 = WinRtPlatformApi.tryLoadLibraryExWRaw("kernel32.dll", 0)
+        try {
+            assertTrue(!PlatformAbi.isNull(kernel32))
+            val getLastError = WinRtPlatformApi.tryGetProcAddressRaw(kernel32, "GetLastError")
+            assertTrue(!PlatformAbi.isNull(getLastError))
+            assertEquals(
+                PlatformAbi.nullPointer,
+                WinRtPlatformApi.tryGetProcAddressRaw(kernel32, "DefinitelyMissingExport"),
+            )
+        } finally {
+            WinRtPlatformApi.freeLibraryRaw(kernel32)
+        }
+    }
 }

@@ -36,6 +36,18 @@ class ActivationFactoryTest {
     }
 
     @Test
+    fun manifest_free_loader_does_not_cache_missing_modules() {
+        if (PlatformRuntime.isWindows) {
+            DllModule.clearCacheForTests()
+            DllModule.tryLoad("Definitely.Missing.Module.dll")
+            assertEquals(0, DllModule.cachedModuleCount())
+            return
+        }
+
+        assertEquals(0, DllModule.cachedModuleCount())
+    }
+
+    @Test
     fun activation_factory_cache_reuses_identity_for_default_factory() {
         if (!PlatformRuntime.isWindows) {
             return
