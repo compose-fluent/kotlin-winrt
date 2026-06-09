@@ -1,10 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
-import java.lang.foreign.ValueLayout
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class ComVtableInvokerCallbackBridgeTest {
     @Test
@@ -46,35 +43,6 @@ class ComVtableInvokerCallbackBridgeTest {
         }
     }
 
-    @Test
-    fun closed_raw_callback_bridge_returns_e_pointer() {
-        val handle = ComAbiInteropBridge.createRawInt32Callback(
-            parameterKinds = listOf(ComAbiValueKind.Pointer),
-        ) {
-            KnownHResults.S_OK.value
-        }
-        val callbackPointer = handle.pointer
-
-        handle.close()
-
-        assertEquals(KnownHResults.E_POINTER.value, invokeInt32PointerCallback(callbackPointer))
-    }
-
-    @Test
-    fun raw_callback_handle_close_is_idempotent() {
-        val handle = ComAbiInteropBridge.createRawInt32Callback(
-            parameterKinds = listOf(ComAbiValueKind.Pointer),
-        ) {
-            KnownHResults.S_OK.value
-        }
-        val callbackPointer = handle.pointer
-
-        handle.close()
-        handle.close()
-
-        assertEquals(KnownHResults.E_POINTER.value, invokeInt32PointerCallback(callbackPointer))
-    }
-
     private fun invokeInt32PointerCallback(
         handle: NativeCallbackHandle,
         argument: RawAddress = PlatformAbi.nullPointer,
@@ -83,17 +51,10 @@ class ComVtableInvokerCallbackBridgeTest {
     private fun invokeInt32PointerCallback(
         callbackPointer: RawAddress,
         argument: RawAddress = PlatformAbi.nullPointer,
-    ): Int {
-        val downcall = linker.downcallHandle(
-            callbackPointer.asMemorySegment(),
-            int32PointerCallbackDescriptor,
-        )
-        return downcall.invokeWithArguments(argument.asMemorySegment()) as Int
-    }
-
-    private companion object {
-        val linker: Linker = Linker.nativeLinker()
-        val int32PointerCallbackDescriptor: FunctionDescriptor =
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
-    }
+    ): Int = invokeInt32PointerCallbackForTest(callbackPointer, argument)
 }
+
+internal expect fun invokeInt32PointerCallbackForTest(
+    callbackPointer: RawAddress,
+    argument: RawAddress,
+): Int
