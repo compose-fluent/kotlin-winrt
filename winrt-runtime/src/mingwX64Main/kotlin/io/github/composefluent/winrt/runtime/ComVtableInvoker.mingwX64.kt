@@ -10,21 +10,29 @@ import kotlinx.cinterop.COpaquePointerVar
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.UIntVar
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.get
 import kotlinx.cinterop.invoke
+import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.pointed
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.value
+import platform.windows.FlushInstructionCache
+import platform.windows.GetCurrentProcess
 import platform.windows.MEM_COMMIT
 import platform.windows.MEM_RELEASE
 import platform.windows.MEM_RESERVE
-import platform.windows.PAGE_EXECUTE_READWRITE
+import platform.windows.PAGE_EXECUTE_READ
+import platform.windows.PAGE_READWRITE
 import platform.windows.VirtualAlloc
 import platform.windows.VirtualFree
+import platform.windows.VirtualProtect
 
 actual object ComVtableInvoker {
     actual fun invokePointer(
@@ -369,11 +377,30 @@ private class Win64ComCallbackTrampoline private constructor(
                 null,
                 code.size.toULong(),
                 MEM_COMMIT.toUInt() or MEM_RESERVE.toUInt(),
-                PAGE_EXECUTE_READWRITE.toUInt(),
+                PAGE_READWRITE.toUInt(),
             ) ?: error("VirtualAlloc failed for mingw COM callback trampoline.")
             val bytes = memory.reinterpret<ByteVar>()
             code.forEachIndexed { index, value -> bytes[index] = value }
+            protectExecutable(memory, code.size.toULong())
             return Win64ComCallbackTrampoline(memory.asRawAddress())
+        }
+
+        private fun protectExecutable(
+            memory: COpaquePointer,
+            size: ULong,
+        ) {
+            memScoped {
+                val oldProtect = alloc<UIntVar>()
+                val protected = VirtualProtect(memory, size, PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr)
+                if (protected == 0) {
+                    VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
+                    error("VirtualProtect failed for mingw COM callback trampoline.")
+                }
+                if (FlushInstructionCache(GetCurrentProcess(), memory, size) == 0) {
+                    VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
+                    error("FlushInstructionCache failed for mingw COM callback trampoline.")
+                }
+            }
         }
 
         private fun buildCode(
