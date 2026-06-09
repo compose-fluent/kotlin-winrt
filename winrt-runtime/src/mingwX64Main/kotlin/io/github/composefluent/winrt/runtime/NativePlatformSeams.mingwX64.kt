@@ -308,6 +308,11 @@ actual object WinRtPlatformApi {
             ?: GetProcAddress(combaseModule, "CoGetObjectContext")?.reinterpret()
     }
 
+    private val coCreateFreeThreadedMarshalerProc: CPointer<CFunction<(COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(ole32Module, "CoCreateFreeThreadedMarshaler")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "CoCreateFreeThreadedMarshaler")?.reinterpret()
+    }
+
     private val roInitializeProc: CPointer<CFunction<(Int) -> Int>>? by lazy {
         GetProcAddress(combaseModule, "RoInitialize")?.reinterpret()
     }
@@ -478,7 +483,15 @@ actual object WinRtPlatformApi {
 
     actual fun readAndFreeBstrRaw(value: RawAddress): String = TODO()
 
-    actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult = TODO()
+    actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val hResult = coCreateFreeThreadedMarshalerProc?.invoke(
+                outer.toOpaquePointer(),
+                resultOut.toOpaquePointer(),
+            ) ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
     actual fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress =
         coTaskMemAllocProc?.invoke(sizeBytes.toULong()).asRawAddress()
