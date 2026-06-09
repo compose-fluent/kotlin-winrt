@@ -155,7 +155,8 @@ actual object ComVtableInvoker {
         arg0: RawAddress,
         arg1: Int,
         arg2: RawAddress,
-    ): Int = TODO()
+    ): Int =
+        invokeHResultWords(instance, slot, arg0.value, arg1.toLong(), arg2.value)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -163,7 +164,8 @@ actual object ComVtableInvoker {
         arg0: UInt,
         arg1: RawAddress,
         arg2: RawAddress,
-    ): Int = TODO()
+    ): Int =
+        invokeHResultWords(instance, slot, arg0.toLong(), arg1.value, arg2.value)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -192,7 +194,8 @@ actual object ComVtableInvoker {
         arg1: UInt,
         arg2: RawAddress,
         arg3: RawAddress,
-    ): Int = TODO()
+    ): Int =
+        invokeHResultWords(instance, slot, arg0.toLong(), arg1.toLong(), arg2.value, arg3.value)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -201,7 +204,8 @@ actual object ComVtableInvoker {
         arg1: RawAddress,
         arg2: Int,
         arg3: RawAddress,
-    ): Int = TODO()
+    ): Int =
+        invokeHResultWords(instance, slot, arg0.value, arg1.value, arg2.toLong(), arg3.value)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -221,7 +225,8 @@ actual object ComVtableInvoker {
         arg2: RawAddress,
         arg3: Int,
         arg4: RawAddress,
-    ): Int = TODO()
+    ): Int =
+        invokeHResultWords(instance, slot, arg0.value, arg1.value, arg2.value, arg3.toLong(), arg4.value)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -244,7 +249,8 @@ actual object ComVtableInvoker {
         arg3: Int,
         arg4: RawAddress,
         arg5: Int,
-    ): Int = TODO()
+    ): Int =
+        invokeHResultWords(instance, slot, arg0.value, arg1.value, arg2.value, arg3.toLong(), arg4.value, arg5.toLong())
 
     @Deprecated(
         message = "Legacy no-support generator fallback. Support-file generation must use descriptor intrinsics or direct overloads.",
