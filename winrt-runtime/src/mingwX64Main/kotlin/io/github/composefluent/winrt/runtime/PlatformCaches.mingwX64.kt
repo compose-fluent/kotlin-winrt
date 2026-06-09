@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+
 package io.github.composefluent.winrt.runtime
+
+import kotlin.native.ref.WeakReference as NativeWeakReference
 
 actual class ConcurrentCacheMap<K, V> actual constructor() {
     private val lock = PlatformLock()
@@ -112,11 +116,15 @@ actual class ConcurrentCacheSet<T> actual constructor() {
 
 actual class WeakValueCache<K, V : Any> actual constructor() {
     private val lock = PlatformLock()
-    private val delegate = linkedMapOf<K, V>()
+    private val delegate = linkedMapOf<K, NativeWeakReference<V>>()
 
     actual operator fun get(key: K): V? =
         lock.withLock {
-            delegate[key]
+            val value = delegate[key]?.get()
+            if (value == null) {
+                delegate.remove(key)
+            }
+            value
         }
 
     actual operator fun set(
@@ -124,13 +132,13 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
         value: V,
     ) {
         lock.withLock {
-            delegate[key] = value
+            delegate[key] = NativeWeakReference(value)
         }
     }
 
     actual fun remove(key: K): V? =
         lock.withLock {
-            delegate.remove(key)
+            delegate.remove(key)?.get()
         }
 
     actual fun clear() {
@@ -142,11 +150,12 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
 
 actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
     private val lock = PlatformLock()
-    private val delegate = linkedMapOf<K, V>()
+    private val delegate = mutableListOf<WeakKeyStateEntry<K, V>>()
 
     actual operator fun get(key: K): V? =
         lock.withLock {
-            delegate[key]
+            purgeDeadKeys()
+            delegate.firstOrNull { entry -> entry.matches(key) }?.value
         }
 
     actual fun getOrPut(
@@ -154,12 +163,22 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
         defaultValue: () -> V,
     ): V =
         lock.withLock {
-            delegate[key] ?: defaultValue().also { value -> delegate[key] = value }
+            purgeDeadKeys()
+            delegate.firstOrNull { entry -> entry.matches(key) }?.value
+                ?: defaultValue().also { value ->
+                    delegate += WeakKeyStateEntry(key, value)
+                }
         }
 
     actual fun remove(key: K): V? =
         lock.withLock {
-            delegate.remove(key)
+            purgeDeadKeys()
+            val index = delegate.indexOfFirst { entry -> entry.matches(key) }
+            if (index < 0) {
+                null
+            } else {
+                delegate.removeAt(index).value
+            }
         }
 
     actual fun clear() {
@@ -167,6 +186,21 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
             delegate.clear()
         }
     }
+
+    private fun purgeDeadKeys() {
+        delegate.removeAll { entry -> entry.key.get() == null }
+    }
+}
+
+private class WeakKeyStateEntry<K : Any, V : Any>(
+    key: K,
+    val value: V,
+) {
+    val key: NativeWeakReference<K> = NativeWeakReference(key)
+    private val hashCode: Int = key.hashCode()
+
+    fun matches(candidate: K): Boolean =
+        candidate.hashCode() == hashCode && key.get() == candidate
 }
 
 actual class SnapshotList<T> actual constructor() {
