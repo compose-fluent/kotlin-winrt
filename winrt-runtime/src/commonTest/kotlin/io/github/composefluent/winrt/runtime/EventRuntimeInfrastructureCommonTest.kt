@@ -266,6 +266,56 @@ class EventRuntimeInfrastructureCommonTest {
         }
     }
 
+    @Test
+    fun event_source_state_treats_reference_tracker_refs_as_native_refs() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = testEventInterfaceId,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+        ) { }
+        val state =
+            object : EventSourceState<(Any?, Int) -> Unit>(PlatformAbi.nullPointer, 61) {
+                override fun createEventInvoke(): (Any?, Int) -> Unit = { _, _ -> }
+            }
+
+        handle.use {
+            it.createReference().use { reference ->
+                state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
+                reference.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
+                    val trackerPointer = trackerTarget.pointer
+                    trackerTarget.close()
+                    reference.close()
+
+                    assertEquals(false, state.hasComReferences())
+                    ComVtableInvoker.invoke(trackerPointer, ReferenceTrackerTargetVftblSlots.AddRefFromReferenceTracker)
+                    assertEquals(true, state.hasComReferences())
+                    ComVtableInvoker.invoke(trackerPointer, ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker)
+                    assertEquals(false, state.hasComReferences())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun event_source_cache_tracks_weak_reference_source_objects() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        EventSourceCache.clearForTests()
+
+        RuntimeScope.initializeMultithreaded().use {
+            WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
+                val sentinel = Any()
+                val state = WeakReference<Any>(sentinel)
+
+                EventSourceCache.create(instance, 41, state)
+                assertSame(state, EventSourceCache.getState(instance, 41))
+
+                EventSourceCache.remove(PlatformAbi.pointerKey(instance.pointer), 41, state)
+                assertNull(EventSourceCache.getState(instance, 41))
+            }
+        }
+    }
+
     private class TestIntEventSource(
         owner: ComObjectReference,
         addHandler: (ComObjectReference, ComObjectReference) -> EventRegistrationToken,
