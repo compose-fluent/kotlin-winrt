@@ -13,6 +13,8 @@ import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.ComboBox
 import microsoft.ui.xaml.controls.ListView
+import microsoft.ui.xaml.controls.MenuFlyout
+import microsoft.ui.xaml.controls.MenuFlyoutItem
 import microsoft.ui.xaml.controls.Slider
 import microsoft.ui.xaml.controls.StackPanel
 import microsoft.ui.xaml.controls.TextBlock
@@ -22,6 +24,7 @@ import microsoft.ui.xaml.controls.XamlControlsResources
 import microsoft.ui.xaml.media.MicaBackdrop
 import winui3package.SettingsCard
 import winui3package.Shimmer
+import windows.foundation.Point
 
 data class WinUiControlsSampleResult(
     val xamlResourcesInstalled: Boolean,
@@ -57,6 +60,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
     private var myWindow: Window? = null
     private val deferredLoadingShimmers = mutableListOf<Shimmer>()
     private val deferredLoadingShimmerTokens = mutableMapOf<Shimmer, EventRegistrationToken>()
+    private var deferredMenuFlyoutButton: Button? = null
+    private var deferredMenuFlyoutToken: EventRegistrationToken? = null
 
     fun launchWithResources(): WinUiControlsSampleResult {
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipXamlResources")) {
@@ -69,8 +74,15 @@ class WinUiControlsApp : Application(), AutoCloseable {
         deferredLoadingShimmerTokens.forEach { (shimmer, token) ->
             runCatching { shimmer.removeLoaded(token) }
         }
+        deferredMenuFlyoutToken?.let { token ->
+            deferredMenuFlyoutButton?.let { button ->
+                runCatching { button.removeLoaded(token) }
+            }
+        }
         deferredLoadingShimmerTokens.clear()
         deferredLoadingShimmers.clear()
+        deferredMenuFlyoutToken = null
+        deferredMenuFlyoutButton = null
         myWindow = null
     }
 
@@ -98,14 +110,12 @@ class WinUiControlsApp : Application(), AutoCloseable {
         window.activate()
         println("winui-controls: window activated native")
         val pendingDeferredLoading = applyDeferredShimmerLoading()
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi") && !pendingDeferredLoading) {
-            checkNotNull(Application.current) { "Expected current WinUI application before auto-exit." }.exit()
-        }
+        exitIfDeferredWinUiWorkIsReady(pendingDeferredLoading)
 
         return WinUiControlsSampleResult(
             xamlResourcesInstalled = true,
             micaBackdropApplied = true,
-            controlsComposed = 9,
+            controlsComposed = 10,
         )
     }
 
@@ -140,6 +150,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val enableShimmerLoading = java.lang.Boolean.getBoolean("kotlin.winrt.samples.enableShimmerLoading")
         val skipShimmerSizing = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipShimmerSizing")
         deferredLoadingShimmers.clear()
+        deferredMenuFlyoutToken = null
+        deferredMenuFlyoutButton = null
         println("winui-controls: create StackPanel")
         val root = StackPanel()
         println("winui-controls: set StackPanel padding")
@@ -203,6 +215,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
                 content = "Apply"
             }
         })
+        println("winui-controls: add MenuFlyout.ShowAt button")
+        rootChildren.add(menuFlyoutButton(skipObjectContent))
         if (!skipSettingsCard) {
             println("winui-controls: add WinUIEssential SettingsCard")
             rootChildren.add(SettingsCard().apply {
@@ -234,6 +248,53 @@ class WinUiControlsApp : Application(), AutoCloseable {
         }
 
         return root
+    }
+
+    private fun menuFlyoutButton(skipObjectContent: Boolean): Button {
+        val button = Button()
+        if (!skipObjectContent) {
+            button.content = "Open menu flyout"
+        }
+        val menuFlyout = MenuFlyout()
+        val menuItems = checkNotNull(menuFlyout.items) { "Expected MenuFlyout items collection." }
+        menuItems.add(MenuFlyoutItem().apply {
+            text = "MenuFlyout.ShowAt"
+        })
+        menuItems.add(MenuFlyoutItem().apply {
+            text = "Projected WinUI item"
+        })
+        button.click.add(RoutedEventHandler { _, _ ->
+            showMenuFlyoutWithOffset(menuFlyout, button)
+        })
+        scheduleAutoMenuFlyoutShow(menuFlyout, button)
+        return button
+    }
+
+    private fun showMenuFlyoutWithOffset(menuFlyout: MenuFlyout, button: Button) {
+        println("winui-controls: invoke MenuFlyout.ShowAt with offset")
+        menuFlyout.showAt(button, Point(12.0f, 36.0f))
+        println("winui-controls: invoked MenuFlyout.ShowAt with offset")
+    }
+
+    private fun scheduleAutoMenuFlyoutShow(menuFlyout: MenuFlyout, button: Button) {
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoShowMenuFlyout")) {
+            return
+        }
+        println("winui-controls: auto MenuFlyout.ShowAt requested")
+        if (button.isLoaded) {
+            showMenuFlyoutWithOffset(menuFlyout, button)
+            return
+        }
+        var token = EventRegistrationToken()
+        token = button.addLoaded(RoutedEventHandler { _, _ ->
+            button.removeLoaded(token)
+            deferredMenuFlyoutToken = null
+            deferredMenuFlyoutButton = null
+            showMenuFlyoutWithOffset(menuFlyout, button)
+            exitAfterDeferredMenuFlyoutIfReady()
+        })
+        deferredMenuFlyoutToken = token
+        deferredMenuFlyoutButton = button
     }
 
     private fun applyDeferredShimmerLoading(): Boolean {
@@ -268,8 +329,27 @@ class WinUiControlsApp : Application(), AutoCloseable {
     }
 
     private fun exitAfterDeferredShimmerLoadingIfReady() {
-        if (deferredLoadingShimmerTokens.isEmpty() && java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+        if (deferredLoadingShimmerTokens.isEmpty() && deferredMenuFlyoutToken == null &&
+            java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")
+        ) {
             checkNotNull(Application.current) { "Expected current WinUI application after deferred Shimmer loading." }.exit()
+        }
+    }
+
+    private fun exitAfterDeferredMenuFlyoutIfReady() {
+        if (deferredLoadingShimmerTokens.isEmpty() && deferredMenuFlyoutToken == null &&
+            java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")
+        ) {
+            checkNotNull(Application.current) { "Expected current WinUI application after deferred MenuFlyout.ShowAt." }.exit()
+        }
+    }
+
+    private fun exitIfDeferredWinUiWorkIsReady(pendingDeferredLoading: Boolean) {
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi") &&
+            !pendingDeferredLoading &&
+            deferredMenuFlyoutToken == null
+        ) {
+            checkNotNull(Application.current) { "Expected current WinUI application before auto-exit." }.exit()
         }
     }
 
