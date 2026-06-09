@@ -1,10 +1,9 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
-import org.junit.Test
 import kotlin.reflect.KClass
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -14,7 +13,9 @@ class ValueBoxingTest {
 
     @Test
     fun inspectable_marshaler_unboxes_property_values_and_arrays() {
-        assumeTrue(PlatformRuntime.isWindows)
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
         ComWrappersSupport.clearRegistriesForTests()
 
         val marshaler = Marshaler.inspectableAny()
@@ -245,7 +246,9 @@ class ValueBoxingTest {
 
     @Test
     fun runtime_hooks_project_uri_and_iclosable_like_reference_projection() {
-        assumeTrue(PlatformRuntime.isWindows)
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
         ComWrappersSupport.clearRegistriesForTests()
 
         val uri = WinRtUri("https://example.com/runtime-117?value=1")
@@ -361,7 +364,7 @@ class ValueBoxingTest {
         value: T,
         assertRoundTrip: (T, T) -> Unit,
     ) {
-        val abi = marshaler.fromManaged(value) as NativePointer
+        val abi = marshaler.fromManaged(value) as RawAddress
         try {
             @Suppress("UNCHECKED_CAST")
             assertRoundTrip(value, marshaler.fromAbi(abi) as T)
