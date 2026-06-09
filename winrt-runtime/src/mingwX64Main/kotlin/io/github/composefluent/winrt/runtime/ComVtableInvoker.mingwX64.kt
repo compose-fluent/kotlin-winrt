@@ -279,7 +279,7 @@ actual object ComVtableInvoker {
                 "Unsupported mingw COM generic argument kind for HRESULT word dispatch: $kind."
             }
         }
-        return invokeHResultWords(instance, slot, *args)
+        return invokeHResultWordArray(instance, slot, args)
     }
 
     internal actual fun createComMethodCallback(
@@ -481,15 +481,37 @@ private typealias HResultUniversal =
 private fun invokeHResultWords(
     instance: RawComPtr,
     slot: Int,
-    vararg args: Long,
+    arg0: Long = 0L,
+    arg1: Long = 0L,
+    arg2: Long = 0L,
+    arg3: Long = 0L,
+    arg4: Long = 0L,
+    arg5: Long = 0L,
 ): Int {
-    require(args.size <= maxHResultArgumentWordCount) {
-        "mingw COM HRESULT ABI supports at most $maxHResultArgumentWordCount explicit words, got ${args.size}."
-    }
     val target = vtableEntry(instance, slot).rawValue.toLong()
     return Win64ComHResultDispatcher.invoke(
         target,
         instance.value,
+        arg0,
+        arg1,
+        arg2,
+        arg3,
+        arg4,
+        arg5,
+    )
+}
+
+private fun invokeHResultWordArray(
+    instance: RawComPtr,
+    slot: Int,
+    args: LongArray,
+): Int {
+    require(args.size <= maxHResultArgumentWordCount) {
+        "mingw COM HRESULT ABI supports at most $maxHResultArgumentWordCount explicit words, got ${args.size}."
+    }
+    return invokeHResultWords(
+        instance,
+        slot,
         args.getOrElse(0) { 0L },
         args.getOrElse(1) { 0L },
         args.getOrElse(2) { 0L },
