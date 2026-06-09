@@ -1,8 +1,18 @@
-@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
 
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.nativeHeap
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.rawValue
+import kotlin.native.ref.createCleaner
 import kotlin.native.ref.WeakReference as NativeManagedWeakReference
+import platform.windows.CRITICAL_SECTION
+import platform.windows.DeleteCriticalSection
+import platform.windows.EnterCriticalSection
+import platform.windows.InitializeCriticalSection
+import platform.windows.LeaveCriticalSection
 
 internal actual class PlatformManagedWeakReference<T : Any> actual constructor(target: T?) {
     private var delegate: NativeManagedWeakReference<T>? = target?.let(::NativeManagedWeakReference)
@@ -15,7 +25,26 @@ internal actual class PlatformManagedWeakReference<T : Any> actual constructor(t
 }
 
 internal actual class PlatformLock actual constructor() {
-    actual fun <R> withLock(block: () -> R): R = block()
+    private val section = nativeHeap.alloc<CRITICAL_SECTION>().ptr
+
+    @Suppress("unused")
+    private val cleaner = createCleaner(section) { pointer ->
+        DeleteCriticalSection(pointer)
+        nativeHeap.free(pointer.rawValue)
+    }
+
+    init {
+        InitializeCriticalSection(section)
+    }
+
+    actual fun <R> withLock(block: () -> R): R {
+        EnterCriticalSection(section)
+        try {
+            return block()
+        } finally {
+            LeaveCriticalSection(section)
+        }
+    }
 }
 
 internal actual class NativeWeakReferenceHandle : AutoCloseable {
