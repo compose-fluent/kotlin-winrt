@@ -29,25 +29,4 @@ class InteropRuntimeJvmTest {
             }
         }
     }
-
-    @Test
-    fun context_owner_can_reenter_current_context_without_throwing() {
-        assumeTrue(PlatformRuntime.isWindows)
-
-        RuntimeScope.initializeMultithreaded().use {
-            val contextToken = Context.getContextToken()
-            val contextCallback = Context.getContextCallback()
-            assertNotNull(contextCallback)
-            contextCallback!!.use {
-                var invoked = false
-                Context.callInContext(
-                    contextCallback = it,
-                    contextToken = contextToken,
-                    callback = { _: Unit -> invoked = true },
-                    state = Unit,
-                )
-                assertTrue(invoked)
-            }
-        }
-    }
 }

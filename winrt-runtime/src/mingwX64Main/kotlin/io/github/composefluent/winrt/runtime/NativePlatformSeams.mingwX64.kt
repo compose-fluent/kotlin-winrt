@@ -295,6 +295,16 @@ actual object WinRtPlatformApi {
             ?: GetProcAddress(combaseModule, "CoDecrementMTAUsage")?.reinterpret()
     }
 
+    private val coGetContextTokenProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(ole32Module, "CoGetContextToken")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "CoGetContextToken")?.reinterpret()
+    }
+
+    private val coGetObjectContextProc: CPointer<CFunction<(COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(ole32Module, "CoGetObjectContext")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "CoGetObjectContext")?.reinterpret()
+    }
+
     private val roInitializeProc: CPointer<CFunction<(Int) -> Int>>? by lazy {
         GetProcAddress(combaseModule, "RoInitialize")?.reinterpret()
     }
@@ -427,9 +437,23 @@ actual object WinRtPlatformApi {
             NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
         }
 
-    actual fun coGetContextTokenRaw(): NativePointerResult = TODO()
+    actual fun coGetContextTokenRaw(): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val tokenOut = PlatformAbi.allocatePointerSlot(scope)
+            val hResult = coGetContextTokenProc?.invoke(tokenOut.toOpaquePointer())
+                ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(tokenOut))
+        }
 
-    actual fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult = TODO()
+    actual fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+            val hResult = coGetObjectContextProc?.invoke(interfaceIdPointer.toOpaquePointer(), resultOut.toOpaquePointer())
+                ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
     actual fun setErrorInfoRaw(errorInfo: RawAddress): Int = TODO()
 
