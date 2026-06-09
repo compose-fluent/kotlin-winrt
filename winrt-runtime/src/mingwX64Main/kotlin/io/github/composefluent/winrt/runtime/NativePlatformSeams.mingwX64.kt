@@ -293,7 +293,48 @@ actual object WinRtPlatformApi {
         GetProcAddress(combaseModule, "RoUninitialize")?.reinterpret()
     }
 
-    actual fun roGetActivationFactoryRaw(runtimeClassId: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
+    private val roGetActivationFactoryProc: CPointer<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(combaseModule, "RoGetActivationFactory")?.reinterpret()
+    }
+
+    private val coTaskMemAllocProc: CPointer<CFunction<(ULong) -> COpaquePointer?>>? by lazy {
+        GetProcAddress(ole32Module, "CoTaskMemAlloc")?.reinterpret()
+    }
+
+    private val coTaskMemFreeProc: CPointer<CFunction<(COpaquePointer?) -> Unit>>? by lazy {
+        GetProcAddress(ole32Module, "CoTaskMemFree")?.reinterpret()
+    }
+
+    private val windowsCreateStringProc: CPointer<CFunction<(COpaquePointer?, UInt, COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(combaseModule, "WindowsCreateString")?.reinterpret()
+    }
+
+    private val windowsCreateStringReferenceProc:
+        CPointer<CFunction<(COpaquePointer?, UInt, COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+            GetProcAddress(combaseModule, "WindowsCreateStringReference")?.reinterpret()
+        }
+
+    private val windowsDeleteStringProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(combaseModule, "WindowsDeleteString")?.reinterpret()
+    }
+
+    private val windowsGetStringRawBufferProc:
+        CPointer<CFunction<(COpaquePointer?, COpaquePointer?) -> COpaquePointer?>>? by lazy {
+            GetProcAddress(combaseModule, "WindowsGetStringRawBuffer")?.reinterpret()
+        }
+
+    actual fun roGetActivationFactoryRaw(runtimeClassId: RawAddress, interfaceId: Guid): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+            val hResult = roGetActivationFactoryProc?.invoke(
+                runtimeClassId.toOpaquePointer(),
+                interfaceIdPointer.toOpaquePointer(),
+                resultOut.toOpaquePointer(),
+            ) ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
     actual fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult =
         PlatformAbi.confinedScope().use { scope ->
@@ -372,22 +413,39 @@ actual object WinRtPlatformApi {
 
     actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult = TODO()
 
-    actual fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress = TODO()
+    actual fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress =
+        coTaskMemAllocProc?.invoke(sizeBytes.toULong()).asRawAddress()
 
-    actual fun coTaskMemFreeRaw(pointer: RawAddress): Unit = TODO()
+    actual fun coTaskMemFreeRaw(pointer: RawAddress) {
+        coTaskMemFreeProc?.invoke(pointer.toOpaquePointer())
+    }
 
-    actual fun windowsCreateStringRaw(utf16Chars: RawAddress, length: Int, outHandle: RawAddress): Int = TODO()
+    actual fun windowsCreateStringRaw(utf16Chars: RawAddress, length: Int, outHandle: RawAddress): Int =
+        windowsCreateStringProc?.invoke(
+            utf16Chars.toOpaquePointer(),
+            length.toUInt(),
+            outHandle.toOpaquePointer(),
+        ) ?: KnownHResults.E_NOTIMPL.value
 
     actual fun windowsCreateStringReferenceRaw(
         utf16Chars: RawAddress,
         length: Int,
         header: RawAddress,
         outHandle: RawAddress,
-    ): Int = TODO()
+    ): Int =
+        windowsCreateStringReferenceProc?.invoke(
+            utf16Chars.toOpaquePointer(),
+            length.toUInt(),
+            header.toOpaquePointer(),
+            outHandle.toOpaquePointer(),
+        ) ?: KnownHResults.E_NOTIMPL.value
 
-    actual fun windowsDeleteStringRaw(handle: RawAddress): Unit = TODO()
+    actual fun windowsDeleteStringRaw(handle: RawAddress) {
+        windowsDeleteStringProc?.invoke(handle.toOpaquePointer())
+    }
 
-    actual fun windowsGetStringRawBufferRaw(handle: RawAddress, lengthOut: RawAddress): RawAddress = TODO()
+    actual fun windowsGetStringRawBufferRaw(handle: RawAddress, lengthOut: RawAddress): RawAddress =
+        windowsGetStringRawBufferProc?.invoke(handle.toOpaquePointer(), lengthOut.toOpaquePointer()).asRawAddress()
 
     actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress = TODO()
 
