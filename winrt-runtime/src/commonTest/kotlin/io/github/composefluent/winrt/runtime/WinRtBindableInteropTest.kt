@@ -1,19 +1,18 @@
 package io.github.composefluent.winrt.runtime
 
-import java.lang.foreign.Arena
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class WinRtBindableInteropTest {
     @Test
     fun bindable_iterable_and_iterator_wrappers_use_expected_slots() {
-        Arena.ofConfined().use { arena ->
-            val firstValue = FakeBindableReference(arena, "first")
-            val secondValue = FakeBindableReference(arena, "second")
-            val iterator = FakeBindableIteratorReference(arena, listOf(firstValue, secondValue))
-            val iterable = FakeBindableIterableReference(arena, iterator)
+        PlatformAbi.confinedScope().use { scope ->
+            val firstValue = FakeBindableReference(scope, "first")
+            val secondValue = FakeBindableReference(scope, "second")
+            val iterator = FakeBindableIteratorReference(scope, listOf(firstValue, secondValue))
+            val iterable = FakeBindableIterableReference(scope, iterator)
 
             val first = iterable.first()
             assertTrue(first.hasCurrent())
@@ -28,11 +27,11 @@ class WinRtBindableInteropTest {
 
     @Test
     fun bindable_vector_view_wrapper_reads_size_and_indexof_slots() {
-        Arena.ofConfined().use { arena ->
-            val element = FakeBindableReference(arena, "element")
-            val key = FakeBindableReference(arena, "key")
+        PlatformAbi.confinedScope().use { scope ->
+            val element = FakeBindableReference(scope, "element")
+            val key = FakeBindableReference(scope, "key")
             val vectorView = FakeBindableVectorViewReference(
-                arena = arena,
+                scope = scope,
                 getAtResult = element,
                 sizeResult = 3u,
                 indexOfResult = true to 2u,
@@ -49,17 +48,17 @@ class WinRtBindableInteropTest {
 
     @Test
     fun bindable_vector_wrapper_uses_expected_slots_for_mutation_and_views() {
-        Arena.ofConfined().use { arena ->
-            val element = FakeBindableReference(arena, "element")
-            val replacement = FakeBindableReference(arena, "replacement")
+        PlatformAbi.confinedScope().use { scope ->
+            val element = FakeBindableReference(scope, "element")
+            val replacement = FakeBindableReference(scope, "replacement")
             val vectorView = FakeBindableVectorViewReference(
-                arena = arena,
+                scope = scope,
                 getAtResult = element,
                 sizeResult = 5u,
                 indexOfResult = true to 3u,
             )
             val vector = FakeBindableVectorReference(
-                arena = arena,
+                scope = scope,
                 getAtResult = element,
                 sizeResult = 5u,
                 indexOfResult = true to 3u,
@@ -96,16 +95,16 @@ class WinRtBindableInteropTest {
     }
 
     private open class FakeBindableReference(
-        arena: Arena,
+        scope: NativeScope,
         val label: String,
-    ) : IUnknownReference(arena.allocate(8).asNativePointer().asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true) {
+    ) : IUnknownReference(PlatformAbi.allocateBytes(scope, 8).asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true) {
         override fun close() = Unit
     }
 
     private class FakeBindableIterableReference(
-        arena: Arena,
+        scope: NativeScope,
         private val firstResult: WinRtBindableIteratorReference,
-    ) : WinRtBindableIterableReference(arena.allocate(8).asNativePointer(), WinRtBindableInterfaceIds.IBindableIterable, preventReleaseOnDispose = true) {
+    ) : WinRtBindableIterableReference(PlatformAbi.allocateBytes(scope, 8), WinRtBindableInterfaceIds.IBindableIterable, preventReleaseOnDispose = true) {
         val objectSlots = mutableListOf<Int>()
 
         override fun first(): WinRtBindableIteratorReference {
@@ -117,9 +116,9 @@ class WinRtBindableInteropTest {
     }
 
     private class FakeBindableIteratorReference(
-        arena: Arena,
+        scope: NativeScope,
         private val currentResults: List<IUnknownReference?>,
-    ) : WinRtBindableIteratorReference(arena.allocate(8).asNativePointer(), WinRtBindableInterfaceIds.IBindableIterator, preventReleaseOnDispose = true) {
+    ) : WinRtBindableIteratorReference(PlatformAbi.allocateBytes(scope, 8), WinRtBindableInterfaceIds.IBindableIterator, preventReleaseOnDispose = true) {
         private var currentIndex = 0
         val slotCalls = mutableListOf<Int>()
 
@@ -143,14 +142,14 @@ class WinRtBindableInteropTest {
     }
 
     private class FakeBindableVectorViewReference(
-        arena: Arena,
+        scope: NativeScope,
         private val getAtResult: IUnknownReference?,
         private val sizeResult: UInt,
         private val indexOfResult: Pair<Boolean, UInt>,
-    ) : WinRtBindableVectorViewReference(arena.allocate(8).asNativePointer(), WinRtBindableInterfaceIds.IBindableVectorView, preventReleaseOnDispose = true) {
+    ) : WinRtBindableVectorViewReference(PlatformAbi.allocateBytes(scope, 8), WinRtBindableInterfaceIds.IBindableVectorView, preventReleaseOnDispose = true) {
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val uintSlots = mutableListOf<Int>()
-        val indexOfSlots = mutableListOf<Pair<Int, NativePointer>>()
+        val indexOfSlots = mutableListOf<Pair<Int, RawAddress>>()
 
         override fun getAtOrNull(index: UInt): IUnknownReference? {
             uintArgSlots += 6 to index
@@ -162,7 +161,7 @@ class WinRtBindableInteropTest {
             return sizeResult
         }
 
-        override fun indexOf(valuePointer: NativePointer): Pair<Boolean, UInt> {
+        override fun indexOf(valuePointer: RawAddress): Pair<Boolean, UInt> {
             indexOfSlots += 8 to valuePointer
             return indexOfResult
         }
@@ -171,20 +170,20 @@ class WinRtBindableInteropTest {
     }
 
     private class FakeBindableVectorReference(
-        arena: Arena,
+        scope: NativeScope,
         private val getAtResult: IUnknownReference?,
         private val sizeResult: UInt,
         private val indexOfResult: Pair<Boolean, UInt>,
         private val vectorViewResult: WinRtBindableVectorViewReference,
         private val getAtResultsByIndex: Map<UInt, IUnknownReference?> = emptyMap(),
-    ) : WinRtBindableVectorReference(arena.allocate(8).asNativePointer(), WinRtBindableInterfaceIds.IBindableVector, preventReleaseOnDispose = true) {
+    ) : WinRtBindableVectorReference(PlatformAbi.allocateBytes(scope, 8), WinRtBindableInterfaceIds.IBindableVector, preventReleaseOnDispose = true) {
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val uintSlots = mutableListOf<Int>()
         val objectSlots = mutableListOf<Int>()
-        val indexOfSlots = mutableListOf<Pair<Int, NativePointer>>()
-        val uintObjectSlots = mutableListOf<Pair<Int, Pair<UInt, NativePointer>>>()
+        val indexOfSlots = mutableListOf<Pair<Int, RawAddress>>()
+        val uintObjectSlots = mutableListOf<Pair<Int, Pair<UInt, RawAddress>>>()
         val removeAtSlots = mutableListOf<Pair<Int, UInt>>()
-        val appendSlots = mutableListOf<Pair<Int, NativePointer>>()
+        val appendSlots = mutableListOf<Pair<Int, RawAddress>>()
         val unitSlots = mutableListOf<Int>()
 
         override fun getAtOrNull(index: UInt): IUnknownReference? {
@@ -202,16 +201,16 @@ class WinRtBindableInteropTest {
             return vectorViewResult
         }
 
-        override fun indexOf(valuePointer: NativePointer): Pair<Boolean, UInt> {
+        override fun indexOf(valuePointer: RawAddress): Pair<Boolean, UInt> {
             indexOfSlots += 9 to valuePointer
             return indexOfResult
         }
 
-        override fun setAt(index: UInt, valuePointer: NativePointer) {
+        override fun setAt(index: UInt, valuePointer: RawAddress) {
             uintObjectSlots += 10 to (index to valuePointer)
         }
 
-        override fun insertAt(index: UInt, valuePointer: NativePointer) {
+        override fun insertAt(index: UInt, valuePointer: RawAddress) {
             uintObjectSlots += 11 to (index to valuePointer)
         }
 
@@ -219,7 +218,7 @@ class WinRtBindableInteropTest {
             removeAtSlots += 12 to index
         }
 
-        override fun append(valuePointer: NativePointer) {
+        override fun append(valuePointer: RawAddress) {
             appendSlots += 13 to valuePointer
         }
 
