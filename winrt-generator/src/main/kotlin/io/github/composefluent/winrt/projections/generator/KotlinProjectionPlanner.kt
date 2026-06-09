@@ -122,10 +122,6 @@ class KotlinProjectionPlanner(
 ) {
     fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> {
         val normalized = validator.validate(model)
-        if (!useWinAppSdkTypeRedirects && normalized.requiresWinAppSdkTypeRedirects()) {
-            return KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects = true)
-                .planValidated(normalized)
-        }
         return planValidated(normalized)
     }
 
@@ -141,7 +137,13 @@ class KotlinProjectionPlanner(
             val abiSlotBindingCache = mutableMapOf<String, List<KotlinProjectionAbiSlotBinding>>()
             val abiMemberCountCache = mutableMapOf<String, Int>()
             normalized.namespaces.flatMap {
-                planNamespace(
+                val namespacePlanner =
+                    if (!useWinAppSdkTypeRedirects && it.requiresWinAppSdkTypeRedirects()) {
+                        KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects = true)
+                    } else {
+                        this
+                    }
+                namespacePlanner.planNamespace(
                     namespace = it,
                     interfaceIidsByName = interfaceIidsByName,
                     typesByQualifiedName = typesByQualifiedName,
@@ -152,8 +154,8 @@ class KotlinProjectionPlanner(
             }
         }
 
-    private fun WinRtMetadataModel.requiresWinAppSdkTypeRedirects(): Boolean =
-        namespaces.any { namespace -> namespace.name == "Microsoft.UI" || namespace.name.startsWith("Microsoft.UI.") }
+    private fun WinRtNamespace.requiresWinAppSdkTypeRedirects(): Boolean =
+        name == "Microsoft.UI" || name.startsWith("Microsoft.UI.")
 
     fun planNamespace(
         namespace: WinRtNamespace,

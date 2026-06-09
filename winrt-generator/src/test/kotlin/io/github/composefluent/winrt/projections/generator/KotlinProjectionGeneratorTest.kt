@@ -747,6 +747,108 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_keeps_windows_composition_projection_separate_from_microsoft_composition() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "ICompositionObject",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "CompositionObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.UI.Composition.ICompositionObject",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.UI.Composition.ICompositionObject",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "ICompositor",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateTarget",
+                                    returnTypeName = "Windows.UI.Composition.CompositionTarget",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "CompositionTarget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.UI.Composition.ICompositionObject",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.UI.Composition.ICompositionObject",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "ICompositionObject",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "CompositionObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Composition.ICompositionObject",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Composition.ICompositionObject",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "CompositionTarget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Composition.ICompositionObject",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Composition.ICompositionObject",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath }
+        val windowsCompositionObject = filesByName.getValue("windows/ui/composition/CompositionObject.kt").contents
+        val windowsCompositor = filesByName.getValue("windows/ui/composition/ICompositor.kt").contents
+
+        assertFalse(windowsCompositionObject, windowsCompositionObject.contains("microsoft.ui.composition"))
+        assertFalse(windowsCompositor, windowsCompositor.contains("microsoft.ui.composition"))
+        assertTrue(windowsCompositionObject, windowsCompositionObject.contains(": ICompositionObject,"))
+        assertTrue(windowsCompositor, windowsCompositor.contains("CompositionTarget"))
+    }
+
+    @Test
     fun support_mode_vtable_invocation_fails_closed_without_descriptor_or_direct_overload() {
         val error = runCatching {
             KotlinProjectionRenderer(useProjectionIntrinsics = true).renderComVtableInvocation(
