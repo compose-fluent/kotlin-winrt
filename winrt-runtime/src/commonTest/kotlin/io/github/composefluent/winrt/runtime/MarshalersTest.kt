@@ -1,12 +1,10 @@
 package io.github.composefluent.winrt.runtime
 
-import java.lang.foreign.Arena
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class MarshalersTest {
     @Test
@@ -15,20 +13,22 @@ class MarshalersTest {
         assertEquals(WinRtAbiCategory.BLITTABLE, booleanMarshaler.abiCategory)
         assertTrue(booleanMarshaler.fromAbi(booleanMarshaler.getAbi(booleanMarshaler.createMarshaler(true))) == true)
 
-        Arena.ofConfined().use { arena ->
-            val guidMemory = arena.allocate(NativeLayoutsJvmCompat.GUID)
+        PlatformAbi.confinedScope().use { scope ->
+            val guidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             val guid = Guid("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90")
-            Marshaler.guid().copyManaged(guid, guidMemory.asNativePointer())
-            assertEquals(guid, Marshaler.guid().fromAbi(guidMemory.asNativePointer()))
+            Marshaler.guid().copyManaged(guid, guidMemory)
+            assertEquals(guid, Marshaler.guid().fromAbi(guidMemory))
         }
     }
 
     @Test
     fun string_marshaler_round_trips_owned_hstrings_and_arrays_on_windows() {
-        assumeTrue(PlatformRuntime.isWindows)
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
 
         val stringMarshaler = Marshaler.string()
-        val abi = stringMarshaler.fromManaged("projection-runtime") as NativePointer
+        val abi = stringMarshaler.fromManaged("projection-runtime") as RawAddress
         try {
             assertEquals("projection-runtime", stringMarshaler.fromAbi(abi))
         } finally {
@@ -37,18 +37,20 @@ class MarshalersTest {
 
         stringMarshaler.fromManagedArray(arrayOf("one", "two")).use { abiArray ->
             assertNotNull(abiArray)
-            assertEquals(listOf("one", "two"), stringMarshaler.fromAbiArray(abiArray!!.length, abiArray.data))
+            assertEquals(listOf("one", "two"), stringMarshaler.fromAbiArray(abiArray.length, abiArray.data))
         }
     }
 
     @Test
     fun generic_parameter_marshaler_round_trips_reference_arrays_on_windows() {
-        assumeTrue(PlatformRuntime.isWindows)
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
 
         val marshaler = Marshaler.genericParameter<String>()
         marshaler.fromManagedArray(arrayOf("one", "two")).use { abiArray ->
             assertNotNull(abiArray)
-            assertEquals(listOf("one", "two"), marshaler.fromAbiArray(abiArray!!.length, abiArray.data))
+            assertEquals(listOf("one", "two"), marshaler.fromAbiArray(abiArray.length, abiArray.data))
         }
     }
 
@@ -70,7 +72,7 @@ class MarshalersTest {
             override fun createWinRtDelegateHandle(): WinRtDelegateHandle = handle
         }
         val marshaler = Marshaler.genericParameter<Any?>()
-        val abi = marshaler.fromManaged(projected) as NativePointer
+        val abi = marshaler.fromManaged(projected) as RawAddress
 
         try {
             ComObjectReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { reference ->
@@ -372,7 +374,7 @@ class MarshalersTest {
 
         val marshaler = Marshaler.interfaceType(typeHandle, TestManagedInterfaceImpl::class)
         val managed = TestManagedInterfaceImpl("payload")
-        val abi = marshaler.fromManaged(managed) as NativePointer
+        val abi = marshaler.fromManaged(managed) as RawAddress
         try {
             assertSame(managed, marshaler.fromAbi(abi))
         } finally {
@@ -384,7 +386,7 @@ class MarshalersTest {
     fun inspectable_marshaler_round_trips_managed_values_and_external_inspectables() {
         val marshaler = Marshaler.inspectableAny()
 
-        val managedAbi = marshaler.fromManaged(42) as NativePointer
+        val managedAbi = marshaler.fromManaged(42) as RawAddress
         try {
             assertEquals(42, marshaler.fromAbi(managedAbi))
         } finally {
@@ -409,7 +411,7 @@ class MarshalersTest {
         try {
             val projected = marshaler.fromAbi(inspectablePointer)
             assertTrue(projected is IWinRTObject)
-            val runtimeClassName = ((projected as IWinRTObject).nativeObject.asInspectable()).use { it.getRuntimeClassName() }
+            val runtimeClassName = projected.nativeObject.asInspectable().use { it.getRuntimeClassName() }
             assertEquals("test.RuntimeClass", runtimeClassName)
             (projected as? AutoCloseable)?.close()
         } finally {
@@ -436,7 +438,7 @@ class MarshalersTest {
             override fun createWinRtDelegateHandle(): WinRtDelegateHandle = handle
         }
         val marshaler = Marshaler.inspectableAny()
-        val abi = marshaler.fromManaged(projected) as NativePointer
+        val abi = marshaler.fromManaged(projected) as RawAddress
 
         try {
             ComObjectReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { reference ->
