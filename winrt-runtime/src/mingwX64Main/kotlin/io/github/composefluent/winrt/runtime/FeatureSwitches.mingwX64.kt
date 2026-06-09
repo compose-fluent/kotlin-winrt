@@ -1,3 +1,9 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package io.github.composefluent.winrt.runtime
 
-internal actual fun platformReadFeatureSwitch(propertyName: String): Boolean? = null
+import kotlinx.cinterop.toKString
+import platform.posix.getenv
+
+internal actual fun platformReadFeatureSwitch(propertyName: String): Boolean? =
+    parseFeatureSwitchValue(getenv(propertyName)?.toKString())
