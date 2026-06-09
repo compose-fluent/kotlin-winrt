@@ -45,6 +45,7 @@ import platform.windows.PAGE_NOACCESS
 import platform.windows.VirtualQuery
 
 private const val readablePageMask = 0x0Eu
+private const val getModuleHandleExFlagFromAddress = 0x00000004u
 
 actual class NativeScope internal constructor(
     private val ownsAllocations: Boolean,
@@ -295,6 +296,10 @@ actual object WinRtPlatformApi {
         LoadLibraryA("oleaut32.dll")
     }
 
+    private val kernel32Module by lazy {
+        LoadLibraryA("kernel32.dll")
+    }
+
     private val coInitializeExProc: CPointer<CFunction<(COpaquePointer?, UInt) -> Int>>? by lazy {
         GetProcAddress(ole32Module, "CoInitializeEx")?.reinterpret()
     }
@@ -396,6 +401,10 @@ actual object WinRtPlatformApi {
 
     private val coTaskMemFreeProc: CPointer<CFunction<(COpaquePointer?) -> Unit>>? by lazy {
         GetProcAddress(ole32Module, "CoTaskMemFree")?.reinterpret()
+    }
+
+    private val getModuleHandleExWProc: CPointer<CFunction<(UInt, COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(kernel32Module, "GetModuleHandleExW")?.reinterpret()
     }
 
     private val windowsCreateStringProc: CPointer<CFunction<(COpaquePointer?, UInt, COpaquePointer?) -> Int>>? by lazy {
@@ -665,7 +674,25 @@ actual object WinRtPlatformApi {
     actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean =
         FreeLibrary(moduleHandle.asModuleHandle()) != 0
 
-    actual fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress = RawAddress.Null
+    actual fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress {
+        if (PlatformAbi.isNull(address)) {
+            return RawAddress.Null
+        }
+        val proc = getModuleHandleExWProc ?: return RawAddress.Null
+        return memScoped {
+            val moduleOut = alloc<COpaquePointerVar>()
+            val ok = proc.invoke(
+                getModuleHandleExFlagFromAddress,
+                address.toOpaquePointer(),
+                moduleOut.ptr.reinterpret(),
+            )
+            if (ok == 0) {
+                RawAddress.Null
+            } else {
+                moduleOut.value.asRawAddress()
+            }
+        }
+    }
 
     actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean {
         if (PlatformAbi.isNull(address) || sizeBytes <= 0L) {
