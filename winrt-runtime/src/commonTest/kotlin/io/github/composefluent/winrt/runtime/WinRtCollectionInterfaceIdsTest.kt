@@ -1,8 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 
 class WinRtCollectionInterfaceIdsTest {
     @Test
