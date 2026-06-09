@@ -30,7 +30,10 @@ actual object ComVtableInvoker {
     actual fun invokePointer(
         instance: RawComPtr,
         slot: Int,
-    ): RawAddress = TODO()
+    ): RawAddress {
+        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?) -> COpaquePointer?>>()
+        return method.invoke(instance.toOpaquePointer()).asRawAddress()
+    }
 
     actual fun invoke(
         instance: RawComPtr,
