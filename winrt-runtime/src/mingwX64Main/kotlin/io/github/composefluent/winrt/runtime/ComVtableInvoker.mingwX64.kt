@@ -71,7 +71,10 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         arg0: Long,
-    ): Int = TODO()
+    ): Int {
+        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, Long) -> Int>>()
+        return method.invoke(instance.toOpaquePointer(), arg0)
+    }
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -266,7 +269,26 @@ actual object ComVtableInvoker {
         slot: Int,
         signature: ComMethodSignature,
         args: LongArray,
-    ): Int = TODO()
+    ): Int {
+        require(signature.resultKind == ComAbiValueKind.Int32) {
+            "ComVtableInvoker currently supports HRESULT/int32 COM methods only."
+        }
+        require(args.size == signature.explicitParameterKinds.size) {
+            "Argument word count ${args.size} must match COM signature arity ${signature.explicitParameterKinds.size}."
+        }
+        val kinds = signature.explicitParameterKinds
+        return when {
+            kinds.isEmpty() -> invoke(instance, slot)
+            kinds.size == 1 && kinds[0] == ComAbiValueKind.Pointer ->
+                invokeArgs(instance, slot, RawAddress(args[0]))
+            kinds.size == 2 && kinds[0] == ComAbiValueKind.Pointer && kinds[1] == ComAbiValueKind.Int32 -> {
+                val method = vtableEntry(instance, slot)
+                    .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>>()
+                method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), args[1].toInt())
+            }
+            else -> error("Unsupported mingw COM generic signature: $kinds.")
+        }
+    }
 
     internal actual fun createComMethodCallback(
         signature: ComMethodSignature,
