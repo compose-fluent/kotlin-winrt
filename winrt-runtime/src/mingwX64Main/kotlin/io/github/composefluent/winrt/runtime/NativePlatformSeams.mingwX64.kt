@@ -15,11 +15,14 @@ import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.ShortVar
 import kotlinx.cinterop.UShortVar
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.get
 import kotlinx.cinterop.invoke
+import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.nativeHeap
 import kotlinx.cinterop.pointed
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
@@ -35,6 +38,13 @@ import platform.windows.GetProcAddress
 import platform.windows.HINSTANCE__
 import platform.windows.LoadLibraryA
 import platform.windows.LoadLibraryExW
+import platform.windows.MEMORY_BASIC_INFORMATION
+import platform.windows.MEM_COMMIT
+import platform.windows.PAGE_GUARD
+import platform.windows.PAGE_NOACCESS
+import platform.windows.VirtualQuery
+
+private const val readablePageMask = 0x0Eu
 
 actual class NativeScope internal constructor(
     private val ownsAllocations: Boolean,
@@ -657,7 +667,29 @@ actual object WinRtPlatformApi {
 
     actual fun tryGetModuleHandleExFromAddressRaw(address: RawAddress): RawAddress = RawAddress.Null
 
-    actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean = false
+    actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean {
+        if (PlatformAbi.isNull(address) || sizeBytes <= 0L) {
+            return false
+        }
+        return memScoped {
+            val info = alloc<MEMORY_BASIC_INFORMATION>()
+            val bytes = VirtualQuery(
+                address.toOpaquePointer(),
+                info.ptr,
+                sizeOf<MEMORY_BASIC_INFORMATION>().toULong(),
+            )
+            if (bytes == 0uL) {
+                false
+            } else {
+                val protect = info.Protect
+                info.State == MEM_COMMIT.toUInt() &&
+                    protect and PAGE_NOACCESS.toUInt() == 0u &&
+                    protect and PAGE_GUARD.toUInt() == 0u &&
+                    protect and readablePageMask != 0u &&
+                    info.RegionSize.toLong() >= sizeBytes
+            }
+        }
+    }
 
     actual fun tryFormatMessageRaw(hResultValue: Int): String? {
         val capacity = 2048
