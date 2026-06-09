@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,6 +35,23 @@ class ActivationFactoryTest {
     @Test
     fun activation_factory_iid_is_stable() {
         assertTrue(ActivationFactory.iActivationFactoryIid.toString().isNotBlank())
+    }
+
+    @Test
+    fun module_path_resolves_working_directory_runtime_assets() {
+        val fileName = "kotlin-winrt-runtime-assets-resolve-test.dll"
+        val runtimeAssetsRoot = Path("build/kotlin-winrt/runtime-assets")
+        val asset = Path("build/kotlin-winrt/runtime-assets/$fileName")
+        SystemFileSystem.createDirectories(runtimeAssetsRoot)
+        SystemFileSystem.sink(asset).close()
+        try {
+            assertEquals(
+                absolutePath(asset.toString()),
+                absolutePath(WinRtPlatformApi.resolveModulePathRaw(fileName)),
+            )
+        } finally {
+            runCatching { SystemFileSystem.delete(asset) }
+        }
     }
 
     @Test

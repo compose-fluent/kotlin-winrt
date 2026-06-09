@@ -29,6 +29,7 @@ import kotlinx.cinterop.set
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.value
+import kotlinx.io.files.Path
 import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
 import platform.windows.FreeLibrary
@@ -751,7 +752,20 @@ actual object WinRtPlatformApi {
         }
     }
 
-    actual fun resolveModulePathRaw(fileName: String): String = fileName
+    actual fun resolveModulePathRaw(fileName: String): String =
+        nativeRuntimeAssetCandidates(fileName)
+            .firstOrNull { candidate -> Path(candidate).isRegularFile() }
+            ?.let(::absolutePath)
+            ?: fileName
+}
+
+private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"
+
+private fun nativeRuntimeAssetCandidates(fileName: String): Sequence<String> = sequence {
+    yield(fileName)
+    yield("$runtimeAssetsDirectoryName/$fileName")
+    yield("kotlin-winrt/runtime-assets/$fileName")
+    yield("build/kotlin-winrt/runtime-assets/$fileName")
 }
 
 private fun <T : Function<Int>> RawAddress.asCFunction(): CPointer<CFunction<T>> =
