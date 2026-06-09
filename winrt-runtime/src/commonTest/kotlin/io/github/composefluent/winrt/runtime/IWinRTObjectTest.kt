@@ -1,13 +1,10 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
-import org.junit.Test
-import java.lang.foreign.Arena
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class IWinRTObjectTest {
     @Test
@@ -61,20 +58,20 @@ class IWinRTObjectTest {
         val typeHandle = WinRtTypeHandle("test.IHelper", Guid("12345678-1234-1234-1234-1234567890AD"))
         val nativeReference = FakeComObjectReference(IID.IInspectable)
         val instance = FakeWinRtObject(nativeReference)
-        val factoryCalls = AtomicInteger(0)
+        var factoryCalls = 0
 
         try {
             val first = instance.getOrAddAdditionalTypeData(typeHandle) {
-                factoryCalls.incrementAndGet()
+                factoryCalls += 1
                 mutableListOf("first")
             }
             val second = instance.getOrAddAdditionalTypeData(typeHandle) {
-                factoryCalls.incrementAndGet()
+                factoryCalls += 1
                 mutableListOf("second")
             }
 
             assertSame(first, second)
-            assertEquals(1, factoryCalls.get())
+            assertEquals(1, factoryCalls)
         } finally {
             nativeReference.close()
         }
@@ -106,17 +103,19 @@ private class FakeWinRtObject(
 private class FakeComObjectReference(
     interfaceId: Guid,
     private val queryResults: Map<Guid, ComObjectReference> = emptyMap(),
-) : ComObjectReference(pointer = allocatePointer().asRawComPtr(), interfaceId = interfaceId, preventReleaseOnDispose = true) {
-    private val queryCounts = ConcurrentHashMap<Guid, AtomicInteger>()
+) : ComObjectReference(pointer = allocateFakeComPointer(), interfaceId = interfaceId, preventReleaseOnDispose = true) {
+    private val queryCounts = mutableMapOf<Guid, Int>()
 
     override fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? {
-        queryCounts.computeIfAbsent(requestedInterfaceId) { AtomicInteger(0) }.incrementAndGet()
+        queryCounts[requestedInterfaceId] = queryCount(requestedInterfaceId) + 1
         return queryResults[requestedInterfaceId]
     }
 
     fun queryCount(requestedInterfaceId: Guid): Int =
-        queryCounts[requestedInterfaceId]?.get() ?: 0
+        queryCounts[requestedInterfaceId] ?: 0
 }
 
-private fun allocatePointer(): NativePointer =
-    Arena.ofAuto().allocate(8).asNativePointer()
+private var nextFakeComPointer = 1L
+
+private fun allocateFakeComPointer(): RawComPtr =
+    RawComPtr(nextFakeComPointer++)
