@@ -1,12 +1,12 @@
 package io.github.composefluent.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import kotlin.reflect.KClass
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class XamlSystemProjectionRuntimeTest {
     @Test
@@ -22,7 +22,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(command, IID.ICommand).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer(),
+                    reference.getRefPointer().asRawAddress(),
                     WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtCommand::class), IID.ICommand),
                 ) as WinRtCommand
 
@@ -30,18 +30,18 @@ class XamlSystemProjectionRuntimeTest {
             assertFalse(projected.canExecute("stop"))
 
             projected.execute("payload")
-            assertEquals(listOf("payload"), command.executed)
+            assertEquals(listOf<Any?>("payload"), command.executed)
 
             val received = mutableListOf<Pair<Any?, Any?>>()
             val handler: WinRtCanExecuteChangedHandler = { sender, args -> received += sender to args }
             projected.addCanExecuteChanged(handler)
 
             command.raise(sender = "sender", args = "args")
-            assertEquals(listOf("sender" to "args"), received)
+            assertEquals(listOf<Pair<Any?, Any?>>("sender" to "args"), received)
 
             projected.removeCanExecuteChanged(handler)
             command.raise(sender = "sender2", args = "args2")
-            assertEquals(listOf("sender" to "args"), received)
+            assertEquals(listOf<Pair<Any?, Any?>>("sender" to "args"), received)
         }
     }
 
@@ -52,7 +52,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(notifier, IID.MUX_INotifyPropertyChanged).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer(),
+                    reference.getRefPointer().asRawAddress(),
                     WinRtTypeHandle(
                         TypeNameSupport.getNameForType(WinRtPropertyChangedNotifier::class),
                         IID.MUX_INotifyPropertyChanged,
@@ -64,11 +64,11 @@ class XamlSystemProjectionRuntimeTest {
             projected.addPropertyChanged(handler)
 
             notifier.raise("vm", WinRtPropertyChangedEventArgs("Title"))
-            assertEquals(listOf("vm" to "Title"), received)
+            assertEquals(listOf<Pair<Any?, String?>>("vm" to "Title"), received)
 
             projected.removePropertyChanged(handler)
             notifier.raise("vm2", WinRtPropertyChangedEventArgs("Ignored"))
-            assertEquals(listOf("vm" to "Title"), received)
+            assertEquals(listOf<Pair<Any?, String?>>("vm" to "Title"), received)
         }
     }
 
@@ -113,7 +113,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(target, IID.ICustomPropertyProvider).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer(),
+                    reference.getRefPointer().asRawAddress(),
                     WinRtTypeHandle(
                         TypeNameSupport.getNameForType(WinRtCustomPropertyProvider::class),
                         IID.ICustomPropertyProvider,
@@ -122,7 +122,7 @@ class XamlSystemProjectionRuntimeTest {
 
             val property = projected.getCustomProperty("value")
             assertNotNull(property)
-            assertEquals("value", property!!.name)
+            assertEquals("value", property.name)
             assertEquals(Int::class, property.type)
             assertEquals(5, property.getValue(target))
 
@@ -133,7 +133,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(serviceProvider, IID.IServiceProvider).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer(),
+                    reference.getRefPointer().asRawAddress(),
                     WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtServiceProvider::class), IID.IServiceProvider),
                 ) as WinRtServiceProvider
 
@@ -148,7 +148,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(42).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer(),
+                    reference.getRefPointer().asRawAddress(),
                     WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtStringable::class), IID.IStringable),
                 ) as WinRtStringable
 

@@ -299,6 +299,11 @@ actual object ComVtableInvoker {
             kinds.isEmpty() -> invoke(instance, slot)
             kinds.size == 1 && kinds[0] == ComAbiValueKind.Pointer ->
                 invokeArgs(instance, slot, RawAddress(args[0]))
+            kinds.size == 2 && kinds[0] == ComAbiValueKind.Pointer && kinds[1] == ComAbiValueKind.Pointer -> {
+                val method = vtableEntry(instance, slot)
+                    .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
+                method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
+            }
             kinds.size == 2 && kinds[0] == ComAbiValueKind.Pointer && kinds[1] == ComAbiValueKind.Int32 -> {
                 val method = vtableEntry(instance, slot)
                     .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>>()
