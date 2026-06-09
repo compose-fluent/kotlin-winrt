@@ -116,7 +116,7 @@ actual object ComVtableInvoker {
         slot: Int,
         arg0: Int,
         arg1: Int,
-    ): Int = TODO()
+    ): Int = invokeHResult(instance, slot, arg0, arg1)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -157,7 +157,7 @@ actual object ComVtableInvoker {
         arg1: Int,
         arg2: RawAddress,
         arg3: RawAddress,
-    ): Int = TODO()
+    ): Int = invokeHResult(instance, slot, arg0, arg1, arg2.toOpaquePointer(), arg3.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -486,9 +486,12 @@ private typealias HResultLong1 = CFunction<(COpaquePointer?, Long) -> Int>
 private typealias HResultPointer2 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultPointerInt = CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>
 private typealias HResultIntPointer = CFunction<(COpaquePointer?, Int, COpaquePointer?) -> Int>
+private typealias HResultInt2 = CFunction<(COpaquePointer?, Int, Int) -> Int>
 private typealias HResultUIntPointer = CFunction<(COpaquePointer?, UInt, COpaquePointer?) -> Int>
 private typealias HResultPointer3 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultIntPointer2 = CFunction<(COpaquePointer?, Int, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultInt2Pointer2 =
+    CFunction<(COpaquePointer?, Int, Int, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultUIntIntPointer2 =
     CFunction<(COpaquePointer?, UInt, Int, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultPointer4 =
@@ -581,6 +584,16 @@ private fun invokeHResult(
 private fun invokeHResult(
     instance: RawComPtr,
     slot: Int,
+    arg0: Int,
+    arg1: Int,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultInt2>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
     arg0: UInt,
     arg1: COpaquePointer?,
 ): Int {
@@ -608,6 +621,18 @@ private fun invokeHResult(
 ): Int {
     val method = vtableEntry(instance, slot).reinterpret<HResultIntPointer2>()
     return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: Int,
+    arg2: COpaquePointer?,
+    arg3: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultInt2Pointer2>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2, arg3)
 }
 
 private fun invokeHResult(
