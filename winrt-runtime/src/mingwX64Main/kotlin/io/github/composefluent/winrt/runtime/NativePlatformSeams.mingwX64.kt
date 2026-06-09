@@ -75,11 +75,19 @@ actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,
     private val onClose: () -> Unit,
 ) : AutoCloseable {
+    private val lock = PlatformLock()
     private var closed: Boolean = false
 
     actual override fun close() {
-        if (!closed) {
-            closed = true
+        val shouldClose = lock.withLock {
+            if (closed) {
+                false
+            } else {
+                closed = true
+                true
+            }
+        }
+        if (shouldClose) {
             onClose()
         }
     }

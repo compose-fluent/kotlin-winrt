@@ -43,6 +43,18 @@ class ComVtableInvokerCallbackBridgeTest {
         }
     }
 
+    @Test
+    fun raw_callback_handle_close_is_idempotent() {
+        val handle = ComAbiInteropBridge.createRawInt32Callback(
+            parameterKinds = listOf(ComAbiValueKind.Pointer),
+        ) {
+            KnownHResults.S_OK.value
+        }
+
+        handle.close()
+        handle.close()
+    }
+
     private fun invokeInt32PointerCallback(
         handle: NativeCallbackHandle,
         argument: RawAddress = PlatformAbi.nullPointer,

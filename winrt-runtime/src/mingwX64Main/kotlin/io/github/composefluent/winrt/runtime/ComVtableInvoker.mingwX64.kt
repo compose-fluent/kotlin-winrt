@@ -299,6 +299,7 @@ actual object ComVtableInvoker {
 }
 
 private object NativeCallbackRegistry {
+    private val lock = PlatformLock()
     private val callbacks = ConcurrentCacheMap<Int, RegisteredNativeCallback>()
     private var nextId = 1
 
@@ -309,7 +310,9 @@ private object NativeCallbackRegistry {
         require(parameterKinds.size in 1..maxCallbackWordCount) {
             "mingw COM callback ABI supports at most $maxCallbackWordCount raw words, got $parameterKinds."
         }
-        val id = nextId++
+        val id = lock.withLock {
+            nextId.also { nextId += 1 }
+        }
         val trampoline = Win64ComCallbackTrampoline.allocate(id, parameterKinds.size)
         callbacks[id] = RegisteredNativeCallback(parameterKinds, callback)
         return NativeCallbackHandle(
