@@ -1683,7 +1683,7 @@ class KotlinProjectionGenerator(
                 } else {
                     emptyMap()
                 },
-                useWinAppSdkTypeRedirects = plans?.requiresWinAppSdkTypeRedirects() == true,
+                useWinAppSdkTypeRedirects = currentPlan?.requiresWinAppSdkTypeRedirects() == true,
                 useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
                 genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
@@ -1692,12 +1692,8 @@ class KotlinProjectionGenerator(
             renderer
         }
 
-    private fun List<KotlinTypeProjectionPlan>.requiresWinAppSdkTypeRedirects(): Boolean =
-        any { plan -> plan.type.qualifiedName.startsWith("Microsoft.UI.") }
-
     private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
-        type.qualifiedName.startsWith("Microsoft.UI.") ||
-            typesByQualifiedName.keys.any { typeName -> typeName.startsWith("Microsoft.UI.") }
+        type.qualifiedName.startsWith("Microsoft.UI.")
 
     private fun List<KotlinTypeProjectionPlan>.requiresKotlinDurationAlias(currentPlan: KotlinTypeProjectionPlan?): Boolean =
         currentPlan != null &&
