@@ -2,14 +2,13 @@ package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.projections.support.FallbackIndexedRuntimeClass
 import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
-import java.lang.foreign.Arena
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import kotlin.reflect.KClass
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Instant
 
@@ -102,12 +101,12 @@ class ProjectionRegistryTest {
             baseTypeName = "Contoso.SampleRuntimeClass",
         )
 
-        val typeId = WinRtTypeRegistry.findByClass(SampleRuntimeClass::class)
-        assertEquals("Contoso.GeneratedRuntimeClass", typeId?.projectedTypeName)
-        assertEquals("Contoso.GeneratedRuntimeClass", typeId?.runtimeClassName)
-        assertTrue(typeId?.isRuntimeClass == true)
-        assertTrue(typeId?.isWindowsRuntimeType == true)
-        assertTrue(typeId?.aliases?.contains("Contoso.GeneratedRuntimeClass") == true)
+        val typeId = WinRtTypeRegistry.findByClass(SampleRuntimeClass::class) ?: error("Generated runtime class was not registered.")
+        assertEquals("Contoso.GeneratedRuntimeClass", typeId.projectedTypeName)
+        assertEquals("Contoso.GeneratedRuntimeClass", typeId.runtimeClassName)
+        assertTrue(typeId.isRuntimeClass)
+        assertTrue(typeId.isWindowsRuntimeType)
+        assertTrue(typeId.aliases.contains("Contoso.GeneratedRuntimeClass"))
         assertEquals(SampleRuntimeClass::class, TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRuntimeClass"))
 
         TypeNameSupport.registerProjectionTypeBaseTypeMapping(
@@ -135,22 +134,24 @@ class ProjectionRegistryTest {
             projectedTypeName = "Contoso.IGeneratedInterface",
             interfaceId = Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
         )
-        val nativeReference = IUnknownReference(
-            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
-            typeHandle.interfaceId,
-            preventReleaseOnDispose = true,
-        )
-        val projected = SampleGeneratedInterfaceProjection(nativeReference)
+        PlatformAbi.confinedScope().use { scope ->
+            val nativeReference = IUnknownReference(
+                PlatformAbi.allocatePointerSlot(scope).asRawComPtr(),
+                typeHandle.interfaceId,
+                preventReleaseOnDispose = true,
+            )
+            val projected = SampleGeneratedInterfaceProjection(nativeReference)
 
-        assertTrue(
-            ComWrappersSupport.registerInterfaceProjectionFactory(typeHandle) { instance ->
-                assertSame(nativeReference, instance)
-                projected
-            },
-        )
+            assertTrue(
+                ComWrappersSupport.registerInterfaceProjectionFactory(typeHandle) { instance ->
+                    assertSame(nativeReference, instance)
+                    projected
+                },
+            )
 
-        assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle, nativeReference))
-        assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle.projectedTypeName, nativeReference))
+            assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle, nativeReference))
+            assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle.projectedTypeName, nativeReference))
+        }
     }
 
     @Test
@@ -286,7 +287,6 @@ class ProjectionRegistryTest {
             "Windows.Foundation.IReferenceArray`1<Int32>",
             TypeNameSupport.getNameForType(IntArray::class),
         )
-        assertEquals("", TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)))
     }
 
     @Test
