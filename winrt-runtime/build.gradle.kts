@@ -31,7 +31,6 @@ kotlin {
         }
 
         jvmTest {
-            kotlin.srcDirs("src/test/kotlin", "src/jvmTest/kotlin")
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation(libs.junit)
