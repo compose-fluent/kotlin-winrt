@@ -280,6 +280,10 @@ actual object WinRtPlatformApi {
         LoadLibraryA("ole32.dll")
     }
 
+    private val oleaut32Module by lazy {
+        LoadLibraryA("oleaut32.dll")
+    }
+
     private val coInitializeExProc: CPointer<CFunction<(COpaquePointer?, UInt) -> Int>>? by lazy {
         GetProcAddress(ole32Module, "CoInitializeEx")?.reinterpret()
     }
@@ -311,6 +315,51 @@ actual object WinRtPlatformApi {
     private val coCreateFreeThreadedMarshalerProc: CPointer<CFunction<(COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
         GetProcAddress(ole32Module, "CoCreateFreeThreadedMarshaler")?.reinterpret()
             ?: GetProcAddress(combaseModule, "CoCreateFreeThreadedMarshaler")?.reinterpret()
+    }
+
+    private val coCreateInstanceProc:
+        CPointer<CFunction<(COpaquePointer?, COpaquePointer?, UInt, COpaquePointer?, COpaquePointer?) -> Int>>? by lazy {
+            GetProcAddress(ole32Module, "CoCreateInstance")?.reinterpret()
+                ?: GetProcAddress(combaseModule, "CoCreateInstance")?.reinterpret()
+        }
+
+    private val setErrorInfoProc: CPointer<CFunction<(UInt, COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(oleaut32Module, "SetErrorInfo")?.reinterpret()
+    }
+
+    private val sysAllocStringLenProc: CPointer<CFunction<(COpaquePointer?, UInt) -> COpaquePointer?>>? by lazy {
+        GetProcAddress(oleaut32Module, "SysAllocStringLen")?.reinterpret()
+    }
+
+    private val sysFreeStringProc: CPointer<CFunction<(COpaquePointer?) -> Unit>>? by lazy {
+        GetProcAddress(oleaut32Module, "SysFreeString")?.reinterpret()
+    }
+
+    private val sysStringLenProc: CPointer<CFunction<(COpaquePointer?) -> UInt>>? by lazy {
+        GetProcAddress(oleaut32Module, "SysStringLen")?.reinterpret()
+    }
+
+    private val winRtErrorModule by lazy {
+        sequenceOf(
+            "api-ms-win-core-winrt-error-l1-1-1.dll",
+            "api-ms-win-core-winrt-error-l1-1-0.dll",
+        ).mapNotNull { moduleName -> LoadLibraryA(moduleName) }
+            .firstOrNull()
+    }
+
+    private val getRestrictedErrorInfoProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(winRtErrorModule, "GetRestrictedErrorInfo")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "GetRestrictedErrorInfo")?.reinterpret()
+    }
+
+    private val setRestrictedErrorInfoProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(winRtErrorModule, "SetRestrictedErrorInfo")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "SetRestrictedErrorInfo")?.reinterpret()
+    }
+
+    private val roReportUnhandledErrorProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
+        GetProcAddress(winRtErrorModule, "RoReportUnhandledError")?.reinterpret()
+            ?: GetProcAddress(combaseModule, "RoReportUnhandledError")?.reinterpret()
     }
 
     private val roInitializeProc: CPointer<CFunction<(Int) -> Int>>? by lazy {
@@ -400,7 +449,22 @@ actual object WinRtPlatformApi {
             NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
         }
 
-    actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult = TODO()
+    actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val classIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val interfaceIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            PlatformAbi.writeGuid(classIdPointer, classId)
+            PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+            val hResult = coCreateInstanceProc?.invoke(
+                classIdPointer.toOpaquePointer(),
+                null,
+                classContext.toUInt(),
+                interfaceIdPointer.toOpaquePointer(),
+                resultOut.toOpaquePointer(),
+            ) ?: KnownHResults.E_NOTIMPL.value
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
     actual fun coInitializeExRaw(apartmentType: ApartmentType): Int {
         val flags = when (apartmentType) {
@@ -469,19 +533,59 @@ actual object WinRtPlatformApi {
             NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
         }
 
-    actual fun setErrorInfoRaw(errorInfo: RawAddress): Int = TODO()
+    actual fun setErrorInfoRaw(errorInfo: RawAddress): Int =
+        setErrorInfoProc?.invoke(0u, errorInfo.toOpaquePointer()) ?: KnownHResults.E_NOTIMPL.value
 
-    actual fun setRestrictedErrorInfoRaw(errorInfo: RawAddress): Int? = TODO()
+    actual fun setRestrictedErrorInfoRaw(errorInfo: RawAddress): Int? =
+        setRestrictedErrorInfoProc?.invoke(errorInfo.toOpaquePointer())
 
-    actual fun borrowRestrictedErrorInfoRaw(): RawAddress? = TODO()
+    actual fun borrowRestrictedErrorInfoRaw(): RawAddress? {
+        val getErrorInfo = getRestrictedErrorInfoProc ?: return null
+        return PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val hResult = getErrorInfo.invoke(resultOut.toOpaquePointer())
+            HResult(hResult).requireSuccess("GetRestrictedErrorInfo")
+            val errorInfo = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(errorInfo)) {
+                null
+            } else {
+                setRestrictedErrorInfoProc?.invoke(errorInfo.toOpaquePointer())
+                errorInfo
+            }
+        }
+    }
 
-    actual fun reportUnhandledErrorRaw(errorInfo: RawAddress): Int? = TODO()
+    actual fun reportUnhandledErrorRaw(errorInfo: RawAddress): Int? =
+        roReportUnhandledErrorProc?.invoke(errorInfo.toOpaquePointer())
 
-    actual fun sysAllocStringRaw(value: String?): RawAddress = TODO()
+    actual fun sysAllocStringRaw(value: String?): RawAddress {
+        val allocator = sysAllocStringLenProc ?: return PlatformAbi.nullPointer
+        if (value.isNullOrEmpty()) {
+            return allocator.invoke(null, 0u).asRawAddress()
+        }
+        return PlatformAbi.confinedScope().use { scope ->
+            val utf16 = PlatformAbi.allocateUtf16(scope, value, nulTerminated = true)
+            allocator.invoke(utf16.toOpaquePointer(), value.length.toUInt()).asRawAddress()
+        }
+    }
 
-    actual fun sysFreeStringRaw(value: RawAddress): Unit = TODO()
+    actual fun sysFreeStringRaw(value: RawAddress) {
+        if (!PlatformAbi.isNull(value)) {
+            sysFreeStringProc?.invoke(value.toOpaquePointer())
+        }
+    }
 
-    actual fun readAndFreeBstrRaw(value: RawAddress): String = TODO()
+    actual fun readAndFreeBstrRaw(value: RawAddress): String {
+        if (PlatformAbi.isNull(value)) {
+            return ""
+        }
+        return try {
+            val charCount = sysStringLenProc?.invoke(value.toOpaquePointer())?.toInt() ?: 0
+            PlatformAbi.readUtf16(value, charCount)
+        } finally {
+            sysFreeStringRaw(value)
+        }
+    }
 
     actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult =
         PlatformAbi.confinedScope().use { scope ->
