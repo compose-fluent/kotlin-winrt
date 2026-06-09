@@ -30,36 +30,24 @@ actual object ComVtableInvoker {
     actual fun invokePointer(
         instance: RawComPtr,
         slot: Int,
-    ): RawAddress {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?) -> COpaquePointer?>>()
-        return method.invoke(instance.toOpaquePointer()).asRawAddress()
-    }
+    ): RawAddress = invokePointerResult(instance, slot)
 
     actual fun invoke(
         instance: RawComPtr,
         slot: Int,
-    ): Int {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot)
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: RawComPtr,
-    ): Int {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -71,30 +59,20 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         arg0: UInt,
-    ): Int {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, UInt) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0)
-    }
+    ): Int = invokeHResult(instance, slot, arg0)
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: Long,
-    ): Int {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, Long) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0)
-    }
+    ): Int = invokeHResult(instance, slot, arg0)
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: RawAddress,
         arg1: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot)
-            .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0.toOpaquePointer(), arg1.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0.toOpaquePointer(), arg1.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -123,10 +101,7 @@ actual object ComVtableInvoker {
         slot: Int,
         arg0: UInt,
         arg1: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot).reinterpret<CFunction<(COpaquePointer?, UInt, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0, arg1.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0, arg1.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -141,11 +116,7 @@ actual object ComVtableInvoker {
         arg0: RawAddress,
         arg1: RawAddress,
         arg2: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot)
-            .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0.toOpaquePointer(), arg1.toOpaquePointer(), arg2.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0.toOpaquePointer(), arg1.toOpaquePointer(), arg2.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -153,11 +124,7 @@ actual object ComVtableInvoker {
         arg0: Int,
         arg1: RawAddress,
         arg2: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot)
-            .reinterpret<CFunction<(COpaquePointer?, Int, COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0, arg1.toOpaquePointer(), arg2.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0, arg1.toOpaquePointer(), arg2.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -191,11 +158,7 @@ actual object ComVtableInvoker {
         arg1: Int,
         arg2: RawAddress,
         arg3: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot)
-            .reinterpret<CFunction<(COpaquePointer?, UInt, Int, COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2.toOpaquePointer(), arg3.toOpaquePointer())
-    }
+    ): Int = invokeHResult(instance, slot, arg0, arg1, arg2.toOpaquePointer(), arg3.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -222,17 +185,14 @@ actual object ComVtableInvoker {
         arg1: RawAddress,
         arg2: RawAddress,
         arg3: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot)
-            .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
-        return method.invoke(
-            instance.toOpaquePointer(),
-            arg0.toOpaquePointer(),
-            arg1.toOpaquePointer(),
-            arg2.toOpaquePointer(),
-            arg3.toOpaquePointer(),
-        )
-    }
+    ): Int = invokeHResult(
+        instance,
+        slot,
+        arg0.toOpaquePointer(),
+        arg1.toOpaquePointer(),
+        arg2.toOpaquePointer(),
+        arg3.toOpaquePointer(),
+    )
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -253,19 +213,16 @@ actual object ComVtableInvoker {
         arg3: RawAddress,
         arg4: Int,
         arg5: RawAddress,
-    ): Int {
-        val method = vtableEntry(instance, slot)
-            .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, Int, COpaquePointer?, Int, COpaquePointer?) -> Int>>()
-        return method.invoke(
-            instance.toOpaquePointer(),
-            arg0.toOpaquePointer(),
-            arg1.toOpaquePointer(),
-            arg2,
-            arg3.toOpaquePointer(),
-            arg4,
-            arg5.toOpaquePointer(),
-        )
-    }
+    ): Int = invokeHResult(
+        instance,
+        slot,
+        arg0.toOpaquePointer(),
+        arg1.toOpaquePointer(),
+        arg2,
+        arg3.toOpaquePointer(),
+        arg4,
+        arg5.toOpaquePointer(),
+    )
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -306,24 +263,16 @@ actual object ComVtableInvoker {
             kinds.size == 1 && kinds[0] == ComAbiValueKind.Pointer ->
                 invokeArgs(instance, slot, RawAddress(args[0]))
             kinds.size == 2 && kinds[0] == ComAbiValueKind.Pointer && kinds[1] == ComAbiValueKind.Pointer -> {
-                val method = vtableEntry(instance, slot)
-                    .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
-                method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
+                invokeHResult(instance, slot, RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
             }
             kinds.size == 2 && kinds[0] == ComAbiValueKind.Pointer && kinds[1] == ComAbiValueKind.Int32 -> {
-                val method = vtableEntry(instance, slot)
-                    .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>>()
-                method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), args[1].toInt())
+                invokeHResult(instance, slot, RawAddress(args[0]).toOpaquePointer(), args[1].toInt())
             }
             kinds.size == 2 && kinds[0] == ComAbiValueKind.Int32 && kinds[1] == ComAbiValueKind.Pointer -> {
-                val method = vtableEntry(instance, slot)
-                    .reinterpret<CFunction<(COpaquePointer?, Int, COpaquePointer?) -> Int>>()
-                method.invoke(instance.toOpaquePointer(), args[0].toInt(), RawAddress(args[1]).toOpaquePointer())
+                invokeHResult(instance, slot, args[0].toInt(), RawAddress(args[1]).toOpaquePointer())
             }
             kinds.size == 2 && kinds[0] is ComAbiValueKind.Struct && kinds[1] == ComAbiValueKind.Pointer -> {
-                val method = vtableEntry(instance, slot)
-                    .reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
-                method.invoke(instance.toOpaquePointer(), RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
+                invokeHResult(instance, slot, RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
             }
             else -> error("Unsupported mingw COM generic signature: $kinds.")
         }
@@ -499,6 +448,167 @@ private fun MutableList<Byte>.emitInt64(value: Long) {
 private fun MutableList<Byte>.emitZeroStackWord(stackOffset: Int) {
     emit(0x48, 0x31, 0xC0)
     emit(0x48, 0x89, 0x44, 0x24, stackOffset)
+}
+
+private typealias PointerResult0 = CFunction<(COpaquePointer?) -> COpaquePointer?>
+private typealias HResult0 = CFunction<(COpaquePointer?) -> Int>
+private typealias HResultPointer1 = CFunction<(COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultUInt1 = CFunction<(COpaquePointer?, UInt) -> Int>
+private typealias HResultLong1 = CFunction<(COpaquePointer?, Long) -> Int>
+private typealias HResultPointer2 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultPointerInt = CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>
+private typealias HResultIntPointer = CFunction<(COpaquePointer?, Int, COpaquePointer?) -> Int>
+private typealias HResultUIntPointer = CFunction<(COpaquePointer?, UInt, COpaquePointer?) -> Int>
+private typealias HResultPointer3 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultIntPointer2 = CFunction<(COpaquePointer?, Int, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultUIntIntPointer2 =
+    CFunction<(COpaquePointer?, UInt, Int, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultPointer4 =
+    CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultPointer2IntPointerIntPointer =
+    CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?, Int, COpaquePointer?, Int, COpaquePointer?) -> Int>
+
+private fun invokePointerResult(
+    instance: RawComPtr,
+    slot: Int,
+): RawAddress {
+    val method = vtableEntry(instance, slot).reinterpret<PointerResult0>()
+    return method.invoke(instance.toOpaquePointer()).asRawAddress()
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResult0>()
+    return method.invoke(instance.toOpaquePointer())
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultPointer1>()
+    return method.invoke(instance.toOpaquePointer(), arg0)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: UInt,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultUInt1>()
+    return method.invoke(instance.toOpaquePointer(), arg0)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Long,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultLong1>()
+    return method.invoke(instance.toOpaquePointer(), arg0)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+    arg1: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultPointer2>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+    arg1: Int,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultPointerInt>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultIntPointer>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: UInt,
+    arg1: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultUIntPointer>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+    arg1: COpaquePointer?,
+    arg2: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultPointer3>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: COpaquePointer?,
+    arg2: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultIntPointer2>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: UInt,
+    arg1: Int,
+    arg2: COpaquePointer?,
+    arg3: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultUIntIntPointer2>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2, arg3)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+    arg1: COpaquePointer?,
+    arg2: COpaquePointer?,
+    arg3: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultPointer4>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2, arg3)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+    arg1: COpaquePointer?,
+    arg2: Int,
+    arg3: COpaquePointer?,
+    arg4: Int,
+    arg5: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultPointer2IntPointerIntPointer>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
 private fun vtableEntry(instance: RawComPtr, slot: Int): COpaquePointer {
