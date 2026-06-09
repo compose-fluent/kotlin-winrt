@@ -282,6 +282,36 @@ actual object ComVtableInvoker {
             kinds.size == 2 && kinds[0] is ComAbiValueKind.Struct && kinds[1] == ComAbiValueKind.Pointer -> {
                 invokeHResult(instance, slot, RawAddress(args[0]).toOpaquePointer(), RawAddress(args[1]).toOpaquePointer())
             }
+            kinds.size == 4 &&
+                kinds[0] == ComAbiValueKind.Int32 &&
+                kinds[1] == ComAbiValueKind.Pointer &&
+                kinds[2] == ComAbiValueKind.Pointer &&
+                kinds[3] == ComAbiValueKind.Pointer -> {
+                invokeHResult(
+                    instance,
+                    slot,
+                    args[0].toInt(),
+                    RawAddress(args[1]).toOpaquePointer(),
+                    RawAddress(args[2]).toOpaquePointer(),
+                    RawAddress(args[3]).toOpaquePointer(),
+                )
+            }
+            kinds.size == 5 &&
+                kinds[0] == ComAbiValueKind.Int32 &&
+                kinds[1] == ComAbiValueKind.Pointer &&
+                kinds[2] == ComAbiValueKind.Int32 &&
+                kinds[3] == ComAbiValueKind.Pointer &&
+                kinds[4] == ComAbiValueKind.Pointer -> {
+                invokeHResult(
+                    instance,
+                    slot,
+                    args[0].toInt(),
+                    RawAddress(args[1]).toOpaquePointer(),
+                    args[2].toInt(),
+                    RawAddress(args[3]).toOpaquePointer(),
+                    RawAddress(args[4]).toOpaquePointer(),
+                )
+            }
             else -> error("Unsupported mingw COM generic signature: $kinds.")
         }
     }
@@ -492,6 +522,10 @@ private typealias HResultPointer3 = CFunction<(COpaquePointer?, COpaquePointer?,
 private typealias HResultIntPointer2 = CFunction<(COpaquePointer?, Int, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultInt2Pointer2 =
     CFunction<(COpaquePointer?, Int, Int, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultIntPointer3 =
+    CFunction<(COpaquePointer?, Int, COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultIntPointerIntPointer2 =
+    CFunction<(COpaquePointer?, Int, COpaquePointer?, Int, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultUIntIntPointer2 =
     CFunction<(COpaquePointer?, UInt, Int, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultPointer4 =
@@ -610,6 +644,31 @@ private fun invokeHResult(
 ): Int {
     val method = vtableEntry(instance, slot).reinterpret<HResultPointer3>()
     return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: COpaquePointer?,
+    arg2: COpaquePointer?,
+    arg3: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultIntPointer3>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2, arg3)
+}
+
+private fun invokeHResult(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: COpaquePointer?,
+    arg2: Int,
+    arg3: COpaquePointer?,
+    arg4: COpaquePointer?,
+): Int {
+    val method = vtableEntry(instance, slot).reinterpret<HResultIntPointerIntPointer2>()
+    return method.invoke(instance.toOpaquePointer(), arg0, arg1, arg2, arg3, arg4)
 }
 
 private fun invokeHResult(
