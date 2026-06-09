@@ -7,6 +7,7 @@ import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.COpaquePointerVar
+import kotlinx.cinterop.CFunction
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.DoubleVar
 import kotlinx.cinterop.FloatVar
@@ -16,6 +17,7 @@ import kotlinx.cinterop.ShortVar
 import kotlinx.cinterop.UShortVar
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.get
+import kotlinx.cinterop.invoke
 import kotlinx.cinterop.nativeHeap
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.rawValue
@@ -24,6 +26,11 @@ import kotlinx.cinterop.set
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.value
+import platform.windows.COINIT_APARTMENTTHREADED
+import platform.windows.COINIT_MULTITHREADED
+import platform.windows.GetLastError
+import platform.windows.GetProcAddress
+import platform.windows.LoadLibraryA
 
 actual class NativeScope internal constructor(
     private val ownsAllocations: Boolean,
@@ -48,10 +55,18 @@ actual class NativeScope internal constructor(
     }
 }
 
-actual class NativeCallbackHandle : AutoCloseable {
-    actual val pointer: RawAddress = RawAddress.Null
+actual class NativeCallbackHandle internal constructor(
+    actual val pointer: RawAddress,
+    private val onClose: () -> Unit,
+) : AutoCloseable {
+    private var closed: Boolean = false
 
-    actual override fun close() {}
+    actual override fun close() {
+        if (!closed) {
+            closed = true
+            onClose()
+        }
+    }
 }
 
 actual object PlatformAbi {
@@ -251,13 +266,54 @@ private fun RawAddress.writeBytes(values: ByteArray) {
 }
 
 actual object WinRtPlatformApi {
+    private const val roInitSingleThreaded = 0
+    private const val roInitMultithreaded = 1
+
+    private val combaseModule by lazy {
+        LoadLibraryA("combase.dll")
+    }
+
+    private val ole32Module by lazy {
+        LoadLibraryA("ole32.dll")
+    }
+
+    private val coInitializeExProc: CPointer<CFunction<(COpaquePointer?, UInt) -> Int>>? by lazy {
+        GetProcAddress(ole32Module, "CoInitializeEx")?.reinterpret()
+    }
+
+    private val coUninitializeProc: CPointer<CFunction<() -> Unit>>? by lazy {
+        GetProcAddress(ole32Module, "CoUninitialize")?.reinterpret()
+    }
+
+    private val roInitializeProc: CPointer<CFunction<(Int) -> Int>>? by lazy {
+        GetProcAddress(combaseModule, "RoInitialize")?.reinterpret()
+    }
+
+    private val roUninitializeProc: CPointer<CFunction<() -> Unit>>? by lazy {
+        GetProcAddress(combaseModule, "RoUninitialize")?.reinterpret()
+    }
+
     actual fun roGetActivationFactoryRaw(runtimeClassId: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
 
-    actual fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
+    actual fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+            val hResult = ComVtableInvoker.invokeArgs(
+                instance = unknown.asRawComPtr(),
+                slot = IUnknownVftblSlots.QueryInterface,
+                arg0 = interfaceIdPointer,
+                arg1 = resultOut,
+            )
+            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        }
 
-    actual fun addRefRaw(unknown: RawAddress): UInt = TODO()
+    actual fun addRefRaw(unknown: RawAddress): UInt =
+        ComVtableInvoker.invoke(unknown.asRawComPtr(), IUnknownVftblSlots.AddRef).toUInt()
 
-    actual fun releaseRaw(unknown: RawAddress): UInt = TODO()
+    actual fun releaseRaw(unknown: RawAddress): UInt =
+        ComVtableInvoker.invoke(unknown.asRawComPtr(), IUnknownVftblSlots.Release).toUInt()
 
     actual fun dllGetActivationFactoryRaw(
         getActivationFactoryProc: RawAddress,
@@ -266,13 +322,29 @@ actual object WinRtPlatformApi {
 
     actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult = TODO()
 
-    actual fun coInitializeExRaw(apartmentType: ApartmentType): Int = TODO()
+    actual fun coInitializeExRaw(apartmentType: ApartmentType): Int {
+        val flags = when (apartmentType) {
+            ApartmentType.SingleThreaded -> COINIT_APARTMENTTHREADED
+            ApartmentType.MultiThreaded -> COINIT_MULTITHREADED
+        }
+        return coInitializeExProc?.invoke(null, flags) ?: KnownHResults.E_NOTIMPL.value
+    }
 
-    actual fun coUninitializeRaw(): Unit = TODO()
+    actual fun coUninitializeRaw() {
+        coUninitializeProc?.invoke()
+    }
 
-    actual fun roInitializeRaw(apartmentType: ApartmentType): Int = TODO()
+    actual fun roInitializeRaw(apartmentType: ApartmentType): Int {
+        val initType = when (apartmentType) {
+            ApartmentType.SingleThreaded -> roInitSingleThreaded
+            ApartmentType.MultiThreaded -> roInitMultithreaded
+        }
+        return roInitializeProc?.invoke(initType) ?: KnownHResults.E_NOTIMPL.value
+    }
 
-    actual fun roUninitializeRaw(): Unit = TODO()
+    actual fun roUninitializeRaw() {
+        roUninitializeProc?.invoke()
+    }
 
     actual fun coIncrementMtaUsageRaw(): NativePointerResult = TODO()
 
@@ -331,11 +403,17 @@ actual object WinRtPlatformApi {
 
     actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean = false
 
-    actual fun tryFormatMessageRaw(hResultValue: Int): String? = TODO()
+    actual fun tryFormatMessageRaw(hResultValue: Int): String? = null
 
-    actual fun lastErrorAsHResultRaw(): Int = TODO()
+    actual fun lastErrorAsHResultRaw(): Int =
+        ExceptionHelpers.hResultFromWin32(GetLastError().toInt()).value
 
-    actual fun checkSucceededRaw(result: Int): Unit = TODO()
+    actual fun checkSucceededRaw(result: Int) {
+        val hResult = HResult(result)
+        if (hResult.isFailure) {
+            throw WinRtExceptionTranslator.exceptionFor(hResult)
+        }
+    }
 
     actual fun resolveModulePathRaw(fileName: String): String = TODO()
 }
