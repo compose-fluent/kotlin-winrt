@@ -47,12 +47,29 @@ internal actual class PlatformLock actual constructor() {
     }
 }
 
-internal actual class NativeWeakReferenceHandle : AutoCloseable {
-    actual override fun close() {}
+internal actual class NativeWeakReferenceHandle internal constructor(
+    val reference: WeakReferenceReference,
+) : AutoCloseable {
+    actual override fun close() {
+        reference.close()
+    }
 }
 
 internal actual object WeakReferenceInterop {
-    actual fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle? = null
+    actual fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle? {
+        val unwrapped = ComWrappersSupport.tryUnwrapObject(target) ?: return null
+        return unwrapped.use {
+            val weakReferenceSource = unwrapped.queryInterface(IID.IWeakReferenceSource).getOrNull() ?: return null
+            weakReferenceSource.use {
+                WeakReferenceSourceReference(it.pointer.asRawAddress(), IID.IWeakReferenceSource)
+                    .getWeakReference()
+                    ?.let(::NativeWeakReferenceHandle)
+            }
+        }
+    }
 
-    actual fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? = null
+    actual fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
+        reference.reference.resolve(IID.IUnknown)?.use { resolved ->
+            ComWrappersSupport.createRcwForComObject(resolved.pointer.asRawAddress())
+        }
 }
