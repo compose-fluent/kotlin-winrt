@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.runtime.exception.ManagedRestrictedErrorInf
 import kotlinx.coroutines.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class WindowsRuntimePlatformTest {
@@ -81,6 +82,26 @@ class WindowsRuntimePlatformTest {
         } finally {
             WinRtPlatformApi.freeLibraryRaw(kernel32)
         }
+    }
+
+    @Test
+    fun format_message_uses_windows_system_message_table() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        val message = ExceptionHelpers.formatMessage(KnownHResults.ERROR_FILE_NOT_FOUND)
+        assertTrue(!message.isNullOrBlank())
+    }
+
+    @Test
+    fun set_error_info_accepts_managed_error_info_bridge() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        ExceptionHelpers.setErrorInfo(IllegalStateException("managed failure"))
+        assertNotNull(ExceptionHelpers.formatMessage(ExceptionHelpers.E_FAIL))
     }
 
     @Test

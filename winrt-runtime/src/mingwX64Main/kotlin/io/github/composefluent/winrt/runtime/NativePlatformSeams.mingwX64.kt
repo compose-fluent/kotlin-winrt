@@ -29,6 +29,7 @@ import kotlinx.cinterop.value
 import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
 import platform.windows.FreeLibrary
+import platform.windows.FormatMessageW
 import platform.windows.GetLastError
 import platform.windows.GetProcAddress
 import platform.windows.HINSTANCE__
@@ -658,7 +659,28 @@ actual object WinRtPlatformApi {
 
     actual fun isReadableMemoryRaw(address: RawAddress, sizeBytes: Long): Boolean = false
 
-    actual fun tryFormatMessageRaw(hResultValue: Int): String? = null
+    actual fun tryFormatMessageRaw(hResultValue: Int): String? {
+        val capacity = 2048
+        val buffer = nativeHeap.allocArray<UShortVar>(capacity)
+        return try {
+            val charCount = FormatMessageW(
+                0x12FFu,
+                null,
+                hResultValue.toUInt(),
+                0u,
+                buffer,
+                capacity.toUInt(),
+                null,
+            ).toInt()
+            if (charCount <= 0) {
+                null
+            } else {
+                PlatformAbi.readUtf16(buffer.asRawAddress(), charCount)
+            }
+        } finally {
+            nativeHeap.free(buffer.rawValue)
+        }
+    }
 
     actual fun lastErrorAsHResultRaw(): Int =
         ExceptionHelpers.hResultFromWin32(GetLastError().toInt()).value
