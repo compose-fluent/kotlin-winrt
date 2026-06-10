@@ -107,6 +107,17 @@ val validateWinRtFullWindowsSdkProjectionGate by tasks.registering {
     dependsOn(":winrt-projections:compileKotlinMingwX64")
 }
 
+val validateWinRtMingwParity by tasks.registering {
+    group = "verification"
+    description = "Runs the current mingwX64 parity gate across runtime contracts, compiler lowering, and full Windows SDK projections."
+    dependsOn(":winrt-runtime:compileKotlinMetadata")
+    dependsOn(":winrt-runtime:jvmTest")
+    dependsOn(":winrt-runtime:compileTestKotlinMingwX64")
+    dependsOn(":winrt-runtime:mingwX64Test")
+    dependsOn(":winrt-compiler-plugin:test")
+    dependsOn(validateWinRtFullWindowsSdkProjectionGate)
+}
+
 val validateWinRtSampleSmoke by tasks.registering {
     group = "verification"
     description = "Runs sample smoke checks after projection validation."
