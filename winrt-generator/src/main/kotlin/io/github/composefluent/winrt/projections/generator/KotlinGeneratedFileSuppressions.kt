@@ -13,4 +13,5 @@ internal fun generatedProjectionSuppressAnnotation(): AnnotationSpec =
         .addMember("%S", "UNCHECKED_CAST")
         .addMember("%S", "REDUNDANT_CALL_OF_CONVERSION_METHOD")
         .addMember("%S", "REDUNDANT_NULLABLE")
+        .addMember("%S", "DEPRECATION_ERROR")
         .build()

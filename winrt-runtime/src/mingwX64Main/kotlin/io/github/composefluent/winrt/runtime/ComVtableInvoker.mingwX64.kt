@@ -260,7 +260,19 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         vararg args: Any,
-    ): Int = TODO()
+    ): Int {
+        val kinds = args.map(::genericComAbiArgumentKind)
+        val words = args.map(::genericComAbiArgumentWord).toLongArray()
+        return invokeGeneric(
+            instance = instance,
+            slot = slot,
+            signature = ComMethodSignature(
+                resultKind = ComAbiValueKind.Int32,
+                explicitParameterKinds = kinds,
+            ),
+            args = words,
+        )
+    }
 
     internal actual fun invokeGeneric(
         instance: RawComPtr,

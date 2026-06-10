@@ -21745,6 +21745,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("\"UNCHECKED_CAST\""))
         assertTrue(contents, contents.contains("\"REDUNDANT_CALL_OF_CONVERSION_METHOD\""))
         assertTrue(contents, contents.contains("\"REDUNDANT_NULLABLE\""))
+        assertTrue(contents, contents.contains("\"DEPRECATION_ERROR\""))
     }
 
     private fun assertGeneratedOutputAuditPasses(files: List<KotlinProjectionFile>) {

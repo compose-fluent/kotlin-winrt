@@ -4,6 +4,32 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ComVtableInvokerGenericDescriptorTest {
+    @Suppress("DEPRECATION_ERROR")
+    @Test
+    fun generic_args_fallback_dynamically_infers_word_arguments() {
+        GenericDescriptorComObject.create().use { host ->
+            PlatformAbi.confinedScope().use { scope ->
+                val arrayData = PlatformAbi.allocatePointerSlot(scope)
+                val countOut = PlatformAbi.allocateInt32Slot(scope)
+                val dataOut = PlatformAbi.allocatePointerSlot(scope)
+                val hr = ComVtableInvoker.invokeGenericArgs(
+                    host.reference.pointer,
+                    slot = 6,
+                    2,
+                    arrayData,
+                    countOut,
+                    dataOut,
+                )
+
+                assertEquals(KnownHResults.S_OK.value, hr)
+                assertEquals(2, host.capturedFirstInt)
+                assertEquals(PlatformAbi.pointerKey(arrayData), host.capturedFirstPointer)
+                assertEquals(PlatformAbi.pointerKey(countOut), host.capturedSecondPointer)
+                assertEquals(PlatformAbi.pointerKey(dataOut), host.capturedThirdPointer)
+            }
+        }
+    }
+
     @Test
     fun generic_int32_pointer_pointer_pointer_descriptor_forwards_generated_array_shape() {
         GenericDescriptorComObject.create().use { host ->
