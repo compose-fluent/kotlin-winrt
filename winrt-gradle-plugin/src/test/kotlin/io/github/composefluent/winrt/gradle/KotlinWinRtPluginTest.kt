@@ -451,9 +451,58 @@ class KotlinWinRtPluginTest {
         val joinedArgs = compilerArgs.joinToString(separator = "\n")
 
         assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:metadataIndex=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredCandidatesOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredMetadataOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredHostManifestOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoringAssemblyName=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=") })
         assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest=") })
-        assertFalse(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput=") })
-        assertFalse(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory=") })
+        assertTrue(joinedArgs, joinedArgs.replace("\\", "/").contains("build/kotlin-winrt/native-authoring/compileKotlinWinuiMingw"))
+    }
+
+    @Test
+    fun native_authored_candidate_validation_is_registered_without_publishing_jvm_host_artifacts() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64("winuiMingw")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val validationTaskName = "validateCompileKotlinWinuiMingwWinRtAuthoredCandidates"
+        val validationTask = project.tasks.named(validationTaskName).get()
+        val validationDependencies = validationTask.taskDependencies.getDependencies(validationTask).map { it.name }
+        assertTrue(
+            "$validationTaskName must depend on native compile",
+            "compileKotlinWinuiMingw" in validationDependencies,
+        )
+        val checkTask = project.tasks.named("check").get()
+        val checkDependencies = checkTask.taskDependencies.getDependencies(checkTask).map { it.name }
+        assertTrue(
+            "check must depend on native authored candidate validation",
+            validationTaskName in checkDependencies,
+        )
+        val lifecycleTaskNames = listOf(
+            "generateWinRtIdentity",
+            "classes",
+            "jar",
+            "assemble",
+            "processResources",
+            "stageWinRtRuntimeAssets",
+            "stageWinRtApplicationPackage",
+        )
+        lifecycleTaskNames
+            .filter { taskName -> taskName in project.tasks.names }
+            .forEach { taskName ->
+                val task = project.tasks.named(taskName).get()
+                val dependencies = task.taskDependencies.getDependencies(task).map { it.name }
+                assertFalse(
+                    "$taskName must not publish native host artifacts before native host/export support exists",
+                    validationTaskName in dependencies,
+                )
+            }
     }
 
     @Test
