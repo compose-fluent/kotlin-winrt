@@ -15,6 +15,7 @@ import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtFundamentalType
 import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
@@ -199,15 +200,16 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' static property '${property.name}', but TypeDetails instance CCW generation cannot expose static interface members.",
             )
         }
-        val event = type.events.firstOrNull { event ->
-            event.addMethodName == null ||
-                event.removeMethodName == null ||
-                type.methods.none { method -> method.name == event.addMethodName } ||
-                type.methods.none { method -> method.name == event.removeMethodName }
-        } ?: return
-        throw IllegalArgumentException(
-            "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' event '${event.name}', but TypeDetails event marshaling is not implemented.",
-        )
+        type.events.firstOrNull { event -> event.isStatic }?.let { event ->
+            throw IllegalArgumentException(
+                "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' static event '${event.name}', but TypeDetails instance CCW generation cannot expose static interface members.",
+            )
+        }
+        type.events.firstOrNull { event -> !event.hasValidAccessors }?.let { event ->
+            throw IllegalArgumentException(
+                "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' event '${event.name}' with unsupported event accessors.",
+            )
+        }
     }
 
     private fun render(
@@ -498,8 +500,44 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     },
                 )
             }
-        val accessorNames = accessors.mapTo(mutableSetOf()) { accessor -> accessor.method.name }
-        return (methods.filterNot { method -> method.isStatic || method.name in accessorNames }.map(::AuthoredVtableMethod) + accessors)
+        val eventAccessors = events
+            .filterNot(WinRtEventDefinition::isStatic)
+            .filter(WinRtEventDefinition::hasValidAccessors)
+            .flatMap { event ->
+                val addMethodName = event.addMethodName ?: "add_${event.name}"
+                val removeMethodName = event.removeMethodName ?: "remove_${event.name}"
+                listOf(
+                    AuthoredVtableMethod(
+                        method = methods.firstOrNull { method -> method.name == addMethodName } ?: WinRtMethodDefinition(
+                            name = addMethodName,
+                            returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                            parameters = listOf(
+                                WinRtParameterDefinition(
+                                    name = "handler",
+                                    typeName = event.delegateTypeName,
+                                    typeSignature = event.delegateType,
+                                ),
+                            ),
+                            methodRowId = event.addMethodRowId,
+                        ),
+                    ),
+                    AuthoredVtableMethod(
+                        method = methods.firstOrNull { method -> method.name == removeMethodName } ?: WinRtMethodDefinition(
+                            name = removeMethodName,
+                            returnTypeName = "Void",
+                            parameters = listOf(
+                                WinRtParameterDefinition(
+                                    name = "token",
+                                    typeName = "Windows.Foundation.EventRegistrationToken",
+                                ),
+                            ),
+                            methodRowId = event.removeMethodRowId,
+                        ),
+                    ),
+                )
+            }
+        val accessorNames = (accessors + eventAccessors).mapTo(mutableSetOf()) { accessor -> accessor.method.name }
+        return (methods.filterNot { method -> method.isStatic || method.name in accessorNames }.map(::AuthoredVtableMethod) + accessors + eventAccessors)
             .sortedWith(compareBy<AuthoredVtableMethod>({ it.method.methodRowId ?: Int.MAX_VALUE }, { it.method.authoringSignatureKey() }))
     }
 

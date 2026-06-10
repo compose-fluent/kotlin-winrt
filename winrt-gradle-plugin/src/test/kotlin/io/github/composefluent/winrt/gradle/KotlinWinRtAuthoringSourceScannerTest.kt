@@ -500,7 +500,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
-    fun rejects_authored_type_details_for_interface_events_until_event_marshaling_exists() {
+    fun renders_authored_type_details_for_interface_events_without_explicit_accessor_methods() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-event-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
             packageName = "sample",
@@ -544,8 +544,21 @@ class KotlinWinRtAuthoringSourceScannerTest {
                             events = listOf(
                                 WinRtEventDefinition(
                                     name = "Changed",
-                                    delegateTypeName = "Windows.Foundation.EventHandler<Sample.Widget>",
+                                    delegateTypeName = "Sample.WidgetChangedHandler",
                                 ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventRegistrationToken",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition(name = "Value", typeName = "Int64"),
                             ),
                         ),
                     ),
@@ -553,20 +566,18 @@ class KotlinWinRtAuthoringSourceScannerTest {
             ),
         )
 
-        try {
-            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-                candidates = listOf(candidate),
-                metadataModel = metadataModel,
-                outputDirectory = output,
-            )
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("event 'Changed'"))
-            assertTrue(error.message.orEmpty().contains("TypeDetails event marshaling is not implemented"))
-            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt")))
-            return
-        }
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
 
-        throw AssertionError("Expected authored WinRT interface events to fail closed until event marshaling is implemented.")
+        val generated = output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt").readText()
+        assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeadd_Changed(__arg0)"))
+        assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
+        assertTrue(generated.contains("EventRegistrationToken.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
     @Test
