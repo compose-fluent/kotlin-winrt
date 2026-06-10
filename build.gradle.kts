@@ -90,6 +90,14 @@ val validateWinRtProjectionCompile by tasks.registering {
     dependsOn(":winrt-projections:windows-app-sdk:compileKotlin")
 }
 
+val validateWinRtMingwProjectionGate by tasks.registering {
+    group = "verification"
+    description = "Runs the lightweight generated projection gate for mingwX64 without compiling full prebuilt projection artifacts."
+    dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
+    dependsOn(":winrt-projections:compileKotlinJvm")
+    dependsOn(":winrt-projections:compileKotlinMingwX64")
+}
+
 val validateWinRtSampleSmoke by tasks.registering {
     group = "verification"
     description = "Runs sample smoke checks after projection validation."
