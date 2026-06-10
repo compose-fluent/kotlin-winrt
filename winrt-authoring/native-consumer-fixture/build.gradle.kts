@@ -18,6 +18,7 @@ kotlin {
 winRt {
     windowsSdk(generateProjection = true)
     type("Windows.Foundation.IClosable")
+    type("Windows.Foundation.IStringable")
     application {
         generateProjectPri.set(false)
     }
@@ -33,6 +34,11 @@ val verifyNativeAuthoringConsumerFixture by tasks.registering(
     expectedDllName.set("native_component_fixture.dll")
     expectedWinmdName.set("native-component-fixture.winmd")
     expectedHostManifestName.set("native-component-fixture.host.json")
-    runtimeClassName.set("sample.NativeClosableThing")
+    runtimeClassNames.set(
+        listOf(
+            "sample.NativeClosableThing",
+            "sample.NativeStringableThing",
+        ),
+    )
     forbiddenJarName.set("native-component-fixture.jar")
 }

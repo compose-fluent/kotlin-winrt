@@ -2122,6 +2122,7 @@ class KotlinProjectionSupportRenderer {
             .map { it.interfaceName }
             .distinct()
             .sorted()
+            .filterNot(::isRuntimeAppendedAuthoringInterfaceName)
             .forEach { interfaceName ->
                 val rawInterfaceName = interfaceName.substringBefore('<')
                 val interfacePlan = plansByQualifiedName[rawInterfaceName]
@@ -2158,6 +2159,7 @@ class KotlinProjectionSupportRenderer {
         ownerPlan: KotlinTypeProjectionPlan,
     ): CodeBlock {
         val rawInterfaceName = interfaceName.substringBefore('<')
+        runtimeAppendedAuthoringInterfaceIdCode(rawInterfaceName)?.let { return it }
         if ('<' !in interfaceName) {
             return CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(rawInterfaceName))
         }
@@ -2172,6 +2174,15 @@ class KotlinProjectionSupportRenderer {
             )
         return CodeBlock.of("%T.createFromSignature(%L)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, signature)
     }
+
+    private fun isRuntimeAppendedAuthoringInterfaceName(interfaceName: String): Boolean =
+        interfaceName.substringBefore('<') == WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME
+
+    private fun runtimeAppendedAuthoringInterfaceIdCode(rawInterfaceName: String): CodeBlock? =
+        when (rawInterfaceName) {
+            WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME -> CodeBlock.of("%T.IStringable", IID_CLASS_NAME)
+            else -> null
+        }
 
     private fun authoringCcwQueryInterfaceFunction(plan: KotlinTypeProjectionPlan): FunSpec {
         return FunSpec.builder(authoringCcwQueryInterfaceFunctionName(plan))
@@ -3657,5 +3668,6 @@ class KotlinProjectionSupportRenderer {
         const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
         const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR = "\u001F"
         const val TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR = "\u001F"
+        const val WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME = "Windows.Foundation.IStringable"
     }
 }

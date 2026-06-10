@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
@@ -30,7 +31,7 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
     abstract val identityFile: RegularFileProperty
 
     @get:Input
-    abstract val runtimeClassName: Property<String>
+    abstract val runtimeClassNames: ListProperty<String>
 
     @get:Input
     abstract val expectedDllName: Property<String>
@@ -56,8 +57,10 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
         }
 
         val hostManifestText = authoredHostManifestFile.readText()
-        check(hostManifestText.contains(runtimeClassName.get())) {
-            "Expected authored runtime class in native host manifest: $hostManifestText"
+        runtimeClassNames.get().forEach { runtimeClassName ->
+            check(hostManifestText.contains(runtimeClassName)) {
+                "Expected authored runtime class '$runtimeClassName' in native host manifest: $hostManifestText"
+            }
         }
         check(hostManifestText.contains(expectedDllName.get())) {
             "Expected native host manifest to name the actual mingw shared library: $hostManifestText"
@@ -96,7 +99,7 @@ abstract class VerifyWinRtNativeAuthoringConsumerFixtureTask : DefaultTask() {
     abstract val expectedHostManifestName: Property<String>
 
     @get:Input
-    abstract val runtimeClassName: Property<String>
+    abstract val runtimeClassNames: ListProperty<String>
 
     @get:Input
     @get:Optional
@@ -118,8 +121,10 @@ abstract class VerifyWinRtNativeAuthoringConsumerFixtureTask : DefaultTask() {
             "Expected dependency native authored host manifest to be staged: $stagedHostManifest"
         }
         val hostManifestText = stagedHostManifest.readText()
-        check(hostManifestText.contains(runtimeClassName.get())) {
-            "Expected staged host manifest to preserve authored class mapping: $hostManifestText"
+        runtimeClassNames.get().forEach { runtimeClassName ->
+            check(hostManifestText.contains(runtimeClassName)) {
+                "Expected staged host manifest to preserve authored class mapping for '$runtimeClassName': $hostManifestText"
+            }
         }
         check(hostManifestText.contains(expectedDllName.get())) {
             "Expected staged host manifest to target the native authored DLL: $hostManifestText"

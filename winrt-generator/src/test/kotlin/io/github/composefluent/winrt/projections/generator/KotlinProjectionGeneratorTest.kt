@@ -259,6 +259,57 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_maps_authored_stringable_interface_to_runtime_to_string_ccw_support() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IStringable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("96369f54-8eb6-48f0-abce-c1b211e627c3"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "ToString", returnTypeName = "String", methodRowId = 6),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringableWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.IStringable",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.IStringable", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        ).generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val authoringAbiClasses = filesByName.getValue("WinRTAuthoringAbiClasses.kt").contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("defaultInterfaceId = IID.IStringable"))
+        assertFalse(ccwFactories, ccwFactories.contains("IStringable.Metadata.IID"))
+        assertFalse(ccwFactories, ccwFactories.contains("interfaceId = IID.IStringable"))
+        assertFalse(ccwFactories, ccwFactories.contains("value.toString()"))
+        assertTrue(authoringAbiClasses, authoringAbiClasses.contains("defaultInterfaceId: Guid = IID.IStringable"))
+        assertFalse(authoringAbiClasses, authoringAbiClasses.contains("IStringable.Metadata.IID"))
+    }
+
+    @Test
     fun support_renderer_rejects_authoring_activation_factory_member_references_with_missing_factory_interface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

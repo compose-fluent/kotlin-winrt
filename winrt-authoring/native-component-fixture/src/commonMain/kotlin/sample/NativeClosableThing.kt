@@ -6,3 +6,8 @@ import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
 class NativeClosableThing {
     fun close() = Unit
 }
+
+@WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+class NativeStringableThing {
+    override fun toString(): String = "NativeStringableThing"
+}

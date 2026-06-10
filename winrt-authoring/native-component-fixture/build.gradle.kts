@@ -12,6 +12,7 @@ kotlin {
 winRt {
     windowsSdk(generateProjection = true)
     type("Windows.Foundation.IClosable")
+    type("Windows.Foundation.IStringable")
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
@@ -25,7 +26,12 @@ val verifyNativeAuthoringComponentFixture by tasks.registering(
     authoredWinmd.set(layout.buildDirectory.file("kotlin-winrt/native-authoring/compileKotlinMingwX64/kotlin-winrt-authoring/native-component-fixture.winmd"))
     authoredHostManifest.set(layout.buildDirectory.file("kotlin-winrt/native-authoring/compileKotlinMingwX64/kotlin-winrt-authoring/native-component-fixture.host.json"))
     identityFile.set(layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt.json"))
-    runtimeClassName.set("sample.NativeClosableThing")
+    runtimeClassNames.set(
+        listOf(
+            "sample.NativeClosableThing",
+            "sample.NativeStringableThing",
+        ),
+    )
     expectedDllName.set("native_component_fixture.dll")
     forbiddenDllName.set("native-component-fixture.dll")
 }
