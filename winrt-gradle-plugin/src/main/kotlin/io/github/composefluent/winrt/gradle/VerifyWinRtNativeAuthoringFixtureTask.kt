@@ -97,6 +97,15 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
         check(identityText.contains(authoredHostManifestFile.absolutePath.replace("\\", "\\\\"))) {
             "Expected native authored host manifest in identity: $identityText"
         }
+        if ("sample.NativeJsonValueThing" in runtimeClassNames.get()) {
+            val authoredWinmdText = authoredWinmdFile.readBytes().toString(Charsets.UTF_8)
+            check(authoredWinmdText.contains("StaticAttribute")) {
+                "Expected authored WinMD to preserve static factory metadata."
+            }
+            check(authoredWinmdText.contains("Windows.Data.Json.IJsonValueStatics")) {
+                "Expected authored WinMD to name the IJsonValue static factory interface."
+            }
+        }
 
         val activationFactoryPlanText = activationFactoryPlan.readText()
         val serverActivationFactoriesText = serverActivationFactories.readText()
@@ -129,6 +138,17 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
         }
         check(!serverActivationFactoriesText.contains("does not expose default activation")) {
             "Native component fixture default activation must not fall back to notImplemented server factories: $serverActivationFactoriesText"
+        }
+        if ("sample.NativeJsonValueThing" in runtimeClassNames.get()) {
+            check(activationFactoryPlanText.contains("staticFactoryInterfaceNames = listOf(\"Windows.Data.Json.IJsonValueStatics\")")) {
+                "Expected NativeJsonValueThing activation plan to preserve static factory interface names: $activationFactoryPlanText"
+            }
+            check(serverActivationFactoriesText.contains("IJsonValueStatics.Metadata.IID")) {
+                "Expected NativeJsonValueThing server factory to expose IJsonValueStatics: $serverActivationFactoriesText"
+            }
+            check(serverActivationFactoriesText.contains("NativeJsonValueThing.createStringValue(input)")) {
+                "Expected NativeJsonValueThing server factory to dispatch CreateStringValue through authored code: $serverActivationFactoriesText"
+            }
         }
     }
 }

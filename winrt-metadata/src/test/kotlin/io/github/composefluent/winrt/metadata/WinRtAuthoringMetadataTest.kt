@@ -107,12 +107,14 @@ class WinRtAuthoringMetadataTest {
                     baseRuntimeClassName = "Sample.Component.BaseWidget",
                     interfaceNames = listOf("Sample.Component.IWidget"),
                     overridableInterfaceNames = listOf("Sample.Component.IWidget"),
+                    staticFactoryInterfaceNames = listOf("Sample.Component.IWidgetStatics"),
                 ),
             ),
             outputFile = output,
         )
 
-        val runtimeClass = WinRtMetadataLoader.load(output)
+        val model = WinRtMetadataLoader.load(output)
+        val runtimeClass = model
             .namespaces
             .single { namespace -> namespace.name == "Sample.Component" }
             .types
@@ -124,10 +126,15 @@ class WinRtAuthoringMetadataTest {
         assertTrue(runtimeClass.implementedInterfaces.single().isDefault)
         assertTrue(runtimeClass.implementedInterfaces.single().isOverridable)
         assertTrue(runtimeClass.activation.isActivatable)
+        assertEquals(listOf("Sample.Component.IWidgetStatics"), runtimeClass.activation.staticInterfaceNames)
         assertEquals(1L, runtimeClass.availability.version)
         assertTrue(runtimeClass.isSealedType)
+        assertEquals(
+            listOf("Sample.Component.IWidgetStatics"),
+            model.semanticHelpers().factorySurfaceDescriptor(runtimeClass).staticMemberTargets,
+        )
 
-        val defaultInterface = WinRtMetadataLoader.load(output)
+        val defaultInterface = model
             .namespaces
             .single { namespace -> namespace.name == "Sample.Component" }
             .types

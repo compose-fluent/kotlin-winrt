@@ -26,6 +26,8 @@ winRt {
     type("Windows.Foundation.IClosable")
     type("Windows.Foundation.IStringable")
     type("Windows.Data.Json.IJsonValue")
+    type("Windows.Data.Json.JsonValue")
+    type("sample.NativeJsonValueThing")
     application {
         generateProjectPri.set(false)
     }

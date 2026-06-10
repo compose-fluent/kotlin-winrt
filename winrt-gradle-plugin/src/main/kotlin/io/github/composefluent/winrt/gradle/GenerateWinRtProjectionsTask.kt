@@ -525,7 +525,12 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             )
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
-        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
+        val dependencyAuthoredMetadataSources = parameters.dependencyIdentityFiles.files
+            .flatMap(::readAuthoredMetadata)
+            .map(Path::of)
+            .filter(Files::isRegularFile)
+            .map(WinRtMetadataSource::path)
+        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
         return if (applicationPackagingOnly) {
             sources
         } else {

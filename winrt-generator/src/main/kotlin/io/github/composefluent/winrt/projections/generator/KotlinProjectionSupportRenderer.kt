@@ -2764,9 +2764,10 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", WINRT_OBJECT_MARSHALLER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
-            "%T.Metadata.wrap(%T(rawArgs[%L] as %T).inspectable())",
+            "%T.Metadata.wrap(%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable())",
             typeRenderer.resolveTypeName(binding.resolvedTypeName),
             IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
             index,
             RAW_ADDRESS_CLASS_NAME,
         )
@@ -2785,7 +2786,13 @@ class KotlinProjectionSupportRenderer {
             RAW_ADDRESS_CLASS_NAME,
         )
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
-        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T(rawArgs[%L] as %T).inspectable()", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of(
+            "%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable()",
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+        )
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
     }
 

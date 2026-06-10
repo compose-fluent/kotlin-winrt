@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.RuntimeScope
+import sample.NativeJsonValueThing
 import windows.data.json.IJsonValue
 import windows.data.json.JsonValueType
 import windows.foundation.IStringable
@@ -48,6 +49,17 @@ fun main() {
                     }
                 }
             }
+        }
+
+        val staticFactoryValue = NativeJsonValueThing.createStringValue("FromStaticFactory")
+        check(staticFactoryValue.valueType == JsonValueType.String) {
+            "Expected authored IJsonValueStatics.CreateStringValue result to preserve valueType."
+        }
+        check(staticFactoryValue.stringify() == "\"FromStaticFactory\"") {
+            "Expected authored IJsonValueStatics.CreateStringValue result to dispatch stringify."
+        }
+        check(staticFactoryValue.getString() == "FromStaticFactory") {
+            "Expected authored IJsonValueStatics.CreateStringValue result to dispatch getString."
         }
     }
 }
