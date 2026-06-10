@@ -1338,7 +1338,13 @@ private fun configureWinRtIdentityProjectDependencies(
 ) {
     val registeredProjectPaths = linkedSetOf<String>()
     val registeredExternalModules = linkedSetOf<String>()
+    fun canRegisterIdentityDependency(): Boolean =
+        identityDependencies.state == org.gradle.api.artifacts.Configuration.State.UNRESOLVED
+
     fun registerDependency(dependency: ProjectDependency) {
+        if (!canRegisterIdentityDependency()) {
+            return
+        }
         val dependencyProject = project.findProject(dependency.path)
         if (dependencyProject?.hasKotlinWinRtIdentityMetadata() == true &&
             registeredProjectPaths.add(dependency.path)
@@ -1347,6 +1353,9 @@ private fun configureWinRtIdentityProjectDependencies(
         }
     }
     fun registerDependency(dependency: ExternalModuleDependency) {
+        if (!canRegisterIdentityDependency()) {
+            return
+        }
         val key = listOf(dependency.group, dependency.name, dependency.version).joinToString(":")
         if (registeredExternalModules.add(key)) {
             identityDependencies.dependencies.add(dependency.copy())
@@ -1360,6 +1369,16 @@ private fun configureWinRtIdentityProjectDependencies(
             }
         }
     }
+    fun observeConfiguration(configuration: org.gradle.api.artifacts.Configuration) {
+        if (!configuration.name.isWinRtIdentityDependencySourceConfiguration()) {
+            return
+        }
+        configuration.allDependencies.all { dependency ->
+            if (dependency is ProjectDependency) {
+                registerDependency(dependency)
+            }
+        }
+    }
     fun kotlinSourceSetConfigurationNames(sourceSet: KotlinSourceSet): List<String> =
         buildList {
             add(sourceSet.apiConfigurationName)
@@ -1368,6 +1387,7 @@ private fun configureWinRtIdentityProjectDependencies(
             add("${sourceSet.implementationConfigurationName}Metadata")
         }
 
+    project.configurations.configureEach(::observeConfiguration)
     project.gradle.projectsEvaluated {
         scanConfiguration("api")
         scanConfiguration("implementation")
@@ -1376,6 +1396,16 @@ private fun configureWinRtIdentityProjectDependencies(
         }
     }
 }
+
+private fun String.isWinRtIdentityDependencySourceConfiguration(): Boolean =
+    this == "api" ||
+        this == "implementation" ||
+        ("Main" in this && (
+            endsWith("Api") ||
+                endsWith("Implementation") ||
+                endsWith("ApiMetadata") ||
+                endsWith("ImplementationMetadata")
+            ))
 
 private fun kotlinWinRtIdentityFiles(
     project: Project,

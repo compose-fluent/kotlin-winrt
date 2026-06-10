@@ -700,8 +700,15 @@ internal fun mergedAuthoringMetadataIndexTypes(
             )
         } +
         identityFiles
-            .flatMap(::readAuthoringMetadataIndexRows)
-            .let { rows -> parseAuthoringMetadataIndexRows(rows, "dependency identity authoringMetadataIndexRows").values } +
+            .flatMap { identityFile ->
+                readAuthoringMetadataIndexRows(identityFile)
+                    .let { rows ->
+                        parseAuthoringMetadataIndexRows(
+                            rows,
+                            "${identityFile.absolutePath} authoringMetadataIndexRows",
+                        ).values
+                    }
+            } +
         identityFiles
             .flatMap(::readAuthoringMetadataIndexes)
             .map(Path::of)
