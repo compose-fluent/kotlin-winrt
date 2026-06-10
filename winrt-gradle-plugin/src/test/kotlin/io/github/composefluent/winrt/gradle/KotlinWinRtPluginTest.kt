@@ -24,7 +24,9 @@ import org.gradle.api.tasks.JavaExec
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -422,6 +424,24 @@ class KotlinWinRtPluginTest {
         val implementationDependencies = project.configurations.getByName("commonMainImplementation").dependencies
         assertHasKotlinWinRtRuntimeDependency(implementationDependencies)
         assertHasKotlinWinRtAuthoringDependency(implementationDependencies)
+    }
+
+    @Test
+    fun plugin_injects_compiler_plugin_options_into_multiplatform_native_compilation() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64("winuiMingw")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val compileTask = project.tasks.named("compileKotlinWinuiMingw").get() as KotlinNativeCompile
+        val compilerArgs = compileTask.compilerOptions.freeCompilerArgs.get()
+        val joinedArgs = compilerArgs.joinToString(separator = "\n")
+
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:metadataIndex=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest=") })
+        assertFalse(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput=") })
+        assertFalse(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput=") })
     }
 
     @Test
@@ -6213,7 +6233,11 @@ class KotlinWinRtPluginTest {
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("printWinuiJvmCompilerArgs", "verifyWinuiJvmCompilerSupportOutput", "--stacktrace")
+            .withArguments(
+                "printWinuiJvmCompilerArgs",
+                "verifyWinuiJvmCompilerSupportOutput",
+                "--stacktrace",
+            )
             .forwardOutput()
             .build()
 

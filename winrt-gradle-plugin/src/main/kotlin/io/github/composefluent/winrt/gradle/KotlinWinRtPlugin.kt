@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import java.io.File
 import java.nio.file.Path
 import org.gradle.jvm.tasks.Jar
@@ -865,6 +866,10 @@ private fun configureWinRtGeneration(
             task.dependsOn(generateTask)
             task.dependsOn(mergeCompilerSupportTask)
         })
+        project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
+            task.dependsOn(generateTask)
+            task.dependsOn(mergeCompilerSupportTask)
+        })
         configureWinRtAuthoredCandidateValidation(project, extension, generatedSources, generatedAuthoringSources)
     }
 
@@ -1331,16 +1336,6 @@ private fun configureWinRtIdentityProjectDependencies(
             identityDependencies.dependencies.add(dependency.copy())
         }
     }
-    fun observeConfiguration(configurationName: String) {
-        project.configurations.matching { it.name == configurationName }.configureEach { configuration ->
-            configuration.allDependencies.configureEach { dependency ->
-                when (dependency) {
-                    is ProjectDependency -> registerDependency(dependency)
-                    is ExternalModuleDependency -> if (includeExternalModules) registerDependency(dependency)
-                }
-            }
-        }
-    }
     fun scanConfiguration(configurationName: String) {
         project.configurations.findByName(configurationName)?.allDependencies?.forEach { dependency ->
             when (dependency) {
@@ -1357,14 +1352,6 @@ private fun configureWinRtIdentityProjectDependencies(
             add("${sourceSet.implementationConfigurationName}Metadata")
         }
 
-    observeConfiguration("api")
-    observeConfiguration("implementation")
-    project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
-        val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return@withId
-        kotlinExtension.sourceSets.configureEach { sourceSet: KotlinSourceSet ->
-            kotlinSourceSetConfigurationNames(sourceSet).forEach(::observeConfiguration)
-        }
-    }
     project.gradle.projectsEvaluated {
         scanConfiguration("api")
         scanConfiguration("implementation")
@@ -1425,6 +1412,19 @@ private fun configureKotlinWinRtCompilerPluginOptions(
     authoringTargetArtifactName: org.gradle.api.provider.Provider<String>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
+    project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
+        val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
+        val metadataIndexPath = metadataIndex.get().asFile.absolutePath
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:metadataIndex=$metadataIndexPath",
+        )
+        val compilerSupportManifestPath = compilerSupportManifest.get().asFile.absolutePath
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportManifest=$compilerSupportManifestPath",
+        )
+    })
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
         task.compilerOptions.jvmTarget.set(JvmTarget.JVM_25)
         task.compilerOptions.freeCompilerArgs.add("-Xjdk-release=25")
