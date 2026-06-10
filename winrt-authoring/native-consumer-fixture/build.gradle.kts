@@ -25,6 +25,7 @@ winRt {
     windowsSdk(generateProjection = true)
     type("Windows.Foundation.IClosable")
     type("Windows.Foundation.IStringable")
+    type("Windows.Data.Json.IJsonValue")
     application {
         generateProjectPri.set(false)
     }
@@ -49,6 +50,7 @@ val verifyNativeAuthoringConsumerFixture by tasks.registering(
         listOf(
             "sample.NativeClosableThing",
             "sample.NativeStringableThing",
+            "sample.NativeJsonValueThing",
         ),
     )
     forbiddenJarName.set("native-component-fixture.jar")

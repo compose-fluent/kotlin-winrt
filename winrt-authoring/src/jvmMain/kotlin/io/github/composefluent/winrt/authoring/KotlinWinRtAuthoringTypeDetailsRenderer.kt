@@ -20,6 +20,7 @@ import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDirection
+import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
@@ -318,8 +319,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .add("methods = listOf(\n")
             .indent()
             .apply {
-                type.methods.filterNot { method -> method.isStatic }.forEach { method ->
-                    add("%L,\n", renderMethod(method, typesByName, semanticHelpers, dispatchTarget, authoredRuntimeClassNames))
+                type.authoredVtableMethods().forEach { vtableMethod ->
+                    add("%L,\n", renderMethod(vtableMethod, typesByName, semanticHelpers, dispatchTarget, authoredRuntimeClassNames))
                 }
             }
             .unindent()
@@ -330,12 +331,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     }
 
     private fun renderMethod(
-        method: WinRtMethodDefinition,
+        vtableMethod: AuthoredVtableMethod,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         dispatchTarget: AuthoringDispatchTarget,
         authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
+        val method = vtableMethod.method
         val dispatchMethodName = dispatchTarget.methodName(method)
         val receiveArrayParameter = method.receiveArrayResultParameter()
         validateAuthoredArrayParameterSupport(method, receiveArrayParameter)
@@ -368,13 +370,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             }
             .apply {
                 if (isVoidReturn(method) && receiveArrayParameter == null) {
-                    addStatement("(value as %T).%L(%L)", dispatchTarget.className, dispatchMethodName, bridgeArguments)
+                    addStatement("%L", renderDispatchInvocation(vtableMethod, dispatchTarget, dispatchMethodName, bridgeArguments))
                 } else {
                     addStatement(
-                        "val __result = (value as %T).%L(%L)",
-                        dispatchTarget.className,
-                        dispatchMethodName,
-                        bridgeArguments,
+                        "val __result = %L",
+                        renderDispatchInvocation(vtableMethod, dispatchTarget, dispatchMethodName, bridgeArguments),
                     )
                     if (receiveArrayParameter != null) {
                         val receiveArrayRawIndex = rawArgumentIndex(method.parameters, receiveArrayParameter)
@@ -416,6 +416,94 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .add("}")
             .build()
     }
+
+    private fun renderDispatchInvocation(
+        vtableMethod: AuthoredVtableMethod,
+        dispatchTarget: AuthoringDispatchTarget,
+        dispatchMethodName: String,
+        bridgeArguments: String,
+    ): CodeBlock =
+        when (vtableMethod.propertyAccessor) {
+            PropertyAccessor.Getter -> CodeBlock.of(
+                "(value as %T).%L",
+                dispatchTarget.className,
+                projectedPropertyName(vtableMethod.property ?: error("Getter accessor has no property.")),
+            )
+            PropertyAccessor.Setter -> CodeBlock.of(
+                "(value as %T).%L = %L",
+                dispatchTarget.className,
+                projectedPropertyName(vtableMethod.property ?: error("Setter accessor has no property.")),
+                bridgeArguments,
+            )
+            null -> CodeBlock.of(
+                "(value as %T).%L(%L)",
+                dispatchTarget.className,
+                dispatchMethodName,
+                bridgeArguments,
+            )
+        }
+
+    private fun WinRtTypeDefinition.authoredVtableMethods(): List<AuthoredVtableMethod> {
+        val accessors = properties
+            .filterNot(WinRtPropertyDefinition::isStatic)
+            .flatMap { property ->
+                listOfNotNull(
+                    property.getterMethodName?.let { accessorName ->
+                        AuthoredVtableMethod(
+                            method = WinRtMethodDefinition(
+                                name = accessorName,
+                                returnTypeName = property.typeName,
+                                returnTypeSignature = property.type,
+                                methodRowId = property.getterMethodRowId,
+                            ),
+                            property = property,
+                            propertyAccessor = PropertyAccessor.Getter,
+                        )
+                    },
+                    property.setterMethodName?.let { accessorName ->
+                        AuthoredVtableMethod(
+                            method = WinRtMethodDefinition(
+                                name = accessorName,
+                                returnTypeName = "Void",
+                                parameters = listOf(
+                                    WinRtParameterDefinition("value", property.typeName, typeSignature = property.type),
+                                ),
+                                methodRowId = property.setterMethodRowId,
+                            ),
+                            property = property,
+                            propertyAccessor = PropertyAccessor.Setter,
+                        )
+                    },
+                )
+            }
+        val accessorNames = accessors.mapTo(mutableSetOf()) { accessor -> accessor.method.name }
+        return (methods.filterNot { method -> method.isStatic || method.name in accessorNames }.map(::AuthoredVtableMethod) + accessors)
+            .sortedWith(compareBy<AuthoredVtableMethod>({ it.method.methodRowId ?: Int.MAX_VALUE }, { it.method.authoringSignatureKey() }))
+    }
+
+    private data class AuthoredVtableMethod(
+        val method: WinRtMethodDefinition,
+        val property: WinRtPropertyDefinition? = null,
+        val propertyAccessor: PropertyAccessor? = null,
+    )
+
+    private enum class PropertyAccessor {
+        Getter,
+        Setter,
+    }
+
+    private fun WinRtMethodDefinition.authoringSignatureKey(): String =
+        buildString {
+            append(if (isStatic) 'S' else 'I')
+            append('|')
+            append(name)
+            append('|')
+            append(returnType.normalized().typeName)
+            append('|')
+            append(parameters.joinToString(",") { parameter ->
+                "${parameter.name}:${parameter.type.normalized().typeName}:${parameter.direction}:${parameter.isInParameter}:${parameter.isOutParameter}"
+            })
+        }
 
     private fun authoredDispatchTarget(
         candidate: KotlinWinRtAuthoredTypeCandidate,
@@ -1810,6 +1898,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun projectedMethodName(method: WinRtMethodDefinition): String =
         method.name.replaceFirstChar(Char::lowercase)
+
+    private fun projectedPropertyName(property: WinRtPropertyDefinition): String =
+        property.name.replaceFirstChar(Char::lowercase)
 
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"

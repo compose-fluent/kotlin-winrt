@@ -257,13 +257,7 @@ class KotlinProjectionGenerator(
     }
 
     private fun authoredProjectedTypeNames(model: WinRtMetadataModel): Set<String> =
-        if (!projectionContext.component) {
-            suppressedProjectionTypeNames
-        } else {
-            model.projectionInventory(projectionContext)
-                .authoredMetadataTypeMappings
-                .mapTo(suppressedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
-        }
+        suppressedProjectionTypeNames
 
     private fun WinRtMetadataModel.withoutExcludedProjectionSurfaceReferences(): WinRtMetadataModel {
         val excludedProjectionSurfaceNames = projectionContext.excludedTypes

@@ -310,6 +310,52 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_keeps_authored_default_interfaces_rendered_for_package_grouped_component_output() {
+        val outputRoot = Files.createTempDirectory("kotlin-winrt-authored-default-interface-")
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "GetName", returnTypeName = "String", methodRowId = 6),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            suppressedProjectionTypeNames = setOf("Sample.Foundation.Widget"),
+            groupProjectionFilesByPackageOnWrite = true,
+        ).generateTo(model, outputRoot)
+
+        val groupedPackageFile = outputRoot.resolve("sample/foundation/sample_foundation.kt").toFile().readText()
+        val ccwFactories = outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinRTAuthoringCcwFactories.kt").toFile().readText()
+
+        assertTrue(groupedPackageFile, groupedPackageFile.contains("public interface IWidget"))
+        assertFalse(groupedPackageFile, groupedPackageFile.contains("public class Widget"))
+        assertTrue(ccwFactories, ccwFactories.contains("IWidget.Metadata.IID"))
+    }
+
+    @Test
     fun support_renderer_rejects_authoring_activation_factory_member_references_with_missing_factory_interface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

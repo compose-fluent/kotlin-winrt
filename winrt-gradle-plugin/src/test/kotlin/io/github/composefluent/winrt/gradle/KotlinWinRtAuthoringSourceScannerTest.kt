@@ -15,6 +15,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
+import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
@@ -1403,6 +1404,74 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("Char).code.toShort()"))
         assertTrue(generated.contains("(__result as UInt).toInt()"))
         assertTrue(generated.contains("PlatformAbi.writeFloat("))
+    }
+
+    @Test
+    fun renders_authored_interface_property_accessors_in_vtable_order() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-property-accessor-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalJsonValue",
+            sourceTypeName = "sample.LocalJsonValue",
+            winRtBaseClassName = null,
+            winRtInterfaceNames = listOf("Sample.IJsonValue"),
+            overridableInterfaceNames = emptyList(),
+            isPublic = true,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "JsonValueType",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("String", 3u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IJsonValue",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "ValueType",
+                                    typeName = "Sample.JsonValueType",
+                                    getterMethodName = "get_ValueType",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Stringify",
+                                    returnTypeName = "System.String",
+                                    methodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalJsonValue_TypeDetails.kt").readText()
+        val getterIndex = generated.indexOf("(value as LocalJsonValue).valueType")
+        val methodIndex = generated.indexOf("(value as LocalJsonValue).stringify()")
+        assertTrue(generated, getterIndex >= 0)
+        assertTrue(generated, methodIndex > getterIndex)
+        assertTrue(generated, generated.contains("JsonValueType.Metadata.toAbi(__result"))
+        assertTrue(generated, generated.contains("as JsonValueType)"))
+        assertFalse(generated, generated.contains("(value as LocalJsonValue).get_ValueType()"))
     }
 
     @Test

@@ -13,6 +13,7 @@ winRt {
     windowsSdk(generateProjection = true)
     type("Windows.Foundation.IClosable")
     type("Windows.Foundation.IStringable")
+    type("Windows.Data.Json.IJsonValue")
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
@@ -36,6 +37,7 @@ val verifyNativeAuthoringComponentFixture by tasks.registering(
         listOf(
             "sample.NativeClosableThing",
             "sample.NativeStringableThing",
+            "sample.NativeJsonValueThing",
         ),
     )
     expectedDllName.set("native_component_fixture.dll")
