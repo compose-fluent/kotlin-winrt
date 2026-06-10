@@ -1,7 +1,9 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.writeString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -51,6 +53,43 @@ class ActivationFactoryTest {
             )
         } finally {
             runCatching { SystemFileSystem.delete(asset) }
+        }
+    }
+
+    @Test
+    fun authoring_host_manifest_activation_maps_runtime_classes_to_native_dll_targets() {
+        val runtimeAssetsRoot = Path("build/kotlin-winrt/runtime-assets")
+        val manifest = Path("build/kotlin-winrt/runtime-assets/runtime-test-authoring-host.host.json")
+        SystemFileSystem.createDirectories(runtimeAssetsRoot)
+        SystemFileSystem.sink(manifest).buffered().use { sink ->
+            sink.writeString(
+                """
+                {
+                  "assemblyName": "runtime-test-authoring-host",
+                  "hostExportsClass": "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_runtime_test",
+                  "targetArtifact": "runtime_test_authoring_host.dll",
+                  "activatableClasses": ["test.RuntimeDefaultTargetThing"],
+                  "activatableClassTargets": {
+                    "test.RuntimeExplicitTargetThing": "runtime_test_authoring_host.dll",
+                    "test.RuntimeJvmOnlyThing": "runtime-test-authoring-host.jar"
+                  }
+                }
+                """.trimIndent(),
+            )
+        }
+        try {
+            assertEquals(
+                listOf("runtime_test_authoring_host.dll"),
+                AuthoringHostManifestActivation.targetDllNamesFor("test.RuntimeDefaultTargetThing"),
+            )
+            assertEquals(
+                listOf("runtime_test_authoring_host.dll"),
+                AuthoringHostManifestActivation.targetDllNamesFor("test.RuntimeExplicitTargetThing"),
+            )
+            assertEquals(emptyList(), AuthoringHostManifestActivation.targetDllNamesFor("test.RuntimeJvmOnlyThing"))
+            assertEquals(emptyList(), AuthoringHostManifestActivation.targetDllNamesFor("test.RuntimeMissingThing"))
+        } finally {
+            runCatching { SystemFileSystem.delete(manifest) }
         }
     }
 

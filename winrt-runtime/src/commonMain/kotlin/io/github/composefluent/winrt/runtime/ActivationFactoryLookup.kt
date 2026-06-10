@@ -31,6 +31,11 @@ internal object RawActivationFactoryLookup {
             }
         }
 
+        val hostManifestFactory = AuthoringHostManifestActivation.tryGet(runtimeClassName, interfaceId)
+        if (hostManifestFactory.isSuccess || hostManifestFactory.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+            return hostManifestFactory
+        }
+
         return ManifestFreeActivation.tryGet(runtimeClassName, interfaceId)
     }
 }

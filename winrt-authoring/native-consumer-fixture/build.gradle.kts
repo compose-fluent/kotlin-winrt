@@ -6,7 +6,13 @@ plugins {
 description = "Kotlin/WinRT native authoring dependency staging validation fixture"
 
 kotlin {
-    mingwX64()
+    mingwX64 {
+        binaries {
+            executable {
+                entryPoint = "sample.consumer.main"
+            }
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -24,12 +30,17 @@ winRt {
     }
 }
 
+tasks.named("runReleaseExecutableMingwX64") {
+    dependsOn("stageWinRtRuntimeAssets")
+}
+
 val verifyNativeAuthoringConsumerFixture by tasks.registering(
     io.github.composefluent.winrt.gradle.VerifyWinRtNativeAuthoringConsumerFixtureTask::class,
 ) {
     group = "verification"
-    description = "Validates staging of native authored dependency artifacts through identity metadata."
+    description = "Validates staging and runtime activation of native authored dependency artifacts."
     dependsOn("stageWinRtRuntimeAssets")
+    dependsOn("runReleaseExecutableMingwX64")
     runtimeAssetsRoot.set(layout.buildDirectory.dir("kotlin-winrt/runtime-assets"))
     expectedDllName.set("native_component_fixture.dll")
     expectedWinmdName.set("native-component-fixture.winmd")
