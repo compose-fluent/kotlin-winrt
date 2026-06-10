@@ -326,7 +326,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         )
 
         assertEquals(
-            "sample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\ttrue\n",
+            "sample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\ttrue\t\t\n",
             output.readText(),
         )
     }

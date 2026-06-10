@@ -6277,14 +6277,14 @@ class KotlinWinRtPluginTest {
                     val authoredCandidateRows = authoredCandidates.readLines()
                     check(
                         authoredCandidateRows.contains(
-                            "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t\tfalse",
+                            "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t\tfalse\t\t",
                         ),
                     ) {
                         "Expected internal authored candidate with non-public visibility in: " + authoredCandidateRows
                     }
                     check(
                         authoredCandidateRows.contains(
-                            "sample\tPublicStringableThing\tsample.PublicStringableThing\t\tWindows.Foundation.IStringable\t\ttrue",
+                            "sample\tPublicStringableThing\tsample.PublicStringableThing\t\tWindows.Foundation.IStringable\t\ttrue\t\t",
                         ),
                     ) {
                         "Expected public authored candidate with public visibility in: " + authoredCandidateRows
