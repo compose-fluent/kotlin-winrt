@@ -14475,6 +14475,7 @@ class KotlinProjectionGeneratorTest {
                             activation = WinRtActivationShape(
                                 isActivatable = true,
                                 activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
                             ),
                             implementedInterfaces = listOf(
                                 io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
@@ -14500,6 +14501,22 @@ class KotlinProjectionGeneratorTest {
                                     name = "CreateInstance",
                                     returnTypeName = "Sample.Foundation.Widget",
                                     methodRowId = 13,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Describe",
+                                    returnTypeName = "String",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("prefix", "String"),
+                                    ),
+                                    methodRowId = 14,
                                 ),
                             ),
                         ),
@@ -14863,7 +14880,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringWrapperPlan.contains("metadataTypeName = \"ABI.Sample.Foundation.Widget\""))
         assertTrue(authoringWrapperPlan.contains("defaultInterfaceName = \"Sample.Foundation.IWidget\""))
         assertTrue(authoringWrapperPlan.contains("implementedInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
-        assertTrue(authoringWrapperPlan.contains("factoryMemberNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
+        val widgetWrapperEntry = authoringWrapperPlan.substringAfter("projectedTypeName = \"Sample.Foundation.Widget\"")
+            .substringBefore("AuthoringWrapperEntry(")
+        assertTrue(widgetWrapperEntry.contains("\"Sample.Foundation.IWidgetFactory\""))
+        assertTrue(widgetWrapperEntry.contains("\"Sample.Foundation.IWidgetStatics\""))
         assertTrue(authoringWrapperPlan.contains("fun wrapperForProjectedType("))
         assertTrue(authoringWrapperPlan.contains("projectedTypeName: String"))
         assertTrue(authoringWrapperPlan.contains("AuthoringWrapperEntry?"))
@@ -14976,11 +14996,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetActivationEntry.contains("serverFactoryTypeName = \"ABI.Sample.Foundation.WidgetServerActivationFactory\""))
         assertTrue(widgetActivationEntry.contains("isActivatable = false"))
         assertTrue(widgetActivationEntry.contains("implementsIActivationFactory = true"))
-        assertTrue(widgetActivationEntry.contains("factoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
+        val widgetFactoryInterfaceNames = widgetActivationEntry
+            .substringAfter("factoryInterfaceNames = listOf(")
+            .substringBefore(")")
+        assertTrue(widgetFactoryInterfaceNames.contains("\"Sample.Foundation.IWidgetFactory\""))
+        assertTrue(widgetFactoryInterfaceNames.contains("\"Sample.Foundation.IWidgetStatics\""))
         assertTrue(widgetActivationEntry.contains("activatableFactoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
-        assertTrue(widgetActivationEntry.contains("staticFactoryInterfaceNames = emptyList()"))
+        assertTrue(widgetActivationEntry.contains("staticFactoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetStatics\")"))
         assertTrue(widgetActivationEntry.contains("activatableFactoryMemberNames = listOf(\"Sample.Foundation.IWidgetFactory.CreateInstance\")"))
-        assertTrue(widgetActivationEntry.contains("staticFactoryMemberNames = emptyList()"))
+        assertTrue(widgetActivationEntry.contains("staticFactoryMemberNames = listOf(\"Sample.Foundation.IWidgetStatics.Describe\")"))
         assertTrue(widgetActivationEntry.contains("composableFactoryMemberNames = emptyList()"))
         assertTrue(widgetActivationEntry.contains("makeMethod = \"MarshalInspectable.CreateMarshaler2(IID.IActivationFactory).Detach\""))
         assertTrue(widgetActivationEntry.contains("activateInstanceBehavior = \"notImplemented\""))
@@ -15014,8 +15038,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(serverActivationFactories.contains("fun factoryInterfaces()"))
         assertTrue(serverActivationFactories.contains("WinRtInspectableInterfaceDefinition"))
         assertTrue(serverActivationFactories.contains("IWidgetFactory.Metadata.IID"))
+        assertTrue(serverActivationFactories.contains("IWidgetStatics.Metadata.IID"))
         assertTrue(serverActivationFactories.contains("WinRtInspectableMethodDefinition"))
         assertTrue(serverActivationFactories.contains("val __result = Widget("))
+        assertTrue(serverActivationFactories.contains("val __result = Widget.describe(prefix)"))
+        assertFalse(serverActivationFactories.contains("val __result = Widget(prefix)"))
         assertTrue(serverActivationFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
         assertTrue(serverActivationFactories.contains("_ServerActivationFactory_Sample_Foundation_Widget()"))
         assertTrue(serverActivationFactories.contains("ComWrappersSupport.createCCWForActivationFactory"))

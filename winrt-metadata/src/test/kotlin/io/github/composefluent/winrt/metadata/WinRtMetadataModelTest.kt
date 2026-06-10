@@ -2877,6 +2877,15 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("Sample.Foundation.IWidgetFactory"), factory.constructorFactories)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), factory.staticMemberTargets)
         assertEquals(64, factory.gcPressureAmount)
+        val activationStaticOnlyFactory = helpers.factorySurfaceDescriptor(
+            widget.copy(
+                activation = WinRtActivationShape(
+                    staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                ),
+            ),
+        )
+        assertEquals(listOf("Sample.Foundation.IWidgetStatics"), activationStaticOnlyFactory.staticMemberTargets)
+        assertEquals(listOf("Sample_Foundation_IWidgetStaticsCache"), activationStaticOnlyFactory.staticFactoryCacheNames)
 
         val mapped = helpers.customMappedMemberOutputDescriptor(bindableVector)
         assertEquals("Microsoft.UI.Xaml.Interop.IBindableVector", mapped?.interfaceTypeName)

@@ -1648,11 +1648,11 @@ class KotlinProjectionSupportRenderer {
         val projectedType = ClassName(plan.packageName, plan.type.name)
         val isActivatable = authoredRuntimeClassHasDefaultActivation(plan, semanticHelpers)
         val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
-        val factoryInterfaceNames = (factory.constructorFactories + factory.staticMemberTargets).distinct().sorted()
+        val factoryInterfaces = authoringServerFactoryInterfaces(factory)
         return TypeSpec.classBuilder(authoringServerActivationFactoryClassName(plan))
             .addModifiers(KModifier.INTERNAL)
             .addSuperinterface(WINRT_ACTIVATION_FACTORY_CLASS_NAME)
-            .addFunction(authoringServerActivationFactoryInterfacesFunction(plan, factoryInterfaceNames, plansByQualifiedName))
+            .addFunction(authoringServerActivationFactoryInterfacesFunction(plan, factoryInterfaces, plansByQualifiedName))
             .addFunction(
                 FunSpec.builder("activateInstance")
                     .addModifiers(KModifier.OVERRIDE)
@@ -1675,16 +1675,17 @@ class KotlinProjectionSupportRenderer {
 
     private fun authoringServerActivationFactoryInterfacesFunction(
         plan: KotlinTypeProjectionPlan,
-        factoryInterfaceNames: List<String>,
+        factoryInterfaces: List<AuthoringServerFactoryInterface>,
         plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
     ): FunSpec {
         val code = CodeBlock.builder()
-        if (factoryInterfaceNames.isEmpty()) {
+        if (factoryInterfaces.isEmpty()) {
             code.add("return emptyList()\n")
         } else {
             code.add("return listOf(\n")
             code.indent()
-            factoryInterfaceNames.forEach { interfaceName ->
+            factoryInterfaces.forEach { factoryInterface ->
+                val interfaceName = factoryInterface.name
                 val rawInterfaceName = interfaceName.substringBefore('<')
                 val interfacePlan = plansByQualifiedName[rawInterfaceName]
                     ?: throw IllegalArgumentException(
@@ -1693,7 +1694,7 @@ class KotlinProjectionSupportRenderer {
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
-                code.add("methods = %L,\n", authoringServerFactoryInterfaceMethodsCode(plan, interfacePlan))
+                code.add("methods = %L,\n", authoringServerFactoryInterfaceMethodsCode(plan, interfacePlan, factoryInterface.kind))
                 code.unindent()
                 code.add("),\n")
             }
@@ -1709,6 +1710,7 @@ class KotlinProjectionSupportRenderer {
     private fun authoringServerFactoryInterfaceMethodsCode(
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
+        kind: AuthoringServerFactoryInterfaceKind,
     ): CodeBlock {
         if (interfacePlan.instanceMemberBindings.isEmpty()) {
             return CodeBlock.of("emptyList()")
@@ -1732,7 +1734,7 @@ class KotlinProjectionSupportRenderer {
             code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
             code.add("handler = { rawArgs ->\n")
             code.indent()
-            code.add("%L", authoringServerFactoryMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
+            code.add("%L", authoringServerFactoryMethodHandlerCode(runtimeClassPlan, interfacePlan, binding, kind))
             code.unindent()
             code.add("},\n")
             code.unindent()
@@ -1747,6 +1749,7 @@ class KotlinProjectionSupportRenderer {
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
+        kind: AuthoringServerFactoryInterfaceKind,
     ): CodeBlock {
         val method = interfacePlan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
@@ -1770,20 +1773,13 @@ class KotlinProjectionSupportRenderer {
                 authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
-        code.add("val __result = %T(", projectedType)
-        binding.parameterBindings
-            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
-            .forEachIndexed { index, parameter ->
-                if (index > 0) {
-                    code.add(", ")
-                }
-                code.add("%L", parameter.name)
-            }
-        code.add(")\n")
+        val invocation = authoringServerFactoryInvocationCode(projectedType, method, binding, receiveArrayParameterName, kind)
         val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
         if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            code.add("%L\n", invocation)
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else {
+            code.add("val __result = %L\n", invocation)
             val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
             code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
@@ -1795,6 +1791,31 @@ class KotlinProjectionSupportRenderer {
         code.add("%T.hResultFromException(error).value\n", EXCEPTION_HELPERS_CLASS_NAME)
         code.unindent()
         code.add("}\n")
+        return code.build()
+    }
+
+    private fun authoringServerFactoryInvocationCode(
+        projectedType: ClassName,
+        method: WinRtMethodDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+        receiveArrayParameterName: String?,
+        kind: AuthoringServerFactoryInterfaceKind,
+    ): CodeBlock {
+        val target = when (kind) {
+            AuthoringServerFactoryInterfaceKind.Constructor -> CodeBlock.of("%T", projectedType)
+            AuthoringServerFactoryInterfaceKind.Static -> CodeBlock.of("%T.%L", projectedType, method.projectedMethodName())
+        }
+        val code = CodeBlock.builder()
+        code.add("%L(", target)
+        binding.parameterBindings
+            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
+            .forEachIndexed { index, parameter ->
+                if (index > 0) {
+                    code.add(", ")
+                }
+                code.add("%L", parameter.name)
+            }
+        code.add(")")
         return code.build()
     }
 
@@ -1840,6 +1861,17 @@ class KotlinProjectionSupportRenderer {
         "_ServerActivationFactory_" + plan.type.qualifiedName
             .replace('.', '_')
             .replace('`', '_')
+
+    private fun authoringServerFactoryInterfaces(
+        factory: WinRtFactorySurfaceDescriptor,
+    ): List<AuthoringServerFactoryInterface> =
+        (factory.constructorFactories.map {
+            AuthoringServerFactoryInterface(it, AuthoringServerFactoryInterfaceKind.Constructor)
+        } + factory.staticMemberTargets.map {
+            AuthoringServerFactoryInterface(it, AuthoringServerFactoryInterfaceKind.Static)
+        })
+            .distinctBy { it.name to it.kind }
+            .sortedWith(compareBy<AuthoringServerFactoryInterface> { it.name }.thenBy { it.kind.name })
 
     private fun authoringWrapperObject(plan: KotlinTypeProjectionPlan): TypeSpec {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
@@ -3814,4 +3846,14 @@ class KotlinProjectionSupportRenderer {
         const val TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR = "\u001F"
         const val WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME = "Windows.Foundation.IStringable"
     }
+}
+
+private data class AuthoringServerFactoryInterface(
+    val name: String,
+    val kind: AuthoringServerFactoryInterfaceKind,
+)
+
+private enum class AuthoringServerFactoryInterfaceKind {
+    Constructor,
+    Static,
 }

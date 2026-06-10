@@ -1657,14 +1657,18 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun factorySurfaceDescriptor(type: WinRtTypeDefinition): WinRtFactorySurfaceDescriptor {
         val attributed = getAttributedTypes(type)
+        val staticMemberTargets = (
+            attributed.filter(WinRtAttributedFactoryDescriptor::statics).map(WinRtAttributedFactoryDescriptor::interfaceName) +
+                type.activation.staticInterfaceNames
+            ).distinct().sorted()
         return WinRtFactorySurfaceDescriptor(
             classTypeName = type.qualifiedName,
             defaultInterfaceName = getDefaultInterface(type)?.normalized()?.typeName,
             activationFactoryCacheName = "${type.name.substringBefore('`')}ActivationFactory",
-            staticFactoryCacheNames = attributed.filter(WinRtAttributedFactoryDescriptor::statics).map { cacheNameFor(it.interfaceName) },
+            staticFactoryCacheNames = staticMemberTargets.map { cacheNameFor(it) },
             constructorFactories = attributed.filter(WinRtAttributedFactoryDescriptor::activatable).map(WinRtAttributedFactoryDescriptor::interfaceName),
             composableFactories = attributed.filter(WinRtAttributedFactoryDescriptor::composable).map(WinRtAttributedFactoryDescriptor::interfaceName),
-            staticMemberTargets = attributed.filter(WinRtAttributedFactoryDescriptor::statics).map(WinRtAttributedFactoryDescriptor::interfaceName),
+            staticMemberTargets = staticMemberTargets,
             gcPressureAmount = getGcPressureAmount(type),
         )
     }
