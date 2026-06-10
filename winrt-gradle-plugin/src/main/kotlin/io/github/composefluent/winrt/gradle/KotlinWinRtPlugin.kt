@@ -55,13 +55,18 @@ private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefl
 private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRtLibraryDependencyIdentity"
 
 private fun configureWinRtRuntimeDependency(project: Project) {
-    val configuredConfigurations = mutableSetOf<String>()
+    val configuredRuntimeConfigurations = mutableSetOf<String>()
+    val configuredAuthoringConfigurations = mutableSetOf<String>()
     fun addRuntimeDependency(configurationName: String) {
-        if (configuredConfigurations.add(configurationName)) {
+        if (configuredRuntimeConfigurations.add(configurationName)) {
             project.dependencies.add(
                 configurationName,
                 kotlinWinRtRuntimeDependency(project),
             )
+        }
+    }
+    fun addAuthoringDependency(configurationName: String) {
+        if (configuredAuthoringConfigurations.add(configurationName)) {
             project.dependencies.add(
                 configurationName,
                 kotlinWinRtAuthoringDependency(project),
@@ -75,7 +80,18 @@ private fun configureWinRtRuntimeDependency(project: Project) {
         }
         .configureEach { configuration ->
             addRuntimeDependency(configuration.name)
+            if (configuration.name == "implementation") {
+                addAuthoringDependency(configuration.name)
+            }
         }
+    project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        project.extensions.configure(KotlinMultiplatformExtension::class.java) { kotlin ->
+            kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+                val sourceSet = target.compilations.getByName("main").defaultSourceSet
+                addAuthoringDependency(sourceSet.implementationConfigurationName)
+            }
+        }
+    }
 }
 
 private fun configureWinRtLibraryModel(

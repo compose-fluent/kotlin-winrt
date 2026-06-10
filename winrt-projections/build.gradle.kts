@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("io.github.composefluent.winrt")
 }
@@ -14,6 +14,11 @@ val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projectio
 val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.projections.includeFullWindowsSdk")
     .map(String::toBooleanStrict)
     .orElse(false)
+
+kotlin {
+    jvm()
+    mingwX64()
+}
 
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)

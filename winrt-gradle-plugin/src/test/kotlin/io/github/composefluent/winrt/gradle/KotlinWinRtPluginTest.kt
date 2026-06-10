@@ -423,6 +423,18 @@ class KotlinWinRtPluginTest {
 
         val implementationDependencies = project.configurations.getByName("commonMainImplementation").dependencies
         assertHasKotlinWinRtRuntimeDependency(implementationDependencies)
+        assertDoesNotHaveKotlinWinRtAuthoringDependency(implementationDependencies)
+    }
+
+    @Test
+    fun plugin_adds_authoring_dependency_to_kmp_jvm_main() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val implementationDependencies = project.configurations.getByName("winuiJvmMainImplementation").dependencies
         assertHasKotlinWinRtAuthoringDependency(implementationDependencies)
     }
 
@@ -8102,6 +8114,18 @@ private fun assertHasKotlinWinRtAuthoringDependency(dependencies: Iterable<Depen
             dependency.name == "winrt-authoring" ||
                 dependency is ProjectDependency && dependency.path == ":winrt-authoring" ||
                 dependency is FileCollectionDependency
+        },
+    )
+}
+
+private fun assertDoesNotHaveKotlinWinRtAuthoringDependency(dependencies: Iterable<Dependency>) {
+    assertFalse(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
+        },
+        dependencies.any { dependency ->
+            dependency.name == "winrt-authoring" ||
+                dependency is ProjectDependency && dependency.path == ":winrt-authoring"
         },
     )
 }

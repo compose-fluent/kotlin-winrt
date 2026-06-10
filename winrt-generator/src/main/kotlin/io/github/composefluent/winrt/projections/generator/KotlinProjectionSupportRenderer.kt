@@ -235,9 +235,10 @@ class KotlinProjectionSupportRenderer {
             package $packageName
 
             import io.github.composefluent.winrt.runtime.ExceptionHelpers
-            import java.util.concurrent.RejectedExecutionException
+            import io.github.composefluent.winrt.runtime.WinRtProjectionLock
             import kotlin.coroutines.CoroutineContext
             import kotlinx.coroutines.CoroutineDispatcher
+            import kotlinx.coroutines.Runnable
 
             /**
              * Projection-owned coroutine dispatcher corresponding to CsWinRT's
@@ -250,7 +251,7 @@ class KotlinProjectionSupportRenderer {
             public class DispatcherQueueCoroutineDispatcher(
               private val dispatcherQueue: ${dispatcherQueueType.simpleName},
             ) : CoroutineDispatcher() {
-              private val lock: Any = Any()
+              private val lock: WinRtProjectionLock = WinRtProjectionLock()
               private val pendingPosts: MutableList<() -> Unit> = mutableListOf()
               private var drainScheduled: Boolean = false
               private val drainHandler: ${dispatcherQueueHandlerType.simpleName} = ${dispatcherQueueHandlerType.simpleName} {
@@ -260,13 +261,13 @@ class KotlinProjectionSupportRenderer {
               override fun dispatch(context: CoroutineContext, block: Runnable) {
                 if (!post { block.run() }) {
                   ExceptionHelpers.reportUnhandledError(
-                    RejectedExecutionException("DispatcherQueue.TryEnqueue returned false."),
+                    IllegalStateException("DispatcherQueue.TryEnqueue returned false."),
                   )
                 }
               }
 
               public fun post(action: () -> Unit): Boolean {
-                val shouldSchedule = synchronized(lock) {
+                val shouldSchedule = lock.withLock {
                   pendingPosts += action
                   if (drainScheduled) {
                     false
@@ -281,7 +282,7 @@ class KotlinProjectionSupportRenderer {
                 if (dispatcherQueue.tryEnqueue(drainHandler)) {
                   return true
                 }
-                synchronized(lock) {
+                lock.withLock {
                   pendingPosts.remove(action)
                   if (pendingPosts.isEmpty()) {
                     drainScheduled = false
@@ -295,7 +296,7 @@ class KotlinProjectionSupportRenderer {
 
               private fun drain() {
                 while (true) {
-                  val action = synchronized(lock) {
+                  val action = lock.withLock {
                     if (pendingPosts.isEmpty()) {
                       drainScheduled = false
                       null
