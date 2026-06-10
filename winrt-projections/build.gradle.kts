@@ -17,6 +17,7 @@ val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.proj
 val fullWindowsSdkProjectionGateRequested = providers.provider {
     val fullWindowsSdkGateTasks = setOf(
         "validateWinRtFullWindowsSdkProjectionGate",
+        "validateWinRtMingwParity",
         "validateWinRtProjectionCompile",
         "validateWinRtSampleSmoke",
         "validateWinRtQueue16",
