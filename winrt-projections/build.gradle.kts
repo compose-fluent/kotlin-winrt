@@ -116,4 +116,6 @@ winRt {
     )
     runtimeAsset(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.dll").asFile.absolutePath)
     type("Windows.Foundation.IStringable")
+    type("Windows.Storage.ApplicationData")
+    type("Windows.Storage.KnownFolders")
 }
