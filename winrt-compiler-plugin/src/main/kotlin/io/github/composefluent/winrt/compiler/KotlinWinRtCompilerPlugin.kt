@@ -76,6 +76,8 @@ import org.jetbrains.kotlin.ir.builders.irGetObject
 import org.jetbrains.kotlin.ir.builders.irEquals
 import org.jetbrains.kotlin.ir.builders.irIfThen
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
+import org.jetbrains.kotlin.ir.builders.irBranch
+import org.jetbrains.kotlin.ir.builders.irElseBranch
 import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irNotEquals
 import org.jetbrains.kotlin.ir.builders.irNull
@@ -83,6 +85,7 @@ import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
 import org.jetbrains.kotlin.ir.builders.irUnit
+import org.jetbrains.kotlin.ir.builders.irWhen
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl
@@ -4859,22 +4862,25 @@ class KotlinWinRtIrGenerationExtension(
         val delegateNamedBuilder = DeclarationIrBuilder(pluginContext, delegateNamed.symbol)
         val nameParameter = delegateNamed.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
         delegateNamed.body = delegateNamedBuilder.irBlockBody {
-            +delegates.asReversed().fold(delegateNamedBuilder.irNull() as IrExpression) { elsePart, entry ->
-                delegateNamedBuilder.irIfThenElse(
-                    type = delegateNamed.returnType,
-                    condition = delegateNamedBuilder.irEquals(
-                        delegateNamedBuilder.irGet(nameParameter),
-                        delegateNamedBuilder.irString(entry.name),
-                    ),
-                    thenPart = delegateNamedBuilder.genericAbiDelegateEntryCall(
-                        pluginContext = pluginContext,
-                        entryConstructor = entryConstructor,
-                        listOf = listOf,
-                        entry = entry,
-                    ),
-                    elsePart = elsePart,
+            +delegateNamedBuilder.irWhen(
+                type = delegateNamed.returnType,
+                branches = delegates.map { entry ->
+                    delegateNamedBuilder.irBranch(
+                        condition = delegateNamedBuilder.irEquals(
+                            delegateNamedBuilder.irGet(nameParameter),
+                            delegateNamedBuilder.irString(entry.name),
+                        ),
+                        result = delegateNamedBuilder.genericAbiDelegateEntryCall(
+                            pluginContext = pluginContext,
+                            entryConstructor = entryConstructor,
+                            listOf = listOf,
+                            entry = entry,
+                        ),
+                    )
+                } + delegateNamedBuilder.irElseBranch(
+                    delegateNamedBuilder.irNull(delegateNamed.returnType),
                 )
-            }
+            )
         }
 
         val delegatesForSourceType = pluginContext.irFactory.buildFun {
@@ -4897,24 +4903,25 @@ class KotlinWinRtIrGenerationExtension(
             delegatesForSourceType.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
         val delegatesBySourceType = delegates.groupBy { entry -> entry.sourceGenericType }.toSortedMap()
         delegatesForSourceType.body = delegatesForSourceTypeBuilder.irBlockBody {
-            +delegatesBySourceType.entries.toList().asReversed().fold(
-                delegatesForSourceTypeBuilder.irCall(emptyList) as IrExpression,
-            ) { elsePart, (sourceGenericType, sourceEntries) ->
-                delegatesForSourceTypeBuilder.irIfThenElse(
-                    type = delegatesForSourceType.returnType,
-                    condition = delegatesForSourceTypeBuilder.irEquals(
-                        delegatesForSourceTypeBuilder.irGet(sourceGenericTypeParameter),
-                        delegatesForSourceTypeBuilder.irString(sourceGenericType),
-                    ),
-                    thenPart = delegatesForSourceTypeBuilder.genericAbiDelegateEntryList(
-                        pluginContext = pluginContext,
-                        entryConstructor = entryConstructor,
-                        listOf = listOf,
-                        entries = sourceEntries,
-                    ),
-                    elsePart = elsePart,
+            +delegatesForSourceTypeBuilder.irWhen(
+                type = delegatesForSourceType.returnType,
+                branches = delegatesBySourceType.entries.map { (sourceGenericType, sourceEntries) ->
+                    delegatesForSourceTypeBuilder.irBranch(
+                        condition = delegatesForSourceTypeBuilder.irEquals(
+                            delegatesForSourceTypeBuilder.irGet(sourceGenericTypeParameter),
+                            delegatesForSourceTypeBuilder.irString(sourceGenericType),
+                        ),
+                        result = delegatesForSourceTypeBuilder.genericAbiDelegateEntryList(
+                            pluginContext = pluginContext,
+                            entryConstructor = entryConstructor,
+                            listOf = listOf,
+                            entries = sourceEntries,
+                        ),
+                    )
+                } + delegatesForSourceTypeBuilder.irElseBranch(
+                    delegatesForSourceTypeBuilder.irCall(emptyList),
                 )
-            }
+            )
         }
 
         val isDerivedGenericInterface = pluginContext.irFactory.buildFun {
@@ -4935,17 +4942,20 @@ class KotlinWinRtIrGenerationExtension(
         val isDerivedGenericInterfaceBuilder = DeclarationIrBuilder(pluginContext, isDerivedGenericInterface.symbol)
         val typeNameParameter = isDerivedGenericInterface.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
         isDerivedGenericInterface.body = isDerivedGenericInterfaceBuilder.irBlockBody {
-            +derivedInterfaces.asReversed().fold(isDerivedGenericInterfaceBuilder.irBoolean(false) as IrExpression) { elsePart, typeName ->
-                isDerivedGenericInterfaceBuilder.irIfThenElse(
-                    type = isDerivedGenericInterface.returnType,
-                    condition = isDerivedGenericInterfaceBuilder.irEquals(
-                        isDerivedGenericInterfaceBuilder.irGet(typeNameParameter),
-                        isDerivedGenericInterfaceBuilder.irString(typeName),
-                    ),
-                    thenPart = isDerivedGenericInterfaceBuilder.irBoolean(true),
-                    elsePart = elsePart,
+            +isDerivedGenericInterfaceBuilder.irWhen(
+                type = isDerivedGenericInterface.returnType,
+                branches = derivedInterfaces.map { typeName ->
+                    isDerivedGenericInterfaceBuilder.irBranch(
+                        condition = isDerivedGenericInterfaceBuilder.irEquals(
+                            isDerivedGenericInterfaceBuilder.irGet(typeNameParameter),
+                            isDerivedGenericInterfaceBuilder.irString(typeName),
+                        ),
+                        result = isDerivedGenericInterfaceBuilder.irBoolean(true),
+                    )
+                } + isDerivedGenericInterfaceBuilder.irElseBranch(
+                    isDerivedGenericInterfaceBuilder.irBoolean(false),
                 )
-            }
+            )
         }
 
         val registerAbiDelegates = pluginContext.irFactory.buildFun {
