@@ -11023,6 +11023,7 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model).single()
 
         assertFalse(file.contents, file.contents.contains("import java.net.URI"))
+        assertFalse(file.contents, file.contents.contains("import java.util.NoSuchElementException"))
         assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRtUri"))
         assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRtAsyncActionReference"))
         assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference"))
@@ -17863,6 +17864,8 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("Iterator<String>,"))
+        assertFalse(contents, contents.contains("import java.util.NoSuchElementException"))
+        assertTrue(contents, contents.contains("throw NoSuchElementException()"))
         assertTrue(contents, contents.contains("override fun hasNext(): Boolean"))
         assertTrue(contents, contents.contains("override fun next(): String"))
         assertTrue(contents, contents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
