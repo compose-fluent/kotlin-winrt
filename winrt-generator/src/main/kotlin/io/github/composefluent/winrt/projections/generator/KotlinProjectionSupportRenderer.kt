@@ -1497,8 +1497,9 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val fileBuilder = supportFileSpec(authoringServerActivationFactoriesClassName.simpleName)
+        val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
-            fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers))
+            fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers, plansByQualifiedName))
         }
         fileBuilder.addType(
             TypeSpec.objectBuilder(authoringServerActivationFactoriesClassName.simpleName)
@@ -1642,12 +1643,16 @@ class KotlinProjectionSupportRenderer {
     private fun authoringServerActivationFactoryClass(
         plan: KotlinTypeProjectionPlan,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
     ): TypeSpec {
         val projectedType = ClassName(plan.packageName, plan.type.name)
         val isActivatable = authoredRuntimeClassHasDefaultActivation(plan, semanticHelpers)
+        val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
+        val factoryInterfaceNames = (factory.constructorFactories + factory.staticMemberTargets).distinct().sorted()
         return TypeSpec.classBuilder(authoringServerActivationFactoryClassName(plan))
             .addModifiers(KModifier.INTERNAL)
             .addSuperinterface(WINRT_ACTIVATION_FACTORY_CLASS_NAME)
+            .addFunction(authoringServerActivationFactoryInterfacesFunction(plan, factoryInterfaceNames, plansByQualifiedName))
             .addFunction(
                 FunSpec.builder("activateInstance")
                     .addModifiers(KModifier.OVERRIDE)
@@ -1668,6 +1673,131 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
+    private fun authoringServerActivationFactoryInterfacesFunction(
+        plan: KotlinTypeProjectionPlan,
+        factoryInterfaceNames: List<String>,
+        plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
+    ): FunSpec {
+        val code = CodeBlock.builder()
+        if (factoryInterfaceNames.isEmpty()) {
+            code.add("return emptyList()\n")
+        } else {
+            code.add("return listOf(\n")
+            code.indent()
+            factoryInterfaceNames.forEach { interfaceName ->
+                val rawInterfaceName = interfaceName.substringBefore('<')
+                val interfacePlan = plansByQualifiedName[rawInterfaceName]
+                    ?: throw IllegalArgumentException(
+                        "Support renderer requires authored runtime class ${plan.type.qualifiedName} factory interface $rawInterfaceName to have a projection plan before rendering server activation factory definitions.",
+                    )
+                code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
+                code.indent()
+                code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
+                code.add("methods = %L,\n", authoringServerFactoryInterfaceMethodsCode(plan, interfacePlan))
+                code.unindent()
+                code.add("),\n")
+            }
+            code.unindent()
+            code.add(")\n")
+        }
+        return FunSpec.builder("factoryInterfaces")
+            .returns(List::class.asClassName().parameterizedBy(WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME))
+            .addCode(code.build())
+            .build()
+    }
+
+    private fun authoringServerFactoryInterfaceMethodsCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+    ): CodeBlock {
+        if (interfacePlan.instanceMemberBindings.isEmpty()) {
+            return CodeBlock.of("emptyList()")
+        }
+        val slotOrder = interfacePlan.abiSlotBindings.associate { it.constantName to it.slot }
+        interfacePlan.instanceMemberBindings.forEach { binding ->
+            require(slotOrder.containsKey(binding.slotConstantName)) {
+                "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to carry ABI slot metadata before rendering server activation factory definitions."
+            }
+        }
+        val methods = interfacePlan.instanceMemberBindings.sortedWith(
+            compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder.getValue(it.slotConstantName) }
+                .thenBy { it.bindingName },
+        )
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        methods.forEach { binding ->
+            code.add("%T(\n", WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME)
+            code.indent()
+            code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
+            code.add("handler = { rawArgs ->\n")
+            code.indent()
+            code.add("%L", authoringServerFactoryMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
+            code.unindent()
+            code.add("},\n")
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun authoringServerFactoryMethodHandlerCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): CodeBlock {
+        val method = interfacePlan.type.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfacePlan.type.methods) }
+            ?: return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        if (!authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
+            return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        val projectedType = ClassName(runtimeClassPlan.packageName, runtimeClassPlan.type.name)
+        val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
+        val code = CodeBlock.builder()
+        code.add("try {\n")
+        code.indent()
+        binding.parameterBindings.forEachIndexed { index, parameter ->
+            if (parameter.name == receiveArrayParameterName) {
+                return@forEachIndexed
+            }
+            code.add(
+                "val %L = %L\n",
+                parameter.name,
+                authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
+            )
+        }
+        code.add("val __result = %T(", projectedType)
+        binding.parameterBindings
+            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
+            .forEachIndexed { index, parameter ->
+                if (index > 0) {
+                    code.add(", ")
+                }
+                code.add("%L", parameter.name)
+            }
+        code.add(")\n")
+        val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
+        if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        } else {
+            val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
+            code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        code.unindent()
+        code.add("} catch (error: %T) {\n", Throwable::class.asClassName())
+        code.indent()
+        code.add("%T.setErrorInfo(error)\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.add("%T.hResultFromException(error).value\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.unindent()
+        code.add("}\n")
+        return code.build()
+    }
+
     private fun authoringServerActivationFactoryRegisterFunction(
         entries: List<KotlinTypeProjectionPlan>,
         authoringModuleActivationFactoryPlanClassName: ClassName,
@@ -1681,12 +1811,18 @@ class KotlinProjectionSupportRenderer {
         code.indent()
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             code.add(
-                "%S -> %T.createCCWForObject(%T(), %T.IActivationFactory)\n",
+                "%S -> run {\n",
                 plan.type.qualifiedName,
+            )
+            code.indent()
+            code.add("val __factory = %T()\n", ClassName(SUPPORT_PACKAGE, authoringServerActivationFactoryClassName(plan)))
+            code.add(
+                "%T.createCCWForActivationFactory(__factory, factoryInterfaces = __factory.factoryInterfaces(), interfaceId = %T.IActivationFactory)\n",
                 COM_WRAPPERS_SUPPORT_CLASS_NAME,
-                ClassName(SUPPORT_PACKAGE, authoringServerActivationFactoryClassName(plan)),
                 IID_CLASS_NAME,
             )
+            code.unindent()
+            code.add("}\n")
         }
         code.add("else -> error(%S + entry.runtimeClassName)\n", "No authored activation factory for runtime class: ")
         code.unindent()

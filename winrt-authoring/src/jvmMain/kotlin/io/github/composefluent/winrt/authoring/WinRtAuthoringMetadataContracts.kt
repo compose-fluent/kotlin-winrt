@@ -22,15 +22,23 @@ data class KotlinWinRtAuthoredTypeCandidate(
     val winRtInterfaceNames: List<String>,
     val overridableInterfaceNames: List<String>,
     val isPublic: Boolean = true,
+    val activatableFactoryInterfaceName: String? = null,
+    val staticFactoryInterfaceNames: List<String> = emptyList(),
 )
 
 data class KotlinWinRtAuthoredRuntimeClassAnnotation(
     val baseClassName: String? = null,
     val interfaceNames: List<String> = emptyList(),
     val overridableInterfaceNames: List<String> = emptyList(),
+    val activatableFactoryInterfaceName: String? = null,
+    val staticFactoryInterfaceNames: List<String> = emptyList(),
 ) {
     val hasMetadata: Boolean
-        get() = baseClassName != null || interfaceNames.isNotEmpty() || overridableInterfaceNames.isNotEmpty()
+        get() = baseClassName != null ||
+            interfaceNames.isNotEmpty() ||
+            overridableInterfaceNames.isNotEmpty() ||
+            activatableFactoryInterfaceName != null ||
+            staticFactoryInterfaceNames.isNotEmpty()
 }
 
 data class KotlinWinRtProjectionTypeIndexRecord(
@@ -82,6 +90,8 @@ object KotlinWinRtAuthoringCandidateFile {
                     candidate.winRtInterfaceNames.joinToString(";"),
                     candidate.overridableInterfaceNames.joinToString(";"),
                     candidate.isPublic.toString(),
+                    candidate.activatableFactoryInterfaceName.orEmpty(),
+                    candidate.staticFactoryInterfaceNames.joinToString(";"),
                 ).joinToString("\t")
             },
         )
@@ -89,7 +99,7 @@ object KotlinWinRtAuthoringCandidateFile {
 
     private fun parseLine(line: String): KotlinWinRtAuthoredTypeCandidate? {
         val parts = line.split('\t')
-        if (parts.size != 7) {
+        if (parts.size != 7 && parts.size != 9) {
             return null
         }
         if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
@@ -104,6 +114,8 @@ object KotlinWinRtAuthoringCandidateFile {
             winRtInterfaceNames = parts[4].semicolonListOrNull() ?: return null,
             overridableInterfaceNames = parts[5].semicolonListOrNull() ?: return null,
             isPublic = isPublic,
+            activatableFactoryInterfaceName = parts.getOrNull(7)?.takeIf(String::isNotBlank),
+            staticFactoryInterfaceNames = parts.getOrNull(8)?.semicolonListOrNull() ?: emptyList(),
         )
     }
 }

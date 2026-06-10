@@ -3879,6 +3879,8 @@ class KotlinWinRtIrGenerationExtension(
             winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
             overridableInterfaceNames = overridableInterfaces,
             isPublic = isPublic,
+            activatableFactoryInterfaceName = annotation.activatableFactoryInterfaceName,
+            staticFactoryInterfaceNames = annotation.staticFactoryInterfaceNames,
         )
     }
 
@@ -3921,6 +3923,8 @@ class KotlinWinRtIrGenerationExtension(
         val baseClassName = annotation.arguments.getOrNull(0).stringConstantValue()
         val interfaceNames = annotation.arguments.getOrNull(1).stringArrayConstantValue()
         val overridableInterfaceNames = annotation.arguments.getOrNull(2).stringArrayConstantValue()
+        val activatableFactoryInterfaceName = annotation.arguments.getOrNull(3).stringConstantValue()
+        val staticFactoryInterfaceNames = annotation.arguments.getOrNull(4).stringArrayConstantValue()
         val resolvedBase = baseClassName
             .takeIf(String::isNotBlank)
             ?.let(::projectionPackageToMetadataName)
@@ -3956,18 +3960,46 @@ class KotlinWinRtIrGenerationExtension(
                 }
             }
             .map(IndexedWinRtType::qualifiedName)
+        val resolvedActivatableFactoryInterface = activatableFactoryInterfaceName
+            .takeIf(String::isNotBlank)
+            ?.let { typeName ->
+                val metadataName = projectionPackageToMetadataName(typeName)
+                requireNotNull(winRtTypes[metadataName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }.also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation activatableFactoryInterfaceName must reference a WinRT interface: $typeName."
+                    }
+                }.qualifiedName
+            }
+        val resolvedStaticFactoryInterfaces = staticFactoryInterfaceNames
+            .map { typeName ->
+                val metadataName = projectionPackageToMetadataName(typeName)
+                requireNotNull(winRtTypes[metadataName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }.also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation staticFactoryInterfaceNames must reference WinRT interfaces: $typeName."
+                    }
+                }
+            }
+            .map(IndexedWinRtType::qualifiedName)
         return ResolvedAuthoredRuntimeClassAnnotation(
             resolvedTypes = listOfNotNull(resolvedBase) + resolvedInterfaces,
             overridableInterfaceNames = resolvedOverridableInterfaces,
+            activatableFactoryInterfaceName = resolvedActivatableFactoryInterface,
+            staticFactoryInterfaceNames = resolvedStaticFactoryInterfaces.distinct().sorted(),
         )
     }
 
     private data class ResolvedAuthoredRuntimeClassAnnotation(
         val resolvedTypes: List<IndexedWinRtType>,
         val overridableInterfaceNames: List<String>,
+        val activatableFactoryInterfaceName: String?,
+        val staticFactoryInterfaceNames: List<String>,
     ) {
         companion object {
-            val Empty = ResolvedAuthoredRuntimeClassAnnotation(emptyList(), emptyList())
+            val Empty = ResolvedAuthoredRuntimeClassAnnotation(emptyList(), emptyList(), null, emptyList())
         }
     }
 

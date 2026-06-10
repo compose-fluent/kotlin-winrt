@@ -323,6 +323,23 @@ object ComWrappersSupport {
         return cachedHost.createReference(requestedInterface)
     }
 
+    fun createCCWForActivationFactory(
+        factory: WinRtActivationFactory,
+        factoryInterfaces: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+        interfaceId: Guid = IID.IActivationFactory,
+    ): ComObjectReference {
+        val definition = WinRtActivationFactorySupport.createCcwDefinition(factory, factoryInterfaces)
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = definition.interfaceDefinitions,
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+            defaultInterfaceId = definition.defaultInterfaceId,
+            runtimeClassName = definition.runtimeClassName,
+            managedValue = factory,
+            queryInterfaceFallback = null,
+        )
+        return CachedCcwHost(host, definition.defaultInterfaceId).createReference(interfaceId)
+    }
+
     private fun createCachedCcwHost(value: Any): CachedCcwHost {
         val definition = createCcwDefinition(value)
         val composableInnerReference = (value as? WinRtComposableObject)

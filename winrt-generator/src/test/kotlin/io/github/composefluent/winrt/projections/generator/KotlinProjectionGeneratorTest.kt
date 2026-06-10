@@ -169,6 +169,7 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(
                                     name = "CreateInstance",
                                     returnTypeName = "Sample.Foundation.Widget",
+                                    methodRowId = 13,
                                 ),
                             ),
                         ),
@@ -14498,6 +14499,7 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(
                                     name = "CreateInstance",
                                     returnTypeName = "Sample.Foundation.Widget",
+                                    methodRowId = 13,
                                 ),
                             ),
                         ),
@@ -15009,7 +15011,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(serverActivationFactories.contains("object WinRTAuthoringServerActivationFactories"))
         assertTrue(serverActivationFactories.contains("WinRTAuthoringModuleActivationFactoryPlan.registerModuleActivationFactories"))
         assertTrue(serverActivationFactories.contains("ComWrappersSupport.createCCWForObject"))
+        assertTrue(serverActivationFactories.contains("fun factoryInterfaces()"))
+        assertTrue(serverActivationFactories.contains("WinRtInspectableInterfaceDefinition"))
+        assertTrue(serverActivationFactories.contains("IWidgetFactory.Metadata.IID"))
+        assertTrue(serverActivationFactories.contains("WinRtInspectableMethodDefinition"))
+        assertTrue(serverActivationFactories.contains("val __result = Widget("))
+        assertTrue(serverActivationFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
         assertTrue(serverActivationFactories.contains("_ServerActivationFactory_Sample_Foundation_Widget()"))
+        assertTrue(serverActivationFactories.contains("ComWrappersSupport.createCCWForActivationFactory"))
         assertTrue(serverActivationFactories.contains("IID.IActivationFactory"))
         val hostExports = filesByName.getValue("WinRTAuthoringHostExports.kt").contents
         assertTrue(hostExports.contains("object WinRTAuthoringHostExports"))

@@ -72,6 +72,8 @@ annotation class WinRtAuthoredRuntimeClass(
     val baseClassName: String = "",
     val interfaceNames: Array<String> = [],
     val overridableInterfaceNames: Array<String> = [],
+    val activatableFactoryInterfaceName: String = "",
+    val staticFactoryInterfaceNames: Array<String> = [],
 )
 
 @Retention(AnnotationRetention.RUNTIME)

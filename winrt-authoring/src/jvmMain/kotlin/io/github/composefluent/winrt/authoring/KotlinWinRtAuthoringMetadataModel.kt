@@ -79,6 +79,8 @@ object KotlinWinRtAuthoringMetadataModel {
             interfaceNames = candidate.winRtInterfaceNames,
             overridableInterfaceNames = candidate.overridableInterfaceNames,
             isActivatable = candidate.isPublic,
+            activatableFactoryInterfaceName = candidate.activatableFactoryInterfaceName,
+            staticFactoryInterfaceNames = candidate.staticFactoryInterfaceNames,
         )
 
     private fun Map<String, String>.toJsonObject(): String =
