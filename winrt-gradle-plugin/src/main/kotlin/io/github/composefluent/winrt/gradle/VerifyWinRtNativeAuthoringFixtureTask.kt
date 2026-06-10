@@ -30,6 +30,14 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val identityFile: RegularFileProperty
 
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val activationFactoryPlanSource: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val serverActivationFactoriesSource: RegularFileProperty
+
     @get:Input
     abstract val runtimeClassNames: ListProperty<String>
 
@@ -46,6 +54,8 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
         val authoredWinmdFile = authoredWinmd.get().asFile
         val authoredHostManifestFile = authoredHostManifest.get().asFile
         val identity = identityFile.get().asFile
+        val activationFactoryPlan = activationFactoryPlanSource.get().asFile
+        val serverActivationFactories = serverActivationFactoriesSource.get().asFile
         check(componentDllFile.isFile) {
             "Expected native authored component DLL: $componentDllFile"
         }
@@ -54,6 +64,12 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
         }
         check(authoredHostManifestFile.isFile) {
             "Expected native authored host manifest: $authoredHostManifestFile"
+        }
+        check(activationFactoryPlan.isFile) {
+            "Expected generated native authored activation factory plan: $activationFactoryPlan"
+        }
+        check(serverActivationFactories.isFile) {
+            "Expected generated native authored server activation factories: $serverActivationFactories"
         }
 
         val hostManifestText = authoredHostManifestFile.readText()
@@ -80,6 +96,39 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
         }
         check(identityText.contains(authoredHostManifestFile.absolutePath.replace("\\", "\\\\"))) {
             "Expected native authored host manifest in identity: $identityText"
+        }
+
+        val activationFactoryPlanText = activationFactoryPlan.readText()
+        val serverActivationFactoriesText = serverActivationFactories.readText()
+        runtimeClassNames.get().forEach { runtimeClassName ->
+            val projectedTypeEntry = activationFactoryPlanText.substringAfter(
+                "projectedTypeName = \"$runtimeClassName\"",
+                missingDelimiterValue = "",
+            )
+            check(projectedTypeEntry.isNotEmpty()) {
+                "Expected generated activation factory plan for '$runtimeClassName': $activationFactoryPlanText"
+            }
+            val entry = projectedTypeEntry.substringBefore("AuthoringActivationFactoryEntry(")
+            check(entry.contains("isActivatable = true")) {
+                "Expected native authored runtime class '$runtimeClassName' to expose default activation: $entry"
+            }
+            check(entry.contains("activateInstanceBehavior = \"newProjectedInstanceToMarshalInspectable\"")) {
+                "Expected native authored runtime class '$runtimeClassName' to create a projected instance from activateInstance: $entry"
+            }
+            check(entry.contains("runClassConstructorTypeName = \"$runtimeClassName\"")) {
+                "Expected native authored runtime class '$runtimeClassName' constructor target in activation plan: $entry"
+            }
+
+            val kotlinClassName = runtimeClassName.substringAfterLast('.')
+            check(serverActivationFactoriesText.contains("$kotlinClassName()")) {
+                "Expected native server activation factory to instantiate '$kotlinClassName': $serverActivationFactoriesText"
+            }
+        }
+        check(serverActivationFactoriesText.contains("ComWrappersSupport.createCCWForObject")) {
+            "Expected native server activation factories to marshal activated objects through ComWrappersSupport: $serverActivationFactoriesText"
+        }
+        check(!serverActivationFactoriesText.contains("does not expose default activation")) {
+            "Native component fixture default activation must not fall back to notImplemented server factories: $serverActivationFactoriesText"
         }
     }
 }

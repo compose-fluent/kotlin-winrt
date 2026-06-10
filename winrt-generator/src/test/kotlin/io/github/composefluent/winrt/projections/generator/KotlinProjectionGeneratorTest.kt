@@ -14409,6 +14409,19 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "DefaultWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(isActivatable = true),
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
@@ -14894,24 +14907,43 @@ class KotlinProjectionGeneratorTest {
         assertTrue(customQiPlan.contains("AuthoringCustomQueryInterfaceEntry?"))
         val activationFactoryPlan = filesByName.getValue("WinRTAuthoringActivationFactoryPlan.kt").contents
         assertTrue(activationFactoryPlan.contains("data class AuthoringActivationFactoryEntry"))
-        assertTrue(activationFactoryPlan.contains("projectedTypeName = \"Sample.Foundation.Widget\""))
-        assertTrue(activationFactoryPlan.contains("serverFactoryTypeName = \"ABI.Sample.Foundation.WidgetServerActivationFactory\""))
-        assertTrue(activationFactoryPlan.contains("isActivatable = false"))
-        assertTrue(activationFactoryPlan.contains("implementsIActivationFactory = true"))
-        assertTrue(activationFactoryPlan.contains("factoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
-        assertTrue(activationFactoryPlan.contains("activatableFactoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
-        assertTrue(activationFactoryPlan.contains("staticFactoryInterfaceNames = emptyList()"))
-        assertTrue(activationFactoryPlan.contains("activatableFactoryMemberNames = listOf(\"Sample.Foundation.IWidgetFactory.CreateInstance\")"))
-        assertTrue(activationFactoryPlan.contains("staticFactoryMemberNames = emptyList()"))
-        assertTrue(activationFactoryPlan.contains("composableFactoryMemberNames = emptyList()"))
-        assertTrue(activationFactoryPlan.contains("makeMethod = \"MarshalInspectable.CreateMarshaler2(IID.IActivationFactory).Detach\""))
-        assertTrue(activationFactoryPlan.contains("activateInstanceBehavior = \"notImplemented\""))
-        assertTrue(activationFactoryPlan.contains("runClassConstructorTypeName = \"Sample.Foundation.Widget\""))
+        fun activationEntryFor(projectedTypeName: String): String {
+            val entry = activationFactoryPlan.substringAfter("projectedTypeName = \"$projectedTypeName\"")
+            return entry.substringBefore("AuthoringActivationFactoryEntry(")
+        }
+        val defaultWidgetActivationEntry = activationEntryFor("Sample.Foundation.DefaultWidget")
+        val widgetActivationEntry = activationEntryFor("Sample.Foundation.Widget")
+        assertTrue(defaultWidgetActivationEntry.contains("serverFactoryTypeName = \"ABI.Sample.Foundation.DefaultWidgetServerActivationFactory\""))
+        assertTrue(defaultWidgetActivationEntry.contains("isActivatable = true"))
+        assertTrue(defaultWidgetActivationEntry.contains("implementsIActivationFactory = true"))
+        assertTrue(defaultWidgetActivationEntry.contains("factoryInterfaceNames = emptyList()"))
+        assertTrue(defaultWidgetActivationEntry.contains("activatableFactoryInterfaceNames = emptyList()"))
+        assertTrue(defaultWidgetActivationEntry.contains("staticFactoryInterfaceNames = emptyList()"))
+        assertTrue(defaultWidgetActivationEntry.contains("activatableFactoryMemberNames = emptyList()"))
+        assertTrue(defaultWidgetActivationEntry.contains("staticFactoryMemberNames = emptyList()"))
+        assertTrue(defaultWidgetActivationEntry.contains("composableFactoryMemberNames = emptyList()"))
+        assertTrue(defaultWidgetActivationEntry.contains("makeMethod = \"MarshalInspectable.CreateMarshaler2(IID.IActivationFactory).Detach\""))
+        assertTrue(defaultWidgetActivationEntry.contains("activateInstanceBehavior = \"newProjectedInstanceToMarshalInspectable\""))
+        assertTrue(defaultWidgetActivationEntry.contains("runClassConstructorTypeName = \"Sample.Foundation.DefaultWidget\""))
+        assertTrue(widgetActivationEntry.contains("serverFactoryTypeName = \"ABI.Sample.Foundation.WidgetServerActivationFactory\""))
+        assertTrue(widgetActivationEntry.contains("isActivatable = false"))
+        assertTrue(widgetActivationEntry.contains("implementsIActivationFactory = true"))
+        assertTrue(widgetActivationEntry.contains("factoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
+        assertTrue(widgetActivationEntry.contains("activatableFactoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
+        assertTrue(widgetActivationEntry.contains("staticFactoryInterfaceNames = emptyList()"))
+        assertTrue(widgetActivationEntry.contains("activatableFactoryMemberNames = listOf(\"Sample.Foundation.IWidgetFactory.CreateInstance\")"))
+        assertTrue(widgetActivationEntry.contains("staticFactoryMemberNames = emptyList()"))
+        assertTrue(widgetActivationEntry.contains("composableFactoryMemberNames = emptyList()"))
+        assertTrue(widgetActivationEntry.contains("makeMethod = \"MarshalInspectable.CreateMarshaler2(IID.IActivationFactory).Detach\""))
+        assertTrue(widgetActivationEntry.contains("activateInstanceBehavior = \"notImplemented\""))
+        assertTrue(widgetActivationEntry.contains("runClassConstructorTypeName = \"Sample.Foundation.Widget\""))
         assertTrue(activationFactoryPlan.contains("fun factoryForProjectedType("))
         assertTrue(activationFactoryPlan.contains("fun installActivationFactories("))
         val moduleActivationFactoryPlan = filesByName.getValue("WinRTAuthoringModuleActivationFactoryPlan.kt").contents
         assertTrue(moduleActivationFactoryPlan.contains("data class AuthoringModuleActivationFactoryEntry"))
+        assertTrue(moduleActivationFactoryPlan.contains("runtimeClassName = \"Sample.Foundation.DefaultWidget\""))
         assertTrue(moduleActivationFactoryPlan.contains("runtimeClassName = \"Sample.Foundation.Widget\""))
+        assertTrue(moduleActivationFactoryPlan.contains("serverFactoryTypeName = \"ABI.Sample.Foundation.DefaultWidgetServerActivationFactory\""))
         assertTrue(moduleActivationFactoryPlan.contains("serverFactoryTypeName = \"ABI.Sample.Foundation.WidgetServerActivationFactory\""))
         assertTrue(moduleActivationFactoryPlan.contains("fun entryForRuntimeClassName("))
         assertTrue(moduleActivationFactoryPlan.contains("fun getActivationFactory("))
@@ -14922,9 +14954,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(moduleActivationFactoryPlan.contains("ComWrappersSupport.registerAuthoringActivationFactory"))
         assertTrue(moduleActivationFactoryPlan.contains("createFactory(entry)"))
         val serverActivationFactories = filesByName.getValue("WinRTAuthoringServerActivationFactories.kt").contents
+        assertTrue(serverActivationFactories.contains("internal class _ServerActivationFactory_Sample_Foundation_DefaultWidget"))
         assertTrue(serverActivationFactories.contains("internal class _ServerActivationFactory_Sample_Foundation_Widget"))
         assertTrue(serverActivationFactories.contains("WinRtActivationFactory"))
         assertTrue(serverActivationFactories.contains("override fun activateInstance(): ComObjectReference"))
+        assertTrue(serverActivationFactories.contains("DefaultWidget()"))
         assertTrue(serverActivationFactories.contains("does not expose default activation"))
         assertTrue(serverActivationFactories.contains("object WinRTAuthoringServerActivationFactories"))
         assertTrue(serverActivationFactories.contains("WinRTAuthoringModuleActivationFactoryPlan.registerModuleActivationFactories"))

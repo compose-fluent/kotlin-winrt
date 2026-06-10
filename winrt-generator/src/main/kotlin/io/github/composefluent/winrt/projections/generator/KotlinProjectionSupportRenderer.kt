@@ -1644,7 +1644,7 @@ class KotlinProjectionSupportRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): TypeSpec {
         val projectedType = ClassName(plan.packageName, plan.type.name)
-        val isActivatable = !semanticHelpers.isStatic(plan.type) && semanticHelpers.hasDefaultConstructor(plan.type)
+        val isActivatable = authoredRuntimeClassHasDefaultActivation(plan, semanticHelpers)
         return TypeSpec.classBuilder(authoringServerActivationFactoryClassName(plan))
             .addModifiers(KModifier.INTERNAL)
             .addSuperinterface(WINRT_ACTIVATION_FACTORY_CLASS_NAME)
@@ -3561,7 +3561,7 @@ class KotlinProjectionSupportRenderer {
         code.indent()
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
-            val isActivatable = !semanticHelpers.isStatic(plan.type) && semanticHelpers.hasDefaultConstructor(plan.type)
+            val isActivatable = authoredRuntimeClassHasDefaultActivation(plan, semanticHelpers)
             val activatableInterfaces = factory.constructorFactories
             val staticInterfaces = factory.staticMemberTargets
             val composableInterfaces = factory.composableFactories
@@ -3587,6 +3587,14 @@ class KotlinProjectionSupportRenderer {
         code.add(")")
         return code.build()
     }
+
+    private fun authoredRuntimeClassHasDefaultActivation(
+        plan: KotlinTypeProjectionPlan,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): Boolean =
+        !semanticHelpers.isStatic(plan.type) &&
+            plan.type.activation.isActivatable &&
+            plan.type.activation.activatableFactoryInterfaceName == null
 
     private fun authoringFactoryMemberReferences(
         plan: KotlinTypeProjectionPlan,
