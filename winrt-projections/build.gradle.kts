@@ -14,6 +14,16 @@ val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projectio
 val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.projections.includeFullWindowsSdk")
     .map(String::toBooleanStrict)
     .orElse(false)
+val fullWindowsSdkProjectionGateRequested = providers.provider {
+    gradle.startParameter.taskNames.any { taskName ->
+        taskName == "validateWinRtFullWindowsSdkProjectionGate" ||
+            taskName.endsWith(":validateWinRtFullWindowsSdkProjectionGate")
+    }
+}
+val projectionUseFullWindowsSdk = projectionIncludeFullWindowsSdk
+    .zip(fullWindowsSdkProjectionGateRequested) { propertyEnabled, gateRequested ->
+        propertyEnabled || gateRequested
+    }
 
 kotlin {
     jvm()
@@ -78,7 +88,7 @@ winRt {
         }
     }
 
-    if (projectionIncludeFullWindowsSdk.get()) {
+    if (projectionUseFullWindowsSdk.get()) {
         namespace("Windows")
         excludeNamespace("Windows.UI.Xaml")
         excludeNamespace("Windows.ApplicationModel.Store.Preview")

@@ -98,6 +98,14 @@ val validateWinRtMingwProjectionGate by tasks.registering {
     dependsOn(":winrt-projections:compileKotlinMingwX64")
 }
 
+val validateWinRtFullWindowsSdkProjectionGate by tasks.registering {
+    group = "verification"
+    description = "Runs the root KMP generated projection gate against the full Windows SDK projection surface."
+    dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
+    dependsOn(":winrt-projections:compileKotlinJvm")
+    dependsOn(":winrt-projections:compileKotlinMingwX64")
+}
+
 val validateWinRtSampleSmoke by tasks.registering {
     group = "verification"
     description = "Runs sample smoke checks after projection validation."
