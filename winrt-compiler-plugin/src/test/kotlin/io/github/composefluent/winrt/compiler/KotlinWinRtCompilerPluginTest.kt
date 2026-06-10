@@ -213,6 +213,16 @@ class KotlinWinRtCompilerPluginTest {
 
         assertEquals("c:/repo/build/generated/kotlin-winrt/src/main/kotlin", root)
         assertTrue(isGeneratedSourceFile("C:\\repo\\build\\generated\\kotlin-winrt\\src\\main\\kotlin\\microsoft\\ui\\xaml\\Window.kt", root))
+        assertTrue(isGeneratedSourceFile("C:\\repo\\build\\generated\\kotlin-winrt-authoring\\src\\main\\kotlin\\sample\\WinRT_Widget_TypeDetails.kt", root))
+        assertTrue(isGeneratedSourceFile("C:\\repo\\build\\generated\\kotlin-winrt-native-authoring-host\\src\\main\\kotlin\\support\\WinRTAuthoringHostExports.native.kt", root))
+        assertTrue(
+            isGeneratedSourceFile(
+                "C:\\repo\\build\\generated\\kotlin-winrt-compiler-authoring\\compileKotlinMingwX64\\src\\main\\kotlin\\sample\\WinRT_Widget_TypeDetails.kt",
+                root,
+            ),
+        )
+        assertFalse(isGeneratedSourceFile("C:\\repo\\src\\main\\kotlin\\io\\github\\composefluent\\winrt\\projections\\support\\WinRTAuthoringCcwFactories.kt", root))
+        assertFalse(isGeneratedSourceFile("C:\\repo\\src\\main\\kotlin\\sample\\WinRT_Widget_TypeDetails.kt", root))
         assertFalse(isGeneratedSourceFile("C:\\repo\\src\\main\\kotlin\\sample\\App.kt", root))
     }
 

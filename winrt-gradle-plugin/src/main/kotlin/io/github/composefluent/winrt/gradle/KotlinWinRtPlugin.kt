@@ -852,6 +852,7 @@ private fun configureWinRtGeneration(
             )
             task.authoringAssemblyName.set(project.name)
             task.authoringTargetArtifactName.set(authoringTargetArtifactName)
+            task.emitJvmAuthoringHostExports.convention(true)
             task.authoringScannerJvmArgs.convention(
                 listOf(
                     "-Xmx128m",
@@ -936,6 +937,7 @@ private fun configureWinRtGeneration(
         configureKotlinWinRtCompilerPluginClasspath(project)
         generateTask.configure { task ->
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
+            task.emitJvmAuthoringHostExports.set(false)
         }
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, mergeCompilerSupportTask.flatMap { it.outputDirectory })
@@ -1608,6 +1610,13 @@ private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
             val sourceSet = target.compilations.getByName("main").defaultSourceSet
             sourceSet.kotlin.srcDir(generatedSources)
         }
+        kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+            if (!target.isMingwX64Target()) {
+                return@configureEach
+            }
+            val sourceSet = target.compilations.getByName("main").defaultSourceSet
+            sourceSet.kotlin.srcDir(generatedSources)
+        }
     }
 }
 
@@ -1637,7 +1646,7 @@ private fun configureKotlinWinRtNativeAuthoringSharedLibraries(
             return@configureEach
         }
         target.binaries.sharedLib(listOf(target.DEBUG, target.RELEASE)) {
-            baseName = project.name
+            baseName = kotlinNativeSharedLibraryFileStem(project.name)
             linkTaskProvider.configure { task ->
                 task.dependsOn(generateTask)
                 task.inputs.dir(generatedSources)
@@ -1655,7 +1664,14 @@ private fun kotlinWinRtAuthoringTargetArtifactName(project: Project): Provider<S
     }.getOrNull() ?: project.provider { "${project.name}.jar" }
 
 private fun kotlinWinRtNativeAuthoringTargetArtifactName(project: Project): Provider<String> =
-    project.provider { "${project.name}.dll" }
+    project.provider { "${kotlinNativeSharedLibraryFileStem(project.name)}.dll" }
+
+private fun kotlinNativeSharedLibraryFileStem(name: String): String =
+    name
+        .map { char -> if (char.isLetterOrDigit() || char == '_') char else '_' }
+        .joinToString("")
+        .trim('_')
+        .ifBlank { "winrt_component" }
 
 private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,

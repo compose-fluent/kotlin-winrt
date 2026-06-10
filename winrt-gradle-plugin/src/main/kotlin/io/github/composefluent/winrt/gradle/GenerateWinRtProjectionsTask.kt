@@ -64,6 +64,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     abstract val nativeAuthoringHostExportsOutputDirectory: DirectoryProperty
 
     @get:Input
+    abstract val emitJvmAuthoringHostExports: Property<Boolean>
+
+    @get:Input
     abstract val metadataInputs: ListProperty<String>
 
     @get:InputFiles
@@ -187,6 +190,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             parameters.projectModel.set(projectModel)
             parameters.authoringAssemblyName.set(authoringAssemblyName)
             parameters.authoringTargetArtifactName.set(authoringTargetArtifactName)
+            parameters.emitJvmAuthoringHostExports.set(emitJvmAuthoringHostExports)
             parameters.authoringScannerClasspath.from(authoringScannerClasspath)
             parameters.authoringScannerJvmArgs.set(authoringScannerJvmArgs)
             parameters.workDirectory.set(temporaryDir)
@@ -198,6 +202,7 @@ internal interface GenerateWinRtProjectionsWorkParameters : WorkParameters {
     val outputDirectory: DirectoryProperty
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
     val nativeAuthoringHostExportsOutputDirectory: DirectoryProperty
+    val emitJvmAuthoringHostExports: Property<Boolean>
     val metadataInputs: ListProperty<String>
     val metadataInputFiles: ConfigurableFileCollection
     val sourceRoots: ConfigurableFileCollection
@@ -351,16 +356,21 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
         val projectionModel = if (parameters.projectModel.get() == "application") baseModel else model
+        val projectionContext = WinRtMetadataProjectionContext(
+            sources = sources,
+            include = parameters.includeNamespaces.get().toSet() +
+                effectiveIncludeTypes.toSet() +
+                dependencyProjectionSurfaceTypes.toSet() +
+                authoringCandidateMetadataRoots.toSet(),
+            exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
+            excludedTypes = effectiveExcludeTypes.toSet(),
+            additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
+            component = exportedAuthoringCandidates.isNotEmpty(),
+        )
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             groupProjectionFilesByPackageOnWrite = true,
-            projectionContext = WinRtMetadataProjectionContext(
-                sources = sources,
-                include = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet(),
-                exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
-                excludedTypes = effectiveExcludeTypes.toSet(),
-                additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
-            ),
+            projectionContext = projectionContext,
             suppressedProjectionTypeNames = (
                 dependencyProjectionTypeNames +
                     authoringCandidates
@@ -368,16 +378,11 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
                         .filterTo(mutableSetOf(), String::isNotBlank)
                 ),
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
+            emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
         ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
         KotlinProjectionGenerator(
             emitSupportFiles = true,
-            projectionContext = WinRtMetadataProjectionContext(
-                sources = sources,
-                include = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet(),
-                exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
-                excludedTypes = effectiveExcludeTypes.toSet(),
-                additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
-            ),
+            projectionContext = projectionContext,
             suppressedProjectionTypeNames = (
                 dependencyProjectionTypeNames +
                     authoringCandidates
@@ -805,7 +810,7 @@ internal fun List<WinRtMetadataSource>.withWindowsSdkSourceForProjectionRoots(
 
 internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRtAuthoredTypeCandidate>): List<String> =
     candidates
-        .flatMap { candidate -> candidate.winRtInterfaceNames + candidate.winRtBaseClassName.orEmpty() }
+        .flatMap { candidate -> candidate.winRtInterfaceNames + candidate.winRtBaseClassName.orEmpty() + candidate.sourceTypeName }
         .map(String::trim)
         .filter(String::isNotEmpty)
         .distinct()

@@ -372,6 +372,52 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_plain_authored_interface_methods_against_source_class() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-plain-interface-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "NativeClosableThing",
+            sourceTypeName = "sample.NativeClosableThing",
+            winRtBaseClassName = null,
+            winRtInterfaceNames = listOf("Windows.Foundation.IClosable"),
+            overridableInterfaceNames = emptyList(),
+            isPublic = true,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IClosable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Close",
+                                    returnTypeName = "Void",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_NativeClosableThing_TypeDetails.kt").readText()
+        assertTrue(generated.contains("(value as NativeClosableThing).close()"))
+        assertFalse(generated.contains("__winrtAuthoringInvokeClose"))
+        assertFalse(generated.contains("Authored WinRT override"))
+    }
+
+    @Test
     fun rejects_authored_type_details_for_missing_winrt_interface_metadata() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-missing-interface-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(

@@ -118,6 +118,13 @@ val validateWinRtMingwParity by tasks.registering {
     dependsOn(validateWinRtFullWindowsSdkProjectionGate)
 }
 
+val validateWinRtNativeAuthoringFixture by tasks.registering {
+    group = "verification"
+    description = "Builds a real mingwX64 authored component DLL and validates native exports plus dependency staging."
+    dependsOn(":winrt-authoring:native-component-fixture:verifyNativeAuthoringComponentFixture")
+    dependsOn(":winrt-authoring:native-consumer-fixture:verifyNativeAuthoringConsumerFixture")
+}
+
 val validateWinRtSampleSmoke by tasks.registering {
     group = "verification"
     description = "Runs sample smoke checks after projection validation."
@@ -129,5 +136,6 @@ tasks.register("validateWinRtQueue16") {
     group = "verification"
     description = "Runs Queue 16 validation in reference-aligned order: generator, plugin graph, mingw parity, projections, samples."
     dependsOn(validateWinRtMingwParity)
+    dependsOn(validateWinRtNativeAuthoringFixture)
     dependsOn(validateWinRtSampleSmoke)
 }

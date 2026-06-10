@@ -325,6 +325,7 @@ class KotlinWinRtIrGenerationExtension(
         val classContexts = moduleFragment.files
             .asSequence()
             .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .filterNot { file -> file.isKotlinWinRtGeneratedFile() }
             .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
             .toList()
         val sourceSubtypedNames = sourceSubtypedNames(classContexts)
@@ -376,6 +377,7 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment.files
             .asSequence()
             .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .filterNot { file -> file.isKotlinWinRtGeneratedFile() }
             .forEach { file ->
                 file.transformChildrenVoid(
                     object : IrElementTransformerVoidWithContext() {
@@ -404,6 +406,16 @@ class KotlinWinRtIrGenerationExtension(
         when {
             targetName in runtimeClassNames -> targetName
             else -> projectionPackageToMetadataName(targetName).takeIf { metadataName -> metadataName in runtimeClassNames }
+        }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrFile.isKotlinWinRtGeneratedFile(): Boolean =
+        annotations.any { annotation ->
+            annotation.symbol.owner.parentClassOrNull?.fqNameWhenAvailable?.asString() == "kotlin.Suppress" &&
+                annotation.arguments.any { argument ->
+                    argument.stringConstantValue() == KOTLIN_WINRT_GENERATED_SUPPRESS_MARKER ||
+                        KOTLIN_WINRT_GENERATED_SUPPRESS_MARKER in argument.stringArrayConstantValue()
+                }
         }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -5264,6 +5276,8 @@ class KotlinWinRtIrGenerationExtension(
 private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic")
 
+private const val KOTLIN_WINRT_GENERATED_SUPPRESS_MARKER = "KOTLIN_WINRT_GENERATED"
+
 @Suppress("DEPRECATION")
 private fun IrPluginContext.reportCompilerPluginMessage(
     severity: CompilerMessageSeverity,
@@ -5578,7 +5592,26 @@ internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): S
 internal fun isGeneratedSourceFile(fileName: String, generatedSourceRoot: String?): Boolean {
     val root = generatedSourceRoot ?: return false
     val normalizedFileName = fileName.normalizedCompilerPathPrefix()
-    return normalizedFileName == root || normalizedFileName.startsWith("$root/")
+    if (normalizedFileName == root || normalizedFileName.startsWith("$root/")) {
+        return true
+    }
+    val siblingGeneratedRoots = buildList {
+        if (root.endsWith("/kotlin-winrt")) {
+            add("$root-authoring")
+            add("$root-native-authoring-host")
+        }
+        if ("/kotlin-winrt/" in root) {
+            add(root.replace("/kotlin-winrt/", "/kotlin-winrt-authoring/"))
+            add(root.replace("/kotlin-winrt/", "/kotlin-winrt-native-authoring-host/"))
+        }
+        val generatedDirectory = "/generated/kotlin-winrt/src/main/kotlin"
+        if (root.endsWith(generatedDirectory)) {
+            add(root.removeSuffix(generatedDirectory) + "/generated/kotlin-winrt-compiler-authoring")
+        }
+    }
+    return siblingGeneratedRoots.any { sibling ->
+        normalizedFileName == sibling || normalizedFileName.startsWith("$sibling/")
+    }
 }
 
 private fun String.normalizedCompilerPathPrefix(): String =

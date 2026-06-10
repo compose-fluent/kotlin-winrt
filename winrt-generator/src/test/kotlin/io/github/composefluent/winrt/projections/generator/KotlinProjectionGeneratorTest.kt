@@ -14773,6 +14773,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringWrappers.contains("metadataTypeName: String = \"ABI.Sample.Foundation.Widget\""))
         assertTrue(authoringWrappers.contains("defaultInterfaceName: String? = \"Sample.Foundation.IWidget\""))
         assertTrue(authoringWrappers.contains("fun wrap(instance: IInspectableReference): Widget"))
+        assertTrue(authoringWrappers.contains("ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(instance.pointer),"))
+        assertTrue(authoringWrappers.contains("Widget::class"))
+        assertTrue(authoringWrappers.contains("Authored ABI instance for Sample.Foundation.Widget is not backed by a registered Kotlin authored object."))
+        assertFalse(authoringWrappers.contains("Widget.Metadata.wrap(instance)"))
         assertTrue(authoringWrappers.contains("fun fromAbi(pointer: RawAddress): Widget?"))
         assertTrue(authoringWrappers.contains("return wrap(IInspectableReference(PlatformAbi.toRawComPtr(pointer)))"))
         assertTrue(authoringWrappers.contains("object WinRTAuthoringWrappers"))
@@ -14786,8 +14790,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringAbiClasses.contains("ComWrappersSupport.createCCWForObject"))
         assertTrue(authoringAbiClasses.contains("interfaceId"))
         assertTrue(authoringAbiClasses.contains("fun GetAbi("))
+        assertTrue(authoringAbiClasses.contains("marshaler?.pointer?.let(PlatformAbi::fromRawComPtr)"))
         assertTrue(authoringAbiClasses.contains("fun FromAbi("))
         assertTrue(authoringAbiClasses.contains("_AuthoringWrapper_Sample_Foundation_Widget.fromAbi(pointer)"))
+        assertTrue(authoringAbiClasses.contains("PlatformAbi.fromRawComPtr(marshaler.getRefPointer())"))
         assertTrue(authoringAbiClasses.contains("fun DisposeAbi(pointer: RawAddress)"))
         assertTrue(authoringAbiClasses.contains("private fun arrayMarshaler(): Marshaler<Widget>"))
         assertTrue(authoringAbiClasses.contains("Marshaler.interfaceType("))
@@ -14907,6 +14913,16 @@ class KotlinProjectionGeneratorTest {
         assertTrue(scopedHostExports.contains("\"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_sample_component_jar\""))
         assertTrue(scopedHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_jar.register()"))
         assertFalse(scopedHostFilesByName.containsKey("WinRTAuthoringHostExports.kt"))
+        val nativeCommonFilesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            supportOwnerIdentity = "sample-component.jar",
+            emitJvmAuthoringHostExports = false,
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        assertTrue(nativeCommonFilesByName.containsKey("WinRTAuthoringServerActivationFactories_sample_component_jar.kt"))
+        assertFalse(nativeCommonFilesByName.containsKey("WinRTAuthoringHostExports_sample_component_jar.kt"))
         val nativeHostRoot = Files.createTempDirectory("kotlin-winrt-native-authoring-host-")
         val nativeHostSummary = KotlinProjectionGenerator(
             emitSupportFiles = true,
@@ -14930,7 +14946,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class)"))
         assertTrue(ccwFactories.contains("createCcwDefinitionForSample_Foundation_Widget(value as Widget)"))
         assertTrue(ccwFactories.contains("queryInterfaceFallback = { obj, requestedInterfaceId ->"))
-        assertTrue(ccwFactories.contains("queryInterfaceForSample_Foundation_Widget(obj as Widget, requestedInterfaceId)"))
+        assertTrue(ccwFactories.contains("queryInterfaceForSample_Foundation_Widget(obj, requestedInterfaceId)"))
+        assertFalse(ccwFactories.contains("queryInterfaceForSample_Foundation_Widget(obj as Widget, requestedInterfaceId)"))
         assertTrue(ccwFactories.contains("requestedInterfaceId == IID.IInspectable"))
         assertTrue(ccwFactories.contains("val winRtObject = value as? IWinRTObject ?: return null"))
         assertTrue(ccwFactories.contains("winRtObject.nativeObject"))

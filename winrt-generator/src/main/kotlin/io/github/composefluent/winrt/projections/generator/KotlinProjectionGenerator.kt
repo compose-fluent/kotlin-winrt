@@ -126,6 +126,7 @@ class KotlinProjectionGenerator(
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
     private val groupProjectionFilesByPackageOnWrite: Boolean = false,
     private val supportOwnerIdentity: String? = null,
+    private val emitJvmAuthoringHostExports: Boolean = true,
 ) {
     private val genericTypeInstantiationsClassName = winRtGenericTypeInstantiationsClassName(supportOwnerIdentity)
     private val authoringHostExportsClassName = winRtAuthoringHostExportsClassName(supportOwnerIdentity)
@@ -1757,6 +1758,7 @@ class KotlinProjectionGenerator(
             authoringHostExportsClassName = authoringHostExportsClassName,
             authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
             authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
+            emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
             genericAbiSupportFileName = genericAbiSupportFileName,
             eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             namespaceAdditionsClassName = namespaceAdditionsClassName,

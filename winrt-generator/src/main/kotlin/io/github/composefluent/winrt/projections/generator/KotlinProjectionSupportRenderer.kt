@@ -142,6 +142,7 @@ class KotlinProjectionSupportRenderer {
         authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
         authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
         authoringModuleActivationFactoryPlanClassName: ClassName = WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME,
+        emitJvmAuthoringHostExports: Boolean = true,
         genericAbiSupportFileName: String = "WinRTGenericAbiSupport",
         eventProjectionHelperFilePrefix: String = "WinRTEventProjectionHelper",
         namespaceAdditionsClassName: ClassName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME,
@@ -190,7 +191,7 @@ class KotlinProjectionSupportRenderer {
                     semanticHelpers,
                     authoringHostExportsClassName,
                     authoringServerActivationFactoriesClassName,
-                ),
+                ).takeIf { emitJvmAuthoringHostExports },
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
@@ -797,7 +798,6 @@ class KotlinProjectionSupportRenderer {
             .mapIndexed { index, chunk ->
                 val fileName = "${eventProjectionHelperFilePrefix}_${index.toString().padStart(3, '0')}"
                 val fileSpec = supportFileSpec(fileName)
-                    .addGeneratedProjectionSuppressions()
                     .apply { chunk.forEach(::addType) }
                     .build()
                 supportFile("$fileName.kt", fileSpec)
@@ -1179,7 +1179,7 @@ class KotlinProjectionSupportRenderer {
             .addCode(
                 CodeBlock.of(
                     "throw %T(%S + operation + %S + projectedTypeName)\n",
-                    UnsupportedOperationException::class,
+                    ClassName("kotlin", "UnsupportedOperationException"),
                     "Authoring ABI array operation is not implemented yet: ",
                     " for ",
                 ),
@@ -1658,7 +1658,7 @@ class KotlinProjectionSupportRenderer {
                         } else {
                             addStatement(
                                 "throw %T(%S)",
-                                UnsupportedOperationException::class.asClassName(),
+                                ClassName("kotlin", "UnsupportedOperationException"),
                                 "Runtime class '${plan.type.qualifiedName}' does not expose default activation.",
                             )
                         }
@@ -1673,7 +1673,9 @@ class KotlinProjectionSupportRenderer {
         authoringModuleActivationFactoryPlanClassName: ClassName,
     ): FunSpec {
         val code = CodeBlock.builder()
-        code.add("%T.registerModuleActivationFactories { entry ->\n", authoringModuleActivationFactoryPlanClassName)
+        code.add("%T.registerModuleActivationFactories(\n", authoringModuleActivationFactoryPlanClassName)
+        code.indent()
+        code.add("createFactory = { entry ->\n")
         code.indent()
         code.add("when (entry.runtimeClassName) {\n")
         code.indent()
@@ -1690,7 +1692,9 @@ class KotlinProjectionSupportRenderer {
         code.unindent()
         code.add("}\n")
         code.unindent()
-        code.add("}\n")
+        code.add("},\n")
+        code.unindent()
+        code.add(")\n")
         return FunSpec.builder("register")
             .addCode(code.build())
             .build()
@@ -1724,7 +1728,18 @@ class KotlinProjectionSupportRenderer {
                 FunSpec.builder("wrap")
                     .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                     .returns(projectedType)
-                    .addCode("return %T.Metadata.wrap(instance)\n", projectedType)
+                    .addCode(
+                        CodeBlock.of(
+                            """
+                            return %T.findObject(%T.fromRawComPtr(instance.pointer), %T::class)
+                                ?: error(%S)
+                            """.trimIndent() + "\n",
+                            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                            PLATFORM_ABI_CLASS_NAME,
+                            projectedType,
+                            "Authored ABI instance for ${plan.type.qualifiedName} is not backed by a registered Kotlin authored object.",
+                        ),
+                    )
                     .build(),
             )
             .addFunction(
@@ -1807,7 +1822,7 @@ class KotlinProjectionSupportRenderer {
                 FunSpec.builder("GetAbi")
                     .addParameter("marshaler", COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
                     .returns(RAW_ADDRESS_CLASS_NAME)
-                    .addCode("return marshaler?.pointer?.asRawAddress() ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
+                    .addCode("return marshaler?.pointer?.let(%T::fromRawComPtr) ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
                     .build(),
             )
             .addFunction(
@@ -1826,11 +1841,12 @@ class KotlinProjectionSupportRenderer {
                             """
                             val marshaler = CreateMarshaler(value) ?: return %T.nullPointer
                             return try {
-                                marshaler.getRefPointer().asRawAddress()
+                                %T.fromRawComPtr(marshaler.getRefPointer())
                             } finally {
                                 marshaler.close()
                             }
                             """.trimIndent() + "\n",
+                            PLATFORM_ABI_CLASS_NAME,
                             PLATFORM_ABI_CLASS_NAME,
                         ),
                     )
@@ -2129,9 +2145,8 @@ class KotlinProjectionSupportRenderer {
         )
         code.add("runtimeClassName = %S,\n", plan.type.qualifiedName)
         code.add(
-            "queryInterfaceFallback = { obj, requestedInterfaceId -> %L(obj as %T, requestedInterfaceId) },\n",
+            "queryInterfaceFallback = { obj, requestedInterfaceId -> %L(obj, requestedInterfaceId) },\n",
             authoringCcwQueryInterfaceFunctionName(plan),
-            projectionClassNameForQualifiedName(plan.type.qualifiedName),
         )
         code.unindent()
         code.add(")\n")
@@ -2159,10 +2174,9 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwQueryInterfaceFunction(plan: KotlinTypeProjectionPlan): FunSpec {
-        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
         return FunSpec.builder(authoringCcwQueryInterfaceFunctionName(plan))
             .addModifiers(KModifier.PRIVATE)
-            .addParameter("value", projectedType)
+            .addParameter("value", ANY)
             .addParameter("requestedInterfaceId", GUID_CLASS_NAME)
             .returns(RAW_ADDRESS_CLASS_NAME.copy(nullable = true))
             .addCode(
@@ -2873,6 +2887,7 @@ class KotlinProjectionSupportRenderer {
 
     private fun supportFileSpec(fileName: String): FileSpec.Builder =
         FileSpec.builder(SUPPORT_PACKAGE, fileName)
+            .addGeneratedProjectionSuppressions()
             .addFileComment("Deterministic generator handoff for reference %L writer parity.", fileName)
 
     private fun KotlinTypeProjectionPlan.hasGeneratedRuntimeClassMetadataRegistration(): Boolean =

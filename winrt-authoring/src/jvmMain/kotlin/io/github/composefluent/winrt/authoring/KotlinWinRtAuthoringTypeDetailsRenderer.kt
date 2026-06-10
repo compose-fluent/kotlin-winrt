@@ -227,7 +227,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun renderRegister(candidate: KotlinWinRtAuthoredTypeCandidate): FunSpec =
         FunSpec.builder("register")
-            .addAnnotation(JvmStatic::class)
             .addStatement(
                 "%T.registerAuthoredRuntimeClassType(%T::class, %S)",
                 projectionsType,
@@ -256,7 +255,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     ): FunSpec {
         val defaultInterface = interfaces.first()
         return FunSpec.builder("createCcwDefinition")
-            .addAnnotation(JvmStatic::class)
             .addParameter(ParameterSpec.builder("value", ANY).build())
             .returns(winRtCcwDefinitionType)
             .addCode(
@@ -312,8 +310,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
-        val dispatchBaseClassName = semanticHelpers.getExclusiveToType(type)?.qualifiedName
-            ?: candidate.winRtBaseClassName
+        val dispatchTarget = authoredDispatchTarget(candidate, type, semanticHelpers)
         return CodeBlock.builder()
             .add("%T(\n", winRtInspectableInterfaceDefinitionType)
             .indent()
@@ -322,7 +319,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .indent()
             .apply {
                 type.methods.filterNot { method -> method.isStatic }.forEach { method ->
-                    add("%L,\n", renderMethod(method, typesByName, semanticHelpers, dispatchBaseClassName, authoredRuntimeClassNames))
+                    add("%L,\n", renderMethod(method, typesByName, semanticHelpers, dispatchTarget, authoredRuntimeClassNames))
                 }
             }
             .unindent()
@@ -336,12 +333,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         method: WinRtMethodDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
-        dispatchBaseClassName: String?,
+        dispatchTarget: AuthoringDispatchTarget,
         authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
-        val dispatchBase = dispatchBaseClassName
-            ?: error("Authored WinRT override ${method.name} has no declaring WinRT base class.")
-        val bridgeMethodName = authoringInvokeBridgeName(method)
+        val dispatchMethodName = dispatchTarget.methodName(method)
         val receiveArrayParameter = method.receiveArrayResultParameter()
         validateAuthoredArrayParameterSupport(method, receiveArrayParameter)
         val projectedParameterIndexes = method.parameters.indices.filter { index -> method.parameters[index] != receiveArrayParameter }
@@ -373,12 +368,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             }
             .apply {
                 if (isVoidReturn(method) && receiveArrayParameter == null) {
-                    addStatement("(value as %T).%L(%L)", projectionClassName(dispatchBase, semanticHelpers), bridgeMethodName, bridgeArguments)
+                    addStatement("(value as %T).%L(%L)", dispatchTarget.className, dispatchMethodName, bridgeArguments)
                 } else {
                     addStatement(
                         "val __result = (value as %T).%L(%L)",
-                        projectionClassName(dispatchBase, semanticHelpers),
-                        bridgeMethodName,
+                        dispatchTarget.className,
+                        dispatchMethodName,
                         bridgeArguments,
                     )
                     if (receiveArrayParameter != null) {
@@ -420,6 +415,29 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .unindent()
             .add("}")
             .build()
+    }
+
+    private fun authoredDispatchTarget(
+        candidate: KotlinWinRtAuthoredTypeCandidate,
+        type: WinRtTypeDefinition,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): AuthoringDispatchTarget {
+        val exclusiveBaseName = semanticHelpers.getExclusiveToType(type)?.qualifiedName
+        val shouldDispatchThroughBaseBridge = exclusiveBaseName != null ||
+            type.qualifiedName in candidate.overridableInterfaceNames
+        if (!shouldDispatchThroughBaseBridge) {
+            return AuthoringDispatchTarget(
+                className = sourceClassName(candidate),
+                methodName = ::projectedMethodName,
+            )
+        }
+        val dispatchBase = exclusiveBaseName
+            ?: candidate.winRtBaseClassName
+            ?: error("Authored WinRT override interface ${type.qualifiedName} has no declaring WinRT base class.")
+        return AuthoringDispatchTarget(
+            className = projectionClassName(dispatchBase, semanticHelpers),
+            methodName = ::authoringInvokeBridgeName,
+        )
     }
 
     private fun validateAuthoredArrayParameterSupport(
@@ -1790,11 +1808,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun authoringInvokeBridgeName(method: WinRtMethodDefinition): String =
         "__winrtAuthoringInvoke${method.name}"
 
+    private fun projectedMethodName(method: WinRtMethodDefinition): String =
+        method.name.replaceFirstChar(Char::lowercase)
+
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"
 
     private fun generatedAuthoringTypeDetailsSuppressAnnotation(): AnnotationSpec =
         AnnotationSpec.builder(Suppress::class)
+            .addMember("%S", "KOTLIN_WINRT_GENERATED")
             .addMember("%S", "USELESS_CAST")
             .addMember("%S", "UNCHECKED_CAST")
             .build()
@@ -1828,6 +1850,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val projectionType: ClassName,
         val typeArgumentCount: Int = 1,
         val emptyValueExpression: String = "emptyList()",
+    )
+
+    private data class AuthoringDispatchTarget(
+        val className: ClassName,
+        val methodName: (WinRtMethodDefinition) -> String,
     )
 
     private fun sourceClassName(candidate: KotlinWinRtAuthoredTypeCandidate): ClassName {
