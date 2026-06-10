@@ -201,6 +201,34 @@ class KotlinProjectionGenerator(
         )
     }
 
+    fun generateNativeAuthoringHostExportsTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
+        val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
+        val plans = planner.plan(normalizedModel)
+        validateGeneratorContracts(normalizedModel, plans)
+        val file = supportRenderer.renderNativeAuthoringHostExports(
+            model = normalizedModel,
+            plans = plans,
+            projectionContext = projectionContext,
+            authoringHostExportsClassName = authoringHostExportsClassName,
+            authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
+        )
+        val expectedPaths = mutableSetOf<String>()
+        var written = 0
+        if (file != null) {
+            expectedPaths += outputRoot.resolve(file.relativePath).toAbsolutePath().normalize().toString()
+            if (file.writeToIfChanged(outputRoot)) {
+                written += 1
+            }
+        }
+        val deleted = deleteStaleGeneratedFiles(outputRoot, expectedPaths)
+        return KotlinProjectionWriteSummary(
+            renderedFiles = if (file == null) 0 else 1,
+            writtenFiles = written,
+            unchangedFiles = if (file == null || written == 1) 0 else 1,
+            deletedStaleFiles = deleted,
+        )
+    }
+
     private fun completeProjectionModel(model: WinRtMetadataModel): WinRtMetadataModel {
         val normalizedModel = model.normalized()
         if (projectionContext.sources.isEmpty() || projectionContext.include.isEmpty()) {

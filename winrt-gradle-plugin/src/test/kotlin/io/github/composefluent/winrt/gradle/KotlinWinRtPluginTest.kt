@@ -464,25 +464,58 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun native_authored_candidate_validation_is_registered_without_publishing_jvm_host_artifacts() {
+    fun native_authoring_validation_publishes_mingw_shared_library_artifacts_without_jvm_host_build() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64("winuiMingw")
+        val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        kotlin.mingwX64("winuiMingw")
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
 
+        val sourceSet = kotlin.targets.getByName("winuiMingw").compilations.getByName("main").defaultSourceSet
+        assertTrue(
+            sourceSet.kotlin.srcDirs.joinToString("\n") { it.invariantSeparatorsPath },
+            sourceSet.kotlin.srcDirs.any {
+                it.invariantSeparatorsPath.endsWith("build/generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
+            },
+        )
+        assertTrue(project.tasks.names.contains("linkReleaseSharedWinuiMingw"))
+        assertTrue(project.tasks.names.contains("linkDebugSharedWinuiMingw"))
+        val compileTask = project.tasks.named("compileKotlinWinuiMingw").get() as KotlinNativeCompile
+        assertTrue(
+            compileTask.compilerOptions.freeCompilerArgs.get().joinToString("\n"),
+            compileTask.compilerOptions.freeCompilerArgs.get().any {
+                it == "plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=${project.name}.dll"
+            },
+        )
         val validationTaskName = "validateCompileKotlinWinuiMingwWinRtAuthoredCandidates"
-        val validationTask = project.tasks.named(validationTaskName).get()
+        val validationTask = project.tasks.named(validationTaskName, ValidateWinRtAuthoredCandidatesTask::class.java).get()
+        assertTrue(validationTask.allowTargetSpecificHostManifest.get())
         val validationDependencies = validationTask.taskDependencies.getDependencies(validationTask).map { it.name }
         assertTrue(
             "$validationTaskName must depend on native compile",
             "compileKotlinWinuiMingw" in validationDependencies,
+        )
+        val exportValidationTaskName = "validateCompileKotlinWinuiMingwWinRtNativeAuthoringExports"
+        val exportValidationTask = project.tasks.named(exportValidationTaskName).get()
+        val exportValidationDependencies = exportValidationTask.taskDependencies.getDependencies(exportValidationTask).map { it.name }
+        assertTrue(
+            "$exportValidationTaskName must depend on authored candidate validation",
+            validationTaskName in exportValidationDependencies,
+        )
+        assertTrue(
+            "$exportValidationTaskName must depend on native shared library link",
+            "linkReleaseSharedWinuiMingw" in exportValidationDependencies,
         )
         val checkTask = project.tasks.named("check").get()
         val checkDependencies = checkTask.taskDependencies.getDependencies(checkTask).map { it.name }
         assertTrue(
             "check must depend on native authored candidate validation",
             validationTaskName in checkDependencies,
+        )
+        assertFalse(
+            "check should not force native DLL export validation/link; artifact tasks own that gate",
+            exportValidationTaskName in checkDependencies,
         )
         val lifecycleTaskNames = listOf(
             "generateWinRtIdentity",
@@ -498,11 +531,23 @@ class KotlinWinRtPluginTest {
             .forEach { taskName ->
                 val task = project.tasks.named(taskName).get()
                 val dependencies = task.taskDependencies.getDependencies(task).map { it.name }
-                assertFalse(
-                    "$taskName must not publish native host artifacts before native host/export support exists",
+                assertTrue(
+                    "$taskName must validate native authored artifacts before publication",
                     validationTaskName in dependencies,
                 )
+                assertTrue(
+                    "$taskName must validate native host exports before publication",
+                    exportValidationTaskName in dependencies,
+                )
             }
+        val processResources = project.tasks.findByName("processResources")
+        if (processResources != null) {
+            val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
+            assertFalse(
+                "native authoring must not route through JVM host DLL build",
+                "buildWinRtAuthoringHost" in dependencies,
+            )
+        }
     }
 
     @Test

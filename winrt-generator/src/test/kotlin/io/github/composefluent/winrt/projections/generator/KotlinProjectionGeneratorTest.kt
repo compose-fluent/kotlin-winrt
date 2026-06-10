@@ -14907,6 +14907,24 @@ class KotlinProjectionGeneratorTest {
         assertTrue(scopedHostExports.contains("\"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_sample_component_jar\""))
         assertTrue(scopedHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_jar.register()"))
         assertFalse(scopedHostFilesByName.containsKey("WinRTAuthoringHostExports.kt"))
+        val nativeHostRoot = Files.createTempDirectory("kotlin-winrt-native-authoring-host-")
+        val nativeHostSummary = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            supportOwnerIdentity = "sample-component.dll",
+        ).generateNativeAuthoringHostExportsTo(model, nativeHostRoot)
+        assertEquals(1, nativeHostSummary.renderedFiles)
+        val nativeHostExports = Files.readString(
+            nativeHostRoot.resolve(
+                "io/github/composefluent/winrt/projections/support/WinRTAuthoringHostExports_sample_component_dll.native.kt",
+            ),
+        )
+        assertTrue(nativeHostExports.contains("@CName(\"DllGetActivationFactory\")"))
+        assertTrue(nativeHostExports.contains("@CName(\"DllCanUnloadNow\")"))
+        assertTrue(nativeHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_dll.register()"))
+        assertTrue(nativeHostExports.contains("WinRtAuthoringHostBridge.dllGetActivationFactory"))
+        assertFalse(nativeHostExports.contains("WinRtAuthoringHostManifestLoader"))
+        assertFalse(nativeHostExports.contains("@JvmStatic"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         assertTrue(ccwFactories.contains("object WinRTAuthoringCcwFactories"))
         assertTrue(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class)"))

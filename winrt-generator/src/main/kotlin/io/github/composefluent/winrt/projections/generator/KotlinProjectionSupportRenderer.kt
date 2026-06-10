@@ -1585,6 +1585,60 @@ class KotlinProjectionSupportRenderer {
         return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileSpec)
     }
 
+    fun renderNativeAuthoringHostExports(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+        projectionContext: WinRtMetadataProjectionContext,
+        authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
+        authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
+    ): KotlinProjectionFile? {
+        val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, projectionContext).build()
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val semanticHelpers = model.semanticHelpers()
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val packagePath = authoringHostExportsClassName.packageName.replace('.', '/')
+        val contents = """
+            @file:OptIn(kotlin.experimental.ExperimentalNativeApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
+
+            package ${authoringHostExportsClassName.packageName}
+
+            import io.github.composefluent.winrt.authoring.WinRtAuthoringHostBridge
+            import io.github.composefluent.winrt.runtime.RawAddress
+            import kotlin.native.CName
+            import kotlinx.cinterop.COpaquePointer
+            import kotlinx.cinterop.rawValue
+
+            private fun COpaquePointer?.toRawAddress(): RawAddress =
+                RawAddress(this?.rawValue?.toLong() ?: 0L)
+
+            @CName("DllGetActivationFactory")
+            public fun DllGetActivationFactory(activatableClassId: COpaquePointer?, factoryOut: COpaquePointer?): Int {
+                ${authoringServerActivationFactoriesClassName.simpleName}.register()
+                return WinRtAuthoringHostBridge.dllGetActivationFactory(
+                    activatableClassId.toRawAddress(),
+                    factoryOut.toRawAddress(),
+                )
+            }
+
+            @CName("DllCanUnloadNow")
+            public fun DllCanUnloadNow(): Int =
+                WinRtAuthoringHostBridge.dllCanUnloadNow()
+        """.trimIndent() + "\n"
+        return KotlinProjectionFile(
+            relativePath = "$packagePath/${authoringHostExportsClassName.simpleName}.native.kt",
+            packageName = authoringHostExportsClassName.packageName,
+            contents = contents,
+        )
+    }
+
     private fun authoringServerActivationFactoryClass(
         plan: KotlinTypeProjectionPlan,
         semanticHelpers: WinRtMetadataSemanticHelpers,
