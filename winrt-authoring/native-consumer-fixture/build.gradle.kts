@@ -27,6 +27,7 @@ winRt {
     type("Windows.Foundation.IStringable")
     type("Windows.Data.Json.IJsonValue")
     type("Windows.Data.Json.JsonValue")
+    type("Windows.Storage.Streams.IDataReader")
     type("sample.NativeJsonValueThing")
     application {
         generateProjectPri.set(false)
@@ -53,6 +54,7 @@ val verifyNativeAuthoringConsumerFixture by tasks.registering(
             "sample.NativeClosableThing",
             "sample.NativeStringableThing",
             "sample.NativeJsonValueThing",
+            "sample.NativeDataReaderThing",
         ),
     )
     forbiddenJarName.set("native-component-fixture.jar")

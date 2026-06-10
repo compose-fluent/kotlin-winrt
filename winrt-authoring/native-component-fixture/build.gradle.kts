@@ -14,6 +14,7 @@ winRt {
     type("Windows.Foundation.IClosable")
     type("Windows.Foundation.IStringable")
     type("Windows.Data.Json.IJsonValue")
+    type("Windows.Storage.Streams.IDataReader")
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
@@ -38,6 +39,7 @@ val verifyNativeAuthoringComponentFixture by tasks.registering(
             "sample.NativeClosableThing",
             "sample.NativeStringableThing",
             "sample.NativeJsonValueThing",
+            "sample.NativeDataReaderThing",
         ),
     )
     expectedDllName.set("native_component_fixture.dll")

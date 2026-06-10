@@ -8,6 +8,7 @@ import sample.NativeJsonValueThing
 import windows.data.json.IJsonValue
 import windows.data.json.JsonValueType
 import windows.foundation.IStringable
+import windows.storage.streams.IDataReader
 
 fun main() {
     RuntimeScope.initializeMultithreaded().use {
@@ -60,6 +61,19 @@ fun main() {
         }
         check(staticFactoryValue.getString() == "FromStaticFactory") {
             "Expected authored IJsonValueStatics.CreateStringValue result to dispatch getString."
+        }
+
+        ActivationFactory.get("sample.NativeDataReaderThing").use { factory ->
+            factory.activateInstance().use { instance ->
+                instance.queryInterface(IDataReader.Metadata.IID).getOrThrow().use { dataReaderReference ->
+                    val projected = IDataReader.Metadata.wrap(dataReaderReference as IUnknownReference)
+                    val buffer = Array(4) { 0u.toUByte() }
+                    projected.readBytes(buffer)
+                    check(buffer.contentEquals(arrayOf(0x57u.toUByte(), 0x69u.toUByte(), 0x6Eu.toUByte(), 0x52u.toUByte()))) {
+                        "Expected authored IDataReader.ReadBytes FillArray dispatch to update caller-provided array."
+                    }
+                }
+            }
         }
     }
 }

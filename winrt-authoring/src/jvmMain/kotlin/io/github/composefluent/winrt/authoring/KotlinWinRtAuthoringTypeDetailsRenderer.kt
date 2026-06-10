@@ -25,6 +25,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
+import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
@@ -71,7 +72,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtReferenceProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceProjection")
     private val winRtReferenceValueAdapterType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapter")
     private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
+    private val winRtSystemProjectionMarshalersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtSystemProjectionMarshalers")
     private val winRtTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRtTypeSignature")
+    private val instantType = ClassName("kotlin.time", "Instant")
+    private val durationType = ClassName("kotlin.time", "Duration")
     private val enumIntegralAbiDescriptors = mapOf(
         WinRtIntegralType.Int8 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Byte::class.asClassName(),
@@ -404,6 +408,24 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     }
                 }
             }
+            .apply {
+                method.parameters.forEachIndexed { index, parameter ->
+                    if (parameter != receiveArrayParameter && parameter.isFillArrayParameter()) {
+                        val rawIndex = rawArgumentIndex(method.parameters, parameter)
+                        add(
+                            "%L\n",
+                            renderArrayFillParameterProjection(
+                                method = method,
+                                parameter = parameter,
+                                valueExpression = "__arg$index",
+                                dataExpression = CodeBlock.of("rawArgs[%L] as %T", rawIndex + 1, rawAddressType),
+                                typesByName = typesByName,
+                                semanticHelpers = semanticHelpers,
+                            ),
+                        )
+                    }
+                }
+            }
             .addStatement("%T.S_OK.value", knownHResultsType)
             .unindent()
             .add("} catch (__exception: %T) {\n", Throwable::class.asClassName())
@@ -535,7 +557,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         method.parameters.forEach { parameter ->
             if (parameter.type.normalized().kind == WinRtTypeRefKind.Array &&
                 (parameter.typeIsByRef || parameter.isOutParameter) &&
-                parameter != receiveArrayParameter
+                parameter != receiveArrayParameter &&
+                !parameter.isFillArrayParameter()
             ) {
                 throw IllegalArgumentException(
                     "Authored WinRT override ${method.name} has unsupported array parameter '${parameter.name}' with by-ref/out direction; only trailing receive-array out parameters are supported.",
@@ -543,6 +566,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             }
         }
     }
+
+    private fun WinRtParameterDefinition.isFillArrayParameter(): Boolean =
+        type.normalized().kind == WinRtTypeRefKind.Array &&
+            (isOutParameter || direction == WinRtParameterDirection.Out) &&
+            !typeIsByRef
 
     private fun WinRtMethodDefinition.receiveArrayResultParameter(): WinRtParameterDefinition? {
         if (returnTypeName != "Unit" && !isWinRtVoidTypeName(returnTypeName)) {
@@ -590,6 +618,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
         if (isWinRtStringTypeName(parameter.typeName)) {
             return CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
+        }
+        if (isWinRtGuidTypeName(parameter.typeName)) {
+            return CodeBlock.of("%T.readGuid(%L as %T)", platformAbiType, rawArg, rawAddressType)
         }
         fundamentalType(parameter.typeName)?.let { type ->
             renderFundamentalParameterProjection(rawArg, type)?.let { projection ->
@@ -863,6 +894,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         fundamentalType(method.returnTypeName)?.let { type ->
             return renderFundamentalReturnProjection(type, outExpression, valueExpression)
         }
+        if (isWinRtGuidTypeName(method.returnTypeName)) {
+            return CodeBlock.of("%T.writeGuid(%L, %L as %T)", platformAbiType, outExpression, valueExpression, guidType)
+        }
         renderAsyncReturnProjection(method, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
             return it
         }
@@ -870,6 +904,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return it
         }
         renderReferenceReturnProjection(method, outExpression, valueExpression, typesByName)?.let {
+            return it
+        }
+        renderRuntimeMappedStructReturnProjection(method.returnTypeName, outExpression, valueExpression)?.let {
             return it
         }
         val returnType = typesByName[method.returnTypeName]
@@ -920,6 +957,29 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             WinRtFundamentalType.Float -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
             WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
             WinRtFundamentalType.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
+        }
+
+    private fun renderRuntimeMappedStructReturnProjection(
+        typeName: String,
+        outExpression: CodeBlock,
+        valueExpression: String,
+    ): CodeBlock? =
+        when (typeName.substringBefore('<').removeSuffix("?")) {
+            "Windows.Foundation.DateTime" -> CodeBlock.of(
+                "%T.copyDateTimeTo(%L as %T, %L)",
+                winRtSystemProjectionMarshalersType,
+                valueExpression,
+                instantType,
+                outExpression,
+            )
+            "Windows.Foundation.TimeSpan" -> CodeBlock.of(
+                "%T.copyTimeSpanTo(%L as %T, %L)",
+                winRtSystemProjectionMarshalersType,
+                valueExpression,
+                durationType,
+                outExpression,
+            )
+            else -> null
         }
 
     private fun renderDelegateParameterProjection(
@@ -1182,6 +1242,39 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             platformAbiType,
             dataOutExpression,
         )
+    }
+
+    private fun renderArrayFillParameterProjection(
+        method: WinRtMethodDefinition,
+        parameter: WinRtParameterDefinition,
+        valueExpression: String,
+        dataExpression: CodeBlock,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock {
+        val arrayType = parameter.type.normalized()
+        val elementType = arrayType.elementType?.normalized()
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} fills array '${parameter.typeName}' without element type metadata.",
+            )
+        if (arrayType.arrayRank != 1) {
+            throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} fills array '${parameter.typeName}' with unsupported rank ${arrayType.arrayRank}.",
+            )
+        }
+        val elementWrite = renderArrayElementWrite(
+            method,
+            elementType,
+            dataExpression,
+            CodeBlock.of("__index"),
+            CodeBlock.of("__element"),
+            typesByName,
+            semanticHelpers,
+        )
+            ?: throw IllegalArgumentException(
+                "Authored WinRT override ${method.name} fills unsupported array element type '${elementType.typeName}'.",
+            )
+        return CodeBlock.of("%L.forEachIndexed { __index, __element -> %L }", valueExpression, elementWrite)
     }
 
     private fun arrayElementLayout(

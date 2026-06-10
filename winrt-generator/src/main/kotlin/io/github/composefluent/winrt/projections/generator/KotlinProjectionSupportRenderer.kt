@@ -1769,7 +1769,7 @@ class KotlinProjectionSupportRenderer {
             }
             code.add(
                 "val %L = %L\n",
-                parameter.name,
+                authoringCcwLocalParameterName(index),
                 authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
@@ -1808,12 +1808,13 @@ class KotlinProjectionSupportRenderer {
         val code = CodeBlock.builder()
         code.add("%L(", target)
         binding.parameterBindings
-            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
-            .forEachIndexed { index, parameter ->
-                if (index > 0) {
+            .withIndex()
+            .filterNot { (_, parameter) -> parameter.name == receiveArrayParameterName }
+            .forEachIndexed { argumentIndex, (parameterIndex, _) ->
+                if (argumentIndex > 0) {
                     code.add(", ")
                 }
-                code.add("%L", parameter.name)
+                code.add("%L", authoringCcwLocalParameterName(parameterIndex))
             }
         code.add(")")
         return code.build()
@@ -2587,7 +2588,7 @@ class KotlinProjectionSupportRenderer {
             }
             code.add(
                 "val %L = %L\n",
-                parameter.name,
+                authoringCcwLocalParameterName(index),
                 authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
@@ -2596,14 +2597,22 @@ class KotlinProjectionSupportRenderer {
         if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
             binding.parameterBindings.forEachIndexed { index, parameter ->
-                authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
+                authoringCcwPostInvocationParameterCode(
+                    parameter,
+                    authoringCcwParameterRawIndex(binding.parameterBindings, index),
+                    authoringCcwLocalParameterName(index),
+                )
                     ?.let { postInvocation -> code.add("%L\n", postInvocation) }
             }
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else {
             code.add("val __result = %L\n", invocation)
             binding.parameterBindings.forEachIndexed { index, parameter ->
-                authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
+                authoringCcwPostInvocationParameterCode(
+                    parameter,
+                    authoringCcwParameterRawIndex(binding.parameterBindings, index),
+                    authoringCcwLocalParameterName(index),
+                )
                     ?.let { postInvocation -> code.add("%L\n", postInvocation) }
             }
             if (returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
@@ -2671,12 +2680,13 @@ class KotlinProjectionSupportRenderer {
                     .add("value.%L(", method.projectedMethodName())
                     .apply {
                         binding.parameterBindings
-                            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
-                            .forEachIndexed { index, parameter ->
-                                if (index > 0) {
+                            .withIndex()
+                            .filterNot { (_, parameter) -> parameter.name == receiveArrayParameterName }
+                            .forEachIndexed { argumentIndex, (parameterIndex, _) ->
+                                if (argumentIndex > 0) {
                                     add(", ")
                                 }
-                                add("%L", parameter.name)
+                                add("%L", authoringCcwLocalParameterName(parameterIndex))
                             }
                     }
                     .add(")")
@@ -2690,7 +2700,8 @@ class KotlinProjectionSupportRenderer {
             return if (binding.bindingName.endsWith("_GETTER_SLOT")) {
                 CodeBlock.of("value.%L", propertyName)
             } else {
-                CodeBlock.of("value.%L = %L", propertyName, binding.parameterBindings.single().name)
+                val parameterIndex = binding.parameterBindings.indexOf(binding.parameterBindings.single())
+                CodeBlock.of("value.%L = %L", propertyName, authoringCcwLocalParameterName(parameterIndex))
             }
         }
         return CodeBlock.of("error(%S)", "No authored member body for ${interfaceType.qualifiedName}.${binding.bindingName}")
@@ -2716,6 +2727,9 @@ class KotlinProjectionSupportRenderer {
         parameterIndex: Int,
     ): Int =
         parameters.take(parameterIndex).sumOf(::authoringCcwAbiArgumentCount)
+
+    private fun authoringCcwLocalParameterName(parameterIndex: Int): String =
+        "__arg$parameterIndex"
 
     private fun authoringCcwDecodeArgumentCode(
         parameter: KotlinProjectionAbiParameterBinding,
@@ -2834,6 +2848,7 @@ class KotlinProjectionSupportRenderer {
     private fun authoringCcwPostInvocationParameterCode(
         parameter: KotlinProjectionAbiParameterBinding,
         rawIndex: Int,
+        valueExpression: String,
     ): CodeBlock? {
         if (parameter.typeBinding.kind != KotlinProjectionAbiValueKind.Array ||
             parameter.category != WinRtMetadataParameterCategory.FillArray
@@ -2845,7 +2860,7 @@ class KotlinProjectionSupportRenderer {
             return CodeBlock.of(
                 "run {\n·val __arrayMarshaler = %L\n·__arrayMarshaler.copyManagedArray(%L, rawArgs[%L] as %T)\n}",
                 elementMarshaler,
-                parameter.name,
+                valueExpression,
                 rawIndex + 1,
                 RAW_ADDRESS_CLASS_NAME,
             )
@@ -2858,7 +2873,7 @@ class KotlinProjectionSupportRenderer {
         ) ?: return null
         return CodeBlock.of(
             "%L.forEachIndexed { __index, __element -> %L }",
-            parameter.name,
+            valueExpression,
             elementWrite,
         )
     }
@@ -2903,7 +2918,9 @@ class KotlinProjectionSupportRenderer {
             ),
         )
         KotlinProjectionAbiValueKind.Struct ->
-            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+            customStructAbi(binding)?.let { customAbi ->
+                CodeBlock.of("%T.%L(%L, %L)", customAbi.helperTypeName, customAbi.copyToFunctionName, valueExpression, outExpression)
+            } ?: if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T.Metadata.copyTo(%L, %L)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, valueExpression, outExpression)
             } else {
                 val structType = typeRenderer.nativeStructClassName(binding)

@@ -146,7 +146,7 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
             check(serverActivationFactoriesText.contains("IJsonValueStatics.Metadata.IID")) {
                 "Expected NativeJsonValueThing server factory to expose IJsonValueStatics: $serverActivationFactoriesText"
             }
-            check(serverActivationFactoriesText.contains("NativeJsonValueThing.createStringValue(input)")) {
+            check(serverActivationFactoriesText.contains("NativeJsonValueThing.createStringValue(")) {
                 "Expected NativeJsonValueThing server factory to dispatch CreateStringValue through authored code: $serverActivationFactoriesText"
             }
         }
