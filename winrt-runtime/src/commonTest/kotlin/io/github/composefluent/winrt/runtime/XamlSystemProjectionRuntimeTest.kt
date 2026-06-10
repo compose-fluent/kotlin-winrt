@@ -152,7 +152,7 @@ class XamlSystemProjectionRuntimeTest {
                     WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtStringable::class), IID.IStringable),
                 ) as WinRtStringable
 
-            assertEquals("42", projected.stringRepresentation())
+            assertEquals("42", projected.toString())
         }
     }
 
