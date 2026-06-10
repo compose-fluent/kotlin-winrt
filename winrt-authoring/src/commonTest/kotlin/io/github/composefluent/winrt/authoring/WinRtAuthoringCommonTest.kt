@@ -1,36 +1,29 @@
 package io.github.composefluent.winrt.authoring
 
+import io.github.composefluent.winrt.runtime.ActivationFactory
+import io.github.composefluent.winrt.runtime.ActivationFactoryReference
 import io.github.composefluent.winrt.runtime.ComAbiValueKind
 import io.github.composefluent.winrt.runtime.ComMethodSignature
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
 import io.github.composefluent.winrt.runtime.ComWrappersSupport
 import io.github.composefluent.winrt.runtime.Guid
-import io.github.composefluent.winrt.runtime.ActivationFactory
-import io.github.composefluent.winrt.runtime.ActivationFactoryReference
 import io.github.composefluent.winrt.runtime.HString
-import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.KnownHResults
 import io.github.composefluent.winrt.runtime.PlatformAbi
-import io.github.composefluent.winrt.runtime.PlatformRuntime
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRtComInterfaceBaseKind
 import io.github.composefluent.winrt.runtime.WinRtNotImplementedException
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assert.assertNotNull
-import org.junit.Assume.assumeTrue
-import org.junit.Assert.fail
-import org.junit.Test
-import java.net.URLClassLoader
-import java.nio.file.Files
-import java.util.jar.JarEntry
-import java.util.jar.JarOutputStream
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+import kotlin.test.fail
 
-class WinRtAuthoringTest {
+class WinRtAuthoringCommonTest {
     @Test
-    fun authored_activation_factory_creates_default_instance_through_activation_factory() {
+    fun authoredActivationFactoryCreatesDefaultInstanceThroughActivationFactory() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("aaaaaaaa-1111-2222-3333-444444444444")
         WinRtAuthoring.registerType<ActivatableComponent>(
@@ -64,7 +57,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_activation_factory_exposes_factory_interface_members() {
+    fun authoredActivationFactoryExposesFactoryInterfaceMembers() {
         ComWrappersSupport.clearRegistriesForTests()
         val componentInterfaceId = Guid("bbbbbbbb-1111-2222-3333-444444444444")
         val factoryInterfaceId = Guid("bbbbbbbb-1111-2222-3333-444444444445")
@@ -109,7 +102,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_activation_factory_without_default_constructor_reports_not_implemented() {
+    fun authoredActivationFactoryWithoutDefaultConstructorReportsNotImplemented() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("eeeeeeee-1111-2222-3333-444444444444")
         WinRtAuthoring.registerType<FactoryOnlyComponent>(
@@ -140,46 +133,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_module_activation_factory_returns_registered_factory_only() {
-        ComWrappersSupport.clearRegistriesForTests()
-        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
-        val interfaceId = Guid("cccccccc-1111-2222-3333-444444444444")
-        WinRtAuthoring.registerType<ModuleActivatedComponent>(
-            WinRtAuthoredTypeDefinition(
-                runtimeClassName = "Sample.Authoring.ModuleActivatedComponent",
-                defaultInterfaceId = interfaceId,
-                interfaces = listOf(
-                    WinRtAuthoredInterfaceDefinition(
-                        interfaceId = interfaceId,
-                        methods = emptyList(),
-                        isDefault = true,
-                    ),
-                ),
-            ),
-        )
-        WinRtAuthoring.registerActivationFactory<ModuleActivatedComponent>(
-            runtimeClassName = "Sample.Authoring.ModuleActivatedComponent",
-            createInstance = ::ModuleActivatedComponent,
-        )
-
-        val missing = WinRtAuthoring.getActivationFactory("Sample.Authoring.MissingComponent")
-        assertTrue(PlatformAbi.isNull(missing))
-        val pointer = WinRtAuthoring.getActivationFactory("Sample.Authoring.ModuleActivatedComponent")
-        assertTrue(!PlatformAbi.isNull(pointer))
-        ActivationFactoryReference(PlatformAbi.toRawComPtr(pointer)).use { factory ->
-            factory.activateInstance().use { instance ->
-                assertNotNull(
-                    ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
-                        ModuleActivatedComponent::class,
-                    ),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun authored_module_activation_factory_uses_partial_fallback_on_miss() {
+    fun authoredModuleActivationFactoryUsesRegisteredFactoryAndFallbacks() {
         ComWrappersSupport.clearRegistriesForTests()
         WinRtAuthoring.clearActivationFactoryFallbacksForTests()
         val interfaceId = Guid("dddddddd-1111-2222-3333-444444444444")
@@ -211,9 +165,11 @@ class WinRtAuthoringTest {
             }
         }
 
-        val pointer = WinRtAuthoring.getActivationFactory("Sample.Authoring.ForwardedComponent")
-        assertTrue(!PlatformAbi.isNull(pointer))
-        ActivationFactoryReference(PlatformAbi.toRawComPtr(pointer)).use { factory ->
+        val missing = WinRtAuthoring.getActivationFactory("Sample.Authoring.MissingComponent")
+        assertTrue(PlatformAbi.isNull(missing))
+        val forwarded = WinRtAuthoring.getActivationFactory("Sample.Authoring.ForwardedComponent")
+        assertTrue(!PlatformAbi.isNull(forwarded))
+        ActivationFactoryReference(PlatformAbi.toRawComPtr(forwarded)).use { factory ->
             factory.activateInstance().use { instance ->
                 assertNotNull(
                     ComWrappersSupport.findObject(
@@ -226,7 +182,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_host_bridge_matches_reference_dll_get_activation_factory_shape() {
+    fun authoredHostBridgeMatchesReferenceDllGetActivationFactoryShape() {
         ComWrappersSupport.clearRegistriesForTests()
         WinRtAuthoring.clearActivationFactoryFallbacksForTests()
         val interfaceId = Guid("77777777-1111-2222-3333-444444444444")
@@ -290,213 +246,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_host_manifest_loader_reads_reference_style_target_mappings() {
-        val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-schema-")
-        val manifestPath = directory.resolve("MappedComponent.host.json")
-        Files.writeString(
-            manifestPath,
-            """
-            {
-              "schemaVersion": 1,
-              "model": "jvm-authoring-host",
-              "assemblyName": "MappedComponent",
-              "hostExportsClass": "sample.MappedHostExports",
-              "targetArtifact": "MappedComponent.jar",
-              "activatableClassTargets": {
-                "Sample.Authoring.MappedComponent": "MappedComponent.jar"
-              }
-            }
-            """.trimIndent(),
-        )
-
-        val manifest = WinRtAuthoringHostManifestLoader.read(manifestPath)
-
-        assertEquals("MappedComponent", manifest.assemblyName)
-        assertEquals("sample.MappedHostExports", manifest.hostExportsClass)
-        assertEquals("MappedComponent.jar", manifest.targetArtifact)
-        assertEquals(
-            mapOf("Sample.Authoring.MappedComponent" to "MappedComponent.jar"),
-            manifest.activatableClassTargets,
-        )
-        assertEquals(directory, manifest.sourceDirectory)
-    }
-
-    @Test
-    fun authored_host_manifest_loader_installs_activation_factory_fallback() {
-        assumeTrue(PlatformRuntime.isWindows)
-        ComWrappersSupport.clearRegistriesForTests()
-        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
-        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
-        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
-        WinRtAuthoringHostManifestLoader.registerHostExports(HostManifestExports::class.java.name, HostManifestExports)
-
-        val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-")
-        Files.writeString(
-            directory.resolve("HostManifestComponent.host.json"),
-            """
-            {
-              "schemaVersion": 1,
-              "model": "jvm-authoring-host",
-              "assemblyName": "HostManifestComponent",
-              "hostExportsClass": "${HostManifestExports::class.java.name}",
-              "activatableClasses": ["Sample.Authoring.HostManifestComponent"]
-            }
-            """.trimIndent(),
-        )
-
-        WinRtAuthoringHostManifestLoader.installFromDirectory(directory)
-        ActivationFactory.get("Sample.Authoring.HostManifestComponent").use { factory ->
-            factory.activateInstance().use { instance ->
-                assertNotNull(
-                    ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
-                        HostManifestComponent::class,
-                    ),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun authored_host_manifest_loader_chains_duplicate_dependency_activation_factories() {
-        assumeTrue(PlatformRuntime.isWindows)
-        ComWrappersSupport.clearRegistriesForTests()
-        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
-        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
-        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
-        WinRtAuthoringHostManifestLoader.registerHostExports(EmptyHostExports::class.java.name, EmptyHostExports)
-        WinRtAuthoringHostManifestLoader.registerHostExports(HostManifestExports::class.java.name, HostManifestExports)
-
-        val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-chain-")
-        Files.writeString(
-            directory.resolve("EmptyHostManifestComponent.host.json"),
-            """
-            {
-              "schemaVersion": 1,
-              "model": "jvm-authoring-host",
-              "assemblyName": "EmptyHostManifestComponent",
-              "hostExportsClass": "${EmptyHostExports::class.java.name}",
-              "activatableClasses": ["Sample.Authoring.HostManifestComponent"]
-            }
-            """.trimIndent(),
-        )
-        Files.writeString(
-            directory.resolve("HostManifestComponent.host.json"),
-            """
-            {
-              "schemaVersion": 1,
-              "model": "jvm-authoring-host",
-              "assemblyName": "HostManifestComponent",
-              "hostExportsClass": "${HostManifestExports::class.java.name}",
-              "activatableClasses": ["Sample.Authoring.HostManifestComponent"]
-            }
-            """.trimIndent(),
-        )
-
-        WinRtAuthoringHostManifestLoader.installFromDirectory(directory)
-        ActivationFactory.get("Sample.Authoring.HostManifestComponent").use { factory ->
-            factory.activateInstance().use { instance ->
-                assertNotNull(
-                    ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
-                        HostManifestComponent::class,
-                    ),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun authored_host_manifest_loader_installs_from_plugin_runtime_assets_directory() {
-        assumeTrue(PlatformRuntime.isWindows)
-        ComWrappersSupport.clearRegistriesForTests()
-        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
-        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
-        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
-        WinRtAuthoringHostManifestLoader.registerHostExports(RuntimeAssetsHostExports::class.java.name, RuntimeAssetsHostExports)
-
-        val root = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-")
-        val assets = root.resolve("kotlin-winrt-runtime-assets")
-        Files.createDirectories(assets)
-        Files.writeString(
-            assets.resolve("RuntimeAssetsHostComponent.host.json"),
-            """
-            {
-              "schemaVersion": 1,
-              "model": "jvm-authoring-host",
-              "assemblyName": "RuntimeAssetsHostComponent",
-              "hostExportsClass": "${RuntimeAssetsHostExports::class.java.name}",
-              "targetArtifact": "RuntimeAssetsHostComponent.jar",
-              "activatableClassTargets": {
-                "Sample.Authoring.RuntimeAssetsHostComponent": "RuntimeAssetsHostComponent.jar"
-              }
-            }
-            """.trimIndent(),
-        )
-
-        URLClassLoader(arrayOf(root.toUri().toURL()), javaClass.classLoader).use { classLoader ->
-            WinRtAuthoringHostManifestLoader.installFromRuntimeAssets(classLoader)
-        }
-        ActivationFactory.get("Sample.Authoring.RuntimeAssetsHostComponent").use { factory ->
-            factory.activateInstance().use { instance ->
-                assertNotNull(
-                    ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
-                        RuntimeAssetsHostComponent::class,
-                    ),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun authored_host_manifest_loader_installs_from_plugin_runtime_assets_jar() {
-        assumeTrue(PlatformRuntime.isWindows)
-        ComWrappersSupport.clearRegistriesForTests()
-        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
-        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
-        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
-        WinRtAuthoringHostManifestLoader.registerHostExports(RuntimeAssetsHostExports::class.java.name, RuntimeAssetsHostExports)
-
-        val jarPath = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-").resolve("runtime-assets.jar")
-        JarOutputStream(Files.newOutputStream(jarPath)).use { jar ->
-            jar.putNextEntry(JarEntry("kotlin-winrt-runtime-assets/"))
-            jar.closeEntry()
-            jar.putNextEntry(JarEntry("kotlin-winrt-runtime-assets/RuntimeAssetsHostComponent.host.json"))
-            jar.write(
-                """
-                {
-                  "schemaVersion": 1,
-                  "model": "jvm-authoring-host",
-                  "assemblyName": "RuntimeAssetsHostComponent",
-                  "hostExportsClass": "${RuntimeAssetsHostExports::class.java.name}",
-                  "targetArtifact": "RuntimeAssetsHostComponent.jar",
-                  "activatableClassTargets": {
-                    "Sample.Authoring.RuntimeAssetsHostComponent": "RuntimeAssetsHostComponent.jar"
-                  }
-                }
-                """.trimIndent().toByteArray(Charsets.UTF_8),
-            )
-            jar.closeEntry()
-        }
-
-        URLClassLoader(arrayOf(jarPath.toUri().toURL()), javaClass.classLoader).use { classLoader ->
-            WinRtAuthoringHostManifestLoader.installFromRuntimeAssets(classLoader)
-        }
-        ActivationFactory.get("Sample.Authoring.RuntimeAssetsHostComponent").use { factory ->
-            factory.activateInstance().use { instance ->
-                assertNotNull(
-                    ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
-                        RuntimeAssetsHostComponent::class,
-                    ),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun composable_object_forwards_outer_query_interface_to_inner_after_factory_composition() {
+    fun composableObjectForwardsOuterQueryInterfaceToInnerAfterFactoryComposition() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("11111111-1111-1111-1111-111111111111")
         val innerIid = Guid("22222222-2222-2222-2222-222222222222")
@@ -541,7 +291,7 @@ class WinRtAuthoringTest {
 
         var retainedInner: ComObjectReference? = null
         WinRtAuthoring.createComposableObject(OuterComponent, outerIid) { baseInterface, innerOut, instanceOut ->
-            val outer = IUnknownReference(PlatformAbi.toRawComPtr(baseInterface), IID.IInspectable, preventReleaseOnDispose = true)
+            val outer = IUnknownReference(PlatformAbi.toRawComPtr(baseInterface), preventReleaseOnDispose = true)
             outer.queryInterface(outerIid).getOrThrow().use { queried ->
                 ComVtableInvoker.invoke(queried.pointer, 6)
             }
@@ -565,7 +315,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun composable_object_registers_inner_and_result_pointers_for_find_object() {
+    fun composableObjectRegistersInnerAndResultPointersForFindObject() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("33333333-3333-3333-3333-333333333333")
         val innerIid = Guid("44444444-4444-4444-4444-444444444444")
@@ -622,7 +372,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun composable_object_detects_aggregated_reference_tracker_inner() {
+    fun composableObjectDetectsAggregatedReferenceTrackerInner() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("55555555-5555-5555-5555-555555555555")
         val innerIid = Guid("66666666-6666-6666-6666-666666666666")
@@ -675,72 +425,7 @@ class WinRtAuthoringTest {
 
     private class FactoryOnlyComponent
 
-    private class ModuleActivatedComponent
-
     private class FallbackActivatedComponent
 
     private class HostActivatedComponent
-
-    private class HostManifestComponent
-
-    private class RuntimeAssetsHostComponent
-
-    object EmptyHostExports : WinRtAuthoringHostExports {
-        override fun registerActivationFactories() = Unit
-
-        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
-            WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)
-    }
-
-    object HostManifestExports : WinRtAuthoringHostExports {
-        override fun registerActivationFactories() {
-            val interfaceId = Guid("88888888-1111-2222-3333-444444444444")
-            WinRtAuthoring.registerType<HostManifestComponent>(
-                WinRtAuthoredTypeDefinition(
-                    runtimeClassName = "Sample.Authoring.HostManifestComponent",
-                    defaultInterfaceId = interfaceId,
-                    interfaces = listOf(
-                        WinRtAuthoredInterfaceDefinition(
-                            interfaceId = interfaceId,
-                            methods = emptyList(),
-                            isDefault = true,
-                        ),
-                    ),
-                ),
-            )
-            WinRtAuthoring.registerActivationFactory<HostManifestComponent>(
-                runtimeClassName = "Sample.Authoring.HostManifestComponent",
-                createInstance = ::HostManifestComponent,
-            )
-        }
-
-        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
-            WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)
-    }
-
-    object RuntimeAssetsHostExports : WinRtAuthoringHostExports {
-        override fun registerActivationFactories() {
-            val interfaceId = Guid("99999999-1111-2222-3333-444444444444")
-            WinRtAuthoring.registerType<RuntimeAssetsHostComponent>(
-                WinRtAuthoredTypeDefinition(
-                    runtimeClassName = "Sample.Authoring.RuntimeAssetsHostComponent",
-                    defaultInterfaceId = interfaceId,
-                    interfaces = listOf(
-                        WinRtAuthoredInterfaceDefinition(
-                            interfaceId = interfaceId,
-                            methods = emptyList(),
-                            isDefault = true,
-                        ),
-                    ),
-                ),
-            )
-            WinRtAuthoring.registerActivationFactory<RuntimeAssetsHostComponent>(
-                runtimeClassName = "Sample.Authoring.RuntimeAssetsHostComponent",
-                createInstance = ::RuntimeAssetsHostComponent,
-            )
-        }
-
-        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
-            WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)
-    }
 }
