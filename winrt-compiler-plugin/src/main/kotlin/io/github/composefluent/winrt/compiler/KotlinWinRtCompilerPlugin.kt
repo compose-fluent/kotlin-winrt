@@ -1007,7 +1007,14 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             kind: ProjectedObjectGetterKind,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1047,8 +1054,9 @@ class KotlinWinRtIrGenerationExtension(
                                     isMutable = false,
                                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                                 )
-                                +jvmFfmCallUnitBlock(
-                                    symbols = symbols,
+                                +directCallUnitBlock(
+                                    jvmSymbols = jvmSymbols,
+                                    nativeSymbols = nativeSymbols,
                                     builder = builder,
                                     pluginContext = pluginContext,
                                     reference = reference,
@@ -1113,7 +1121,8 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             includeProjectedObjectArgument: Boolean,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1121,6 +1130,22 @@ class KotlinWinRtIrGenerationExtension(
                 call.arguments.getOrNull(3) ?: return null
             } else {
                 null
+            }
+            val argumentKinds =
+                if (projectedObject == null) {
+                    listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)
+                } else {
+                    listOf(
+                        UnitCallAbiArgumentKind.Object,
+                        UnitCallAbiArgumentKind.Object,
+                        UnitCallAbiArgumentKind.Object,
+                    )
+                }
+            if (
+                jvmSymbols?.canLower(argumentKinds) != true &&
+                nativeSymbols?.canLower(argumentKinds) != true
+            ) {
+                return null
             }
             val marshaler = call.arguments.getOrNull(if (includeProjectedObjectArgument) 4 else 3) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
@@ -1154,16 +1179,6 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        val argumentKinds =
-                            if (projectedObject == null) {
-                                listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)
-                            } else {
-                                listOf(
-                                    UnitCallAbiArgumentKind.Object,
-                                    UnitCallAbiArgumentKind.Object,
-                                    UnitCallAbiArgumentKind.Object,
-                                )
-                            }
                         val values =
                             if (projectedObject == null) {
                                 listOf(builder.irGet(lengthOut), builder.irGet(dataOut))
@@ -1174,8 +1189,9 @@ class KotlinWinRtIrGenerationExtension(
                                     builder.irGet(dataOut),
                                 )
                             }
-                        +jvmFfmCallUnitBlock(
-                            symbols = symbols,
+                        +directCallUnitBlock(
+                            jvmSymbols = jvmSymbols,
+                            nativeSymbols = nativeSymbols,
                             builder = builder,
                             pluginContext = pluginContext,
                             reference = reference,
@@ -1357,7 +1373,14 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1393,8 +1416,9 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        +jvmFfmCallUnitBlock(
-                            symbols = symbols,
+                        +directCallUnitBlock(
+                            jvmSymbols = jvmSymbols,
+                            nativeSymbols = nativeSymbols,
                             builder = builder,
                             pluginContext = pluginContext,
                             reference = reference,
