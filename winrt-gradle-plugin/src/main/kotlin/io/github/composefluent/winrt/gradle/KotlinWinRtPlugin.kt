@@ -556,6 +556,9 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn(stageApplicationPackageTask)
         },
     )
+    val applicationHostExecutable = applicationHostTask.flatMap { task ->
+        task.outputDirectory.file(task.executableBaseName.map { executableBaseName -> "$executableBaseName.exe" })
+    }
     val runApplicationHostTask = project.tasks.register(
         "runWinRtApplicationHost",
         Exec::class.java,
@@ -567,8 +570,8 @@ private fun configureWinRtApplicationTasks(
                 System.getProperty("os.name").contains("Windows", ignoreCase = true)
             }
             task.doFirst {
-                val hostDirectory = applicationHostTask.get().outputDirectory.get().asFile
-                val hostExecutable = hostDirectory.resolve("${applicationHostTask.get().executableBaseName.get()}.exe")
+                val hostExecutable = applicationHostExecutable.get().asFile
+                val hostDirectory = hostExecutable.parentFile
                 task.executable = hostExecutable.absolutePath
                 task.workingDir = hostDirectory
             }
