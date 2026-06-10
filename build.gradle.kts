@@ -83,6 +83,7 @@ val validateWinRtProjectionCompile by tasks.registering {
     group = "verification"
     description = "Compiles plugin-generated projection output after generator and plugin validation."
     dependsOn(validateWinRtPluginGraph)
+    dependsOn(":validateWinRtFullWindowsSdkProjectionGate")
     dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
     dependsOn(":winrt-projections:compileKotlinJvm")
     dependsOn(":winrt-projections:compileKotlinMingwX64")

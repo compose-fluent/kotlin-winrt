@@ -15,9 +15,15 @@ val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.proj
     .map(String::toBooleanStrict)
     .orElse(false)
 val fullWindowsSdkProjectionGateRequested = providers.provider {
+    val fullWindowsSdkGateTasks = setOf(
+        "validateWinRtFullWindowsSdkProjectionGate",
+        "validateWinRtProjectionCompile",
+        "validateWinRtSampleSmoke",
+        "validateWinRtQueue16",
+    )
     gradle.startParameter.taskNames.any { taskName ->
-        taskName == "validateWinRtFullWindowsSdkProjectionGate" ||
-            taskName.endsWith(":validateWinRtFullWindowsSdkProjectionGate")
+        val unqualifiedTaskName = taskName.substringAfterLast(":")
+        unqualifiedTaskName in fullWindowsSdkGateTasks
     }
 }
 val projectionUseFullWindowsSdk = projectionIncludeFullWindowsSdk
@@ -126,6 +132,4 @@ winRt {
     )
     runtimeAsset(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.dll").asFile.absolutePath)
     type("Windows.Foundation.IStringable")
-    type("Windows.Storage.ApplicationData")
-    type("Windows.Storage.KnownFolders")
 }
