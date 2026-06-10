@@ -20,6 +20,56 @@ kotlin {
     mingwX64()
 }
 
+val generatedWinRtProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+
+val auditGeneratedWinRtProjectionOutput by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Fails if generated projection source leaks fallback invocation or JVM-only reflection paths."
+    dependsOn("generateWinRtProjections")
+    inputs.dir(generatedWinRtProjectionSources)
+
+    val rootPath = generatedWinRtProjectionSources.get().asFile.absolutePath
+    val escapedRoot = rootPath.replace("'", "''")
+    val script = """
+        ${'$'}ErrorActionPreference = 'Stop'
+        ${'$'}root = '$escapedRoot'
+        ${'$'}patterns = @(
+          'ComVtableInvoker',
+          'invokeGenericArgs',
+          'Class.forName',
+          'Proxy.newProxyInstance',
+          'java.lang.reflect',
+          'import java.'
+        )
+        ${'$'}violations = New-Object System.Collections.Generic.List[string]
+        Get-ChildItem -Path ${'$'}root -Recurse -File -Filter '*.kt' | ForEach-Object {
+          ${'$'}file = ${'$'}_
+          ${'$'}lineNumber = 0
+          Get-Content -LiteralPath ${'$'}file.FullName | ForEach-Object {
+            ${'$'}lineNumber += 1
+            ${'$'}line = ${'$'}_
+            foreach (${'$'}pattern in ${'$'}patterns) {
+              if (${'$'}line.Contains(${'$'}pattern)) {
+                ${'$'}relative = [System.IO.Path]::GetRelativePath(${'$'}root, ${'$'}file.FullName).Replace('\', '/')
+                ${'$'}violations.Add(('{0}:{1}: {2}: {3}' -f ${'$'}relative, ${'$'}lineNumber, ${'$'}pattern, ${'$'}line.Trim()))
+                break
+              }
+            }
+          }
+        }
+        if (${'$'}violations.Count -gt 0) {
+          Write-Error 'Generated WinRT projection output contains forbidden fallback or JVM-only paths.'
+          ${'$'}violations | Select-Object -First 50 | ForEach-Object { Write-Error ${'$'}_ }
+          exit 1
+        }
+    """.trimIndent()
+    commandLine("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+}
+
+tasks.named("check") {
+    dependsOn(auditGeneratedWinRtProjectionOutput)
+}
+
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
