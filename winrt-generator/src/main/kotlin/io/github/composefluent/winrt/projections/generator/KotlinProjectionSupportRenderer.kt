@@ -35,6 +35,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ComObjectReference
@@ -1694,7 +1695,7 @@ class KotlinProjectionSupportRenderer {
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
-                code.add("methods = %L,\n", authoringServerFactoryInterfaceMethodsCode(plan, interfacePlan, factoryInterface.kind))
+                code.add("methods = %L,\n", authoringServerFactoryInterfaceMethodsCode(plan, interfacePlan, factoryInterface.kinds))
                 code.unindent()
                 code.add("),\n")
             }
@@ -1710,7 +1711,7 @@ class KotlinProjectionSupportRenderer {
     private fun authoringServerFactoryInterfaceMethodsCode(
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
-        kind: AuthoringServerFactoryInterfaceKind,
+        kinds: Set<AuthoringServerFactoryInterfaceKind>,
     ): CodeBlock {
         if (interfacePlan.instanceMemberBindings.isEmpty()) {
             return CodeBlock.of("emptyList()")
@@ -1734,7 +1735,7 @@ class KotlinProjectionSupportRenderer {
             code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
             code.add("handler = { rawArgs ->\n")
             code.indent()
-            code.add("%L", authoringServerFactoryMethodHandlerCode(runtimeClassPlan, interfacePlan, binding, kind))
+            code.add("%L", authoringServerFactoryMethodHandlerCode(runtimeClassPlan, interfacePlan, binding, kinds))
             code.unindent()
             code.add("},\n")
             code.unindent()
@@ -1749,7 +1750,7 @@ class KotlinProjectionSupportRenderer {
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
-        kind: AuthoringServerFactoryInterfaceKind,
+        kinds: Set<AuthoringServerFactoryInterfaceKind>,
     ): CodeBlock {
         val method = interfacePlan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
@@ -1758,13 +1759,24 @@ class KotlinProjectionSupportRenderer {
         if (!authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
             return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
         }
+        val isComposableFactoryMethod =
+            AuthoringServerFactoryInterfaceKind.Composable in kinds &&
+                method.returnType.typeName == runtimeClassPlan.type.qualifiedName &&
+                method.parameters.size >= 2 &&
+                method.parameters.takeLast(2).all { parameter -> isWinRtObjectTypeName(parameter.type.typeName) }
+        val kind = when {
+            isComposableFactoryMethod -> AuthoringServerFactoryInterfaceKind.Composable
+            AuthoringServerFactoryInterfaceKind.Constructor in kinds -> AuthoringServerFactoryInterfaceKind.Constructor
+            AuthoringServerFactoryInterfaceKind.Static in kinds -> AuthoringServerFactoryInterfaceKind.Static
+            else -> return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
         val projectedType = ClassName(runtimeClassPlan.packageName, runtimeClassPlan.type.name)
         val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
         val code = CodeBlock.builder()
         code.add("try {\n")
         code.indent()
         binding.parameterBindings.forEachIndexed { index, parameter ->
-            if (parameter.name == receiveArrayParameterName) {
+            if (parameter.name == receiveArrayParameterName || (kind == AuthoringServerFactoryInterfaceKind.Composable && index >= binding.parameterBindings.size - 2)) {
                 return@forEachIndexed
             }
             code.add(
@@ -1775,7 +1787,20 @@ class KotlinProjectionSupportRenderer {
         }
         val invocation = authoringServerFactoryInvocationCode(projectedType, method, binding, receiveArrayParameterName, kind)
         val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
-        if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+        if (kind == AuthoringServerFactoryInterfaceKind.Composable) {
+            code.add("val __result = %L\n", invocation)
+            val innerRawIndex = authoringCcwParameterRawIndex(binding.parameterBindings, binding.parameterBindings.lastIndex)
+            val instanceRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
+            code.add(
+                "%T.writePointer(rawArgs[%L] as %T, %T.nullPointer)\n",
+                PLATFORM_ABI_CLASS_NAME,
+                innerRawIndex,
+                RAW_ADDRESS_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+            code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$instanceRawIndex] as RawAddress", "__result"))
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        } else if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else {
@@ -1804,12 +1829,20 @@ class KotlinProjectionSupportRenderer {
         val target = when (kind) {
             AuthoringServerFactoryInterfaceKind.Constructor -> CodeBlock.of("%T", projectedType)
             AuthoringServerFactoryInterfaceKind.Static -> CodeBlock.of("%T.%L", projectedType, method.projectedMethodName())
+            AuthoringServerFactoryInterfaceKind.Composable -> CodeBlock.of("%T", projectedType)
         }
         val code = CodeBlock.builder()
         code.add("%L(", target)
         binding.parameterBindings
             .withIndex()
             .filterNot { (_, parameter) -> parameter.name == receiveArrayParameterName }
+            .let { parameters ->
+                if (kind == AuthoringServerFactoryInterfaceKind.Composable) {
+                    parameters.dropLast(2)
+                } else {
+                    parameters
+                }
+            }
             .forEachIndexed { argumentIndex, (parameterIndex, _) ->
                 if (argumentIndex > 0) {
                     code.add(", ")
@@ -1867,12 +1900,20 @@ class KotlinProjectionSupportRenderer {
         factory: WinRtFactorySurfaceDescriptor,
     ): List<AuthoringServerFactoryInterface> =
         (factory.constructorFactories.map {
-            AuthoringServerFactoryInterface(it, AuthoringServerFactoryInterfaceKind.Constructor)
+            AuthoringServerFactoryInterface(it, setOf(AuthoringServerFactoryInterfaceKind.Constructor))
         } + factory.staticMemberTargets.map {
-            AuthoringServerFactoryInterface(it, AuthoringServerFactoryInterfaceKind.Static)
+            AuthoringServerFactoryInterface(it, setOf(AuthoringServerFactoryInterfaceKind.Static))
+        } + factory.composableFactories.map {
+            AuthoringServerFactoryInterface(it, setOf(AuthoringServerFactoryInterfaceKind.Composable))
         })
-            .distinctBy { it.name to it.kind }
-            .sortedWith(compareBy<AuthoringServerFactoryInterface> { it.name }.thenBy { it.kind.name })
+            .groupBy(AuthoringServerFactoryInterface::name)
+            .map { (name, entries) ->
+                AuthoringServerFactoryInterface(
+                    name = name,
+                    kinds = entries.flatMap { it.kinds }.toSet(),
+                )
+            }
+            .sortedBy { it.name }
 
     private fun authoringWrapperObject(plan: KotlinTypeProjectionPlan): TypeSpec {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
@@ -3763,7 +3804,7 @@ class KotlinProjectionSupportRenderer {
             code.add("serverFactoryTypeName = %S,\n", "ABI.${plan.type.qualifiedName}ServerActivationFactory")
             code.add("isActivatable = %L,\n", isActivatable)
             code.add("implementsIActivationFactory = true,\n")
-            code.add("factoryInterfaceNames = %L,\n", stringListCode((activatableInterfaces + staticInterfaces).distinct()))
+            code.add("factoryInterfaceNames = %L,\n", stringListCode((activatableInterfaces + staticInterfaces + composableInterfaces).distinct()))
             code.add("activatableFactoryInterfaceNames = %L,\n", stringListCode(activatableInterfaces))
             code.add("staticFactoryInterfaceNames = %L,\n", stringListCode(staticInterfaces))
             code.add("activatableFactoryMemberNames = %L,\n", stringListCode(authoringFactoryMemberReferences(plan, activatableInterfaces)))
@@ -3874,10 +3915,11 @@ class KotlinProjectionSupportRenderer {
 
 private data class AuthoringServerFactoryInterface(
     val name: String,
-    val kind: AuthoringServerFactoryInterfaceKind,
+    val kinds: Set<AuthoringServerFactoryInterfaceKind>,
 )
 
 private enum class AuthoringServerFactoryInterfaceKind {
     Constructor,
     Static,
+    Composable,
 }

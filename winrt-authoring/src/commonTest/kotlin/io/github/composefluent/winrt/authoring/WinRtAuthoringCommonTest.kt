@@ -102,6 +102,95 @@ class WinRtAuthoringCommonTest {
     }
 
     @Test
+    fun authoredActivationFactoryExposesComposableFactoryInterfaceMembers() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val outerIid = Guid("bcbcbcbc-1111-2222-3333-444444444444")
+        val innerIid = Guid("bcbcbcbc-1111-2222-3333-444444444445")
+        val composableFactoryIid = Guid("bcbcbcbc-1111-2222-3333-444444444446")
+        var retainedInner: ComObjectReference? = null
+
+        WinRtAuthoring.registerType<OuterComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.ComposableOuterComponent",
+                defaultInterfaceId = outerIid,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = outerIid,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerType<InnerComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.ComposableInnerComponent",
+                defaultInterfaceId = innerIid,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = innerIid,
+                        methods = listOf(
+                            WinRtAuthoredMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                                PlatformAbi.writeInt32(args.single() as RawAddress, 42)
+                                KnownHResults.S_OK.value
+                            },
+                        ),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory(
+            WinRtAuthoredActivationFactoryDefinition(
+                runtimeClassName = "Sample.Authoring.ComposableOuterComponent",
+                implementationType = OuterComponent::class,
+                composableFactories = listOf(
+                    WinRtAuthoredComposableFactoryDefinition(
+                        interfaceId = composableFactoryIid,
+                        signature = ComMethodSignature.of(
+                            ComAbiValueKind.Pointer,
+                            ComAbiValueKind.Pointer,
+                            ComAbiValueKind.Pointer,
+                        ),
+                    ) { baseInterface, innerOut, instanceOut ->
+                        assertNotNull(
+                            ComWrappersSupport.findObject(
+                                baseInterface,
+                                OuterComponent::class,
+                            ),
+                        )
+                        retainedInner = ComWrappersSupport.createCCWForObject(InnerComponent, innerIid)
+                        val inner = requireNotNull(retainedInner)
+                        PlatformAbi.writePointer(innerOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
+                        PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
+                        KnownHResults.S_OK.value
+                    },
+                ),
+            ),
+        )
+
+        ActivationFactory.get("Sample.Authoring.ComposableOuterComponent", composableFactoryIid).use { factory ->
+            WinRtAuthoring.createComposableObject(OuterComponent, outerIid) { baseInterface, innerOut, instanceOut ->
+                ComVtableInvoker.invokeArgs(factory.pointer, 6, baseInterface, innerOut, instanceOut)
+            }.use { composed ->
+                assertEquals(
+                    OuterComponent,
+                    ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(composed.outer.pointer), OuterComponent::class),
+                )
+                assertNotNull(composed.inner)
+                composed.outer.queryInterface(innerIid).getOrThrow().use { forwarded ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val result = PlatformAbi.allocateInt32Slot(scope)
+                        assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(forwarded.pointer, 6, result))
+                        assertEquals(42, PlatformAbi.readInt32(result))
+                    }
+                }
+            }
+        }
+        retainedInner?.close()
+    }
+
+    @Test
     fun authoredActivationFactoryWithoutDefaultConstructorReportsNotImplemented() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("eeeeeeee-1111-2222-3333-444444444444")

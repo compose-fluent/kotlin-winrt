@@ -1667,7 +1667,10 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             activationFactoryCacheName = "${type.name.substringBefore('`')}ActivationFactory",
             staticFactoryCacheNames = staticMemberTargets.map { cacheNameFor(it) },
             constructorFactories = attributed.filter(WinRtAttributedFactoryDescriptor::activatable).map(WinRtAttributedFactoryDescriptor::interfaceName),
-            composableFactories = attributed.filter(WinRtAttributedFactoryDescriptor::composable).map(WinRtAttributedFactoryDescriptor::interfaceName),
+            composableFactories = (
+                attributed.filter(WinRtAttributedFactoryDescriptor::composable).map(WinRtAttributedFactoryDescriptor::interfaceName) +
+                    listOfNotNull(type.activation.composableFactoryInterfaceName)
+                ).distinct().sorted(),
             staticMemberTargets = staticMemberTargets,
             gcPressureAmount = getGcPressureAmount(type),
         )

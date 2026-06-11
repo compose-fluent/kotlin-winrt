@@ -71,6 +71,7 @@ data class WinRtAuthoredActivationFactoryDefinition<T : Any>(
     val implementationType: KClass<T>,
     val createInstance: (() -> T)? = null,
     val factoryInterfaces: List<WinRtAuthoredInterfaceDefinition<WinRtAuthoredActivationFactoryDefinition<T>>> = emptyList(),
+    val composableFactories: List<WinRtAuthoredComposableFactoryDefinition> = emptyList(),
 ) {
     init {
         require(runtimeClassName.isNotBlank()) { "Authored runtime class name must not be blank." }
@@ -90,6 +91,7 @@ data class WinRtAuthoredActivationFactoryDefinition<T : Any>(
                 ),
             )
             addAll(factoryInterfaces.map { it.toRuntimeDefinition(this@WinRtAuthoredActivationFactoryDefinition) })
+            addAll(composableFactories.map { it.toRuntimeDefinition() })
         }
         return ComWrappersSupport.createCCWForObject(
             AuthoredActivationFactoryInstance(runtimeClassName, interfaces),
@@ -109,6 +111,30 @@ data class WinRtAuthoredActivationFactoryDefinition<T : Any>(
         }
         return KnownHResults.S_OK.value
     }
+}
+
+data class WinRtAuthoredComposableFactoryDefinition(
+    val interfaceId: Guid,
+    val signature: ComMethodSignature,
+    val createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
+) {
+    internal fun toRuntimeDefinition(): WinRtInspectableInterfaceDefinition =
+        WinRtInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            baseKind = WinRtComInterfaceBaseKind.IInspectable,
+            methods = listOf(
+                WinRtInspectableMethodDefinition(signature) { args ->
+                    require(args.size >= 3) {
+                        "Composable factory method requires baseInterface, innerOut, and instanceOut ABI arguments."
+                    }
+                    createInstance(
+                        args[args.lastIndex - 2] as RawAddress,
+                        args[args.lastIndex - 1] as RawAddress,
+                        args[args.lastIndex] as RawAddress,
+                    )
+                },
+            ),
+        )
 }
 
 private data class AuthoredActivationFactoryInstance(
