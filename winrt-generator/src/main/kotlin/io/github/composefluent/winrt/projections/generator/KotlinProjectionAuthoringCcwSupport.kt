@@ -28,11 +28,11 @@ internal fun authoredCcwBindingUnsupportedReason(
             return "parameter ${parameter.name} receive-array ABI shape ${parameter.typeBinding.describeAbiKind()}"
         }
     binding.parameterBindings.forEach { parameter ->
-        authoredCcwAbiBindingUnsupportedReason(typeRenderer, parameter.typeBinding)?.let { reason ->
+        authoredCcwParameterAbiBindingUnsupportedReason(typeRenderer, parameter.typeBinding)?.let { reason ->
             return "parameter ${parameter.name} $reason"
         }
     }
-    authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding.returnBinding)?.let { reason ->
+    authoredCcwReturnAbiBindingUnsupportedReason(typeRenderer, binding.returnBinding)?.let { reason ->
         return "return $reason"
     }
     return null
@@ -57,11 +57,24 @@ internal fun authoredCcwReceiveArrayReturnParameter(
 internal fun authoredCcwAbiBindingIsSupported(
     typeRenderer: KotlinProjectionRenderer,
     binding: KotlinProjectionAbiTypeBinding,
-): Boolean = authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding) == null
+): Boolean = authoredCcwReturnAbiBindingUnsupportedReason(typeRenderer, binding) == null
+
+private fun authoredCcwParameterAbiBindingUnsupportedReason(
+    typeRenderer: KotlinProjectionRenderer,
+    binding: KotlinProjectionAbiTypeBinding,
+): String? =
+    authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding, allowAsyncReference = false)
+
+private fun authoredCcwReturnAbiBindingUnsupportedReason(
+    typeRenderer: KotlinProjectionRenderer,
+    binding: KotlinProjectionAbiTypeBinding,
+): String? =
+    authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding, allowAsyncReference = true)
 
 private fun authoredCcwAbiBindingUnsupportedReason(
     typeRenderer: KotlinProjectionRenderer,
     binding: KotlinProjectionAbiTypeBinding,
+    allowAsyncReference: Boolean,
 ): String? {
     return when (binding.kind) {
         KotlinProjectionAbiValueKind.Unit,
@@ -87,6 +100,15 @@ private fun authoredCcwAbiBindingUnsupportedReason(
         KotlinProjectionAbiValueKind.GenericParameter,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> null
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
+            if (allowAsyncReference) {
+                null
+            } else {
+                "${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
         KotlinProjectionAbiValueKind.Array -> {
             val elementBinding = binding.typeArguments.singleOrNull()
                 ?: return "array ${binding.describeAbiKind()} is missing an element ABI binding"
@@ -96,8 +118,19 @@ private fun authoredCcwAbiBindingUnsupportedReason(
                 "array element ${elementBinding.describeAbiKind()} uses unsupported authored ABI shape"
             }
         }
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedMapView ->
+            if (authoredCcwMappedCollectionBindingIsSupported(typeRenderer, binding)) {
+                null
+            } else {
+                "collection ${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
         KotlinProjectionAbiValueKind.Struct ->
             if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
+                authoredCcwCustomStructAbiIsSupported(binding) ||
                 typeRenderer.nativeStructClassName(binding) != null
             ) {
                 null
@@ -114,3 +147,25 @@ private fun authoredCcwArrayElementBindingIsSupported(
 ): Boolean =
     typeRenderer.nativeArrayElementReadCode(binding, CodeBlock.of("__data"), CodeBlock.of("__index")) != null ||
         typeRenderer.nonBlittableArrayElementMarshalerExpression(binding) != null
+
+private fun authoredCcwMappedCollectionBindingIsSupported(
+    typeRenderer: KotlinProjectionRenderer,
+    binding: KotlinProjectionAbiTypeBinding,
+): Boolean =
+    when (binding.kind) {
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedVectorView ->
+            binding.typeArguments.singleOrNull()?.let(typeRenderer::collectionReferenceAdapterCode) != null
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedMapView ->
+            binding.typeArguments.size == 2 &&
+                binding.typeArguments.all { argument -> typeRenderer.collectionReferenceAdapterCode(argument) != null }
+        else -> false
+    }
+
+private fun authoredCcwCustomStructAbiIsSupported(binding: KotlinProjectionAbiTypeBinding): Boolean =
+    customStructAbi(binding)?.let { customAbi ->
+        (customAbi.abiArgumentKind != null && customAbi.fromAbiCarrierFunctionName != null) ||
+            customAbi.abiLayoutExpression != null
+    } == true

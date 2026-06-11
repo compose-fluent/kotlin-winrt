@@ -62,6 +62,7 @@ import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
 import io.github.composefluent.winrt.runtime.Projections
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRtAbiArray
+import io.github.composefluent.winrt.runtime.NativeAbiLayout
 import io.github.composefluent.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.composefluent.winrt.runtime.NativeScalarFieldSpec
 import io.github.composefluent.winrt.runtime.NativeStructAdapter
@@ -333,6 +334,7 @@ internal val MUTABLE_ITERATOR_CLASS_NAME = ClassName("kotlin.collections", "Muta
 internal val MUTABLE_LIST_ITERATOR_CLASS_NAME = ClassName("kotlin.collections", "MutableListIterator")
 internal val MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "MutableSet")
 internal val RAW_ADDRESS_CLASS_NAME = RawAddress::class.asClassName()
+internal val NATIVE_ABI_LAYOUT_CLASS_NAME = NativeAbiLayout::class.asClassName()
 internal val NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME = NativeNestedStructFieldSpec::class.asClassName()
 internal val NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME = NativeScalarFieldSpec::class.asClassName()
 internal val NATIVE_STRUCT_ADAPTER_CLASS_NAME = NativeStructAdapter::class.asClassName()
@@ -599,7 +601,9 @@ internal data class KotlinProjectionCustomStructAbi(
     val copyToFunctionName: String,
     val disposeAbiFunctionName: String? = null,
     val toAbiFunctionName: String? = null,
+    val fromAbiCarrierFunctionName: String? = null,
     val abiArgumentKind: KotlinProjectionComArgumentKind? = null,
+    val abiLayoutExpression: CodeBlock? = null,
 )
 
 internal data class KotlinProjectionCustomObjectAbi(
@@ -651,6 +655,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             "dateTimeFromAbi",
             "copyDateTimeTo",
             toAbiFunctionName = "dateTimeToAbi",
+            fromAbiCarrierFunctionName = "dateTimeFromAbiValue",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
         ),
         simpleAbiLookup = true,
@@ -666,6 +671,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             "timeSpanFromAbi",
             "copyTimeSpanTo",
             toAbiFunctionName = "timeSpanToAbi",
+            fromAbiCarrierFunctionName = "timeSpanFromAbiValue",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
         ),
         simpleAbiLookup = true,
@@ -707,6 +713,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             "hResultFromAbi",
             "copyHResultTo",
             toAbiFunctionName = "hResultToAbi",
+            fromAbiCarrierFunctionName = "hResultFromAbiValue",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         ),
         runtimeOwnedProjection = true,
@@ -723,6 +730,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             "typeNameFromAbi",
             "copyTypeNameTo",
             "disposeTypeNameAbi",
+            abiLayoutExpression = CodeBlock.of("%T.TYPE_NAME", NATIVE_ABI_LAYOUT_CLASS_NAME),
         ),
         simpleAbiLookup = true,
         descriptionName = "TypeName",

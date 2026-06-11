@@ -2547,11 +2547,31 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Struct ->
             if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
-            } else typeRenderer.nativeStructClassName(binding)
-                ?.let { structType -> CodeBlock.of("%T.Struct(%T.Metadata.layout.abiLayout)", COM_ABI_VALUE_KIND_CLASS_NAME, structType) }
+            } else customStructAbi(binding)
+                ?.let(::authoringCcwCustomStructAbiValueKindCode)
+                ?: typeRenderer.nativeStructClassName(binding)
+                    ?.let { structType -> CodeBlock.of("%T.Struct(%T.Metadata.layout.abiLayout)", COM_ABI_VALUE_KIND_CLASS_NAME, structType) }
                 ?: CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
         else -> CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
     }
+
+    private fun authoringCcwCustomStructAbiValueKindCode(customAbi: KotlinProjectionCustomStructAbi): CodeBlock =
+        customAbi.abiArgumentKind
+            ?.let(::authoringCcwComArgumentKindCode)
+            ?: customAbi.abiLayoutExpression
+                ?.let { layout -> CodeBlock.of("%T.Struct(%L)", COM_ABI_VALUE_KIND_CLASS_NAME, layout) }
+            ?: CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
+
+    private fun authoringCcwComArgumentKindCode(kind: KotlinProjectionComArgumentKind): CodeBlock =
+        when (kind) {
+            KotlinProjectionComArgumentKind.Pointer -> CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int8 -> CodeBlock.of("%T.Int8", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int16 -> CodeBlock.of("%T.Int16", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int32 -> CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int64 -> CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Float -> CodeBlock.of("%T.Float", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Double -> CodeBlock.of("%T.Double", COM_ABI_VALUE_KIND_CLASS_NAME)
+        }
 
     private fun authoringCcwMethodHandlerCode(
         interfacePlan: KotlinTypeProjectionPlan,
@@ -2806,7 +2826,9 @@ class KotlinProjectionSupportRenderer {
             authoringCcwDecodeEnumRawCode(binding, index),
         )
         KotlinProjectionAbiValueKind.Struct ->
-            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+            customStructAbi(binding)?.let { customAbi ->
+                authoringCcwDecodeCustomStructArgumentCode(binding, customAbi, index)
+            } ?: if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T(rawArgs[%L] as Long)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, index)
             } else {
                 val structType = typeRenderer.nativeStructClassName(binding)
@@ -2850,6 +2872,47 @@ class KotlinProjectionSupportRenderer {
         )
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
     }
+
+    private fun authoringCcwDecodeCustomStructArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        customAbi: KotlinProjectionCustomStructAbi,
+        index: Int,
+    ): CodeBlock {
+        val carrierFunctionName = customAbi.fromAbiCarrierFunctionName
+        val carrierKind = customAbi.abiArgumentKind
+        if (carrierFunctionName != null && carrierKind != null) {
+            return CodeBlock.of(
+                "%T.%L(%L)",
+                customAbi.helperTypeName,
+                carrierFunctionName,
+                authoringCcwDecodeComArgumentCarrierCode(carrierKind, index),
+            )
+        }
+        if (customAbi.abiLayoutExpression != null) {
+            return CodeBlock.of(
+                "%T.%L(rawArgs[%L] as %T)",
+                customAbi.helperTypeName,
+                customAbi.fromAbiFunctionName,
+                index,
+                RAW_ADDRESS_CLASS_NAME,
+            )
+        }
+        return CodeBlock.of("error(%S)", "Unsupported authored ABI custom struct argument ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwDecodeComArgumentCarrierCode(
+        kind: KotlinProjectionComArgumentKind,
+        index: Int,
+    ): CodeBlock =
+        when (kind) {
+            KotlinProjectionComArgumentKind.Pointer -> CodeBlock.of("rawArgs[%L] as %T", index, RAW_ADDRESS_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int8 -> CodeBlock.of("rawArgs[%L] as Byte", index)
+            KotlinProjectionComArgumentKind.Int16 -> CodeBlock.of("rawArgs[%L] as Short", index)
+            KotlinProjectionComArgumentKind.Int32 -> CodeBlock.of("rawArgs[%L] as Int", index)
+            KotlinProjectionComArgumentKind.Int64 -> CodeBlock.of("rawArgs[%L] as Long", index)
+            KotlinProjectionComArgumentKind.Float -> CodeBlock.of("rawArgs[%L] as Float", index)
+            KotlinProjectionComArgumentKind.Double -> CodeBlock.of("rawArgs[%L] as Double", index)
+        }
 
     private fun authoringCcwDecodeArrayArgumentCode(
         parameter: KotlinProjectionAbiParameterBinding,
@@ -2978,6 +3041,15 @@ class KotlinProjectionSupportRenderer {
             PLATFORM_ABI_CLASS_NAME,
             outExpression,
         )
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedMapView -> authoringCcwWriteMappedCollectionReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> authoringCcwWriteAsyncReferenceReturnCode(binding, outExpression, valueExpression)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
@@ -2986,6 +3058,88 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.InspectableReference -> authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI return ${binding.describeAbiKind()}")
     }
+
+    private fun authoringCcwWriteMappedCollectionReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val projectionClass = when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable -> WINRT_ITERABLE_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedVector -> WINRT_LIST_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedVectorView -> WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedMap -> WINRT_DICTIONARY_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedMapView -> WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME
+            else -> return CodeBlock.of("error(%S)", "Unsupported authored ABI collection return ${binding.describeAbiKind()}")
+        }
+        val adapterArguments = authoringCcwMappedCollectionAdapterArguments(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI collection return ${binding.describeAbiKind()}")
+        return CodeBlock.builder()
+            .add("%T.writePointer(%L, %T.fromManaged(%L", PLATFORM_ABI_CLASS_NAME, outExpression, projectionClass, valueExpression)
+            .apply { adapterArguments.forEach { adapter -> add(", %L", adapter) } }
+            .add("))")
+            .build()
+    }
+
+    private fun authoringCcwMappedCollectionAdapterArguments(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): List<CodeBlock>? =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedVectorView ->
+                listOf(typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.singleOrNull() ?: return null) ?: return null)
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedMapView ->
+                listOf(
+                    typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(0) ?: return null) ?: return null,
+                    typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(1) ?: return null) ?: return null,
+                )
+            else -> null
+        }
+
+    private fun authoringCcwWriteAsyncReferenceReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val interfaceId = authoringCcwAsyncReferenceInterfaceIdCode(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI async return ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+            valueExpression,
+            interfaceId,
+        )
+    }
+
+    private fun authoringCcwAsyncReferenceInterfaceIdCode(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedAsyncAction ->
+                CodeBlock.of("%T.IAsyncAction", WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME)
+            KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
+                val progressBinding = binding.typeArguments.singleOrNull() ?: return null
+                val progressSignature = typeRenderer.asyncOperationResultTypeSignature(progressBinding) ?: return null
+                CodeBlock.of("%T.interfaceId(%L)", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressSignature)
+            }
+            KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
+                val resultBinding = binding.typeArguments.singleOrNull() ?: return null
+                val resultSignature = typeRenderer.asyncOperationResultTypeSignature(resultBinding) ?: return null
+                CodeBlock.of("%T.interfaceId(%L)", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME, resultSignature)
+            }
+            KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
+                val resultBinding = binding.typeArguments.getOrNull(0) ?: return null
+                val progressBinding = binding.typeArguments.getOrNull(1) ?: return null
+                val resultSignature = typeRenderer.asyncOperationResultTypeSignature(resultBinding) ?: return null
+                val progressSignature = typeRenderer.asyncOperationResultTypeSignature(progressBinding) ?: return null
+                CodeBlock.of("%T.interfaceId(%L, %L)", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultSignature, progressSignature)
+            }
+            else -> null
+        }
 
     private fun authoringCcwWriteArrayReturnCode(
         binding: KotlinProjectionAbiTypeBinding,

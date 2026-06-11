@@ -4444,6 +4444,197 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun authoring_ccw_decodes_winui_type_name_custom_struct_arguments_through_runtime_marshaler() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetMetadata",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 5,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("forType", "Windows.UI.Xaml.Interop.TypeName"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("ComAbiValueKind.Struct(NativeAbiLayout.TYPE_NAME)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtSystemProjectionMarshalers.typeNameFromAbi(rawArgs[0] as RawAddress)"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI struct argument Struct(Windows.UI.Xaml.Interop.TypeName)"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+    }
+
+    @Test
+    fun authoring_ccw_writes_mapped_vector_runtime_class_returns_through_common_collection_projection() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetItem",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555573"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetItem",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetItem",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidgetItem",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555574"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Items",
+                                    typeName = "Windows.Foundation.Collections.IVector<Sample.Foundation.WidgetItem>",
+                                    getterMethodName = "get_Items",
+                                    getterMethodRowId = 5,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtListProjection.fromManaged(__result"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtReferenceValueAdapters.runtimeClass(WidgetItem::class"))
+        assertTrue(ccwFactories, ccwFactories.contains("WidgetItem.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[0] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("collection Vector(Sample.Foundation.WidgetItem) uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+        assertFalse(ccwFactories, ccwFactories.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
+    fun authoring_ccw_writes_async_operation_returns_through_existing_async_reference() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetResult",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Accepted", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555575"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "StartDragAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.WidgetResult>",
+                                    methodRowId = 5,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtAsyncOperationReference.interfaceId("))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtTypeSignature"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[0] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupported return IAsyncOperation(Sample.Foundation.WidgetResult)"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+        assertFalse(ccwFactories, ccwFactories.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun renderer_uses_visibility_modifiers_and_metadata_companion_shells() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
