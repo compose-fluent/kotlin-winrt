@@ -315,6 +315,34 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_operation_reference_can_detach_as_winrt_object_return_value() {
+        val resultSignature = WinRtTypeSignature.uint32()
+        val interfaceId = WinRtAsyncOperationReference.interfaceId(resultSignature)
+
+        AsyncInfo.fromResult(
+            result = 4u,
+            resultSignature = resultSignature,
+            resultWriter = WinRtAsyncResultWriter { value, resultOut ->
+                PlatformAbi.writeInt32(resultOut, value.toInt())
+            },
+        ).use { operation ->
+            val detached = ComWrappersSupport.detachCCWForObject(operation, interfaceId)
+            WinRtAsyncProjectionInterop.operation(
+                pointer = detached,
+                resultSignature = resultSignature,
+                resultOut = PlatformAbi::allocateInt32Slot,
+                resultReader = { resultOut -> PlatformAbi.readInt32(resultOut).toUInt() },
+            ).use { projected ->
+                projected.queryInterface(IID.IInspectable).getOrThrow().use { inspectable ->
+                    assertTrue(inspectable.sameIdentity(projected))
+                }
+                assertEquals(WinRtAsyncStatus.Completed, projected.status())
+                assertEquals(4u, projected.getResults())
+            }
+        }
+    }
+
+    @Test
     fun async_info_run_action_completes_and_cancels_backing_job() {
         runBlocking {
             AsyncInfo.runAction(this) {

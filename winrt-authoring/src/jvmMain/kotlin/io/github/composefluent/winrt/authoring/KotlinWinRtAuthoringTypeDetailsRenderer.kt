@@ -2232,16 +2232,35 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns runtime class '$typeName' without default interface metadata.",
                     )
-                val defaultInterface = typesByName[defaultInterfaceName]
+                val defaultInterfaceType = type.defaultInterface?.normalized()
+                    ?: WinRtTypeRef.fromDisplayName(defaultInterfaceName).normalized()
+                val defaultInterface = typesByName[defaultInterfaceType.qualifiedName]
                     ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
                     ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns runtime class '$typeName' whose default interface '$defaultInterfaceName' is missing.",
                     )
-                val iid = defaultInterface.iid
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override ${method.name} returns runtime class '$typeName' whose default interface '$defaultInterfaceName' has no IID.",
+                if (defaultInterfaceType.typeArguments.isNotEmpty()) {
+                    val argumentSignatures = defaultInterfaceType.typeArguments.joinToString(separator = "") { argument ->
+                        ", ${renderWinRtTypeSignature(argument.normalized(), typesByName)}"
+                    }
+                    val iid = defaultInterface.iid
+                        ?: throw IllegalArgumentException(
+                            "Authored WinRT override ${method.name} returns runtime class '$typeName' whose default interface '$defaultInterfaceName' has no IID.",
+                        )
+                    CodeBlock.of(
+                        "%T.createFromParameterizedInterface(%T(%S)%L)",
+                        parameterizedInterfaceIdType,
+                        guidType,
+                        iid.toString().lowercase(),
+                        argumentSignatures,
                     )
-                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+                } else {
+                    val iid = defaultInterface.iid
+                        ?: throw IllegalArgumentException(
+                            "Authored WinRT override ${method.name} returns runtime class '$typeName' whose default interface '$defaultInterfaceName' has no IID.",
+                        )
+                    CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+                }
             }
             WinRtTypeKind.Interface -> {
                 val iid = type.iid

@@ -1725,6 +1725,12 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         )
     }
 
+    fun parameterizedGuidSignatureFragment(
+        type: WinRtTypeRef,
+        currentNamespace: String,
+    ): String =
+        guidSignatureFragmentForTypeRef(type.normalized(), currentNamespace)
+
     fun vtableWriterDescriptor(
         type: WinRtTypeDefinition,
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),

@@ -3,10 +3,17 @@ package sample.consumer
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
+import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
+import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RuntimeScope
+import io.github.composefluent.winrt.runtime.WinRtAsyncInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRtAsyncProjectionInterop
+import io.github.composefluent.winrt.runtime.WinRtTypeSignature
+import io.github.composefluent.winrt.runtime.join
 import sample.NativeJsonValueThing
 import windows.data.json.IJsonValue
 import windows.data.json.JsonValueType
+import windows.foundation.AsyncStatus
 import windows.foundation.collections.IPropertySet
 import windows.foundation.collections.MapChangedEventHandler
 import windows.foundation.IStringable
@@ -73,6 +80,28 @@ fun main() {
                     projected.readBytes(buffer)
                     check(buffer.contentEquals(arrayOf(0x57u.toUByte(), 0x69u.toUByte(), 0x6Eu.toUByte(), 0x52u.toUByte()))) {
                         "Expected authored IDataReader.ReadBytes FillArray dispatch to update caller-provided array."
+                    }
+                    val loadOperation = projected.loadAsync(10u)
+                    check(loadOperation.status == AsyncStatus.Completed) {
+                        "Expected authored IDataReader.LoadAsync result to be completed."
+                    }
+                    val asyncOperationInterfaceId = ParameterizedInterfaceId.createFromSignature(
+                        WinRtTypeSignature.parameterizedInterface(
+                            WinRtAsyncInterfaceIds.IAsyncOperationGeneric,
+                            WinRtTypeSignature.uint32(),
+                        ),
+                    )
+                    loadOperation.nativeObject.queryInterface(asyncOperationInterfaceId).getOrThrow().use { asyncReference ->
+                        WinRtAsyncProjectionInterop.operation(
+                            pointer = PlatformAbi.fromRawComPtr(asyncReference.getRefPointer()),
+                            resultSignature = WinRtTypeSignature.uint32(),
+                            resultOut = PlatformAbi::allocateInt32Slot,
+                            resultReader = { resultOut -> PlatformAbi.readInt32(resultOut).toUInt() },
+                        ).use { asyncOperation ->
+                            check(asyncOperation.join() == 4u) {
+                                "Expected authored IDataReader.LoadAsync to return the completed byte count."
+                            }
+                        }
                     }
                 }
             }

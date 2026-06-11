@@ -1,15 +1,19 @@
 package sample
 
 import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+import io.github.composefluent.winrt.runtime.AsyncInfo
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.EventRegistrationTokenTable
+import io.github.composefluent.winrt.runtime.PlatformAbi
+import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
+import io.github.composefluent.winrt.runtime.WinRtAsyncResultWriter
+import io.github.composefluent.winrt.runtime.WinRtTypeSignature
 import windows.data.json.JsonArray
 import windows.data.json.JsonObject
 import windows.data.json.JsonValue
 import windows.data.json.JsonValueType
 import windows.foundation.collections.MapChangedEventHandler
 import windows.storage.streams.ByteOrder
-import windows.storage.streams.DataReaderLoadOperation
 import windows.storage.streams.IBuffer
 import windows.storage.streams.IInputStream
 import windows.storage.streams.InputStreamOptions
@@ -121,9 +125,14 @@ class NativeDataReaderThing {
         throw UnsupportedOperationException("NativeDataReaderThing does not expose readTimeSpan.")
     }
 
-    fun loadAsync(count: UInt): DataReaderLoadOperation {
-        throw UnsupportedOperationException("NativeDataReaderThing does not expose loadAsync.")
-    }
+    fun loadAsync(count: UInt): WinRtAsyncOperationReference<UInt> =
+        AsyncInfo.fromResult(
+            result = count.coerceAtMost(unconsumedBufferLength),
+            resultSignature = WinRtTypeSignature.uint32(),
+            resultWriter = WinRtAsyncResultWriter { value, resultOut ->
+                PlatformAbi.writeInt32(resultOut, value.toInt())
+            },
+        )
 
     fun detachBuffer(): IBuffer {
         throw UnsupportedOperationException("NativeDataReaderThing does not expose detachBuffer.")

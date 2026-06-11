@@ -225,13 +225,21 @@ object ComWrappersSupport {
     fun tryUnwrapObject(
         value: Any?,
         interfaceType: WinRtTypeHandle? = null,
-    ): ComObjectReference? =
-        WinRtBorrowedReferenceSupport.tryBorrowReference(
+    ): ComObjectReference? {
+        if (value is ComObjectReference) {
+            return if (interfaceType == null || interfaceType.interfaceId == value.interfaceId) {
+                cloneComReference(value)
+            } else {
+                value.tryQueryInterface(interfaceType.interfaceId)
+            }
+        }
+        return WinRtBorrowedReferenceSupport.tryBorrowReference(
             value = value,
             interfaceType = interfaceType,
             unwrapWinRtObject = ::borrowableWinRtObject,
             cloneReference = ::cloneComReference,
         )
+    }
 
     fun createRcwForComObject(
         pointer: RawAddress,

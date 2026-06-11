@@ -3950,6 +3950,56 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun planner_uses_parameterized_default_interface_iid_for_generic_runtime_class_default_interface() {
+        val genericInterfaceIid = Guid("9fc2b0bb-e446-44e2-aa61-9cab8f636af2")
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IAsyncOperation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = genericInterfaceIid,
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Storage.Streams",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Storage.Streams",
+                            name = "DataReaderLoadOperation",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val plan = KotlinProjectionPlanner().plan(model).single { it.type.name == "DataReaderLoadOperation" }
+
+        assertEquals(
+            ParameterizedInterfaceId.createFromSignature(
+                WinRtTypeSignature.parameterizedInterface(
+                    genericInterfaceIid,
+                    WinRtTypeSignature.uint32(),
+                ),
+            ),
+            plan.defaultInterfaceIid,
+        )
+    }
+
+    @Test
     fun planner_consumes_metadata_handoff_descriptors_for_abi_emission() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
