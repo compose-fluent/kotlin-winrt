@@ -50,13 +50,9 @@ class NativeJsonValueThing private constructor(
 
     fun getBoolean(): Boolean = true
 
-    fun getArray(): JsonArray {
-        throw UnsupportedOperationException("NativeJsonValueThing does not expose an array value.")
-    }
+    fun getArray(): JsonArray = JsonArray()
 
-    fun getObject(): JsonObject {
-        throw UnsupportedOperationException("NativeJsonValueThing does not expose an object value.")
-    }
+    fun getObject(): JsonObject = JsonObject()
 
     companion object {
         fun parse(input: String): NativeJsonValueThing = NativeJsonValueThing(input)

@@ -9,9 +9,12 @@ import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtAsyncInterfaceIds
 import io.github.composefluent.winrt.runtime.WinRtAsyncProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtTypeSignature
+import io.github.composefluent.winrt.runtime.IWinRTObject
 import io.github.composefluent.winrt.runtime.join
 import sample.NativeJsonValueThing
 import windows.data.json.IJsonValue
+import windows.data.json.JsonArray
+import windows.data.json.JsonObject
 import windows.data.json.JsonValueType
 import windows.foundation.AsyncStatus
 import windows.foundation.collections.IPropertySet
@@ -58,6 +61,18 @@ fun main() {
                     }
                     check(projected.getBoolean()) {
                         "Expected authored IJsonValue getBoolean to dispatch through native activation."
+                    }
+                    val projectedArray = projected.getArray()
+                    (projectedArray as IWinRTObject).nativeObject.queryInterface(JsonArray.Metadata.DEFAULT_INTERFACE_IID).getOrThrow().use {
+                        check(it.sameIdentity(projectedArray.nativeObject)) {
+                            "Expected authored IJsonValue getArray runtime-class return to expose JsonArray default interface."
+                        }
+                    }
+                    val projectedObject = projected.getObject()
+                    (projectedObject as IWinRTObject).nativeObject.queryInterface(JsonObject.Metadata.DEFAULT_INTERFACE_IID).getOrThrow().use {
+                        check(it.sameIdentity(projectedObject.nativeObject)) {
+                            "Expected authored IJsonValue getObject runtime-class return to expose JsonObject default interface."
+                        }
                     }
                 }
             }
