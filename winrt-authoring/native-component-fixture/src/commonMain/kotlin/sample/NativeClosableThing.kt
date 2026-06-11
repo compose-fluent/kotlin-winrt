@@ -1,10 +1,13 @@
 package sample
 
 import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+import io.github.composefluent.winrt.runtime.EventRegistrationToken
+import io.github.composefluent.winrt.runtime.EventRegistrationTokenTable
 import windows.data.json.JsonArray
 import windows.data.json.JsonObject
 import windows.data.json.JsonValue
 import windows.data.json.JsonValueType
+import windows.foundation.collections.MapChangedEventHandler
 import windows.storage.streams.ByteOrder
 import windows.storage.streams.DataReaderLoadOperation
 import windows.storage.streams.IBuffer
@@ -128,5 +131,48 @@ class NativeDataReaderThing {
 
     fun detachStream(): IInputStream {
         throw UnsupportedOperationException("NativeDataReaderThing does not expose detachStream.")
+    }
+}
+
+@WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.collections.IPropertySet"])
+class NativePropertySetThing {
+    private val values = linkedMapOf<String, Any?>("existing" to "value")
+    private val mapChangedHandlers =
+        EventRegistrationTokenTable.create<MapChangedEventHandler<String, Any?>>()
+
+    val size: UInt
+        get() = values.size.toUInt()
+
+    fun lookup(key: String): Any? = values.getValue(key)
+
+    fun hasKey(key: String): Boolean = values.containsKey(key)
+
+    fun getView(): Map<String, Any?> = values.toMap()
+
+    fun iterator(): Iterator<Map.Entry<String, Any?>> =
+        values.entries.map { entry -> object : Map.Entry<String, Any?> {
+            override val key: String = entry.key
+            override val value: Any? = entry.value
+        } }.iterator()
+
+    fun insert(key: String, value: Any?): Boolean {
+        val replaced = values.containsKey(key)
+        values[key] = value
+        return replaced
+    }
+
+    fun remove(key: String) {
+        values.remove(key)
+    }
+
+    fun clear() {
+        values.clear()
+    }
+
+    fun addMapChanged(handler: MapChangedEventHandler<String, Any?>): EventRegistrationToken =
+        mapChangedHandlers.addEventHandler(handler)
+
+    fun removeMapChanged(token: EventRegistrationToken) {
+        mapChangedHandlers.removeEventHandler(token)
     }
 }

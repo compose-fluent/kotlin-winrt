@@ -19154,10 +19154,32 @@ class KotlinProjectionGeneratorTest {
                     types = listOf(
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
+                            name = "IMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            genericParameterCount = 2,
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "T1", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"), WinRtParameterDefinition("value", "T1"))),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
                             name = "IObservableMap",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555557"),
                             genericParameterCount = 2,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IMap<T0, T1>",
+                                ),
+                            ),
                             events = listOf(
                                 WinRtEventDefinition(
                                     name = "MapChanged",
@@ -19250,10 +19272,15 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val observableMapContents = filesByName.getValue("IObservableMap.kt").contents
+        val propertySetContents = filesByName.getValue("IPropertySet.kt").contents
         val valueSetContents = filesByName.getValue("ValueSet.kt").contents
 
         assertTrue(observableMapContents.contains("const val MAPCHANGED_ADD_SLOT: Int = 6"))
         assertTrue(observableMapContents.contains("const val MAPCHANGED_REMOVE_SLOT: Int = 7"))
+        assertTrue(propertySetContents.contains("private val _iObservableMap: IUnknownReference by lazy"))
+        assertTrue(propertySetContents.contains(".createEventSource_"))
+        assertTrue(propertySetContents.contains("_iObservableMap,"))
+        assertFalse(propertySetContents.contains("nativeObject, IObservableMap.Metadata.MAPCHANGED_ADD_SLOT"))
         assertTrue(valueSetContents.contains("get() = _iPropertySetProjection.mapChanged"))
         assertTrue(valueSetContents.contains("_iPropertySet"))
         assertFalse(valueSetContents.contains("MAPCHANGED_ADD_SLOT_OWNER_INTERFACE"))

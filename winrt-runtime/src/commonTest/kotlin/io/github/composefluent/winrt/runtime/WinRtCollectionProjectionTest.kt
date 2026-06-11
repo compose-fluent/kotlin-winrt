@@ -5,6 +5,54 @@ import kotlin.test.assertTrue
 
 class WinRtCollectionProjectionTest {
     @Test
+    fun string_collection_helpers_round_trip_hstring_elements() {
+        val adapter = WinRtReferenceValueAdapters.string
+        val iterableAbi = WinRtIterableProjection.fromManaged(listOf("one", "two"), adapter)
+        val map = linkedMapOf("existing" to "value")
+        val mapAbi = WinRtDictionaryProjection.fromManaged(map, adapter, adapter)
+
+        try {
+            ComObjectReference(iterableAbi.asRawComPtr(), iterableInterfaceIdFor(adapter)).use { owner ->
+                ComObjectReference(
+                    owner.pointer,
+                    iterableInterfaceIdFor(adapter),
+                    preventReleaseOnDispose = true,
+                ).use { borrowed ->
+                    WinRtIterableProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
+                        assertEquals(listOf("one", "two"), projected.toList())
+                    }
+                }
+            }
+
+            ComObjectReference(mapAbi.asRawComPtr(), mapInterfaceIdFor(adapter, adapter)).use { owner ->
+                ComObjectReference(
+                    owner.pointer,
+                    mapInterfaceIdFor(adapter, adapter),
+                    preventReleaseOnDispose = true,
+                ).use { borrowed ->
+                    WinRtDictionaryProjection.fromAbi(
+                        borrowed.getRefPointer().asRawAddress(),
+                        adapter,
+                        adapter,
+                    )!!.use { projected ->
+                        assertTrue(projected.containsKey("existing"))
+                        assertEquals("value", projected["existing"])
+                        projected["added"] = "new"
+                        assertEquals(linkedMapOf("existing" to "value", "added" to "new"), projected.toMap())
+                    }
+                }
+            }
+        } finally {
+            if (!PlatformAbi.isNull(iterableAbi)) {
+                IUnknownReference(iterableAbi.asRawComPtr(), iterableInterfaceIdFor(adapter)).close()
+            }
+            if (!PlatformAbi.isNull(mapAbi)) {
+                IUnknownReference(mapAbi.asRawComPtr(), mapInterfaceIdFor(adapter, adapter)).close()
+            }
+        }
+    }
+
+    @Test
     fun iterable_helpers_round_trip_through_from_managed_and_from_abi() {
         val allocated = mutableListOf<AutoCloseable>()
         val adapter = labelAdapter(allocated)

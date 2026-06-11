@@ -7,6 +7,8 @@ import io.github.composefluent.winrt.runtime.RuntimeScope
 import sample.NativeJsonValueThing
 import windows.data.json.IJsonValue
 import windows.data.json.JsonValueType
+import windows.foundation.collections.IPropertySet
+import windows.foundation.collections.MapChangedEventHandler
 import windows.foundation.IStringable
 import windows.storage.streams.IDataReader
 
@@ -71,6 +73,28 @@ fun main() {
                     projected.readBytes(buffer)
                     check(buffer.contentEquals(arrayOf(0x57u.toUByte(), 0x69u.toUByte(), 0x6Eu.toUByte(), 0x52u.toUByte()))) {
                         "Expected authored IDataReader.ReadBytes FillArray dispatch to update caller-provided array."
+                    }
+                }
+            }
+        }
+
+        ActivationFactory.get("sample.NativePropertySetThing").use { factory ->
+            factory.activateInstance().use { instance ->
+                instance.queryInterface(IPropertySet.Metadata.IID).getOrThrow().use { propertySetReference ->
+                    val projected = IPropertySet.Metadata.wrap(propertySetReference as IUnknownReference)
+                    check(projected.containsKey("existing")) {
+                        "Expected authored IPropertySet.HasKey to dispatch through native activation."
+                    }
+                    val handler = MapChangedEventHandler<String, Any?> { _, _ -> }
+                    val token = projected.addMapChanged(handler)
+                    projected.removeMapChanged(token)
+                    projected["added"] = "value"
+                    check(projected.containsKey("added")) {
+                        "Expected authored IPropertySet.Insert to dispatch through native activation."
+                    }
+                    projected.remove("added")
+                    check(!projected.containsKey("added")) {
+                        "Expected authored IPropertySet.Remove to dispatch through native activation."
                     }
                 }
             }

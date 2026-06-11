@@ -7,6 +7,7 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.TypeSpec
@@ -45,6 +46,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val iWinRtObjectType = ClassName("io.github.composefluent.winrt.runtime", "IWinRTObject")
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
     private val exceptionHelpersType = ClassName("io.github.composefluent.winrt.runtime", "ExceptionHelpers")
+    private val eventRegistrationTokenType = ClassName("io.github.composefluent.winrt.runtime", "EventRegistrationToken")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
     private val marshalDelegateType = ClassName("io.github.composefluent.winrt.runtime", "MarshalDelegate")
     private val parameterizedInterfaceIdType = ClassName("io.github.composefluent.winrt.runtime", "ParameterizedInterfaceId")
@@ -66,6 +68,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtAsyncOperationWithProgressReferenceType = ClassName("io.github.composefluent.winrt.runtime", "WinRtAsyncOperationWithProgressReference")
     private val winRtDictionaryProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtDictionaryProjection")
     private val winRtIterableProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtIterableProjection")
+    private val winRtIteratorProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtIteratorProjection")
     private val winRtListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtListProjection")
     private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
     private val winRtReadOnlyDictionaryProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyDictionaryProjection")
@@ -75,6 +78,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
     private val winRtSystemProjectionMarshalersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtSystemProjectionMarshalers")
     private val winRtTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRtTypeSignature")
+    private val winRtKeyValuePairAdapterMember = MemberName("io.github.composefluent.winrt.runtime", "winRtKeyValuePairAdapter")
     private val instantType = ClassName("kotlin.time", "Instant")
     private val durationType = ClassName("kotlin.time", "Duration")
     private val enumIntegralAbiDescriptors = mapOf(
@@ -148,7 +152,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val semanticHelpers = WinRtMetadataSemanticHelpers(metadataModel)
         val authoredRuntimeClassNames = candidates.mapTo(mutableSetOf(), KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
         val renderedCandidates = candidates.map { candidate ->
-            val interfaces = resolveAuthoringInterfaces(candidate, typesByName)
+            val interfaces = resolveAuthoringInterfaces(candidate, typesByName, semanticHelpers)
             val packageDirectory = outputDirectory.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
             render(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames).writeTo(outputDirectory)
@@ -160,13 +164,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun resolveAuthoringInterfaces(
         candidate: KotlinWinRtAuthoredTypeCandidate,
         typesByName: Map<String, WinRtTypeDefinition>,
-    ): List<WinRtTypeDefinition> {
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): List<AuthoredInterfaceDescriptor> {
         if (candidate.winRtInterfaceNames.isEmpty()) {
             throw IllegalArgumentException(
                 "Authored type '${candidate.sourceTypeName}' has no WinRT interfaces for TypeDetails generation.",
             )
         }
-        return candidate.winRtInterfaceNames.map { interfaceName ->
+        val interfacesByName = linkedMapOf<String, AuthoredInterfaceDescriptor>()
+        candidate.winRtInterfaceNames.forEach { interfaceName ->
             val type = typesByName[interfaceName]
                 ?: throw IllegalArgumentException(
                     "Authored type '${candidate.sourceTypeName}' references missing WinRT interface '$interfaceName'.",
@@ -181,9 +187,106 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     "Authored type '${candidate.sourceTypeName}' references WinRT interface '$interfaceName' without metadata IID.",
                 )
             }
-            validateAuthoredInterfaceMemberSupport(candidate, type)
-            type
+            collectAuthoredInterfaceClosure(
+                candidate,
+                WinRtTypeRef.fromDisplayName(interfaceName).normalized(),
+                type,
+                typesByName,
+                interfacesByName,
+            )
+            semanticHelpers.requiredInterfaceAugmentationDescriptor(type).requiredInterfaceNames.forEach { requiredInterfaceName ->
+                val requiredType = instantiateInterfaceDefinition(requiredInterfaceName, typesByName)
+                    ?: throw IllegalArgumentException(
+                        "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' required interface '$requiredInterfaceName', but metadata for it is missing.",
+                    )
+                collectAuthoredInterfaceClosure(
+                    candidate,
+                    WinRtTypeRef.fromDisplayName(requiredInterfaceName).normalized(),
+                    requiredType,
+                    typesByName,
+                    interfacesByName,
+                )
+            }
         }
+        return interfacesByName.values.toList()
+    }
+
+    private fun collectAuthoredInterfaceClosure(
+        candidate: KotlinWinRtAuthoredTypeCandidate,
+        interfaceRef: WinRtTypeRef,
+        type: WinRtTypeDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        interfacesByName: MutableMap<String, AuthoredInterfaceDescriptor>,
+    ) {
+        val normalizedInterfaceRef = interfaceRef.normalized()
+        if (interfacesByName.containsKey(normalizedInterfaceRef.typeName)) {
+            return
+        }
+        validateAuthoredInterfaceMemberSupport(candidate, type)
+        interfacesByName[normalizedInterfaceRef.typeName] = AuthoredInterfaceDescriptor(normalizedInterfaceRef, type)
+        type.implementedInterfaces.forEach { implemented ->
+            val implementedType = instantiateInterfaceDefinition(implemented.interfaceName, typesByName)
+                ?: throw IllegalArgumentException(
+                    "Authored type '${candidate.sourceTypeName}' references WinRT interface '${type.qualifiedName}' inherited interface '${implemented.interfaceName}', but metadata for it is missing.",
+                )
+            collectAuthoredInterfaceClosure(
+                candidate,
+                WinRtTypeRef.fromDisplayName(implemented.interfaceName).normalized(),
+                implementedType,
+                typesByName,
+                interfacesByName,
+            )
+        }
+    }
+
+    private fun instantiateInterfaceDefinition(
+        interfaceName: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): WinRtTypeDefinition? {
+        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        val type = typesByName[interfaceName] ?: typesByName[rawName] ?: return null
+        val genericArguments = WinRtTypeRef.fromDisplayName(interfaceName).normalized().typeArguments
+        if (genericArguments.isEmpty()) {
+            return type
+        }
+        return type.copy(
+            implementedInterfaces = type.implementedInterfaces.map { implemented ->
+                implemented.copy(
+                    interfaceName = implemented.interfaceType
+                        .substituteTypeParameters(genericArguments)
+                        .normalized()
+                        .typeName,
+                )
+            },
+            methods = type.methods.map { method ->
+                val substitutedReturnType = method.returnType.substituteTypeParameters(genericArguments).normalized()
+                method.copy(
+                    returnTypeName = substitutedReturnType.typeName,
+                    returnTypeSignature = substitutedReturnType,
+                    parameters = method.parameters.map { parameter ->
+                        val substitutedParameterType = parameter.type.substituteTypeParameters(genericArguments).normalized()
+                        parameter.copy(
+                            typeName = substitutedParameterType.typeName,
+                            typeSignature = substitutedParameterType,
+                        )
+                    },
+                )
+            },
+            properties = type.properties.map { property ->
+                val substitutedPropertyType = property.type.substituteTypeParameters(genericArguments).normalized()
+                property.copy(
+                    typeName = substitutedPropertyType.typeName,
+                    typeSignature = substitutedPropertyType,
+                )
+            },
+            events = type.events.map { event ->
+                val substitutedDelegateType = event.delegateType.substituteTypeParameters(genericArguments).normalized()
+                event.copy(
+                    delegateTypeName = substitutedDelegateType.typeName,
+                    delegateTypeSignature = substitutedDelegateType,
+                )
+            },
+        )
     }
 
     private fun validateAuthoredInterfaceMemberSupport(
@@ -214,7 +317,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun render(
         candidate: KotlinWinRtAuthoredTypeCandidate,
-        interfaces: List<WinRtTypeDefinition>,
+        interfaces: List<AuthoredInterfaceDescriptor>,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
@@ -255,7 +358,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun renderCreateCcwDefinition(
         candidate: KotlinWinRtAuthoredTypeCandidate,
-        interfaces: List<WinRtTypeDefinition>,
+        interfaces: List<AuthoredInterfaceDescriptor>,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
@@ -271,13 +374,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     .add("interfaceDefinitions = listOf(\n")
                     .indent()
                     .apply {
-                        interfaces.forEach { type ->
-                            add("%L,\n", renderInterface(candidate, type, typesByName, semanticHelpers, authoredRuntimeClassNames))
+                        interfaces.forEach { descriptor ->
+                            add("%L,\n", renderInterface(candidate, descriptor, typesByName, semanticHelpers, authoredRuntimeClassNames))
                         }
                     }
                     .unindent()
                     .add("),\n")
-                    .add("defaultInterfaceId = %T(%S),\n", guidType, defaultInterface.iid.toString().lowercase())
+                    .add("defaultInterfaceId = %L,\n", renderInterfaceId(defaultInterface, typesByName))
                     .add("runtimeClassName = %S,\n", candidate.sourceTypeName)
                     .unindent()
                     .add(")\n")
@@ -312,21 +415,22 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun renderInterface(
         candidate: KotlinWinRtAuthoredTypeCandidate,
-        type: WinRtTypeDefinition,
+        descriptor: AuthoredInterfaceDescriptor,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
     ): CodeBlock {
+        val type = descriptor.definition
         val dispatchTarget = authoredDispatchTarget(candidate, type, semanticHelpers)
         return CodeBlock.builder()
             .add("%T(\n", winRtInspectableInterfaceDefinitionType)
             .indent()
-            .add("interfaceId = %T(%S),\n", guidType, type.iid.toString().lowercase())
+            .add("interfaceId = %L,\n", renderInterfaceId(descriptor, typesByName))
             .add("methods = listOf(\n")
             .indent()
             .apply {
                 type.authoredVtableMethods().forEach { vtableMethod ->
-                    add("%L,\n", renderMethod(vtableMethod, typesByName, semanticHelpers, dispatchTarget, authoredRuntimeClassNames))
+                    add("%L,\n", renderMethod(type, vtableMethod, typesByName, semanticHelpers, dispatchTarget, authoredRuntimeClassNames))
                 }
             }
             .unindent()
@@ -336,7 +440,24 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .build()
     }
 
+    private fun renderInterfaceId(
+        descriptor: AuthoredInterfaceDescriptor,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        if (descriptor.type.typeArguments.isNotEmpty()) {
+            return CodeBlock.of(
+                "%T.createFromSignature(%L)",
+                parameterizedInterfaceIdType,
+                renderWinRtTypeSignature(descriptor.type, typesByName),
+            )
+        }
+        val iid = descriptor.definition.iid
+            ?: throw IllegalArgumentException("Authored WinRT interface '${descriptor.definition.qualifiedName}' has no IID metadata.")
+        return CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+    }
+
     private fun renderMethod(
+        interfaceType: WinRtTypeDefinition,
         vtableMethod: AuthoredVtableMethod,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
@@ -375,7 +496,17 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 }
             }
             .apply {
-                if (isVoidReturn(method) && receiveArrayParameter == null) {
+                val iterableFirstProjection = renderIterableFirstProjection(
+                    interfaceType = interfaceType,
+                    method = method,
+                    outExpression = CodeBlock.of("rawArgs[%L] as %T", abiArgumentCount(method.parameters), rawAddressType),
+                    dispatchTarget = dispatchTarget,
+                    typesByName = typesByName,
+                    semanticHelpers = semanticHelpers,
+                )
+                if (iterableFirstProjection != null) {
+                    add("%L\n", iterableFirstProjection)
+                } else if (isVoidReturn(method) && receiveArrayParameter == null) {
                     addStatement("%L", renderDispatchInvocation(vtableMethod, dispatchTarget, dispatchMethodName, bridgeArguments))
                 } else {
                     addStatement(
@@ -466,6 +597,38 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 bridgeArguments,
             )
         }
+
+    private fun renderIterableFirstProjection(
+        interfaceType: WinRtTypeDefinition,
+        method: WinRtMethodDefinition,
+        outExpression: CodeBlock,
+        dispatchTarget: AuthoringDispatchTarget,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock? {
+        if (interfaceType.qualifiedName != "Windows.Foundation.Collections.IIterable" || method.name != "First") {
+            return null
+        }
+        val returnType = method.returnType.normalized()
+        if (returnType.qualifiedName != "Windows.Foundation.Collections.IIterator") {
+            throw IllegalArgumentException(
+                "Authored WinRT iterable method ${method.name} returns '${method.returnTypeName}' instead of IIterator<T>.",
+            )
+        }
+        val elementType = returnType.typeArguments.singleOrNull()?.normalized()
+            ?: throw IllegalArgumentException(
+                "Authored WinRT iterable method ${method.name} returns '${method.returnTypeName}' without exactly one element type.",
+            )
+        val elementAdapter = renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.detachReference((value as %T).iterator(), %L))",
+            platformAbiType,
+            outExpression,
+            winRtIteratorProjectionType,
+            dispatchTarget.className,
+            elementAdapter,
+        )
+    }
 
     private fun WinRtTypeDefinition.authoredVtableMethods(): List<AuthoredVtableMethod> {
         val accessors = properties
@@ -677,6 +840,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         renderDelegateParameterProjection(rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
             return projection
         }
+        renderRuntimeOwnedStructParameterProjection(rawArg, parameter)?.let { projection ->
+            return projection
+        }
         return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames)
     }
 
@@ -885,6 +1051,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
         val type = typesByName[parameter.typeName]
         return when {
+            parameter.typeName.substringBefore('<').removeSuffix("?") == "Windows.Foundation.EventRegistrationToken" &&
+                parameter.direction != WinRtParameterDirection.Out &&
+                !parameter.typeIsByRef -> listOf("Int64")
             type?.kind == WinRtTypeKind.Enum -> listOf(enumAbiKindName(type))
             type?.kind == WinRtTypeKind.Struct &&
                 parameter.direction != WinRtParameterDirection.Out &&
@@ -945,6 +1114,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return it
         }
         renderRuntimeMappedStructReturnProjection(method.returnTypeName, outExpression, valueExpression)?.let {
+            return it
+        }
+        renderRuntimeOwnedStructReturnProjection(method.returnTypeName, outExpression, valueExpression)?.let {
             return it
         }
         val returnType = typesByName[method.returnTypeName]
@@ -1020,6 +1192,40 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             else -> null
         }
 
+    private fun renderRuntimeOwnedStructParameterProjection(
+        rawArg: CodeBlock,
+        parameter: WinRtParameterDefinition,
+    ): CodeBlock? {
+        if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
+            return null
+        }
+        return when (parameter.typeName.substringBefore('<').removeSuffix("?")) {
+            "Windows.Foundation.EventRegistrationToken" -> CodeBlock.of(
+                "%T(%L as %T)",
+                eventRegistrationTokenType,
+                rawArg,
+                Long::class.asClassName(),
+            )
+            else -> null
+        }
+    }
+
+    private fun renderRuntimeOwnedStructReturnProjection(
+        typeName: String,
+        outExpression: CodeBlock,
+        valueExpression: String,
+    ): CodeBlock? =
+        when (typeName.substringBefore('<').removeSuffix("?")) {
+            "Windows.Foundation.EventRegistrationToken" -> CodeBlock.of(
+                "%T.Metadata.copyTo(%L as %T, %L)",
+                eventRegistrationTokenType,
+                valueExpression,
+                eventRegistrationTokenType,
+                outExpression,
+            )
+            else -> null
+        }
+
     private fun renderDelegateParameterProjection(
         rawArg: CodeBlock,
         parameter: WinRtParameterDefinition,
@@ -1033,12 +1239,22 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             return null
         }
         requireAuthoredDelegateMetadata(parameter.name, typeName, definition)
-        return CodeBlock.of(
-            "%T.Metadata.fromAbi(%L as %T)",
-            projectionClassName(typeName, semanticHelpers),
-            rawArg,
-            rawAddressType,
-        )
+        val delegateType = projectionClassName(typeName, semanticHelpers)
+        val projectedTypeArguments = parameterType.typeArguments.map { argument ->
+            authoringProjectedTypeName(argument.normalized(), typesByName, semanticHelpers)
+        }
+        val fromAbi = if (projectedTypeArguments.isEmpty()) {
+            CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", delegateType, rawArg, rawAddressType)
+        } else {
+            CodeBlock.of(
+                "%T.Metadata.fromAbi<%L>(%L as %T)",
+                delegateType,
+                projectedTypeArguments.map { CodeBlock.of("%T", it) }.joinToCodeString(),
+                rawArg,
+                rawAddressType,
+            )
+        }
+        return CodeBlock.of("%L ?: error(%S)", fromAbi, "WINRT_E_NULL_ABI_DELEGATE_PARAMETER")
     }
 
     private fun renderDelegateReturnProjection(
@@ -1642,6 +1858,19 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (isWinRtStringTypeName(elementTypeName)) {
             return CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
         }
+        if (elementTypeName == "Windows.Foundation.Collections.IKeyValuePair") {
+            if (elementType.typeArguments.size != 2) {
+                throw IllegalArgumentException(
+                    "Authored WinRT override ${method.name} returns key-value pair element '${elementType.typeName}' without exactly two argument types.",
+                )
+            }
+            return CodeBlock.of(
+                "%M(%L, %L)",
+                winRtKeyValuePairAdapterMember,
+                renderCollectionElementAdapter(method, elementType.typeArguments[0].normalized(), typesByName, semanticHelpers),
+                renderCollectionElementAdapter(method, elementType.typeArguments[1].normalized(), typesByName, semanticHelpers),
+            )
+        }
         val elementDefinition = typesByName[elementTypeName]
             ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns collection element type '$elementTypeName' without metadata.",
@@ -1912,6 +2141,23 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val definition = typesByName[typeName]
             ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no metadata signature.")
         return when (definition.kind) {
+            WinRtTypeKind.Interface -> {
+                if (type.typeArguments.isEmpty()) {
+                    CodeBlock.of("%T.object_()", winRtTypeSignatureType)
+                } else {
+                    val iid = definition.iid
+                        ?: throw IllegalArgumentException("Authored WinRT collection element interface '$typeName' has no IID metadata.")
+                    CodeBlock.of(
+                        "%T.parameterizedInterface(%T(%S)%L)",
+                        winRtTypeSignatureType,
+                        guidType,
+                        iid.toString().lowercase(),
+                        type.typeArguments.joinToString(separator = "") { argument ->
+                            ", ${renderWinRtTypeSignature(argument.normalized(), typesByName)}"
+                        },
+                    )
+                }
+            }
             WinRtTypeKind.RuntimeClass -> CodeBlock.of("%T.object_()", winRtTypeSignatureType)
             WinRtTypeKind.Enum -> CodeBlock.of(
                 "%T.enum(%S, %L)",
@@ -1971,8 +2217,16 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typeName: String,
         type: WinRtTypeDefinition?,
         typesByName: Map<String, WinRtTypeDefinition>,
-    ): CodeBlock =
-        when (type?.kind) {
+    ): CodeBlock {
+        val normalizedType = WinRtTypeRef.fromDisplayName(typeName).normalized()
+        if (normalizedType.typeArguments.isNotEmpty()) {
+            return CodeBlock.of(
+                "%T.createFromSignature(%L)",
+                parameterizedInterfaceIdType,
+                renderWinRtTypeSignature(normalizedType, typesByName),
+            )
+        }
+        return when (type?.kind) {
             WinRtTypeKind.RuntimeClass -> {
                 val defaultInterfaceName = type.defaultInterfaceName
                     ?: throw IllegalArgumentException(
@@ -2003,6 +2257,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 "Authored WinRT override ${method.name} returns unsupported object type '$typeName'.",
             )
         }
+    }
 
     private fun renderEnumReturnProjection(
         typeName: String,
@@ -2028,7 +2283,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         "__winrtAuthoringInvoke${method.name}"
 
     private fun projectedMethodName(method: WinRtMethodDefinition): String =
-        method.name.replaceFirstChar(Char::lowercase)
+        when {
+            method.name.startsWith("add_") -> "add${method.name.removePrefix("add_")}"
+            method.name.startsWith("remove_") -> "remove${method.name.removePrefix("remove_")}"
+            else -> method.name.replaceFirstChar(Char::lowercase)
+        }
 
     private fun projectedPropertyName(property: WinRtPropertyDefinition): String =
         property.name.replaceFirstChar(Char::lowercase)
@@ -2072,6 +2331,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val projectionType: ClassName,
         val typeArgumentCount: Int = 1,
         val emptyValueExpression: String = "emptyList()",
+    )
+
+    private data class AuthoredInterfaceDescriptor(
+        val type: WinRtTypeRef,
+        val definition: WinRtTypeDefinition,
     )
 
     private data class AuthoringDispatchTarget(

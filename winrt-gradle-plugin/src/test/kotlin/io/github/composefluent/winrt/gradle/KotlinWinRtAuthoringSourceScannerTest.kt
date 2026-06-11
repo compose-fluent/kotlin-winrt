@@ -576,7 +576,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeadd_Changed(__arg0)"))
         assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
-        assertTrue(generated.contains("EventRegistrationToken.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Int64))"))
+        assertTrue(generated.contains("val __arg0 = EventRegistrationToken(rawArgs[0] as Long)"))
         assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
@@ -675,7 +676,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeadd_Changed(__arg0)"))
         assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
-        assertTrue(generated.contains("EventRegistrationToken.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Int64))"))
+        assertTrue(generated.contains("val __arg0 = EventRegistrationToken(rawArgs[0] as Long)"))
         assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 

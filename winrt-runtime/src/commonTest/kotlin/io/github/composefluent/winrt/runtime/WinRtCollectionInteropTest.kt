@@ -123,7 +123,7 @@ class WinRtCollectionInteropTest {
 
             WinRtVectorListAdapter(
                 vector = vector,
-                elementProjector = WinRtReferenceValueAdapters.object_.projector,
+                elementAdapter = WinRtReferenceValueAdapters.object_,
                 elementMarshaller = WinRtReferenceValueAdapters.object_::createInputMarshaler,
             ).add(null)
 
@@ -204,6 +204,11 @@ class WinRtCollectionInteropTest {
             val one = FakeReference(scope, "one")
             val two = FakeReference(scope, "two")
             val three = FakeReference(scope, "three")
+            val labels = mutableMapOf<RawAddress, String>()
+            val adapter = fakeLabelAdapter(scope, labels)
+            listOf(one, two, three).forEach { reference ->
+                labels[reference.pointer.asRawAddress()] = reference.label
+            }
             val vector = FakeVectorReference(
                 scope = scope,
                 getAtResult = one,
@@ -222,12 +227,8 @@ class WinRtCollectionInteropTest {
 
             WinRtVectorListAdapter(
                 vector = vector,
-                elementProjector = { (it as FakeReference?)?.label ?: "<null>" },
-                elementMarshaller = { label ->
-                    FakeReference(scope, label).let { reference ->
-                        WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
-                    }
-                },
+                elementAdapter = adapter,
+                elementMarshaller = adapter::createInputMarshaler,
             ).use { list ->
                 assertEquals(listOf("one", "two"), list.toList())
                 list.add("three")
@@ -237,19 +238,26 @@ class WinRtCollectionInteropTest {
                 assertEquals(listOf(12 to 0u), vector.removeAtSlots)
             }
 
-            val pairOne = FakeKeyValuePairReference(scope, one, two)
-            val pairTwo = FakeKeyValuePairReference(scope, two, three)
+            val pairAdapter = winRtKeyValuePairAdapter(adapter, adapter)
             val iterable = FakeIterableReference(
                 scope = scope,
                 firstResult = FakeIteratorReference(
                     scope = scope,
-                    currentResults = listOf(pairOne, pairTwo),
+                    currentResults = emptyList(),
+                    currentAbiResults = listOf(
+                        createPairAbi(pairAdapter, "one", "two"),
+                        createPairAbi(pairAdapter, "two", "three"),
+                    ),
                     getManyResults = emptyList(),
                 ),
                 iteratorFactory = {
                     FakeIteratorReference(
                         scope = scope,
-                        currentResults = listOf(pairOne, pairTwo),
+                        currentResults = emptyList(),
+                        currentAbiResults = listOf(
+                            createPairAbi(pairAdapter, "one", "two"),
+                            createPairAbi(pairAdapter, "two", "three"),
+                        ),
                         getManyResults = emptyList(),
                     )
                 },
@@ -268,13 +276,9 @@ class WinRtCollectionInteropTest {
                 iterableInterfaceId = Guid("00000000-0000-0000-0000-000000000777"),
                 iteratorInterfaceId = Guid("00000000-0000-0000-0000-000000000778"),
                 keyValuePairInterfaceId = Guid("00000000-0000-0000-0000-000000000779"),
-                keyProjector = { (it as FakeReference?)?.label ?: "<null>" },
-                valueProjector = { (it as FakeReference?)?.label ?: "<null>" },
-                keyMarshaller = { label ->
-                    FakeReference(scope, label).let { reference ->
-                        WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
-                    }
-                },
+                keyAdapter = adapter,
+                valueAdapter = adapter,
+                keyMarshaller = adapter::createInputMarshaler,
             ).use { projected ->
                 assertEquals(2, projected.size)
                 assertEquals("two", projected["one"])
@@ -291,6 +295,56 @@ class WinRtCollectionInteropTest {
         override fun close() = Unit
     }
 
+    private fun fakeLabelAdapter(
+        scope: NativeScope,
+        labels: MutableMap<RawAddress, String>,
+    ): WinRtReferenceValueAdapter<String> =
+        object : WinRtReferenceValueAdapter<String>(
+            projectedTypeName = "test.Label",
+            typeSignature = WinRtTypeSignature.object_(),
+            projector = { reference -> labels[reference?.pointer?.asRawAddress()] ?: "<null>" },
+            marshaller = { value ->
+                FakeReference(scope, value).also { reference ->
+                    labels[reference.pointer.asRawAddress()] = value
+                }
+            },
+        ) {
+            override fun projectAbi(pointer: RawAddress): String = labels[pointer] ?: "<null>"
+
+            override fun disposeAbi(pointer: RawAddress) = Unit
+
+            override fun createInputMarshaler(value: String): WinRtObjectMarshaler =
+                createLabelMarshaler(scope, labels, value)
+
+            override fun createOutputMarshaler(value: String): WinRtObjectMarshaler =
+                createLabelMarshaler(scope, labels, value)
+        }
+
+    private fun createLabelMarshaler(
+        scope: NativeScope,
+        labels: MutableMap<RawAddress, String>,
+        value: String,
+    ): WinRtObjectMarshaler {
+        val pointer = PlatformAbi.allocateBytes(scope, 8)
+        labels[pointer] = value
+        return WinRtObjectMarshaler(pointer)
+    }
+
+    private fun createPairAbi(
+        pairAdapter: WinRtReferenceValueAdapter<Map.Entry<String, String>>,
+        key: String,
+        value: String,
+    ): RawAddress {
+        val entry = object : Map.Entry<String, String> {
+            override val key: String = key
+            override val value: String = value
+        }
+        val marshaler = pairAdapter.createOutputMarshaler(entry)
+        val abi = marshaler.abi
+        marshaler.close()
+        return abi
+    }
+
     private class FakeKeyValuePairReference(
         scope: NativeScope,
         private val keyResult: IUnknownReference?,
@@ -298,7 +352,11 @@ class WinRtCollectionInteropTest {
     ) : WinRtKeyValuePairReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000210")) {
         override fun key(): IUnknownReference? = keyResult
 
+        override fun keyAbiOrNull(): RawAddress? = keyResult?.pointer?.asRawAddress()
+
         override fun value(): IUnknownReference? = valueResult
+
+        override fun valueAbiOrNull(): RawAddress? = valueResult?.pointer?.asRawAddress()
 
         override fun close() = Unit
     }
@@ -321,6 +379,7 @@ class WinRtCollectionInteropTest {
     private class FakeIteratorReference(
         scope: NativeScope,
         private val currentResults: List<IUnknownReference?>,
+        private val currentAbiResults: List<RawAddress?>? = null,
         private val getManyResults: List<IUnknownReference?>,
     ) : WinRtIteratorReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000203")) {
         private var currentIndex = 0
@@ -332,15 +391,21 @@ class WinRtCollectionInteropTest {
             return currentResults.getOrNull(currentIndex)
         }
 
+        override fun currentAbiOrNull(): RawAddress? {
+            slotCalls += 6
+            currentAbiResults?.let { return it.getOrNull(currentIndex) }
+            return currentResults.getOrNull(currentIndex)?.pointer?.asRawAddress()
+        }
+
         override fun hasCurrent(): Boolean {
             slotCalls += 7
-            return currentIndex < currentResults.size
+            return currentIndex < (currentAbiResults?.size ?: currentResults.size)
         }
 
         override fun moveNext(): Boolean {
             slotCalls += 8
             currentIndex += 1
-            return currentIndex < currentResults.size
+            return currentIndex < (currentAbiResults?.size ?: currentResults.size)
         }
 
         override fun invokeGetMany(slot: Int, startIndex: UInt?, capacity: Int): List<IUnknownReference?> {
@@ -366,6 +431,11 @@ class WinRtCollectionInteropTest {
         override fun getAtOrNull(index: UInt): IUnknownReference? {
             uintArgSlots += 6 to index
             return getAtResult
+        }
+
+        override fun getAtAbiOrNull(index: UInt): RawAddress? {
+            uintArgSlots += 6 to index
+            return getAtResult?.pointer?.asRawAddress()
         }
 
         override fun size(): UInt {
@@ -409,6 +479,11 @@ class WinRtCollectionInteropTest {
         override fun getAtOrNull(index: UInt): IUnknownReference? {
             uintArgSlots += 6 to index
             return getAtResultsByIndex[index] ?: getAtResult
+        }
+
+        override fun getAtAbiOrNull(index: UInt): RawAddress? {
+            uintArgSlots += 6 to index
+            return (getAtResultsByIndex[index] ?: getAtResult)?.pointer?.asRawAddress()
         }
 
         override fun size(): UInt {
@@ -482,6 +557,11 @@ class WinRtCollectionInteropTest {
         override fun lookupOrNull(key: RawAddress): IUnknownReference? {
             lookupSlots += 6 to key
             return lookupResult
+        }
+
+        override fun lookupAbiOrNull(key: RawAddress): RawAddress? {
+            lookupSlots += 6 to key
+            return lookupResult?.pointer?.asRawAddress()
         }
 
         override fun size(): UInt {
