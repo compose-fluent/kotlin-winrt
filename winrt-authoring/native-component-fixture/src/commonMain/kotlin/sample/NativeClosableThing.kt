@@ -117,13 +117,11 @@ class NativeDataReaderThing {
 
     fun readString(codeUnitCount: UInt): String = "WinR".take(codeUnitCount.toInt())
 
-    fun readDateTime(): Instant {
-        throw UnsupportedOperationException("NativeDataReaderThing does not expose readDateTime.")
-    }
+    fun readDateTime(): Instant =
+        Instant.fromEpochSeconds(1_700_000_000L, 123_456_700)
 
-    fun readTimeSpan(): Duration {
-        throw UnsupportedOperationException("NativeDataReaderThing does not expose readTimeSpan.")
-    }
+    fun readTimeSpan(): Duration =
+        Duration.parse("PT1H2M3.4567S")
 
     fun loadAsync(count: UInt): WinRtAsyncOperationReference<UInt> =
         AsyncInfo.fromResult(

@@ -18,6 +18,8 @@ import windows.foundation.collections.IPropertySet
 import windows.foundation.collections.MapChangedEventHandler
 import windows.foundation.IStringable
 import windows.storage.streams.IDataReader
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 fun main() {
     RuntimeScope.initializeMultithreaded().use {
@@ -102,6 +104,12 @@ fun main() {
                                 "Expected authored IDataReader.LoadAsync to return the completed byte count."
                             }
                         }
+                    }
+                    check(projected.readDateTime() == Instant.fromEpochSeconds(1_700_000_000L, 123_456_700)) {
+                        "Expected authored IDataReader.ReadDateTime to round-trip the authored Instant."
+                    }
+                    check(projected.readTimeSpan() == Duration.parse("PT1H2M3.4567S")) {
+                        "Expected authored IDataReader.ReadTimeSpan to round-trip the authored Duration."
                     }
                 }
             }
