@@ -100,6 +100,13 @@ private fun authoredCcwAbiBindingUnsupportedReason(
         KotlinProjectionAbiValueKind.GenericParameter,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> null
+        KotlinProjectionAbiValueKind.Reference,
+        KotlinProjectionAbiValueKind.ReferenceArray ->
+            if (typeRenderer.referenceInterfaceIdCode(binding) != null) {
+                null
+            } else {
+                "reference ${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
         KotlinProjectionAbiValueKind.MappedAsyncAction,
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,

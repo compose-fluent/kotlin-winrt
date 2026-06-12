@@ -3050,6 +3050,18 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,
         KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> authoringCcwWriteAsyncReferenceReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Reference -> authoringCcwWriteReferenceReturnCode(
+            binding = binding,
+            outExpression = outExpression,
+            valueExpression = valueExpression,
+            projectionClass = WINRT_REFERENCE_PROJECTION_CLASS_NAME,
+        )
+        KotlinProjectionAbiValueKind.ReferenceArray -> authoringCcwWriteReferenceReturnCode(
+            binding = binding,
+            outExpression = outExpression,
+            valueExpression = valueExpression,
+            projectionClass = WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME,
+        )
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
@@ -3097,6 +3109,24 @@ class KotlinProjectionSupportRenderer {
                 )
             else -> null
         }
+
+    private fun authoringCcwWriteReferenceReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+        projectionClass: ClassName,
+    ): CodeBlock {
+        val interfaceId = typeRenderer.referenceInterfaceIdCode(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI reference return ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.fromManaged(%L, %L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            projectionClass,
+            valueExpression,
+            interfaceId,
+        )
+    }
 
     private fun authoringCcwWriteAsyncReferenceReturnCode(
         binding: KotlinProjectionAbiTypeBinding,

@@ -4635,6 +4635,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun authoring_ccw_writes_nullable_boolean_reference_returns_through_runtime_reference_projection() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555576"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "IsSynchronized",
+                                    typeName = "Windows.Foundation.IReference<Boolean>",
+                                    getterMethodName = "get_IsSynchronized",
+                                    getterMethodRowId = 5,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtReferenceProjection.fromManaged(__result"))
+        assertTrue(ccwFactories, ccwFactories.contains("ParameterizedInterfaceId.createFromParameterizedInterface("))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtTypeSignature.boolean()"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[0] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("return IReference(Boolean) uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+        assertFalse(ccwFactories, ccwFactories.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun renderer_uses_visibility_modifiers_and_metadata_companion_shells() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
