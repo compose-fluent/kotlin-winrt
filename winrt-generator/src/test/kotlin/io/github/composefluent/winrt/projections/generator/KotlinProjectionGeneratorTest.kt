@@ -357,6 +357,74 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_limits_authoring_ccw_factories_to_suppressed_authored_runtime_classes() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "GetName", returnTypeName = "String", methodRowId = 6),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Sample",
+                            name = "IRuntimeOnly",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Ping", returnTypeName = "Unit", methodRowId = 6),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Sample",
+                            name = "RuntimeOnly",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Sample.IRuntimeOnly",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Sample.IRuntimeOnly", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            suppressedProjectionTypeNames = setOf("Sample.Foundation.Widget", "Windows.Sample.RuntimeOnly"),
+            authoredRuntimeClassNames = setOf("Sample.Foundation.Widget"),
+        ).generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("createCcwDefinitionForSample_Foundation_Widget"))
+        assertTrue(ccwFactories, ccwFactories.contains("IWidget.Metadata.IID"))
+        assertFalse(ccwFactories, ccwFactories.contains("createCcwDefinitionForWindows_Sample_RuntimeOnly"))
+        assertFalse(ccwFactories, ccwFactories.contains("IRuntimeOnly.Metadata.IID"))
+    }
+
+    @Test
     fun support_renderer_rejects_authoring_activation_factory_member_references_with_missing_factory_interface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

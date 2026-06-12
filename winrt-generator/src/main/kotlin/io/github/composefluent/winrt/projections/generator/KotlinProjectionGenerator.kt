@@ -123,6 +123,7 @@ class KotlinProjectionGenerator(
     private val emitSupportFiles: Boolean = false,
     private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
+    private val authoredRuntimeClassNames: Set<String> = emptySet(),
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
     private val groupProjectionFilesByPackageOnWrite: Boolean = false,
     private val supportOwnerIdentity: String? = null,
@@ -210,6 +211,7 @@ class KotlinProjectionGenerator(
             model = normalizedModel,
             plans = plans,
             projectionContext = projectionContext,
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
             authoringHostExportsClassName = authoringHostExportsClassName,
             authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
         )
@@ -1748,6 +1750,7 @@ class KotlinProjectionGenerator(
             projectionContext,
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
             excludedProjectionTypeNames = authoredProjectedTypeNames(model),
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
             genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
             authoringHostExportsClassName = authoringHostExportsClassName,
             authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,

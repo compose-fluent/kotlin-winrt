@@ -356,6 +356,9 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
         val projectionModel = if (parameters.projectModel.get() == "application") baseModel else model
+        val authoredRuntimeClassNames = authoringCandidates
+            .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
+            .filterTo(mutableSetOf(), String::isNotBlank)
         val projectionContext = WinRtMetadataProjectionContext(
             sources = sources,
             include = parameters.includeNamespaces.get().toSet() +
@@ -371,24 +374,16 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             emitSupportFiles = true,
             groupProjectionFilesByPackageOnWrite = true,
             projectionContext = projectionContext,
-            suppressedProjectionTypeNames = (
-                dependencyProjectionTypeNames +
-                    authoringCandidates
-                        .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
-                        .filterTo(mutableSetOf(), String::isNotBlank)
-                ),
+            suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
             emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
         ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = projectionContext,
-            suppressedProjectionTypeNames = (
-                dependencyProjectionTypeNames +
-                    authoringCandidates
-                        .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
-                        .filterTo(mutableSetOf(), String::isNotBlank)
-                ),
+            suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
         ).generateNativeAuthoringHostExportsTo(projectionModel, nativeAuthoringHostExportsRoot)
         writeAuthoringMetadataIndex(

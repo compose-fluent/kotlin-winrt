@@ -139,6 +139,7 @@ class KotlinProjectionSupportRenderer {
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
         emitProjectionRegistrar: Boolean = true,
         excludedProjectionTypeNames: Set<String> = emptySet(),
+        authoredRuntimeClassNames: Set<String> = emptySet(),
         genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
         authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
         authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
@@ -172,19 +173,20 @@ class KotlinProjectionSupportRenderer {
                 ),
                 renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
-                renderAuthoringWrapperPlan(inventory, plans),
-                renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
-                renderAuthoringWrappers(inventory, plans),
-                renderAuthoringAbiClasses(inventory, plans, semanticHelpers),
-                renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
-                renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
-                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName),
+                renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
+                renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringWrappers(inventory, plans, authoredRuntimeClassNames),
+                renderAuthoringAbiClasses(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName, authoredRuntimeClassNames),
                 renderAuthoringServerActivationFactories(
                     inventory,
                     plans,
                     semanticHelpers,
                     authoringServerActivationFactoriesClassName,
                     authoringModuleActivationFactoryPlanClassName,
+                    authoredRuntimeClassNames,
                 ),
                 renderAuthoringHostExports(
                     inventory,
@@ -192,8 +194,9 @@ class KotlinProjectionSupportRenderer {
                     semanticHelpers,
                     authoringHostExportsClassName,
                     authoringServerActivationFactoriesClassName,
+                    authoredRuntimeClassNames,
                 ).takeIf { emitJvmAuthoringHostExports },
-                renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
+                renderAuthoringCcwFactories(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
             addAll(renderDispatcherQueueSynchronizationContextAdditions(plans))
@@ -968,7 +971,6 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("AUTHORING_METADATA_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
-                            .addJvmFieldAnnotation()
                             .addModifiers(KModifier.PRIVATE)
                             .initializer("AUTHORING_METADATA_MAPPINGS.toArrowMap()")
                             .build(),
@@ -999,11 +1001,15 @@ class KotlinProjectionSupportRenderer {
     private fun renderAuthoringWrapperPlan(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val mappingsByProjectedName = inventory.authoredMetadataTypeMappings.associateBy { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
+        val mappingsByProjectedName = inventory.authoredMetadataTypeMappings
+            .filter { it.projectedTypeName in authoredTypeNames }
+            .associateBy { it.projectedTypeName }
         val entries = plans.mapNotNull { plan ->
             val mapping = mappingsByProjectedName[plan.type.qualifiedName] ?: return@mapNotNull null
             plan to mapping
@@ -1053,17 +1059,30 @@ class KotlinProjectionSupportRenderer {
         return supportFile("WinRTAuthoringWrapperPlan.kt", fileSpec)
     }
 
+    private fun authoringEntryTypeNames(
+        inventory: WinRtMetadataProjectionInventory,
+        authoredRuntimeClassNames: Set<String>,
+    ): Set<String> {
+        val metadataTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        return authoredRuntimeClassNames
+            .takeIf(Set<String>::isNotEmpty)
+            ?.intersect(metadataTypeNames)
+            ?: metadataTypeNames
+    }
+
     private fun renderAuthoringAbiClassPlan(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && !semanticHelpers.isStatic(it.type) }
-            .filter { plan -> inventory.authoredMetadataTypeMappings.any { it.projectedTypeName == plan.type.qualifiedName } }
+            .filter { plan -> plan.type.qualifiedName in authoredTypeNames }
         if (entries.isEmpty()) {
             return null
         }
@@ -1120,11 +1139,12 @@ class KotlinProjectionSupportRenderer {
     private fun renderAuthoringWrappers(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { KotlinProjectionSpecializationKind.StaticClass in it.specializationKinds }
@@ -1148,11 +1168,12 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1191,11 +1212,12 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1256,11 +1278,12 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1394,11 +1417,12 @@ class KotlinProjectionSupportRenderer {
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoringModuleActivationFactoryPlanClassName: ClassName,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1486,11 +1510,12 @@ class KotlinProjectionSupportRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoringServerActivationFactoriesClassName: ClassName,
         authoringModuleActivationFactoryPlanClassName: ClassName,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1517,11 +1542,12 @@ class KotlinProjectionSupportRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoringHostExportsClassName: ClassName,
         authoringServerActivationFactoriesClassName: ClassName,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1591,6 +1617,7 @@ class KotlinProjectionSupportRenderer {
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
         projectionContext: WinRtMetadataProjectionContext,
+        authoredRuntimeClassNames: Set<String> = emptySet(),
         authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
         authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
     ): KotlinProjectionFile? {
@@ -1599,7 +1626,7 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val semanticHelpers = model.semanticHelpers()
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -2277,13 +2304,14 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val ccwEntryTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
-            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in ccwEntryTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
         if (entries.isEmpty()) {
             return null
