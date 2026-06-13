@@ -71,49 +71,14 @@ val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
     }
 }
 
-val auditGeneratedWinuiKmpProjectionOutput by tasks.registering(Exec::class) {
+val auditGeneratedWinuiKmpProjectionOutput by tasks.registering(
+    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRtProjectionOutputTask::class,
+) {
     group = "verification"
     description = "Fails if generated KMP WinUI projection source leaks fallback invocation or JVM-only reflection paths."
     dependsOn("generateWinRtProjections")
     val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
-    inputs.dir(generatedSources)
-
-    val rootPath = generatedSources.get().asFile.absolutePath
-    val escapedRoot = rootPath.replace("'", "''")
-    val script = """
-        ${'$'}ErrorActionPreference = 'Stop'
-        ${'$'}root = '$escapedRoot'
-        ${'$'}patterns = @(
-          'ComVtableInvoker',
-          'invokeGenericArgs',
-          'Class.forName',
-          'Proxy.newProxyInstance',
-          'java.lang.reflect',
-          'import java.'
-        )
-        ${'$'}violations = New-Object System.Collections.Generic.List[string]
-        Get-ChildItem -Path ${'$'}root -Recurse -File -Filter '*.kt' | ForEach-Object {
-          ${'$'}file = ${'$'}_
-          ${'$'}lineNumber = 0
-          Get-Content -LiteralPath ${'$'}file.FullName | ForEach-Object {
-            ${'$'}lineNumber += 1
-            ${'$'}line = ${'$'}_
-            foreach (${'$'}pattern in ${'$'}patterns) {
-              if (${'$'}line.Contains(${'$'}pattern)) {
-                ${'$'}relative = [System.IO.Path]::GetRelativePath(${'$'}root, ${'$'}file.FullName).Replace('\', '/')
-                ${'$'}violations.Add(('{0}:{1}: {2}: {3}' -f ${'$'}relative, ${'$'}lineNumber, ${'$'}pattern, ${'$'}line.Trim()))
-                break
-              }
-            }
-          }
-        }
-        if (${'$'}violations.Count -gt 0) {
-          Write-Error 'Generated KMP WinUI projection output contains forbidden fallback or JVM-only paths.'
-          ${'$'}violations | Select-Object -First 50 | ForEach-Object { Write-Error ${'$'}_ }
-          exit 1
-        }
-    """.trimIndent()
-    commandLine("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+    generatedSourcesDirectory.set(generatedSources)
 }
 
 val runWinuiKmpSample by tasks.registering(JavaExec::class) {
