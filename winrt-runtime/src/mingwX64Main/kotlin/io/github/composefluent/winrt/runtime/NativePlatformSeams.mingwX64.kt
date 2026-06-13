@@ -247,6 +247,18 @@ actual object PlatformAbi {
         array.asCPointer<COpaquePointerVar>()[index] = value.toOpaquePointer()
     }
 
+    actual fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long {
+        if (layout.byteSize > 8L) {
+            return address.value
+        }
+        val bytes = address.readBytes(layout.byteSize.toInt())
+        var word = 0L
+        bytes.forEachIndexed { index, value ->
+            word = word or ((value.toLong() and 0xFFL) shl (index * 8))
+        }
+        return word
+    }
+
     actual fun pointerKey(pointer: RawAddress): Long = pointer.value
 
     actual fun pointerKey(pointer: RawComPtr): Long = pointer.value
