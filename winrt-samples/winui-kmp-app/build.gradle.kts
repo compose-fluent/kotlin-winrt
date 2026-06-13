@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
 import org.gradle.jvm.tasks.Jar
 
@@ -14,6 +15,11 @@ val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.wind
 kotlin {
     jvmToolchain(25)
     jvm("winuiJvm")
+    mingwX64 {
+        binaries {
+            executable()
+        }
+    }
     sourceSets {
         commonMain {
             dependencies {
@@ -24,6 +30,9 @@ kotlin {
             dependsOn(commonMain.get())
         }
         named("winuiJvmMain") {
+            dependsOn(winuiMain)
+        }
+        named("mingwX64Main") {
             dependsOn(winuiMain)
         }
     }
@@ -100,9 +109,40 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
 
 tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>("buildWinRtApplicationHost") {
     val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
+    val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
     dependsOn(winuiJvmJar)
     runtimeClasspath.from(winuiJvmJar.flatMap { it.archiveFile })
-    runtimeClasspath.from(configurations.named("winuiJvmRuntimeClasspath"))
+    runtimeClasspath.from(
+        providers.provider {
+            configurations.named("winuiJvmRuntimeClasspath").get().filter { file ->
+                file.name != defaultJarName.get()
+            }
+        },
+    )
+}
+
+tasks.named<Exec>("runReleaseExecutableMingwX64") {
+    dependsOn("stageWinRtRuntimeAssets")
+    workingDir(projectDir)
+    environment(
+        "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
+        layout.buildDirectory.dir("kotlin-winrt/runtime-assets").get().asFile.absolutePath,
+    )
+    environment(
+        "kotlin.winrt.samples.autoExitWinUi",
+        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
+    )
+    listOf(
+        "kotlin.winrt.samples.timerSmoke",
+        "kotlin.winrt.samples.skipWindowContent",
+        "kotlin.winrt.samples.skipCallbackSmoke",
+        "kotlin.winrt.samples.skipLayoutUpdated",
+        "KOTLIN_WINRT_TRACE_CCW",
+    ).forEach { name ->
+        providers.systemProperty(name).orNull?.let { value ->
+            environment(name, value)
+        }
+    }
 }
 
 tasks.named("check") {

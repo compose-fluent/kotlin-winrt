@@ -708,7 +708,7 @@ internal fun dependencyProjectionSurfaceTypeNames(
     identityFiles
         .flatMap { identityFile ->
             val identity = readProjectionSurfaceIdentity(identityFile)
-            identity.projectedTypes?.takeIf(List<String>::isNotEmpty) ?: identity.includeTypes
+            identity.includeTypes + identity.projectedTypes.orEmpty()
         }
         .distinct()
         .sorted()
@@ -754,7 +754,8 @@ private fun dependencyProjectedTypeNames(
     model: WinRtMetadataModel,
     identity: ProjectionSurfaceIdentity,
 ): List<String> {
-    return identity.projectedTypes.orEmpty()
+    return (identity.includeTypes + identity.projectedTypes.orEmpty())
+        .distinct()
         .filter { typeName -> model.namespaces.any { namespace -> namespace.types.any { it.qualifiedName == typeName } } }
 }
 

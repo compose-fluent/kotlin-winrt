@@ -2,229 +2,178 @@ package io.github.composefluent.winrt.runtime
 
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
+import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
+import java.lang.invoke.MethodHandle
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import kotlin.io.path.isDirectory
-import kotlin.io.path.isRegularFile
-import kotlin.io.path.name
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.io.files.Path
 
-/**
- * Windows App SDK deployment visibility for JVM WinUI apps.
- *
- * This deliberately mirrors the C++/WinRT split between normal WinRT apartment/runtime
- * initialization and package deployment. Packaged apps already have identity and manifest
- * registration, so Kotlin code starts XAML directly just like C++/WinRT packaged apps.
- * Unpackaged apps need either self-contained activation context registration or the
- * Windows App Runtime Dynamic Dependency bootstrap before WinUI activation.
- */
-object WinRtWindowsAppSdkDeployment {
-    private const val defaultMajorMinorVersion = 0x00010008
-    private const val defaultMinVersion = 0x1F40032608CC0000L
-    private const val bootstrapDllName = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
-    private const val runtimeDllName = "Microsoft.WindowsAppRuntime.dll"
-    private const val versionInfoHeaderRelativePath = "include/WindowsAppSDK-VersionInfo.h"
-    private val releaseMajorMinorRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJORMINOR\s+(0x[0-9A-Fa-f]+)""")
-    private val releaseVersionTagRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_VERSION_TAG_W\s+L"([^"]*)"""")
-    private val runtimeVersionRegex = Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_VERSION_UINT64\s+(0x[0-9A-Fa-f]+)u""")
-    private val arena: Arena = Arena.ofAuto()
-    private val linker by lazy { java.lang.foreign.Linker.nativeLinker() }
+private val arena: Arena = Arena.ofAuto()
+private val linker by lazy { java.lang.foreign.Linker.nativeLinker() }
+private val kernel32: SymbolLookup by lazy { SymbolLookup.libraryLookup("kernel32", Arena.global()) }
+private val platformHandles = ConcurrentHashMap<Long, Any>()
+private val nextPlatformHandle = AtomicLong(1)
+private var bootstrapShutdown: MethodHandle? = null
 
-    enum class Mode {
-        DynamicDependency,
-        SelfContained,
+private val actCtxLayout: MemoryLayout = MemoryLayout.structLayout(
+    ValueLayout.JAVA_INT.withName("cbSize"),
+    ValueLayout.JAVA_INT.withName("dwFlags"),
+    ValueLayout.ADDRESS.withName("lpSource"),
+    ValueLayout.JAVA_SHORT.withName("wProcessorArchitecture"),
+    ValueLayout.JAVA_SHORT.withName("wLangId"),
+    MemoryLayout.paddingLayout(4),
+    ValueLayout.ADDRESS.withName("lpAssemblyDirectory"),
+    ValueLayout.ADDRESS.withName("lpResourceName"),
+    ValueLayout.ADDRESS.withName("lpApplicationName"),
+    ValueLayout.ADDRESS.withName("hModule"),
+)
+
+internal actual fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path? =
+    WinRtRuntimeAssets.discoverRuntimeAssetsRoot(anchorFileName)?.let { Path(it.toString()) }
+
+internal actual fun platformWindowsAppSdkManifestPath(root: Path, fileName: String): Path =
+    Path(root, "$fileName.${ProcessHandle.current().pid()}.manifest")
+
+internal actual fun platformActivateWindowsManifest(manifestPath: Path): AutoCloseable =
+    Arena.ofConfined().use { callArena ->
+        val manifestSegment = allocateWideString(callArena, manifestPath.canonicalString())
+        val actCtx = callArena.allocate(actCtxLayout)
+        actCtx.set(ValueLayout.JAVA_INT, 0L, actCtxLayout.byteSize().toInt())
+        actCtx.set(ValueLayout.JAVA_INT, 4L, 0)
+        actCtx.set(ValueLayout.ADDRESS, 8L, manifestSegment)
+        actCtx.set(ValueLayout.JAVA_SHORT, 16L, 0)
+        actCtx.set(ValueLayout.JAVA_SHORT, 18L, 0)
+        actCtx.set(ValueLayout.ADDRESS, 24L, MemorySegment.NULL)
+        actCtx.set(ValueLayout.ADDRESS, 32L, MemorySegment.NULL)
+        actCtx.set(ValueLayout.ADDRESS, 40L, MemorySegment.NULL)
+        actCtx.set(ValueLayout.ADDRESS, 48L, MemorySegment.NULL)
+        val handle = downcall("CreateActCtxW", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS))
+            .invokeWithArguments(actCtx) as MemorySegment
+        if (handle.address() == -1L) {
+            error("CreateActCtxW failed with GetLastError=${getLastError()} for ${manifestPath.canonicalString()}")
+        }
+        val cookieOut = callArena.allocate(ValueLayout.ADDRESS)
+        val activated = downcall(
+            "ActivateActCtx",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS),
+        ).invokeWithArguments(handle, cookieOut) as Int
+        if (activated == 0) {
+            releaseActCtx(handle)
+            error("ActivateActCtx failed with GetLastError=${getLastError()} for ${manifestPath.canonicalString()}")
+        }
+        JvmActivationContextScope(handle, cookieOut.get(ValueLayout.ADDRESS, 0L))
     }
 
-    class Scope internal constructor(
-        val mode: Mode,
-        val bootstrapDll: Path?,
-        private val activationContexts: List<WinRtWindowsActivationContext.Scope>,
-        private val bootstrapLookup: SymbolLookup?,
-        @Suppress("unused")
-        private val windowsAppRuntimeLookup: SymbolLookup?,
-    ) : AutoCloseable {
-        override fun close() {
-            bootstrapLookup?.let(::shutdown)
-            activationContexts.asReversed().forEach { context ->
-                context.close()
-            }
+internal actual fun platformSetWindowsEnvironmentVariable(name: String, value: String) {
+    Arena.ofConfined().use { callArena ->
+        val result = downcall(
+            "SetEnvironmentVariableW",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS),
+        ).invokeWithArguments(allocateWideString(callArena, name), allocateWideString(callArena, value)) as Int
+        if (result == 0) {
+            error("SetEnvironmentVariableW failed with GetLastError=${getLastError()} for $name")
         }
-    }
-
-    private data class BootstrapVersionInfo(
-        val majorMinorVersion: Int,
-        val versionTag: String,
-        val minVersion: Long,
-    )
-
-    /**
-     * Make Windows App SDK classes visible for an unpackaged app.
-     *
-     * Self-contained Windows App SDK layouts are handled through an activation context and
-     * `WindowsAppRuntime_EnsureIsLoaded`. Otherwise this falls back to the Dynamic Dependency
-     * bootstrap API (`MddBootstrapInitialize2` / `MddBootstrapShutdown`).
-     */
-    fun initializeForUnpackagedApp(runtimeAssetsRoot: Path? = discoverRuntimeAssetsRoot()): Scope? {
-        if (!PlatformRuntime.isWindows) {
-            return null
-        }
-        val root = runtimeAssetsRoot ?: return null
-        val bootstrapDll = bootstrapDllCandidates(root)
-            .firstOrNull { it.isRegularFile() }
-            ?: return null
-        val processCompatibilityContext = WinRtWindowsActivationContext.activateProcessCompatibility(root)
-        val activationContext = WinRtWindowsActivationContext.activate(root)
-        if (activationContext != null) {
-            val runtimeLookup = loadSelfContainedWindowsAppRuntime(root)
-            return Scope(
-                mode = Mode.SelfContained,
-                bootstrapDll = bootstrapDll,
-                activationContexts = listOfNotNull(processCompatibilityContext, activationContext),
-                bootstrapLookup = null,
-                windowsAppRuntimeLookup = runtimeLookup,
-            )
-        }
-        val lookup = SymbolLookup.libraryLookup(bootstrapDll, arena)
-        val versionInfo = discoverVersionInfo(root) ?: BootstrapVersionInfo(
-            majorMinorVersion = defaultMajorMinorVersion,
-            versionTag = "",
-            minVersion = defaultMinVersion,
-        )
-        val initialize2 = linker.downcallHandle(
-            lookup.find("MddBootstrapInitialize2").orElseThrow(),
-            FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_LONG,
-                ValueLayout.JAVA_INT,
-            ),
-        )
-        Arena.ofConfined().use { callArena ->
-            val tag = if (versionInfo.versionTag.isEmpty()) {
-                MemorySegment.NULL
-            } else {
-                allocateWideString(callArena, versionInfo.versionTag)
-            }
-            HResult(
-                initialize2.invokeWithArguments(
-                    versionInfo.majorMinorVersion,
-                    tag,
-                    versionInfo.minVersion,
-                    0,
-                ) as Int,
-            ).requireSuccess("MddBootstrapInitialize2")
-        }
-        return Scope(
-            mode = Mode.DynamicDependency,
-            bootstrapDll = bootstrapDll,
-            activationContexts = listOfNotNull(processCompatibilityContext),
-            bootstrapLookup = lookup,
-            windowsAppRuntimeLookup = null,
-        )
-    }
-
-    @Deprecated(
-        message = "Use initializeForUnpackagedApp only for unpackaged apps. Packaged apps should start XAML directly.",
-        replaceWith = ReplaceWith("initializeForUnpackagedApp(runtimeAssetsRoot)"),
-    )
-    fun initialize(runtimeAssetsRoot: Path? = discoverRuntimeAssetsRoot()): Scope? =
-        initializeForUnpackagedApp(runtimeAssetsRoot)
-
-    fun discoverRuntimeAssetsRoot(): Path? {
-        return WinRtRuntimeAssets.discoverRuntimeAssetsRoot(bootstrapDllName)
-    }
-
-    private fun shutdown(lookup: SymbolLookup) {
-        runCatching {
-            val shutdown = linker.downcallHandle(
-                lookup.find("MddBootstrapShutdown").orElseThrow(),
-                FunctionDescriptor.ofVoid(),
-            )
-            shutdown.invokeWithArguments()
-        }
-    }
-
-    private fun loadSelfContainedWindowsAppRuntime(root: Path): SymbolLookup {
-        val runtimeDll = runtimeDllCandidates(root)
-            .firstOrNull { it.isRegularFile() }
-            ?: error("WindowsAppSDK self-contained activation found no $runtimeDllName under $root")
-        val lookup = SymbolLookup.libraryLookup(runtimeDll, arena)
-        val ensureIsLoaded = linker.downcallHandle(
-            lookup.find("WindowsAppRuntime_EnsureIsLoaded").orElseThrow(),
-            FunctionDescriptor.of(ValueLayout.JAVA_INT),
-        )
-        HResult(ensureIsLoaded.invokeWithArguments() as Int).requireSuccess("WindowsAppRuntime_EnsureIsLoaded")
-        return lookup
-    }
-
-    private fun bootstrapDllCandidates(root: Path): List<Path> =
-        if (root.isDirectory()) {
-            Files.walk(root).use { stream ->
-                stream
-                    .filter { it.isRegularFile() && it.name.equals(bootstrapDllName, ignoreCase = true) }
-                    .sorted()
-                    .toList()
-            }
-        } else {
-            emptyList()
-        }
-
-    private fun runtimeDllCandidates(root: Path): List<Path> =
-        if (root.isDirectory()) {
-            Files.walk(root).use { stream ->
-                stream
-                    .filter { it.isRegularFile() && it.name.equals(runtimeDllName, ignoreCase = true) }
-                    .sorted()
-                    .toList()
-            }
-        } else {
-            emptyList()
-        }
-
-    private fun discoverVersionInfo(root: Path): BootstrapVersionInfo? {
-        val header = generateSequence(root) { it.parent }
-            .take(5)
-            .map { it.resolve(versionInfoHeaderRelativePath) }
-            .firstOrNull { it.isRegularFile() }
-            ?: return null
-        val content = Files.readString(header)
-        val majorMinor = releaseMajorMinorRegex.find(content)
-            ?.groupValues?.get(1)
-            ?.removePrefix("0x")
-            ?.toInt(16)
-            ?: return null
-        val versionTag = releaseVersionTagRegex.find(content)?.groupValues?.get(1) ?: ""
-        val minVersion = runtimeVersionRegex.find(content)
-            ?.groupValues?.get(1)
-            ?.removePrefix("0x")
-            ?.removeSuffix("u")
-            ?.toULong(16)
-            ?.toLong()
-            ?: return null
-        return BootstrapVersionInfo(majorMinor, versionTag, minVersion)
-    }
-
-    private fun allocateWideString(arena: Arena, value: String): MemorySegment {
-        val bytes = (value + '\u0000').toByteArray(StandardCharsets.UTF_16LE)
-        return arena.allocate(bytes.size.toLong(), 2).copyFrom(MemorySegment.ofArray(bytes))
     }
 }
 
-/**
- * Convenience bootstrap entry point for custom unpackaged JVM launchers.
- *
- * Gradle application projects should normally run through `runWinRtApplicationHost`,
- * which performs this before starting the JVM. Use this API only when the app owns a
- * custom JavaExec/native launcher path and cannot use the generated host.
- */
-object WinRtWindowsAppSdkBootstrap {
-    fun initialize(runtimeAssetsRoot: Path? = WinRtWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()): WinRtWindowsAppSdkDeployment.Scope? =
-        WinRtWindowsAppSdkDeployment.initializeForUnpackagedApp(runtimeAssetsRoot)
+internal actual fun platformTryLoadWindowsLibrary(path: Path): RawAddress? =
+    runCatching { platformLoadWindowsLibrary(path) }.getOrNull()
 
-    fun discoverRuntimeAssetsRoot(): Path? =
-        WinRtWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()
+internal actual fun platformLoadWindowsLibrary(path: Path): RawAddress =
+    storePlatformHandle(SymbolLookup.libraryLookup(java.nio.file.Path.of(path.canonicalString()), arena))
+
+internal actual fun platformFreeWindowsLibrary(module: RawAddress) {
+    platformHandles.remove(module.value)
+}
+
+internal actual fun platformTryGetWindowsProcAddress(module: RawAddress, procedureName: String): RawAddress? =
+    lookup(module).find(procedureName).orElse(null)?.let(::storePlatformHandle)
+
+internal actual fun platformGetWindowsProcAddress(module: RawAddress, procedureName: String): RawAddress =
+    lookup(module).find(procedureName).orElseThrow().let(::storePlatformHandle)
+
+internal actual fun platformCallWindowsAppRuntimeEnsureIsLoaded(procedure: RawAddress) {
+    val handle = linker.downcallHandle(symbol(procedure), FunctionDescriptor.of(ValueLayout.JAVA_INT))
+    HResult(handle.invokeWithArguments() as Int).requireSuccess("WindowsAppRuntime_EnsureIsLoaded")
+}
+
+internal actual fun platformCallMddBootstrapInitialize2(
+    procedure: RawAddress,
+    majorMinorVersion: Int,
+    versionTag: String?,
+    minVersion: Long,
+) {
+    val handle = linker.downcallHandle(
+        symbol(procedure),
+        FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_LONG,
+            ValueLayout.JAVA_INT,
+        ),
+    )
+    Arena.ofConfined().use { callArena ->
+        val tag = versionTag?.takeIf { it.isNotEmpty() }?.let { allocateWideString(callArena, it) } ?: MemorySegment.NULL
+        HResult(handle.invokeWithArguments(majorMinorVersion, tag, minVersion, 0) as Int)
+            .requireSuccess("MddBootstrapInitialize2")
+    }
+}
+
+internal actual fun platformRememberWindowsAppSdkBootstrapShutdown(module: RawAddress) {
+    bootstrapShutdown = lookup(module).find("MddBootstrapShutdown").orElse(null)?.let { symbol ->
+        linker.downcallHandle(symbol, FunctionDescriptor.ofVoid())
+    }
+}
+
+internal actual fun platformWindowsAppSdkBootstrapShutdown() {
+    runCatching { bootstrapShutdown?.invokeWithArguments() }
+}
+
+private class JvmActivationContextScope(
+    private val handle: MemorySegment,
+    private val cookie: MemorySegment,
+) : AutoCloseable {
+    override fun close() {
+        runCatching {
+            downcall(
+                "DeactivateActCtx",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
+            ).invokeWithArguments(0, cookie)
+        }
+        releaseActCtx(handle)
+    }
+}
+
+private fun storePlatformHandle(value: Any): RawAddress {
+    val key = nextPlatformHandle.getAndIncrement()
+    platformHandles[key] = value
+    return RawAddress(key)
+}
+
+private fun lookup(handle: RawAddress): SymbolLookup =
+    platformHandles[handle.value] as? SymbolLookup
+        ?: error("Windows library handle is no longer valid.")
+
+private fun symbol(handle: RawAddress): MemorySegment =
+    platformHandles[handle.value] as? MemorySegment
+        ?: error("Windows procedure handle is no longer valid.")
+
+private fun downcall(name: String, descriptor: FunctionDescriptor): MethodHandle =
+    linker.downcallHandle(kernel32.find(name).orElseThrow(), descriptor)
+
+private fun getLastError(): Int =
+    downcall("GetLastError", FunctionDescriptor.of(ValueLayout.JAVA_INT)).invokeWithArguments() as Int
+
+private fun releaseActCtx(handle: MemorySegment) {
+    downcall("ReleaseActCtx", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS)).invokeWithArguments(handle)
+}
+
+private fun allocateWideString(arena: Arena, value: String): MemorySegment {
+    val bytes = (value + '\u0000').toByteArray(StandardCharsets.UTF_16LE)
+    return arena.allocate(bytes.size.toLong(), 2).copyFrom(MemorySegment.ofArray(bytes))
 }

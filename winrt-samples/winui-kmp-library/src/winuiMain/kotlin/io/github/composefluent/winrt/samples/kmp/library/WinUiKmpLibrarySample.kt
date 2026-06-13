@@ -57,10 +57,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     private var activeTimer: DispatcherQueueTimer? = null
     private var activeTimerToken: EventRegistrationToken? = null
     private var focusSmokeCompleted = false
-    @Volatile
     private var timerSmokeCompleted = false
 
-    protected override fun onLaunched(args: LaunchActivatedEventArgs) {
+    public override fun onLaunched(args: LaunchActivatedEventArgs) {
         launchWithResources()
     }
 
@@ -78,7 +77,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     }
 
     private fun launchWithResources() {
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.timerSmoke")) {
+        if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.timerSmoke")) {
             println("winui-kmp-library: timer smoke using current thread dispatcher")
             runTimerSmoke(DispatcherQueue.getForCurrentThread())
             return
@@ -88,6 +87,10 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     }
 
     private fun installXamlControlsResources() {
+        if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipXamlControlsResources")) {
+            println("winui-kmp-library: install resources skipped")
+            return
+        }
         println("winui-kmp-library: install resources dictionary")
         val resources = checkNotNull(this.resources) {
             "Application resources were not initialized."
@@ -116,10 +119,23 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: button created")
         val textBox = TextBox()
         println("winui-kmp-library: textBox created")
-        val localControl = WinUiKmpLocalContentControl()
-        println("winui-kmp-library: local authored control created")
-        val localPanel = WinUiKmpLocalPanel()
-        println("winui-kmp-library: local authored panel created")
+        val includeLocalAuthoredContent = !WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipLocalAuthoredContent")
+        val localControl = if (includeLocalAuthoredContent) {
+            WinUiKmpLocalContentControl().also {
+                println("winui-kmp-library: local authored control created")
+            }
+        } else {
+            println("winui-kmp-library: local authored control skipped")
+            null
+        }
+        val localPanel = if (includeLocalAuthoredContent) {
+            WinUiKmpLocalPanel().also {
+                println("winui-kmp-library: local authored panel created")
+            }
+        } else {
+            println("winui-kmp-library: local authored panel skipped")
+            null
+        }
 
         button.content = "KMP library WinUI"
         println("winui-kmp-library: button content set")
@@ -135,12 +151,16 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         button.content = "KMP library WinUI"
         textBox.text = "initial"
         println("winui-kmp-library: textBox initial text set")
-        localControl.content = "Local authored control"
-        localControl.sampleText = "local metadata"
-        check(localControl.sampleText == "local metadata") {
-            "Local authored DependencyProperty did not round-trip: ${localControl.sampleText}"
+        if (localControl != null) {
+            localControl.content = "Local authored control"
+            localControl.sampleText = "local metadata"
+            check(localControl.sampleText == "local metadata") {
+                "Local authored DependencyProperty did not round-trip: ${localControl.sampleText}"
+            }
+            println("winui-kmp-library: local authored dependency property round-trip")
+        } else {
+            println("winui-kmp-library: local authored dependency property skipped")
         }
-        println("winui-kmp-library: local authored dependency property round-trip")
         println("winui-kmp-library: resolving canvas children")
         val children = checkNotNull(panel.children) {
             "Canvas children collection was not initialized."
@@ -152,12 +172,16 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: adding textBox to canvas")
         children.add(textBox)
         println("winui-kmp-library: textBox added")
-        println("winui-kmp-library: adding local authored control to canvas")
-        children.add(localControl)
-        println("winui-kmp-library: local authored control added")
-        println("winui-kmp-library: adding local authored panel to canvas")
-        children.add(localPanel)
-        println("winui-kmp-library: local authored panel added")
+        if (localControl != null) {
+            println("winui-kmp-library: adding local authored control to canvas")
+            children.add(localControl)
+            println("winui-kmp-library: local authored control added")
+        }
+        if (localPanel != null) {
+            println("winui-kmp-library: adding local authored panel to canvas")
+            children.add(localPanel)
+            println("winui-kmp-library: local authored panel added")
+        }
         check(children[0] is Button) {
             "Canvas.children[0] did not recover the Button runtime-class wrapper: ${children[0]::class.qualifiedName}"
         }
@@ -174,25 +198,29 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             "AutomationProperties.accessibilityViewProperty was not available."
         })
         println("winui-kmp-library: detached automation accessibility view cleared")
-        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWindowContent")) {
+        if (!WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipWindowContent")) {
             window.content = panel
             println("winui-kmp-library: window content set")
         } else {
             println("winui-kmp-library: window content skipped")
         }
-        val localPanelPeer = FrameworkElementAutomationPeer.createPeerForElement(localPanel)
-        check(WinUiKmpLocalPanel.createAutomationPeerCalls == 1) {
-            "Local authored Panel OnCreateAutomationPeer was not dispatched; calls=${WinUiKmpLocalPanel.createAutomationPeerCalls}, peer=${localPanelPeer.javaClass.name}"
+        if (localPanel != null && !WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipAutomationPeerSmoke")) {
+            val localPanelPeer = FrameworkElementAutomationPeer.createPeerForElement(localPanel)
+            check(WinUiKmpLocalPanel.createAutomationPeerCalls == 1) {
+                "Local authored Panel OnCreateAutomationPeer was not dispatched; calls=${WinUiKmpLocalPanel.createAutomationPeerCalls}, peer=$localPanelPeer"
+            }
+            println("winui-kmp-library: local authored panel automation peer override dispatched")
+            localPanelPeer.getPeerFromPoint(Point(24f, 24f))
+            val peerPoint = WinUiKmpLocalAutomationPeer.lastPeerFromPoint
+            check(peerPoint != null && peerPoint.x == 24f && peerPoint.y == 24f) {
+                "Authored AutomationPeer.GetPeerFromPointCore received $peerPoint"
+            }
+            println("winui-kmp-library: local authored automation peer point ABI round-tripped")
+        } else {
+            println("winui-kmp-library: local authored automation peer smoke skipped")
         }
-        println("winui-kmp-library: local authored panel automation peer override dispatched")
-        localPanelPeer.getPeerFromPoint(Point(24f, 24f))
-        val peerPoint = WinUiKmpLocalAutomationPeer.lastPeerFromPoint
-        check(peerPoint != null && peerPoint.x == 24f && peerPoint.y == 24f) {
-            "Authored AutomationPeer.GetPeerFromPointCore received $peerPoint"
-        }
-        println("winui-kmp-library: local authored automation peer point ABI round-tripped")
         activeWindow = window
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipCallbackSmoke")) {
+        if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipCallbackSmoke")) {
             println("winui-kmp-library: callbacks skipped")
             window.activate()
             println("winui-kmp-library: window activated native")
@@ -222,7 +250,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         activeEventTokens += button.loaded.add { _, _ ->
             println("winui-kmp-library: button loaded callback")
         }
-        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipLayoutUpdated")) {
+        if (!WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipLayoutUpdated")) {
             println("winui-kmp-library: registering button layout")
             activeEventTokens += button.layoutUpdated.add { _, _ ->
                 println("winui-kmp-library: button layout callback")
@@ -265,7 +293,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: registering text unloaded")
         activeEventTokens += textBox.unloaded.add { _, _ ->
             println("winui-kmp-library: text unloaded callback")
-            if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+            if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.autoExitWinUi")) {
                 checkNotNull(window.dispatcherQueue) {
                     "Window dispatcher queue was not available."
                 }.tryEnqueue(DispatcherQueueHandler {
@@ -293,8 +321,8 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         }
         textBox.text = "changed"
         println("winui-kmp-library: textBox changed after focus")
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-            if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.timerSmoke")) {
+        if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.autoExitWinUi")) {
+            if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.timerSmoke")) {
                 runTimerSmoke(checkNotNull(window.dispatcherQueue) {
                     "Window dispatcher queue was not available."
                 })
@@ -325,8 +353,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: timer token=$activeTimerToken")
         timer.start()
         println("winui-kmp-library: timer started runningAfter=${timer.isRunning}")
-        Thread {
-            Thread.sleep(1_500)
+        WinUiKmpSamplePlatform.scheduleTimerTimeout {
             dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
                 println("winui-kmp-library: timer timeout completed=$timerSmokeCompleted running=${timer.isRunning}")
                 check(timerSmokeCompleted) {
@@ -334,10 +361,6 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
                 }
                 exit()
             })
-        }.also { thread ->
-            thread.name = "kotlin-winrt timer smoke timeout"
-            thread.isDaemon = true
-            thread.start()
         }
     }
 }

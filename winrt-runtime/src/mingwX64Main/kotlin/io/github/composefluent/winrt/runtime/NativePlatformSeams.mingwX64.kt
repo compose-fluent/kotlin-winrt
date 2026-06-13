@@ -28,8 +28,10 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toCPointer
+import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlinx.io.files.Path
+import platform.posix.getenv
 import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
 import platform.windows.FreeLibrary
@@ -768,8 +770,12 @@ actual object WinRtPlatformApi {
 }
 
 private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"
+private const val runtimeAssetsRootEnvironmentVariableName = "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"
 
 private fun nativeRuntimeAssetCandidates(fileName: String): Sequence<String> = sequence {
+    getenv(runtimeAssetsRootEnvironmentVariableName)?.toKString()?.takeIf { it.isNotBlank() }?.let { root ->
+        yield("$root/$fileName")
+    }
     yield(fileName)
     yield("$runtimeAssetsDirectoryName/$fileName")
     yield("kotlin-winrt/runtime-assets/$fileName")

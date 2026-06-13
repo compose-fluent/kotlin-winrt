@@ -902,6 +902,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val root = Files.createTempDirectory("kotlin-winrt-identity-registrar-test-")
         val registrar = root.resolve("projection-registrar.tsv")
+        val typeShapes = root.resolve("type-shape-descriptors.tsv")
         Files.writeString(
             registrar,
             """
@@ -913,6 +914,15 @@ class KotlinWinRtPluginTest {
             windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
             """.trimIndent(),
         )
+        Files.writeString(
+            typeShapes,
+            """
+            projectedTypeName	key	value
+            Microsoft.UI.Dispatching.DispatcherQueueShutdownStartingEventArgs	WRITES_WRAPPER_DECLARATION	true
+            Microsoft.UI.Dispatching.DispatcherQueueShutdownStartingEventArgs	WRITES_ABI_DECLARATION	true
+            Windows.ApplicationModel.DataTransfer.DataPackagePropertySet	WRITES_WRAPPER_DECLARATION	true
+            """.trimIndent(),
+        )
         val task = project.tasks.register(
             "generateWinRtIdentityWithRegistrarUnderTest",
             GenerateWinRtIdentityTask::class.java,
@@ -922,6 +932,7 @@ class KotlinWinRtPluginTest {
             registeredTask.includeNamespaces.set(emptyList())
             registeredTask.includeTypes.set(emptyList())
             registeredTask.projectionRegistrarFiles.from(registrar)
+            registeredTask.typeShapeDescriptorFiles.from(typeShapes)
             registeredTask.excludeNamespaces.set(emptyList())
             registeredTask.excludeTypes.set(emptyList())
             registeredTask.additionExcludeNamespaces.set(emptyList())
@@ -933,7 +944,9 @@ class KotlinWinRtPluginTest {
         task.generate()
 
         val json = Files.readString(root.resolve("identity.json"))
+        assertTrue(json.contains("\"Microsoft.UI.Dispatching.DispatcherQueueShutdownStartingEventArgs\""))
         assertTrue(json.contains("\"Windows.ApplicationModel.AppExecutionContext\""))
+        assertTrue(json.contains("\"Windows.ApplicationModel.DataTransfer.DataPackagePropertySet\""))
         assertTrue(json.contains("\"Windows.Foundation.IStringable\""))
         assertTrue(json.contains("\"Windows.Foundation.Uri\""))
         assertTrue(json.contains("\"Windows.System.DisplayRequest\""))
@@ -1305,7 +1318,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun legacy_dependency_identity_without_projected_types_does_not_suppress_downstream_projection_types() {
+    fun dependency_identity_include_types_suppress_downstream_projection_roots() {
         val project = ProjectBuilder.builder().build()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
@@ -1371,7 +1384,10 @@ class KotlinWinRtPluginTest {
             ),
         )
 
-        assertEquals(emptyList<String>(), dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList())
+        assertEquals(
+            listOf("Windows.ApplicationModel.DataTransfer.DataPackageView"),
+            dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
+        )
     }
 
     @Test
@@ -2475,6 +2491,11 @@ class KotlinWinRtPluginTest {
         Files.writeString(jar, "jar")
         Files.createDirectories(assets)
         Files.writeString(assets.resolve("WindowsAppSDK-SelfContained.manifest"), "manifest")
+        val outputRoot = project.layout.buildDirectory.dir("application-host/bin").get().asFile.toPath()
+        Files.createDirectories(outputRoot.resolve("lib"))
+        Files.writeString(outputRoot.resolve("lib/stale-app.jar"), "stale")
+        Files.createDirectories(outputRoot.resolve("kotlin-winrt-runtime-assets"))
+        Files.writeString(outputRoot.resolve("kotlin-winrt-runtime-assets/stale.host.json"), "{}")
         val task = project.tasks.register(
             "buildApplicationHost",
             BuildWinRtApplicationHostTask::class.java,
@@ -2496,7 +2517,6 @@ class KotlinWinRtPluginTest {
             task.build()
         }
 
-        val outputRoot = task.outputDirectory.get().asFile.toPath()
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
         assertTrue(source.contains("JNI_CreateJavaVM"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
@@ -2505,7 +2525,9 @@ class KotlinWinRtPluginTest {
         assertTrue(source.contains(System.getProperty("java.home").replace("\\", "\\\\")))
         assertFalse(source.contains("java/lang/reflect"))
         assertTrue(Files.isRegularFile(outputRoot.resolve("lib").resolve(jar.fileName)))
+        assertFalse(Files.exists(outputRoot.resolve("lib/stale-app.jar")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-runtime-assets/WindowsAppSDK-SelfContained.manifest")))
+        assertFalse(Files.exists(outputRoot.resolve("kotlin-winrt-runtime-assets/stale.host.json")))
     }
 
     @Test
@@ -6359,6 +6381,52 @@ class KotlinWinRtPluginTest {
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
         assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/main/kotlin"))
+    }
+
+    @Test
+    fun dependency_identity_uses_include_and_projected_types_for_downstream_suppression() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": [],
+              "includeTypes": ["Microsoft.UI.Dispatching.DispatcherQueue"],
+              "projectedTypes": ["Microsoft.UI.Dispatching.IDispatcherQueue"],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    "Microsoft.UI.Dispatching",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Dispatching",
+                            name = "DispatcherQueue",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Dispatching",
+                            name = "IDispatcherQueue",
+                            kind = WinRtTypeKind.Interface,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Dispatching.DispatcherQueue",
+                "Microsoft.UI.Dispatching.IDispatcherQueue",
+            ),
+            dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
+        )
     }
 
     @Test

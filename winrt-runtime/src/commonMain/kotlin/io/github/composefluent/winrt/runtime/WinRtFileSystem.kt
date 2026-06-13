@@ -6,6 +6,7 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readByteArray
 import kotlinx.io.readString
+import kotlinx.io.writeString
 
 /** Returns true if this path resolves to a regular file. */
 internal fun Path.isRegularFile(): Boolean =
@@ -28,6 +29,11 @@ internal fun absolutePath(path: String): String = Path(path).canonicalString()
 /** Reads the entire file as a UTF-8 string. */
 internal fun Path.readText(): String =
     SystemFileSystem.source(this).buffered().use { it.readString() }
+
+/** Writes the entire file as a UTF-8 string. */
+internal fun Path.writeText(value: String) {
+    SystemFileSystem.sink(this).buffered().use { sink -> sink.writeString(value) }
+}
 
 /** Reads the entire file as a byte array. */
 internal fun Path.readBytes(): ByteArray =

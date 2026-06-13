@@ -90,6 +90,7 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
 
     private fun stageRuntimeClasspath(outputRoot: Path) {
         val libRoot = outputRoot.resolve("lib")
+        GradleFileOperations.cleanDirectory(libRoot)
         Files.createDirectories(libRoot)
         runtimeClasspath.files
             .filter { it.isFile && it.name.endsWith(".jar", ignoreCase = true) }
@@ -100,6 +101,7 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
 
     private fun stageRuntimeAssets(outputRoot: Path) {
         val runtimeAssetsRoot = outputRoot.resolve("kotlin-winrt-runtime-assets")
+        GradleFileOperations.cleanDirectory(runtimeAssetsRoot)
         runtimeAssetsDirectory.files
             .filter { it.exists() }
             .forEach { source ->

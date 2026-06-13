@@ -2976,7 +2976,12 @@ class KotlinWinRtIrGenerationExtension(
                 )
                 val receiver = symbols.rawComPtrToOpaquePointer(builder, builder.irGet(instance))
                 val nativeValues = values.mapIndexed { index, value ->
-                    symbols.nativeCarrier(builder, argumentKinds[index], value)
+                    nativeCInteropCarrier(
+                        symbols = symbols,
+                        builder = builder,
+                        argumentKind = argumentKinds[index],
+                        value = value,
+                    )
                 }
                 val parameterTypes = listOf(receiver.type) + nativeValues.map { it.type }
                 val function = irTemporary(
@@ -3002,6 +3007,21 @@ class KotlinWinRtIrGenerationExtension(
                         arguments[index + 2] = value
                     }
                 }
+            }
+
+        private fun nativeCInteropCarrier(
+            symbols: NativeCInteropSymbols,
+            builder: DeclarationIrBuilder,
+            argumentKind: UnitCallAbiArgumentKind,
+            value: IrExpression,
+        ): IrExpression =
+            when (argumentKind) {
+                UnitCallAbiArgumentKind.Struct ->
+                    builder.irCall(platformAbiReadInt64).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = value
+                    }
+                else -> symbols.nativeCarrier(builder, argumentKind, value)
             }
 
         private fun referencePointer(

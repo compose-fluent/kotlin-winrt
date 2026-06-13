@@ -31,6 +31,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.Executable
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import java.io.File
@@ -119,6 +120,11 @@ private fun configureWinRtLibraryModel(
             task.projectionRegistrarFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/projection-registrar.tsv",
+                ),
+            )
+            task.typeShapeDescriptorFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
                 ),
             )
             task.excludeNamespaces.set(extension.excludeNamespaces)
@@ -471,21 +477,22 @@ private fun configureWinRtApplicationTasks(
             task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
                 spec.include("*.dll")
             })
-            project.extensions.findByType(KotlinMultiplatformExtension::class.java)
-                ?.targets
-                ?.withType(KotlinNativeTarget::class.java)
-                ?.configureEach { target ->
-                    if (!target.isMingwX64Target()) {
-                        return@configureEach
-                    }
-                    task.authoredTargetArtifactFiles.from(nativeAuthoringReleaseSharedLibraryFiles(project, target.name))
-                    task.dependsOn(nativeAuthoringReleaseSharedLinkTasks(project, target.name))
-                }
             task.dependsOn("generateWinRtProjections")
             task.dependsOn(buildAuthoringHostTask)
             task.dependsOn(resolveRuntimeNuGetPackagesTask)
         },
     )
+    val mingwApplicationEntryTask = project.tasks.register(
+        "generateWinRtMingwApplicationEntry",
+        GenerateWinRtMingwApplicationEntryTask::class.java,
+        Action<GenerateWinRtMingwApplicationEntryTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Generates the Kotlin/Native mingw application entry wrapper with WinUI bootstrap."
+            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"))
+            task.mainClass.set(extension.application.mainClass)
+        },
+    )
+    configureMingwApplicationEntry(project, mingwApplicationEntryTask, stageRuntimeAssetsTask)
     val stageApplicationPackageTask = project.tasks.register(
         "stageWinRtApplicationPackage",
         StageWinRtApplicationPackageTask::class.java,
@@ -784,6 +791,35 @@ private class RuntimeAssetsRootJvmArgumentProvider(
         listOf("-Dkotlin.winrt.runtimeAssetsRoot=${runtimeAssetsRoot.get()}")
 }
 
+private fun configureMingwApplicationEntry(
+    project: Project,
+    entryTask: TaskProvider<GenerateWinRtMingwApplicationEntryTask>,
+    stageRuntimeAssetsTask: TaskProvider<StageWinRtRuntimeAssetsTask>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+        if (!target.isMingwX64Target()) {
+            return@configureEach
+        }
+        val sourceSet = target.compilations.getByName("main").defaultSourceSet
+        sourceSet.kotlin.srcDir(entryTask.flatMap { it.outputDirectory })
+        target.binaries.withType(Executable::class.java).configureEach { executable ->
+            executable.entryPoint = KOTLIN_WINRT_MINGW_APPLICATION_ENTRY_POINT
+            executable.linkTaskProvider.configure { task ->
+                task.dependsOn(entryTask)
+            }
+            executable.runTaskProvider?.configure { task ->
+                task.dependsOn(stageRuntimeAssetsTask)
+                task.workingDir(project.projectDir)
+                task.environment(
+                    "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
+                    stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,
+                )
+            }
+        }
+    }
+}
+
 private fun configureWinRtGeneration(
     project: Project,
     extension: BaseWinRtExtension,
@@ -791,6 +827,8 @@ private fun configureWinRtGeneration(
     val generatedSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
     val generatedAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
     val generatedNativeAuthoringHostExports = project.layout.buildDirectory.dir("generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
+    val generatedMingwApplicationEntrySources =
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
     val generatorWorkerClasspath = kotlinWinRtGeneratorWorkerClasspath(project)
     val authoringTargetArtifactName = kotlinWinRtAuthoringTargetArtifactName(project)
@@ -878,11 +916,14 @@ private fun configureWinRtGeneration(
                         generatedAuthoringSources.get().asFile.toPath().toAbsolutePath().normalize()
                     val generatedNativeAuthoringHostExportsPath =
                         generatedNativeAuthoringHostExports.get().asFile.toPath().toAbsolutePath().normalize()
+                    val generatedMingwApplicationEntrySourcesPath =
+                        generatedMingwApplicationEntrySources.get().asFile.toPath().toAbsolutePath().normalize()
                     kotlinMainSourceDirs(project).filterNot { sourceDir ->
                         val normalizedSourceDir = sourceDir.toPath().toAbsolutePath().normalize()
                         normalizedSourceDir.startsWith(generatedSourcesPath) ||
                             normalizedSourceDir.startsWith(generatedAuthoringSourcesPath) ||
-                            normalizedSourceDir.startsWith(generatedNativeAuthoringHostExportsPath)
+                            normalizedSourceDir.startsWith(generatedNativeAuthoringHostExportsPath) ||
+                            normalizedSourceDir.startsWith(generatedMingwApplicationEntrySourcesPath)
                     }
                 },
             )
@@ -939,9 +980,19 @@ private fun configureWinRtGeneration(
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
             task.emitJvmAuthoringHostExports.set(false)
         }
-        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
-        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, mergeCompilerSupportTask.flatMap { it.outputDirectory })
-        addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(project, generatedAuthoringSources, generateTask)
+        addGeneratedSourcesToKotlinMultiplatformCommonMainWhenNoAuthoredSourceRoots(project, generatedSources, generateTask)
+        addGeneratedSourcesToKotlinMultiplatformCommonMainWhenNoAuthoredSourceRoots(
+            project,
+            mergeCompilerSupportTask.flatMap { it.outputDirectory },
+            generateTask,
+        )
+        addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(project, generatedSources, generateTask)
+        addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(
+            project,
+            mergeCompilerSupportTask.flatMap { it.outputDirectory },
+            generateTask,
+        )
+        addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(project, generatedAuthoringSources, generateTask)
         addGeneratedNativeAuthoringHostExportsToKotlinMultiplatformSourceRoots(
             project,
             generatedNativeAuthoringHostExports,
@@ -1203,14 +1254,11 @@ private fun registerWinRtAuthoredCandidateValidation(
         })
     }
     project.tasks.withType(StageWinRtRuntimeAssetsTask::class.java).configureEach { task ->
-        task.authoredMetadataFiles.from(outputs.authoredWinmd)
-        task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
-        task.dependsOn(validationTask)
-        if (artifactPublication == WinRtAuthoredArtifactPublication.Native) {
-            task.authoredTargetArtifactFiles.from(nativeSharedLibraryFiles)
-            task.dependsOn(nativeSharedLibraryLinkTasks)
-            nativeExportValidationTask?.let { task.dependsOn(it) }
+        if (artifactPublication == WinRtAuthoredArtifactPublication.Jvm) {
+            task.authoredMetadataFiles.from(outputs.authoredWinmd)
+            task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
         }
+        task.dependsOn(validationTask)
     }
     if (artifactPublication == WinRtAuthoredArtifactPublication.Jvm) {
         project.tasks.withType(BuildWinRtAuthoringHostTask::class.java).configureEach { task ->
@@ -1231,7 +1279,11 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.name == "stageWinRtApplicationPackage"
     }.configureEach(Action<Task> { task ->
         task.dependsOn(validationTask)
-        if (artifactPublication == WinRtAuthoredArtifactPublication.Native) {
+        if (
+            artifactPublication == WinRtAuthoredArtifactPublication.Native &&
+            task.name != "stageWinRtRuntimeAssets" &&
+            task.name != "stageWinRtApplicationPackage"
+        ) {
             nativeExportValidationTask?.let { task.dependsOn(it) }
         }
     })
@@ -1596,6 +1648,69 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     }
 }
 
+private fun addGeneratedSourcesToKotlinMultiplatformCommonMainWhenNoAuthoredSourceRoots(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    project.gradle.projectsEvaluated {
+        if (generateTask.get().sourceRoots.files.isNotEmpty()) {
+            return@projectsEvaluated
+        }
+        kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
+            sourceSet.kotlin.srcDir(generatedSources)
+        }
+    }
+}
+
+private fun addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    project.gradle.projectsEvaluated {
+        val sourceRoots = generateTask.get().sourceRoots.files
+        if (sourceRoots.isEmpty()) {
+            return@projectsEvaluated
+        }
+        val normalizedSourceRoots = sourceRoots.mapTo(mutableSetOf()) { sourceRoot ->
+            sourceRoot.toPath().toAbsolutePath().normalize()
+        }
+        val targetMainSourceSetNames = kotlinExtension.targets
+            .mapTo(mutableSetOf()) { target -> target.compilations.getByName("main").defaultSourceSet.name }
+        data class SourceSetMatch(
+            val sourceSet: KotlinSourceSet,
+            val sourceDir: Path,
+        )
+        val selectedSourceSets = kotlinExtension.sourceSets.mapNotNull { sourceSet ->
+            val matchingSourceDir = sourceSet.kotlin.srcDirs
+                .map { sourceDir -> sourceDir.toPath().toAbsolutePath().normalize() }
+                .filter { normalizedSourceDir ->
+                    normalizedSourceRoots.any { sourceRoot ->
+                        sourceRoot.startsWith(normalizedSourceDir) || normalizedSourceDir.startsWith(sourceRoot)
+                    }
+                }
+                .maxByOrNull { it.nameCount }
+            matchingSourceDir?.let { SourceSetMatch(sourceSet, it) }
+        }
+        val deepestMatchDepth = selectedSourceSets.maxOfOrNull { it.sourceDir.nameCount }
+        val deepestSelectedSourceSets = selectedSourceSets
+            .filter { it.sourceDir.nameCount == deepestMatchDepth }
+            .map { it.sourceSet }
+        val sharedSelectedSourceSets = deepestSelectedSourceSets.filterNot { it.name in targetMainSourceSetNames }
+        val owningSourceSets = when {
+            sharedSelectedSourceSets.isNotEmpty() -> sharedSelectedSourceSets
+            deepestSelectedSourceSets.isNotEmpty() -> deepestSelectedSourceSets
+            else -> listOf(kotlinExtension.sourceSets.getByName("commonMain"))
+        }
+        owningSourceSets.forEach { sourceSet ->
+            sourceSet.kotlin.srcDir(generatedSources)
+        }
+    }
+}
+
 private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
     project: Project,
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
@@ -1761,10 +1876,21 @@ private fun addWinRtCompilerPluginOptions(
 
 private fun kotlinMainSourceDirs(project: Project): List<File> {
     project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.let { kotlinExtension ->
-        return kotlinExtension.sourceSets.flatMap { sourceSet -> sourceSet.kotlin.srcDirs }
+        return kotlinExtension.sourceSets
+            .flatMap { sourceSet -> sourceSet.kotlin.srcDirs }
+            .filter(::containsKotlinSourceFile)
     }
     val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return emptyList()
-    return kotlinExtension.sourceSets.findByName("main")?.kotlin?.srcDirs.orEmpty().toList()
+    return kotlinExtension.sourceSets.findByName("main")
+        ?.kotlin
+        ?.srcDirs
+        .orEmpty()
+        .filter(::containsKotlinSourceFile)
+}
+
+private fun containsKotlinSourceFile(sourceDir: File): Boolean {
+    if (!sourceDir.isDirectory) return false
+    return sourceDir.walkTopDown().any { file -> file.isFile && file.extension == "kt" }
 }
 
 private fun localAuthoredHostManifestFiles(project: Project, manifestFile: Provider<RegularFile>) =

@@ -38,6 +38,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectionRegistrarFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val typeShapeDescriptorFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val excludeNamespaces: ListProperty<String>
 
@@ -98,7 +103,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"metadataInputs\": ${metadataInputs.get().toJsonArray()},")
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
-                appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files).toJsonArray()},")
+                appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files, typeShapeDescriptorFiles.files).toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
                 appendLine("  \"additionExcludeNamespaces\": ${additionExcludeNamespaces.get().toJsonArray()},")
@@ -120,12 +125,20 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     }
 }
 
-internal fun readProjectedTypeNames(projectionRegistrarFiles: Iterable<File>): List<String> =
-    projectionRegistrarFiles
+internal fun readProjectedTypeNames(
+    projectionRegistrarFiles: Iterable<File>,
+    typeShapeDescriptorFiles: Iterable<File> = emptyList(),
+): List<String> =
+    (
+        projectionRegistrarFiles
         .filter(File::isFile)
-        .flatMap(::readProjectionRegistrarProjectedTypeNames)
-        .distinct()
-        .sorted()
+        .flatMap(::readProjectionRegistrarProjectedTypeNames) +
+            typeShapeDescriptorFiles
+                .filter(File::isFile)
+                .flatMap(::readTypeShapeDescriptorProjectedTypeNames)
+        )
+            .distinct()
+            .sorted()
 
 private val projectionRegistrarHeader = listOf(
     "kotlinClassName",
@@ -156,6 +169,36 @@ private fun readProjectionRegistrarProjectedTypeNames(file: File): List<String> 
             )
         }
         parts[1]
+    }
+}
+
+private val typeShapeDescriptorHeader = listOf(
+    "projectedTypeName",
+    "key",
+    "value",
+)
+
+private fun readTypeShapeDescriptorProjectedTypeNames(file: File): List<String> {
+    val lines = file.readLines()
+    val header = lines.firstOrNull()?.split('\t')
+        ?: throw GradleException("Type shape descriptor '${file.absolutePath}' is missing a header.")
+    if (header != typeShapeDescriptorHeader) {
+        throw GradleException(
+            "Type shape descriptor '${file.absolutePath}' has malformed header '${lines.first()}'.",
+        )
+    }
+    return lines.drop(1).mapIndexedNotNull { index, line ->
+        if (line.isBlank()) {
+            return@mapIndexedNotNull null
+        }
+        val rowNumber = index + 2
+        val parts = splitProjectionRegistrarRow(line)
+        if (parts.size != typeShapeDescriptorHeader.size || parts.take(2).any(String::isBlank)) {
+            throw GradleException(
+                "Type shape descriptor '${file.absolutePath}' has malformed row $rowNumber.",
+            )
+        }
+        parts[0]
     }
 }
 

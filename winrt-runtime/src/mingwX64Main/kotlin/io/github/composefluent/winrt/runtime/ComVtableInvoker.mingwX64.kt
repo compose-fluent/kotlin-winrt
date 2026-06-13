@@ -341,19 +341,21 @@ private object NativeCallbackRegistry {
         words: LongArray,
     ): Int {
         val registered = callbacks[id] ?: return KnownHResults.E_POINTER.value
-        return runCatching {
-            registered.callback(
-                registered.parameterKinds.mapIndexed { index, kind ->
-                    abiWordToCallbackValue(kind, words[index])
-                },
-            )
-        }.getOrElse { error ->
-            platformSetErrorInfo(error)
-            platformHResultFromThrowable(error).value
+        PlatformAbi.confinedScope().use { scope ->
+            return runCatching {
+                registered.callback(
+                    registered.parameterKinds.mapIndexed { index, kind ->
+                        abiWordToCallbackValue(scope, kind, words[index])
+                    },
+                )
+            }.getOrElse { error ->
+                platformSetErrorInfo(error)
+                platformHResultFromThrowable(error).value
+            }
         }
     }
 
-    private fun abiWordToCallbackValue(kind: ComAbiValueKind, word: Long): Any =
+    private fun abiWordToCallbackValue(scope: NativeScope, kind: ComAbiValueKind, word: Long): Any =
         when (kind) {
             ComAbiValueKind.Pointer -> RawAddress(word)
             ComAbiValueKind.Int8 -> word.toByte()
@@ -362,8 +364,25 @@ private object NativeCallbackRegistry {
             ComAbiValueKind.Int64 -> word
             ComAbiValueKind.Float -> Float.fromBits(word.toInt())
             ComAbiValueKind.Double -> Double.fromBits(word)
-            is ComAbiValueKind.Struct -> RawAddress(word)
+            is ComAbiValueKind.Struct -> materializeCallbackStruct(scope, kind.layout, word)
         }
+
+    private fun materializeCallbackStruct(scope: NativeScope, layout: NativeAbiLayout, word: Long): RawAddress {
+        if (layout.byteSize > 8L) {
+            return RawAddress(word)
+        }
+        val pointer = PlatformAbi.allocateBytes(scope, layout.byteSize, layout.byteAlignment)
+        writeLittleEndianWord(pointer, layout.byteSize, word)
+        return pointer
+    }
+
+    private fun writeLittleEndianWord(pointer: RawAddress, byteSize: Long, word: Long) {
+        val bytes = pointer.toOpaquePointer()?.reinterpret<ByteVar>()
+            ?: error("Cannot materialize a callback struct into a null native pointer.")
+        repeat(byteSize.toInt()) { index ->
+            bytes[index] = ((word ushr (index * 8)) and 0xFF).toByte()
+        }
+    }
 }
 
 private data class RegisteredNativeCallback(

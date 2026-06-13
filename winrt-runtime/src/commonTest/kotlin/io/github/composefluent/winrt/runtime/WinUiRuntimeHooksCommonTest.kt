@@ -6,6 +6,7 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.writeString
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class WinUiRuntimeHooksCommonTest {
     @Test
@@ -85,9 +86,45 @@ class WinUiRuntimeHooksCommonTest {
         assertEquals(expected, WinUiResourceManagerRuntime.resourceManagerRequestedHandlerIid())
     }
 
+    @Test
+    fun resource_manager_prefers_application_pri_then_microsoft_ui_pri_then_controls_pri() {
+        val root = Path("build/kotlin-winrt/common-test-winui-pri")
+        runCatching { SystemFileSystem.delete(root / "resources.pri") }
+        runCatching { SystemFileSystem.delete(root / "Microsoft.UI.pri") }
+        runCatching { SystemFileSystem.delete(root / "Microsoft.UI.Xaml.Controls.pri") }
+        SystemFileSystem.createDirectories(root)
+        val applicationPri = root / "resources.pri"
+        val controlsPri = root / "Microsoft.UI.Xaml.Controls.pri"
+        val microsoftUiPri = root / "Microsoft.UI.pri"
+        controlsPri.writeText("controls")
+
+        assertEquals(controlsPri, WinUiResourceManagerSupport.preferredPriPath(root))
+
+        microsoftUiPri.writeText("ui")
+
+        assertEquals(microsoftUiPri, WinUiResourceManagerSupport.preferredPriPath(root))
+
+        applicationPri.writeText("application")
+
+        assertEquals(applicationPri, WinUiResourceManagerSupport.preferredPriPath(root))
+    }
+
+    @Test
+    fun resource_manager_returns_null_when_no_pri_exists() {
+        val root = Path("build/kotlin-winrt/common-test-winui-no-pri")
+        runCatching { SystemFileSystem.delete(root / "resources.pri") }
+        runCatching { SystemFileSystem.delete(root / "Microsoft.UI.pri") }
+        runCatching { SystemFileSystem.delete(root / "Microsoft.UI.Xaml.Controls.pri") }
+        SystemFileSystem.createDirectories(root)
+
+        assertNull(WinUiResourceManagerSupport.preferredPriPath(root))
+    }
+
     private fun Path.writeText(value: String) {
         SystemFileSystem.sink(this).buffered().use { sink ->
             sink.writeString(value)
         }
     }
+
+    private operator fun Path.div(child: String): Path = Path(this, child)
 }

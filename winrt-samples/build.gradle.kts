@@ -1,8 +1,11 @@
+import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
+import org.gradle.jvm.tasks.Jar
+
 plugins {
-    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("io.github.composefluent.winrt")
-    application
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
@@ -11,23 +14,36 @@ val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRt.samples.
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRt.samples.nugetGlobalPackagesRoot")
 
 kotlin {
-    if (sampleWindowsAppSdkVersion.orNull != null) {
-        sourceSets.named("main") {
-            kotlin.srcDir("src/winuiSample/kotlin")
-        }
-        sourceSets.named("test") {
-            kotlin.srcDir("src/winuiSampleTest/kotlin")
-        }
-    } else {
-        sourceSets.named("main") {
-            kotlin.srcDir("src/noWinuiSample/kotlin")
+    jvmToolchain(25)
+    jvm("winuiJvm")
+    mingwX64 {
+        binaries {
+            executable()
         }
     }
-}
-
-dependencies {
-    implementation(projects.winrtProjections)
-    testImplementation(libs.junit)
+    sourceSets {
+        commonMain {
+            dependencies {
+                implementation(projects.winrtProjections)
+            }
+        }
+        val selectedSampleMain = create(
+            if (sampleWindowsAppSdkVersion.orNull != null) "winuiMain" else "noWinuiMain",
+        ).apply {
+            dependsOn(commonMain.get())
+        }
+        named("winuiJvmMain") {
+            dependsOn(selectedSampleMain)
+        }
+        named("mingwX64Main") {
+            dependsOn(selectedSampleMain)
+        }
+        named("winuiJvmTest") {
+            dependencies {
+                implementation(libs.junit)
+            }
+        }
+    }
 }
 
 winRt {
@@ -35,6 +51,7 @@ winRt {
     type("Windows.Foundation.Point")
     namespace("Windows.Data.Json")
     application {
+        mainClass.set("io.github.composefluent.winrt.samples.MainKt")
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
@@ -94,10 +111,6 @@ winRt {
     }
 }
 
-application {
-    mainClass = "io.github.composefluent.winrt.samples.MainKt"
-}
-
 val sampleJvmOptionProperties = listOf(
     "kotlin.winrt.samples.runNativeSmoke",
     "kotlin.winrt.samples.runComponentSmoke",
@@ -118,12 +131,18 @@ val sampleJvmOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<JavaExec>("run") {
-    dependsOn(tasks.named("buildWinRtAuthoringHost"))
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
-    sampleJvmOptionProperties.forEach { name ->
-        systemProperty(name, providers.systemProperty(name).orElse("false").get())
-    }
+tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>("buildWinRtApplicationHost") {
+    val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
+    val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
+    dependsOn(winuiJvmJar)
+    runtimeClasspath.from(winuiJvmJar.flatMap { it.archiveFile })
+    runtimeClasspath.from(
+        providers.provider {
+            configurations.named("winuiJvmRuntimeClasspath").get().filter { file ->
+                file.name != defaultJarName.get()
+            }
+        },
+    )
 }
 
 tasks.named<Exec>("runWinRtApplicationHost") {
@@ -131,6 +150,28 @@ tasks.named<Exec>("runWinRtApplicationHost") {
         "-D$name=${providers.systemProperty(name).orElse("false").get()}"
     }
     environment("KOTLIN_WINRT_JVM_OPTIONS", hostJvmOptions)
+}
+
+tasks.named<Exec>("runReleaseExecutableMingwX64") {
+    dependsOn("stageWinRtRuntimeAssets")
+    workingDir(projectDir)
+    environment(
+        "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
+        layout.buildDirectory.dir("kotlin-winrt/runtime-assets").get().asFile.absolutePath,
+    )
+    sampleJvmOptionProperties.forEach { name ->
+        providers.systemProperty(name).orNull?.let { value ->
+            environment(name, value)
+        }
+    }
+    environment(
+        "kotlin.winrt.samples.runWinUiSmoke",
+        providers.systemProperty("kotlin.winrt.samples.runWinUiSmoke").orElse("true").get(),
+    )
+    environment(
+        "kotlin.winrt.samples.autoExitWinUi",
+        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
+    )
 }
 
 val verifyWinRtSampleIdentity by tasks.registering {
@@ -179,29 +220,21 @@ val verifyWinRtSampleRuntimeAssets by tasks.registering {
     }
 }
 
-val verifyWinRtSampleDistribution by tasks.registering {
-    group = "verification"
-    description = "Verifies the sample application distribution contains staged WinRT runtime assets."
-    val distributionRuntimeAssetsDir = layout.buildDirectory.dir("install/${project.name}/kotlin-winrt-runtime-assets")
-    dependsOn(tasks.named("installDist"))
-    inputs.dir(distributionRuntimeAssetsDir)
-
-    doLast {
-        check(distributionRuntimeAssetsDir.get().asFile.resolve("SimpleMathComponent.dll").isFile) {
-            "Expected SimpleMathComponent.dll to be included under kotlin-winrt-runtime-assets in the application distribution."
-        }
-    }
-}
-
 val verifyWinRtSampleRun by tasks.registering {
     group = "verification"
     description = "Runs the sample application through the native Kotlin/WinRT host without opt-in native WinRT smoke tests."
     dependsOn(tasks.named("runWinRtApplicationHost"))
 }
 
+val verifyWinRtSampleMingwRun by tasks.registering {
+    group = "verification"
+    description = "Runs the sample application through the mingwX64 executable."
+    dependsOn(tasks.named("runReleaseExecutableMingwX64"))
+}
+
 tasks.named("check") {
     dependsOn(verifyWinRtSampleIdentity)
     dependsOn(verifyWinRtSampleRuntimeAssets)
-    dependsOn(verifyWinRtSampleDistribution)
     dependsOn(verifyWinRtSampleRun)
+    dependsOn(verifyWinRtSampleMingwRun)
 }
