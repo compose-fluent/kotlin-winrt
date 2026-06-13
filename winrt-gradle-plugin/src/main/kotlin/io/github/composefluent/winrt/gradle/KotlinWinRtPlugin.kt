@@ -120,10 +120,16 @@ private fun configureWinRtLibraryModel(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/projection-registrar.tsv",
                 ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/projection-registrar.tsv",
+                ),
             )
             task.typeShapeDescriptorFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
+                ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
                 ),
             )
             task.excludeNamespaces.set(extension.excludeNamespaces)
@@ -141,10 +147,16 @@ private fun configureWinRtLibraryModel(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
                 ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
+                ),
             )
             task.compilerSupportManifestFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/compiler-support.tsv",
+                ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
                 ),
             )
             task.dependsOn("generateWinRtProjections")
@@ -805,8 +817,11 @@ private fun configureWinRtGeneration(
     project: Project,
     extension: BaseWinRtExtension,
 ) {
-    val generatedSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
-    val generatedAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
+    val generatedJvmSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    val generatedKmpCommonSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
+    val generatedJvmAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
+    val generatedKmpCommonAuthoringSources =
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
     val generatedMingwApplicationEntrySources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
@@ -821,8 +836,8 @@ private fun configureWinRtGeneration(
         Action<GenerateWinRtProjectionsTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Generates Kotlin WinRT projections from Windows SDK and NuGet WinMD metadata."
-            task.outputDirectory.set(generatedSources)
-            task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
+            task.outputDirectory.set(generatedJvmSources)
+            task.authoringTypeDetailsOutputDirectory.set(generatedJvmAuthoringSources)
             task.metadataInputs.set(extension.metadataInputs)
             task.metadataInputFiles.from(
                 project.provider {
@@ -890,9 +905,9 @@ private fun configureWinRtGeneration(
             task.authoringScannerClasspath.from(kotlinWinRtAuthoringScannerRuntimeClasspath(project))
             task.sourceRoots.from(
                 project.provider {
-                    val generatedSourcesPath = generatedSources.get().asFile.toPath().toAbsolutePath().normalize()
+                    val generatedSourcesPath = task.outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
                     val generatedAuthoringSourcesPath =
-                        generatedAuthoringSources.get().asFile.toPath().toAbsolutePath().normalize()
+                        task.authoringTypeDetailsOutputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
                     val generatedMingwApplicationEntrySourcesPath =
                         generatedMingwApplicationEntrySources.get().asFile.toPath().toAbsolutePath().normalize()
                     kotlinMainSourceDirs(project).filterNot { sourceDir ->
@@ -912,8 +927,8 @@ private fun configureWinRtGeneration(
             task.group = "kotlin-winrt"
             task.description = "Merges Kotlin WinRT compiler support tables from this project and WinRT dependencies."
             task.localCompilerSupportManifest.set(
-                generatedSources.map { directory ->
-                    directory.file("kotlin-winrt-support/compiler-support.tsv")
+                generateTask.flatMap { generator ->
+                    generator.outputDirectory.file("kotlin-winrt-support/compiler-support.tsv")
                 },
             )
             task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"))
@@ -925,6 +940,13 @@ private fun configureWinRtGeneration(
     )
 
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
+        val generatedSources = generatedJvmSources
+        val generatedAuthoringSources = generatedJvmAuthoringSources
+        generateTask.configure { task ->
+            task.outputDirectory.set(generatedSources)
+            task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
+            task.emitJvmAuthoringHostExports.set(true)
+        }
         configureKotlinWinRtCompilerPluginClasspath(project)
         addGeneratedSourcesToKotlinMain(project, generatedSources)
         addGeneratedSourcesToKotlinMain(project, mergeCompilerSupportTask.flatMap { it.outputDirectory })
@@ -951,9 +973,13 @@ private fun configureWinRtGeneration(
     }
 
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        val generatedSources = generatedKmpCommonSources
+        val generatedAuthoringSources = generatedKmpCommonAuthoringSources
         configureKotlinWinRtCompilerPluginClasspath(project)
         generateTask.configure { task ->
+            task.outputDirectory.set(generatedSources)
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
+            task.legacyOutputDirectories.from(generatedJvmSources, generatedJvmAuthoringSources)
             task.emitJvmAuthoringHostExports.set(false)
         }
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
@@ -986,7 +1012,7 @@ private fun configureWinRtGeneration(
 
     project.plugins.withId("java") {
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> {
-            it.getByName("main").java.srcDir(generatedSources)
+            it.getByName("main").java.srcDir(generatedJvmSources)
         })
         project.tasks.matching { task -> task.name == "compileJava" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)

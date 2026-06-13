@@ -57,7 +57,7 @@ val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
     group = "verification"
     description = "Verifies the KMP WinUI application suppresses projection types owned by transitive WinRT libraries."
     dependsOn("generateWinRtProjections")
-    val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
     inputs.files(generatedSources)
 
     doLast {
@@ -77,7 +77,7 @@ val auditGeneratedWinuiKmpProjectionOutput by tasks.registering(
     group = "verification"
     description = "Fails if generated KMP WinUI projection source leaks fallback invocation or JVM-only reflection paths."
     dependsOn("generateWinRtProjections")
-    val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
     generatedSourcesDirectory.set(generatedSources)
 }
 

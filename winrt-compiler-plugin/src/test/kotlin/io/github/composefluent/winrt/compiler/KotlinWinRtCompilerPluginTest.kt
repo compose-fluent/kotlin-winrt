@@ -221,6 +221,18 @@ class KotlinWinRtCompilerPluginTest {
                 root,
             ),
         )
+        val commonRoot = generatedSourceRootFromMetadataIndex(
+            "C:\\repo\\build\\generated\\kotlin-winrt\\src\\commonMain\\kotlin\\kotlin-winrt-authoring\\metadata-index.tsv",
+        )
+        assertEquals("c:/repo/build/generated/kotlin-winrt/src/commonmain/kotlin", commonRoot)
+        assertTrue(isGeneratedSourceFile("C:\\repo\\build\\generated\\kotlin-winrt\\src\\commonMain\\kotlin\\microsoft\\ui\\xaml\\Window.kt", commonRoot))
+        assertTrue(isGeneratedSourceFile("C:\\repo\\build\\generated\\kotlin-winrt-authoring\\src\\commonMain\\kotlin\\sample\\WinRT_Widget_TypeDetails.kt", commonRoot))
+        assertTrue(
+            isGeneratedSourceFile(
+                "C:\\repo\\build\\generated\\kotlin-winrt-compiler-authoring\\compileKotlinMingwX64\\src\\main\\kotlin\\sample\\WinRT_Widget_TypeDetails.kt",
+                commonRoot,
+            ),
+        )
         assertFalse(isGeneratedSourceFile("C:\\repo\\src\\main\\kotlin\\io\\github\\composefluent\\winrt\\projections\\support\\WinRTAuthoringCcwFactories.kt", root))
         assertFalse(isGeneratedSourceFile("C:\\repo\\src\\main\\kotlin\\sample\\WinRT_Widget_TypeDetails.kt", root))
         assertFalse(isGeneratedSourceFile("C:\\repo\\src\\main\\kotlin\\sample\\App.kt", root))

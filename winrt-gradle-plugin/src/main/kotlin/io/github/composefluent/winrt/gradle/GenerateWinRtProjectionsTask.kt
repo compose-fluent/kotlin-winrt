@@ -60,6 +60,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
 
+    @get:Internal
+    abstract val legacyOutputDirectories: ConfigurableFileCollection
+
     @get:Input
     abstract val emitJvmAuthoringHostExports: Property<Boolean>
 
@@ -164,6 +167,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }.submit(GenerateWinRtProjectionsWorkAction::class.java) { parameters ->
             parameters.outputDirectory.set(outputDirectory)
             parameters.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
+            parameters.legacyOutputDirectories.from(legacyOutputDirectories)
             parameters.metadataInputs.set(metadataInputs)
             parameters.metadataInputFiles.from(metadataInputFiles)
             parameters.sourceRoots.from(sourceRoots)
@@ -197,6 +201,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 internal interface GenerateWinRtProjectionsWorkParameters : WorkParameters {
     val outputDirectory: DirectoryProperty
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
+    val legacyOutputDirectories: ConfigurableFileCollection
     val emitJvmAuthoringHostExports: Property<Boolean>
     val metadataInputs: ListProperty<String>
     val metadataInputFiles: ConfigurableFileCollection
@@ -237,6 +242,10 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val authoringTypeDetailsRoot = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath()
             .toAbsolutePath()
             .normalize()
+        parameters.legacyOutputDirectories.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot { legacyRoot -> legacyRoot == generatedRoot || legacyRoot == authoringTypeDetailsRoot }
+            .forEach(::cleanDirectory)
         cleanDirectory(generatedRoot)
         cleanDirectory(authoringTypeDetailsRoot)
         var sources = metadataSources().withWindowsSdkSourceForProjectionRoots(

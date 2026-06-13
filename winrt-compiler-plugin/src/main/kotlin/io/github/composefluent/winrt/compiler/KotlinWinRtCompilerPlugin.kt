@@ -5664,8 +5664,11 @@ internal fun isGeneratedSourceFile(fileName: String, generatedSourceRoot: String
         if ("/kotlin-winrt/" in root) {
             add(root.replace("/kotlin-winrt/", "/kotlin-winrt-authoring/"))
         }
-        val generatedDirectory = "/generated/kotlin-winrt/src/main/kotlin"
-        if (root.endsWith(generatedDirectory)) {
+        val generatedDirectories = listOf(
+            "/generated/kotlin-winrt/src/main/kotlin",
+            "/generated/kotlin-winrt/src/commonmain/kotlin",
+        )
+        generatedDirectories.firstOrNull(root::endsWith)?.let { generatedDirectory ->
             add(root.removeSuffix(generatedDirectory) + "/generated/kotlin-winrt-compiler-authoring")
         }
     }

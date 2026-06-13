@@ -6229,15 +6229,17 @@ class KotlinWinRtPluginTest {
                             .toSet()
 
                     val buildRoot = layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-                    val generatedProjection = buildRoot.resolve("generated/kotlin-winrt/src/main/kotlin")
+                    val generatedProjection = buildRoot.resolve("generated/kotlin-winrt/src/commonMain/kotlin")
                         .toString()
                         .replace("\\", "/")
+                    val legacyGeneratedProjection = buildRoot.resolve("generated/kotlin-winrt/src/main/kotlin")
                     val generatedCompilerSupport = buildRoot.resolve("generated/kotlin-winrt/compiler-support/merged")
                         .toString()
                         .replace("\\", "/")
-                    val generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
+                    val generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
                         .toString()
                         .replace("\\", "/")
+                    val legacyGeneratedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
                     val generatedHostExports = buildRoot.resolve("generated/kotlin-winrt-native-authoring-host")
                     val generatedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
                         .toString()
@@ -6251,11 +6253,19 @@ class KotlinWinRtPluginTest {
                     check(generatedProjection in commonSources) {
                         "Generated projection source must be owned by commonMain: " + commonSources
                     }
+                    check(!legacyGeneratedProjection.toFile().exists()) {
+                        "KMP generated projection source must not remain under src/main/kotlin: " +
+                            legacyGeneratedProjection.toString().replace("\\", "/")
+                    }
                     check(generatedCompilerSupport in commonSources) {
                         "Generated compiler support source must be owned by commonMain: " + commonSources
                     }
                     check(generatedAuthoring in commonSources) {
                         "Generated authoring support source must be owned by commonMain: " + commonSources
+                    }
+                    check(!legacyGeneratedAuthoring.toFile().exists()) {
+                        "KMP generated authoring support source must not remain under src/main/kotlin: " +
+                            legacyGeneratedAuthoring.toString().replace("\\", "/")
                     }
                     check(generatedApplicationEntry in commonSources) {
                         "Generated application entry source must be owned by commonMain: " + commonSources
