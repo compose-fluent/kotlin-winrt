@@ -23,12 +23,17 @@ kotlin {
 
 winRt {
     windowsSdk(generateProjection = true)
+    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+        generateProjection = true
+    }
     type("Windows.Foundation.IClosable")
     type("Windows.Foundation.IStringable")
     type("Windows.Data.Json.IJsonValue")
     type("Windows.Data.Json.JsonValue")
     type("Windows.Foundation.Collections.IPropertySet")
     type("Windows.Storage.Streams.IDataReader")
+    type("Microsoft.UI.Xaml.Controls.Control")
+    type("Microsoft.UI.Xaml.Controls.ContentControl")
     type("sample.NativeJsonValueThing")
     application {
         mainClass.set("sample.consumer.MainKt")
@@ -58,6 +63,7 @@ val verifyNativeAuthoringConsumerFixture by tasks.registering(
             "sample.NativeJsonValueThing",
             "sample.NativeDataReaderThing",
             "sample.NativePropertySetThing",
+            "sample.NativeContentControlThing",
         ),
     )
     forbiddenJarName.set("native-component-fixture.jar")

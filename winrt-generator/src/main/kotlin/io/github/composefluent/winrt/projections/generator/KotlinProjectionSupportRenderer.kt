@@ -2317,6 +2317,7 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
+            .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addFunction(authoringCcwQueryInterfaceFunction(plan))
@@ -2370,7 +2371,7 @@ class KotlinProjectionSupportRenderer {
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
-                code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(interfacePlan))
+                code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(plan, interfacePlan))
                 code.unindent()
                 code.add("),\n")
             }
@@ -2451,7 +2452,10 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
-    private fun authoringCcwInterfaceMethodsCode(interfacePlan: KotlinTypeProjectionPlan): CodeBlock {
+    private fun authoringCcwInterfaceMethodsCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+    ): CodeBlock {
         if (interfacePlan.instanceMemberBindings.isEmpty()) {
             return CodeBlock.of("emptyList()")
         }
@@ -2480,7 +2484,7 @@ class KotlinProjectionSupportRenderer {
             code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
             code.add("handler = { rawArgs ->\n")
             code.indent()
-            code.add("%L", authoringCcwMethodHandlerCode(interfacePlan, binding))
+            code.add("%L", authoringCcwMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
             code.unindent()
             code.add("},\n")
             code.unindent()
@@ -2602,6 +2606,7 @@ class KotlinProjectionSupportRenderer {
         }
 
     private fun authoringCcwMethodHandlerCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
@@ -2613,7 +2618,7 @@ class KotlinProjectionSupportRenderer {
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
         } else if (authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
-            authoringCcwOrdinaryMemberHandlerCode(interfacePlan, binding)
+            authoringCcwOrdinaryMemberHandlerCode(runtimeClassPlan, interfacePlan, binding)
         } else {
             authoringCcwUnsupportedMemberHandlerCode(binding)
         }
@@ -2663,6 +2668,7 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwOrdinaryMemberHandlerCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
@@ -2681,7 +2687,7 @@ class KotlinProjectionSupportRenderer {
                 authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
-        val invocation = authoringCcwInvocationCode(interfaceType, binding)
+        val invocation = authoringCcwInvocationCode(runtimeClassPlan, interfaceType, binding)
         val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
         if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
@@ -2757,6 +2763,7 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwInvocationCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
         interfaceType: WinRtTypeDefinition,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
@@ -2765,8 +2772,13 @@ class KotlinProjectionSupportRenderer {
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.let { method ->
                 val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
+                val targetMethodName = if (runtimeClassPlan.requiresAuthoringInvokeBridge(binding.slotInterfaceQualifiedName)) {
+                    authoringInvokeBridgeName(method)
+                } else {
+                    method.projectedMethodName()
+                }
                 return CodeBlock.builder()
-                    .add("value.%L(", method.projectedMethodName())
+                    .add("value.%L(", targetMethodName)
                     .apply {
                         binding.parameterBindings
                             .withIndex()
@@ -2794,6 +2806,24 @@ class KotlinProjectionSupportRenderer {
             }
         }
         return CodeBlock.of("error(%S)", "No authored member body for ${interfaceType.qualifiedName}.${binding.bindingName}")
+    }
+
+    private fun KotlinTypeProjectionPlan.requiresAuthoringInvokeBridge(interfaceName: String): Boolean {
+        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        val qualifiedName = if ('.' in rawName) rawName else "${type.namespace}.$rawName"
+        fun matches(candidate: String): Boolean {
+            val candidateRawName = candidate.substringBefore('<').removeSuffix("?")
+            return candidateRawName == rawName || candidateRawName == qualifiedName
+        }
+        return classMemberMergeDescriptor
+            ?.interfaceDescriptors
+            ?.any { descriptor ->
+                matches(descriptor.interfaceTypeName) &&
+                    (descriptor.isOverridableInterface || descriptor.isProtectedInterface)
+            } == true ||
+            type.implementedInterfaces.any { implementation ->
+                matches(implementation.interfaceName) && implementation.isOverridable
+            }
     }
 
     private fun authoringCcwReceiveArrayReturnParameter(

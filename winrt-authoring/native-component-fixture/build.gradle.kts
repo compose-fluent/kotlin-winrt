@@ -11,11 +11,16 @@ kotlin {
 
 winRt {
     windowsSdk(generateProjection = true)
+    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+        generateProjection = true
+    }
     type("Windows.Foundation.IClosable")
     type("Windows.Foundation.IStringable")
     type("Windows.Foundation.Collections.IPropertySet")
     type("Windows.Data.Json.IJsonValue")
     type("Windows.Storage.Streams.IDataReader")
+    type("Microsoft.UI.Xaml.Controls.Control")
+    type("Microsoft.UI.Xaml.Controls.ContentControl")
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
@@ -42,6 +47,7 @@ val verifyNativeAuthoringComponentFixture by tasks.registering(
             "sample.NativeJsonValueThing",
             "sample.NativeDataReaderThing",
             "sample.NativePropertySetThing",
+            "sample.NativeContentControlThing",
         ),
     )
     expectedDllName.set("native_component_fixture.dll")
