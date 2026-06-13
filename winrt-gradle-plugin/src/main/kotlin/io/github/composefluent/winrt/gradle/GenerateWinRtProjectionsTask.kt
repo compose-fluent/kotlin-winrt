@@ -60,9 +60,6 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
 
-    @get:OutputDirectory
-    abstract val nativeAuthoringHostExportsOutputDirectory: DirectoryProperty
-
     @get:Input
     abstract val emitJvmAuthoringHostExports: Property<Boolean>
 
@@ -167,7 +164,6 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }.submit(GenerateWinRtProjectionsWorkAction::class.java) { parameters ->
             parameters.outputDirectory.set(outputDirectory)
             parameters.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
-            parameters.nativeAuthoringHostExportsOutputDirectory.set(nativeAuthoringHostExportsOutputDirectory)
             parameters.metadataInputs.set(metadataInputs)
             parameters.metadataInputFiles.from(metadataInputFiles)
             parameters.sourceRoots.from(sourceRoots)
@@ -201,7 +197,6 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 internal interface GenerateWinRtProjectionsWorkParameters : WorkParameters {
     val outputDirectory: DirectoryProperty
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
-    val nativeAuthoringHostExportsOutputDirectory: DirectoryProperty
     val emitJvmAuthoringHostExports: Property<Boolean>
     val metadataInputs: ListProperty<String>
     val metadataInputFiles: ConfigurableFileCollection
@@ -242,13 +237,8 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val authoringTypeDetailsRoot = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath()
             .toAbsolutePath()
             .normalize()
-        val nativeAuthoringHostExportsRoot = parameters.nativeAuthoringHostExportsOutputDirectory.get().asFile.toPath()
-            .toAbsolutePath()
-            .normalize()
         cleanDirectory(generatedRoot)
         cleanDirectory(authoringTypeDetailsRoot)
-        cleanDirectory(nativeAuthoringHostExportsRoot)
-        Files.createDirectories(nativeAuthoringHostExportsRoot)
         var sources = metadataSources().withWindowsSdkSourceForProjectionRoots(
             includeNames = parameters.includeNamespaces.get().toSet() + parameters.includeTypes.get().toSet(),
             version = parameters.windowsSdkVersion.orNull,
@@ -379,13 +369,6 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
             emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
         ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
-        KotlinProjectionGenerator(
-            emitSupportFiles = true,
-            projectionContext = projectionContext,
-            suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
-            authoredRuntimeClassNames = authoredRuntimeClassNames,
-            supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
-        ).generateNativeAuthoringHostExportsTo(projectionModel, nativeAuthoringHostExportsRoot)
         writeAuthoringMetadataIndex(
             mergedAuthoringMetadataIndexTypes(authoringModel, parameters.dependencyIdentityFiles.files),
             authoringMetadataIndex,

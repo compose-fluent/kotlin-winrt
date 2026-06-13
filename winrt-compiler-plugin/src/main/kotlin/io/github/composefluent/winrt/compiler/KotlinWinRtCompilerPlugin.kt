@@ -5660,11 +5660,9 @@ internal fun isGeneratedSourceFile(fileName: String, generatedSourceRoot: String
     val siblingGeneratedRoots = buildList {
         if (root.endsWith("/kotlin-winrt")) {
             add("$root-authoring")
-            add("$root-native-authoring-host")
         }
         if ("/kotlin-winrt/" in root) {
             add(root.replace("/kotlin-winrt/", "/kotlin-winrt-authoring/"))
-            add(root.replace("/kotlin-winrt/", "/kotlin-winrt-native-authoring-host/"))
         }
         val generatedDirectory = "/generated/kotlin-winrt/src/main/kotlin"
         if (root.endsWith(generatedDirectory)) {

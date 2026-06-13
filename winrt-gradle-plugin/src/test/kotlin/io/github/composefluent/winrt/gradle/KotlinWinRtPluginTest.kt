@@ -464,7 +464,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun native_authoring_validation_publishes_mingw_shared_library_artifacts_without_jvm_host_build() {
+    fun native_authoring_validation_stays_compile_artifact_only_while_export_host_is_frozen() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
@@ -480,8 +480,8 @@ class KotlinWinRtPluginTest {
                 it.invariantSeparatorsPath.endsWith("build/generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
             },
         )
-        assertTrue(project.tasks.names.contains("linkReleaseSharedWinuiMingw"))
-        assertTrue(project.tasks.names.contains("linkDebugSharedWinuiMingw"))
+        assertFalse(project.tasks.names.contains("linkReleaseSharedWinuiMingw"))
+        assertFalse(project.tasks.names.contains("linkDebugSharedWinuiMingw"))
         val compileTask = project.tasks.named("compileKotlinWinuiMingw").get() as KotlinNativeCompile
         assertTrue(
             compileTask.compilerOptions.freeCompilerArgs.get().joinToString("\n"),
@@ -498,16 +498,7 @@ class KotlinWinRtPluginTest {
             "compileKotlinWinuiMingw" in validationDependencies,
         )
         val exportValidationTaskName = "validateCompileKotlinWinuiMingwWinRtNativeAuthoringExports"
-        val exportValidationTask = project.tasks.named(exportValidationTaskName).get()
-        val exportValidationDependencies = exportValidationTask.taskDependencies.getDependencies(exportValidationTask).map { it.name }
-        assertTrue(
-            "$exportValidationTaskName must depend on authored candidate validation",
-            validationTaskName in exportValidationDependencies,
-        )
-        assertTrue(
-            "$exportValidationTaskName must depend on native shared library link",
-            "linkReleaseSharedWinuiMingw" in exportValidationDependencies,
-        )
+        assertFalse(project.tasks.names.contains(exportValidationTaskName))
         val checkTask = project.tasks.named("check").get()
         val checkDependencies = checkTask.taskDependencies.getDependencies(checkTask).map { it.name }
         assertTrue(
@@ -6247,9 +6238,7 @@ class KotlinWinRtPluginTest {
                     val generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
                         .toString()
                         .replace("\\", "/")
-                    val generatedHostExports = buildRoot.resolve("generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
-                        .toString()
-                        .replace("\\", "/")
+                    val generatedHostExports = buildRoot.resolve("generated/kotlin-winrt-native-authoring-host")
                     val generatedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
                         .toString()
                         .replace("\\", "/")
@@ -6280,7 +6269,11 @@ class KotlinWinRtPluginTest {
                     check(generatedAuthoring !in winuiSources) {
                         "Generated authoring support source must not be scoped to winuiMain: " + winuiSources
                     }
-                    check(generatedHostExports !in mingwSources) {
+                    check(!generatedHostExports.toFile().exists()) {
+                        "Native authoring host exports must not be generated as target-local Kotlin source: " +
+                            generatedHostExports.toString().replace("\\", "/")
+                    }
+                    check(generatedHostExports.resolve("src/main/kotlin").toString().replace("\\", "/") !in mingwSources) {
                         "Generated native authoring host source must not be scoped to mingwX64Main: " + mingwSources
                     }
                     check(generatedApplicationEntry !in mingwSources) {
