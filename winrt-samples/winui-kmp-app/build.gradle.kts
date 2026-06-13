@@ -121,6 +121,23 @@ tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>(
     )
 }
 
+private val winuiKmpOptionProperties = listOf(
+    "kotlin.winrt.samples.autoExitWinUi",
+    "kotlin.winrt.samples.timerSmoke",
+    "kotlin.winrt.samples.skipWindowContent",
+    "kotlin.winrt.samples.skipCallbackSmoke",
+    "kotlin.winrt.samples.skipLayoutUpdated",
+    "KOTLIN_WINRT_TRACE_CCW",
+)
+
+tasks.named<Exec>("runWinRtApplicationHost") {
+    val hostJvmOptions = winuiKmpOptionProperties.joinToString(";") { name ->
+        val defaultValue = if (name == "kotlin.winrt.samples.autoExitWinUi") "true" else ""
+        "-D$name=${providers.systemProperty(name).orElse(defaultValue).get()}"
+    }
+    environment("KOTLIN_WINRT_JVM_OPTIONS", hostJvmOptions)
+}
+
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
     dependsOn("stageWinRtRuntimeAssets")
     workingDir(projectDir)
@@ -132,19 +149,27 @@ tasks.named<Exec>("runReleaseExecutableMingwX64") {
         "kotlin.winrt.samples.autoExitWinUi",
         providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
     )
-    listOf(
-        "kotlin.winrt.samples.timerSmoke",
-        "kotlin.winrt.samples.skipWindowContent",
-        "kotlin.winrt.samples.skipCallbackSmoke",
-        "kotlin.winrt.samples.skipLayoutUpdated",
-        "KOTLIN_WINRT_TRACE_CCW",
-    ).forEach { name ->
+    winuiKmpOptionProperties.filterNot { it == "kotlin.winrt.samples.autoExitWinUi" }.forEach { name ->
         providers.systemProperty(name).orNull?.let { value ->
             environment(name, value)
         }
     }
 }
 
+val verifyWinuiKmpJvmRun by tasks.registering {
+    group = "verification"
+    description = "Runs the KMP WinUI sample through the generated JVM application host path."
+    dependsOn(tasks.named("runWinRtApplicationHost"))
+}
+
+val verifyWinuiKmpMingwRun by tasks.registering {
+    group = "verification"
+    description = "Runs the KMP WinUI sample through the mingwX64 executable path."
+    dependsOn(tasks.named("runReleaseExecutableMingwX64"))
+}
+
 tasks.named("check") {
     dependsOn(verifyWinuiKmpTransitiveProjectionSuppression)
+    dependsOn(verifyWinuiKmpJvmRun)
+    dependsOn(verifyWinuiKmpMingwRun)
 }

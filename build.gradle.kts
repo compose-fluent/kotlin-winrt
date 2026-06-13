@@ -130,6 +130,7 @@ val validateWinRtSampleSmoke by tasks.registering {
     description = "Runs sample smoke checks after projection validation."
     dependsOn(validateWinRtProjectionCompile)
     dependsOn(":winrt-samples:check")
+    dependsOn(":winrt-samples:winui-kmp-app:check")
 }
 
 tasks.register("validateWinRtQueue16") {
