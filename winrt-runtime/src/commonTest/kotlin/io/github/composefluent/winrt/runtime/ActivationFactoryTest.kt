@@ -40,6 +40,13 @@ class ActivationFactoryTest {
     }
 
     @Test
+    fun registry_read_failure_is_treated_as_activation_class_unavailable_for_fallbacks() {
+        assertTrue(isActivationClassUnavailable(KnownHResults.REGDB_E_CLASSNOTREG))
+        assertTrue(isActivationClassUnavailable(KnownHResults.REGDB_E_READREGDB))
+        assertFalse(isActivationClassUnavailable(KnownHResults.E_FAIL))
+    }
+
+    @Test
     fun module_path_resolves_working_directory_runtime_assets() {
         val fileName = "kotlin-winrt-runtime-assets-resolve-test.dll"
         val runtimeAssetsRoot = Path("build/kotlin-winrt/runtime-assets")

@@ -15,6 +15,7 @@ object KnownHResults {
     val E_NOINTERFACE = HResult(0x80004002.toInt())
     val E_POINTER = HResult(0x80004003.toInt())
     val CO_E_NOTINITIALIZED = HResult(0x800401F0.toInt())
+    val REGDB_E_READREGDB = HResult(0x80040150.toInt())
     val REGDB_E_CLASSNOTREG = HResult(0x80040154.toInt())
     val RPC_E_CHANGED_MODE = HResult(0x80010106.toInt())
     val E_ACCESSDENIED = HResult(0x80070005.toInt())

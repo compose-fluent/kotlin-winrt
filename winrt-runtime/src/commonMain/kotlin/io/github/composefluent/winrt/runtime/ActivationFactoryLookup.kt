@@ -6,12 +6,12 @@ internal object RawActivationFactoryLookup {
         interfaceId: Guid = IID.IActivationFactory,
     ): ActivationResult {
         val authoringFactory = ComWrappersSupport.tryGetAuthoringActivationFactory(runtimeClassName, interfaceId)
-        if (authoringFactory.isSuccess || authoringFactory.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+        if (authoringFactory.isSuccess || !isActivationClassUnavailable(authoringFactory.hResult)) {
             return authoringFactory
         }
 
         val authoringFallbackFactory = ComWrappersSupport.tryGetAuthoringActivationFactoryFallback(runtimeClassName, interfaceId)
-        if (authoringFallbackFactory.isSuccess || authoringFallbackFactory.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+        if (authoringFallbackFactory.isSuccess || !isActivationClassUnavailable(authoringFallbackFactory.hResult)) {
             return authoringFallbackFactory
         }
 
@@ -23,7 +23,7 @@ internal object RawActivationFactoryLookup {
         HString.create(runtimeClassName).use { classId ->
             val activationResult =
                 WinRtPlatformApi.roGetActivationFactoryRaw(classId.handle, interfaceId).toActivationResult()
-            if (activationResult.isSuccess || activationResult.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+            if (activationResult.isSuccess || !isActivationClassUnavailable(activationResult.hResult)) {
                 return activationResult
             }
             if (!FeatureSwitches.enableManifestFreeActivation) {
@@ -32,13 +32,17 @@ internal object RawActivationFactoryLookup {
         }
 
         val hostManifestFactory = AuthoringHostManifestActivation.tryGet(runtimeClassName, interfaceId)
-        if (hostManifestFactory.isSuccess || hostManifestFactory.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+        if (hostManifestFactory.isSuccess || !isActivationClassUnavailable(hostManifestFactory.hResult)) {
             return hostManifestFactory
         }
 
         return ManifestFreeActivation.tryGet(runtimeClassName, interfaceId)
     }
 }
+
+internal fun isActivationClassUnavailable(hResult: HResult): Boolean =
+    hResult == KnownHResults.REGDB_E_CLASSNOTREG ||
+        hResult == KnownHResults.REGDB_E_READREGDB
 
 internal object CachedActivationFactoryPointers {
     private data class CacheKey(

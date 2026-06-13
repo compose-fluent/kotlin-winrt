@@ -12,7 +12,7 @@ internal object AuthoringHostManifestActivation {
             val module = DllModule.tryLoad(targetDllName) ?: continue
             val activationFactoryResult = module.getActivationFactory(runtimeClassName)
             if (!activationFactoryResult.isSuccess) {
-                if (activationFactoryResult.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+                if (!isActivationClassUnavailable(activationFactoryResult.hResult)) {
                     return activationFactoryResult
                 }
                 continue

@@ -31,6 +31,7 @@ winRt {
     type("Windows.Storage.Streams.IDataReader")
     type("sample.NativeJsonValueThing")
     application {
+        mainClass.set("sample.consumer.MainKt")
         generateProjectPri.set(false)
     }
 }
