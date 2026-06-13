@@ -15,7 +15,6 @@ import java.net.JarURLConnection
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.extension
 import kotlin.io.path.isRegularFile
 
@@ -28,14 +27,8 @@ data class WinRtAuthoringHostManifest(
     val sourceDirectory: Path? = null,
 )
 
-interface WinRtAuthoringHostExports {
-    fun registerActivationFactories()
-    fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int
-}
-
 object WinRtAuthoringHostManifestLoader {
     private const val RUNTIME_ASSETS_RESOURCE_DIRECTORY = "kotlin-winrt-runtime-assets"
-    private val hostExportsByClassName = ConcurrentHashMap<String, WinRtAuthoringHostExports>()
 
     private data class HostExportEntry(
         val exports: WinRtAuthoringHostExports,
@@ -78,8 +71,7 @@ object WinRtAuthoringHostManifestLoader {
         hostExportsClass: String,
         exports: WinRtAuthoringHostExports,
     ) {
-        require(hostExportsClass.isNotBlank()) { "Host exports class name must not be blank." }
-        hostExportsByClassName[hostExportsClass] = exports
+        WinRtAuthoringHostExportRegistry.registerHostExports(hostExportsClass, exports)
     }
 
     fun install(manifests: List<WinRtAuthoringHostManifest>) {
@@ -163,7 +155,7 @@ object WinRtAuthoringHostManifestLoader {
 
     private fun WinRtAuthoringHostManifest.hostExportEntry(): HostExportEntry =
         HostExportEntry(
-            exports = hostExportsByClassName[hostExportsClass]
+            exports = WinRtAuthoringHostExportRegistry.hostExports(hostExportsClass)
                 ?: error(
                     "WinRT authoring host exports '$hostExportsClass' are not registered. " +
                         "Initialize the generated host exports support before installing authoring manifests.",
@@ -201,6 +193,6 @@ object WinRtAuthoringHostManifestLoader {
         (activatableClasses + activatableClassTargets.keys).distinct()
 
     internal fun clearRegisteredHostExportsForTests() {
-        hostExportsByClassName.clear()
+        WinRtAuthoringHostExportRegistry.clearRegisteredHostExportsForTests()
     }
 }

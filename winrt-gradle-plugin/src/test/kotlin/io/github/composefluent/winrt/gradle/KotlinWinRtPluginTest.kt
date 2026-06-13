@@ -474,8 +474,9 @@ class KotlinWinRtPluginTest {
 
         val sourceSet = kotlin.targets.getByName("winuiMingw").compilations.getByName("main").defaultSourceSet
         assertTrue(
-            sourceSet.kotlin.srcDirs.joinToString("\n") { it.invariantSeparatorsPath },
-            sourceSet.kotlin.srcDirs.any {
+            "Native authoring host generated Kotlin source must not be scoped to a target source set:\n" +
+                sourceSet.kotlin.srcDirs.joinToString("\n") { it.invariantSeparatorsPath },
+            sourceSet.kotlin.srcDirs.none {
                 it.invariantSeparatorsPath.endsWith("build/generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
             },
         )
@@ -535,8 +536,8 @@ class KotlinWinRtPluginTest {
                     "$taskName must validate native authored artifacts before publication",
                     validationTaskName in dependencies,
                 )
-                assertTrue(
-                    "$taskName must validate native host exports before publication",
+                assertFalse(
+                    "$taskName must not force frozen native host export validation",
                     exportValidationTaskName in dependencies,
                 )
             }
@@ -6200,6 +6201,7 @@ class KotlinWinRtPluginTest {
 
             kotlin {
                 jvm("winuiJvm")
+                mingwX64()
                 sourceSets {
                     val commonMain by getting {
                         dependencies {
@@ -6216,6 +6218,9 @@ class KotlinWinRtPluginTest {
             }
 
             winRt {
+                application {
+                    mainClass.set("sample.MainKt")
+                }
                 windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
             }
@@ -6242,10 +6247,18 @@ class KotlinWinRtPluginTest {
                     val generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
                         .toString()
                         .replace("\\", "/")
+                    val generatedHostExports = buildRoot.resolve("generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
+                        .toString()
+                        .replace("\\", "/")
+                    val generatedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
+                        .toString()
+                        .replace("\\", "/")
                     val commonSources = normalizedSourcePaths("commonMain")
                     val winuiSources = normalizedSourcePaths("winuiMain")
+                    val mingwSources = normalizedSourcePaths("mingwX64Main")
                     println("COMMON_MAIN_SOURCES=" + commonSources)
                     println("WINUI_MAIN_SOURCES=" + winuiSources)
+                    println("MINGW_X64_MAIN_SOURCES=" + mingwSources)
                     check(generatedProjection in commonSources) {
                         "Generated projection source must be owned by commonMain: " + commonSources
                     }
@@ -6255,6 +6268,9 @@ class KotlinWinRtPluginTest {
                     check(generatedAuthoring in commonSources) {
                         "Generated authoring support source must be owned by commonMain: " + commonSources
                     }
+                    check(generatedApplicationEntry in commonSources) {
+                        "Generated application entry source must be owned by commonMain: " + commonSources
+                    }
                     check(generatedProjection !in winuiSources) {
                         "Generated projection source must not be scoped to winuiMain: " + winuiSources
                     }
@@ -6263,6 +6279,12 @@ class KotlinWinRtPluginTest {
                     }
                     check(generatedAuthoring !in winuiSources) {
                         "Generated authoring support source must not be scoped to winuiMain: " + winuiSources
+                    }
+                    check(generatedHostExports !in mingwSources) {
+                        "Generated native authoring host source must not be scoped to mingwX64Main: " + mingwSources
+                    }
+                    check(generatedApplicationEntry !in mingwSources) {
+                        "Generated application entry source must not be scoped to mingwX64Main: " + mingwSources
                     }
                 }
             }

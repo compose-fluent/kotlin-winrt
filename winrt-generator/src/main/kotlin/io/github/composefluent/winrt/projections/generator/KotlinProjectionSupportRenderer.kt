@@ -195,7 +195,8 @@ class KotlinProjectionSupportRenderer {
                     authoringHostExportsClassName,
                     authoringServerActivationFactoriesClassName,
                     authoredRuntimeClassNames,
-                ).takeIf { emitJvmAuthoringHostExports },
+                    emitJvmAddressWrappers = emitJvmAuthoringHostExports,
+                ),
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
@@ -1543,6 +1544,7 @@ class KotlinProjectionSupportRenderer {
         authoringHostExportsClassName: ClassName,
         authoringServerActivationFactoriesClassName: ClassName,
         authoredRuntimeClassNames: Set<String>,
+        emitJvmAddressWrappers: Boolean,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
@@ -1556,58 +1558,61 @@ class KotlinProjectionSupportRenderer {
         }
         val hostBridgeClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostBridge")
         val hostExportsInterface = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostExports")
-        val hostManifestLoaderClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostManifestLoader")
+        val hostExportRegistryClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostExportRegistry")
+        val hostExportsBuilder = TypeSpec.objectBuilder(authoringHostExportsClassName.simpleName)
+            .addModifiers(KModifier.INTERNAL)
+            .addSuperinterface(hostExportsInterface)
+            .addInitializerBlock(
+                CodeBlock.of(
+                    "%T.registerHostExports(%S, this)\n",
+                    hostExportRegistryClass,
+                    authoringHostExportsClassName.canonicalName,
+                ),
+            )
+            .addFunction(
+                FunSpec.builder("registerActivationFactories")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addStatement("%T.register()", authoringServerActivationFactoriesClassName)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("dllGetActivationFactory")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
+                    .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
+                    .returns(Int::class)
+                    .addStatement("registerActivationFactories()")
+                    .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", hostBridgeClass)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("dllCanUnloadNow")
+                    .returns(Int::class)
+                    .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)
+                    .build(),
+            )
+        if (emitJvmAddressWrappers) {
+            hostExportsBuilder
+                .addFunction(
+                    FunSpec.builder("dllGetActivationFactoryAddress")
+                        .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
+                        .addParameter("activatableClassId", Long::class)
+                        .addParameter("factoryOut", Long::class)
+                        .returns(Int::class)
+                        .addStatement("return dllGetActivationFactory(%T(activatableClassId), %T(factoryOut))", RAW_ADDRESS_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
+                        .build(),
+                )
+                .addFunction(
+                    FunSpec.builder("dllCanUnloadNowAddress")
+                        .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
+                        .returns(Int::class)
+                        .addStatement("return dllCanUnloadNow()")
+                        .build(),
+                )
+        }
         val fileSpec = supportFileSpec(authoringHostExportsClassName.simpleName)
             .addType(
-                TypeSpec.objectBuilder(authoringHostExportsClassName.simpleName)
-                    .addModifiers(KModifier.INTERNAL)
-                    .addSuperinterface(hostExportsInterface)
-                    .addInitializerBlock(
-                        CodeBlock.of(
-                            "%T.registerHostExports(%S, this)\n",
-                            hostManifestLoaderClass,
-                            authoringHostExportsClassName.canonicalName,
-                        ),
-                    )
-                    .addFunction(
-                        FunSpec.builder("registerActivationFactories")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addStatement("%T.register()", authoringServerActivationFactoriesClassName)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllGetActivationFactory")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
-                            .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
-                            .returns(Int::class)
-                            .addStatement("registerActivationFactories()")
-                            .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", hostBridgeClass)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllGetActivationFactoryAddress")
-                            .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
-                            .addParameter("activatableClassId", Long::class)
-                            .addParameter("factoryOut", Long::class)
-                            .returns(Int::class)
-                            .addStatement("return dllGetActivationFactory(%T(activatableClassId), %T(factoryOut))", RAW_ADDRESS_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllCanUnloadNow")
-                            .returns(Int::class)
-                            .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllCanUnloadNowAddress")
-                            .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
-                            .returns(Int::class)
-                            .addStatement("return dllCanUnloadNow()")
-                            .build(),
-                    )
-                    .build(),
+                hostExportsBuilder.build(),
             )
             .build()
         return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileSpec)

@@ -488,7 +488,7 @@ private fun configureWinRtApplicationTasks(
         Action<GenerateWinRtMingwApplicationEntryTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Generates the Kotlin/Native mingw application entry wrapper with WinUI bootstrap."
-            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"))
+            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin"))
             task.mainClass.set(extension.application.mainClass)
         },
     )
@@ -801,8 +801,6 @@ private fun configureMingwApplicationEntry(
         if (!target.isMingwX64Target()) {
             return@configureEach
         }
-        val sourceSet = target.compilations.getByName("main").defaultSourceSet
-        sourceSet.kotlin.srcDir(entryTask.flatMap { it.outputDirectory })
         target.binaries.withType(Executable::class.java).configureEach { executable ->
             executable.entryPoint = KOTLIN_WINRT_MINGW_APPLICATION_ENTRY_POINT
             executable.linkTaskProvider.configure { task ->
@@ -828,7 +826,7 @@ private fun configureWinRtGeneration(
     val generatedAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
     val generatedNativeAuthoringHostExports = project.layout.buildDirectory.dir("generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
     val generatedMingwApplicationEntrySources =
-        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
     val generatorWorkerClasspath = kotlinWinRtGeneratorWorkerClasspath(project)
     val authoringTargetArtifactName = kotlinWinRtAuthoringTargetArtifactName(project)
@@ -986,11 +984,7 @@ private fun configureWinRtGeneration(
             mergeCompilerSupportTask.flatMap { it.outputDirectory },
         )
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedAuthoringSources)
-        addGeneratedNativeAuthoringHostExportsToKotlinMultiplatformSourceRoots(
-            project,
-            generatedNativeAuthoringHostExports,
-            generateTask,
-        )
+        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedMingwApplicationEntrySources)
         configureKotlinWinRtNativeAuthoringSharedLibraries(
             project,
             generatedNativeAuthoringHostExports,
@@ -1226,8 +1220,6 @@ private fun registerWinRtAuthoredCandidateValidation(
         task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
         if (artifactPublication == WinRtAuthoredArtifactPublication.Native) {
             task.authoredTargetArtifactFiles.from(nativeSharedLibraryFiles)
-            task.dependsOn(nativeSharedLibraryLinkTasks)
-            nativeExportValidationTask?.let { task.dependsOn(it) }
         }
     }
     if (artifactPublication == WinRtAuthoredArtifactPublication.Jvm) {
@@ -1272,13 +1264,6 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.name == "stageWinRtApplicationPackage"
     }.configureEach(Action<Task> { task ->
         task.dependsOn(validationTask)
-        if (
-            artifactPublication == WinRtAuthoredArtifactPublication.Native &&
-            task.name != "stageWinRtRuntimeAssets" &&
-            task.name != "stageWinRtApplicationPackage"
-        ) {
-            nativeExportValidationTask?.let { task.dependsOn(it) }
-        }
     })
 }
 
@@ -1637,21 +1622,6 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
-        sourceSet.kotlin.srcDir(generatedSources)
-    }
-}
-
-private fun addGeneratedNativeAuthoringHostExportsToKotlinMultiplatformSourceRoots(
-    project: Project,
-    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
-    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
-) {
-    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
-        if (!target.isMingwX64Target()) {
-            return@configureEach
-        }
-        val sourceSet = target.compilations.getByName("main").defaultSourceSet
         sourceSet.kotlin.srcDir(generatedSources)
     }
 }
