@@ -6,7 +6,7 @@ plugins {
 }
 
 tasks.named<GenerateWinRtProjectionsTask>("generateWinRtProjections") {
-    sourceRoots.setFrom(project.file("src/winuiMain/kotlin"))
+    sourceRoots.setFrom(project.file("src/commonMain/kotlin"))
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")

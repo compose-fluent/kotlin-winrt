@@ -6153,6 +6153,134 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun plugin_adds_kmp_generated_sources_to_common_main_when_authored_roots_are_shared() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-generated-common-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-generated-common-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        Files.createDirectories(projectDir.resolve("src/winuiMain/kotlin/sample"))
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            import io.github.composefluent.winrt.gradle.GenerateWinRtProjectionsTask
+
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    val commonMain by getting {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                    val winuiMain by creating {
+                        dependsOn(commonMain)
+                    }
+                    val winuiJvmMain by getting {
+                        dependsOn(winuiMain)
+                    }
+                }
+            }
+
+            winRt {
+                windowsSdk(generateProjection = true)
+                type("Windows.Foundation.IStringable")
+            }
+
+            tasks.named<GenerateWinRtProjectionsTask>("generateWinRtProjections") {
+                sourceRoots.setFrom(project.file("src/winuiMain/kotlin"))
+            }
+
+            tasks.register("verifyGeneratedSourceSetOwnership") {
+                dependsOn("generateWinRtProjections")
+                doLast {
+                    fun normalizedSourcePaths(sourceSetName: String): Set<String> =
+                        kotlin.sourceSets.named(sourceSetName).get().kotlin.srcDirs
+                            .map { it.toPath().toAbsolutePath().normalize().toString().replace("\\", "/") }
+                            .toSet()
+
+                    val buildRoot = layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+                    val generatedProjection = buildRoot.resolve("generated/kotlin-winrt/src/main/kotlin")
+                        .toString()
+                        .replace("\\", "/")
+                    val generatedCompilerSupport = buildRoot.resolve("generated/kotlin-winrt/compiler-support/merged")
+                        .toString()
+                        .replace("\\", "/")
+                    val generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
+                        .toString()
+                        .replace("\\", "/")
+                    val commonSources = normalizedSourcePaths("commonMain")
+                    val winuiSources = normalizedSourcePaths("winuiMain")
+                    println("COMMON_MAIN_SOURCES=" + commonSources)
+                    println("WINUI_MAIN_SOURCES=" + winuiSources)
+                    check(generatedProjection in commonSources) {
+                        "Generated projection source must be owned by commonMain: " + commonSources
+                    }
+                    check(generatedCompilerSupport in commonSources) {
+                        "Generated compiler support source must be owned by commonMain: " + commonSources
+                    }
+                    check(generatedAuthoring in commonSources) {
+                        "Generated authoring support source must be owned by commonMain: " + commonSources
+                    }
+                    check(generatedProjection !in winuiSources) {
+                        "Generated projection source must not be scoped to winuiMain: " + winuiSources
+                    }
+                    check(generatedCompilerSupport !in winuiSources) {
+                        "Generated compiler support source must not be scoped to winuiMain: " + winuiSources
+                    }
+                    check(generatedAuthoring !in winuiSources) {
+                        "Generated authoring support source must not be scoped to winuiMain: " + winuiSources
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyGeneratedSourceSetOwnership", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyGeneratedSourceSetOwnership")?.outcome)
+    }
+
+    @Test
     fun plugin_injects_compiler_plugin_options_into_multiplatform_jvm_compilation() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-plugin-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")

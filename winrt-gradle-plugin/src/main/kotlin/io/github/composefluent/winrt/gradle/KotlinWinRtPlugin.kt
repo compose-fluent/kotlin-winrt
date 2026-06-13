@@ -980,19 +980,12 @@ private fun configureWinRtGeneration(
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
             task.emitJvmAuthoringHostExports.set(false)
         }
-        addGeneratedSourcesToKotlinMultiplatformCommonMainWhenNoAuthoredSourceRoots(project, generatedSources, generateTask)
-        addGeneratedSourcesToKotlinMultiplatformCommonMainWhenNoAuthoredSourceRoots(
+        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
+        addGeneratedSourcesToKotlinMultiplatformCommonMain(
             project,
             mergeCompilerSupportTask.flatMap { it.outputDirectory },
-            generateTask,
         )
-        addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(project, generatedSources, generateTask)
-        addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(
-            project,
-            mergeCompilerSupportTask.flatMap { it.outputDirectory },
-            generateTask,
-        )
-        addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(project, generatedAuthoringSources, generateTask)
+        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedAuthoringSources)
         addGeneratedNativeAuthoringHostExportsToKotlinMultiplatformSourceRoots(
             project,
             generatedNativeAuthoringHostExports,
@@ -1645,69 +1638,6 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
         sourceSet.kotlin.srcDir(generatedSources)
-    }
-}
-
-private fun addGeneratedSourcesToKotlinMultiplatformCommonMainWhenNoAuthoredSourceRoots(
-    project: Project,
-    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
-    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
-) {
-    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    project.gradle.projectsEvaluated {
-        if (generateTask.get().sourceRoots.files.isNotEmpty()) {
-            return@projectsEvaluated
-        }
-        kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
-            sourceSet.kotlin.srcDir(generatedSources)
-        }
-    }
-}
-
-private fun addGeneratedSourcesToKotlinMultiplatformAuthoredSourceSets(
-    project: Project,
-    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
-    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
-) {
-    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    project.gradle.projectsEvaluated {
-        val sourceRoots = generateTask.get().sourceRoots.files
-        if (sourceRoots.isEmpty()) {
-            return@projectsEvaluated
-        }
-        val normalizedSourceRoots = sourceRoots.mapTo(mutableSetOf()) { sourceRoot ->
-            sourceRoot.toPath().toAbsolutePath().normalize()
-        }
-        val targetMainSourceSetNames = kotlinExtension.targets
-            .mapTo(mutableSetOf()) { target -> target.compilations.getByName("main").defaultSourceSet.name }
-        data class SourceSetMatch(
-            val sourceSet: KotlinSourceSet,
-            val sourceDir: Path,
-        )
-        val selectedSourceSets = kotlinExtension.sourceSets.mapNotNull { sourceSet ->
-            val matchingSourceDir = sourceSet.kotlin.srcDirs
-                .map { sourceDir -> sourceDir.toPath().toAbsolutePath().normalize() }
-                .filter { normalizedSourceDir ->
-                    normalizedSourceRoots.any { sourceRoot ->
-                        sourceRoot.startsWith(normalizedSourceDir) || normalizedSourceDir.startsWith(sourceRoot)
-                    }
-                }
-                .maxByOrNull { it.nameCount }
-            matchingSourceDir?.let { SourceSetMatch(sourceSet, it) }
-        }
-        val deepestMatchDepth = selectedSourceSets.maxOfOrNull { it.sourceDir.nameCount }
-        val deepestSelectedSourceSets = selectedSourceSets
-            .filter { it.sourceDir.nameCount == deepestMatchDepth }
-            .map { it.sourceSet }
-        val sharedSelectedSourceSets = deepestSelectedSourceSets.filterNot { it.name in targetMainSourceSetNames }
-        val owningSourceSets = when {
-            sharedSelectedSourceSets.isNotEmpty() -> sharedSelectedSourceSets
-            deepestSelectedSourceSets.isNotEmpty() -> deepestSelectedSourceSets
-            else -> listOf(kotlinExtension.sourceSets.getByName("commonMain"))
-        }
-        owningSourceSets.forEach { sourceSet ->
-            sourceSet.kotlin.srcDir(generatedSources)
-        }
     }
 }
 
