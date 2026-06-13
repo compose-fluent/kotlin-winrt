@@ -1641,30 +1641,6 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     }
 }
 
-private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
-    project: Project,
-    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
-    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
-) {
-    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    project.gradle.projectsEvaluated {
-        if (generateTask.get().sourceRoots.files.isEmpty()) {
-            return@projectsEvaluated
-        }
-        kotlinExtension.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
-            val sourceSet = target.compilations.getByName("main").defaultSourceSet
-            sourceSet.kotlin.srcDir(generatedSources)
-        }
-        kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
-            if (!target.isMingwX64Target()) {
-                return@configureEach
-            }
-            val sourceSet = target.compilations.getByName("main").defaultSourceSet
-            sourceSet.kotlin.srcDir(generatedSources)
-        }
-    }
-}
-
 private fun addGeneratedNativeAuthoringHostExportsToKotlinMultiplatformSourceRoots(
     project: Project,
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
