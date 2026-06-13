@@ -9,6 +9,7 @@ plugins {
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+    .orElse("2.1.3")
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRt.samples.winUIEssentialVersion")
     .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRt.samples.nugetGlobalPackagesRoot")
@@ -131,6 +132,14 @@ val sampleJvmOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
+val standardSampleSmokeDefaults = mapOf(
+    "kotlin.winrt.samples.runNativeSmoke" to "true",
+    "kotlin.winrt.samples.runComponentSmoke" to "true",
+    "kotlin.winrt.samples.runWinUiSmoke" to "true",
+    "kotlin.winrt.samples.autoShowMenuFlyout" to "true",
+    "kotlin.winrt.samples.autoExitWinUi" to "true",
+)
+
 tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>("buildWinRtApplicationHost") {
     val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
     val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
@@ -147,7 +156,7 @@ tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>(
 
 tasks.named<Exec>("runWinRtApplicationHost") {
     val hostJvmOptions = sampleJvmOptionProperties.joinToString(";") { name ->
-        "-D$name=${providers.systemProperty(name).orElse("false").get()}"
+        "-D$name=${providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "false").get()}"
     }
     environment("KOTLIN_WINRT_JVM_OPTIONS", hostJvmOptions)
 }
@@ -160,18 +169,10 @@ tasks.named<Exec>("runReleaseExecutableMingwX64") {
         layout.buildDirectory.dir("kotlin-winrt/runtime-assets").get().asFile.absolutePath,
     )
     sampleJvmOptionProperties.forEach { name ->
-        providers.systemProperty(name).orNull?.let { value ->
+        providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "").orNull?.takeIf { it.isNotEmpty() }?.let { value ->
             environment(name, value)
         }
     }
-    environment(
-        "kotlin.winrt.samples.runWinUiSmoke",
-        providers.systemProperty("kotlin.winrt.samples.runWinUiSmoke").orElse("true").get(),
-    )
-    environment(
-        "kotlin.winrt.samples.autoExitWinUi",
-        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
-    )
 }
 
 val verifyWinRtSampleIdentity by tasks.registering {
