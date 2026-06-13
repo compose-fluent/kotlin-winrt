@@ -35,6 +35,9 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
+    @get:Internal
+    abstract val legacyOutputDirectories: ConfigurableFileCollection
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -102,7 +105,11 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
     @TaskAction
     fun generate() {
         val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-        cleanDirectory(outputRoot)
+        legacyOutputDirectories.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot(outputRoot::equals)
+            .forEach(GradleFileOperations::deleteDirectory)
+        GradleFileOperations.cleanDirectory(outputRoot)
         val candidates = compilerCandidates.files
             .singleOrNull()
             ?.takeIf { file -> file.isFile }
@@ -140,15 +147,6 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
             outputDirectory = outputRoot,
             assemblyName = authoringAssemblyName.get(),
         )
-    }
-
-    private fun cleanDirectory(path: Path) {
-        if (!Files.exists(path)) {
-            return
-        }
-        Files.walk(path).use { stream ->
-            stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
-        }
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {

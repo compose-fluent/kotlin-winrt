@@ -245,7 +245,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         parameters.legacyOutputDirectories.files
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot { legacyRoot -> legacyRoot == generatedRoot || legacyRoot == authoringTypeDetailsRoot }
-            .forEach(::cleanDirectory)
+            .forEach(GradleFileOperations::deleteDirectory)
         cleanDirectory(generatedRoot)
         cleanDirectory(authoringTypeDetailsRoot)
         var sources = metadataSources().withWindowsSdkSourceForProjectionRoots(

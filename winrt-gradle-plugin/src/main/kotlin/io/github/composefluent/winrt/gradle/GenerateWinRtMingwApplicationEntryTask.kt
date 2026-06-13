@@ -2,8 +2,10 @@ package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
@@ -13,13 +15,22 @@ abstract class GenerateWinRtMingwApplicationEntryTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
+    @get:Internal
+    abstract val legacyOutputDirectories: ConfigurableFileCollection
+
     @get:Input
     abstract val mainClass: Property<String>
 
     @TaskAction
     fun generate() {
+        val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        legacyOutputDirectories.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot(outputRoot::equals)
+            .forEach(GradleFileOperations::deleteDirectory)
+        GradleFileOperations.cleanDirectory(outputRoot)
         val mainFunction = nativeMainFunctionName(mainClass.get())
-        val source = outputDirectory.get().asFile.toPath()
+        val source = outputRoot
             .resolve("io/github/composefluent/winrt/application/WinRtMingwApplicationEntry.kt")
         Files.createDirectories(source.parent)
         Files.writeString(source, mingwApplicationEntrySource(mainFunction))

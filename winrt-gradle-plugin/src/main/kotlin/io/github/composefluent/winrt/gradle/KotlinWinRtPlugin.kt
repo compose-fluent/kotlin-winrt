@@ -484,9 +484,18 @@ private fun configureWinRtApplicationTasks(
             task.group = "kotlin-winrt"
             task.description = "Generates the Kotlin/Native mingw application entry wrapper with WinUI bootstrap."
             task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin"))
+            task.legacyOutputDirectories.from(
+                project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"),
+            )
             task.mainClass.set(extension.application.mainClass)
         },
     )
+    project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
+        task.dependsOn(mingwApplicationEntryTask)
+    })
+    project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
+        task.dependsOn(mingwApplicationEntryTask)
+    })
     configureMingwApplicationEntry(project, mingwApplicationEntryTask, stageRuntimeAssetsTask)
     val stageApplicationPackageTask = project.tasks.register(
         "stageWinRtApplicationPackage",
@@ -979,7 +988,11 @@ private fun configureWinRtGeneration(
         generateTask.configure { task ->
             task.outputDirectory.set(generatedSources)
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
-            task.legacyOutputDirectories.from(generatedJvmSources, generatedJvmAuthoringSources)
+            task.legacyOutputDirectories.from(
+                generatedJvmSources,
+                generatedJvmAuthoringSources,
+                project.layout.buildDirectory.dir("generated/kotlin-winrt-native-authoring-host"),
+            )
             task.emitJvmAuthoringHostExports.set(false)
         }
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
@@ -1132,7 +1145,7 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.allowTargetSpecificHostManifest.set(allowTargetSpecificHostManifest)
             task.scannerAuthoringTypeDetails.from(generatedAuthoringSources)
             task.compilerAuthoringTypeDetails.from(
-                project.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/${compileTaskName}/src/main/kotlin"),
+                compilerAuthoringTypeDetailsOutputDirectory(project, compileTaskName),
             )
             task.outputFile.set(
                 project.layout.buildDirectory.file("kotlin-winrt/validation/${compileTaskName}/authored-candidates.txt"),
@@ -1147,7 +1160,10 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.group = "kotlin-winrt"
             task.description = "Regenerates authored TypeDetails from compiler IR authored candidates for validation."
             task.outputDirectory.set(
-                project.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/${compileTaskName}/src/main/kotlin"),
+                compilerAuthoringTypeDetailsOutputDirectory(project, compileTaskName),
+            )
+            task.legacyOutputDirectories.from(
+                project.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/$compileTaskName/src/main/kotlin"),
             )
             task.compilerCandidates.from(
                 outputs.authoredCandidates,
@@ -1255,6 +1271,12 @@ private fun nativeAuthoringOutputDirectory(
     compileTaskName: String,
 ): Provider<Directory> =
     project.layout.buildDirectory.dir("kotlin-winrt/native-authoring/$compileTaskName")
+
+private fun compilerAuthoringTypeDetailsOutputDirectory(
+    project: Project,
+    compileTaskName: String,
+): Provider<Directory> =
+    project.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/$compileTaskName/src/commonMain/kotlin")
 
 private fun compilerAuthoringOutputs(
     outputDirectory: Provider<Directory>,
