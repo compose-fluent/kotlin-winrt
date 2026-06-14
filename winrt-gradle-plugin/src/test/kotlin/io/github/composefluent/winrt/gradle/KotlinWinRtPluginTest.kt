@@ -494,6 +494,12 @@ class KotlinWinRtPluginTest {
         val validationTaskName = "validateCompileKotlinWinuiMingwWinRtAuthoredCandidates"
         val validationTask = project.tasks.named(validationTaskName, ValidateWinRtAuthoredCandidatesTask::class.java).get()
         assertTrue(validationTask.allowTargetSpecificHostManifest.get())
+        kotlin.jvm("winuiJvm")
+        val jvmValidationTask = project.tasks.named(
+            "validateCompileKotlinWinuiJvmWinRtAuthoredCandidates",
+            ValidateWinRtAuthoredCandidatesTask::class.java,
+        ).get()
+        assertTrue(jvmValidationTask.allowTargetSpecificHostManifest.get())
         val validationDependencies = validationTask.taskDependencies.getDependencies(validationTask).map { it.name }
         assertTrue(
             "$validationTaskName must depend on native compile",

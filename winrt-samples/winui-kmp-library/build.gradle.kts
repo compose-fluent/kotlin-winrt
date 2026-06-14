@@ -17,7 +17,11 @@ val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.wind
 kotlin {
     jvmToolchain(25)
     jvm("winuiJvm")
-    mingwX64()
+    mingwX64 {
+        binaries {
+            sharedLib()
+        }
+    }
     sourceSets {
         commonMain {
             dependencies {

@@ -1040,6 +1040,7 @@ private fun configureWinRtAuthoredCandidateValidation(
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
     generatedAuthoringSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
 ) {
+    val isMultiplatformProject = project.extensions.findByType(KotlinMultiplatformExtension::class.java) != null
     project.tasks.withType(KotlinJvmCompile::class.java).all { compileTask ->
         if (!compileTask.name.startsWith("compileKotlin")) {
             return@all
@@ -1057,7 +1058,7 @@ private fun configureWinRtAuthoredCandidateValidation(
             compileTaskProvider = project.tasks.named(compileTask.name),
             outputs = outputs,
             artifactPublication = WinRtAuthoredArtifactPublication.Jvm,
-            allowTargetSpecificHostManifest = false,
+            allowTargetSpecificHostManifest = isMultiplatformProject,
         )
     }
     project.tasks.withType(KotlinNativeCompile::class.java).all { compileTask ->
