@@ -1719,12 +1719,20 @@ class KotlinWinRtPluginTest {
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtApplicationPackage")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":runSample")?.outcome)
+        val actualRuntimeAssetsRoot = result.output
+            .lineSequence()
+            .firstOrNull { it.startsWith("runtimeAssetsRoot=") }
+            ?.substringAfter("runtimeAssetsRoot=")
+            ?.let { Path.of(it).toAbsolutePath().normalize() }
+        val expectedRuntimeAssetsRoot = projectDir
+            .resolve("build/kotlin-winrt/application-layout/mingwX64/release")
+            .toAbsolutePath()
+            .normalize()
         assertTrue(
             result.output,
-            result.output.contains(
-                "runtimeAssetsRoot=${projectDir.resolve("build/kotlin-winrt/application-layout/mingwX64/release").toAbsolutePath()}",
-            ),
+            actualRuntimeAssetsRoot != null,
         )
+        assertEquals(expectedRuntimeAssetsRoot, actualRuntimeAssetsRoot)
     }
 
     @Test
