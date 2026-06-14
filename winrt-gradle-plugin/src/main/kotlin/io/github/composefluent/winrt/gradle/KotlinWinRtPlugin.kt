@@ -492,6 +492,7 @@ private fun configureWinRtApplicationTasks(
             task.mainClass.set(extension.application.mainClass)
         },
     )
+    addGeneratedSourcesToKotlinMultiplatformCommonMain(project, mingwApplicationEntryTask)
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
         task.dependsOn(mingwApplicationEntryTask)
     })
@@ -1020,7 +1021,6 @@ private fun configureWinRtGeneration(
             mergeCompilerSupportTask.flatMap { it.outputDirectory },
         )
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedAuthoringSources)
-        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedMingwApplicationEntrySources)
         configureKotlinWinRtCompilerPluginOptions(
             project = project,
             metadataIndex = generatedSources.map { directory ->
@@ -1694,6 +1694,16 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
         sourceSet.kotlin.srcDir(generatedSources)
+    }
+}
+
+private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
+    project: Project,
+    generatedSourcesTask: TaskProvider<out Task>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
+        sourceSet.kotlin.srcDir(generatedSourcesTask)
     }
 }
 
