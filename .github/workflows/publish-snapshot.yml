@@ -79,11 +79,14 @@ jobs:
         run: |
           ./gradlew \
             :winrt-runtime:jvmTest \
+            :winrt-runtime:mingwX64Test \
             :winrt-metadata:test \
             :winrt-generator:test \
-            :winrt-authoring:test \
+            :winrt-authoring:jvmTest \
+            :winrt-authoring:mingwX64Test \
             :winrt-compiler-plugin:test \
-            :winrt-projections:test \
+            :winrt-projections:jvmTest \
+            :winrt-projections:mingwX64Test \
             -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.1.3 \
             --no-configuration-cache
 
