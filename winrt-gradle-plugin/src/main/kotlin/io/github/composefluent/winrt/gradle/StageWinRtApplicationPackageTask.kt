@@ -103,6 +103,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
 
     @get:InputFiles
     @get:Optional
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val rootPackagePayloadFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val defaultProjectPriResourceFiles: ConfigurableFileCollection
 
@@ -158,6 +163,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         }
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
+        stageRootPackagePayloads(outputRoot)
         generateProjectPri(outputRoot)
         validateStagedManifestPayload(outputRoot)
     }
@@ -220,6 +226,18 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     val relativeTarget = explicitTarget ?: source.defaultPackagePayloadTarget(source.parent, projectRoot)
                     GradleFileOperations.copyFile(source, outputRoot.resolve(relativeTarget))
                 }
+            }
+    }
+
+    private fun stageRootPackagePayloads(outputRoot: Path) {
+        rootPackagePayloadFiles.files.asSequence()
+            .map { it.toPath() }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (!source.isRegularFile()) {
+                    throw GradleException("Declared root package payload must be a file: ${source.toAbsolutePath().normalize()}")
+                }
+                GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
             }
     }
 

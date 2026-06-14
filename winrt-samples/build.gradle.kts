@@ -162,12 +162,9 @@ tasks.named<Exec>("runWinRtApplicationHost") {
 }
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRtRuntimeAssets")
-    workingDir(projectDir)
-    environment(
-        "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
-        layout.buildDirectory.dir("kotlin-winrt/runtime-assets").get().asFile.absolutePath,
-    )
+    dependsOn("stageWinRtApplicationPackage")
+    workingDir(layout.buildDirectory.dir("kotlin-winrt/application-package"))
+    executable(layout.buildDirectory.file("kotlin-winrt/application-package/${project.name}.exe").get().asFile.absolutePath)
     sampleJvmOptionProperties.forEach { name ->
         providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "").orNull?.takeIf { it.isNotEmpty() }?.let { value ->
             environment(name, value)

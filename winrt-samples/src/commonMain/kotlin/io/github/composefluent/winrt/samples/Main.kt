@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.runtime.PlatformRuntime
 fun main() {
     println("kotlin-winrt samples bootstrap")
     println("host-os=${PlatformRuntime.osName}")
+    val hasExplicitSmokeSelection = hasExplicitSmokeSelection()
     if (PlatformRuntime.isWindows && shouldRunNativeSmoke()) {
         val result = JsonApiCompatSample.run()
         println("json-id=${result.id}")
@@ -16,7 +17,7 @@ fun main() {
         val result = NetProjectionSample.add()
         println("simple-math=${result.expression} = ${result.value}")
     }
-    if (PlatformRuntime.isWindows && shouldRunWinUiSmoke()) {
+    if (PlatformRuntime.isWindows && (shouldRunWinUiSmoke() || !hasExplicitSmokeSelection)) {
         runWinUiSample()
     }
 }
@@ -29,5 +30,10 @@ fun shouldRunComponentSmoke(): Boolean =
 
 fun shouldRunWinUiSmoke(): Boolean =
     winRtSampleOption("kotlin.winrt.samples.runWinUiSmoke")
+
+private fun hasExplicitSmokeSelection(): Boolean =
+    winRtSampleOptionConfigured("kotlin.winrt.samples.runNativeSmoke") ||
+        winRtSampleOptionConfigured("kotlin.winrt.samples.runComponentSmoke") ||
+        winRtSampleOptionConfigured("kotlin.winrt.samples.runWinUiSmoke")
 
 internal expect fun runWinUiSample()

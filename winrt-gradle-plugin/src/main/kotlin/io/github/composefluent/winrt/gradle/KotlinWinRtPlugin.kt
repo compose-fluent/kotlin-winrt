@@ -31,6 +31,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.Executable
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import java.io.File
@@ -496,7 +497,6 @@ private fun configureWinRtApplicationTasks(
     project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
         task.dependsOn(mingwApplicationEntryTask)
     })
-    configureMingwApplicationEntry(project, mingwApplicationEntryTask, stageRuntimeAssetsTask)
     val stageApplicationPackageTask = project.tasks.register(
         "stageWinRtApplicationPackage",
         StageWinRtApplicationPackageTask::class.java,
@@ -578,6 +578,13 @@ private fun configureWinRtApplicationTasks(
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.dependsOn(stageRuntimeAssetsTask)
         },
+    )
+    configureMingwApplicationEntry(
+        project,
+        mingwApplicationEntryTask,
+        stageRuntimeAssetsTask,
+        stageApplicationPackageTask,
+        extension.application.console.get(),
     )
     val applicationHostTask = project.tasks.register(
         "buildWinRtApplicationHost",
@@ -799,6 +806,8 @@ private fun configureMingwApplicationEntry(
     project: Project,
     entryTask: TaskProvider<GenerateWinRtMingwApplicationEntryTask>,
     stageRuntimeAssetsTask: TaskProvider<StageWinRtRuntimeAssetsTask>,
+    stageApplicationPackageTask: TaskProvider<StageWinRtApplicationPackageTask>,
+    console: Boolean,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
@@ -807,6 +816,7 @@ private fun configureMingwApplicationEntry(
         }
         target.binaries.withType(Executable::class.java).configureEach { executable ->
             executable.entryPoint = KOTLIN_WINRT_MINGW_APPLICATION_ENTRY_POINT
+            executable.linkerOpts(if (console) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
             executable.linkTaskProvider.configure { task ->
                 task.dependsOn(entryTask)
             }
@@ -817,6 +827,12 @@ private fun configureMingwApplicationEntry(
                     "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
                     stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,
                 )
+            }
+            if (executable.buildType == NativeBuildType.RELEASE) {
+                stageApplicationPackageTask.configure { task ->
+                    task.dependsOn(executable.linkTaskProvider)
+                    task.rootPackagePayloadFiles.from(project.provider { executable.outputFile })
+                }
             }
         }
     }

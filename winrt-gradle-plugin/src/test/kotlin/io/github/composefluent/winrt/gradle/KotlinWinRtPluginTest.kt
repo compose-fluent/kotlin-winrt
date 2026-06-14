@@ -8137,6 +8137,123 @@ class KotlinWinRtPluginTest {
         )
         assertFalse(Files.exists(assetsRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
+
+    @Test
+    fun multiplatform_mingw_application_package_stages_release_executable_at_root() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-mingw-package-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-mingw-package-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                mingwX64 {
+                    binaries {
+                        executable()
+                    }
+                }
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                application {
+                    mainClass.set("sample.MainKt")
+                    generateProjectPri.set(false)
+                }
+            }
+
+            tasks.register("verifyMingwApplicationPackageLayout") {
+                dependsOn("stageWinRtApplicationPackage")
+                doLast {
+                    val packageRoot = layout.buildDirectory.dir("kotlin-winrt/application-package").get().asFile
+                    val executable = packageRoot.resolve("kotlin-winrt-mingw-package-test.exe")
+                    check(executable.isFile) {
+                        "Expected staged release executable at package root: " + executable
+                    }
+                    check(!packageRoot.resolve("bin/mingwX64/releaseExecutable/kotlin-winrt-mingw-package-test.exe").exists()) {
+                        "Release executable must not be staged under the raw Kotlin/Native build output path."
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/commonMain/kotlin/sample/Main.kt"),
+            """
+            package sample
+
+            fun main() {
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRtWindowsAppSdkBootstrap.kt"),
+            """
+            package io.github.composefluent.winrt.runtime
+
+            object WinRtWindowsAppSdkBootstrap {
+                fun initialize() {
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyMingwApplicationPackageLayout", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":linkReleaseExecutableMingwX64")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtApplicationPackage")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMingwApplicationPackageLayout")?.outcome)
+        assertEquals(
+            2,
+            readPeSubsystem(projectDir.resolve("build/kotlin-winrt/application-package/kotlin-winrt-mingw-package-test.exe")),
+        )
+    }
 }
 
 private fun writeGradleFile(path: Path, content: String) {
