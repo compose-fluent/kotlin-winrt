@@ -113,7 +113,8 @@ class ActivationFactoryTest {
     }
 
     @Test
-    fun manifest_free_loader_uses_default_dll_search_directories() {
+    fun manifest_free_loader_uses_dll_load_dir_and_default_search_directories() {
+        assertEquals(0x00000100, DllModule.loadLibrarySearchDllLoadDir)
         assertEquals(0x00001000, DllModule.loadLibrarySearchDefaultDirs)
     }
 

@@ -32,7 +32,7 @@ internal class DllModule private constructor(
         private fun create(fileName: String): DllModule? {
             val moduleHandle = WinRtPlatformApi.tryLoadLibraryExWRaw(
                 WinRtPlatformApi.resolveModulePathRaw(fileName),
-                loadLibrarySearchDefaultDirs,
+                loadLibrarySearchDllLoadDir or loadLibrarySearchDefaultDirs,
             )
             if (PlatformAbi.isNull(moduleHandle)) {
                 return null
@@ -55,6 +55,7 @@ internal class DllModule private constructor(
         }
 
         internal const val loadLibrarySearchDefaultDirs = 0x00001000
+        internal const val loadLibrarySearchDllLoadDir = 0x00000100
         private const val dllGetActivationFactory = "DllGetActivationFactory"
     }
 }

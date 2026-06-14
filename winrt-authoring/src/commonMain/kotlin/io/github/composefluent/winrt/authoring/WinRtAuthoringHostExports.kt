@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.authoring
 
+import io.github.composefluent.winrt.runtime.ConcurrentCacheMap
 import io.github.composefluent.winrt.runtime.RawAddress
 
 interface WinRtAuthoringHostExports {
@@ -8,20 +9,20 @@ interface WinRtAuthoringHostExports {
 }
 
 object WinRtAuthoringHostExportRegistry {
-    private var hostExportsByClassName: Map<String, WinRtAuthoringHostExports> = emptyMap()
+    private val hostExportsByClassName = ConcurrentCacheMap<String, WinRtAuthoringHostExports>()
 
     fun registerHostExports(
         hostExportsClass: String,
         exports: WinRtAuthoringHostExports,
     ) {
         require(hostExportsClass.isNotBlank()) { "Host exports class name must not be blank." }
-        hostExportsByClassName = hostExportsByClassName + (hostExportsClass to exports)
+        hostExportsByClassName[hostExportsClass] = exports
     }
 
     fun hostExports(hostExportsClass: String): WinRtAuthoringHostExports? =
         hostExportsByClassName[hostExportsClass]
 
     fun clearRegisteredHostExportsForTests() {
-        hostExportsByClassName = emptyMap()
+        hostExportsByClassName.clear()
     }
 }

@@ -335,6 +335,26 @@ class WinRtAuthoringCommonTest {
     }
 
     @Test
+    fun hostExportRegistryStoresEntriesWithoutReplacingExistingRegistrations() {
+        WinRtAuthoringHostExportRegistry.clearRegisteredHostExportsForTests()
+        try {
+            WinRtAuthoringHostExportRegistry.registerHostExports("Sample.Authoring.HostExportsOne", EmptyHostExportsOne)
+            WinRtAuthoringHostExportRegistry.registerHostExports("Sample.Authoring.HostExportsTwo", EmptyHostExportsTwo)
+
+            assertEquals(
+                EmptyHostExportsOne,
+                WinRtAuthoringHostExportRegistry.hostExports("Sample.Authoring.HostExportsOne"),
+            )
+            assertEquals(
+                EmptyHostExportsTwo,
+                WinRtAuthoringHostExportRegistry.hostExports("Sample.Authoring.HostExportsTwo"),
+            )
+        } finally {
+            WinRtAuthoringHostExportRegistry.clearRegisteredHostExportsForTests()
+        }
+    }
+
+    @Test
     fun composableObjectForwardsOuterQueryInterfaceToInnerAfterFactoryComposition() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("11111111-1111-1111-1111-111111111111")
@@ -517,4 +537,18 @@ class WinRtAuthoringCommonTest {
     private class FallbackActivatedComponent
 
     private class HostActivatedComponent
+
+    private object EmptyHostExportsOne : WinRtAuthoringHostExports {
+        override fun registerActivationFactories() = Unit
+
+        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
+            KnownHResults.REGDB_E_CLASSNOTREG.value
+    }
+
+    private object EmptyHostExportsTwo : WinRtAuthoringHostExports {
+        override fun registerActivationFactories() = Unit
+
+        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
+            KnownHResults.REGDB_E_CLASSNOTREG.value
+    }
 }
