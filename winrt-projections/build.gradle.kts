@@ -18,7 +18,6 @@ val fullWindowsSdkProjectionGateRequested = providers.provider {
     val fullWindowsSdkGateTasks = setOf(
         "validateWinRtFullWindowsSdkProjectionGate",
         "validateWinRtMingwParity",
-        "validateWinRtProjectionArtifacts",
         "validateWinRtProjectionCompile",
         "validateWinRtSampleSmoke",
         "validateWinRtQueue16",

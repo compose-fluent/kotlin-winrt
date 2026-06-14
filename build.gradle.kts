@@ -79,21 +79,18 @@ val validateWinRtPluginGraph by tasks.registering {
     dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
 }
 
-val validateWinRtProjectionArtifacts by tasks.registering {
+val validateWinRtProjectionCompile by tasks.registering {
     group = "verification"
-    description = "Compiles generated projection artifacts for root, prebuilt Windows SDK, and prebuilt Windows App SDK modules."
+    description = "Compiles plugin-generated projection output after generator and plugin validation."
+    dependsOn(validateWinRtPluginGraph)
     dependsOn(":validateWinRtFullWindowsSdkProjectionGate")
+    dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
+    dependsOn(":winrt-projections:compileKotlinJvm")
+    dependsOn(":winrt-projections:compileKotlinMingwX64")
     dependsOn(":winrt-projections:windows-sdk:compileKotlinJvm")
     dependsOn(":winrt-projections:windows-sdk:compileKotlinMingwX64")
     dependsOn(":winrt-projections:windows-app-sdk:compileKotlinJvm")
     dependsOn(":winrt-projections:windows-app-sdk:compileKotlinMingwX64")
-}
-
-val validateWinRtProjectionCompile by tasks.registering {
-    group = "verification"
-    description = "Runs generator/plugin validation and compiles generated projection artifacts."
-    dependsOn(validateWinRtPluginGraph)
-    dependsOn(validateWinRtProjectionArtifacts)
 }
 
 val validateWinRtMingwProjectionGate by tasks.registering {
