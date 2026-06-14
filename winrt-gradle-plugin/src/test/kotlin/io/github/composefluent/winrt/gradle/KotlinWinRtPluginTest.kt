@@ -2993,10 +2993,10 @@ class KotlinWinRtPluginTest {
         assertTrue(priConfig.contains("fr-FR"))
         assertTrue(priConfig.contains("Scale"))
         assertTrue(priConfig.contains("100"))
-        val makePriCalls = Files.readString(makePriLog).replace("\\", "/")
-        assertFalse(makePriCalls.contains("createconfig"))
-        assertTrue(makePriCalls.contains("new"))
-        assertTrue(makePriCalls.contains("/in Contoso.App"))
+        val makePriArgs = readFakeToolArguments(makePriLog)
+        assertFalse(makePriArgs.contains("createconfig"))
+        assertTrue(makePriArgs.contains("new"))
+        assertArgumentPair(makePriArgs, "/in", "Contoso.App")
     }
 
     @Test
@@ -3056,8 +3056,8 @@ class KotlinWinRtPluginTest {
 
         task.stage()
 
-        val makePriCalls = Files.readString(makePriLog)
-        assertTrue(makePriCalls.contains("/in Contoso.ManifestIdentity"))
+        val makePriArgs = readFakeToolArguments(makePriLog)
+        assertArgumentPair(makePriArgs, "/in", "Contoso.ManifestIdentity")
     }
 
     @Test
@@ -4368,13 +4368,13 @@ class KotlinWinRtPluginTest {
         task.pack()
 
         assertTrue(Files.isRegularFile(outputFile))
-        val makeAppxCalls = Files.readString(makeAppxLog).replace("\\", "/")
-        assertTrue(makeAppxCalls.contains("pack"))
-        assertTrue(makeAppxCalls.contains("/d"))
-        assertTrue(makeAppxCalls.contains("staged-appx"))
-        assertTrue(makeAppxCalls.contains("/p"))
-        assertTrue(makeAppxCalls.contains("Contoso.msix"))
-        assertTrue(makeAppxCalls.contains("/o"))
+        val makeAppxArgs = readFakeToolArguments(makeAppxLog)
+        assertTrue(makeAppxArgs.contains("pack"))
+        assertTrue(makeAppxArgs.contains("/d"))
+        assertTrue(makeAppxArgs.any { it.endsWith("staged-appx") })
+        assertTrue(makeAppxArgs.contains("/p"))
+        assertTrue(makeAppxArgs.any { it.endsWith("Contoso.msix") })
+        assertTrue(makeAppxArgs.contains("/o"))
     }
 
     @Test
@@ -4722,12 +4722,12 @@ class KotlinWinRtPluginTest {
         assertTrue(marker.contains("packageName=Contoso.msix"))
         assertTrue(marker.contains("packageSha256=a1788eec2ed752ba57ac08832710129e67b47ef2704c83466bb6fa12eb855dbe"))
         assertTrue(Files.isRegularFile(unpackRoot.resolve("AppxManifest.xml")))
-        val makeAppxCalls = Files.readString(makeAppxLog).replace("\\", "/")
-        assertTrue(makeAppxCalls.contains("unpack"))
-        assertTrue(makeAppxCalls.contains("/p"))
-        assertTrue(makeAppxCalls.contains("Contoso.msix"))
-        assertTrue(makeAppxCalls.contains("/d"))
-        assertTrue(makeAppxCalls.contains("verify-unpack"))
+        val makeAppxArgs = readFakeToolArguments(makeAppxLog)
+        assertTrue(makeAppxArgs.contains("unpack"))
+        assertTrue(makeAppxArgs.contains("/p"))
+        assertTrue(makeAppxArgs.any { it.endsWith("Contoso.msix") })
+        assertTrue(makeAppxArgs.contains("/d"))
+        assertTrue(makeAppxArgs.any { it.endsWith("verify-unpack") })
     }
 
     @Test
@@ -5039,13 +5039,13 @@ class KotlinWinRtPluginTest {
 
         assertTrue(Files.isRegularFile(signedPackage))
         assertEquals("unsigned-msix", Files.readString(signedPackage))
-        val signToolCalls = Files.readString(signToolLog).replace("\\", "/")
-        assertTrue(signToolCalls.contains("sign"))
-        assertTrue(signToolCalls.contains("/fd SHA256"))
-        assertTrue(signToolCalls.contains("/tr http://timestamp.example.test"))
-        assertTrue(signToolCalls.contains("/td SHA256"))
-        assertTrue(signToolCalls.contains("/sha1 ABCDEF123456"))
-        assertTrue(signToolCalls.contains("Contoso-signed.msix"))
+        val signToolArgs = readFakeToolArguments(signToolLog)
+        assertTrue(signToolArgs.contains("sign"))
+        assertArgumentPair(signToolArgs, "/fd", "SHA256")
+        assertArgumentPair(signToolArgs, "/tr", "http://timestamp.example.test")
+        assertArgumentPair(signToolArgs, "/td", "SHA256")
+        assertArgumentPair(signToolArgs, "/sha1", "ABCDEF123456")
+        assertTrue(signToolArgs.any { it.endsWith("Contoso-signed.msix") })
     }
 
     @Test
@@ -5087,12 +5087,13 @@ class KotlinWinRtPluginTest {
 
         assertTrue(Files.isRegularFile(signedPackage))
         assertEquals("unsigned-msix", Files.readString(signedPackage))
-        val signToolCalls = Files.readString(signToolLog).replace("\\", "/")
-        assertTrue(signToolCalls.contains("/f"))
-        assertTrue(signToolCalls.contains("test-signing.pfx"))
-        assertTrue(signToolCalls.contains("/p secret"))
-        assertFalse(signToolCalls.contains("/sha1 ABCDEF123456"))
-        assertFalse(signToolCalls.contains("/a"))
+        val signToolArgs = readFakeToolArguments(signToolLog)
+        assertTrue(signToolArgs.contains("/f"))
+        assertTrue(signToolArgs.any { it.endsWith("test-signing.pfx") })
+        assertArgumentPair(signToolArgs, "/p", "secret")
+        assertFalse(signToolArgs.contains("/sha1"))
+        assertFalse(signToolArgs.contains("ABCDEF123456"))
+        assertFalse(signToolArgs.contains("/a"))
     }
 
     @Test
@@ -5482,13 +5483,14 @@ class KotlinWinRtPluginTest {
 
         task.install()
 
-        val powershellCalls = Files.readString(powershellLog).replace("\\", "/")
-        assertTrue(powershellCalls.contains("-NoLogo"))
-        assertTrue(powershellCalls.contains("-NoProfile"))
-        assertTrue(powershellCalls.contains("-NonInteractive"))
-        assertTrue(powershellCalls.contains("Add-AppxPackage"))
-        assertTrue(powershellCalls.contains("Contoso.msix"))
-        assertTrue(powershellCalls.contains("-ForceApplicationShutdown"))
+        val powershellArgs = readFakeToolArguments(powershellLog)
+        assertTrue(powershellArgs.contains("-NoLogo"))
+        assertTrue(powershellArgs.contains("-NoProfile"))
+        assertTrue(powershellArgs.contains("-NonInteractive"))
+        val command = powershellArgs.getOrNull(powershellArgs.indexOf("-Command") + 1).orEmpty().replace("\\", "/")
+        assertTrue(command.contains("Add-AppxPackage"))
+        assertTrue(command.contains("Contoso.msix"))
+        assertTrue(command.contains("-ForceApplicationShutdown"))
     }
 
     @Test
@@ -8310,13 +8312,12 @@ private fun writeFakeMakePri(path: Path, log: Path, languagePri: String = ""): P
         path,
         """
         @echo off
-        echo %*>>"${log.toString()}"
         set output=
         :next
         if "%~1"=="" goto done
+        >>"${log.toString()}" echo(%~1
         if /I "%~1"=="/of" (
           set output=%~2
-          shift
         )
         shift
         goto next
@@ -8339,19 +8340,17 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
         path,
         """
         @echo off
-        echo %*>>"${log.toString()}"
         set command=%~1
         set output=
         set directory=
         :next
         if "%~1"=="" goto done
+        >>"${log.toString()}" echo(%~1
         if /I "%~1"=="/p" (
           set output=%~2
-          shift
         )
         if /I "%~1"=="/d" (
           set directory=%~2
-          shift
         )
         shift
         goto next
@@ -8471,11 +8470,57 @@ private fun writeFakeSignTool(path: Path, log: Path): Path {
         path,
         """
         @echo off
-        echo %*>>"${log.toString()}"
+        :writeArgs
+        if "%~1"=="" exit /b 0
+        >>"${log.toString()}" echo(%~1
+        shift
+        goto writeArgs
         exit /b 0
         """.trimIndent(),
     )
     return path
+}
+
+private fun readFakeToolArguments(log: Path): List<String> =
+    Files.readAllLines(log).let { lines ->
+        if (lines.size == 1) {
+            splitFakeToolCommandLine(lines.single())
+        } else {
+            lines
+        }
+    }
+        .map { it.trim().trim('"').replace("\\", "/") }
+        .filter { it.isNotBlank() }
+
+private fun splitFakeToolCommandLine(commandLine: String): List<String> {
+    val arguments = mutableListOf<String>()
+    val current = StringBuilder()
+    var inQuotes = false
+    commandLine.forEach { character ->
+        when {
+            character == '"' -> inQuotes = !inQuotes
+            character.isWhitespace() && !inQuotes -> {
+                if (current.isNotEmpty()) {
+                    arguments += current.toString()
+                    current.clear()
+                }
+            }
+            else -> current.append(character)
+        }
+    }
+    if (current.isNotEmpty()) {
+        arguments += current.toString()
+    }
+    return arguments
+}
+
+private fun assertArgumentPair(arguments: List<String>, option: String, value: String) {
+    val optionIndex = arguments.indexOf(option)
+    assertTrue("Expected fake tool arguments to contain $option in $arguments", optionIndex >= 0)
+    assertTrue(
+        "Expected $option to be followed by $value in $arguments",
+        optionIndex + 1 < arguments.size && arguments[optionIndex + 1] == value,
+    )
 }
 
 private fun writeFailingFakeSignTool(path: Path): Path {
@@ -8496,7 +8541,11 @@ private fun writeFakePowerShell(path: Path, log: Path): Path {
         path,
         """
         @echo off
-        echo %*>>"${log.toString()}"
+        :writeArgs
+        if "%~1"=="" exit /b 0
+        >>"${log.toString()}" echo(%~1
+        shift
+        goto writeArgs
         exit /b 0
         """.trimIndent(),
     )
