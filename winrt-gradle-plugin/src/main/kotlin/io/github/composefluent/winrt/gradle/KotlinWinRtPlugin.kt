@@ -118,7 +118,7 @@ private fun configureWinRtLibraryModel(
             task.includeTypes.set(extension.includeTypes)
             task.projectionRegistrarFiles.from(
                 project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/projection-registrar.tsv",
+                    "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/projection-registrar.tsv",
                 ),
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/projection-registrar.tsv",
@@ -126,7 +126,7 @@ private fun configureWinRtLibraryModel(
             )
             task.typeShapeDescriptorFiles.from(
                 project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
+                    "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
                 ),
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
@@ -145,7 +145,7 @@ private fun configureWinRtLibraryModel(
             task.runtimeAssets.set(extension.runtimeAssets)
             task.authoringMetadataIndexFiles.from(
                 project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
+                    "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
                 ),
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
@@ -153,7 +153,7 @@ private fun configureWinRtLibraryModel(
             )
             task.compilerSupportManifestFiles.from(
                 project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/compiler-support.tsv",
+                    "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
                 ),
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
@@ -826,9 +826,9 @@ private fun configureWinRtGeneration(
     project: Project,
     extension: BaseWinRtExtension,
 ) {
-    val generatedJvmSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    val generatedJvmSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/jvmMain/kotlin")
     val generatedKmpCommonSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
-    val generatedJvmAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
+    val generatedJvmAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/jvmMain/kotlin")
     val generatedKmpCommonAuthoringSources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
     val generatedMingwApplicationEntrySources =
@@ -1168,9 +1168,6 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.description = "Regenerates authored TypeDetails from compiler IR authored candidates for validation."
             task.outputDirectory.set(
                 compilerAuthoringTypeDetailsOutputDirectory(project, compileTaskName),
-            )
-            task.legacyOutputDirectories.from(
-                project.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/$compileTaskName/src/main/kotlin"),
             )
             task.compilerCandidates.from(
                 outputs.authoredCandidates,

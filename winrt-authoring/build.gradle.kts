@@ -25,6 +25,8 @@ kotlin {
             implementation(kotlin("test"))
         }
 
+        // Authoring runtime contracts live in commonMain. Metadata/KotlinPoet are JVM-hosted
+        // generator/compiler-tooling dependencies, not a separate JVM runtime implementation.
         jvmMain.dependencies {
             implementation(projects.winrtMetadata)
             implementation(libs.kotlinpoet)

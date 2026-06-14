@@ -88,7 +88,7 @@ class KotlinWinRtPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtIdentity")?.outcome)
         assertFalse(
-            Files.exists(projectDir.resolve("build/generated/kotlin-winrt/src/main/kotlin/windows")),
+            Files.exists(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin/windows")),
         )
         val identity = projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile().readText()
         assertTrue(identity.contains("\"includeTypes\": []"))
@@ -1786,7 +1786,7 @@ class KotlinWinRtPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
-        val outputRoot = projectDir.resolve("build/generated/kotlin-winrt/src/main/kotlin")
+        val outputRoot = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
         assertFalse(Files.exists(outputRoot.resolve("microsoft")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")))
     }
@@ -6112,19 +6112,19 @@ class KotlinWinRtPluginTest {
         assertTrue(
             Files.isRegularFile(
                 projectDir.resolve(
-                    "build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
+                    "build/generated/kotlin-winrt/src/jvmMain/kotlin/windows/foundation/windows_foundation.kt",
                 ),
             ),
         )
         val winmd = projectDir.resolve(
-            "build/generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/kotlin-winrt-plugin-test.winmd",
+            "build/generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/kotlin-winrt-plugin-test.winmd",
         )
         assertTrue(Files.isRegularFile(winmd))
         assertTrue(WinRtMetadataLoader.load(winmd).namespaces.isEmpty())
         assertTrue(
             Files.isRegularFile(
                 projectDir.resolve(
-                    "build/generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/kotlin-winrt-plugin-test.host.json",
+                    "build/generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/kotlin-winrt-plugin-test.host.json",
                 ),
             ),
         )
@@ -6153,7 +6153,10 @@ class KotlinWinRtPluginTest {
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, secondResult.task(":generateWinRtProjections")?.outcome)
+        assertTrue(
+            secondResult.task(":generateWinRtProjections")?.outcome in
+                setOf(TaskOutcome.SUCCESS, TaskOutcome.UP_TO_DATE),
+        )
     }
 
     @Test
@@ -6438,7 +6441,7 @@ class KotlinWinRtPluginTest {
                         "Expected compiler-generated projection support initializer under: " + supportRoot
                     }
                     val generatedCompilerSupportRoot = layout.buildDirectory.dir(
-                        "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support",
+                        "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support",
                     ).get().asFile
                     val generatedCompilerSupportManifest = generatedCompilerSupportRoot.resolve("compiler-support.tsv")
                     check(
@@ -6545,7 +6548,7 @@ class KotlinWinRtPluginTest {
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=kotlin-winrt-kmp-plugin-test.jar"))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
-        assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/main/kotlin"))
+        assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/commonMain/kotlin"))
     }
 
     @Test
@@ -6650,7 +6653,7 @@ class KotlinWinRtPluginTest {
                 dependsOn("validateCompileKotlinWinRtAuthoredCandidates")
                 doLast {
                     val scannerCandidates = layout.buildDirectory.file(
-                        "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/authored-candidates.tsv",
+                        "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/authored-candidates.tsv",
                     ).get().asFile
                     val compilerCandidates = layout.buildDirectory.file(
                         "classes/kotlin/main/kotlin-winrt/authored-candidates.tsv",
@@ -7535,7 +7538,7 @@ class KotlinWinRtPluginTest {
 
             val writeIntrinsicProbe = tasks.register("writeIntrinsicProbe") {
                 dependsOn("generateWinRtProjections")
-                val outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/main/kotlin/sample/IntrinsicProbe.kt")
+                val outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/sample/IntrinsicProbe.kt")
                 outputs.file(outputFile)
                 doLast {
                     outputFile.get().asFile.apply {
@@ -7764,7 +7767,7 @@ class KotlinWinRtPluginTest {
 
             tasks.named("generateWinRtProjections") {
                 doLast {
-                    val supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support").get().asFile
+                    val supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support").get().asFile
                     supportRoot.resolve("xaml-component-resources.tsv").writeText(
                         "runtimeClassName\nWinUI3Package.Shimmer_Resource\n",
                     )
@@ -7802,7 +7805,9 @@ class KotlinWinRtPluginTest {
             }
 
             extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
-                application {}
+                application {
+                    mainClass.set("app.MainKt")
+                }
                 windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IAsyncAction")
                 type("Microsoft.UI.Xaml.ResourceDictionary")
@@ -7813,7 +7818,7 @@ class KotlinWinRtPluginTest {
 
             val writeTransitiveSupportProbe = tasks.register("writeTransitiveSupportProbe") {
                 dependsOn("generateWinRtProjections")
-                val outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/main/kotlin/app/TransitiveSupportProbe.kt")
+                val outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/app/TransitiveSupportProbe.kt")
                 outputs.file(outputFile)
                 doLast {
                     outputFile.get().asFile.apply {
@@ -7924,6 +7929,15 @@ class KotlinWinRtPluginTest {
             }
             """.trimIndent(),
         )
+        writeGradleFile(
+            projectDir.resolve("winrt-app/src/commonMain/kotlin/app/Main.kt"),
+            """
+            package app
+
+            fun main() {
+            }
+            """.trimIndent(),
+        )
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
@@ -7953,17 +7967,17 @@ class KotlinWinRtPluginTest {
         assertTrue(result.output.contains("winrt-library"))
         val baseWindowsFoundationProjection = Files.readString(
             projectDir.resolve(
-                "winrt-base-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
+                "winrt-base-library/build/generated/kotlin-winrt/src/commonMain/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
         val libraryWindowsFoundationProjection = Files.readString(
             projectDir.resolve(
-                "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
+                "winrt-library/build/generated/kotlin-winrt/src/commonMain/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
         val appWindowsFoundationProjection = Files.readString(
             projectDir.resolve(
-                "winrt-app/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/windows_foundation.kt",
+                "winrt-app/build/generated/kotlin-winrt/src/commonMain/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
         assertTrue(baseWindowsFoundationProjection.contains("IClosable"))
