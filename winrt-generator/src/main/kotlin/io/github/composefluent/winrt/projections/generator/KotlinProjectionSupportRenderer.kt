@@ -81,6 +81,7 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRtDelegateReference
 import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRtEvent
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
@@ -1610,12 +1611,48 @@ class KotlinProjectionSupportRenderer {
                         .build(),
                 )
         }
-        val fileSpec = supportFileSpec(authoringHostExportsClassName.simpleName)
+        val fileBuilder = supportFileSpec(authoringHostExportsClassName.simpleName)
             .addType(
                 hostExportsBuilder.build(),
             )
-            .build()
-        return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileSpec)
+        if (!emitJvmAddressWrappers) {
+            fileBuilder
+                .addFunction(
+                    FunSpec.builder("dllGetActivationFactoryExport")
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+                                .addMember("%T::class", ClassName("kotlin.experimental", "ExperimentalNativeApi"))
+                                .build(),
+                        )
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin.native", "CName"))
+                                .addMember("%S", "DllGetActivationFactory")
+                                .build(),
+                        )
+                        .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
+                        .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
+                        .returns(Int::class)
+                        .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", authoringHostExportsClassName)
+                        .build(),
+                )
+                .addFunction(
+                    FunSpec.builder("dllCanUnloadNowExport")
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+                                .addMember("%T::class", ClassName("kotlin.experimental", "ExperimentalNativeApi"))
+                                .build(),
+                        )
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin.native", "CName"))
+                                .addMember("%S", "DllCanUnloadNow")
+                                .build(),
+                        )
+                        .returns(Int::class)
+                        .addStatement("return %T.dllCanUnloadNow()", authoringHostExportsClassName)
+                        .build(),
+                )
+        }
+        return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileBuilder.build())
     }
 
     private fun authoringServerActivationFactoryClass(

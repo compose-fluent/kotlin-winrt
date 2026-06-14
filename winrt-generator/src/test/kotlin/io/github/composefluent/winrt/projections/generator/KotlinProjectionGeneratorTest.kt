@@ -15477,16 +15477,18 @@ class KotlinProjectionGeneratorTest {
         val nativeCommonFilesByName = KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
-            supportOwnerIdentity = "sample-component.jar",
+            supportOwnerIdentity = "sample-component.dll",
             emitJvmAuthoringHostExports = false,
         )
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-        assertTrue(nativeCommonFilesByName.containsKey("WinRTAuthoringServerActivationFactories_sample_component_jar.kt"))
-        val nativeCommonHostExports = nativeCommonFilesByName.getValue("WinRTAuthoringHostExports_sample_component_jar.kt").contents
-        assertTrue(nativeCommonHostExports.contains("object WinRTAuthoringHostExports_sample_component_jar"))
+        assertTrue(nativeCommonFilesByName.containsKey("WinRTAuthoringServerActivationFactories_sample_component_dll.kt"))
+        val nativeCommonHostExports = nativeCommonFilesByName.getValue("WinRTAuthoringHostExports_sample_component_dll.kt").contents
+        assertTrue(nativeCommonHostExports.contains("object WinRTAuthoringHostExports_sample_component_dll"))
         assertTrue(nativeCommonHostExports.contains("WinRtAuthoringHostExportRegistry.registerHostExports"))
-        assertTrue(nativeCommonHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_jar.register()"))
+        assertTrue(nativeCommonHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_dll.register()"))
+        assertTrue(nativeCommonHostExports.contains("@CName(\"DllGetActivationFactory\")"))
+        assertTrue(nativeCommonHostExports.contains("@CName(\"DllCanUnloadNow\")"))
         assertFalse(nativeCommonHostExports.contains("WinRtAuthoringHostManifestLoader"))
         assertFalse(nativeCommonHostExports.contains("@JvmStatic"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents

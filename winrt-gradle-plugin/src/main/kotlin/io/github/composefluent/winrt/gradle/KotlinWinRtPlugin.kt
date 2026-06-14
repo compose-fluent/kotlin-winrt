@@ -994,6 +994,7 @@ private fun configureWinRtGeneration(
                 project.layout.buildDirectory.dir("generated/kotlin-winrt-native-authoring-host"),
             )
             task.emitJvmAuthoringHostExports.set(false)
+            task.authoringTargetArtifactName.set(kotlinWinRtNativeAuthoringTargetArtifactName(project))
         }
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
         addGeneratedSourcesToKotlinMultiplatformCommonMain(
@@ -1079,6 +1080,11 @@ private fun configureWinRtAuthoredCandidateValidation(
             outputs = outputs,
             artifactPublication = WinRtAuthoredArtifactPublication.Native,
             allowTargetSpecificHostManifest = true,
+        )
+        registerWinRtNativeAuthoringExportValidation(
+            project = project,
+            compileTaskName = compileTask.name,
+            outputs = outputs,
         )
     }
 }
@@ -1255,6 +1261,59 @@ private fun registerWinRtAuthoredCandidateValidation(
     }.configureEach(Action<Task> { task ->
         task.dependsOn(validationTask)
     })
+}
+
+private fun registerWinRtNativeAuthoringExportValidation(
+    project: Project,
+    compileTaskName: String,
+    outputs: CompilerAuthoringOutputs,
+) {
+    val targetName = compileTaskName
+        .removePrefix("compileKotlin")
+        .replaceFirstChar(Char::lowercaseChar)
+    if (!targetName.contains("mingw", ignoreCase = true)) {
+        return
+    }
+    val targetDirectoryName = targetName
+    val linkTaskName = "linkReleaseShared${targetDirectoryName.replaceFirstChar(Char::uppercaseChar)}"
+    val nativeSharedLibrary = project.layout.buildDirectory.file(
+        "bin/$targetDirectoryName/releaseShared/${kotlinNativeSharedLibraryFileStem(project.name)}.dll",
+    )
+    val exportValidationTaskName =
+        "validate${compileTaskName.replaceFirstChar(Char::uppercaseChar)}WinRtNativeAuthoringExports"
+    if (exportValidationTaskName in project.tasks.names) {
+        return
+    }
+    val exportValidationTask = project.tasks.register(
+        exportValidationTaskName,
+        ValidateWinRtNativeAuthoringExportsTask::class.java,
+        Action<ValidateWinRtNativeAuthoringExportsTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Validates that the linked mingwX64 authored DLL exports WinRT activation entry points."
+            task.authoredHostManifestFiles.from(outputs.authoredHostManifest)
+            task.nativeSharedLibraryFiles.from(nativeSharedLibrary)
+        },
+    )
+    project.afterEvaluate {
+        if (linkTaskName !in project.tasks.names) {
+            return@afterEvaluate
+        }
+        exportValidationTask.configure { task ->
+            task.dependsOn(project.tasks.named(linkTaskName))
+        }
+        project.tasks.withType(GenerateWinRtIdentityTask::class.java).matching { task ->
+            task.name == "generateWinRtIdentity"
+        }.configureEach { task ->
+            task.authoredTargetArtifactFiles.from(nativeSharedLibrary)
+            task.dependsOn(project.tasks.named(linkTaskName))
+        }
+        project.tasks.matching { task ->
+            task.name == "stageWinRtRuntimeAssets" ||
+                task.name == "stageWinRtApplicationPackage"
+        }.configureEach(Action<Task> { task ->
+            task.dependsOn(exportValidationTask)
+        })
+    }
 }
 
 private data class CompilerAuthoringOutputs(

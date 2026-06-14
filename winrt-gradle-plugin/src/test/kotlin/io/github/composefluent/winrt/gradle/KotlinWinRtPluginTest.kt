@@ -464,12 +464,16 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun native_authoring_validation_stays_compile_artifact_only_while_export_host_is_frozen() {
+    fun native_authoring_shared_library_registers_export_validation_and_identity_artifact() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
-        kotlin.mingwX64("winuiMingw")
+        kotlin.mingwX64("winuiMingw") {
+            binaries {
+                sharedLib()
+            }
+        }
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
 
         val sourceSet = kotlin.targets.getByName("winuiMingw").compilations.getByName("main").defaultSourceSet
@@ -480,8 +484,6 @@ class KotlinWinRtPluginTest {
                 it.invariantSeparatorsPath.endsWith("build/generated/kotlin-winrt-native-authoring-host/src/main/kotlin")
             },
         )
-        assertFalse(project.tasks.names.contains("linkReleaseSharedWinuiMingw"))
-        assertFalse(project.tasks.names.contains("linkDebugSharedWinuiMingw"))
         val compileTask = project.tasks.named("compileKotlinWinuiMingw").get() as KotlinNativeCompile
         assertTrue(
             compileTask.compilerOptions.freeCompilerArgs.get().joinToString("\n"),
@@ -498,7 +500,11 @@ class KotlinWinRtPluginTest {
             "compileKotlinWinuiMingw" in validationDependencies,
         )
         val exportValidationTaskName = "validateCompileKotlinWinuiMingwWinRtNativeAuthoringExports"
-        assertFalse(project.tasks.names.contains(exportValidationTaskName))
+        assertTrue(project.tasks.names.contains("linkReleaseSharedWinuiMingw"))
+        val exportValidationTask = project.tasks.named(
+            exportValidationTaskName,
+            ValidateWinRtNativeAuthoringExportsTask::class.java,
+        ).get()
         val checkTask = project.tasks.named("check").get()
         val checkDependencies = checkTask.taskDependencies.getDependencies(checkTask).map { it.name }
         assertTrue(
@@ -506,7 +512,7 @@ class KotlinWinRtPluginTest {
             validationTaskName in checkDependencies,
         )
         assertFalse(
-            "check should not force native DLL export validation/link; artifact tasks own that gate",
+            "check should not force native DLL linking; fixture/staging or the explicit export task owns that gate",
             exportValidationTaskName in checkDependencies,
         )
         val lifecycleTaskNames = listOf(
@@ -528,7 +534,7 @@ class KotlinWinRtPluginTest {
                     validationTaskName in dependencies,
                 )
                 assertFalse(
-                    "$taskName must not force frozen native host export validation",
+                    "$taskName should not force native DLL linking in the unevaluated ProjectBuilder model",
                     exportValidationTaskName in dependencies,
                 )
             }

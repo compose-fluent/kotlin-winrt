@@ -8,9 +8,7 @@ description = "Kotlin/WinRT native authoring dependency staging validation fixtu
 kotlin {
     mingwX64 {
         binaries {
-            executable {
-                entryPoint = "sample.consumer.main"
-            }
+            executable()
         }
     }
 
