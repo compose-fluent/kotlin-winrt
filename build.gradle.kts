@@ -87,8 +87,10 @@ val validateWinRtProjectionCompile by tasks.registering {
     dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
     dependsOn(":winrt-projections:compileKotlinJvm")
     dependsOn(":winrt-projections:compileKotlinMingwX64")
-    dependsOn(":winrt-projections:windows-sdk:compileKotlin")
-    dependsOn(":winrt-projections:windows-app-sdk:compileKotlin")
+    dependsOn(":winrt-projections:windows-sdk:compileKotlinJvm")
+    dependsOn(":winrt-projections:windows-sdk:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-app-sdk:compileKotlinJvm")
+    dependsOn(":winrt-projections:windows-app-sdk:compileKotlinMingwX64")
 }
 
 val validateWinRtMingwProjectionGate by tasks.registering {

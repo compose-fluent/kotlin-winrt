@@ -163,14 +163,16 @@ jobs:
             | Select-Object -Unique
           foreach ($sdkVersion in $sdkVersions) {
             .\gradlew.bat `
-              :winrt-projections:windows-sdk:compileKotlin `
+              :winrt-projections:windows-sdk:compileKotlinJvm `
+              :winrt-projections:windows-sdk:compileKotlinMingwX64 `
               "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
               $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           .\gradlew.bat `
-            :winrt-projections:windows-app-sdk:compileKotlin `
+            :winrt-projections:windows-app-sdk:compileKotlinJvm `
+            :winrt-projections:windows-app-sdk:compileKotlinMingwX64 `
             "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
             "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
             $releaseArgs `
