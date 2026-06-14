@@ -113,6 +113,11 @@ class ActivationFactoryTest {
     }
 
     @Test
+    fun manifest_free_loader_uses_default_dll_search_directories() {
+        assertEquals(0x00001000, DllModule.loadLibrarySearchDefaultDirs)
+    }
+
+    @Test
     fun activation_factory_cache_reuses_identity_for_default_factory() {
         if (!PlatformRuntime.isWindows) {
             return
