@@ -464,6 +464,7 @@ private fun configureWinRtApplicationTasks(
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.executableBaseName.set(project.name)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
             task.authoredTargetArtifactFiles.from(
                 dependencyIdentityFiles.elements.map { elements ->
@@ -504,7 +505,7 @@ private fun configureWinRtApplicationTasks(
             task.group = "kotlin-winrt"
             task.description = "Stages WinRT application package resources and generates the application PRI."
             task.runtimeAssetsDirectory.set(stageRuntimeAssetsTask.flatMap { it.outputDirectory })
-            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-package"))
+            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release"))
             task.generateProjectPri.set(extension.application.generateProjectPri)
             task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })
             task.projectPriFallbackIndexName.set(project.name)
@@ -576,6 +577,7 @@ private fun configureWinRtApplicationTasks(
             task.makePriExecutable.set(extension.application.makePriExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.executableBaseName.set(project.name)
             task.dependsOn(stageRuntimeAssetsTask)
         },
     )
@@ -592,7 +594,7 @@ private fun configureWinRtApplicationTasks(
         Action<BuildWinRtApplicationHostTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Builds the native Kotlin/WinRT JVM application host with Windows App SDK deployment initialization."
-            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-host/bin"))
+            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-layout/jvm"))
             task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-host/src"))
             task.packageMode.set(project.provider { extension.application.packageMode.get().name })
             task.console.set(extension.application.console)

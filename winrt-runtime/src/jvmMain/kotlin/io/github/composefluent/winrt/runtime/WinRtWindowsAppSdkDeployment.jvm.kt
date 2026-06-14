@@ -8,6 +8,7 @@ import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.io.files.Path
@@ -18,6 +19,7 @@ private val kernel32: SymbolLookup by lazy { SymbolLookup.libraryLookup("kernel3
 private val platformHandles = ConcurrentHashMap<Long, Any>()
 private val nextPlatformHandle = AtomicLong(1)
 private var bootstrapShutdown: MethodHandle? = null
+private const val applicationManifestNameProperty: String = "kotlin.winrt.applicationManifestName"
 
 private val actCtxLayout: MemoryLayout = MemoryLayout.structLayout(
     ValueLayout.JAVA_INT.withName("cbSize"),
@@ -35,8 +37,20 @@ private val actCtxLayout: MemoryLayout = MemoryLayout.structLayout(
 internal actual fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path? =
     WinRtRuntimeAssets.discoverRuntimeAssetsRoot(anchorFileName)?.let { Path(it.toString()) }
 
-internal actual fun platformWindowsAppSdkManifestPath(root: Path, fileName: String): Path =
-    Path(root, "$fileName.${ProcessHandle.current().pid()}.manifest")
+internal actual fun platformWindowsApplicationManifestPath(root: Path): Path =
+    System.getProperty(applicationManifestNameProperty)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { name -> java.nio.file.Path.of(root.toString()).resolve(name) }
+        ?.takeIf { path -> Files.isRegularFile(path) }
+        ?.let { path -> Path(path.toString()) }
+        ?: Files.list(java.nio.file.Path.of(root.toString())).use { stream ->
+            stream
+                .filter { path -> path.fileName.toString().endsWith(".exe.manifest", ignoreCase = true) }
+                .sorted()
+                .findFirst()
+                .orElse(java.nio.file.Path.of(root.toString()).resolve("app.exe.manifest"))
+                .let { path -> Path(path.toString()) }
+        }
 
 internal actual fun platformActivateWindowsManifest(manifestPath: Path): AutoCloseable =
     Arena.ofConfined().use { callArena ->

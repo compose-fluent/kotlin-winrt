@@ -1722,7 +1722,7 @@ class KotlinWinRtPluginTest {
         assertTrue(
             result.output,
             result.output.contains(
-                "runtimeAssetsRoot=${projectDir.resolve("build/kotlin-winrt/application-package").toAbsolutePath()}",
+                "runtimeAssetsRoot=${projectDir.resolve("build/kotlin-winrt/application-layout/mingwX64/release").toAbsolutePath()}",
             ),
         )
     }
@@ -2494,17 +2494,15 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(jar.parent)
         Files.writeString(jar, "jar")
         Files.createDirectories(assets)
-        Files.writeString(assets.resolve("WindowsAppSDK-SelfContained.manifest"), "manifest")
-        val outputRoot = project.layout.buildDirectory.dir("application-host/bin").get().asFile.toPath()
+        Files.writeString(assets.resolve("sample-app.exe.manifest"), "manifest")
+        val outputRoot = project.layout.buildDirectory.dir("application-layout/jvm").get().asFile.toPath()
         Files.createDirectories(outputRoot.resolve("lib"))
         Files.writeString(outputRoot.resolve("lib/stale-app.jar"), "stale")
-        Files.createDirectories(outputRoot.resolve("kotlin-winrt-runtime-assets"))
-        Files.writeString(outputRoot.resolve("kotlin-winrt-runtime-assets/stale.host.json"), "{}")
         val task = project.tasks.register(
             "buildApplicationHost",
             BuildWinRtApplicationHostTask::class.java,
         ) { registeredTask ->
-            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-host/bin"))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-layout/jvm"))
             registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("application-host/src"))
             registeredTask.mainClass.set("sample.MainKt")
             registeredTask.executableBaseName.set("sample-app")
@@ -2530,8 +2528,7 @@ class KotlinWinRtPluginTest {
         assertFalse(source.contains("java/lang/reflect"))
         assertTrue(Files.isRegularFile(outputRoot.resolve("lib").resolve(jar.fileName)))
         assertFalse(Files.exists(outputRoot.resolve("lib/stale-app.jar")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-runtime-assets/WindowsAppSDK-SelfContained.manifest")))
-        assertFalse(Files.exists(outputRoot.resolve("kotlin-winrt-runtime-assets/stale.host.json")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("sample-app.exe.manifest")))
     }
 
     @Test
@@ -8206,7 +8203,7 @@ class KotlinWinRtPluginTest {
             tasks.register("verifyMingwApplicationPackageLayout") {
                 dependsOn("stageWinRtApplicationPackage")
                 doLast {
-                    val packageRoot = layout.buildDirectory.dir("kotlin-winrt/application-package").get().asFile
+                    val packageRoot = layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release").get().asFile
                     val executable = packageRoot.resolve("kotlin-winrt-mingw-package-test.exe")
                     check(executable.isFile) {
                         "Expected staged release executable at package root: " + executable
@@ -8251,7 +8248,7 @@ class KotlinWinRtPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMingwApplicationPackageLayout")?.outcome)
         assertEquals(
             2,
-            readPeSubsystem(projectDir.resolve("build/kotlin-winrt/application-package/kotlin-winrt-mingw-package-test.exe")),
+            readPeSubsystem(projectDir.resolve("build/kotlin-winrt/application-layout/mingwX64/release/kotlin-winrt-mingw-package-test.exe")),
         )
     }
 }

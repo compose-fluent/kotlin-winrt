@@ -150,8 +150,8 @@ tasks.named<Exec>("runWinRtApplicationHost") {
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
     dependsOn("stageWinRtApplicationPackage")
-    workingDir(layout.buildDirectory.dir("kotlin-winrt/application-package"))
-    executable(layout.buildDirectory.file("kotlin-winrt/application-package/${project.name}.exe").get().asFile.absolutePath)
+    workingDir(layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release"))
+    executable(layout.buildDirectory.file("kotlin-winrt/application-layout/mingwX64/release/${project.name}.exe").get().asFile.absolutePath)
     environment(
         "kotlin.winrt.samples.autoExitWinUi",
         providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),

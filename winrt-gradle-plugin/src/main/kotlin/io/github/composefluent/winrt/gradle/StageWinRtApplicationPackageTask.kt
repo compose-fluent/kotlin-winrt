@@ -66,6 +66,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     abstract val runtimeIdentifier: Property<String>
 
     @get:Input
+    abstract val executableBaseName: Property<String>
+
+    @get:Input
     abstract val projectPriTargetPaths: MapProperty<String, String>
 
     @get:Input
@@ -146,6 +149,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         windowsSdkVersion.convention("")
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
+        executableBaseName.convention("app")
     }
 
     @TaskAction
@@ -164,6 +168,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
         stageRootPackagePayloads(outputRoot)
+        WinRtApplicationManifestGenerator.writeApplicationManifest(outputRoot, executableBaseName.get())
         generateProjectPri(outputRoot)
         validateStagedManifestPayload(outputRoot)
     }

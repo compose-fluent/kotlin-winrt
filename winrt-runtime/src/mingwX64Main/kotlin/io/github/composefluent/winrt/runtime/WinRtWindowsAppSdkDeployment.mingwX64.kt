@@ -20,7 +20,6 @@ import platform.windows.ACTCTXW
 import platform.windows.ActivateActCtx
 import platform.windows.CreateActCtxW
 import platform.windows.DeactivateActCtx
-import platform.windows.GetCurrentProcessId
 import platform.windows.GetLastError
 import platform.windows.INVALID_HANDLE_VALUE
 import platform.windows.ReleaseActCtx
@@ -37,8 +36,12 @@ internal actual fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileNam
     return bootstrapPath.parentPath()?.takeIf { it.isDirectory() }
 }
 
-internal actual fun platformWindowsAppSdkManifestPath(root: Path, fileName: String): Path =
-    Path(root, "$fileName.${GetCurrentProcessId()}.manifest")
+internal actual fun platformWindowsApplicationManifestPath(root: Path): Path =
+    root.walkFiles()
+        .filter { path -> path.fileName.endsWith(".exe.manifest", ignoreCase = true) }
+        .sortedBy { path -> path.canonicalString() }
+        .firstOrNull()
+        ?: Path(root, "app.exe.manifest")
 
 internal actual fun platformActivateWindowsManifest(manifestPath: Path): AutoCloseable =
     PlatformAbi.confinedScope().use { scope ->
