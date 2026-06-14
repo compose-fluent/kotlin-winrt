@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
-import io.github.composefluent.winrt.authoring.renderAuthoringMetadataIndexRow
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.renderAuthoringMetadataIndexRow
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection

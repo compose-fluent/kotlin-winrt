@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.compiler
 
-import io.github.composefluent.winrt.authoring.IndexedWinRtType
-import io.github.composefluent.winrt.authoring.projectionTypeIndexRecordForSourceType
+import io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.projectionTypeIndexRecordForSourceType
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar

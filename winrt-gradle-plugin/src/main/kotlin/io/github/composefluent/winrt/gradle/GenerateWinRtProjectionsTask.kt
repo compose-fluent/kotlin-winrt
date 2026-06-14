@@ -1,14 +1,14 @@
 package io.github.composefluent.winrt.gradle
 
 import com.squareup.kotlinpoet.ClassName
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
-import io.github.composefluent.winrt.authoring.authoringTypeDetailsRegistrarName
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
-import io.github.composefluent.winrt.authoring.writeAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegistrarName
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
+import io.github.composefluent.winrt.compiler.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
@@ -712,7 +712,7 @@ internal fun mergedAuthoringMetadataIndexTypes(
     model.namespaces
         .flatMap { namespace -> namespace.types }
         .map { type ->
-            io.github.composefluent.winrt.authoring.IndexedWinRtType(
+            io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType(
                 qualifiedName = type.qualifiedName,
                 kind = type.kind.name,
                 overridableInterfaces = type.implementedInterfaces

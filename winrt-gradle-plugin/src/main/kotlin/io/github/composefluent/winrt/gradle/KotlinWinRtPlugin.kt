@@ -1505,7 +1505,7 @@ private fun kotlinWinRtAuthoringDependency(project: Project): Any {
     if (localAuthoringProject != null) {
         return project.dependencies.project(mapOf("path" to localAuthoringProject.path))
     }
-    val authoringClasspath = kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate::class.java)
+    val authoringClasspath = kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.WinRtAuthoringHostExports::class.java)
     return if (authoringClasspath != null) {
         project.files(authoringClasspath)
     } else {

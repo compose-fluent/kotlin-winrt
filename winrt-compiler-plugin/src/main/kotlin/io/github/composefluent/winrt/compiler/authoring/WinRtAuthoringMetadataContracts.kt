@@ -1,4 +1,4 @@
-package io.github.composefluent.winrt.authoring
+package io.github.composefluent.winrt.compiler.authoring
 
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtTypeKind

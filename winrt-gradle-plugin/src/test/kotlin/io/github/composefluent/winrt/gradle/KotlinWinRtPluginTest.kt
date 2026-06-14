@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource

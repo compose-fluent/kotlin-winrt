@@ -1,16 +1,16 @@
 package io.github.composefluent.winrt.compiler
 
-import io.github.composefluent.winrt.authoring.IndexedWinRtType
-import io.github.composefluent.winrt.authoring.KotlinImports
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredRuntimeClassAnnotation
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.PROJECTION_PACKAGE_PREFIX
-import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
-import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceNames
-import io.github.composefluent.winrt.authoring.projectionPackageToMetadataName
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
-import io.github.composefluent.winrt.authoring.resolveIndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.KotlinImports
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredRuntimeClassAnnotation
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.PROJECTION_PACKAGE_PREFIX
+import io.github.composefluent.winrt.compiler.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
+import io.github.composefluent.winrt.compiler.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.compiler.authoring.projectionPackageToMetadataName
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRtType
 import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.KtSourceFile
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreApplicationEnvironment

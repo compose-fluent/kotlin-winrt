@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection

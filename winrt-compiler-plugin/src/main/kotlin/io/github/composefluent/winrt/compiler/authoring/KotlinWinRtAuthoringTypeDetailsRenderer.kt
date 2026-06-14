@@ -1,4 +1,4 @@
-package io.github.composefluent.winrt.authoring
+package io.github.composefluent.winrt.compiler.authoring
 
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
@@ -13,7 +13,6 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asClassName
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
