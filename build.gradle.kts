@@ -83,9 +83,48 @@ val validateWinRtProjectionCompile by tasks.registering {
     group = "verification"
     description = "Compiles plugin-generated projection output after generator and plugin validation."
     dependsOn(validateWinRtPluginGraph)
-    dependsOn(":winrt-projections:compileKotlin")
-    dependsOn(":winrt-projections:windows-sdk:compileKotlin")
-    dependsOn(":winrt-projections:windows-app-sdk:compileKotlin")
+    dependsOn(":validateWinRtFullWindowsSdkProjectionGate")
+    dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
+    dependsOn(":winrt-projections:compileKotlinJvm")
+    dependsOn(":winrt-projections:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-sdk:compileKotlinJvm")
+    dependsOn(":winrt-projections:windows-sdk:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-app-sdk:compileKotlinJvm")
+    dependsOn(":winrt-projections:windows-app-sdk:compileKotlinMingwX64")
+}
+
+val validateWinRtMingwProjectionGate by tasks.registering {
+    group = "verification"
+    description = "Runs the lightweight generated projection gate for mingwX64 without compiling full prebuilt projection artifacts."
+    dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
+    dependsOn(":winrt-projections:compileKotlinJvm")
+    dependsOn(":winrt-projections:compileKotlinMingwX64")
+}
+
+val validateWinRtFullWindowsSdkProjectionGate by tasks.registering {
+    group = "verification"
+    description = "Runs the root KMP generated projection gate against the full Windows SDK projection surface."
+    dependsOn(":winrt-projections:auditGeneratedWinRtProjectionOutput")
+    dependsOn(":winrt-projections:compileKotlinJvm")
+    dependsOn(":winrt-projections:compileKotlinMingwX64")
+}
+
+val validateWinRtMingwParity by tasks.registering {
+    group = "verification"
+    description = "Runs the current mingwX64 parity gate across runtime contracts, compiler lowering, and full Windows SDK projections."
+    dependsOn(":winrt-runtime:compileKotlinMetadata")
+    dependsOn(":winrt-runtime:jvmTest")
+    dependsOn(":winrt-runtime:compileTestKotlinMingwX64")
+    dependsOn(":winrt-runtime:mingwX64Test")
+    dependsOn(":winrt-compiler-plugin:test")
+    dependsOn(validateWinRtFullWindowsSdkProjectionGate)
+}
+
+val validateWinRtNativeAuthoringFixture by tasks.registering {
+    group = "verification"
+    description = "Builds a real mingwX64 authored component DLL and validates native exports plus dependency staging."
+    dependsOn(":winrt-authoring:native-component-fixture:verifyNativeAuthoringComponentFixture")
+    dependsOn(":winrt-authoring:native-consumer-fixture:verifyNativeAuthoringConsumerFixture")
 }
 
 val validateWinRtSampleSmoke by tasks.registering {
@@ -93,10 +132,13 @@ val validateWinRtSampleSmoke by tasks.registering {
     description = "Runs sample smoke checks after projection validation."
     dependsOn(validateWinRtProjectionCompile)
     dependsOn(":winrt-samples:check")
+    dependsOn(":winrt-samples:winui-kmp-app:check")
 }
 
 tasks.register("validateWinRtQueue16") {
     group = "verification"
-    description = "Runs Queue 16 validation in reference-aligned order: generator, plugin graph, projections, samples."
+    description = "Runs Queue 16 validation in reference-aligned order: generator, plugin graph, mingw parity, projections, samples."
+    dependsOn(validateWinRtMingwParity)
+    dependsOn(validateWinRtNativeAuthoringFixture)
     dependsOn(validateWinRtSampleSmoke)
 }

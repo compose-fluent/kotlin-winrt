@@ -26,6 +26,20 @@ class RuntimeConfigurationTest {
     }
 
     @Test
+    fun feature_switch_parser_accepts_runtime_boolean_spellings() {
+        listOf("true", "1", "yes", "on", " TRUE ").forEach { value ->
+            assertEquals(true, parseFeatureSwitchValue(value))
+        }
+        listOf("false", "0", "no", "off", " FALSE ").forEach { value ->
+            assertEquals(false, parseFeatureSwitchValue(value))
+        }
+        listOf("", "maybe", "enabled").forEach { value ->
+            assertNull(parseFeatureSwitchValue(value))
+        }
+        assertNull(parseFeatureSwitchValue(null))
+    }
+
+    @Test
     fun xaml_projection_switch_moves_canonical_names_between_mux_and_wux() {
         withFeatureSwitch(FeatureSwitches.UseWindowsUIXamlProjectionsPropertyName, false) {
             resetProjectionState()

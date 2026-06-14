@@ -35,6 +35,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ComObjectReference
@@ -80,6 +81,7 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRtDelegateReference
 import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRtEvent
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
@@ -138,10 +140,12 @@ class KotlinProjectionSupportRenderer {
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
         emitProjectionRegistrar: Boolean = true,
         excludedProjectionTypeNames: Set<String> = emptySet(),
+        authoredRuntimeClassNames: Set<String> = emptySet(),
         genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
         authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
         authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
         authoringModuleActivationFactoryPlanClassName: ClassName = WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME,
+        emitJvmAuthoringHostExports: Boolean = true,
         genericAbiSupportFileName: String = "WinRTGenericAbiSupport",
         eventProjectionHelperFilePrefix: String = "WinRTEventProjectionHelper",
         namespaceAdditionsClassName: ClassName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME,
@@ -170,19 +174,20 @@ class KotlinProjectionSupportRenderer {
                 ),
                 renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
-                renderAuthoringWrapperPlan(inventory, plans),
-                renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
-                renderAuthoringWrappers(inventory, plans),
-                renderAuthoringAbiClasses(inventory, plans, semanticHelpers),
-                renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
-                renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
-                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName),
+                renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
+                renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringWrappers(inventory, plans, authoredRuntimeClassNames),
+                renderAuthoringAbiClasses(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName, authoredRuntimeClassNames),
                 renderAuthoringServerActivationFactories(
                     inventory,
                     plans,
                     semanticHelpers,
                     authoringServerActivationFactoriesClassName,
                     authoringModuleActivationFactoryPlanClassName,
+                    authoredRuntimeClassNames,
                 ),
                 renderAuthoringHostExports(
                     inventory,
@@ -190,8 +195,10 @@ class KotlinProjectionSupportRenderer {
                     semanticHelpers,
                     authoringHostExportsClassName,
                     authoringServerActivationFactoriesClassName,
+                    authoredRuntimeClassNames,
+                    emitJvmAddressWrappers = emitJvmAuthoringHostExports,
                 ),
-                renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
+                renderAuthoringCcwFactories(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
             addAll(renderDispatcherQueueSynchronizationContextAdditions(plans))
@@ -235,9 +242,10 @@ class KotlinProjectionSupportRenderer {
             package $packageName
 
             import io.github.composefluent.winrt.runtime.ExceptionHelpers
-            import java.util.concurrent.RejectedExecutionException
+            import io.github.composefluent.winrt.runtime.WinRtProjectionLock
             import kotlin.coroutines.CoroutineContext
             import kotlinx.coroutines.CoroutineDispatcher
+            import kotlinx.coroutines.Runnable
 
             /**
              * Projection-owned coroutine dispatcher corresponding to CsWinRT's
@@ -250,7 +258,7 @@ class KotlinProjectionSupportRenderer {
             public class DispatcherQueueCoroutineDispatcher(
               private val dispatcherQueue: ${dispatcherQueueType.simpleName},
             ) : CoroutineDispatcher() {
-              private val lock: Any = Any()
+              private val lock: WinRtProjectionLock = WinRtProjectionLock()
               private val pendingPosts: MutableList<() -> Unit> = mutableListOf()
               private var drainScheduled: Boolean = false
               private val drainHandler: ${dispatcherQueueHandlerType.simpleName} = ${dispatcherQueueHandlerType.simpleName} {
@@ -260,13 +268,13 @@ class KotlinProjectionSupportRenderer {
               override fun dispatch(context: CoroutineContext, block: Runnable) {
                 if (!post { block.run() }) {
                   ExceptionHelpers.reportUnhandledError(
-                    RejectedExecutionException("DispatcherQueue.TryEnqueue returned false."),
+                    IllegalStateException("DispatcherQueue.TryEnqueue returned false."),
                   )
                 }
               }
 
               public fun post(action: () -> Unit): Boolean {
-                val shouldSchedule = synchronized(lock) {
+                val shouldSchedule = lock.withLock {
                   pendingPosts += action
                   if (drainScheduled) {
                     false
@@ -281,7 +289,7 @@ class KotlinProjectionSupportRenderer {
                 if (dispatcherQueue.tryEnqueue(drainHandler)) {
                   return true
                 }
-                synchronized(lock) {
+                lock.withLock {
                   pendingPosts.remove(action)
                   if (pendingPosts.isEmpty()) {
                     drainScheduled = false
@@ -295,7 +303,7 @@ class KotlinProjectionSupportRenderer {
 
               private fun drain() {
                 while (true) {
-                  val action = synchronized(lock) {
+                  val action = lock.withLock {
                     if (pendingPosts.isEmpty()) {
                       drainScheduled = false
                       null
@@ -796,7 +804,6 @@ class KotlinProjectionSupportRenderer {
             .mapIndexed { index, chunk ->
                 val fileName = "${eventProjectionHelperFilePrefix}_${index.toString().padStart(3, '0')}"
                 val fileSpec = supportFileSpec(fileName)
-                    .addGeneratedProjectionSuppressions()
                     .apply { chunk.forEach(::addType) }
                     .build()
                 supportFile("$fileName.kt", fileSpec)
@@ -966,7 +973,6 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("AUTHORING_METADATA_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
-                            .addJvmFieldAnnotation()
                             .addModifiers(KModifier.PRIVATE)
                             .initializer("AUTHORING_METADATA_MAPPINGS.toArrowMap()")
                             .build(),
@@ -997,11 +1003,15 @@ class KotlinProjectionSupportRenderer {
     private fun renderAuthoringWrapperPlan(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val mappingsByProjectedName = inventory.authoredMetadataTypeMappings.associateBy { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
+        val mappingsByProjectedName = inventory.authoredMetadataTypeMappings
+            .filter { it.projectedTypeName in authoredTypeNames }
+            .associateBy { it.projectedTypeName }
         val entries = plans.mapNotNull { plan ->
             val mapping = mappingsByProjectedName[plan.type.qualifiedName] ?: return@mapNotNull null
             plan to mapping
@@ -1051,17 +1061,30 @@ class KotlinProjectionSupportRenderer {
         return supportFile("WinRTAuthoringWrapperPlan.kt", fileSpec)
     }
 
+    private fun authoringEntryTypeNames(
+        inventory: WinRtMetadataProjectionInventory,
+        authoredRuntimeClassNames: Set<String>,
+    ): Set<String> {
+        val metadataTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        return authoredRuntimeClassNames
+            .takeIf(Set<String>::isNotEmpty)
+            ?.intersect(metadataTypeNames)
+            ?: metadataTypeNames
+    }
+
     private fun renderAuthoringAbiClassPlan(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && !semanticHelpers.isStatic(it.type) }
-            .filter { plan -> inventory.authoredMetadataTypeMappings.any { it.projectedTypeName == plan.type.qualifiedName } }
+            .filter { plan -> plan.type.qualifiedName in authoredTypeNames }
         if (entries.isEmpty()) {
             return null
         }
@@ -1118,11 +1141,12 @@ class KotlinProjectionSupportRenderer {
     private fun renderAuthoringWrappers(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { KotlinProjectionSpecializationKind.StaticClass in it.specializationKinds }
@@ -1146,11 +1170,12 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1178,7 +1203,7 @@ class KotlinProjectionSupportRenderer {
             .addCode(
                 CodeBlock.of(
                     "throw %T(%S + operation + %S + projectedTypeName)\n",
-                    UnsupportedOperationException::class,
+                    ClassName("kotlin", "UnsupportedOperationException"),
                     "Authoring ABI array operation is not implemented yet: ",
                     " for ",
                 ),
@@ -1189,11 +1214,12 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1254,11 +1280,12 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1392,11 +1419,12 @@ class KotlinProjectionSupportRenderer {
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoringModuleActivationFactoryPlanClassName: ClassName,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1484,11 +1512,12 @@ class KotlinProjectionSupportRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoringServerActivationFactoriesClassName: ClassName,
         authoringModuleActivationFactoryPlanClassName: ClassName,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1496,8 +1525,9 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val fileBuilder = supportFileSpec(authoringServerActivationFactoriesClassName.simpleName)
+        val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
-            fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers))
+            fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers, plansByQualifiedName))
         }
         fileBuilder.addType(
             TypeSpec.objectBuilder(authoringServerActivationFactoriesClassName.simpleName)
@@ -1514,11 +1544,13 @@ class KotlinProjectionSupportRenderer {
         semanticHelpers: WinRtMetadataSemanticHelpers,
         authoringHostExportsClassName: ClassName,
         authoringServerActivationFactoriesClassName: ClassName,
+        authoredRuntimeClassNames: Set<String>,
+        emitJvmAddressWrappers: Boolean,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
             .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
@@ -1527,72 +1559,115 @@ class KotlinProjectionSupportRenderer {
         }
         val hostBridgeClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostBridge")
         val hostExportsInterface = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostExports")
-        val hostManifestLoaderClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostManifestLoader")
-        val fileSpec = supportFileSpec(authoringHostExportsClassName.simpleName)
-            .addType(
-                TypeSpec.objectBuilder(authoringHostExportsClassName.simpleName)
-                    .addModifiers(KModifier.INTERNAL)
-                    .addSuperinterface(hostExportsInterface)
-                    .addInitializerBlock(
-                        CodeBlock.of(
-                            "%T.registerHostExports(%S, this)\n",
-                            hostManifestLoaderClass,
-                            authoringHostExportsClassName.canonicalName,
-                        ),
-                    )
-                    .addFunction(
-                        FunSpec.builder("registerActivationFactories")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addStatement("%T.register()", authoringServerActivationFactoriesClassName)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllGetActivationFactory")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
-                            .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
-                            .returns(Int::class)
-                            .addStatement("registerActivationFactories()")
-                            .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", hostBridgeClass)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllGetActivationFactoryAddress")
-                            .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
-                            .addParameter("activatableClassId", Long::class)
-                            .addParameter("factoryOut", Long::class)
-                            .returns(Int::class)
-                            .addStatement("return dllGetActivationFactory(%T(activatableClassId), %T(factoryOut))", RAW_ADDRESS_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllCanUnloadNow")
-                            .returns(Int::class)
-                            .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("dllCanUnloadNowAddress")
-                            .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
-                            .returns(Int::class)
-                            .addStatement("return dllCanUnloadNow()")
-                            .build(),
-                    )
+        val hostExportRegistryClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostExportRegistry")
+        val hostExportsBuilder = TypeSpec.objectBuilder(authoringHostExportsClassName.simpleName)
+            .addModifiers(KModifier.INTERNAL)
+            .addSuperinterface(hostExportsInterface)
+            .addInitializerBlock(
+                CodeBlock.of(
+                    "%T.registerHostExports(%S, this)\n",
+                    hostExportRegistryClass,
+                    authoringHostExportsClassName.canonicalName,
+                ),
+            )
+            .addFunction(
+                FunSpec.builder("registerActivationFactories")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addStatement("%T.register()", authoringServerActivationFactoriesClassName)
                     .build(),
             )
-            .build()
-        return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileSpec)
+            .addFunction(
+                FunSpec.builder("dllGetActivationFactory")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
+                    .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
+                    .returns(Int::class)
+                    .addStatement("registerActivationFactories()")
+                    .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", hostBridgeClass)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("dllCanUnloadNow")
+                    .returns(Int::class)
+                    .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)
+                    .build(),
+            )
+        if (emitJvmAddressWrappers) {
+            hostExportsBuilder
+                .addFunction(
+                    FunSpec.builder("dllGetActivationFactoryAddress")
+                        .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
+                        .addParameter("activatableClassId", Long::class)
+                        .addParameter("factoryOut", Long::class)
+                        .returns(Int::class)
+                        .addStatement("return dllGetActivationFactory(%T(activatableClassId), %T(factoryOut))", RAW_ADDRESS_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
+                        .build(),
+                )
+                .addFunction(
+                    FunSpec.builder("dllCanUnloadNowAddress")
+                        .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
+                        .returns(Int::class)
+                        .addStatement("return dllCanUnloadNow()")
+                        .build(),
+                )
+        }
+        val fileBuilder = supportFileSpec(authoringHostExportsClassName.simpleName)
+            .addType(
+                hostExportsBuilder.build(),
+            )
+        if (!emitJvmAddressWrappers) {
+            fileBuilder
+                .addFunction(
+                    FunSpec.builder("dllGetActivationFactoryExport")
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+                                .addMember("%T::class", ClassName("kotlin.experimental", "ExperimentalNativeApi"))
+                                .build(),
+                        )
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin.native", "CName"))
+                                .addMember("%S", "DllGetActivationFactory")
+                                .build(),
+                        )
+                        .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
+                        .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
+                        .returns(Int::class)
+                        .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", authoringHostExportsClassName)
+                        .build(),
+                )
+                .addFunction(
+                    FunSpec.builder("dllCanUnloadNowExport")
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+                                .addMember("%T::class", ClassName("kotlin.experimental", "ExperimentalNativeApi"))
+                                .build(),
+                        )
+                        .addAnnotation(
+                            AnnotationSpec.builder(ClassName("kotlin.native", "CName"))
+                                .addMember("%S", "DllCanUnloadNow")
+                                .build(),
+                        )
+                        .returns(Int::class)
+                        .addStatement("return %T.dllCanUnloadNow()", authoringHostExportsClassName)
+                        .build(),
+                )
+        }
+        return supportFile("${authoringHostExportsClassName.simpleName}.kt", fileBuilder.build())
     }
 
     private fun authoringServerActivationFactoryClass(
         plan: KotlinTypeProjectionPlan,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
     ): TypeSpec {
         val projectedType = ClassName(plan.packageName, plan.type.name)
-        val isActivatable = !semanticHelpers.isStatic(plan.type) && semanticHelpers.hasDefaultConstructor(plan.type)
+        val isActivatable = authoredRuntimeClassHasDefaultActivation(plan, semanticHelpers)
+        val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
+        val factoryInterfaces = authoringServerFactoryInterfaces(factory)
         return TypeSpec.classBuilder(authoringServerActivationFactoryClassName(plan))
             .addModifiers(KModifier.INTERNAL)
             .addSuperinterface(WINRT_ACTIVATION_FACTORY_CLASS_NAME)
+            .addFunction(authoringServerActivationFactoryInterfacesFunction(plan, factoryInterfaces, plansByQualifiedName))
             .addFunction(
                 FunSpec.builder("activateInstance")
                     .addModifiers(KModifier.OVERRIDE)
@@ -1603,7 +1678,7 @@ class KotlinProjectionSupportRenderer {
                         } else {
                             addStatement(
                                 "throw %T(%S)",
-                                UnsupportedOperationException::class.asClassName(),
+                                ClassName("kotlin", "UnsupportedOperationException"),
                                 "Runtime class '${plan.type.qualifiedName}' does not expose default activation.",
                             )
                         }
@@ -1613,29 +1688,218 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
+    private fun authoringServerActivationFactoryInterfacesFunction(
+        plan: KotlinTypeProjectionPlan,
+        factoryInterfaces: List<AuthoringServerFactoryInterface>,
+        plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
+    ): FunSpec {
+        val code = CodeBlock.builder()
+        if (factoryInterfaces.isEmpty()) {
+            code.add("return emptyList()\n")
+        } else {
+            code.add("return listOf(\n")
+            code.indent()
+            factoryInterfaces.forEach { factoryInterface ->
+                val interfaceName = factoryInterface.name
+                val rawInterfaceName = interfaceName.substringBefore('<')
+                val interfacePlan = plansByQualifiedName[rawInterfaceName]
+                    ?: throw IllegalArgumentException(
+                        "Support renderer requires authored runtime class ${plan.type.qualifiedName} factory interface $rawInterfaceName to have a projection plan before rendering server activation factory definitions.",
+                    )
+                code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
+                code.indent()
+                code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
+                code.add("methods = %L,\n", authoringServerFactoryInterfaceMethodsCode(plan, interfacePlan, factoryInterface.kinds))
+                code.unindent()
+                code.add("),\n")
+            }
+            code.unindent()
+            code.add(")\n")
+        }
+        return FunSpec.builder("factoryInterfaces")
+            .returns(List::class.asClassName().parameterizedBy(WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME))
+            .addCode(code.build())
+            .build()
+    }
+
+    private fun authoringServerFactoryInterfaceMethodsCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+        kinds: Set<AuthoringServerFactoryInterfaceKind>,
+    ): CodeBlock {
+        if (interfacePlan.instanceMemberBindings.isEmpty()) {
+            return CodeBlock.of("emptyList()")
+        }
+        val slotOrder = interfacePlan.abiSlotBindings.associate { it.constantName to it.slot }
+        interfacePlan.instanceMemberBindings.forEach { binding ->
+            require(slotOrder.containsKey(binding.slotConstantName)) {
+                "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to carry ABI slot metadata before rendering server activation factory definitions."
+            }
+        }
+        val methods = interfacePlan.instanceMemberBindings.sortedWith(
+            compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder.getValue(it.slotConstantName) }
+                .thenBy { it.bindingName },
+        )
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        methods.forEach { binding ->
+            code.add("%T(\n", WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME)
+            code.indent()
+            code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
+            code.add("handler = { rawArgs ->\n")
+            code.indent()
+            code.add("%L", authoringServerFactoryMethodHandlerCode(runtimeClassPlan, interfacePlan, binding, kinds))
+            code.unindent()
+            code.add("},\n")
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun authoringServerFactoryMethodHandlerCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionInstanceMemberBinding,
+        kinds: Set<AuthoringServerFactoryInterfaceKind>,
+    ): CodeBlock {
+        val method = interfacePlan.type.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfacePlan.type.methods) }
+            ?: return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        if (!authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
+            return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        val isComposableFactoryMethod =
+            AuthoringServerFactoryInterfaceKind.Composable in kinds &&
+                method.returnType.typeName == runtimeClassPlan.type.qualifiedName &&
+                method.parameters.size >= 2 &&
+                method.parameters.takeLast(2).all { parameter -> isWinRtObjectTypeName(parameter.type.typeName) }
+        val kind = when {
+            isComposableFactoryMethod -> AuthoringServerFactoryInterfaceKind.Composable
+            AuthoringServerFactoryInterfaceKind.Constructor in kinds -> AuthoringServerFactoryInterfaceKind.Constructor
+            AuthoringServerFactoryInterfaceKind.Static in kinds -> AuthoringServerFactoryInterfaceKind.Static
+            else -> return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        val projectedType = ClassName(runtimeClassPlan.packageName, runtimeClassPlan.type.name)
+        val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
+        val code = CodeBlock.builder()
+        code.add("try {\n")
+        code.indent()
+        binding.parameterBindings.forEachIndexed { index, parameter ->
+            if (parameter.name == receiveArrayParameterName || (kind == AuthoringServerFactoryInterfaceKind.Composable && index >= binding.parameterBindings.size - 2)) {
+                return@forEachIndexed
+            }
+            code.add(
+                "val %L = %L\n",
+                authoringCcwLocalParameterName(index),
+                authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
+            )
+        }
+        val invocation = authoringServerFactoryInvocationCode(projectedType, method, binding, receiveArrayParameterName, kind)
+        val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
+        if (kind == AuthoringServerFactoryInterfaceKind.Composable) {
+            code.add("val __result = %L\n", invocation)
+            val innerRawIndex = authoringCcwParameterRawIndex(binding.parameterBindings, binding.parameterBindings.lastIndex)
+            val instanceRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
+            code.add(
+                "%T.writePointer(rawArgs[%L] as %T, %T.nullPointer)\n",
+                PLATFORM_ABI_CLASS_NAME,
+                innerRawIndex,
+                RAW_ADDRESS_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+            code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$instanceRawIndex] as RawAddress", "__result"))
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        } else if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            code.add("%L\n", invocation)
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        } else {
+            code.add("val __result = %L\n", invocation)
+            val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
+            code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        code.unindent()
+        code.add("} catch (error: %T) {\n", Throwable::class.asClassName())
+        code.indent()
+        code.add("%T.setErrorInfo(error)\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.add("%T.hResultFromException(error).value\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.unindent()
+        code.add("}\n")
+        return code.build()
+    }
+
+    private fun authoringServerFactoryInvocationCode(
+        projectedType: ClassName,
+        method: WinRtMethodDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+        receiveArrayParameterName: String?,
+        kind: AuthoringServerFactoryInterfaceKind,
+    ): CodeBlock {
+        val target = when (kind) {
+            AuthoringServerFactoryInterfaceKind.Constructor -> CodeBlock.of("%T", projectedType)
+            AuthoringServerFactoryInterfaceKind.Static -> CodeBlock.of("%T.%L", projectedType, method.projectedMethodName())
+            AuthoringServerFactoryInterfaceKind.Composable -> CodeBlock.of("%T", projectedType)
+        }
+        val code = CodeBlock.builder()
+        code.add("%L(", target)
+        binding.parameterBindings
+            .withIndex()
+            .filterNot { (_, parameter) -> parameter.name == receiveArrayParameterName }
+            .let { parameters ->
+                if (kind == AuthoringServerFactoryInterfaceKind.Composable) {
+                    parameters.dropLast(2)
+                } else {
+                    parameters
+                }
+            }
+            .forEachIndexed { argumentIndex, (parameterIndex, _) ->
+                if (argumentIndex > 0) {
+                    code.add(", ")
+                }
+                code.add("%L", authoringCcwLocalParameterName(parameterIndex))
+            }
+        code.add(")")
+        return code.build()
+    }
+
     private fun authoringServerActivationFactoryRegisterFunction(
         entries: List<KotlinTypeProjectionPlan>,
         authoringModuleActivationFactoryPlanClassName: ClassName,
     ): FunSpec {
         val code = CodeBlock.builder()
-        code.add("%T.registerModuleActivationFactories { entry ->\n", authoringModuleActivationFactoryPlanClassName)
+        code.add("%T.registerModuleActivationFactories(\n", authoringModuleActivationFactoryPlanClassName)
+        code.indent()
+        code.add("createFactory = { entry ->\n")
         code.indent()
         code.add("when (entry.runtimeClassName) {\n")
         code.indent()
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             code.add(
-                "%S -> %T.createCCWForObject(%T(), %T.IActivationFactory)\n",
+                "%S -> run {\n",
                 plan.type.qualifiedName,
+            )
+            code.indent()
+            code.add("val __factory = %T()\n", ClassName(SUPPORT_PACKAGE, authoringServerActivationFactoryClassName(plan)))
+            code.add(
+                "%T.createCCWForActivationFactory(__factory, factoryInterfaces = __factory.factoryInterfaces(), interfaceId = %T.IActivationFactory)\n",
                 COM_WRAPPERS_SUPPORT_CLASS_NAME,
-                ClassName(SUPPORT_PACKAGE, authoringServerActivationFactoryClassName(plan)),
                 IID_CLASS_NAME,
             )
+            code.unindent()
+            code.add("}\n")
         }
         code.add("else -> error(%S + entry.runtimeClassName)\n", "No authored activation factory for runtime class: ")
         code.unindent()
         code.add("}\n")
         code.unindent()
-        code.add("}\n")
+        code.add("},\n")
+        code.unindent()
+        code.add(")\n")
         return FunSpec.builder("register")
             .addCode(code.build())
             .build()
@@ -1645,6 +1909,25 @@ class KotlinProjectionSupportRenderer {
         "_ServerActivationFactory_" + plan.type.qualifiedName
             .replace('.', '_')
             .replace('`', '_')
+
+    private fun authoringServerFactoryInterfaces(
+        factory: WinRtFactorySurfaceDescriptor,
+    ): List<AuthoringServerFactoryInterface> =
+        (factory.constructorFactories.map {
+            AuthoringServerFactoryInterface(it, setOf(AuthoringServerFactoryInterfaceKind.Constructor))
+        } + factory.staticMemberTargets.map {
+            AuthoringServerFactoryInterface(it, setOf(AuthoringServerFactoryInterfaceKind.Static))
+        } + factory.composableFactories.map {
+            AuthoringServerFactoryInterface(it, setOf(AuthoringServerFactoryInterfaceKind.Composable))
+        })
+            .groupBy(AuthoringServerFactoryInterface::name)
+            .map { (name, entries) ->
+                AuthoringServerFactoryInterface(
+                    name = name,
+                    kinds = entries.flatMap { it.kinds }.toSet(),
+                )
+            }
+            .sortedBy { it.name }
 
     private fun authoringWrapperObject(plan: KotlinTypeProjectionPlan): TypeSpec {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
@@ -1669,7 +1952,18 @@ class KotlinProjectionSupportRenderer {
                 FunSpec.builder("wrap")
                     .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                     .returns(projectedType)
-                    .addCode("return %T.Metadata.wrap(instance)\n", projectedType)
+                    .addCode(
+                        CodeBlock.of(
+                            """
+                            return %T.findObject(%T.fromRawComPtr(instance.pointer), %T::class)
+                                ?: error(%S)
+                            """.trimIndent() + "\n",
+                            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                            PLATFORM_ABI_CLASS_NAME,
+                            projectedType,
+                            "Authored ABI instance for ${plan.type.qualifiedName} is not backed by a registered Kotlin authored object.",
+                        ),
+                    )
                     .build(),
             )
             .addFunction(
@@ -1752,7 +2046,7 @@ class KotlinProjectionSupportRenderer {
                 FunSpec.builder("GetAbi")
                     .addParameter("marshaler", COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
                     .returns(RAW_ADDRESS_CLASS_NAME)
-                    .addCode("return marshaler?.pointer?.asRawAddress() ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
+                    .addCode("return marshaler?.pointer?.let(%T::fromRawComPtr) ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
                     .build(),
             )
             .addFunction(
@@ -1771,11 +2065,12 @@ class KotlinProjectionSupportRenderer {
                             """
                             val marshaler = CreateMarshaler(value) ?: return %T.nullPointer
                             return try {
-                                marshaler.getRefPointer().asRawAddress()
+                                %T.fromRawComPtr(marshaler.getRefPointer())
                             } finally {
                                 marshaler.close()
                             }
                             """.trimIndent() + "\n",
+                            PLATFORM_ABI_CLASS_NAME,
                             PLATFORM_ABI_CLASS_NAME,
                         ),
                     )
@@ -1996,18 +2291,20 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val ccwEntryTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val entries = plans
-            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in ccwEntryTypeNames }
             .filterNot { semanticHelpers.isStatic(it.type) }
         if (entries.isEmpty()) {
             return null
         }
         val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
+            .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addFunction(authoringCcwQueryInterfaceFunction(plan))
@@ -2051,6 +2348,7 @@ class KotlinProjectionSupportRenderer {
             .map { it.interfaceName }
             .distinct()
             .sorted()
+            .filterNot(::isRuntimeAppendedAuthoringInterfaceName)
             .forEach { interfaceName ->
                 val rawInterfaceName = interfaceName.substringBefore('<')
                 val interfacePlan = plansByQualifiedName[rawInterfaceName]
@@ -2060,7 +2358,7 @@ class KotlinProjectionSupportRenderer {
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
-                code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(interfacePlan))
+                code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(plan, interfacePlan))
                 code.unindent()
                 code.add("),\n")
             }
@@ -2074,9 +2372,8 @@ class KotlinProjectionSupportRenderer {
         )
         code.add("runtimeClassName = %S,\n", plan.type.qualifiedName)
         code.add(
-            "queryInterfaceFallback = { obj, requestedInterfaceId -> %L(obj as %T, requestedInterfaceId) },\n",
+            "queryInterfaceFallback = { obj, requestedInterfaceId -> %L(obj, requestedInterfaceId) },\n",
             authoringCcwQueryInterfaceFunctionName(plan),
-            projectionClassNameForQualifiedName(plan.type.qualifiedName),
         )
         code.unindent()
         code.add(")\n")
@@ -2088,6 +2385,7 @@ class KotlinProjectionSupportRenderer {
         ownerPlan: KotlinTypeProjectionPlan,
     ): CodeBlock {
         val rawInterfaceName = interfaceName.substringBefore('<')
+        runtimeAppendedAuthoringInterfaceIdCode(rawInterfaceName)?.let { return it }
         if ('<' !in interfaceName) {
             return CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(rawInterfaceName))
         }
@@ -2103,11 +2401,19 @@ class KotlinProjectionSupportRenderer {
         return CodeBlock.of("%T.createFromSignature(%L)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, signature)
     }
 
+    private fun isRuntimeAppendedAuthoringInterfaceName(interfaceName: String): Boolean =
+        interfaceName.substringBefore('<') == WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME
+
+    private fun runtimeAppendedAuthoringInterfaceIdCode(rawInterfaceName: String): CodeBlock? =
+        when (rawInterfaceName) {
+            WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME -> CodeBlock.of("%T.IStringable", IID_CLASS_NAME)
+            else -> null
+        }
+
     private fun authoringCcwQueryInterfaceFunction(plan: KotlinTypeProjectionPlan): FunSpec {
-        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
         return FunSpec.builder(authoringCcwQueryInterfaceFunctionName(plan))
             .addModifiers(KModifier.PRIVATE)
-            .addParameter("value", projectedType)
+            .addParameter("value", ANY)
             .addParameter("requestedInterfaceId", GUID_CLASS_NAME)
             .returns(RAW_ADDRESS_CLASS_NAME.copy(nullable = true))
             .addCode(
@@ -2133,7 +2439,10 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
-    private fun authoringCcwInterfaceMethodsCode(interfacePlan: KotlinTypeProjectionPlan): CodeBlock {
+    private fun authoringCcwInterfaceMethodsCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+    ): CodeBlock {
         if (interfacePlan.instanceMemberBindings.isEmpty()) {
             return CodeBlock.of("emptyList()")
         }
@@ -2162,7 +2471,7 @@ class KotlinProjectionSupportRenderer {
             code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
             code.add("handler = { rawArgs ->\n")
             code.indent()
-            code.add("%L", authoringCcwMethodHandlerCode(interfacePlan, binding))
+            code.add("%L", authoringCcwMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
             code.unindent()
             code.add("},\n")
             code.unindent()
@@ -2257,13 +2566,34 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Struct ->
             if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
-            } else typeRenderer.nativeStructClassName(binding)
-                ?.let { structType -> CodeBlock.of("%T.Struct(%T.Metadata.layout.abiLayout)", COM_ABI_VALUE_KIND_CLASS_NAME, structType) }
+            } else customStructAbi(binding)
+                ?.let(::authoringCcwCustomStructAbiValueKindCode)
+                ?: typeRenderer.nativeStructClassName(binding)
+                    ?.let { structType -> CodeBlock.of("%T.Struct(%T.Metadata.layout.abiLayout)", COM_ABI_VALUE_KIND_CLASS_NAME, structType) }
                 ?: CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
         else -> CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
     }
 
+    private fun authoringCcwCustomStructAbiValueKindCode(customAbi: KotlinProjectionCustomStructAbi): CodeBlock =
+        customAbi.abiArgumentKind
+            ?.let(::authoringCcwComArgumentKindCode)
+            ?: customAbi.abiLayoutExpression
+                ?.let { layout -> CodeBlock.of("%T.Struct(%L)", COM_ABI_VALUE_KIND_CLASS_NAME, layout) }
+            ?: CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
+
+    private fun authoringCcwComArgumentKindCode(kind: KotlinProjectionComArgumentKind): CodeBlock =
+        when (kind) {
+            KotlinProjectionComArgumentKind.Pointer -> CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int8 -> CodeBlock.of("%T.Int8", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int16 -> CodeBlock.of("%T.Int16", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int32 -> CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int64 -> CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Float -> CodeBlock.of("%T.Float", COM_ABI_VALUE_KIND_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Double -> CodeBlock.of("%T.Double", COM_ABI_VALUE_KIND_CLASS_NAME)
+        }
+
     private fun authoringCcwMethodHandlerCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
@@ -2275,7 +2605,7 @@ class KotlinProjectionSupportRenderer {
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
         } else if (authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
-            authoringCcwOrdinaryMemberHandlerCode(interfacePlan, binding)
+            authoringCcwOrdinaryMemberHandlerCode(runtimeClassPlan, interfacePlan, binding)
         } else {
             authoringCcwUnsupportedMemberHandlerCode(binding)
         }
@@ -2325,6 +2655,7 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwOrdinaryMemberHandlerCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
@@ -2339,23 +2670,31 @@ class KotlinProjectionSupportRenderer {
             }
             code.add(
                 "val %L = %L\n",
-                parameter.name,
+                authoringCcwLocalParameterName(index),
                 authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
-        val invocation = authoringCcwInvocationCode(interfaceType, binding)
+        val invocation = authoringCcwInvocationCode(runtimeClassPlan, interfaceType, binding)
         val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
         if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
             binding.parameterBindings.forEachIndexed { index, parameter ->
-                authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
+                authoringCcwPostInvocationParameterCode(
+                    parameter,
+                    authoringCcwParameterRawIndex(binding.parameterBindings, index),
+                    authoringCcwLocalParameterName(index),
+                )
                     ?.let { postInvocation -> code.add("%L\n", postInvocation) }
             }
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else {
             code.add("val __result = %L\n", invocation)
             binding.parameterBindings.forEachIndexed { index, parameter ->
-                authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
+                authoringCcwPostInvocationParameterCode(
+                    parameter,
+                    authoringCcwParameterRawIndex(binding.parameterBindings, index),
+                    authoringCcwLocalParameterName(index),
+                )
                     ?.let { postInvocation -> code.add("%L\n", postInvocation) }
             }
             if (returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
@@ -2411,6 +2750,7 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwInvocationCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
         interfaceType: WinRtTypeDefinition,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
@@ -2419,16 +2759,22 @@ class KotlinProjectionSupportRenderer {
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.let { method ->
                 val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
+                val targetMethodName = if (runtimeClassPlan.requiresAuthoringInvokeBridge(binding.slotInterfaceQualifiedName)) {
+                    authoringInvokeBridgeName(method)
+                } else {
+                    method.projectedMethodName()
+                }
                 return CodeBlock.builder()
-                    .add("value.%L(", method.projectedMethodName())
+                    .add("value.%L(", targetMethodName)
                     .apply {
                         binding.parameterBindings
-                            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
-                            .forEachIndexed { index, parameter ->
-                                if (index > 0) {
+                            .withIndex()
+                            .filterNot { (_, parameter) -> parameter.name == receiveArrayParameterName }
+                            .forEachIndexed { argumentIndex, (parameterIndex, _) ->
+                                if (argumentIndex > 0) {
                                     add(", ")
                                 }
-                                add("%L", parameter.name)
+                                add("%L", authoringCcwLocalParameterName(parameterIndex))
                             }
                     }
                     .add(")")
@@ -2442,10 +2788,29 @@ class KotlinProjectionSupportRenderer {
             return if (binding.bindingName.endsWith("_GETTER_SLOT")) {
                 CodeBlock.of("value.%L", propertyName)
             } else {
-                CodeBlock.of("value.%L = %L", propertyName, binding.parameterBindings.single().name)
+                val parameterIndex = binding.parameterBindings.indexOf(binding.parameterBindings.single())
+                CodeBlock.of("value.%L = %L", propertyName, authoringCcwLocalParameterName(parameterIndex))
             }
         }
         return CodeBlock.of("error(%S)", "No authored member body for ${interfaceType.qualifiedName}.${binding.bindingName}")
+    }
+
+    private fun KotlinTypeProjectionPlan.requiresAuthoringInvokeBridge(interfaceName: String): Boolean {
+        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        val qualifiedName = if ('.' in rawName) rawName else "${type.namespace}.$rawName"
+        fun matches(candidate: String): Boolean {
+            val candidateRawName = candidate.substringBefore('<').removeSuffix("?")
+            return candidateRawName == rawName || candidateRawName == qualifiedName
+        }
+        return classMemberMergeDescriptor
+            ?.interfaceDescriptors
+            ?.any { descriptor ->
+                matches(descriptor.interfaceTypeName) &&
+                    (descriptor.isOverridableInterface || descriptor.isProtectedInterface)
+            } == true ||
+            type.implementedInterfaces.any { implementation ->
+                matches(implementation.interfaceName) && implementation.isOverridable
+            }
     }
 
     private fun authoringCcwReceiveArrayReturnParameter(
@@ -2468,6 +2833,9 @@ class KotlinProjectionSupportRenderer {
         parameterIndex: Int,
     ): Int =
         parameters.take(parameterIndex).sumOf(::authoringCcwAbiArgumentCount)
+
+    private fun authoringCcwLocalParameterName(parameterIndex: Int): String =
+        "__arg$parameterIndex"
 
     private fun authoringCcwDecodeArgumentCode(
         parameter: KotlinProjectionAbiParameterBinding,
@@ -2503,7 +2871,9 @@ class KotlinProjectionSupportRenderer {
             authoringCcwDecodeEnumRawCode(binding, index),
         )
         KotlinProjectionAbiValueKind.Struct ->
-            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+            customStructAbi(binding)?.let { customAbi ->
+                authoringCcwDecodeCustomStructArgumentCode(binding, customAbi, index)
+            } ?: if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T(rawArgs[%L] as Long)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, index)
             } else {
                 val structType = typeRenderer.nativeStructClassName(binding)
@@ -2516,9 +2886,10 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", WINRT_OBJECT_MARSHALLER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
-            "%T.Metadata.wrap(%T(rawArgs[%L] as %T).inspectable())",
+            "%T.Metadata.wrap(%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable())",
             typeRenderer.resolveTypeName(binding.resolvedTypeName),
             IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
             index,
             RAW_ADDRESS_CLASS_NAME,
         )
@@ -2537,9 +2908,56 @@ class KotlinProjectionSupportRenderer {
             RAW_ADDRESS_CLASS_NAME,
         )
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
-        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T(rawArgs[%L] as %T).inspectable()", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of(
+            "%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable()",
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+        )
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
     }
+
+    private fun authoringCcwDecodeCustomStructArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        customAbi: KotlinProjectionCustomStructAbi,
+        index: Int,
+    ): CodeBlock {
+        val carrierFunctionName = customAbi.fromAbiCarrierFunctionName
+        val carrierKind = customAbi.abiArgumentKind
+        if (carrierFunctionName != null && carrierKind != null) {
+            return CodeBlock.of(
+                "%T.%L(%L)",
+                customAbi.helperTypeName,
+                carrierFunctionName,
+                authoringCcwDecodeComArgumentCarrierCode(carrierKind, index),
+            )
+        }
+        if (customAbi.abiLayoutExpression != null) {
+            return CodeBlock.of(
+                "%T.%L(rawArgs[%L] as %T)",
+                customAbi.helperTypeName,
+                customAbi.fromAbiFunctionName,
+                index,
+                RAW_ADDRESS_CLASS_NAME,
+            )
+        }
+        return CodeBlock.of("error(%S)", "Unsupported authored ABI custom struct argument ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwDecodeComArgumentCarrierCode(
+        kind: KotlinProjectionComArgumentKind,
+        index: Int,
+    ): CodeBlock =
+        when (kind) {
+            KotlinProjectionComArgumentKind.Pointer -> CodeBlock.of("rawArgs[%L] as %T", index, RAW_ADDRESS_CLASS_NAME)
+            KotlinProjectionComArgumentKind.Int8 -> CodeBlock.of("rawArgs[%L] as Byte", index)
+            KotlinProjectionComArgumentKind.Int16 -> CodeBlock.of("rawArgs[%L] as Short", index)
+            KotlinProjectionComArgumentKind.Int32 -> CodeBlock.of("rawArgs[%L] as Int", index)
+            KotlinProjectionComArgumentKind.Int64 -> CodeBlock.of("rawArgs[%L] as Long", index)
+            KotlinProjectionComArgumentKind.Float -> CodeBlock.of("rawArgs[%L] as Float", index)
+            KotlinProjectionComArgumentKind.Double -> CodeBlock.of("rawArgs[%L] as Double", index)
+        }
 
     private fun authoringCcwDecodeArrayArgumentCode(
         parameter: KotlinProjectionAbiParameterBinding,
@@ -2579,6 +2997,7 @@ class KotlinProjectionSupportRenderer {
     private fun authoringCcwPostInvocationParameterCode(
         parameter: KotlinProjectionAbiParameterBinding,
         rawIndex: Int,
+        valueExpression: String,
     ): CodeBlock? {
         if (parameter.typeBinding.kind != KotlinProjectionAbiValueKind.Array ||
             parameter.category != WinRtMetadataParameterCategory.FillArray
@@ -2590,7 +3009,7 @@ class KotlinProjectionSupportRenderer {
             return CodeBlock.of(
                 "run {\n·val __arrayMarshaler = %L\n·__arrayMarshaler.copyManagedArray(%L, rawArgs[%L] as %T)\n}",
                 elementMarshaler,
-                parameter.name,
+                valueExpression,
                 rawIndex + 1,
                 RAW_ADDRESS_CLASS_NAME,
             )
@@ -2603,7 +3022,7 @@ class KotlinProjectionSupportRenderer {
         ) ?: return null
         return CodeBlock.of(
             "%L.forEachIndexed { __index, __element -> %L }",
-            parameter.name,
+            valueExpression,
             elementWrite,
         )
     }
@@ -2648,7 +3067,9 @@ class KotlinProjectionSupportRenderer {
             ),
         )
         KotlinProjectionAbiValueKind.Struct ->
-            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+            customStructAbi(binding)?.let { customAbi ->
+                CodeBlock.of("%T.%L(%L, %L)", customAbi.helperTypeName, customAbi.copyToFunctionName, valueExpression, outExpression)
+            } ?: if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T.Metadata.copyTo(%L, %L)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, valueExpression, outExpression)
             } else {
                 val structType = typeRenderer.nativeStructClassName(binding)
@@ -2665,6 +3086,27 @@ class KotlinProjectionSupportRenderer {
             PLATFORM_ABI_CLASS_NAME,
             outExpression,
         )
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedMapView -> authoringCcwWriteMappedCollectionReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> authoringCcwWriteAsyncReferenceReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Reference -> authoringCcwWriteReferenceReturnCode(
+            binding = binding,
+            outExpression = outExpression,
+            valueExpression = valueExpression,
+            projectionClass = WINRT_REFERENCE_PROJECTION_CLASS_NAME,
+        )
+        KotlinProjectionAbiValueKind.ReferenceArray -> authoringCcwWriteReferenceReturnCode(
+            binding = binding,
+            outExpression = outExpression,
+            valueExpression = valueExpression,
+            projectionClass = WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME,
+        )
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
@@ -2673,6 +3115,106 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.InspectableReference -> authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI return ${binding.describeAbiKind()}")
     }
+
+    private fun authoringCcwWriteMappedCollectionReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val projectionClass = when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable -> WINRT_ITERABLE_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedVector -> WINRT_LIST_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedVectorView -> WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedMap -> WINRT_DICTIONARY_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedMapView -> WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME
+            else -> return CodeBlock.of("error(%S)", "Unsupported authored ABI collection return ${binding.describeAbiKind()}")
+        }
+        val adapterArguments = authoringCcwMappedCollectionAdapterArguments(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI collection return ${binding.describeAbiKind()}")
+        return CodeBlock.builder()
+            .add("%T.writePointer(%L, %T.fromManaged(%L", PLATFORM_ABI_CLASS_NAME, outExpression, projectionClass, valueExpression)
+            .apply { adapterArguments.forEach { adapter -> add(", %L", adapter) } }
+            .add("))")
+            .build()
+    }
+
+    private fun authoringCcwMappedCollectionAdapterArguments(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): List<CodeBlock>? =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedVectorView ->
+                listOf(typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.singleOrNull() ?: return null) ?: return null)
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedMapView ->
+                listOf(
+                    typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(0) ?: return null) ?: return null,
+                    typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(1) ?: return null) ?: return null,
+                )
+            else -> null
+        }
+
+    private fun authoringCcwWriteReferenceReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+        projectionClass: ClassName,
+    ): CodeBlock {
+        val interfaceId = typeRenderer.referenceInterfaceIdCode(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI reference return ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.fromManaged(%L, %L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            projectionClass,
+            valueExpression,
+            interfaceId,
+        )
+    }
+
+    private fun authoringCcwWriteAsyncReferenceReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val interfaceId = authoringCcwAsyncReferenceInterfaceIdCode(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI async return ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+            valueExpression,
+            interfaceId,
+        )
+    }
+
+    private fun authoringCcwAsyncReferenceInterfaceIdCode(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedAsyncAction ->
+                CodeBlock.of("%T.IAsyncAction", WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME)
+            KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
+                val progressBinding = binding.typeArguments.singleOrNull() ?: return null
+                val progressSignature = typeRenderer.asyncOperationResultTypeSignature(progressBinding) ?: return null
+                CodeBlock.of("%T.interfaceId(%L)", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressSignature)
+            }
+            KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
+                val resultBinding = binding.typeArguments.singleOrNull() ?: return null
+                val resultSignature = typeRenderer.asyncOperationResultTypeSignature(resultBinding) ?: return null
+                CodeBlock.of("%T.interfaceId(%L)", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME, resultSignature)
+            }
+            KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
+                val resultBinding = binding.typeArguments.getOrNull(0) ?: return null
+                val progressBinding = binding.typeArguments.getOrNull(1) ?: return null
+                val resultSignature = typeRenderer.asyncOperationResultTypeSignature(resultBinding) ?: return null
+                val progressSignature = typeRenderer.asyncOperationResultTypeSignature(progressBinding) ?: return null
+                CodeBlock.of("%T.interfaceId(%L, %L)", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultSignature, progressSignature)
+            }
+            else -> null
+        }
 
     private fun authoringCcwWriteArrayReturnCode(
         binding: KotlinProjectionAbiTypeBinding,
@@ -2818,6 +3360,7 @@ class KotlinProjectionSupportRenderer {
 
     private fun supportFileSpec(fileName: String): FileSpec.Builder =
         FileSpec.builder(SUPPORT_PACKAGE, fileName)
+            .addGeneratedProjectionSuppressions()
             .addFileComment("Deterministic generator handoff for reference %L writer parity.", fileName)
 
     private fun KotlinTypeProjectionPlan.hasGeneratedRuntimeClassMetadataRegistration(): Boolean =
@@ -3480,7 +4023,7 @@ class KotlinProjectionSupportRenderer {
         code.indent()
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
-            val isActivatable = !semanticHelpers.isStatic(plan.type) && semanticHelpers.hasDefaultConstructor(plan.type)
+            val isActivatable = authoredRuntimeClassHasDefaultActivation(plan, semanticHelpers)
             val activatableInterfaces = factory.constructorFactories
             val staticInterfaces = factory.staticMemberTargets
             val composableInterfaces = factory.composableFactories
@@ -3490,7 +4033,7 @@ class KotlinProjectionSupportRenderer {
             code.add("serverFactoryTypeName = %S,\n", "ABI.${plan.type.qualifiedName}ServerActivationFactory")
             code.add("isActivatable = %L,\n", isActivatable)
             code.add("implementsIActivationFactory = true,\n")
-            code.add("factoryInterfaceNames = %L,\n", stringListCode((activatableInterfaces + staticInterfaces).distinct()))
+            code.add("factoryInterfaceNames = %L,\n", stringListCode((activatableInterfaces + staticInterfaces + composableInterfaces).distinct()))
             code.add("activatableFactoryInterfaceNames = %L,\n", stringListCode(activatableInterfaces))
             code.add("staticFactoryInterfaceNames = %L,\n", stringListCode(staticInterfaces))
             code.add("activatableFactoryMemberNames = %L,\n", stringListCode(authoringFactoryMemberReferences(plan, activatableInterfaces)))
@@ -3506,6 +4049,14 @@ class KotlinProjectionSupportRenderer {
         code.add(")")
         return code.build()
     }
+
+    private fun authoredRuntimeClassHasDefaultActivation(
+        plan: KotlinTypeProjectionPlan,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): Boolean =
+        !semanticHelpers.isStatic(plan.type) &&
+            plan.type.activation.isActivatable &&
+            plan.type.activation.activatableFactoryInterfaceName == null
 
     private fun authoringFactoryMemberReferences(
         plan: KotlinTypeProjectionPlan,
@@ -3587,5 +4138,17 @@ class KotlinProjectionSupportRenderer {
         const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
         const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR = "\u001F"
         const val TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR = "\u001F"
+        const val WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME = "Windows.Foundation.IStringable"
     }
+}
+
+private data class AuthoringServerFactoryInterface(
+    val name: String,
+    val kinds: Set<AuthoringServerFactoryInterfaceKind>,
+)
+
+private enum class AuthoringServerFactoryInterfaceKind {
+    Constructor,
+    Static,
+    Composable,
 }

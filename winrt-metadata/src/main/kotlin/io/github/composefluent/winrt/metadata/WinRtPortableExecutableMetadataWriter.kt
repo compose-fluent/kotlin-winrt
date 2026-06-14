@@ -54,6 +54,9 @@ private class WinmdBuilder(
                 if (descriptor.isActivatable) {
                     add(WINDOWS_FOUNDATION_METADATA_ACTIVATABLE)
                 }
+                if (descriptor.staticFactoryInterfaceNames.isNotEmpty()) {
+                    add(WINDOWS_FOUNDATION_METADATA_STATIC)
+                }
                 if (descriptor.interfaceNames.isNotEmpty()) {
                     add(WINDOWS_FOUNDATION_METADATA_DEFAULT)
                 }
@@ -207,6 +210,7 @@ private class WinmdBuilder(
             WINDOWS_FOUNDATION_METADATA_DEFAULT to emptyList<Int>(),
             WINDOWS_FOUNDATION_METADATA_OVERRIDABLE to emptyList(),
             WINDOWS_FOUNDATION_METADATA_ACTIVATABLE to listOf(ELEMENT_TYPE_U4),
+            WINDOWS_FOUNDATION_METADATA_STATIC to listOf(ELEMENT_TYPE_STRING),
             WINDOWS_FOUNDATION_METADATA_VERSION to listOf(ELEMENT_TYPE_U4),
             SYSTEM_RUNTIME_INTEROP_SERVICES_GUID to listOf(ELEMENT_TYPE_STRING),
         )
@@ -312,6 +316,18 @@ private class WinmdBuilder(
                     )
                 }
             }
+            descriptor.staticFactoryInterfaceNames.forEach { interfaceName ->
+                memberRefRowIds[WINDOWS_FOUNDATION_METADATA_STATIC]?.let { memberRefRowId ->
+                    rows += CustomAttributeRow(
+                        parentToken = hasCustomAttributeToken(
+                            rowId = typeDefRowId,
+                            tag = CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF,
+                        ),
+                        memberRefRowId = memberRefRowId,
+                        valueBlobIndex = blobs.index(stringCustomAttributeBlob(interfaceName)),
+                    )
+                }
+            }
         }
         return rows
     }
@@ -347,9 +363,12 @@ private class WinmdBuilder(
             0x00,
         )
 
-    private fun guidStringCustomAttributeBlob(value: String): ByteArray {
+    private fun guidStringCustomAttributeBlob(value: String): ByteArray =
+        stringCustomAttributeBlob(value)
+
+    private fun stringCustomAttributeBlob(value: String): ByteArray {
         val encoded = value.toByteArray(StandardCharsets.UTF_8)
-        require(encoded.size < 0x80) { "Test GUID attribute value is too long." }
+        require(encoded.size < 0x80) { "WinMD custom attribute string value is too long." }
         return byteArrayOf(
             0x01,
             0x00,
@@ -524,6 +543,7 @@ private class WinmdBuilder(
         const val WINDOWS_FOUNDATION_METADATA_DEFAULT = "Windows.Foundation.Metadata.DefaultAttribute"
         const val WINDOWS_FOUNDATION_METADATA_OVERRIDABLE = "Windows.Foundation.Metadata.OverridableAttribute"
         const val WINDOWS_FOUNDATION_METADATA_ACTIVATABLE = "Windows.Foundation.Metadata.ActivatableAttribute"
+        const val WINDOWS_FOUNDATION_METADATA_STATIC = "Windows.Foundation.Metadata.StaticAttribute"
         const val WINDOWS_FOUNDATION_METADATA_VERSION = "Windows.Foundation.Metadata.VersionAttribute"
         const val SYSTEM_RUNTIME_INTEROP_SERVICES_GUID = "System.Runtime.InteropServices.GuidAttribute"
     }

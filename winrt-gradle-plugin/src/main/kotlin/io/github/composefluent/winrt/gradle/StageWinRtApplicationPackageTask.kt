@@ -66,6 +66,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     abstract val runtimeIdentifier: Property<String>
 
     @get:Input
+    abstract val executableBaseName: Property<String>
+
+    @get:Input
     abstract val projectPriTargetPaths: MapProperty<String, String>
 
     @get:Input
@@ -100,6 +103,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packagePayloadFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val rootPackagePayloadFiles: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
@@ -141,6 +149,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         windowsSdkVersion.convention("")
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
+        executableBaseName.convention("app")
     }
 
     @TaskAction
@@ -158,6 +167,8 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         }
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
+        stageRootPackagePayloads(outputRoot)
+        WinRtApplicationManifestGenerator.writeApplicationManifest(outputRoot, executableBaseName.get())
         generateProjectPri(outputRoot)
         validateStagedManifestPayload(outputRoot)
     }
@@ -220,6 +231,18 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     val relativeTarget = explicitTarget ?: source.defaultPackagePayloadTarget(source.parent, projectRoot)
                     GradleFileOperations.copyFile(source, outputRoot.resolve(relativeTarget))
                 }
+            }
+    }
+
+    private fun stageRootPackagePayloads(outputRoot: Path) {
+        rootPackagePayloadFiles.files.asSequence()
+            .map { it.toPath() }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (!source.isRegularFile()) {
+                    throw GradleException("Declared root package payload must be a file: ${source.toAbsolutePath().normalize()}")
+                }
+                GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
             }
     }
 

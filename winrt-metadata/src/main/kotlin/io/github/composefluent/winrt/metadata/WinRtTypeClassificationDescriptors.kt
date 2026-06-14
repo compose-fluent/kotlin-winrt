@@ -316,6 +316,8 @@ private val MAPPED_TYPES: Map<String, WinRtMappedTypeDescriptor> = listOf(
     mapped("Windows.UI.Xaml.Input.ICommand", "System.Windows.Input", "ICommand", requiresMarshaling = true),
     mapped("Microsoft.UI.Xaml.Interop.IBindableIterable", "System.Collections", "IEnumerable", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.UI.Xaml.Interop.IBindableIterable", "System.Collections", "IEnumerable", requiresMarshaling = true, hasCustomMembersOutput = true),
+    mapped("Microsoft.UI.Xaml.Interop.IBindableVectorView", "System.Collections", "IList", requiresMarshaling = true, hasCustomMembersOutput = true),
+    mapped("Windows.UI.Xaml.Interop.IBindableVectorView", "System.Collections", "IList", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Microsoft.UI.Xaml.Interop.IBindableVector", "System.Collections", "IList", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.UI.Xaml.Interop.IBindableVector", "System.Collections", "IList", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", "System.Collections.Specialized", "INotifyCollectionChanged", requiresMarshaling = true),

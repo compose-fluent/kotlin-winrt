@@ -27,6 +27,8 @@ include(
     ":winrt-metadata",
     ":winrt-generator",
     ":winrt-authoring",
+    ":winrt-authoring:native-component-fixture",
+    ":winrt-authoring:native-consumer-fixture",
     ":winrt-compiler-plugin",
     ":winrt-projections",
     ":winrt-projections:windows-sdk",

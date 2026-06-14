@@ -1,9 +1,9 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
@@ -15,6 +15,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
+import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
@@ -325,7 +326,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         )
 
         assertEquals(
-            "sample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\ttrue\n",
+            "sample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\ttrue\t\t\n",
             output.readText(),
         )
     }
@@ -369,6 +370,52 @@ class KotlinWinRtAuthoringSourceScannerTest {
         val registrar = output.resolve("io/github/composefluent/winrt/projections/support/WinRTAuthoringTypeDetailsRegistrar.kt").readText()
         assertTrue(registrar.contains("object WinRTAuthoringTypeDetailsRegistrar"))
         assertTrue(registrar.contains("WinRT_App_TypeDetails.register()"))
+    }
+
+    @Test
+    fun renders_plain_authored_interface_methods_against_source_class() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-plain-interface-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "NativeClosableThing",
+            sourceTypeName = "sample.NativeClosableThing",
+            winRtBaseClassName = null,
+            winRtInterfaceNames = listOf("Windows.Foundation.IClosable"),
+            overridableInterfaceNames = emptyList(),
+            isPublic = true,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IClosable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Close",
+                                    returnTypeName = "Void",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_NativeClosableThing_TypeDetails.kt").readText()
+        assertTrue(generated.contains("(value as NativeClosableThing).close()"))
+        assertFalse(generated.contains("__winrtAuthoringInvokeClose"))
+        assertFalse(generated.contains("Authored WinRT override"))
     }
 
     @Test
@@ -453,7 +500,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
-    fun rejects_authored_type_details_for_interface_events_until_event_marshaling_exists() {
+    fun renders_authored_type_details_for_interface_events_without_explicit_accessor_methods() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-event-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
             packageName = "sample",
@@ -497,8 +544,21 @@ class KotlinWinRtAuthoringSourceScannerTest {
                             events = listOf(
                                 WinRtEventDefinition(
                                     name = "Changed",
-                                    delegateTypeName = "Windows.Foundation.EventHandler<Sample.Widget>",
+                                    delegateTypeName = "Sample.WidgetChangedHandler",
                                 ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventRegistrationToken",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition(name = "Value", typeName = "Int64"),
                             ),
                         ),
                     ),
@@ -506,20 +566,19 @@ class KotlinWinRtAuthoringSourceScannerTest {
             ),
         )
 
-        try {
-            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-                candidates = listOf(candidate),
-                metadataModel = metadataModel,
-                outputDirectory = output,
-            )
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("event 'Changed'"))
-            assertTrue(error.message.orEmpty().contains("TypeDetails event marshaling is not implemented"))
-            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt")))
-            return
-        }
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
 
-        throw AssertionError("Expected authored WinRT interface events to fail closed until event marshaling is implemented.")
+        val generated = output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt").readText()
+        assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeadd_Changed(__arg0)"))
+        assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
+        assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Int64))"))
+        assertTrue(generated.contains("val __arg0 = EventRegistrationToken(rawArgs[0] as Long)"))
+        assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
     @Test
@@ -617,7 +676,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeadd_Changed(__arg0)"))
         assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
-        assertTrue(generated.contains("EventRegistrationToken.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Int64))"))
+        assertTrue(generated.contains("val __arg0 = EventRegistrationToken(rawArgs[0] as Long)"))
         assertTrue(generated.contains("(value as Widget).__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
@@ -1357,6 +1417,74 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("Char).code.toShort()"))
         assertTrue(generated.contains("(__result as UInt).toInt()"))
         assertTrue(generated.contains("PlatformAbi.writeFloat("))
+    }
+
+    @Test
+    fun renders_authored_interface_property_accessors_in_vtable_order() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-property-accessor-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalJsonValue",
+            sourceTypeName = "sample.LocalJsonValue",
+            winRtBaseClassName = null,
+            winRtInterfaceNames = listOf("Sample.IJsonValue"),
+            overridableInterfaceNames = emptyList(),
+            isPublic = true,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "JsonValueType",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("String", 3u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IJsonValue",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "ValueType",
+                                    typeName = "Sample.JsonValueType",
+                                    getterMethodName = "get_ValueType",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Stringify",
+                                    returnTypeName = "System.String",
+                                    methodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalJsonValue_TypeDetails.kt").readText()
+        val getterIndex = generated.indexOf("(value as LocalJsonValue).valueType")
+        val methodIndex = generated.indexOf("(value as LocalJsonValue).stringify()")
+        assertTrue(generated, getterIndex >= 0)
+        assertTrue(generated, methodIndex > getterIndex)
+        assertTrue(generated, generated.contains("JsonValueType.Metadata.toAbi(__result"))
+        assertTrue(generated, generated.contains("as JsonValueType)"))
+        assertFalse(generated, generated.contains("(value as LocalJsonValue).get_ValueType()"))
     }
 
     @Test

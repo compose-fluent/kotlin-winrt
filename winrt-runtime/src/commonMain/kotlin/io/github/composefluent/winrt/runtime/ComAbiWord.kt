@@ -78,7 +78,7 @@ internal object ComAbiWord {
 
             is ComAbiValueKind.Struct ->
                 when (value) {
-                    is RawAddress -> pointer(value)
+                    is RawAddress -> PlatformAbi.structArgumentWord(kind.layout, value)
                     else -> error("Expected struct-compatible ABI address, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
                 }
         }

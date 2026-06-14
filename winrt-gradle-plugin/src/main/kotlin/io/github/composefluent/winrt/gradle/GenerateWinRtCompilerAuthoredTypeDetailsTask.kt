@@ -1,8 +1,8 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageIdentity
@@ -34,6 +34,9 @@ import kotlin.streams.asSequence
 abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor() : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
+
+    @get:Internal
+    abstract val legacyOutputDirectories: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
@@ -102,7 +105,11 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
     @TaskAction
     fun generate() {
         val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-        cleanDirectory(outputRoot)
+        legacyOutputDirectories.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot(outputRoot::equals)
+            .forEach(GradleFileOperations::deleteDirectory)
+        GradleFileOperations.cleanDirectory(outputRoot)
         val candidates = compilerCandidates.files
             .singleOrNull()
             ?.takeIf { file -> file.isFile }
@@ -140,15 +147,6 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
             outputDirectory = outputRoot,
             assemblyName = authoringAssemblyName.get(),
         )
-    }
-
-    private fun cleanDirectory(path: Path) {
-        if (!Files.exists(path)) {
-            return
-        }
-        Files.walk(path).use { stream ->
-            stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
-        }
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {

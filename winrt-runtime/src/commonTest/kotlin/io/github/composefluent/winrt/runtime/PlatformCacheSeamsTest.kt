@@ -30,6 +30,21 @@ class PlatformCacheSeamsTest {
     }
 
     @Test
+    fun weak_value_and_weak_key_seams_do_not_retain_cached_objects() {
+        val weakValues = WeakValueCache<String, Holder>()
+        val valueReference = cacheWeakValue(weakValues)
+
+        drainUntilCleared(valueReference)
+        assertNull(weakValues["key"])
+
+        val weakKeys = WeakKeyStateMap<Holder, String>()
+        val keyReference = cacheWeakKey(weakKeys)
+
+        drainUntilCleared(keyReference)
+        assertEquals("new-state", weakKeys.getOrPut(Holder("key")) { "new-state" })
+    }
+
+    @Test
     fun snapshot_list_and_finalization_hook_support_manual_cleanup() {
         val registrations = SnapshotList<String>()
         registrations += "first"
@@ -47,4 +62,29 @@ class PlatformCacheSeamsTest {
     private data class Holder(
         val value: String,
     )
+
+    private fun cacheWeakValue(cache: WeakValueCache<String, Holder>): PlatformManagedWeakReference<Holder> {
+        val holder = Holder("value")
+        cache["key"] = holder
+        assertEquals(holder, cache["key"])
+        return PlatformManagedWeakReference(holder)
+    }
+
+    private fun cacheWeakKey(cache: WeakKeyStateMap<Holder, String>): PlatformManagedWeakReference<Holder> {
+        val holder = Holder("key")
+        assertEquals("state", cache.getOrPut(holder) { "state" })
+        return PlatformManagedWeakReference(holder)
+    }
+
+    private fun drainUntilCleared(reference: PlatformManagedWeakReference<Holder>) {
+        repeat(10) {
+            PlatformFinalization.drain()
+            if (reference.get() == null) {
+                return
+            }
+            val pressure = List(128) { ByteArray(1024) }
+            assertEquals(128, pressure.size)
+        }
+        assertNull(reference.get())
+    }
 }

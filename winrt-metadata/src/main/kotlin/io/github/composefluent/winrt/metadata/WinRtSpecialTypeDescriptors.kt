@@ -22,10 +22,12 @@ enum class WinRtCollectionInterfaceKind(
 }
 
 enum class WinRtBindableCollectionKind(
+    val isReadOnly: Boolean,
     val isMutable: Boolean,
 ) {
-    Iterable(isMutable = false),
-    Vector(isMutable = true),
+    Iterable(isReadOnly = true, isMutable = false),
+    VectorView(isReadOnly = true, isMutable = false),
+    Vector(isReadOnly = false, isMutable = true),
 }
 
 enum class WinRtAsyncInterfaceKind {
@@ -394,8 +396,10 @@ private val COLLECTION_TYPES = mapOf(
 
 private val BINDABLE_COLLECTION_TYPES = mapOf(
     "Microsoft.UI.Xaml.Interop.IBindableIterable" to WinRtBindableCollectionKind.Iterable,
+    "Microsoft.UI.Xaml.Interop.IBindableVectorView" to WinRtBindableCollectionKind.VectorView,
     "Microsoft.UI.Xaml.Interop.IBindableVector" to WinRtBindableCollectionKind.Vector,
     "Windows.UI.Xaml.Interop.IBindableIterable" to WinRtBindableCollectionKind.Iterable,
+    "Windows.UI.Xaml.Interop.IBindableVectorView" to WinRtBindableCollectionKind.VectorView,
     "Windows.UI.Xaml.Interop.IBindableVector" to WinRtBindableCollectionKind.Vector,
 )
 

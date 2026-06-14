@@ -21,6 +21,8 @@ open class WinRtReferenceValueAdapter<T>(
     val projector: (IUnknownReference?) -> T,
     val marshaller: (T) -> ComObjectReference,
 ) {
+    open val abiValueIsComReference: Boolean = true
+
     open fun createInputMarshaler(value: T): WinRtObjectMarshaler =
         marshaller(value).let { reference ->
             WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
@@ -30,11 +32,37 @@ open class WinRtReferenceValueAdapter<T>(
         marshaller(value).let { reference ->
             WinRtObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
         }
+
+    open fun projectAbi(pointer: RawAddress): T {
+        val reference = if (PlatformAbi.isNull(pointer)) {
+            null
+        } else {
+            IUnknownReference(pointer.asRawComPtr(), preventReleaseOnDispose = true)
+        }
+        return try {
+            projector(reference)
+        } finally {
+            reference?.close()
+        }
+    }
+
+    open fun projectOwnedAbi(pointer: RawAddress): T =
+        try {
+            projectAbi(pointer)
+        } finally {
+            disposeAbi(pointer)
+        }
+
+    open fun disposeAbi(pointer: RawAddress) {
+        if (!PlatformAbi.isNull(pointer)) {
+            IUnknownReference(pointer.asRawComPtr()).close()
+        }
+    }
 }
 
 object WinRtReferenceValueAdapters {
     val string: WinRtReferenceValueAdapter<String> =
-        WinRtReferenceValueAdapter(
+        object : WinRtReferenceValueAdapter<String>(
             projectedTypeName = "String",
             typeSignature = WinRtTypeSignature.string(),
             projector = { reference ->
@@ -51,7 +79,28 @@ object WinRtReferenceValueAdapters {
                 }
             },
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, IID.NullableString) },
-        )
+        ) {
+            override val abiValueIsComReference: Boolean = false
+
+            override fun createInputMarshaler(value: String): WinRtObjectMarshaler {
+                val marshaler = NativeStringMarshaller.createMarshaler(value)
+                return WinRtObjectMarshaler(NativeStringMarshaller.getAbi(marshaler)) {
+                    NativeStringMarshaller.disposeMarshaler(marshaler)
+                }
+            }
+
+            override fun createOutputMarshaler(value: String): WinRtObjectMarshaler {
+                val hstring = NativeStringMarshaller.fromManaged(value)
+                return WinRtObjectMarshaler(NativeStringMarshaller.getAbi(hstring))
+            }
+
+            override fun projectAbi(pointer: RawAddress): String =
+                NativeStringMarshaller.fromAbi(pointer)
+
+            override fun disposeAbi(pointer: RawAddress) {
+                NativeStringMarshaller.disposeAbi(pointer)
+            }
+        }
 
     val inspectable: WinRtReferenceValueAdapter<IInspectableReference> =
         WinRtReferenceValueAdapter(
@@ -331,14 +380,14 @@ object WinRtIteratorProjection {
             initialized = true
             hasCurrent = iterable.hasCurrent()
             if (hasCurrent) {
-                currentValue = projectBorrowed(iterable.currentOrNull(), elementAdapter)
+                currentValue = projectOwned(iterable.currentAbiOrNull(), elementAdapter)
             }
         }
 
         private fun advance() {
             hasCurrent = iterable.moveNext()
             currentValue = if (hasCurrent) {
-                projectBorrowed(iterable.currentOrNull(), elementAdapter)
+                projectOwned(iterable.currentAbiOrNull(), elementAdapter)
             } else {
                 null
             }
@@ -402,7 +451,7 @@ object WinRtIteratorProjection {
         fun detachReference(): RawAddress = host.detachReference(iteratorInterfaceId(elementAdapter))
     }
 
-    internal fun <T> detachReference(
+    fun <T> detachReference(
         managed: Iterator<T>,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): RawAddress = ToAbiHelper(managed, elementAdapter).detachReference()
@@ -465,7 +514,7 @@ object WinRtReadOnlyListProjection {
                     vectorView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
-                elementProjector = elementAdapter.projector,
+                elementAdapter = elementAdapter,
             )
         }
 
@@ -605,7 +654,7 @@ object WinRtListProjection {
                     vector.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
-                elementProjector = elementAdapter.projector,
+                elementAdapter = elementAdapter,
                 elementMarshaller = elementAdapter::createInputMarshaler,
             )
         }
@@ -839,8 +888,8 @@ object WinRtReadOnlyDictionaryProjection {
                 iterableInterfaceId = iterableInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
                 iteratorInterfaceId = iteratorInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
                 keyValuePairInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
-                keyProjector = keyAdapter.projector,
-                valueProjector = valueAdapter.projector,
+                keyAdapter = keyAdapter,
+                valueAdapter = valueAdapter,
                 keyMarshaller = keyAdapter::createInputMarshaler,
             )
         }
@@ -989,8 +1038,8 @@ object WinRtDictionaryProjection {
                 iterableInterfaceId = iterableInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
                 iteratorInterfaceId = iteratorInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
                 keyValuePairInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
-                keyProjector = keyAdapter.projector,
-                valueProjector = valueAdapter.projector,
+                keyAdapter = keyAdapter,
+                valueAdapter = valueAdapter,
                 keyMarshaller = keyAdapter::createInputMarshaler,
                 valueMarshaller = valueAdapter::createInputMarshaler,
             )
@@ -1223,8 +1272,8 @@ fun <K, V> winRtKeyValuePairAdapter(
             )
             pair.use {
                 ProjectionEntrySnapshot(
-                    projectBorrowed(it.key(), keyAdapter),
-                    projectBorrowed(it.value(), valueAdapter),
+                    projectOwned(it.keyAbiOrNull(), keyAdapter),
+                    projectOwned(it.valueAbiOrNull(), valueAdapter),
                 )
             }
         },
@@ -1306,23 +1355,22 @@ private fun <T> projectBorrowed(
     reference: IUnknownReference?,
     adapter: WinRtReferenceValueAdapter<T>,
 ): T = try {
-    adapter.projector(reference)
+    adapter.projectAbi(reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer)
 } finally {
-    reference?.close()
+    if (adapter.abiValueIsComReference) {
+        reference?.close()
+    }
 }
+
+private fun <T> projectOwned(
+    pointer: RawAddress?,
+    adapter: WinRtReferenceValueAdapter<T>,
+): T = adapter.projectOwnedAbi(pointer ?: PlatformAbi.nullPointer)
 
 private fun <T> decodeBorrowedValue(
     pointer: RawAddress,
     adapter: WinRtReferenceValueAdapter<T>,
-): T =
-    projectBorrowed(
-        if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
-            IUnknownReference(pointer.asRawComPtr(), preventReleaseOnDispose = true)
-        },
-        adapter,
-    )
+): T = adapter.projectAbi(pointer)
 
 private fun RawAddress.writeReturnedPointer(pointer: RawAddress) {
     PlatformAbi.writePointer(this, pointer)

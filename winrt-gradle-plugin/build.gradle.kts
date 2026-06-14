@@ -24,10 +24,9 @@ dependencies {
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
     implementation(projects.winrtGenerator)
+    implementation(projects.winrtCompilerPlugin)
     implementation(libs.kotlinpoet)
     implementation(libs.kotlin.gradle.plugin)
-    compileOnly(projects.winrtCompilerPlugin)
-    runtimeOnly(projects.winrtCompilerPlugin)
     testImplementation(libs.junit)
     testImplementation(gradleTestKit())
 }

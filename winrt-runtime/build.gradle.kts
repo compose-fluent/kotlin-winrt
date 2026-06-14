@@ -31,7 +31,6 @@ kotlin {
         }
 
         jvmTest {
-            kotlin.srcDirs("src/test/kotlin", "src/jvmTest/kotlin")
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation(libs.junit)
@@ -40,9 +39,3 @@ kotlin {
     }
 }
 
-// Native test execution is not part of the active mingwX64 baseline yet. Realize
-// the link task during configuration so Kotlin Gradle Plugin metrics do not
-// create it after project services are closed while storing the configuration cache.
-tasks.named("linkDebugTestMingwX64") {
-    enabled = false
-}.get()

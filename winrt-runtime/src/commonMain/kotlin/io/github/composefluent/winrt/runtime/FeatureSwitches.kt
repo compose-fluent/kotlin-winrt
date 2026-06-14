@@ -5,8 +5,7 @@ package io.github.composefluent.winrt.runtime
  * `.cswinrt/src/WinRT.Runtime/Configuration/FeatureSwitches.cs`.
  *
  * Kotlin/JVM narrows `.cswinrt`'s `AppContext`-backed lookup to JVM system properties with
- * Kotlin-owned switch names. Kotlin/Native currently falls back to defaults unless tests override
- * values.
+ * Kotlin-owned switch names. Kotlin/Native reads process environment variables with the same names.
  */
 internal object FeatureSwitches {
     const val EnableDynamicObjectsSupportPropertyName: String = "KOTLIN_WINRT_ENABLE_DYNAMIC_OBJECTS_SUPPORT"
@@ -92,5 +91,17 @@ internal object FeatureSwitches {
 
     private fun booleanState(value: Boolean): Int = if (value) 1 else -1
 }
+
+internal fun parseFeatureSwitchValue(value: String?): Boolean? =
+    value
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { trimmed ->
+            when (trimmed.lowercase()) {
+                "true", "1", "yes", "on" -> true
+                "false", "0", "no", "off" -> false
+                else -> null
+            }
+        }
 
 internal expect fun platformReadFeatureSwitch(propertyName: String): Boolean?

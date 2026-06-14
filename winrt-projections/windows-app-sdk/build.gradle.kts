@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("winrt.publish")
     id("io.github.composefluent.winrt")
@@ -27,8 +27,13 @@ mavenPublishing {
     coordinates(group.toString(), "winrt-projections-windows-app-sdk", version.toString())
 }
 
+kotlin {
+    jvm()
+    mingwX64()
+}
+
 dependencies {
-    implementation(project(":winrt-projections:windows-sdk"))
+    commonMainImplementation(project(":winrt-projections:windows-sdk"))
 }
 
 winRt {

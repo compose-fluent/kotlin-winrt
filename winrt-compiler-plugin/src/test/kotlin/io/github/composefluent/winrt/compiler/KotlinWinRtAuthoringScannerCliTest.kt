@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -198,8 +198,8 @@ class KotlinWinRtAuthoringScannerCliTest {
 
         assertEquals(
             listOf(
-                "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue",
-                "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t\tfalse",
+                "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\t\t",
+                "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t\tfalse\t\t",
                 "sample\tStringableThing\tsample.StringableThing\t\tWindows.Foundation.IStringable\t\ttrue",
             ).joinToString("\n"),
             output.readText().trimEnd(),
@@ -359,7 +359,7 @@ class KotlinWinRtAuthoringScannerCliTest {
         )
 
         assertEquals(
-            "Sample\tApp\tSample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\n",
+            "Sample\tApp\tSample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\t\t\n",
             output.readText(),
         )
     }
@@ -648,6 +648,8 @@ class KotlinWinRtAuthoringScannerCliTest {
                 baseClassName = "Microsoft.UI.Xaml.Controls.ContentControl",
                 interfaceNames = ["Windows.Foundation.IStringable"],
                 overridableInterfaceNames = ["Microsoft.UI.Xaml.Controls.IContentControlOverrides"],
+                activatableFactoryInterfaceName = "Sample.IWidgetFactory",
+                staticFactoryInterfaceNames = ["Sample.IWidgetStatics"],
             )
             class LocalContentControl
             """.trimIndent(),
@@ -656,6 +658,8 @@ class KotlinWinRtAuthoringScannerCliTest {
             """
             Microsoft.UI.Xaml.Controls.ContentControl	RuntimeClass	Microsoft.UI.Xaml.Controls.IContentControlOverrides
             Microsoft.UI.Xaml.Controls.IContentControlOverrides	Interface
+            Sample.IWidgetFactory	Interface
+            Sample.IWidgetStatics	Interface
             Windows.Foundation.IStringable	Interface
             """.trimIndent(),
         )
@@ -672,7 +676,7 @@ class KotlinWinRtAuthoringScannerCliTest {
         )
 
         assertEquals(
-            "sample\tLocalContentControl\tsample.LocalContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides;Windows.Foundation.IStringable\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides\ttrue",
+            "sample\tLocalContentControl\tsample.LocalContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides;Windows.Foundation.IStringable\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides\ttrue\tSample.IWidgetFactory\tSample.IWidgetStatics",
             output.readText().trimEnd(),
         )
     }
@@ -960,7 +964,7 @@ class KotlinWinRtAuthoringScannerCliTest {
 
         assertEquals(
             listOf(
-                "sample\tSampleAutomationPeer\tsample.SampleAutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.AutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides\tMicrosoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides\ttrue",
+                "sample\tSampleAutomationPeer\tsample.SampleAutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.AutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides\tMicrosoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides\ttrue\t\t",
                 "sample\tSampleHostPanel\tsample.SampleHostPanel\tMicrosoft.UI.Xaml.Controls.Grid\tMicrosoft.UI.Xaml.IFrameworkElementOverrides;Microsoft.UI.Xaml.IUIElementOverrides\tMicrosoft.UI.Xaml.IFrameworkElementOverrides;Microsoft.UI.Xaml.IUIElementOverrides\ttrue",
             ).joinToString("\n"),
             output.readText().trimEnd(),

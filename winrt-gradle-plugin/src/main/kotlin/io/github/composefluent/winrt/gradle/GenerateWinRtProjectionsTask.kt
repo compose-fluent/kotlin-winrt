@@ -1,14 +1,14 @@
 package io.github.composefluent.winrt.gradle
 
 import com.squareup.kotlinpoet.ClassName
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
-import io.github.composefluent.winrt.authoring.authoringTypeDetailsRegistrarName
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
-import io.github.composefluent.winrt.authoring.writeAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegistrarName
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
+import io.github.composefluent.winrt.compiler.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
@@ -59,6 +59,12 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 
     @get:OutputDirectory
     abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
+
+    @get:Internal
+    abstract val legacyOutputDirectories: ConfigurableFileCollection
+
+    @get:Input
+    abstract val emitJvmAuthoringHostExports: Property<Boolean>
 
     @get:Input
     abstract val metadataInputs: ListProperty<String>
@@ -161,6 +167,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }.submit(GenerateWinRtProjectionsWorkAction::class.java) { parameters ->
             parameters.outputDirectory.set(outputDirectory)
             parameters.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
+            parameters.legacyOutputDirectories.from(legacyOutputDirectories)
             parameters.metadataInputs.set(metadataInputs)
             parameters.metadataInputFiles.from(metadataInputFiles)
             parameters.sourceRoots.from(sourceRoots)
@@ -183,6 +190,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             parameters.projectModel.set(projectModel)
             parameters.authoringAssemblyName.set(authoringAssemblyName)
             parameters.authoringTargetArtifactName.set(authoringTargetArtifactName)
+            parameters.emitJvmAuthoringHostExports.set(emitJvmAuthoringHostExports)
             parameters.authoringScannerClasspath.from(authoringScannerClasspath)
             parameters.authoringScannerJvmArgs.set(authoringScannerJvmArgs)
             parameters.workDirectory.set(temporaryDir)
@@ -193,6 +201,8 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 internal interface GenerateWinRtProjectionsWorkParameters : WorkParameters {
     val outputDirectory: DirectoryProperty
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
+    val legacyOutputDirectories: ConfigurableFileCollection
+    val emitJvmAuthoringHostExports: Property<Boolean>
     val metadataInputs: ListProperty<String>
     val metadataInputFiles: ConfigurableFileCollection
     val sourceRoots: ConfigurableFileCollection
@@ -232,6 +242,10 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val authoringTypeDetailsRoot = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath()
             .toAbsolutePath()
             .normalize()
+        parameters.legacyOutputDirectories.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot { legacyRoot -> legacyRoot == generatedRoot || legacyRoot == authoringTypeDetailsRoot }
+            .forEach(GradleFileOperations::deleteDirectory)
         cleanDirectory(generatedRoot)
         cleanDirectory(authoringTypeDetailsRoot)
         var sources = metadataSources().withWindowsSdkSourceForProjectionRoots(
@@ -341,23 +355,28 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
         val projectionModel = if (parameters.projectModel.get() == "application") baseModel else model
+        val authoredRuntimeClassNames = authoringCandidates
+            .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
+            .filterTo(mutableSetOf(), String::isNotBlank)
+        val projectionContext = WinRtMetadataProjectionContext(
+            sources = sources,
+            include = parameters.includeNamespaces.get().toSet() +
+                effectiveIncludeTypes.toSet() +
+                dependencyProjectionSurfaceTypes.toSet() +
+                authoringCandidateMetadataRoots.toSet(),
+            exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
+            excludedTypes = effectiveExcludeTypes.toSet(),
+            additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
+            component = exportedAuthoringCandidates.isNotEmpty(),
+        )
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             groupProjectionFilesByPackageOnWrite = true,
-            projectionContext = WinRtMetadataProjectionContext(
-                sources = sources,
-                include = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet(),
-                exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
-                excludedTypes = effectiveExcludeTypes.toSet(),
-                additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
-            ),
-            suppressedProjectionTypeNames = (
-                dependencyProjectionTypeNames +
-                    authoringCandidates
-                        .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
-                        .filterTo(mutableSetOf(), String::isNotBlank)
-                ),
+            projectionContext = projectionContext,
+            suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
+            emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
         ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
         writeAuthoringMetadataIndex(
             mergedAuthoringMetadataIndexTypes(authoringModel, parameters.dependencyIdentityFiles.files),
@@ -493,7 +512,12 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             )
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
-        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
+        val dependencyAuthoredMetadataSources = parameters.dependencyIdentityFiles.files
+            .flatMap(::readAuthoredMetadata)
+            .map(Path::of)
+            .filter(Files::isRegularFile)
+            .map(WinRtMetadataSource::path)
+        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
         return if (applicationPackagingOnly) {
             sources
         } else {
@@ -676,7 +700,7 @@ internal fun dependencyProjectionSurfaceTypeNames(
     identityFiles
         .flatMap { identityFile ->
             val identity = readProjectionSurfaceIdentity(identityFile)
-            identity.projectedTypes?.takeIf(List<String>::isNotEmpty) ?: identity.includeTypes
+            identity.includeTypes + identity.projectedTypes.orEmpty()
         }
         .distinct()
         .sorted()
@@ -688,7 +712,7 @@ internal fun mergedAuthoringMetadataIndexTypes(
     model.namespaces
         .flatMap { namespace -> namespace.types }
         .map { type ->
-            io.github.composefluent.winrt.authoring.IndexedWinRtType(
+            io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType(
                 qualifiedName = type.qualifiedName,
                 kind = type.kind.name,
                 overridableInterfaces = type.implementedInterfaces
@@ -700,8 +724,15 @@ internal fun mergedAuthoringMetadataIndexTypes(
             )
         } +
         identityFiles
-            .flatMap(::readAuthoringMetadataIndexRows)
-            .let { rows -> parseAuthoringMetadataIndexRows(rows, "dependency identity authoringMetadataIndexRows").values } +
+            .flatMap { identityFile ->
+                readAuthoringMetadataIndexRows(identityFile)
+                    .let { rows ->
+                        parseAuthoringMetadataIndexRows(
+                            rows,
+                            "${identityFile.absolutePath} authoringMetadataIndexRows",
+                        ).values
+                    }
+            } +
         identityFiles
             .flatMap(::readAuthoringMetadataIndexes)
             .map(Path::of)
@@ -715,7 +746,8 @@ private fun dependencyProjectedTypeNames(
     model: WinRtMetadataModel,
     identity: ProjectionSurfaceIdentity,
 ): List<String> {
-    return identity.projectedTypes.orEmpty()
+    return (identity.includeTypes + identity.projectedTypes.orEmpty())
+        .distinct()
         .filter { typeName -> model.namespaces.any { namespace -> namespace.types.any { it.qualifiedName == typeName } } }
 }
 
@@ -771,7 +803,7 @@ internal fun List<WinRtMetadataSource>.withWindowsSdkSourceForProjectionRoots(
 
 internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRtAuthoredTypeCandidate>): List<String> =
     candidates
-        .flatMap { candidate -> candidate.winRtInterfaceNames + candidate.winRtBaseClassName.orEmpty() }
+        .flatMap { candidate -> candidate.winRtInterfaceNames + candidate.winRtBaseClassName.orEmpty() + candidate.sourceTypeName }
         .map(String::trim)
         .filter(String::isNotEmpty)
         .distinct()

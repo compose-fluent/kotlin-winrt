@@ -225,13 +225,21 @@ object ComWrappersSupport {
     fun tryUnwrapObject(
         value: Any?,
         interfaceType: WinRtTypeHandle? = null,
-    ): ComObjectReference? =
-        WinRtBorrowedReferenceSupport.tryBorrowReference(
+    ): ComObjectReference? {
+        if (value is ComObjectReference) {
+            return if (interfaceType == null || interfaceType.interfaceId == value.interfaceId) {
+                cloneComReference(value)
+            } else {
+                value.tryQueryInterface(interfaceType.interfaceId)
+            }
+        }
+        return WinRtBorrowedReferenceSupport.tryBorrowReference(
             value = value,
             interfaceType = interfaceType,
             unwrapWinRtObject = ::borrowableWinRtObject,
             cloneReference = ::cloneComReference,
         )
+    }
 
     fun createRcwForComObject(
         pointer: RawAddress,
@@ -321,6 +329,23 @@ object ComWrappersSupport {
         }
         val requestedInterface = interfaceId ?: cachedHost.defaultInterfaceId
         return cachedHost.createReference(requestedInterface)
+    }
+
+    fun createCCWForActivationFactory(
+        factory: WinRtActivationFactory,
+        factoryInterfaces: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+        interfaceId: Guid = IID.IActivationFactory,
+    ): ComObjectReference {
+        val definition = WinRtActivationFactorySupport.createCcwDefinition(factory, factoryInterfaces)
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = definition.interfaceDefinitions,
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+            defaultInterfaceId = definition.defaultInterfaceId,
+            runtimeClassName = definition.runtimeClassName,
+            managedValue = factory,
+            queryInterfaceFallback = null,
+        )
+        return CachedCcwHost(host, definition.defaultInterfaceId).createReference(interfaceId)
     }
 
     private fun createCachedCcwHost(value: Any): CachedCcwHost {

@@ -1,17 +1,17 @@
 package io.github.composefluent.winrt.compiler
 
-import io.github.composefluent.winrt.authoring.IndexedWinRtType
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringMetadataModel
-import io.github.composefluent.winrt.authoring.KotlinWinRtProjectionTypeIndexRecord
-import io.github.composefluent.winrt.authoring.PROJECTION_PACKAGE_PREFIX
-import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
-import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceNames
-import io.github.composefluent.winrt.authoring.projectionPackageToMetadataName
-import io.github.composefluent.winrt.authoring.projectionTypeIndexRecordForSourceType
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
-import io.github.composefluent.winrt.authoring.authoringTypeDetailsRegistrarName
+import io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringMetadataModel
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtProjectionTypeIndexRecord
+import io.github.composefluent.winrt.compiler.authoring.PROJECTION_PACKAGE_PREFIX
+import io.github.composefluent.winrt.compiler.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
+import io.github.composefluent.winrt.compiler.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.compiler.authoring.projectionPackageToMetadataName
+import io.github.composefluent.winrt.compiler.authoring.projectionTypeIndexRecordForSourceType
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegistrarName
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
@@ -63,6 +63,8 @@ import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.typeOrNull
+import org.jetbrains.kotlin.ir.types.makeNullable
+import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
@@ -74,6 +76,8 @@ import org.jetbrains.kotlin.ir.builders.irGetObject
 import org.jetbrains.kotlin.ir.builders.irEquals
 import org.jetbrains.kotlin.ir.builders.irIfThen
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
+import org.jetbrains.kotlin.ir.builders.irBranch
+import org.jetbrains.kotlin.ir.builders.irElseBranch
 import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irNotEquals
 import org.jetbrains.kotlin.ir.builders.irNull
@@ -81,6 +85,7 @@ import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
 import org.jetbrains.kotlin.ir.builders.irUnit
+import org.jetbrains.kotlin.ir.builders.irWhen
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl
@@ -323,6 +328,7 @@ class KotlinWinRtIrGenerationExtension(
         val classContexts = moduleFragment.files
             .asSequence()
             .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .filterNot { file -> file.isKotlinWinRtGeneratedFile() }
             .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
             .toList()
         val sourceSubtypedNames = sourceSubtypedNames(classContexts)
@@ -374,6 +380,7 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment.files
             .asSequence()
             .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .filterNot { file -> file.isKotlinWinRtGeneratedFile() }
             .forEach { file ->
                 file.transformChildrenVoid(
                     object : IrElementTransformerVoidWithContext() {
@@ -402,6 +409,16 @@ class KotlinWinRtIrGenerationExtension(
         when {
             targetName in runtimeClassNames -> targetName
             else -> projectionPackageToMetadataName(targetName).takeIf { metadataName -> metadataName in runtimeClassNames }
+        }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrFile.isKotlinWinRtGeneratedFile(): Boolean =
+        annotations.any { annotation ->
+            annotation.symbol.owner.parentClassOrNull?.fqNameWhenAvailable?.asString() == "kotlin.Suppress" &&
+                annotation.arguments.any { argument ->
+                    argument.stringConstantValue() == KOTLIN_WINRT_GENERATED_SUPPRESS_MARKER ||
+                        KOTLIN_WINRT_GENERATED_SUPPRESS_MARKER in argument.stringArrayConstantValue()
+                }
         }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -451,12 +468,12 @@ class KotlinWinRtIrGenerationExtension(
                         }
                         return call
                     }
-                    if (!directLowerings.hasJvmFfmSymbols) {
+                    if (!directLowerings.hasDirectCallBackend) {
                         if (!reportedMissingDirectLowering) {
                             reportedMissingDirectLowering = true
                             pluginContext.reportCompilerPluginMessage(
                                 CompilerMessageSeverity.ERROR,
-                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with JVM target 25 and a JDK that exposes java.lang.foreign. The compiler plugin loaded, but JVM FFM symbols were not visible to IR lowering; remove lower -Xjdk-release values such as -Xjdk-release=17 for WinRT JVM compilation.",
+                                "kotlin-winrt projection intrinsic lowering requires a direct-call backend. For JVM projections use JVM target 25 with a JDK that exposes java.lang.foreign; for mingwX64 projections the Kotlin/Native cinterop symbols must be visible to IR lowering.",
                             )
                         }
                         return call
@@ -513,6 +530,7 @@ class KotlinWinRtIrGenerationExtension(
         private val platformAbiAllocateDoubleSlot: IrSimpleFunctionSymbol,
         private val platformAbiAllocateBytes: IrSimpleFunctionSymbol,
         private val platformAbiReadPointer: IrSimpleFunctionSymbol,
+        private val platformAbiReadPointerAt: IrSimpleFunctionSymbol,
         private val platformAbiReadInt8: IrSimpleFunctionSymbol,
         private val platformAbiReadInt16: IrSimpleFunctionSymbol,
         private val platformAbiReadInt32: IrSimpleFunctionSymbol,
@@ -544,9 +562,10 @@ class KotlinWinRtIrGenerationExtension(
         private val uintConstructor: IrConstructorSymbol?,
         private val ulongConstructor: IrConstructorSymbol?,
         private val jvmFfmSymbols: JvmFfmSymbols?,
+        private val nativeCInteropSymbols: NativeCInteropSymbols?,
     ) {
-        val hasJvmFfmSymbols: Boolean
-            get() = jvmFfmSymbols != null
+        val hasDirectCallBackend: Boolean
+            get() = jvmFfmSymbols != null || nativeCInteropSymbols != null
 
         fun lower(
             intrinsicName: String,
@@ -650,13 +669,17 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             kind: ProjectedObjectGetterKind,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (!symbols.canLower(argumentKinds)) {
+            if (
+                jvmSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true &&
+                nativeSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true
+            ) {
                 return null
             }
             val wrap = call.arguments.getOrNull(4) ?: return null
@@ -751,8 +774,9 @@ class KotlinWinRtIrGenerationExtension(
                         }
                         val abiValues = argumentKinds.map(::abiValueFor)
                         val readResultBlock = builder.irBlock(resultType = call.type) {
-                            +jvmFfmCallUnitBlock(
-                                symbols = symbols,
+                            +directCallUnitBlock(
+                                jvmSymbols = jvmSymbols,
+                                nativeSymbols = nativeSymbols,
                                 builder = builder,
                                 pluginContext = pluginContext,
                                 reference = reference,
@@ -827,13 +851,17 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (!symbols.canLower(argumentKinds)) {
+            if (
+                jvmSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true &&
+                nativeSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true
+            ) {
                 return null
             }
             val values = call.varargValues(UnitCallAbiShape.varargValueCount(argumentKinds), varargIndex = 4) ?: return null
@@ -927,8 +955,9 @@ class KotlinWinRtIrGenerationExtension(
                         }
                         val abiValues = argumentKinds.map(::abiValueFor)
                         val readResultBlock = builder.irBlock(resultType = call.type) {
-                            +jvmFfmCallUnitBlock(
-                                symbols = symbols,
+                            +directCallUnitBlock(
+                                jvmSymbols = jvmSymbols,
+                                nativeSymbols = nativeSymbols,
                                 builder = builder,
                                 pluginContext = pluginContext,
                                 reference = reference,
@@ -993,7 +1022,14 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             kind: ProjectedObjectGetterKind,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1033,8 +1069,9 @@ class KotlinWinRtIrGenerationExtension(
                                     isMutable = false,
                                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                                 )
-                                +jvmFfmCallUnitBlock(
-                                    symbols = symbols,
+                                +directCallUnitBlock(
+                                    jvmSymbols = jvmSymbols,
+                                    nativeSymbols = nativeSymbols,
                                     builder = builder,
                                     pluginContext = pluginContext,
                                     reference = reference,
@@ -1099,7 +1136,8 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             includeProjectedObjectArgument: Boolean,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1107,6 +1145,22 @@ class KotlinWinRtIrGenerationExtension(
                 call.arguments.getOrNull(3) ?: return null
             } else {
                 null
+            }
+            val argumentKinds =
+                if (projectedObject == null) {
+                    listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)
+                } else {
+                    listOf(
+                        UnitCallAbiArgumentKind.Object,
+                        UnitCallAbiArgumentKind.Object,
+                        UnitCallAbiArgumentKind.Object,
+                    )
+                }
+            if (
+                jvmSymbols?.canLower(argumentKinds) != true &&
+                nativeSymbols?.canLower(argumentKinds) != true
+            ) {
+                return null
             }
             val marshaler = call.arguments.getOrNull(if (includeProjectedObjectArgument) 4 else 3) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
@@ -1140,16 +1194,6 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        val argumentKinds =
-                            if (projectedObject == null) {
-                                listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)
-                            } else {
-                                listOf(
-                                    UnitCallAbiArgumentKind.Object,
-                                    UnitCallAbiArgumentKind.Object,
-                                    UnitCallAbiArgumentKind.Object,
-                                )
-                            }
                         val values =
                             if (projectedObject == null) {
                                 listOf(builder.irGet(lengthOut), builder.irGet(dataOut))
@@ -1160,8 +1204,9 @@ class KotlinWinRtIrGenerationExtension(
                                     builder.irGet(dataOut),
                                 )
                             }
-                        +jvmFfmCallUnitBlock(
-                            symbols = symbols,
+                        +directCallUnitBlock(
+                            jvmSymbols = jvmSymbols,
+                            nativeSymbols = nativeSymbols,
                             builder = builder,
                             pluginContext = pluginContext,
                             reference = reference,
@@ -1195,7 +1240,14 @@ class KotlinWinRtIrGenerationExtension(
             kind: ProjectedObjectGetterKind,
             nullable: Boolean,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1222,8 +1274,9 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        +jvmFfmCallUnitBlock(
-                            symbols = symbols,
+                        +directCallUnitBlock(
+                            jvmSymbols = jvmSymbols,
+                            nativeSymbols = nativeSymbols,
                             builder = builder,
                             pluginContext = pluginContext,
                             reference = reference,
@@ -1335,7 +1388,14 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1371,8 +1431,9 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        +jvmFfmCallUnitBlock(
-                            symbols = symbols,
+                        +directCallUnitBlock(
+                            jvmSymbols = jvmSymbols,
+                            nativeSymbols = nativeSymbols,
                             builder = builder,
                             pluginContext = pluginContext,
                             reference = reference,
@@ -1502,7 +1563,14 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1542,8 +1610,9 @@ class KotlinWinRtIrGenerationExtension(
                         }
                         +builder.irTry(
                             type = pluginContext.irBuiltIns.unitType,
-                            tryResult = jvmFfmCallUnitBlock(
-                                symbols = symbols,
+                            tryResult = directCallUnitBlock(
+                                jvmSymbols = jvmSymbols,
+                                nativeSymbols = nativeSymbols,
                                 builder = builder,
                                 pluginContext = pluginContext,
                                 reference = reference,
@@ -1575,7 +1644,14 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1610,8 +1686,9 @@ class KotlinWinRtIrGenerationExtension(
                         +builder.irTry(
                             type = call.type,
                             tryResult = builder.irBlock(resultType = call.type) {
-                                +jvmFfmCallUnitBlock(
-                                    symbols = symbols,
+                                +directCallUnitBlock(
+                                    jvmSymbols = jvmSymbols,
+                                    nativeSymbols = nativeSymbols,
                                     builder = builder,
                                     pluginContext = pluginContext,
                                     reference = reference,
@@ -1651,13 +1728,17 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (!symbols.canLower(argumentKinds)) {
+            if (
+                jvmSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true &&
+                nativeSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true
+            ) {
                 return null
             }
             val adapter = call.arguments.getOrNull(4) ?: return null
@@ -1759,8 +1840,9 @@ class KotlinWinRtIrGenerationExtension(
                         +builder.irTry(
                             type = call.type,
                             tryResult = builder.irBlock(resultType = call.type) {
-                                +jvmFfmCallUnitBlock(
-                                    symbols = symbols,
+                                +directCallUnitBlock(
+                                    jvmSymbols = jvmSymbols,
+                                    nativeSymbols = nativeSymbols,
                                     builder = builder,
                                     pluginContext = pluginContext,
                                     reference = reference,
@@ -1814,7 +1896,14 @@ class KotlinWinRtIrGenerationExtension(
             returnKind: NoArgumentGetterReturnKind,
             checkHResult: Boolean = true,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            if (
+                jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
+                nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
+            ) {
+                return null
+            }
             val scope = builderScope ?: return null
             if ((returnKind == NoArgumentGetterReturnKind.UInt8 && ubyteConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt16 && ushortConstructor == null) ||
@@ -1844,8 +1933,9 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        +jvmFfmCallUnitBlock(
-                            symbols = symbols,
+                        +directCallUnitBlock(
+                            jvmSymbols = jvmSymbols,
+                            nativeSymbols = nativeSymbols,
                             builder = builder,
                             pluginContext = pluginContext,
                             reference = reference,
@@ -2016,6 +2106,17 @@ class KotlinWinRtIrGenerationExtension(
                     values = listOf(value),
                     argumentKinds = listOf(argumentKind),
                 )
+            } ?: nativeCInteropSymbols?.let { symbols ->
+                lowerNativeCInteropCallUnitWithArguments(
+                    symbols = symbols,
+                    call = call,
+                    pluginContext = pluginContext,
+                    builderScope = builderScope,
+                    reference = reference,
+                    slot = slot,
+                    values = listOf(value),
+                    argumentKinds = listOf(argumentKind),
+                )
             }
         }
 
@@ -2052,6 +2153,17 @@ class KotlinWinRtIrGenerationExtension(
                     values = values,
                     argumentKinds = argumentKinds,
                     abiShape = shape,
+                )
+            } ?: nativeCInteropSymbols?.let { symbols ->
+                lowerNativeCInteropCallUnitWithArguments(
+                    symbols = symbols,
+                    call = call,
+                    pluginContext = pluginContext,
+                    builderScope = builderScope,
+                    reference = reference,
+                    slot = slot,
+                    values = values,
+                    argumentKinds = argumentKinds,
                 )
             }
         }
@@ -2101,7 +2213,8 @@ class KotlinWinRtIrGenerationExtension(
             abiShapeIndex: Int = 3,
             varargIndex: Int = 4,
         ): IrExpression? {
-            val symbols = jvmFfmSymbols ?: return null
+            val jvmSymbols = jvmFfmSymbols
+            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
             val scope = builderScope ?: return null
             if ((returnKind == NoArgumentGetterReturnKind.UInt8 && ubyteConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt16 && ushortConstructor == null) ||
@@ -2113,7 +2226,10 @@ class KotlinWinRtIrGenerationExtension(
             }
             val shape = call.arguments.getOrNull(abiShapeIndex)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (!symbols.canLower(argumentKinds)) {
+            if (
+                jvmSymbols?.canLower(argumentKinds) != true &&
+                nativeSymbols?.canLower(argumentKinds + UnitCallAbiArgumentKind.Object) != true
+            ) {
                 return null
             }
             val values = call.varargValues(UnitCallAbiShape.varargValueCount(argumentKinds), varargIndex = varargIndex) ?: return null
@@ -2206,16 +2322,30 @@ class KotlinWinRtIrGenerationExtension(
                         }
 
                         val abiValues = argumentKinds.map(::abiValueFor)
-                        val callBlock = jvmFfmCallUnitBlock(
-                            symbols = symbols,
-                            builder = builder,
-                            pluginContext = pluginContext,
-                            reference = reference,
-                            slot = slot,
-                            argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
-                            values = abiValues + builder.irGet(resultOut),
-                            abiShape = UnitCallAbiShape.appendToken(shape, "Object"),
-                        )
+                        val callArgumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object
+                        val callValues = abiValues + builder.irGet(resultOut)
+                        val callBlock = if (jvmSymbols != null) {
+                            jvmFfmCallUnitBlock(
+                                symbols = jvmSymbols,
+                                builder = builder,
+                                pluginContext = pluginContext,
+                                reference = reference,
+                                slot = slot,
+                                argumentKinds = callArgumentKinds,
+                                values = callValues,
+                                abiShape = UnitCallAbiShape.appendToken(shape, "Object"),
+                            )
+                        } else {
+                            nativeCInteropCallUnitBlock(
+                                symbols = requireNotNull(nativeSymbols),
+                                builder = builder,
+                                pluginContext = pluginContext,
+                                reference = reference,
+                                slot = slot,
+                                argumentKinds = callArgumentKinds,
+                                values = callValues,
+                            )
+                        }
                         val readResult = readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
                         if (stringAbis.isEmpty() && structAbis.isEmpty()) {
                             +callBlock
@@ -2404,6 +2534,154 @@ class KotlinWinRtIrGenerationExtension(
             }
         }
 
+        private fun lowerNativeCInteropCallUnitWithArguments(
+            symbols: NativeCInteropSymbols,
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            reference: IrExpression,
+            slot: IrExpression,
+            values: List<IrExpression>,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+        ): IrExpression? {
+            val scope = builderScope ?: return null
+            if (!symbols.canLower(argumentKinds)) {
+                return null
+            }
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val hasStructArguments = argumentKinds.any { it == UnitCallAbiArgumentKind.Struct }
+                val nativeScope = if (hasStructArguments) {
+                    irTemporary(
+                        value = builder.irCall(platformAbiConfinedScope).apply {
+                            arguments[0] = builder.irGetObject(platformAbi)
+                        },
+                        nameHint = "scope",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                } else {
+                    null
+                }
+                fun callWithPreparedArguments(): IrExpression =
+                    builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
+                        val structAbis =
+                            mutableListOf<Pair<org.jetbrains.kotlin.ir.declarations.IrVariable, org.jetbrains.kotlin.ir.declarations.IrVariable>>()
+                        var valueIndex = 0
+                        fun nextValue(): IrExpression = values[valueIndex++]
+                        fun abiValueFor(kind: UnitCallAbiArgumentKind): IrExpression {
+                            val value = nextValue()
+                            return when (kind) {
+                                UnitCallAbiArgumentKind.RawAddress,
+                                UnitCallAbiArgumentKind.RawComPtr,
+                                UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int16,
+                                UnitCallAbiArgumentKind.Int32,
+                                UnitCallAbiArgumentKind.UInt32,
+                                UnitCallAbiArgumentKind.Int64,
+                                UnitCallAbiArgumentKind.UInt64,
+                                UnitCallAbiArgumentKind.Float -> value
+                                UnitCallAbiArgumentKind.Double -> value
+                                UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
+                                UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
+                                UnitCallAbiArgumentKind.Struct -> {
+                                    val adapter = irTemporary(
+                                        value = nextValue(),
+                                        nameHint = "structAdapter",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    val valueAbi = irTemporary(
+                                        value = builder.irCall(platformAbiAllocateBytes).apply {
+                                            arguments[0] = builder.irGetObject(platformAbi)
+                                            arguments[1] = builder.irGet(requireNotNull(nativeScope))
+                                            arguments[2] = builder.irCall(nativeStructLayoutSizeBytesGetter).apply {
+                                                arguments[0] = builder.irCall(nativeStructAdapterLayoutGetter).apply {
+                                                    arguments[0] = builder.irGet(adapter)
+                                                }
+                                            }
+                                        },
+                                        nameHint = "value${valueIndex}Abi",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    +builder.irCall(nativeStructAdapterWrite).apply {
+                                        arguments[0] = builder.irGet(adapter)
+                                        arguments[1] = value
+                                        arguments[2] = builder.irGet(valueAbi)
+                                    }
+                                    structAbis += adapter to valueAbi
+                                    builder.irGet(valueAbi)
+                                }
+                                UnitCallAbiArgumentKind.String -> {
+                                    val stringAbi = irTemporary(
+                                        value = builder.irCall(hStringCreateReference).apply {
+                                            arguments[0] = builder.irGetObject(hStringCompanion)
+                                            arguments[1] = value
+                                        },
+                                        nameHint = "value${valueIndex}Abi",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    stringAbis += stringAbi
+                                    builder.irCall(referencedHStringHandleGetter).apply {
+                                        arguments[0] = builder.irGet(stringAbi)
+                                    }
+                                }
+                            }
+                        }
+
+                        val abiValues = argumentKinds.map(::abiValueFor)
+                        val callBlock = nativeCInteropCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = argumentKinds,
+                            values = abiValues,
+                        )
+                        if (stringAbis.isEmpty() && structAbis.isEmpty()) {
+                            +callBlock
+                        } else {
+                            +builder.irTry(
+                                type = pluginContext.irBuiltIns.unitType,
+                                tryResult = callBlock,
+                                catches = emptyList(),
+                                finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                    structAbis.forEach { (adapter, valueAbi) ->
+                                        +builder.irCall(nativeStructAdapterDisposeAbi).apply {
+                                            arguments[0] = builder.irGet(adapter)
+                                            arguments[1] = builder.irGet(valueAbi)
+                                        }
+                                    }
+                                    stringAbis.forEach { stringAbi ->
+                                        +builder.irCall(referencedHStringClose).apply {
+                                            arguments[0] = builder.irGet(stringAbi)
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                if (nativeScope == null) {
+                    +callWithPreparedArguments()
+                } else {
+                    +builder.irTry(
+                        type = pluginContext.irBuiltIns.unitType,
+                        tryResult = callWithPreparedArguments(),
+                        catches = emptyList(),
+                        finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                            +builder.irCall(nativeScopeClose).apply {
+                                arguments[0] = builder.irGet(nativeScope)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
         fun lowerComVtableInvoke(
             call: IrCall,
             pluginContext: IrPluginContext,
@@ -2538,6 +2816,43 @@ class KotlinWinRtIrGenerationExtension(
                 +builder.irUnit()
             }
 
+        private fun directCallUnitBlock(
+            jvmSymbols: JvmFfmSymbols?,
+            nativeSymbols: NativeCInteropSymbols?,
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            reference: IrExpression,
+            slot: IrExpression,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+            values: List<IrExpression>,
+            abiShape: String? = null,
+            checkHResult: Boolean = true,
+        ): IrExpression =
+            if (jvmSymbols != null) {
+                jvmFfmCallUnitBlock(
+                    symbols = jvmSymbols,
+                    builder = builder,
+                    pluginContext = pluginContext,
+                    reference = reference,
+                    slot = slot,
+                    argumentKinds = argumentKinds,
+                    values = values,
+                    abiShape = abiShape,
+                    checkHResult = checkHResult,
+                )
+            } else {
+                nativeCInteropCallUnitBlock(
+                    symbols = requireNotNull(nativeSymbols),
+                    builder = builder,
+                    pluginContext = pluginContext,
+                    reference = reference,
+                    slot = slot,
+                    argumentKinds = argumentKinds,
+                    values = values,
+                    checkHResult = checkHResult,
+                )
+            }
+
         private fun jvmFfmCallRaw(
             symbols: JvmFfmSymbols,
             builder: DeclarationIrBuilder,
@@ -2583,6 +2898,130 @@ class KotlinWinRtIrGenerationExtension(
                     ),
                     pluginContext.irBuiltIns.intType,
                 )
+            }
+
+        private fun nativeCInteropCallUnitBlock(
+            symbols: NativeCInteropSymbols,
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            reference: IrExpression,
+            slot: IrExpression,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+            values: List<IrExpression>,
+            checkHResult: Boolean = true,
+        ): IrExpression =
+            builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val hResultValue = irTemporary(
+                    value = nativeCInteropCallRaw(
+                        symbols = symbols,
+                        builder = builder,
+                        pluginContext = pluginContext,
+                        instancePointer = referencePointer(builder, reference),
+                        slot = slot,
+                        argumentKinds = argumentKinds,
+                        values = values,
+                    ),
+                    nameHint = "hr",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                if (checkHResult) {
+                    +builder.irCall(hResultRequireSuccess).apply {
+                        arguments[0] = builder.irCall(hResultConstructor).apply {
+                            arguments[0] = builder.irGet(hResultValue)
+                        }
+                        arguments[1] = builder.irString("WinRT call")
+                    }
+                }
+                +builder.irUnit()
+            }
+
+        private fun nativeCInteropCallRaw(
+            symbols: NativeCInteropSymbols,
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            instancePointer: IrExpression,
+            slot: IrExpression,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+            values: List<IrExpression>,
+        ): IrExpression =
+            builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
+                val instance = irTemporary(
+                    value = instancePointer,
+                    nameHint = "instance",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val vtable = irTemporary(
+                    value = builder.irCall(platformAbiReadPointer).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = builder.irCall(platformAbiFromRawComPtr).apply {
+                            arguments[0] = builder.irGetObject(platformAbi)
+                            arguments[1] = builder.irGet(instance)
+                        }
+                    },
+                    nameHint = "vtable",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val functionAddress = irTemporary(
+                    value = builder.irCall(platformAbiReadPointerAt).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = builder.irGet(vtable)
+                        arguments[2] = slot
+                    },
+                    nameHint = "functionAddress",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val receiver = symbols.rawComPtrToOpaquePointer(builder, builder.irGet(instance))
+                val nativeValues = values.mapIndexed { index, value ->
+                    nativeCInteropCarrier(
+                        symbols = symbols,
+                        builder = builder,
+                        argumentKind = argumentKinds[index],
+                        value = value,
+                    )
+                }
+                val parameterTypes = listOf(receiver.type) + nativeValues.map { it.type }
+                val function = irTemporary(
+                    value = symbols.functionPointer(
+                        builder = builder,
+                        pluginContext = pluginContext,
+                        address = builder.irGet(functionAddress),
+                        parameterTypes = parameterTypes,
+                    ),
+                    nameHint = "function",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val invoke = symbols.invokeForArity(parameterTypes.size)
+                    ?: error("kotlin-winrt compiler plugin could not find kotlinx.cinterop.invoke/${parameterTypes.size}.")
+                +builder.irCall(invoke, pluginContext.irBuiltIns.intType).apply {
+                    (parameterTypes + pluginContext.irBuiltIns.intType).forEachIndexed { index, type ->
+                        typeArguments[index] = type
+                    }
+                    arguments[0] = builder.irGet(function)
+                    arguments[1] = receiver
+                    nativeValues.forEachIndexed { index, value ->
+                        arguments[index + 2] = value
+                    }
+                }
+            }
+
+        private fun nativeCInteropCarrier(
+            symbols: NativeCInteropSymbols,
+            builder: DeclarationIrBuilder,
+            argumentKind: UnitCallAbiArgumentKind,
+            value: IrExpression,
+        ): IrExpression =
+            when (argumentKind) {
+                UnitCallAbiArgumentKind.Struct ->
+                    builder.irCall(platformAbiReadInt64).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = value
+                    }
+                else -> symbols.nativeCarrier(builder, argumentKind, value)
             }
 
         private fun referencePointer(
@@ -2738,6 +3177,7 @@ class KotlinWinRtIrGenerationExtension(
                 val platformAbiAllocateDoubleSlot = platformAbi.functionNamed("allocateDoubleSlot") ?: return null
                 val platformAbiAllocateBytes = platformAbi.functionNamedWithRegularParameterCount("allocateBytes", 2) ?: return null
                 val platformAbiReadPointer = platformAbi.functionNamed("readPointer") ?: return null
+                val platformAbiReadPointerAt = platformAbi.functionNamed("readPointerAt") ?: return null
                 val platformAbiReadInt8 = platformAbi.functionNamed("readInt8") ?: return null
                 val platformAbiReadInt16 = platformAbi.functionNamed("readInt16") ?: return null
                 val platformAbiReadInt32 = platformAbi.functionNamed("readInt32") ?: return null
@@ -2796,6 +3236,12 @@ class KotlinWinRtIrGenerationExtension(
                     rawComPtrValueGetter = rawComPtrValueGetter,
                     rawAddressValueGetter = rawAddressValueGetter,
                 )
+                val nativeCInteropSymbols = NativeCInteropSymbols.create(
+                    pluginContext = pluginContext,
+                    fromFile = fromFile,
+                    rawComPtrValueGetter = rawComPtrValueGetter,
+                    rawAddressValueGetter = rawAddressValueGetter,
+                )
                 val ubyteConstructor = pluginContext.findClassSymbol(KOTLIN_UBYTE_CLASS_ID, fromFile)
                     ?.singleValueConstructor()
                 val ushortConstructor = pluginContext.findClassSymbol(KOTLIN_USHORT_CLASS_ID, fromFile)
@@ -2826,6 +3272,7 @@ class KotlinWinRtIrGenerationExtension(
                     platformAbiAllocateDoubleSlot = platformAbiAllocateDoubleSlot,
                     platformAbiAllocateBytes = platformAbiAllocateBytes,
                     platformAbiReadPointer = platformAbiReadPointer,
+                    platformAbiReadPointerAt = platformAbiReadPointerAt,
                     platformAbiReadInt8 = platformAbiReadInt8,
                     platformAbiReadInt16 = platformAbiReadInt16,
                     platformAbiReadInt32 = platformAbiReadInt32,
@@ -2857,9 +3304,154 @@ class KotlinWinRtIrGenerationExtension(
                     uintConstructor = uintConstructor,
                     ulongConstructor = ulongConstructor,
                     jvmFfmSymbols = jvmFfmSymbols,
+                    nativeCInteropSymbols = nativeCInteropSymbols,
                 )
             }
 
+        }
+
+        private class NativeCInteropSymbols private constructor(
+            private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
+            private val rawAddressValueGetter: IrSimpleFunctionSymbol,
+            val cPointer: IrClassSymbol,
+            val cFunction: IrClassSymbol,
+            val cOpaque: IrClassSymbol,
+            val toCPointer: IrSimpleFunctionSymbol,
+            private val invokesByArity: Map<Int, IrSimpleFunctionSymbol>,
+        ) {
+            fun canLower(argumentKinds: List<UnitCallAbiArgumentKind>): Boolean =
+                invokeForArity(argumentKinds.size + 1) != null
+
+            fun invokeForArity(arity: Int): IrSimpleFunctionSymbol? = invokesByArity[arity]
+
+            fun opaquePointerType(): IrSimpleType = cPointer.typeWith(cOpaque.owner.defaultType)
+
+            fun opaquePointerNullableType(): IrType = opaquePointerType().makeNullable()
+
+            fun cFunctionPointerType(
+                pluginContext: IrPluginContext,
+                parameterTypes: List<IrType>,
+            ): IrSimpleType {
+                val functionClass = pluginContext.findClassSymbol(
+                    ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("Function${parameterTypes.size}")),
+                ) ?: error("kotlin-winrt compiler plugin requires kotlin.Function${parameterTypes.size} to lower mingw cinterop calls.")
+                val functionType = functionClass.typeWith(parameterTypes + pluginContext.irBuiltIns.intType)
+                val cFunctionType = cFunction.typeWith(functionType)
+                return cPointer.typeWith(cFunctionType)
+            }
+
+            fun toOpaquePointer(
+                builder: DeclarationIrBuilder,
+                value: IrExpression,
+            ): IrExpression =
+                builder.irCall(toCPointer, opaquePointerNullableType()).apply {
+                    typeArguments[0] = cOpaque.owner.defaultType
+                    arguments[0] = value
+                }
+
+            fun rawComPtrToOpaquePointer(
+                builder: DeclarationIrBuilder,
+                pointer: IrExpression,
+            ): IrExpression =
+                toOpaquePointer(
+                    builder,
+                    builder.irCall(rawComPtrValueGetter).apply {
+                        arguments[0] = pointer
+                    },
+                )
+
+            fun rawAddressToOpaquePointer(
+                builder: DeclarationIrBuilder,
+                address: IrExpression,
+            ): IrExpression =
+                toOpaquePointer(
+                    builder,
+                    builder.irCall(rawAddressValueGetter).apply {
+                        arguments[0] = address
+                    },
+                )
+
+            fun functionPointer(
+                builder: DeclarationIrBuilder,
+                pluginContext: IrPluginContext,
+                address: IrExpression,
+                parameterTypes: List<IrType>,
+            ): IrExpression {
+                val pointerType = cFunctionPointerType(pluginContext, parameterTypes)
+                val cFunctionType = pointerType.arguments.single().typeOrNull
+                    ?: error("kotlin-winrt compiler plugin could not build mingw CFunction pointer type.")
+                return builder.irAs(
+                    builder.irCall(toCPointer, pointerType.makeNullable()).apply {
+                        typeArguments[0] = cFunctionType
+                        arguments[0] = builder.irCall(rawAddressValueGetter).apply {
+                            arguments[0] = address
+                        }
+                    },
+                    pointerType,
+                )
+            }
+
+            fun nativeCarrier(
+                builder: DeclarationIrBuilder,
+                kind: UnitCallAbiArgumentKind,
+                value: IrExpression,
+            ): IrExpression =
+                when (kind) {
+                    UnitCallAbiArgumentKind.RawComPtr -> rawComPtrToOpaquePointer(builder, value)
+                    UnitCallAbiArgumentKind.RawAddress,
+                    UnitCallAbiArgumentKind.Struct,
+                    UnitCallAbiArgumentKind.String,
+                    UnitCallAbiArgumentKind.Object -> rawAddressToOpaquePointer(builder, value)
+                    UnitCallAbiArgumentKind.Byte,
+                    UnitCallAbiArgumentKind.Int16,
+                    UnitCallAbiArgumentKind.Int32,
+                    UnitCallAbiArgumentKind.UInt32,
+                    UnitCallAbiArgumentKind.Int64,
+                    UnitCallAbiArgumentKind.UInt64,
+                    UnitCallAbiArgumentKind.Float,
+                    UnitCallAbiArgumentKind.Double,
+                    UnitCallAbiArgumentKind.Boolean -> value
+                }
+
+            companion object {
+                fun create(
+                    pluginContext: IrPluginContext,
+                    fromFile: IrFile?,
+                    rawComPtrValueGetter: IrSimpleFunctionSymbol,
+                    rawAddressValueGetter: IrSimpleFunctionSymbol,
+                ): NativeCInteropSymbols? {
+                    fun missing(): Nothing? = null
+                    val cPointer = pluginContext.findClassSymbol(KOTLINX_CINTEROP_CPOINTER_CLASS_ID, fromFile)
+                        ?: return missing()
+                    val cFunction = pluginContext.findClassSymbol(KOTLINX_CINTEROP_CFUNCTION_CLASS_ID, fromFile)
+                        ?: return missing()
+                    val cOpaque = pluginContext.findClassSymbol(KOTLINX_CINTEROP_COPAQUE_CLASS_ID, fromFile)
+                        ?: return missing()
+                    val toCPointer = pluginContext.findFunctionSymbols(
+                        CallableId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("toCPointer")),
+                        fromFile,
+                    ).firstOrNull() ?: return missing()
+                    val invokesByArity = pluginContext.findFunctionSymbols(
+                        CallableId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("invoke")),
+                        fromFile,
+                    ).mapNotNull { symbol ->
+                        val arity = symbol.owner.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular }
+                        arity to symbol
+                    }.toMap()
+                    if (invokesByArity.isEmpty()) {
+                        return missing()
+                    }
+                    return NativeCInteropSymbols(
+                        rawComPtrValueGetter = rawComPtrValueGetter,
+                        rawAddressValueGetter = rawAddressValueGetter,
+                        cPointer = cPointer,
+                        cFunction = cFunction,
+                        cOpaque = cOpaque,
+                        toCPointer = toCPointer,
+                        invokesByArity = invokesByArity,
+                    )
+                }
+            }
         }
 
         private class JvmFfmSymbols private constructor(
@@ -3310,6 +3902,8 @@ class KotlinWinRtIrGenerationExtension(
             winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
             overridableInterfaceNames = overridableInterfaces,
             isPublic = isPublic,
+            activatableFactoryInterfaceName = annotation.activatableFactoryInterfaceName,
+            staticFactoryInterfaceNames = annotation.staticFactoryInterfaceNames,
         )
     }
 
@@ -3352,6 +3946,8 @@ class KotlinWinRtIrGenerationExtension(
         val baseClassName = annotation.arguments.getOrNull(0).stringConstantValue()
         val interfaceNames = annotation.arguments.getOrNull(1).stringArrayConstantValue()
         val overridableInterfaceNames = annotation.arguments.getOrNull(2).stringArrayConstantValue()
+        val activatableFactoryInterfaceName = annotation.arguments.getOrNull(3).stringConstantValue()
+        val staticFactoryInterfaceNames = annotation.arguments.getOrNull(4).stringArrayConstantValue()
         val resolvedBase = baseClassName
             .takeIf(String::isNotBlank)
             ?.let(::projectionPackageToMetadataName)
@@ -3387,18 +3983,46 @@ class KotlinWinRtIrGenerationExtension(
                 }
             }
             .map(IndexedWinRtType::qualifiedName)
+        val resolvedActivatableFactoryInterface = activatableFactoryInterfaceName
+            .takeIf(String::isNotBlank)
+            ?.let { typeName ->
+                val metadataName = projectionPackageToMetadataName(typeName)
+                requireNotNull(winRtTypes[metadataName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }.also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation activatableFactoryInterfaceName must reference a WinRT interface: $typeName."
+                    }
+                }.qualifiedName
+            }
+        val resolvedStaticFactoryInterfaces = staticFactoryInterfaceNames
+            .map { typeName ->
+                val metadataName = projectionPackageToMetadataName(typeName)
+                requireNotNull(winRtTypes[metadataName]) {
+                    "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
+                }.also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation staticFactoryInterfaceNames must reference WinRT interfaces: $typeName."
+                    }
+                }
+            }
+            .map(IndexedWinRtType::qualifiedName)
         return ResolvedAuthoredRuntimeClassAnnotation(
             resolvedTypes = listOfNotNull(resolvedBase) + resolvedInterfaces,
             overridableInterfaceNames = resolvedOverridableInterfaces,
+            activatableFactoryInterfaceName = resolvedActivatableFactoryInterface,
+            staticFactoryInterfaceNames = resolvedStaticFactoryInterfaces.distinct().sorted(),
         )
     }
 
     private data class ResolvedAuthoredRuntimeClassAnnotation(
         val resolvedTypes: List<IndexedWinRtType>,
         val overridableInterfaceNames: List<String>,
+        val activatableFactoryInterfaceName: String?,
+        val staticFactoryInterfaceNames: List<String>,
     ) {
         companion object {
-            val Empty = ResolvedAuthoredRuntimeClassAnnotation(emptyList(), emptyList())
+            val Empty = ResolvedAuthoredRuntimeClassAnnotation(emptyList(), emptyList(), null, emptyList())
         }
     }
 
@@ -4258,22 +4882,25 @@ class KotlinWinRtIrGenerationExtension(
         val delegateNamedBuilder = DeclarationIrBuilder(pluginContext, delegateNamed.symbol)
         val nameParameter = delegateNamed.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
         delegateNamed.body = delegateNamedBuilder.irBlockBody {
-            +delegates.asReversed().fold(delegateNamedBuilder.irNull() as IrExpression) { elsePart, entry ->
-                delegateNamedBuilder.irIfThenElse(
-                    type = delegateNamed.returnType,
-                    condition = delegateNamedBuilder.irEquals(
-                        delegateNamedBuilder.irGet(nameParameter),
-                        delegateNamedBuilder.irString(entry.name),
-                    ),
-                    thenPart = delegateNamedBuilder.genericAbiDelegateEntryCall(
-                        pluginContext = pluginContext,
-                        entryConstructor = entryConstructor,
-                        listOf = listOf,
-                        entry = entry,
-                    ),
-                    elsePart = elsePart,
+            +delegateNamedBuilder.irWhen(
+                type = delegateNamed.returnType,
+                branches = delegates.map { entry ->
+                    delegateNamedBuilder.irBranch(
+                        condition = delegateNamedBuilder.irEquals(
+                            delegateNamedBuilder.irGet(nameParameter),
+                            delegateNamedBuilder.irString(entry.name),
+                        ),
+                        result = delegateNamedBuilder.genericAbiDelegateEntryCall(
+                            pluginContext = pluginContext,
+                            entryConstructor = entryConstructor,
+                            listOf = listOf,
+                            entry = entry,
+                        ),
+                    )
+                } + delegateNamedBuilder.irElseBranch(
+                    delegateNamedBuilder.irNull(delegateNamed.returnType),
                 )
-            }
+            )
         }
 
         val delegatesForSourceType = pluginContext.irFactory.buildFun {
@@ -4296,24 +4923,25 @@ class KotlinWinRtIrGenerationExtension(
             delegatesForSourceType.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
         val delegatesBySourceType = delegates.groupBy { entry -> entry.sourceGenericType }.toSortedMap()
         delegatesForSourceType.body = delegatesForSourceTypeBuilder.irBlockBody {
-            +delegatesBySourceType.entries.toList().asReversed().fold(
-                delegatesForSourceTypeBuilder.irCall(emptyList) as IrExpression,
-            ) { elsePart, (sourceGenericType, sourceEntries) ->
-                delegatesForSourceTypeBuilder.irIfThenElse(
-                    type = delegatesForSourceType.returnType,
-                    condition = delegatesForSourceTypeBuilder.irEquals(
-                        delegatesForSourceTypeBuilder.irGet(sourceGenericTypeParameter),
-                        delegatesForSourceTypeBuilder.irString(sourceGenericType),
-                    ),
-                    thenPart = delegatesForSourceTypeBuilder.genericAbiDelegateEntryList(
-                        pluginContext = pluginContext,
-                        entryConstructor = entryConstructor,
-                        listOf = listOf,
-                        entries = sourceEntries,
-                    ),
-                    elsePart = elsePart,
+            +delegatesForSourceTypeBuilder.irWhen(
+                type = delegatesForSourceType.returnType,
+                branches = delegatesBySourceType.entries.map { (sourceGenericType, sourceEntries) ->
+                    delegatesForSourceTypeBuilder.irBranch(
+                        condition = delegatesForSourceTypeBuilder.irEquals(
+                            delegatesForSourceTypeBuilder.irGet(sourceGenericTypeParameter),
+                            delegatesForSourceTypeBuilder.irString(sourceGenericType),
+                        ),
+                        result = delegatesForSourceTypeBuilder.genericAbiDelegateEntryList(
+                            pluginContext = pluginContext,
+                            entryConstructor = entryConstructor,
+                            listOf = listOf,
+                            entries = sourceEntries,
+                        ),
+                    )
+                } + delegatesForSourceTypeBuilder.irElseBranch(
+                    delegatesForSourceTypeBuilder.irCall(emptyList),
                 )
-            }
+            )
         }
 
         val isDerivedGenericInterface = pluginContext.irFactory.buildFun {
@@ -4334,17 +4962,20 @@ class KotlinWinRtIrGenerationExtension(
         val isDerivedGenericInterfaceBuilder = DeclarationIrBuilder(pluginContext, isDerivedGenericInterface.symbol)
         val typeNameParameter = isDerivedGenericInterface.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
         isDerivedGenericInterface.body = isDerivedGenericInterfaceBuilder.irBlockBody {
-            +derivedInterfaces.asReversed().fold(isDerivedGenericInterfaceBuilder.irBoolean(false) as IrExpression) { elsePart, typeName ->
-                isDerivedGenericInterfaceBuilder.irIfThenElse(
-                    type = isDerivedGenericInterface.returnType,
-                    condition = isDerivedGenericInterfaceBuilder.irEquals(
-                        isDerivedGenericInterfaceBuilder.irGet(typeNameParameter),
-                        isDerivedGenericInterfaceBuilder.irString(typeName),
-                    ),
-                    thenPart = isDerivedGenericInterfaceBuilder.irBoolean(true),
-                    elsePart = elsePart,
+            +isDerivedGenericInterfaceBuilder.irWhen(
+                type = isDerivedGenericInterface.returnType,
+                branches = derivedInterfaces.map { typeName ->
+                    isDerivedGenericInterfaceBuilder.irBranch(
+                        condition = isDerivedGenericInterfaceBuilder.irEquals(
+                            isDerivedGenericInterfaceBuilder.irGet(typeNameParameter),
+                            isDerivedGenericInterfaceBuilder.irString(typeName),
+                        ),
+                        result = isDerivedGenericInterfaceBuilder.irBoolean(true),
+                    )
+                } + isDerivedGenericInterfaceBuilder.irElseBranch(
+                    isDerivedGenericInterfaceBuilder.irBoolean(false),
                 )
-            }
+            )
         }
 
         val registerAbiDelegates = pluginContext.irFactory.buildFun {
@@ -4707,6 +5338,8 @@ class KotlinWinRtIrGenerationExtension(
 private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic")
 
+private const val KOTLIN_WINRT_GENERATED_SUPPRESS_MARKER = "KOTLIN_WINRT_GENERATED"
+
 @Suppress("DEPRECATION")
 private fun IrPluginContext.reportCompilerPluginMessage(
     severity: CompilerMessageSeverity,
@@ -4932,6 +5565,18 @@ private val JAVA_ADDRESS_LAYOUT_CLASS_ID =
 private val JAVA_METHOD_HANDLE_CLASS_ID =
     ClassId(FqName("java.lang.invoke"), Name.identifier("MethodHandle"))
 
+private val KOTLINX_CINTEROP_PACKAGE_FQ_NAME =
+    FqName("kotlinx.cinterop")
+
+private val KOTLINX_CINTEROP_CPOINTER_CLASS_ID =
+    ClassId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("CPointer"))
+
+private val KOTLINX_CINTEROP_CFUNCTION_CLASS_ID =
+    ClassId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("CFunction"))
+
+private val KOTLINX_CINTEROP_COPAQUE_CLASS_ID =
+    ClassId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("COpaque"))
+
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnit",
     "callBoolean",
@@ -5009,7 +5654,27 @@ internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): S
 internal fun isGeneratedSourceFile(fileName: String, generatedSourceRoot: String?): Boolean {
     val root = generatedSourceRoot ?: return false
     val normalizedFileName = fileName.normalizedCompilerPathPrefix()
-    return normalizedFileName == root || normalizedFileName.startsWith("$root/")
+    if (normalizedFileName == root || normalizedFileName.startsWith("$root/")) {
+        return true
+    }
+    val siblingGeneratedRoots = buildList {
+        if (root.endsWith("/kotlin-winrt")) {
+            add("$root-authoring")
+        }
+        if ("/kotlin-winrt/" in root) {
+            add(root.replace("/kotlin-winrt/", "/kotlin-winrt-authoring/"))
+        }
+        val generatedDirectories = listOf(
+            "/generated/kotlin-winrt/src/main/kotlin",
+            "/generated/kotlin-winrt/src/commonmain/kotlin",
+        )
+        generatedDirectories.firstOrNull(root::endsWith)?.let { generatedDirectory ->
+            add(root.removeSuffix(generatedDirectory) + "/generated/kotlin-winrt-compiler-authoring")
+        }
+    }
+    return siblingGeneratedRoots.any { sibling ->
+        normalizedFileName == sibling || normalizedFileName.startsWith("$sibling/")
+    }
 }
 
 private fun String.normalizedCompilerPathPrefix(): String =

@@ -123,9 +123,11 @@ class KotlinProjectionGenerator(
     private val emitSupportFiles: Boolean = false,
     private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
+    private val authoredRuntimeClassNames: Set<String> = emptySet(),
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
     private val groupProjectionFilesByPackageOnWrite: Boolean = false,
     private val supportOwnerIdentity: String? = null,
+    private val emitJvmAuthoringHostExports: Boolean = true,
 ) {
     private val genericTypeInstantiationsClassName = winRtGenericTypeInstantiationsClassName(supportOwnerIdentity)
     private val authoringHostExportsClassName = winRtAuthoringHostExportsClassName(supportOwnerIdentity)
@@ -228,13 +230,7 @@ class KotlinProjectionGenerator(
     }
 
     private fun authoredProjectedTypeNames(model: WinRtMetadataModel): Set<String> =
-        if (!projectionContext.component) {
-            suppressedProjectionTypeNames
-        } else {
-            model.projectionInventory(projectionContext)
-                .authoredMetadataTypeMappings
-                .mapTo(suppressedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
-        }
+        suppressedProjectionTypeNames
 
     private fun WinRtMetadataModel.withoutExcludedProjectionSurfaceReferences(): WinRtMetadataModel {
         val excludedProjectionSurfaceNames = projectionContext.excludedTypes
@@ -1725,10 +1721,12 @@ class KotlinProjectionGenerator(
             projectionContext,
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
             excludedProjectionTypeNames = authoredProjectedTypeNames(model),
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
             genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
             authoringHostExportsClassName = authoringHostExportsClassName,
             authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
             authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
+            emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
             genericAbiSupportFileName = genericAbiSupportFileName,
             eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             namespaceAdditionsClassName = namespaceAdditionsClassName,

@@ -77,7 +77,7 @@ interface WinRtServiceProvider {
 }
 
 interface WinRtStringable {
-    fun stringRepresentation(): String
+    override fun toString(): String
 }
 
 interface WinRtCustomProperty {
