@@ -21836,7 +21836,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_authored_ccw_unsupported_async_return_before_support_rendering() {
+    fun generator_supports_authored_ccw_async_action_return_before_support_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -21869,22 +21869,20 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching {
-            KotlinProjectionGenerator(
-                emitSupportFiles = true,
-                projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
-            ).generate(model)
-        }.exceptionOrNull()
-        val message = error?.message.orEmpty()
-
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            message,
-            message.contains(
-                "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.REFRESHASYNC_SLOT to use supported authored ABI metadata before support rendering; unsupported return IAsyncAction() uses unsupported authored ABI shape.",
-            ),
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
         )
+            .generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtAsyncInterfaceIds.IAsyncAction"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[0] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupported return IAsyncAction()"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+        assertFalse(ccwFactories, ccwFactories.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 
     @Test
