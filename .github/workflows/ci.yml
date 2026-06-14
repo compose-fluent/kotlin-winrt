@@ -96,6 +96,7 @@ jobs:
             :winrt-generator:test \
             :winrt-authoring:jvmTest \
             :winrt-authoring:mingwX64Test \
+            :winrt-gradle-plugin:test \
             :winrt-compiler-plugin:test \
             :winrt-projections:jvmTest \
             :winrt-projections:mingwX64Test \
