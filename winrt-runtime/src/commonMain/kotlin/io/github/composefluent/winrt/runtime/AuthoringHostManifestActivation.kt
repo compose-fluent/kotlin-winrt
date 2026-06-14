@@ -67,20 +67,28 @@ internal object AuthoringHostManifestActivation {
             ?.decodeJsonString()
 
     private fun readJsonStringArray(content: String, name: String): List<String> {
-        val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[((?s:.*?))\]""")
             .find(content) ?: return emptyList()
+        val (arrayContent) = match.destructured
         return Regex(""""((?:\\.|[^"\\])*)"""")
-            .findAll(match.groupValues[1])
-            .map { it.groupValues[1].decodeJsonString() }
+            .findAll(arrayContent)
+            .map { result ->
+                val (value) = result.destructured
+                value.decodeJsonString()
+            }
             .toList()
     }
 
     private fun readJsonStringMap(content: String, name: String): Map<String, String> {
-        val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+        val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{((?s:.*?))\}""")
             .find(content) ?: return emptyMap()
+        val (mapContent) = match.destructured
         return Regex(""""((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"""")
-            .findAll(match.groupValues[1])
-            .associate { it.groupValues[1].decodeJsonString() to it.groupValues[2].decodeJsonString() }
+            .findAll(mapContent)
+            .associate { result ->
+                val (key, value) = result.destructured
+                key.decodeJsonString() to value.decodeJsonString()
+            }
     }
 
     private fun String.decodeJsonString(): String =
