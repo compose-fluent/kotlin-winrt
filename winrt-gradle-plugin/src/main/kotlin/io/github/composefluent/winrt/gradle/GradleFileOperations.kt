@@ -22,4 +22,13 @@ internal object GradleFileOperations {
                 .forEach(Files::deleteIfExists)
         }
     }
+
+    fun deleteDirectory(directory: Path) {
+        if (!directory.isDirectory()) return
+        Files.walk(directory).use { stream ->
+            stream.asSequence()
+                .sortedWith(Comparator.reverseOrder())
+                .forEach(Files::deleteIfExists)
+        }
+    }
 }

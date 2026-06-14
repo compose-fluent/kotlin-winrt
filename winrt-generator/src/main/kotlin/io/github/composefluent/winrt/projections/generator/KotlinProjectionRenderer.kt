@@ -217,6 +217,7 @@ class KotlinProjectionRenderer(
             builder.addTypeVariable(TypeVariableName("T$index"))
         }
         addInterfaceNativeProjectionCollectionCaches(builder, plan)
+        addInterfaceNativeProjectionMemberCaches(builder, plan)
         plan.mutableCollectionBindings.forEach { binding ->
             val nativeBinding = interfaceNativeProjectionCollectionBinding(plan, binding)
             builder.addProperty(renderMutableCollectionDelegateProperty(nativeBinding))
@@ -261,7 +262,7 @@ class KotlinProjectionRenderer(
                             ?.events
                             ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
                             ?.delegateTypeName,
-                        eventSourceObjectReference = CodeBlock.of("nativeObject"),
+                        eventSourceObjectReference = interfaceNativeProjectionEventSourceObjectReference(plan, interfaceType),
                         eventSourceAddSlot = metadataSlotExpression(interfaceType, "${event.name.uppercase()}_ADD_SLOT"),
                         fallbackToAddRemove = false,
                     ),
@@ -296,14 +297,143 @@ class KotlinProjectionRenderer(
     private fun interfaceNativeProjectionCollectionCacheBindings(
         plan: KotlinTypeProjectionPlan,
     ): List<KotlinProjectionCollectionSlotBinding> =
-        (plan.mutableCollectionBindings.map(::KotlinProjectionCollectionSlotBinding) +
+        interfaceNativeProjectionCollectionSlotBindings(plan)
+            .filter { binding -> binding.requiresInterfaceNativeProjectionCache(plan) }
+            .distinctBy { binding -> binding.ownerCachePropertyName }
+
+    internal fun interfaceNativeProjectionEventSourceObjectReference(
+        plan: KotlinTypeProjectionPlan,
+        interfaceType: WinRtTypeDefinition,
+    ): CodeBlock =
+        interfaceNativeProjectionOwnerBindings(plan)
+            .firstOrNull { binding -> binding.rawInterfaceQualifiedName == interfaceType.qualifiedName }
+            ?.let { binding -> CodeBlock.of("%L", binding.ownerCachePropertyName) }
+            ?: CodeBlock.of("nativeObject")
+
+    private fun addInterfaceNativeProjectionMemberCaches(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        val existingCacheNames = interfaceNativeProjectionCollectionCacheBindings(plan)
+            .mapTo(mutableSetOf()) { binding -> binding.ownerCachePropertyName }
+        (interfaceNativeProjectionOwnerBindings(plan).asSequence() +
+            plan.instanceMemberBindings
+                .asSequence()
+                .filterNot { binding -> binding.ownerCachePropertyName == "nativeObject" }
+                .map { binding ->
+                    InterfaceNativeProjectionOwnerBinding(
+                        ownerCachePropertyName = binding.ownerCachePropertyName,
+                        ownerInterfaceInstanceName = binding.ownerInterfaceQualifiedName,
+                        rawInterfaceQualifiedName = binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?"),
+                    )
+                })
+            .asSequence()
+            .filterNot { binding -> binding.ownerCachePropertyName in existingCacheNames }
+            .distinctBy { binding -> binding.ownerCachePropertyName }
+            .forEach { binding ->
+                builder.addProperty(
+                    PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
+                        .addModifiers(KModifier.PRIVATE)
+                        .delegate(
+                            CodeBlock.of(
+                                "lazy(%T.PUBLICATION) { %M(nativeObject, %L) }",
+                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                                ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
+                                runtimeClassInterfaceIdCode(binding.ownerInterfaceInstanceName, plan),
+                            ),
+                        )
+                        .build(),
+                )
+            }
+    }
+
+    private fun interfaceNativeProjectionOwnerBindings(
+        plan: KotlinTypeProjectionPlan,
+    ): List<InterfaceNativeProjectionOwnerBinding> =
+        interfaceNativeProjectionOwnerBindings(
+            interfaceType = plan.type,
+            plan = plan,
+            genericArguments = emptyList(),
+            visited = linkedSetOf(),
+        )
+
+    private fun interfaceNativeProjectionOwnerBindings(
+        interfaceType: WinRtTypeDefinition,
+        plan: KotlinTypeProjectionPlan,
+        genericArguments: List<WinRtTypeRef>,
+        visited: MutableSet<String>,
+    ): List<InterfaceNativeProjectionOwnerBinding> =
+        buildList {
+            interfaceType.implementedInterfaces.forEach { implemented ->
+                val substitutedInterfaceName = implemented.interfaceType
+                    .substituteTypeParameters(genericArguments)
+                    .normalized()
+                    .typeName
+                val implementedRawName = substitutedInterfaceName.substringBefore('<').removeSuffix("?")
+                val resolvedImplementedRawName = resolveImplementedInterfaceRawName(
+                    implementedRawName,
+                    interfaceType.namespace,
+                    plan.typesByQualifiedName,
+                )
+                val mappedType = mappedTypeByAbiName(resolvedImplementedRawName) ?: mappedTypeByAbiName(implementedRawName)
+                if (
+                    isRuntimeOwnedMappedTypeName(resolvedImplementedRawName) ||
+                    isMappedCollectionInterfaceName(resolvedImplementedRawName) ||
+                    mappedType?.descriptionName == "Iterator"
+                ) {
+                    return@forEach
+                }
+                val ownerInterfaceInstanceName = resolvedInterfaceInstanceName(
+                    substitutedInterfaceName = substitutedInterfaceName,
+                    resolvedRawName = resolvedImplementedRawName,
+                )
+                if (resolvedImplementedRawName != plan.type.qualifiedName && visited.add(ownerInterfaceInstanceName)) {
+                    add(
+                        InterfaceNativeProjectionOwnerBinding(
+                            ownerCachePropertyName = "_${resolvedImplementedRawName.substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
+                            ownerInterfaceInstanceName = ownerInterfaceInstanceName,
+                            rawInterfaceQualifiedName = resolvedImplementedRawName,
+                        ),
+                    )
+                }
+                plan.typesByQualifiedName[resolvedImplementedRawName]?.let { baseType ->
+                    addAll(
+                        interfaceNativeProjectionOwnerBindings(
+                            interfaceType = baseType,
+                            plan = plan,
+                            genericArguments = genericArgumentTypeRefs(substitutedInterfaceName),
+                            visited = visited,
+                        ),
+                    )
+                }
+            }
+        }
+
+    private data class InterfaceNativeProjectionOwnerBinding(
+        val ownerCachePropertyName: String,
+        val ownerInterfaceInstanceName: String,
+        val rawInterfaceQualifiedName: String,
+    )
+
+    private fun resolvedInterfaceInstanceName(
+        substitutedInterfaceName: String,
+        resolvedRawName: String,
+    ): String =
+        if ('<' in substitutedInterfaceName && substitutedInterfaceName.endsWith('>')) {
+            "$resolvedRawName<${substitutedInterfaceName.substringAfter('<').substringBeforeLast('>')}>"
+        } else {
+            resolvedRawName
+        }
+
+    private fun interfaceNativeProjectionCollectionSlotBindings(
+        plan: KotlinTypeProjectionPlan,
+    ): List<KotlinProjectionCollectionSlotBinding> =
+        plan.mutableCollectionBindings.map(::KotlinProjectionCollectionSlotBinding) +
             plan.readOnlyCollectionBindings
                 .filterNot { readOnlyBinding ->
                     plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
                 }
-                .map(::KotlinProjectionCollectionSlotBinding))
-            .filter { binding -> binding.requiresInterfaceNativeProjectionCache(plan) }
-            .distinctBy { binding -> binding.ownerCachePropertyName }
+                .map(::KotlinProjectionCollectionSlotBinding)
 
     private fun interfaceNativeProjectionCollectionBinding(
         plan: KotlinTypeProjectionPlan,

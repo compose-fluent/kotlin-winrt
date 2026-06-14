@@ -111,6 +111,8 @@ expect object PlatformAbi {
 
     fun writePointerAt(array: RawAddress, index: Int, value: RawAddress)
 
+    fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long
+
     fun pointerKey(pointer: RawAddress): Long
     fun pointerKey(pointer: RawComPtr): Long
 

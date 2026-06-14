@@ -6,7 +6,7 @@ plugins {
 }
 
 tasks.named<GenerateWinRtProjectionsTask>("generateWinRtProjections") {
-    sourceRoots.setFrom(project.file("src/winuiMain/kotlin"))
+    sourceRoots.setFrom(project.file("src/commonMain/kotlin"))
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
@@ -17,6 +17,11 @@ val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.wind
 kotlin {
     jvmToolchain(25)
     jvm("winuiJvm")
+    mingwX64 {
+        binaries {
+            sharedLib()
+        }
+    }
     sourceSets {
         commonMain {
             dependencies {
@@ -27,6 +32,9 @@ kotlin {
             dependsOn(commonMain.get())
         }
         named("winuiJvmMain") {
+            dependsOn(winuiMain)
+        }
+        named("mingwX64Main") {
             dependsOn(winuiMain)
         }
     }

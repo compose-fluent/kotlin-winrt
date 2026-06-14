@@ -82,6 +82,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
 
     @get:Input
+    abstract val executableBaseName: Property<String>
+
+    @get:Input
     abstract val generateProjectPri: Property<Boolean>
 
     @get:Input
@@ -203,6 +206,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         windowsSdkVersion.convention("")
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
+        executableBaseName.convention("app")
     }
 
     @TaskAction
@@ -274,6 +278,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
         stageGeneratedComponentRegistrations(outputRoot)
         stageXamlMetadataProviderManifest(outputRoot)
+        WinRtApplicationManifestGenerator.writeApplicationManifest(outputRoot, executableBaseName.get())
         generateProjectPri(outputRoot)
     }
 

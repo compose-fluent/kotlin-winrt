@@ -192,6 +192,18 @@ class KotlinProjectionPlanner(
                 ?: interfaceIidsByName[interfaceName.substringBefore('<').removeSuffix("?")]
                 ?: interfaceIidsByName["${type.namespace}.${interfaceName.substringBefore('<').removeSuffix("?")}"]
 
+        fun interfaceIidFor(typeRef: WinRtTypeRef?): Guid? {
+            val normalized = typeRef?.normalized() ?: return null
+            if (normalized.typeArguments.isNotEmpty()) {
+                val signature = semanticHelpers.parameterizedGuidSignatureFragment(normalized, type.namespace)
+                if (signature.isNotBlank()) {
+                    return ParameterizedInterfaceId.createFromSignature(signature)
+                }
+            }
+            val interfaceName = normalized.qualifiedName ?: return null
+            return interfaceIidFor(interfaceName)
+        }
+
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
             WinRtTypeKind.RuntimeClass -> KotlinProjectionDeclarationKind.Class
@@ -217,7 +229,7 @@ class KotlinProjectionPlanner(
             specializationKinds = planSpecializations(type),
             interfaceIid = type.iid,
             defaultInterfaceName = type.defaultInterfaceName,
-            defaultInterfaceIid = type.defaultInterfaceName?.let(::interfaceIidFor),
+            defaultInterfaceIid = interfaceIidFor(type.defaultInterface),
             staticInterfaceNames = type.activation.staticInterfaceNames,
             staticInterfaceBindings = type.activation.staticInterfaceNames.map { interfaceName ->
                 KotlinProjectionInterfaceBinding(

@@ -1,12 +1,14 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
@@ -73,6 +75,13 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
+    @get:Input
+    abstract val allowTargetSpecificHostManifest: Property<Boolean>
+
+    init {
+        allowTargetSpecificHostManifest.convention(false)
+    }
+
     @TaskAction
     fun validate() {
         validateAuthoredCandidateHandoff(
@@ -89,11 +98,18 @@ abstract class ValidateWinRtAuthoredCandidatesTask : DefaultTask() {
             scannerArtifact = scannerAuthoredWinmd.singleCandidateFileOrNull(),
             compilerArtifact = compilerAuthoredWinmd.singleCandidateFileOrNull(),
         )
-        validateAuthoredArtifactHandoff(
-            description = "authored host manifest",
-            scannerArtifact = scannerAuthoredHostManifest.singleCandidateFileOrNull(),
-            compilerArtifact = compilerAuthoredHostManifest.singleCandidateFileOrNull(),
-        )
+        if (allowTargetSpecificHostManifest.get()) {
+            validateAuthoredHostManifestHandoff(
+                scannerArtifact = scannerAuthoredHostManifest.singleCandidateFileOrNull(),
+                compilerArtifact = compilerAuthoredHostManifest.singleCandidateFileOrNull(),
+            )
+        } else {
+            validateAuthoredArtifactHandoff(
+                description = "authored host manifest",
+                scannerArtifact = scannerAuthoredHostManifest.singleCandidateFileOrNull(),
+                compilerArtifact = compilerAuthoredHostManifest.singleCandidateFileOrNull(),
+            )
+        }
         validateAuthoredDirectoryHandoff(
             description = "authored TypeDetails",
             scannerDirectory = scannerAuthoringTypeDetails.singleDirectoryOrNull(),
@@ -157,6 +173,77 @@ internal fun validateAuthoredArtifactHandoff(
             "Regenerate authored support artifacts from compiler-visible symbols or fix scanner/IR parity.",
     )
 }
+
+internal fun validateAuthoredHostManifestHandoff(
+    scannerArtifact: File?,
+    compilerArtifact: File?,
+) {
+    val scannerBytes = scannerArtifact?.takeIf(File::isFile)?.readBytes()
+    val compilerBytes = compilerArtifact?.takeIf(File::isFile)?.readBytes()
+    if (scannerBytes == null && compilerBytes == null) {
+        return
+    }
+    if (scannerBytes != null && compilerBytes != null && scannerBytes.contentEquals(compilerBytes)) {
+        return
+    }
+    val scannerShape = scannerArtifact?.takeIf(File::isFile)?.readText()?.let(::readHostManifestShape)
+    val compilerShape = compilerArtifact?.takeIf(File::isFile)?.readText()?.let(::readHostManifestShape)
+    if (scannerShape != null && scannerShape == compilerShape) {
+        return
+    }
+    throw GradleException(
+        "kotlin-winrt authored host manifest handoff mismatch between source scanner and compiler IR output. " +
+            "Scanner artifact: ${scannerArtifact?.absolutePath ?: "<missing>"}. " +
+            "Compiler artifact: ${compilerArtifact?.absolutePath ?: "<missing>"}. " +
+            "Target-specific host manifests may differ in targetArtifact and hostExportsClass, but assemblyName " +
+            "and activatable class keys must match.",
+    )
+}
+
+private data class HostManifestShape(
+    val assemblyName: String,
+    val activatableClassNames: List<String>,
+)
+
+private fun readHostManifestShape(content: String): HostManifestShape =
+    HostManifestShape(
+        assemblyName = readJsonString(content, "assemblyName").orEmpty(),
+        activatableClassNames = (
+            readJsonStringArray(content, "activatableClasses") +
+                readJsonStringMapKeys(content, "activatableClassTargets")
+            )
+            .filter(String::isNotBlank)
+            .distinct()
+            .sorted(),
+    )
+
+private fun readJsonString(content: String, name: String): String? =
+    Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .find(content)
+        ?.groupValues
+        ?.get(1)
+        ?.decodeJsonString()
+
+private fun readJsonStringArray(content: String, name: String): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .map { it.groupValues[1].decodeJsonString() }
+        .toList()
+}
+
+private fun readJsonStringMapKeys(content: String, name: String): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return Regex(""""((?:\\.|[^"\\])*)"\s*:""")
+        .findAll(match.groupValues[1])
+        .map { it.groupValues[1].decodeJsonString() }
+        .toList()
+}
+
+private fun String.decodeJsonString(): String =
+    replace("\\\"", "\"").replace("\\\\", "\\")
 
 internal fun validateAuthoredDirectoryHandoff(
     description: String,

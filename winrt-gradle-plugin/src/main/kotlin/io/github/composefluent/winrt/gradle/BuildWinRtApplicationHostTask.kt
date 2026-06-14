@@ -75,6 +75,7 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
         Files.writeString(source, applicationHostSource(mainClassValue, packageMode.get(), Path.of(javaHome.get())))
         stageRuntimeClasspath(outputRoot)
         stageRuntimeAssets(outputRoot)
+        WinRtApplicationManifestGenerator.writeApplicationManifest(outputRoot, executableBaseName.get())
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             logger.warn("Kotlin/WinRT application host native EXE build is Windows-only; generated source without compiling EXE.")
             return
@@ -90,6 +91,7 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
 
     private fun stageRuntimeClasspath(outputRoot: Path) {
         val libRoot = outputRoot.resolve("lib")
+        GradleFileOperations.cleanDirectory(libRoot)
         Files.createDirectories(libRoot)
         runtimeClasspath.files
             .filter { it.isFile && it.name.endsWith(".jar", ignoreCase = true) }
@@ -99,17 +101,17 @@ abstract class BuildWinRtApplicationHostTask : DefaultTask() {
     }
 
     private fun stageRuntimeAssets(outputRoot: Path) {
-        val runtimeAssetsRoot = outputRoot.resolve("kotlin-winrt-runtime-assets")
         runtimeAssetsDirectory.files
             .filter { it.exists() }
+            .filterNot { it.toPath().toAbsolutePath().normalize() == outputRoot.toAbsolutePath().normalize() }
             .forEach { source ->
                 if (source.isDirectory) {
-                    copyDirectory(source.toPath(), runtimeAssetsRoot)
+                    copyDirectory(source.toPath(), outputRoot)
                 } else if (source.isFile) {
-                    Files.createDirectories(runtimeAssetsRoot)
+                    Files.createDirectories(outputRoot)
                     Files.copy(
                         source.toPath(),
-                        runtimeAssetsRoot.resolve(source.name),
+                        outputRoot.resolve(source.name),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                     )
                 }
@@ -362,6 +364,10 @@ private fun applicationHostSource(
     static int kotlin_winrt_create_vm(JNIEnv **env) {
         char classpath[32768];
         char environment_options[32768];
+        wchar_t host_directory[MAX_PATH * 2];
+        wchar_t host_module[MAX_PATH * 2];
+        char runtime_assets_root[MAX_PATH * 4 + 64];
+        char application_manifest_name[MAX_PATH * 4 + 64];
         JavaVMOption options[64];
         int option_count = 0;
         JavaVMInitArgs args;
@@ -377,6 +383,21 @@ private fun applicationHostSource(
         kotlin_winrt_classpath(classpath, sizeof(classpath));
         options[option_count++].optionString = classpath;
         options[option_count++].optionString = "--enable-native-access=ALL-UNNAMED";
+        kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
+        lstrcpyA(runtime_assets_root, "-Dkotlin.winrt.runtimeAssetsRoot=");
+        kotlin_winrt_append_utf8(runtime_assets_root, sizeof(runtime_assets_root), host_directory);
+        options[option_count++].optionString = runtime_assets_root;
+        GetModuleFileNameW(NULL, host_module, ARRAYSIZE(host_module));
+        for (DWORD i = lstrlenW(host_module); i > 0; --i) {
+            if (host_module[i - 1] == L'\\' || host_module[i - 1] == L'/') {
+                MoveMemory(host_module, host_module + i, (lstrlenW(host_module + i) + 1) * sizeof(wchar_t));
+                break;
+            }
+        }
+        lstrcpyA(application_manifest_name, "-Dkotlin.winrt.applicationManifestName=");
+        kotlin_winrt_append_utf8(application_manifest_name, sizeof(application_manifest_name), host_module);
+        lstrcatA(application_manifest_name, ".manifest");
+        options[option_count++].optionString = application_manifest_name;
         option_count = kotlin_winrt_add_environment_options(options, option_count, ARRAYSIZE(options), environment_options, sizeof(environment_options));
         args.version = JNI_VERSION_1_8;
         args.nOptions = option_count;

@@ -13,6 +13,17 @@ internal object RawObjectAbiSupport {
             return if (PlatformAbi.isNull(pointer)) null else wrap(pointer)
         }
 
+    fun nullableAbiResult(
+        invoke: (RawAddress) -> Int,
+    ): RawAddress? =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val hResult = invoke(resultOut)
+            WinRtPlatformApi.checkSucceededRaw(hResult)
+            val pointer = PlatformAbi.readPointer(resultOut)
+            return if (PlatformAbi.isNull(pointer)) null else pointer
+        }
+
     fun indexOfResult(
         invoke: (indexOut: RawAddress, foundOut: RawAddress) -> Int,
     ): Pair<Boolean, UInt> =

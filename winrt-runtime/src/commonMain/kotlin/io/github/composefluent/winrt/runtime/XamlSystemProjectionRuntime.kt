@@ -923,10 +923,8 @@ private class WinRtStringableObject(
     override val primaryTypeHandle: WinRtTypeHandle
         get() = stringableTypeHandle()
 
-    override fun stringRepresentation(): String =
+    override fun toString(): String =
         invokeHStringGetter(nativeObject, slot = 6)
-
-    override fun toString(): String = stringRepresentation()
 }
 
 private class CommandCanExecuteChangedEventSource(

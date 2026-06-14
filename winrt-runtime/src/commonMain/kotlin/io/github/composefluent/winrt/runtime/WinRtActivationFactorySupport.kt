@@ -5,7 +5,10 @@ fun interface WinRtActivationFactory {
 }
 
 internal object WinRtActivationFactorySupport {
-    fun createCcwDefinition(factory: WinRtActivationFactory): WinRtCcwDefinition =
+    fun createCcwDefinition(
+        factory: WinRtActivationFactory,
+        factoryInterfaces: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+    ): WinRtCcwDefinition =
         WinRtCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
@@ -22,7 +25,7 @@ internal object WinRtActivationFactorySupport {
                         },
                     ),
                 ),
-            ),
+            ) + factoryInterfaces,
             defaultInterfaceId = IID.IActivationFactory,
         )
 }

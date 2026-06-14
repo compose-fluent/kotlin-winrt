@@ -211,6 +211,9 @@ actual object PlatformAbi {
             .setAtIndex(ValueLayout.ADDRESS, index.toLong(), value.asMemorySegment())
     }
 
+    actual fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long =
+        address.value
+
     actual fun pointerKey(pointer: RawAddress): Long = pointer.value
 
     actual fun pointerKey(pointer: RawComPtr): Long = pointer.value

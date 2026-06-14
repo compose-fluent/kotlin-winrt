@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("io.github.composefluent.winrt")
 }
@@ -14,6 +14,43 @@ val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projectio
 val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.projections.includeFullWindowsSdk")
     .map(String::toBooleanStrict)
     .orElse(false)
+val fullWindowsSdkProjectionGateRequested = providers.provider {
+    val fullWindowsSdkGateTasks = setOf(
+        "validateWinRtFullWindowsSdkProjectionGate",
+        "validateWinRtMingwParity",
+        "validateWinRtProjectionCompile",
+        "validateWinRtSampleSmoke",
+        "validateWinRtQueue16",
+    )
+    gradle.startParameter.taskNames.any { taskName ->
+        val unqualifiedTaskName = taskName.substringAfterLast(":")
+        unqualifiedTaskName in fullWindowsSdkGateTasks
+    }
+}
+val projectionUseFullWindowsSdk = projectionIncludeFullWindowsSdk
+    .zip(fullWindowsSdkProjectionGateRequested) { propertyEnabled, gateRequested ->
+        propertyEnabled || gateRequested
+    }
+
+kotlin {
+    jvm()
+    mingwX64()
+}
+
+val generatedWinRtProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
+
+val auditGeneratedWinRtProjectionOutput by tasks.registering(
+    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRtProjectionOutputTask::class,
+) {
+    group = "verification"
+    description = "Fails if generated projection source leaks fallback invocation or JVM-only reflection paths."
+    dependsOn("generateWinRtProjections")
+    generatedSourcesDirectory.set(generatedWinRtProjectionSources)
+}
+
+tasks.named("check") {
+    dependsOn(auditGeneratedWinRtProjectionOutput)
+}
 
 winRt {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
@@ -23,7 +60,7 @@ winRt {
         }
     }
 
-    if (projectionIncludeFullWindowsSdk.get()) {
+    if (projectionUseFullWindowsSdk.get()) {
         namespace("Windows")
         excludeNamespace("Windows.UI.Xaml")
         excludeNamespace("Windows.ApplicationModel.Store.Preview")

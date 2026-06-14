@@ -1,129 +1,236 @@
+@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+
 package io.github.composefluent.winrt.runtime
 
+import kotlin.native.ref.WeakReference as NativeWeakReference
+
 actual class ConcurrentCacheMap<K, V> actual constructor() {
+    private val lock = PlatformLock()
     private val delegate = linkedMapOf<K, V>()
 
-    actual operator fun get(key: K): V? = delegate[key]
+    actual operator fun get(key: K): V? =
+        lock.withLock {
+            delegate[key]
+        }
 
     actual operator fun set(
         key: K,
         value: V,
     ) {
-        delegate[key] = value
+        lock.withLock {
+            delegate[key] = value
+        }
     }
 
     actual fun putIfAbsent(
         key: K,
         value: V,
     ): V? {
-        val existing = delegate[key]
-        if (existing == null) {
-            delegate[key] = value
+        return lock.withLock {
+            val existing = delegate[key]
+            if (existing == null) {
+                delegate[key] = value
+            }
+            existing
         }
-        return existing
     }
 
-    actual fun remove(key: K): V? = delegate.remove(key)
+    actual fun remove(key: K): V? =
+        lock.withLock {
+            delegate.remove(key)
+        }
 
-    actual fun containsKey(key: K): Boolean = delegate.containsKey(key)
+    actual fun containsKey(key: K): Boolean =
+        lock.withLock {
+            delegate.containsKey(key)
+        }
 
     actual fun computeIfAbsent(
         key: K,
         defaultValue: (K) -> V,
-    ): V = delegate[key] ?: defaultValue(key).also { value -> delegate[key] = value }
+    ): V =
+        lock.withLock {
+            delegate[key] ?: defaultValue(key).also { value -> delegate[key] = value }
+        }
 
     actual fun compute(
         key: K,
         remapping: (K, V?) -> V?,
     ): V? {
-        val value = remapping(key, delegate[key])
-        if (value == null) {
-            delegate.remove(key)
-        } else {
-            delegate[key] = value
+        return lock.withLock {
+            val value = remapping(key, delegate[key])
+            if (value == null) {
+                delegate.remove(key)
+            } else {
+                delegate[key] = value
+            }
+            value
         }
-        return value
     }
 
     actual fun clear() {
-        delegate.clear()
+        lock.withLock {
+            delegate.clear()
+        }
     }
 
     actual val size: Int
-        get() = delegate.size
+        get() =
+            lock.withLock {
+                delegate.size
+            }
 
     actual val values: Collection<V>
-        get() = delegate.values
+        get() =
+            lock.withLock {
+                delegate.values.toList()
+            }
 
     actual val entries: Set<Map.Entry<K, V>>
-        get() = delegate.entries
+        get() =
+            lock.withLock {
+                delegate.toMap().entries
+            }
 }
 
 actual class ConcurrentCacheSet<T> actual constructor() {
+    private val lock = PlatformLock()
     private val delegate = linkedSetOf<T>()
 
-    actual fun add(value: T): Boolean = delegate.add(value)
+    actual fun add(value: T): Boolean =
+        lock.withLock {
+            delegate.add(value)
+        }
 
-    actual operator fun contains(value: T): Boolean = delegate.contains(value)
+    actual operator fun contains(value: T): Boolean =
+        lock.withLock {
+            delegate.contains(value)
+        }
 
     actual fun clear() {
-        delegate.clear()
+        lock.withLock {
+            delegate.clear()
+        }
     }
 }
 
 actual class WeakValueCache<K, V : Any> actual constructor() {
-    private val delegate = linkedMapOf<K, V>()
+    private val lock = PlatformLock()
+    private val delegate = linkedMapOf<K, NativeWeakReference<V>>()
 
-    actual operator fun get(key: K): V? = delegate[key]
+    actual operator fun get(key: K): V? =
+        lock.withLock {
+            val value = delegate[key]?.get()
+            if (value == null) {
+                delegate.remove(key)
+            }
+            value
+        }
 
     actual operator fun set(
         key: K,
         value: V,
     ) {
-        delegate[key] = value
+        lock.withLock {
+            delegate[key] = NativeWeakReference(value)
+        }
     }
 
-    actual fun remove(key: K): V? = delegate.remove(key)
+    actual fun remove(key: K): V? =
+        lock.withLock {
+            delegate.remove(key)?.get()
+        }
 
     actual fun clear() {
-        delegate.clear()
+        lock.withLock {
+            delegate.clear()
+        }
     }
 }
 
 actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
-    private val delegate = linkedMapOf<K, V>()
+    private val lock = PlatformLock()
+    private val delegate = mutableListOf<WeakKeyStateEntry<K, V>>()
 
-    actual operator fun get(key: K): V? = delegate[key]
+    actual operator fun get(key: K): V? =
+        lock.withLock {
+            purgeDeadKeys()
+            delegate.firstOrNull { entry -> entry.matches(key) }?.value
+        }
 
     actual fun getOrPut(
         key: K,
         defaultValue: () -> V,
-    ): V = delegate[key] ?: defaultValue().also { value -> delegate[key] = value }
+    ): V =
+        lock.withLock {
+            purgeDeadKeys()
+            delegate.firstOrNull { entry -> entry.matches(key) }?.value
+                ?: defaultValue().also { value ->
+                    delegate += WeakKeyStateEntry(key, value)
+                }
+        }
 
-    actual fun remove(key: K): V? = delegate.remove(key)
+    actual fun remove(key: K): V? =
+        lock.withLock {
+            purgeDeadKeys()
+            val index = delegate.indexOfFirst { entry -> entry.matches(key) }
+            if (index < 0) {
+                null
+            } else {
+                delegate.removeAt(index).value
+            }
+        }
 
     actual fun clear() {
-        delegate.clear()
+        lock.withLock {
+            delegate.clear()
+        }
+    }
+
+    private fun purgeDeadKeys() {
+        delegate.removeAll { entry -> entry.key.get() == null }
     }
 }
 
+private class WeakKeyStateEntry<K : Any, V : Any>(
+    key: K,
+    val value: V,
+) {
+    val key: NativeWeakReference<K> = NativeWeakReference(key)
+    private val hashCode: Int = key.hashCode()
+
+    fun matches(candidate: K): Boolean =
+        candidate.hashCode() == hashCode && key.get() == candidate
+}
+
 actual class SnapshotList<T> actual constructor() {
+    private val lock = PlatformLock()
     private val delegate = mutableListOf<T>()
 
     actual fun add(value: T) {
-        delegate += value
+        lock.withLock {
+            delegate += value
+        }
     }
 
-    actual fun remove(value: T): Boolean = delegate.remove(value)
+    actual fun remove(value: T): Boolean =
+        lock.withLock {
+            delegate.remove(value)
+        }
 
     actual fun clear() {
-        delegate.clear()
+        lock.withLock {
+            delegate.clear()
+        }
     }
 
     actual fun <R : Any> firstNotNullOfOrNull(transform: (T) -> R?): R? =
-        delegate.firstNotNullOfOrNull(transform)
+        toList().firstNotNullOfOrNull(transform)
 
-    actual fun toList(): List<T> = delegate.toList()
+    actual fun toList(): List<T> =
+        lock.withLock {
+            delegate.toList()
+        }
 }
 
 actual class FinalizationHook actual constructor() {

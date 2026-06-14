@@ -500,6 +500,7 @@ class WinRtMetadataModelTest {
                 WinRtNamespace(
                     name = "Microsoft.UI.Xaml.Interop",
                     types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVectorView", kind = WinRtTypeKind.Interface),
                         WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
                     ),
                 ),
@@ -537,7 +538,7 @@ class WinRtMetadataModelTest {
 
         val classifier = model.typeClassifier()
         assertEquals(
-            listOf("IBindableIterable", "IBindableVector", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
+            listOf("IBindableIterable", "IBindableVector", "IBindableVectorView", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
             classifier.mappedTypesInNamespace("Microsoft.UI.Xaml.Interop").map { it.abiName },
         )
         assertEquals(
@@ -563,6 +564,14 @@ class WinRtMetadataModelTest {
             "Sample.Foundation",
         )
         assertEquals("System.Collections.IList", bindable.mappedType?.mappedQualifiedName)
+
+        val bindableView = classifier.classify(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Interop.IBindableVectorView"),
+            "Sample.Foundation",
+        )
+        assertEquals("System.Collections.IList", bindableView.mappedType?.mappedQualifiedName)
+        assertEquals(WinRtSpecialTypeFamily.BindableCollection, bindableView.specialType?.family)
+        assertEquals(WinRtBindableCollectionKind.VectorView, (bindableView.specialType as WinRtBindableCollectionTypeDescriptor).kind)
         assertEquals(true, bindable.requiresMarshaling)
         assertEquals(true, bindable.hasCustomMembersOutput)
         assertEquals(true, bindable.isXamlAlias)
@@ -1621,6 +1630,7 @@ class WinRtMetadataModelTest {
                 WinRtNamespace(
                     name = "Microsoft.UI.Xaml.Interop",
                     types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVectorView", kind = WinRtTypeKind.Interface),
                         WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
                     ),
                 ),
@@ -1638,6 +1648,12 @@ class WinRtMetadataModelTest {
         assertEquals(true, muxBindableVector.requiresMarshaling)
         assertEquals(true, muxBindableVector.hasCustomMembersOutput)
         assertEquals(true, muxBindableVector.isXamlAlias)
+
+        val muxBindableVectorView = requireNotNull(helpers.getMappedType("Microsoft.UI.Xaml.Interop", "IBindableVectorView"))
+        assertEquals("System.Collections.IList", muxBindableVectorView.mappedQualifiedName)
+        assertEquals(true, muxBindableVectorView.requiresMarshaling)
+        assertEquals(true, muxBindableVectorView.hasCustomMembersOutput)
+        assertEquals(true, muxBindableVectorView.isXamlAlias)
 
         val wuxBindableVector = requireNotNull(helpers.getMappedType("Windows.UI.Xaml.Interop", "IBindableVector"))
         assertEquals("System.Collections.IList", wuxBindableVector.mappedQualifiedName)
@@ -1664,7 +1680,7 @@ class WinRtMetadataModelTest {
         assertEquals(null, helpers.getMappedType("Microsoft.UI.Xaml.Media.Media3D", "Matrix3D"))
         assertEquals(null, helpers.getMappedType("Windows.UI.Xaml", "GridLength"))
         assertEquals(
-            listOf("IBindableIterable", "IBindableVector", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
+            listOf("IBindableIterable", "IBindableVector", "IBindableVectorView", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
             helpers.getMappedTypesInNamespace("Microsoft.UI.Xaml.Interop").map { it.abiName },
         )
         assertEquals(
@@ -2127,6 +2143,7 @@ class WinRtMetadataModelTest {
                 WinRtNamespace(
                     name = "Microsoft.UI.Xaml.Interop",
                     types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVectorView", kind = WinRtTypeKind.Interface),
                         WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
                     ),
                 ),
@@ -2156,8 +2173,8 @@ class WinRtMetadataModelTest {
         )
         assertEquals(true, sample.additionsIncluded)
         assertEquals(true, sample.requiresAbi)
-        assertEquals(listOf("Microsoft.UI.Xaml.Interop.IBindableVector"), xaml.skippedTypes.map { it.type.qualifiedName })
-        assertEquals(listOf(WinRtSkippedTypeReason.MappedType), xaml.skippedTypes.map { it.reason })
+        assertEquals(listOf("Microsoft.UI.Xaml.Interop.IBindableVector", "Microsoft.UI.Xaml.Interop.IBindableVectorView"), xaml.skippedTypes.map { it.type.qualifiedName })
+        assertEquals(listOf(WinRtSkippedTypeReason.MappedType, WinRtSkippedTypeReason.MappedType), xaml.skippedTypes.map { it.reason })
         assertEquals(false, xaml.additionsIncluded)
         assertEquals(listOf(WinRtBaseTypeMapping("Sample.Foundation.Widget", "Sample.Foundation.BaseWidget")), inventory.baseTypeMappings)
         assertEquals(listOf("Sample.Foundation.WidgetHandler"), inventory.eventSourceMappings.map { it.eventTypeName })
@@ -2877,6 +2894,15 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("Sample.Foundation.IWidgetFactory"), factory.constructorFactories)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), factory.staticMemberTargets)
         assertEquals(64, factory.gcPressureAmount)
+        val activationStaticOnlyFactory = helpers.factorySurfaceDescriptor(
+            widget.copy(
+                activation = WinRtActivationShape(
+                    staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                ),
+            ),
+        )
+        assertEquals(listOf("Sample.Foundation.IWidgetStatics"), activationStaticOnlyFactory.staticMemberTargets)
+        assertEquals(listOf("Sample_Foundation_IWidgetStaticsCache"), activationStaticOnlyFactory.staticFactoryCacheNames)
 
         val mapped = helpers.customMappedMemberOutputDescriptor(bindableVector)
         assertEquals("Microsoft.UI.Xaml.Interop.IBindableVector", mapped?.interfaceTypeName)

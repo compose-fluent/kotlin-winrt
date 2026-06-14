@@ -1,16 +1,16 @@
 package io.github.composefluent.winrt.compiler
 
-import io.github.composefluent.winrt.authoring.IndexedWinRtType
-import io.github.composefluent.winrt.authoring.KotlinImports
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredRuntimeClassAnnotation
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoredTypeCandidate
-import io.github.composefluent.winrt.authoring.KotlinWinRtAuthoringCandidateFile
-import io.github.composefluent.winrt.authoring.PROJECTION_PACKAGE_PREFIX
-import io.github.composefluent.winrt.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
-import io.github.composefluent.winrt.authoring.inheritedOverridableInterfaceNames
-import io.github.composefluent.winrt.authoring.projectionPackageToMetadataName
-import io.github.composefluent.winrt.authoring.readAuthoringMetadataIndex
-import io.github.composefluent.winrt.authoring.resolveIndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.KotlinImports
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredRuntimeClassAnnotation
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.PROJECTION_PACKAGE_PREFIX
+import io.github.composefluent.winrt.compiler.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
+import io.github.composefluent.winrt.compiler.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.compiler.authoring.projectionPackageToMetadataName
+import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
+import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRtType
 import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.KtSourceFile
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreApplicationEnvironment
@@ -139,6 +139,23 @@ object KotlinWinRtAuthoringScannerCli {
                 }
             }
             .map(IndexedWinRtType::qualifiedName)
+        val annotatedActivatableFactoryInterface = annotation.activatableFactoryInterfaceName
+            ?.let { typeName ->
+                resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type $sourceTypeName annotation activatableFactoryInterfaceName must reference a WinRT interface: $typeName."
+                    }
+                }.qualifiedName
+            }
+        val annotatedStaticFactoryInterfaces = annotation.staticFactoryInterfaceNames
+            .map { typeName ->
+                resolveAnnotatedWinRtType(typeName, winRtTypes, sourceTypeName).also { type ->
+                    require(type.kind == "Interface") {
+                        "WinRT authored type $sourceTypeName annotation staticFactoryInterfaceNames must reference WinRT interfaces: $typeName."
+                    }
+                }
+            }
+            .map(IndexedWinRtType::qualifiedName)
         val resolvedWinRtTypes = listOfNotNull(annotatedBase) + annotatedInterfaces + inheritedWinRtTypes
         if (resolvedWinRtTypes.isEmpty()) {
             return null
@@ -177,6 +194,8 @@ object KotlinWinRtAuthoringScannerCli {
             winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
             overridableInterfaceNames = overridableInterfaces,
             isPublic = source.isEffectivelyPublicClass(klass),
+            activatableFactoryInterfaceName = annotatedActivatableFactoryInterface,
+            staticFactoryInterfaceNames = annotatedStaticFactoryInterfaces.distinct().sorted(),
         )
     }
 
@@ -473,6 +492,11 @@ object KotlinWinRtAuthoringScannerCli {
                     .ifEmpty { positionalArguments.getOrNull(1).stringArrayArgument() },
                 overridableInterfaceNames = annotationStringArrayArgument(annotationText, "overridableInterfaceNames")
                     .ifEmpty { positionalArguments.getOrNull(2).stringArrayArgument() },
+                activatableFactoryInterfaceName = annotationStringArgument(annotationText, "activatableFactoryInterfaceName")
+                    .takeIf(String::isNotBlank)
+                    ?: positionalArguments.getOrNull(3).stringLiteralArgument().takeIf(String::isNotBlank),
+                staticFactoryInterfaceNames = annotationStringArrayArgument(annotationText, "staticFactoryInterfaceNames")
+                    .ifEmpty { positionalArguments.getOrNull(4).stringArrayArgument() },
             )
         }
 
