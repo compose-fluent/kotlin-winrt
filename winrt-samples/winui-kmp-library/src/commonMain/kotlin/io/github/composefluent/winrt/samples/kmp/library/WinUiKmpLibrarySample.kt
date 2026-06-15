@@ -22,12 +22,16 @@ import microsoft.ui.xaml.automation.peers.PatternInterface
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.ContentControl
+import microsoft.ui.xaml.controls.Grid
 import microsoft.ui.xaml.controls.Panel
+import microsoft.ui.xaml.controls.SwapChainPanel
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
 import kotlin.time.Duration.Companion.milliseconds
 import windows.foundation.Point
+import windows.foundation.Rect
+import windows.foundation.Size
 import windows.foundation.TypedEventHandler
 
 object WinUiKmpLibrarySample {
@@ -120,6 +124,14 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         val textBox = TextBox()
         println("winui-kmp-library: textBox created")
         val includeLocalAuthoredContent = !WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipLocalAuthoredContent")
+        val localGridHost = if (includeLocalAuthoredContent) {
+            WinUiKmpLocalGridHostPanel(panel).also {
+                println("winui-kmp-library: local authored grid host created")
+            }
+        } else {
+            println("winui-kmp-library: local authored grid host skipped")
+            null
+        }
         val localControl = if (includeLocalAuthoredContent) {
             WinUiKmpLocalContentControl().also {
                 println("winui-kmp-library: local authored control created")
@@ -199,7 +211,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         })
         println("winui-kmp-library: detached automation accessibility view cleared")
         if (!WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipWindowContent")) {
-            window.content = panel
+            window.content = localGridHost ?: panel
             println("winui-kmp-library: window content set")
         } else {
             println("winui-kmp-library: window content skipped")
@@ -226,7 +238,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             println("winui-kmp-library: window activated native")
             return
         }
-        registerCallbackSmoke(window, button, textBox)
+        registerCallbackSmoke(window, button, textBox, localGridHost)
         println("winui-kmp-library: callbacks registered")
         window.activate()
         println("winui-kmp-library: window activated native")
@@ -236,6 +248,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         window: Window,
         button: Button,
         textBox: TextBox,
+        localGridHost: WinUiKmpLocalGridHostPanel?,
     ) {
         println("winui-kmp-library: registering window activated")
         activeEventTokens += window.activated.add { _, _ ->
@@ -256,6 +269,15 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
                 println("winui-kmp-library: button layout callback")
                 if (!focusSmokeCompleted) {
                     focusSmokeCompleted = true
+                    if (localGridHost != null) {
+                        check(localGridHost.measureOverrideCalls > 0) {
+                            "Authored Grid.MeasureOverride was not dispatched."
+                        }
+                        check(localGridHost.arrangeOverrideCalls > 0) {
+                            "Authored Grid.ArrangeOverride was not dispatched."
+                        }
+                        println("winui-kmp-library: local authored grid layout overrides dispatched")
+                    }
                     runFocusSmoke(window, button, textBox)
                 }
             }
@@ -388,6 +410,45 @@ internal class WinUiKmpLocalContentControl : ContentControl() {
             println("winui-kmp-library: local authored control register SampleTextProperty done")
             property
         }
+    }
+}
+
+internal class WinUiKmpLocalGridHostPanel(
+    private val contentPanel: Canvas,
+) : Grid() {
+    val renderPanel: SwapChainPanel = SwapChainPanel()
+    var measureOverrideCalls: Int = 0
+        private set
+    var arrangeOverrideCalls: Int = 0
+        private set
+
+    init {
+        renderPanel.opacity = 0.999999
+        checkNotNull(children) {
+            "Authored Grid children collection was not initialized."
+        }.also { gridChildren ->
+            gridChildren.add(renderPanel)
+            gridChildren.add(contentPanel)
+        }
+    }
+
+    override fun onCreateAutomationPeer(): AutomationPeer {
+        return super.onCreateAutomationPeer()
+    }
+
+    override fun measureOverride(availableSize: Size): Size {
+        measureOverrideCalls += 1
+        renderPanel.measure(availableSize)
+        contentPanel.measure(availableSize)
+        return availableSize
+    }
+
+    override fun arrangeOverride(finalSize: Size): Size {
+        arrangeOverrideCalls += 1
+        val bounds = Rect(0f, 0f, finalSize.width, finalSize.height)
+        renderPanel.arrange(bounds)
+        contentPanel.arrange(bounds)
+        return finalSize
     }
 }
 

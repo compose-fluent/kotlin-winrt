@@ -266,6 +266,21 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
         check(panelTypeDetails.contains("__winrtAuthoringInvokeOnCreateAutomationPeer")) {
             "Expected local Panel TypeDetails to dispatch UIElement automation peer override bridge: $panelTypeDetails"
         }
+        val gridHostTypeDetails = requireFile(
+            typeDetailsRoot.resolve(
+                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUiKmpLocalGridHostPanel_TypeDetails.kt",
+            ),
+            "generated local Grid host TypeDetails",
+        ).readText()
+        check(gridHostTypeDetails.contains("__winrtAuthoringInvokeMeasureOverride")) {
+            "Expected local Grid host TypeDetails to dispatch FrameworkElement measure override bridge: $gridHostTypeDetails"
+        }
+        check(gridHostTypeDetails.contains("__winrtAuthoringInvokeArrangeOverride")) {
+            "Expected local Grid host TypeDetails to dispatch FrameworkElement arrange override bridge: $gridHostTypeDetails"
+        }
+        check(gridHostTypeDetails.contains("__winrtAuthoringInvokeOnCreateAutomationPeer")) {
+            "Expected local Grid host TypeDetails to dispatch UIElement automation peer override bridge: $gridHostTypeDetails"
+        }
         val automationPeerTypeDetails = requireFile(
             typeDetailsRoot.resolve(
                 "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUiKmpLocalAutomationPeer_TypeDetails.kt",

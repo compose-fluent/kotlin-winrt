@@ -726,7 +726,11 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                                UnitCallAbiArgumentKind.Struct -> {
+                                UnitCallAbiArgumentKind.Struct1,
+                                UnitCallAbiArgumentKind.Struct2,
+                                UnitCallAbiArgumentKind.Struct4,
+                                UnitCallAbiArgumentKind.Struct8,
+                                UnitCallAbiArgumentKind.StructPointer -> {
                                     val adapter = irTemporary(
                                         value = nextValue(),
                                         nameHint = "structAdapter",
@@ -907,7 +911,11 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                                UnitCallAbiArgumentKind.Struct -> {
+                                UnitCallAbiArgumentKind.Struct1,
+                                UnitCallAbiArgumentKind.Struct2,
+                                UnitCallAbiArgumentKind.Struct4,
+                                UnitCallAbiArgumentKind.Struct8,
+                                UnitCallAbiArgumentKind.StructPointer -> {
                                     val adapter = irTemporary(
                                         value = nextValue(),
                                         nameHint = "structAdapter",
@@ -1790,7 +1798,11 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                                UnitCallAbiArgumentKind.Struct -> {
+                                UnitCallAbiArgumentKind.Struct1,
+                                UnitCallAbiArgumentKind.Struct2,
+                                UnitCallAbiArgumentKind.Struct4,
+                                UnitCallAbiArgumentKind.Struct8,
+                                UnitCallAbiArgumentKind.StructPointer -> {
                                     val structAdapter = irTemporary(
                                         value = nextValue(),
                                         nameHint = "structAdapter",
@@ -2274,7 +2286,11 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                                UnitCallAbiArgumentKind.Struct -> {
+                                UnitCallAbiArgumentKind.Struct1,
+                                UnitCallAbiArgumentKind.Struct2,
+                                UnitCallAbiArgumentKind.Struct4,
+                                UnitCallAbiArgumentKind.Struct8,
+                                UnitCallAbiArgumentKind.StructPointer -> {
                                     val adapter = irTemporary(
                                         value = nextValue(),
                                         nameHint = "structAdapter",
@@ -2401,7 +2417,7 @@ class KotlinWinRtIrGenerationExtension(
             }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                val hasStructArguments = argumentKinds.any { it == UnitCallAbiArgumentKind.Struct }
+                val hasStructArguments = argumentKinds.any { it.isStruct }
                 val nativeScope = if (hasStructArguments) {
                     irTemporary(
                         value = builder.irCall(platformAbiConfinedScope).apply {
@@ -2436,7 +2452,11 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                                UnitCallAbiArgumentKind.Struct -> {
+                                UnitCallAbiArgumentKind.Struct1,
+                                UnitCallAbiArgumentKind.Struct2,
+                                UnitCallAbiArgumentKind.Struct4,
+                                UnitCallAbiArgumentKind.Struct8,
+                                UnitCallAbiArgumentKind.StructPointer -> {
                                     val adapter = irTemporary(
                                         value = nextValue(),
                                         nameHint = "structAdapter",
@@ -2550,7 +2570,7 @@ class KotlinWinRtIrGenerationExtension(
             }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                val hasStructArguments = argumentKinds.any { it == UnitCallAbiArgumentKind.Struct }
+                val hasStructArguments = argumentKinds.any { it.isStruct }
                 val nativeScope = if (hasStructArguments) {
                     irTemporary(
                         value = builder.irCall(platformAbiConfinedScope).apply {
@@ -2585,7 +2605,11 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                                UnitCallAbiArgumentKind.Struct -> {
+                                UnitCallAbiArgumentKind.Struct1,
+                                UnitCallAbiArgumentKind.Struct2,
+                                UnitCallAbiArgumentKind.Struct4,
+                                UnitCallAbiArgumentKind.Struct8,
+                                UnitCallAbiArgumentKind.StructPointer -> {
                                     val adapter = irTemporary(
                                         value = nextValue(),
                                         nameHint = "structAdapter",
@@ -3016,11 +3040,27 @@ class KotlinWinRtIrGenerationExtension(
             value: IrExpression,
         ): IrExpression =
             when (argumentKind) {
-                UnitCallAbiArgumentKind.Struct ->
+                UnitCallAbiArgumentKind.Struct1 ->
+                    builder.irCall(platformAbiReadInt8).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = value
+                    }
+                UnitCallAbiArgumentKind.Struct2 ->
+                    builder.irCall(platformAbiReadInt16).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = value
+                    }
+                UnitCallAbiArgumentKind.Struct4 ->
+                    builder.irCall(platformAbiReadInt32).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = value
+                    }
+                UnitCallAbiArgumentKind.Struct8 ->
                     builder.irCall(platformAbiReadInt64).apply {
                         arguments[0] = builder.irGetObject(platformAbi)
                         arguments[1] = value
                     }
+                UnitCallAbiArgumentKind.StructPointer -> symbols.rawAddressToOpaquePointer(builder, value)
                 else -> symbols.nativeCarrier(builder, argumentKind, value)
             }
 
@@ -3058,9 +3098,23 @@ class KotlinWinRtIrGenerationExtension(
             Double,
             Boolean,
             String,
-            Struct,
+            Struct1,
+            Struct2,
+            Struct4,
+            Struct8,
+            StructPointer,
             Object,
         }
+
+        private val UnitCallAbiArgumentKind.isStruct: Boolean
+            get() = when (this) {
+                UnitCallAbiArgumentKind.Struct1,
+                UnitCallAbiArgumentKind.Struct2,
+                UnitCallAbiArgumentKind.Struct4,
+                UnitCallAbiArgumentKind.Struct8,
+                UnitCallAbiArgumentKind.StructPointer -> true
+                else -> false
+            }
 
         private enum class NoArgumentGetterReturnKind {
             String,
@@ -3101,9 +3155,9 @@ class KotlinWinRtIrGenerationExtension(
                         "Double" -> UnitCallAbiArgumentKind.Double
                         "Boolean" -> UnitCallAbiArgumentKind.Boolean
                         "String" -> UnitCallAbiArgumentKind.String
-                        "Struct" -> UnitCallAbiArgumentKind.Struct
+                        "Struct" -> UnitCallAbiArgumentKind.StructPointer
                         "Object" -> UnitCallAbiArgumentKind.Object
-                        else -> if (STRUCT_LAYOUT_TOKEN.matches(token)) UnitCallAbiArgumentKind.Struct else return null
+                        else -> parseStructLayoutToken(token) ?: return null
                     }
                 }
             }
@@ -3111,7 +3165,11 @@ class KotlinWinRtIrGenerationExtension(
             fun varargValueCount(argumentKinds: List<UnitCallAbiArgumentKind>): Int =
                 argumentKinds.sumOf { kind ->
                     when (kind) {
-                        UnitCallAbiArgumentKind.Struct -> 2
+                        UnitCallAbiArgumentKind.Struct1,
+                        UnitCallAbiArgumentKind.Struct2,
+                        UnitCallAbiArgumentKind.Struct4,
+                        UnitCallAbiArgumentKind.Struct8,
+                        UnitCallAbiArgumentKind.StructPointer -> 2
                         else -> 1
                     }
                 }
@@ -3119,7 +3177,19 @@ class KotlinWinRtIrGenerationExtension(
             fun appendToken(shape: String, token: String): String =
                 if (shape.isBlank()) token else "$shape,$token"
 
-            private val STRUCT_LAYOUT_TOKEN = Regex("""Struct\d+_\d+""")
+            private fun parseStructLayoutToken(token: String): UnitCallAbiArgumentKind? {
+                val match = STRUCT_LAYOUT_TOKEN.matchEntire(token) ?: return null
+                return when (match.groupValues[1].toLongOrNull()) {
+                    1L -> UnitCallAbiArgumentKind.Struct1
+                    2L -> UnitCallAbiArgumentKind.Struct2
+                    4L -> UnitCallAbiArgumentKind.Struct4
+                    8L -> UnitCallAbiArgumentKind.Struct8
+                    null -> null
+                    else -> UnitCallAbiArgumentKind.StructPointer
+                }
+            }
+
+            private val STRUCT_LAYOUT_TOKEN = Regex("""Struct(\d+)_\d+""")
         }
 
         private fun projectedObjectAbi(
@@ -3399,7 +3469,7 @@ class KotlinWinRtIrGenerationExtension(
                 when (kind) {
                     UnitCallAbiArgumentKind.RawComPtr -> rawComPtrToOpaquePointer(builder, value)
                     UnitCallAbiArgumentKind.RawAddress,
-                    UnitCallAbiArgumentKind.Struct,
+                    UnitCallAbiArgumentKind.StructPointer,
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> rawAddressToOpaquePointer(builder, value)
                     UnitCallAbiArgumentKind.Byte,
@@ -3410,7 +3480,11 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.UInt64,
                     UnitCallAbiArgumentKind.Float,
                     UnitCallAbiArgumentKind.Double,
-                    UnitCallAbiArgumentKind.Boolean -> value
+                    UnitCallAbiArgumentKind.Boolean,
+                    UnitCallAbiArgumentKind.Struct1,
+                    UnitCallAbiArgumentKind.Struct2,
+                    UnitCallAbiArgumentKind.Struct4,
+                    UnitCallAbiArgumentKind.Struct8 -> value
                 }
 
             companion object {
@@ -3513,7 +3587,11 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.Double -> "Double"
                     UnitCallAbiArgumentKind.Boolean -> "Boolean"
                     UnitCallAbiArgumentKind.String -> "String"
-                    UnitCallAbiArgumentKind.Struct -> "Struct"
+                    UnitCallAbiArgumentKind.Struct1,
+                    UnitCallAbiArgumentKind.Struct2,
+                    UnitCallAbiArgumentKind.Struct4,
+                    UnitCallAbiArgumentKind.Struct8,
+                    UnitCallAbiArgumentKind.StructPointer -> "Struct"
                     UnitCallAbiArgumentKind.Object -> "Object"
                 }
 
@@ -3588,7 +3666,11 @@ class KotlinWinRtIrGenerationExtension(
                     }
                     UnitCallAbiArgumentKind.RawComPtr -> segmentFromRawComPtr(builder, value)
                     UnitCallAbiArgumentKind.RawAddress,
-                    UnitCallAbiArgumentKind.Struct,
+                    UnitCallAbiArgumentKind.Struct1,
+                    UnitCallAbiArgumentKind.Struct2,
+                    UnitCallAbiArgumentKind.Struct4,
+                    UnitCallAbiArgumentKind.Struct8,
+                    UnitCallAbiArgumentKind.StructPointer,
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
                 }
