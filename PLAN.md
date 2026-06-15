@@ -19,6 +19,7 @@
 
 ## Current Focus Queue
 
+- [x] Completed issue #5 native authored XAML Grid override parity: fixed K/N direct-call struct ABI lowering so `Rect`/large structs are passed by pointer, added a `mingwX64` authored `Grid` + `SwapChainPanel` sample with `onCreateAutomationPeer`, `measureOverride`, and `arrangeOverride`, and validated it against `.cswinrt/src/cswinrt` overridable interface CCW generation plus `.cswinrt/src/WinRT.Runtime` composable/CCW lifetime responsibilities.
 - [ ] 正在做 generated projection size reduction: reduce repeated generated `.class` output in prebuilt Windows SDK and Windows App SDK projection artifacts without changing Maven coordinates, projected API compatibility, runtime hot-path behavior, or multi-module classpath safety.
 - [x] Completed size-reduction baseline: metadata/accessor helper reduction, owner-qualified event/generic support facades, module-local fixed-shape ABI helpers, projected reference helper regrouping by `IInspectableReference` / `IUnknownReference`, and helper frequency thresholding are in place.
 - [x] Completed WinUI sample merge gate: `:winrt-samples:runWinRtApplicationHost` passes with Windows App SDK `2.1.3`, `runWinUiSmoke=true`, `autoExitWinUi=true`, `skipSettingsCard=true`, and `skipShimmer=true`.
