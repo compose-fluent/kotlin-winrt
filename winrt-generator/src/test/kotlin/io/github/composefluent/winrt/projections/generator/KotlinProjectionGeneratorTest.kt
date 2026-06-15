@@ -15892,6 +15892,21 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "Rect",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float", rowId = 3, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRtFieldDefinition("Y", "Float", rowId = 4, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRtFieldDefinition("Width", "Float", rowId = 5, offset = 8, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRtFieldDefinition("Height", "Float", rowId = 6, offset = 12, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                            ),
+                            layout = WinRtTypeLayout(WinRtTypeLayoutKind.Sequential, packingSize = 4, classSize = 16),
+                            isBlittable = true,
+                            abiSize = 16,
+                            abiAlignment = 4,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "IEasingFunction",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555558"),
@@ -15933,6 +15948,14 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                     methodRowId = 11,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "ClipTo",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("bounds", "Sample.Foundation.Rect"),
+                                    ),
+                                    methodRowId = 12,
+                                ),
                             ),
                         ),
                     ),
@@ -15949,7 +15972,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
         assertTrue(contents.contains("\"Float,Struct8_4\""))
         assertTrue(contents.contains("\"Float,Struct8_4,RawAddress\""))
+        assertTrue(contents.contains("\"Struct16_4\""))
         assertTrue(contents.contains("Point.Metadata"))
+        assertTrue(contents.contains("Rect.Metadata"))
         assertTrue(contents.contains("winRtProjectionMarshaler(easingFunction, \"Sample.Foundation.EasingFunction\""))
         assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555558\")).use {"))
         assertTrue(contents.contains("__easingFunctionProjectionMarshaler ->"))
