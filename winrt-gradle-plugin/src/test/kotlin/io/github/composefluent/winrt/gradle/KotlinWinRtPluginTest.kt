@@ -2711,6 +2711,17 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("Runtime.Native.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
+        val applicationManifest = Files.readString(outputRoot.resolve("app.exe.manifest"))
+        assertTrue(
+            applicationManifest.contains(
+                "<dpiAware xmlns='http://schemas.microsoft.com/SMI/2005/WindowsSettings'>true/PM</dpiAware>",
+            ),
+        )
+        assertTrue(
+            applicationManifest.contains(
+                "<dpiAwareness xmlns='http://schemas.microsoft.com/SMI/2016/WindowsSettings'>PerMonitorV2, PerMonitor</dpiAwareness>",
+            ),
+        )
         assertFalse(Files.exists(outputRoot.resolve("resources.pri")))
         assertFalse(Files.exists(outputRoot.resolve("registrations/stale/LiftedWinRTClassRegistrations.xml")))
         assertTrue(

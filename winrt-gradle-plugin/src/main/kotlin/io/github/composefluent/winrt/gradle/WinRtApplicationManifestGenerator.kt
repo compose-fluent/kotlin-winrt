@@ -61,6 +61,12 @@ internal object WinRtApplicationManifestGenerator {
             appendLine("            <maxversiontested Id='10.0.18362.0'/>")
             appendLine("        </application>")
             appendLine("    </compatibility>")
+            appendLine("    <asmv3:application>")
+            appendLine("        <asmv3:windowsSettings>")
+            appendLine("            <dpiAware xmlns='http://schemas.microsoft.com/SMI/2005/WindowsSettings'>true/PM</dpiAware>")
+            appendLine("            <dpiAwareness xmlns='http://schemas.microsoft.com/SMI/2016/WindowsSettings'>PerMonitorV2, PerMonitor</dpiAwareness>")
+            appendLine("        </asmv3:windowsSettings>")
+            appendLine("    </asmv3:application>")
             entryByFileName.values.forEach(::append)
             remainingFileNames.values.forEach { fileName -> append(manifestFileEntry(fileName, "")) }
             appendLine("</assembly>")

@@ -24,6 +24,7 @@
 - [ ] 正在做 generated projection size reduction: reduce repeated generated `.class` output in prebuilt Windows SDK and Windows App SDK projection artifacts without changing Maven coordinates, projected API compatibility, runtime hot-path behavior, or multi-module classpath safety.
 - [x] Completed size-reduction baseline: metadata/accessor helper reduction, owner-qualified event/generic support facades, module-local fixed-shape ABI helpers, projected reference helper regrouping by `IInspectableReference` / `IUnknownReference`, and helper frequency thresholding are in place.
 - [x] Completed WinUI sample merge gate: `:winrt-samples:runWinRtApplicationHost` passes with Windows App SDK `2.1.3`, `runWinUiSmoke=true`, `autoExitWinUi=true`, `skipSettingsCard=true`, and `skipShimmer=true`.
+- [x] Completed WinUI Controls sample DPI manifest parity: generated Win32 application manifests now align with `.cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp/app.manifest` by declaring `true/PM` and `PerMonitorV2, PerMonitor`, so JVM and `mingwX64` WinUI hosts do not run under system-DPI virtualization.
 
 ## Module Alignment
 
