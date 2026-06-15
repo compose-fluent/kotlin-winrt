@@ -7467,16 +7467,6 @@ class KotlinWinRtPluginTest {
             .normalize()
             .toString()
             .replace("\\", "/")
-        val metadataJar = Path.of("../winrt-metadata/build/libs/winrt-metadata.jar")
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-            .replace("\\", "/")
-        val generatorJar = Path.of("../winrt-generator/build/libs/winrt-generator.jar")
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-            .replace("\\", "/")
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
@@ -7511,19 +7501,6 @@ class KotlinWinRtPluginTest {
                 id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
             }
 
-            configurations.create("kotlinWinRtGeneratorWorker") {
-                isCanBeConsumed = false
-                isCanBeResolved = true
-            }
-
-            dependencies {
-                add("kotlinWinRtGeneratorWorker", files("$runtimeJar", "$metadataJar", "$generatorJar"))
-                add("kotlinWinRtGeneratorWorker", "com.squareup:kotlinpoet:1.18.1")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
-            }
-
             apply(plugin = "io.github.composefluent.winrt")
 
             kotlin {
@@ -7541,6 +7518,7 @@ class KotlinWinRtPluginTest {
                 windowsSdk(generateProjection = true)
                 type("Windows.Foundation.IStringable")
                 type("Windows.Foundation.Point")
+                type("Windows.Foundation.Rect")
             }
 
             val writeIntrinsicProbe = tasks.register("writeIntrinsicProbe") {
@@ -7559,6 +7537,7 @@ class KotlinWinRtPluginTest {
                             import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
                             import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
                             import windows.foundation.Point
+                            import windows.foundation.Rect
 
                             object IntrinsicProbe {
                                 fun call(reference: ComObjectReference, value: RawAddress) {
@@ -7570,6 +7549,10 @@ class KotlinWinRtPluginTest {
 
                                 fun booleanWithStruct(reference: ComObjectReference, value: Point): Boolean =
                                     WinRtProjectionIntrinsic.callBoolean(reference, 9, "Struct8_4", value, Point.Metadata)
+
+                                fun unitWithLargeStruct(reference: ComObjectReference, value: Rect) {
+                                    WinRtProjectionIntrinsic.callUnit(reference, 10, "Struct16_4", value, Rect.Metadata)
+                                }
 
                                 fun support() {
                                     WinRtProjectionSupportIntrinsic.ensureInitialized()
@@ -7602,6 +7585,12 @@ class KotlinWinRtPluginTest {
                     }
                     check(contents.contains("WinRtJvmFfmDowncallHandles")) {
                         "KMP JVM class did not lower projection intrinsic to JVM FFM"
+                    }
+                    check(contents.contains("Struct8_4")) {
+                        "KMP JVM class did not preserve small struct ABI shape token"
+                    }
+                    check(contents.contains("Struct16_4")) {
+                        "KMP JVM class did not preserve large struct ABI shape token"
                     }
                     check(!contents.contains("([Ljava/lang/Object;)Ljava/lang/Object;")) {
                         "KMP JVM class lowered MethodHandle.invoke as a single Object[] vararg call"
@@ -7654,30 +7643,7 @@ class KotlinWinRtPluginTest {
             .normalize()
             .toString()
             .replace("\\", "/")
-        val metadataJar = Path.of("../winrt-metadata/build/libs/winrt-metadata.jar")
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-            .replace("\\", "/")
-        val generatorJar = Path.of("../winrt-generator/build/libs/winrt-generator.jar")
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-            .replace("\\", "/")
         val generatorWorkerSetup = """
-            configurations.create("kotlinWinRtGeneratorWorker") {
-                isCanBeConsumed = false
-                isCanBeResolved = true
-            }
-
-            dependencies {
-                add("kotlinWinRtGeneratorWorker", files("$runtimeJar", "$metadataJar", "$generatorJar"))
-                add("kotlinWinRtGeneratorWorker", "com.squareup:kotlinpoet:1.18.1")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
-            }
-
             apply(plugin = "io.github.composefluent.winrt")
         """.trimIndent()
         writeGradleFile(
@@ -8003,16 +7969,6 @@ class KotlinWinRtPluginTest {
             .normalize()
             .toString()
             .replace("\\", "/")
-        val metadataJar = Path.of("../winrt-metadata/build/libs/winrt-metadata.jar")
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-            .replace("\\", "/")
-        val generatorJar = Path.of("../winrt-generator/build/libs/winrt-generator.jar")
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-            .replace("\\", "/")
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK",
@@ -8095,20 +8051,6 @@ class KotlinWinRtPluginTest {
 
             application {
                 mainClass.set("sample.Main")
-            }
-
-            configurations.named("kotlinWinRtGeneratorWorker") {
-                isCanBeConsumed = false
-                isCanBeResolved = true
-                exclude(group = "io.github.compose-fluent")
-            }
-
-            dependencies {
-                add("kotlinWinRtGeneratorWorker", files("$runtimeJar", "$metadataJar", "$generatorJar"))
-                add("kotlinWinRtGeneratorWorker", "com.squareup:kotlinpoet:1.18.1")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
             }
 
             winRt {
