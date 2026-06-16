@@ -2886,14 +2886,16 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", WINRT_OBJECT_MARSHALLER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.PropertyValue -> CodeBlock.of("%T.tryFromBorrowedAbi(rawArgs[%L] as %T)", WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
-            "%T.Metadata.wrap(%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable())",
-            typeRenderer.resolveTypeName(binding.resolvedTypeName),
-            IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
-            index,
-            RAW_ADDRESS_CLASS_NAME,
-        )
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            customObjectAbi(binding)?.let { authoringCcwDecodeCustomObjectArgumentCode(binding, it, index) }
+                ?: CodeBlock.of(
+                    "%T.Metadata.wrap(%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable())",
+                    typeRenderer.resolveTypeName(binding.resolvedTypeName),
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    index,
+                    RAW_ADDRESS_CLASS_NAME,
+                )
         KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of(
             "%T.Metadata.fromAbi(rawArgs[%L] as %T) ?: error(%S)",
             typeRenderer.resolveTypeName(binding.resolvedTypeName),
@@ -3027,6 +3029,40 @@ class KotlinProjectionSupportRenderer {
             pointerExpression = CodeBlock.of("rawArgs[%L] as %T", index, RAW_ADDRESS_CLASS_NAME),
         ) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI async argument ${binding.describeAbiKind()}")
         return CodeBlock.of("%L", expression)
+    }
+
+    private fun authoringCcwDecodeCustomObjectArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        customAbi: KotlinProjectionCustomObjectAbi,
+        index: Int,
+    ): CodeBlock {
+        val pointerExpression = CodeBlock.of("rawArgs[%L] as %T", index, RAW_ADDRESS_CLASS_NAME)
+        val projectedType = typeRenderer.resolveTypeName(binding.resolvedTypeName).copy(nullable = false)
+        val expression = if (customAbi.fromAbiFunctionName == "objectFromAbi") {
+            CodeBlock.of(
+                "%T.%L(%L, %T(%S, %T(%S)), %T::class)",
+                WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+                customAbi.fromAbiFunctionName,
+                pointerExpression,
+                WINRT_TYPE_HANDLE_CLASS_NAME,
+                customAbi.typeHandleName,
+                GUID_CLASS_NAME,
+                customAbi.interfaceId.toString(),
+                projectedType,
+            )
+        } else {
+            CodeBlock.of(
+                "%T.%L(%L)",
+                WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+                customAbi.fromAbiFunctionName,
+                pointerExpression,
+            )
+        }
+        return if (binding.isNullableAbiTypeName) {
+            expression
+        } else {
+            CodeBlock.of("%L ?: error(%S)", expression, "WINRT_E_NULL_AUTHORED_ABI_ARGUMENT")
+        }
     }
 
     private fun authoringCcwDecodeCustomStructArgumentCode(
@@ -3214,6 +3250,10 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,
         KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> authoringCcwWriteAsyncReferenceReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            customObjectAbi(binding)?.let { authoringCcwWriteCustomObjectReturnCode(binding, it, outExpression, valueExpression) }
+                ?: authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
         KotlinProjectionAbiValueKind.Reference -> authoringCcwWriteReferenceReturnCode(
             binding = binding,
             outExpression = outExpression,
@@ -3226,8 +3266,6 @@ class KotlinProjectionSupportRenderer {
             valueExpression = valueExpression,
             projectionClass = WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME,
         )
-        KotlinProjectionAbiValueKind.ProjectedInterface,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
         KotlinProjectionAbiValueKind.GenericParameter,
         KotlinProjectionAbiValueKind.UnknownReference,
@@ -3354,6 +3392,24 @@ class KotlinProjectionSupportRenderer {
             }
             else -> null
         }
+
+    private fun authoringCcwWriteCustomObjectReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        customAbi: KotlinProjectionCustomObjectAbi,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock =
+        CodeBlock.of(
+            "%T.%L(%L, %T(%S)).use { __returnReference -> %T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer())) }",
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            if (binding.isNullableAbiReturn) "createObjectReferenceOrNull" else customAbi.createReferenceFunctionName,
+            valueExpression,
+            GUID_CLASS_NAME,
+            customAbi.interfaceId.toString(),
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            PLATFORM_ABI_CLASS_NAME,
+        )
 
     private fun authoringCcwWriteArrayReturnCode(
         binding: KotlinProjectionAbiTypeBinding,
