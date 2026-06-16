@@ -13,6 +13,10 @@ internal object InteropRuntimeHooks {
         val augmentedInterfaces = buildList {
             addAll(authoredInterfaces)
             add(createStringableInterfaceDefinition(value))
+            XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
+                value = value,
+                existingInterfaceIds = existingInterfaceIds,
+            )?.let(::add)
             add(createWeakReferenceSourceInterfaceDefinition(value))
             if (IID.IMarshal !in existingInterfaceIds) {
                 add(createMarshalInterfaceDefinition())

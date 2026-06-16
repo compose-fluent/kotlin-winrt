@@ -115,6 +115,7 @@ class ValueBoxingTest {
                     IID.IPropertyValue,
                     IID.NullableInt,
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,
@@ -136,6 +137,7 @@ class ValueBoxingTest {
                     IID.IPropertyValue,
                     IID.IReferenceArrayOfString,
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,
@@ -161,6 +163,7 @@ class ValueBoxingTest {
                     IID.IPropertyValue,
                     IID.NullableString,
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,
@@ -181,6 +184,7 @@ class ValueBoxingTest {
                     IID.IPropertyValue,
                     IID.IReferenceArrayOfString,
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,
@@ -203,6 +207,7 @@ class ValueBoxingTest {
                 listOf(
                     IID.IPropertyValue,
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,
@@ -228,6 +233,7 @@ class ValueBoxingTest {
             IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = true).use { reference ->
                 listOf(
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,

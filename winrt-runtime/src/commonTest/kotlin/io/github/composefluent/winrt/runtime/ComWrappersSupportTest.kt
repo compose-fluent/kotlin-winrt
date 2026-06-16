@@ -433,6 +433,7 @@ class ComWrappersSupportTest {
                 listOf(
                     publicInterfaceId,
                     IID.IStringable,
+                    IID.ICustomPropertyProvider,
                     IID.IWeakReferenceSource,
                     IID.IMarshal,
                     IID.IAgileObject,
