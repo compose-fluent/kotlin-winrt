@@ -4639,6 +4639,244 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun authoring_ccw_validates_overridable_map_view_key_value_pair_returns_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IResourceCandidate",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555580"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ResourceCandidate",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IResourceCandidate",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IResourceCandidate",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IResourceMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555581"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValueByIndex",
+                                    returnTypeName = "Windows.Foundation.Collections.IKeyValuePair<String, Sample.Foundation.ResourceCandidate>",
+                                    methodRowId = 32,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("index", "UInt"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ResourceMap",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IResourceMap",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IResourceMap",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
+
+        assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IResourceMap\")"))
+        assertTrue(ccwFactories, ccwFactories.contains("ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer)"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeGetValueByIndex(__arg0)"))
+        assertTrue(ccwFactories, ccwFactories.contains("winRtKeyValuePairAdapter(WinRtReferenceValueAdapters.string"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtReferenceValueAdapters.runtimeClass(ResourceCandidate::class"))
+        assertTrue(ccwFactories, ccwFactories.contains("ResourceCandidate.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(ccwFactories, ccwFactories.contains("createOutputMarshaler(__result).use"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("return KeyValuePair(String,Sample.Foundation.ResourceCandidate) uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI return KeyValuePair"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+    }
+
+    @Test
+    fun authoring_ccw_decodes_reachable_overridable_collection_parameters_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IResourceMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555582"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Configure",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 33,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "values",
+                                            typeName = "Windows.Foundation.Collections.IIterable<String>",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            name = "lookup",
+                                            typeName = "Windows.Foundation.Collections.IMapView<String, Int>",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            name = "entry",
+                                            typeName = "Windows.Foundation.Collections.IKeyValuePair<String, Int>",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            name = "bindable",
+                                            typeName = "Microsoft.UI.Xaml.Interop.IBindableVector",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            name = "pending",
+                                            typeName = "Windows.Foundation.IAsyncOperation<Int>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ResourceMap",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IResourceMap",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IResourceMap",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
+
+        assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IResourceMap\")"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtIterableProjection.fromAbi(rawArgs[0] as RawAddress"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtReadOnlyDictionaryProjection.fromAbi(rawArgs[1] as RawAddress"))
+        assertTrue(ccwFactories, ccwFactories.contains("winRtKeyValuePairAdapter(WinRtReferenceValueAdapters.string"))
+        assertTrue(ccwFactories, ccwFactories.contains(").projectAbi(rawArgs[2] as RawAddress)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtBindableVectorProjection.fromAbi(rawArgs[3] as RawAddress)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtAsyncProjectionInterop.operation<Int>"))
+        assertTrue(ccwFactories, ccwFactories.contains("pointer = rawArgs[4] as RawAddress"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeConfigure(__arg0, __arg1, __arg2, __arg3, __arg4)"))
+        assertFalse(ccwFactories, ccwFactories.contains("uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI argument"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+    }
+
+    @Test
+    fun generator_rejects_reachable_overridable_ccw_collection_parameters_with_unrenderable_adapters_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555583"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IResourceMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555584"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "LoadAll",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 34,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "handlers",
+                                            typeName = "Windows.Foundation.Collections.IIterable<Sample.Foundation.WidgetHandler>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ResourceMap",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IResourceMap",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IResourceMap",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            ).generate(model)
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires authored runtime class Sample.Foundation.ResourceMap CCW binding Sample.Foundation.IResourceMap.LOADALL_SLOT to use supported authored ABI metadata before support rendering; unsupported parameter handlers collection Iterable(Sample.Foundation.WidgetHandler) uses unsupported authored ABI shape.",
+            ),
+        )
+    }
+
+    @Test
     fun authoring_ccw_writes_async_operation_returns_through_existing_async_reference() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -4755,6 +4993,76 @@ class KotlinProjectionGeneratorTest {
         assertFalse(ccwFactories, ccwFactories.contains("return IReference(Boolean) uses unsupported authored ABI shape"))
         assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
         assertFalse(ccwFactories, ccwFactories.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
+    fun authoring_ccw_decodes_reference_parameters_through_runtime_reference_projection() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555577"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Configure",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 6,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "enabled",
+                                            typeName = "Windows.Foundation.IReference<Boolean>",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            name = "names",
+                                            typeName = "Windows.Foundation.IReferenceArray<String>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
+
+        assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtReferenceProjection.fromAbi(rawArgs[0] as RawAddress"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtReferenceArrayProjection.fromAbi(rawArgs[1] as RawAddress"))
+        assertTrue(ccwFactories, ccwFactories.contains("ParameterizedInterfaceId.createFromParameterizedInterface("))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtTypeSignature.boolean()"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtTypeSignature.string()"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeConfigure(__arg0, __arg1)"))
+        assertFalse(ccwFactories, ccwFactories.contains("argument IReference(Boolean) uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("argument IReferenceArray(String) uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI argument"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
     }
 
     @Test
