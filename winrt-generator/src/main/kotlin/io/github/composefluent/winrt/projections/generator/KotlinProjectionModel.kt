@@ -91,6 +91,7 @@ import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters
+import io.github.composefluent.winrt.runtime.WinRtPropertyValueProjection
 import io.github.composefluent.winrt.runtime.WinRtGenericParameterProjection
 import io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationSupportIntrinsic
@@ -275,6 +276,7 @@ internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::c
 internal val WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME = WinRtReferenceProjectionInterop::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
+internal val WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME = WinRtPropertyValueProjection::class.asClassName()
 internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRtGenericParameterProjection::class.asClassName()
 internal val WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME = WinRtGenericAbiSupportIntrinsic::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME =
@@ -563,6 +565,7 @@ enum class KotlinProjectionAbiValueKind {
     MappedAsyncOperationWithProgress,
     Reference,
     ReferenceArray,
+    PropertyValue,
     Array,
     ProjectedInterface,
     ProjectedRuntimeClass,
@@ -755,6 +758,14 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.ReferenceArray,
         simpleAbiLookup = true,
         descriptionName = "IReferenceArray",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IPropertyValue",
+        { ANY.copy(nullable = true) },
+        abiValueKind = KotlinProjectionAbiValueKind.PropertyValue,
+        runtimeOwnedProjection = true,
+        simpleAbiLookup = true,
+        descriptionName = "IPropertyValue",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.Collections.IIterable",
