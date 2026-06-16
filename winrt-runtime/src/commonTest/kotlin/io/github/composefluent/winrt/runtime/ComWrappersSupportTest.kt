@@ -446,6 +446,49 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun ccw_augmentation_preserves_authored_marshal_interface_order() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val publicInterfaceId = Guid("69696969-6969-6969-6969-696969696969")
+        ComWrappersSupport.registerCcwFactory(TestManagedType::class) {
+            WinRtCcwDefinition(
+                interfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = publicInterfaceId,
+                        methods = emptyList(),
+                    ),
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = IID.IMarshal,
+                        baseKind = WinRtComInterfaceBaseKind.IUnknown,
+                        methods = emptyList(),
+                    ),
+                ),
+                defaultInterfaceId = publicInterfaceId,
+                runtimeClassName = "test.ManagedType",
+            )
+        }
+
+        ComWrappersSupport.createCCWForObject(TestManagedType("payload"), publicInterfaceId).use { ccw ->
+            ccw.queryInterface(IID.IMarshal).getOrThrow().use { marshal ->
+                assertTrue(marshal.sameIdentity(ccw))
+            }
+            val info = ComWrappersSupport.getInspectableInfo(PlatformAbi.fromRawComPtr(ccw.pointer))
+            assertEquals(
+                listOf(
+                    publicInterfaceId,
+                    IID.IMarshal,
+                    IID.IStringable,
+                    IID.ICustomPropertyProvider,
+                    IID.IWeakReferenceSource,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IUnknown,
+                ),
+                info?.interfaceIds,
+            )
+        }
+    }
+
+    @Test
     fun cast_extension_rehydrates_registered_typed_wrapper() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceType = WinRtTypeHandle("test.IFoo", Guid("55555555-5555-5555-5555-555555555555"))

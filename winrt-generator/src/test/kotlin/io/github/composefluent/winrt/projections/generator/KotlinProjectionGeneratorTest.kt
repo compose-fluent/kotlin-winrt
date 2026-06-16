@@ -22474,6 +22474,112 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_authored_ccw_receive_array_not_projected_as_return_before_support_rendering() {
+        val model = authoredReceiveArrayCcwModel(
+            WinRtMethodDefinition(
+                name = "ReceiveNamesThenSuffix",
+                returnTypeName = "Unit",
+                parameters = listOf(
+                    WinRtParameterDefinition(
+                        "names",
+                        "Array<String>",
+                        typeIsByRef = true,
+                        isOutParameter = true,
+                    ),
+                    WinRtParameterDefinition("suffix", "String"),
+                ),
+                methodRowId = 6,
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            ).generate(model)
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.RECEIVENAMESTHENSUFFIX_SLOT to use supported authored ABI metadata before support rendering; unsupported parameter names receive-array ABI shape Array(String).",
+            ),
+        )
+    }
+
+    @Test
+    fun generator_rejects_authored_ccw_multiple_receive_arrays_before_support_rendering() {
+        val model = authoredReceiveArrayCcwModel(
+            WinRtMethodDefinition(
+                name = "ReceiveTwoNameArrays",
+                returnTypeName = "Unit",
+                parameters = listOf(
+                    WinRtParameterDefinition(
+                        "names",
+                        "Array<String>",
+                        typeIsByRef = true,
+                        isOutParameter = true,
+                    ),
+                    WinRtParameterDefinition(
+                        "aliases",
+                        "Array<String>",
+                        typeIsByRef = true,
+                        isOutParameter = true,
+                    ),
+                ),
+                methodRowId = 6,
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            ).generate(model)
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.RECEIVETWONAMEARRAYS_SLOT to use supported authored ABI metadata before support rendering; unsupported parameter names receive-array ABI shape Array(String).",
+            ),
+        )
+    }
+
+    private fun authoredReceiveArrayCcwModel(method: WinRtMethodDefinition): WinRtMetadataModel =
+        WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(method),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    @Test
     fun generator_rejects_authored_ccw_interface_without_projection_plan_before_support_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
