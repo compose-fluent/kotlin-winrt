@@ -57,18 +57,18 @@ object WinRtDelegateBridge {
         if (delegate is WinRtProjectedDelegate) {
             return createProjectedDelegateArgument(delegate)
         }
-        val reference = callback?.let {
-            val descriptor = WinRtDelegateDescriptor(
-                interfaceId = iid,
+        val handle = callback?.let {
+            createDelegate(
+                iid = iid,
                 parameterKinds = parameterKinds,
                 returnKind = returnKind,
                 parameterStructAdapters = parameterStructAdapters,
                 returnStructAdapter = returnStructAdapter,
                 runtimeClassName = runtimeClassName,
+                callback = it,
             )
-            WinRtLightweightDelegateComObject.createReference(descriptor, it)
         }
-        return WinRtDelegateArgumentMarshaler(handle = null, reference = reference)
+        return WinRtDelegateArgumentMarshaler(handle = handle, reference = handle?.createReference())
     }
 
     fun createProjectedDelegateHandle(delegate: WinRtProjectedDelegate): WinRtDelegateHandle =
