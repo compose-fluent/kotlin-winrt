@@ -63,20 +63,91 @@ private fun authoredCcwParameterAbiBindingUnsupportedReason(
     typeRenderer: KotlinProjectionRenderer,
     binding: KotlinProjectionAbiTypeBinding,
 ): String? =
-    authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding, allowAsyncReference = false)
+    when (binding.kind) {
+        KotlinProjectionAbiValueKind.Unit,
+        KotlinProjectionAbiValueKind.String,
+        KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8,
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16,
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32,
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64,
+        KotlinProjectionAbiValueKind.Float,
+        KotlinProjectionAbiValueKind.Double,
+        KotlinProjectionAbiValueKind.Char16,
+        KotlinProjectionAbiValueKind.GuidValue,
+        KotlinProjectionAbiValueKind.Enum,
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.Delegate,
+        KotlinProjectionAbiValueKind.GenericParameter,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference -> null
+        KotlinProjectionAbiValueKind.Reference,
+        KotlinProjectionAbiValueKind.ReferenceArray ->
+            if (typeRenderer.referenceInterfaceIdCode(binding) != null) {
+                null
+            } else {
+                "reference ${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        KotlinProjectionAbiValueKind.Array -> {
+            val elementBinding = binding.typeArguments.singleOrNull()
+                ?: return "array ${binding.describeAbiKind()} is missing an element ABI binding"
+            if (authoredCcwArrayElementBindingIsSupported(typeRenderer, elementBinding)) {
+                null
+            } else {
+                "array element ${elementBinding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        }
+        KotlinProjectionAbiValueKind.Struct ->
+            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
+                authoredCcwCustomStructAbiIsSupported(binding) ||
+                typeRenderer.nativeStructClassName(binding) != null
+            ) {
+                null
+            } else {
+                "struct ${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        KotlinProjectionAbiValueKind.MappedKeyValuePair ->
+            if (authoredCcwMappedKeyValuePairBindingIsSupported(typeRenderer, binding)) {
+                null
+            } else {
+                "${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedMapView ->
+            if (authoredCcwMappedCollectionBindingIsSupported(typeRenderer, binding)) {
+                null
+            } else {
+                "collection ${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        KotlinProjectionAbiValueKind.MappedBindableIterable,
+        KotlinProjectionAbiValueKind.MappedBindableVector,
+        KotlinProjectionAbiValueKind.MappedBindableVectorView -> null
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
+            if (authoredCcwAsyncReferenceBindingIsSupported(typeRenderer, binding)) {
+                null
+            } else {
+                "${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
+        else -> "${binding.describeAbiKind()} uses unsupported authored ABI shape"
+    }
 
 private fun authoredCcwReturnAbiBindingUnsupportedReason(
     typeRenderer: KotlinProjectionRenderer,
     binding: KotlinProjectionAbiTypeBinding,
 ): String? =
-    authoredCcwAbiBindingUnsupportedReason(typeRenderer, binding, allowAsyncReference = true)
-
-private fun authoredCcwAbiBindingUnsupportedReason(
-    typeRenderer: KotlinProjectionRenderer,
-    binding: KotlinProjectionAbiTypeBinding,
-    allowAsyncReference: Boolean,
-): String? {
-    return when (binding.kind) {
+    when (binding.kind) {
         KotlinProjectionAbiValueKind.Unit,
         KotlinProjectionAbiValueKind.String,
         KotlinProjectionAbiValueKind.Boolean,
@@ -111,7 +182,7 @@ private fun authoredCcwAbiBindingUnsupportedReason(
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,
         KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
-            if (allowAsyncReference) {
+            if (authoredCcwAsyncReferenceBindingIsSupported(typeRenderer, binding)) {
                 null
             } else {
                 "${binding.describeAbiKind()} uses unsupported authored ABI shape"
@@ -125,6 +196,12 @@ private fun authoredCcwAbiBindingUnsupportedReason(
                 "array element ${elementBinding.describeAbiKind()} uses unsupported authored ABI shape"
             }
         }
+        KotlinProjectionAbiValueKind.MappedKeyValuePair ->
+            if (authoredCcwMappedKeyValuePairBindingIsSupported(typeRenderer, binding)) {
+                null
+            } else {
+                "${binding.describeAbiKind()} uses unsupported authored ABI shape"
+            }
         KotlinProjectionAbiValueKind.MappedIterable,
         KotlinProjectionAbiValueKind.MappedVector,
         KotlinProjectionAbiValueKind.MappedVectorView,
@@ -146,7 +223,6 @@ private fun authoredCcwAbiBindingUnsupportedReason(
             }
         else -> "${binding.describeAbiKind()} uses unsupported authored ABI shape"
     }
-}
 
 private fun authoredCcwArrayElementBindingIsSupported(
     typeRenderer: KotlinProjectionRenderer,
@@ -168,6 +244,28 @@ private fun authoredCcwMappedCollectionBindingIsSupported(
         KotlinProjectionAbiValueKind.MappedMapView ->
             binding.typeArguments.size == 2 &&
                 binding.typeArguments.all { argument -> typeRenderer.collectionReferenceAdapterCode(argument) != null }
+        else -> false
+    }
+
+private fun authoredCcwMappedKeyValuePairBindingIsSupported(
+    typeRenderer: KotlinProjectionRenderer,
+    binding: KotlinProjectionAbiTypeBinding,
+): Boolean =
+    binding.typeArguments.size == 2 &&
+        binding.typeArguments.all { argument -> typeRenderer.collectionReferenceAdapterCode(argument) != null }
+
+private fun authoredCcwAsyncReferenceBindingIsSupported(
+    typeRenderer: KotlinProjectionRenderer,
+    binding: KotlinProjectionAbiTypeBinding,
+): Boolean =
+    when (binding.kind) {
+        KotlinProjectionAbiValueKind.MappedAsyncAction -> true
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation ->
+            binding.typeArguments.singleOrNull()?.let(typeRenderer::asyncOperationResultTypeSignature) != null
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
+            binding.typeArguments.size == 2 &&
+                binding.typeArguments.all { argument -> typeRenderer.asyncOperationResultTypeSignature(argument) != null }
         else -> false
     }
 

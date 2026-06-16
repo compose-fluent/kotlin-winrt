@@ -2907,6 +2907,29 @@ class KotlinProjectionSupportRenderer {
             index,
             RAW_ADDRESS_CLASS_NAME,
         )
+        KotlinProjectionAbiValueKind.Reference -> authoringCcwDecodeReferenceArgumentCode(
+            binding = binding,
+            index = index,
+            projectionClass = WINRT_REFERENCE_PROJECTION_CLASS_NAME,
+        )
+        KotlinProjectionAbiValueKind.ReferenceArray -> authoringCcwDecodeReferenceArgumentCode(
+            binding = binding,
+            index = index,
+            projectionClass = WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME,
+        )
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedMapView -> authoringCcwDecodeMappedCollectionArgumentCode(binding, index)
+        KotlinProjectionAbiValueKind.MappedKeyValuePair -> authoringCcwDecodeMappedKeyValuePairArgumentCode(binding, index)
+        KotlinProjectionAbiValueKind.MappedBindableIterable,
+        KotlinProjectionAbiValueKind.MappedBindableVector,
+        KotlinProjectionAbiValueKind.MappedBindableVectorView -> authoringCcwDecodeBindableCollectionArgumentCode(binding, index)
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> authoringCcwDecodeAsyncReferenceArgumentCode(binding, index)
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of(
             "%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable()",
@@ -2916,6 +2939,93 @@ class KotlinProjectionSupportRenderer {
             RAW_ADDRESS_CLASS_NAME,
         )
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwDecodeReferenceArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+        projectionClass: ClassName,
+    ): CodeBlock {
+        val interfaceId = typeRenderer.referenceInterfaceIdCode(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI reference argument ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%T.fromAbi(rawArgs[%L] as %T, %L) as %T",
+            projectionClass,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+            interfaceId,
+            typeRenderer.resolveTypeName(binding.typeName),
+        )
+    }
+
+    private fun authoringCcwDecodeMappedCollectionArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val projectionClass = when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable -> WINRT_ITERABLE_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedVector -> WINRT_LIST_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedVectorView -> WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedMap -> WINRT_DICTIONARY_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedMapView -> WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME
+            else -> return CodeBlock.of("error(%S)", "Unsupported authored ABI collection argument ${binding.describeAbiKind()}")
+        }
+        val adapterArguments = authoringCcwMappedCollectionAdapterArguments(binding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI collection argument ${binding.describeAbiKind()}")
+        return CodeBlock.builder()
+            .add("%T.fromAbi(rawArgs[%L] as %T", projectionClass, index, RAW_ADDRESS_CLASS_NAME)
+            .apply { adapterArguments.forEach { adapter -> add(", %L", adapter) } }
+            .add(") as %T", typeRenderer.resolveTypeName(binding.typeName))
+            .build()
+    }
+
+    private fun authoringCcwDecodeMappedKeyValuePairArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val keyAdapter = typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(0) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair argument ${binding.describeAbiKind()}"))
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair argument ${binding.describeAbiKind()}")
+        val valueAdapter = typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(1) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair argument ${binding.describeAbiKind()}"))
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair argument ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%M(%L, %L).projectAbi(rawArgs[%L] as %T) as %T",
+            WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME,
+            keyAdapter,
+            valueAdapter,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+            typeRenderer.resolveTypeName(binding.typeName),
+        )
+    }
+
+    private fun authoringCcwDecodeBindableCollectionArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val projectionClass = when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedBindableIterable -> WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedBindableVector -> WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedBindableVectorView -> WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME
+            else -> return CodeBlock.of("error(%S)", "Unsupported authored ABI bindable collection argument ${binding.describeAbiKind()}")
+        }
+        return CodeBlock.of(
+            "%T.fromAbi(rawArgs[%L] as %T) as %T",
+            projectionClass,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+            typeRenderer.resolveTypeName(binding.typeName),
+        )
+    }
+
+    private fun authoringCcwDecodeAsyncReferenceArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val expression = typeRenderer.asyncReferenceExpression(
+            returnBinding = binding,
+            pointerExpression = CodeBlock.of("rawArgs[%L] as %T", index, RAW_ADDRESS_CLASS_NAME),
+        ) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI async argument ${binding.describeAbiKind()}")
+        return CodeBlock.of("%L", expression)
     }
 
     private fun authoringCcwDecodeCustomStructArgumentCode(
@@ -3091,6 +3201,7 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMap,
         KotlinProjectionAbiValueKind.MappedMapView -> authoringCcwWriteMappedCollectionReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.MappedKeyValuePair -> authoringCcwWriteMappedKeyValuePairReturnCode(binding, outExpression, valueExpression)
         KotlinProjectionAbiValueKind.MappedAsyncAction,
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,
@@ -3154,6 +3265,26 @@ class KotlinProjectionSupportRenderer {
                 )
             else -> null
         }
+
+    private fun authoringCcwWriteMappedKeyValuePairReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val keyAdapter = typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(0) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair return ${binding.describeAbiKind()}"))
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair return ${binding.describeAbiKind()}")
+        val valueAdapter = typeRenderer.collectionReferenceAdapterCode(binding.typeArguments.getOrNull(1) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair return ${binding.describeAbiKind()}"))
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI key-value pair return ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "%M(%L, %L).createOutputMarshaler(%L).use { __returnMarshaler -> %T.writePointer(%L, __returnMarshaler.abi) }",
+            WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME,
+            keyAdapter,
+            valueAdapter,
+            valueExpression,
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+        )
+    }
 
     private fun authoringCcwWriteReferenceReturnCode(
         binding: KotlinProjectionAbiTypeBinding,

@@ -335,6 +335,11 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         KotlinProjectionAbiValueKind.MappedMap,
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMapView -> mappedCollectionParameterMarshaler(parameterBinding)
+        KotlinProjectionAbiValueKind.MappedKeyValuePair -> mappedKeyValuePairParameterMarshaler(parameterBinding)
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> asyncReferenceParameterMarshaler(parameterBinding)
         KotlinProjectionAbiValueKind.ProjectedInterface -> projectedInterfaceParameterMarshaler(parameterName, parameterBinding)
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> projectedRuntimeClassParameterMarshaler(parameterName, parameterBinding)
         KotlinProjectionAbiValueKind.Object -> {
@@ -426,6 +431,34 @@ private fun projectedObjectParameterAbiExpression(
             IWINRT_OBJECT_CLASS_NAME,
         )
     }
+
+private fun KotlinProjectionRenderer.mappedKeyValuePairParameterMarshaler(
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): KotlinProjectionAbiMarshalerPlan? {
+    val adapter = collectionReferenceAdapterCode(parameterBinding.typeBinding) ?: return null
+    val marshalerName = generatedLocalIdentifier("__", parameterBinding.name, "Marshaler")
+    return KotlinProjectionAbiMarshalerPlan(
+        name = parameterBinding.name,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%L.abi", marshalerName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+        scopeOpeners = listOf(
+            CodeBlock.of("%L.createInputMarshaler(%L).use { %L ->", adapter, parameterBinding.name, marshalerName),
+        ),
+    )
+}
+
+private fun asyncReferenceParameterMarshaler(
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): KotlinProjectionAbiMarshalerPlan =
+    KotlinProjectionAbiMarshalerPlan(
+        name = parameterBinding.name,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, parameterBinding.name),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+    )
 
 private fun genericParameterMarshaler(
     parameterName: String,
