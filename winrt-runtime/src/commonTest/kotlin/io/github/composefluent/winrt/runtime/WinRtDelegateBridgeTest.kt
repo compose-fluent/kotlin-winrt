@@ -446,8 +446,17 @@ class WinRtDelegateBridgeTest {
     }
 
     @Test
-    fun delegate_argument_uses_lightweight_iunknown_ccw() {
+    fun delegate_argument_uses_full_cswinrt_style_ccw() {
         val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc541")
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = delegateIid,
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val delegateReferenceIid = ParameterizedInterfaceId.createFromParameterizedInterface(
+            IID.IReference,
+            WinRtTypeSignature.delegate(delegateIid),
+        )
         var invocationCount = 0
 
         WinRtDelegateBridge.createDelegateArgument(
@@ -466,13 +475,7 @@ class WinRtDelegateBridgeTest {
                     ComVtableInvoker.invokeGeneric(
                         instance = marshaler.abi.asRawComPtr(),
                         slot = WinRtDelegateVftblSlots.Invoke,
-                        signature = WinRtDelegateAbiMarshaller.functionSignature(
-                            WinRtDelegateDescriptor(
-                                interfaceId = delegateIid,
-                                parameterKinds = emptyList(),
-                                returnKind = WinRtDelegateValueKind.UNIT,
-                            ),
-                        ),
+                        signature = WinRtDelegateAbiMarshaller.functionSignature(descriptor),
                         args = LongArray(0),
                     ),
                 ),
@@ -482,59 +485,106 @@ class WinRtDelegateBridgeTest {
                 interfaceId = delegateIid,
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                borrowed.queryInterface(IID.IAgileObject).getOrThrow().use { agile ->
-                    assertTrue(agile.sameIdentity(borrowed))
+                listOf(
+                    IID.IPropertyValue,
+                    delegateReferenceIid,
+                    IID.IStringable,
+                    IID.ICustomPropertyProvider,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                ).forEach { iid ->
+                    borrowed.queryInterface(iid).getOrThrow().use { queried ->
+                        assertTrue(queried.sameIdentity(borrowed))
+                    }
                 }
-                assertNull(borrowed.tryQueryInterface(IID.IInspectable))
-                assertNull(borrowed.tryQueryInterface(IID.IPropertyValue))
-                assertNull(
-                    borrowed.tryQueryInterface(
-                        ParameterizedInterfaceId.createFromParameterizedInterface(
-                            IID.IReference,
-                            WinRtTypeSignature.delegate(delegateIid),
-                        ),
-                    ),
-                )
+                borrowed.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
+                    assertEquals(
+                        PropertyType.OtherType,
+                        WinRtPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true).type(),
+                    )
+                }
+                borrowed.queryInterface(delegateReferenceIid).getOrThrow().use { referenceValue ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val valueOut = PlatformAbi.allocatePointerSlot(scope)
+                        val hr = ComVtableInvoker.invokeArgs(
+                            instance = referenceValue.pointer,
+                            slot = IInspectableVftblSlots.FirstCustom,
+                            arg0 = valueOut,
+                        )
+                        HResult(hr).requireSuccess()
+                        WinRtDelegateReference(PlatformAbi.readPointer(valueOut), descriptor).use { delegateReference ->
+                            assertEquals(KnownHResults.S_OK, delegateReference.invokeAbi(emptyList()))
+                        }
+                    }
+                }
             }
         }
 
-        assertEquals(1, invocationCount)
+        assertEquals(2, invocationCount)
     }
 
     @Test
-    fun delegate_argument_instances_share_lightweight_vtable_callbacks() {
+    fun delegate_argument_inspectable_get_iids_matches_reference_order() {
         val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc542")
-        val first = WinRtDelegateBridge.createDelegateArgument(
+        val delegateReferenceIid = ParameterizedInterfaceId.createFromParameterizedInterface(
+            IID.IReference,
+            WinRtTypeSignature.delegate(delegateIid),
+        )
+
+        WinRtDelegateBridge.createDelegateArgument(
             iid = delegateIid,
             parameterKinds = emptyList(),
             returnKind = WinRtDelegateValueKind.UNIT,
             callback = { Unit },
-        )
-        val second = WinRtDelegateBridge.createDelegateArgument(
-            iid = delegateIid,
-            parameterKinds = emptyList(),
-            returnKind = WinRtDelegateValueKind.UNIT,
-            callback = { Unit },
-        )
-
-        first.use { firstMarshaler ->
-            second.use { secondMarshaler ->
-                assertNotEquals(
-                    PlatformAbi.pointerKey(firstMarshaler.abi),
-                    PlatformAbi.pointerKey(secondMarshaler.abi),
-                )
-
-                val firstVtable = PlatformAbi.readPointer(firstMarshaler.abi)
-                val secondVtable = PlatformAbi.readPointer(secondMarshaler.abi)
-
-                assertEquals(
-                    PlatformAbi.pointerKey(firstVtable),
-                    PlatformAbi.pointerKey(secondVtable),
-                )
-                assertEquals(
-                    PlatformAbi.pointerKey(PlatformAbi.readPointerAt(firstVtable, WinRtDelegateVftblSlots.Invoke)),
-                    PlatformAbi.pointerKey(PlatformAbi.readPointerAt(secondVtable, WinRtDelegateVftblSlots.Invoke)),
-                )
+        ).use { marshaler ->
+            IUnknownReference(
+                pointer = marshaler.abi.asRawComPtr(),
+                interfaceId = delegateIid,
+                preventReleaseOnDispose = true,
+            ).asInspectable().use { inspectable ->
+                PlatformAbi.confinedScope().use { scope ->
+                    val countOut = PlatformAbi.allocateInt32Slot(scope)
+                    val idsOut = PlatformAbi.allocatePointerSlot(scope)
+                    val hr = ComVtableInvoker.invokeArgs(
+                        instance = inspectable.pointer,
+                        slot = IInspectableVftblSlots.GetIids,
+                        arg0 = countOut,
+                        arg1 = idsOut,
+                    )
+                    HResult(hr).requireSuccess()
+                    val ids = PlatformAbi.readPointer(idsOut)
+                    try {
+                        val count = PlatformAbi.readInt32(countOut)
+                        val iids = (0 until count).map { index ->
+                            PlatformAbi.readGuid(
+                                PlatformAbi.slice(
+                                    ids,
+                                    index.toLong() * Guid.BYTE_SIZE,
+                                    Guid.BYTE_SIZE.toLong(),
+                                ),
+                            )
+                        }
+                        assertEquals(
+                            listOf(
+                                delegateIid,
+                                IID.IPropertyValue,
+                                delegateReferenceIid,
+                                IID.IStringable,
+                                IID.ICustomPropertyProvider,
+                                IID.IWeakReferenceSource,
+                                IID.IMarshal,
+                                IID.IAgileObject,
+                                IID.IInspectable,
+                                IID.IUnknown,
+                            ),
+                            iids,
+                        )
+                    } finally {
+                        WinRtPlatformApi.coTaskMemFreeRaw(ids)
+                    }
+                }
             }
         }
     }
