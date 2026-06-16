@@ -139,6 +139,19 @@ internal object XamlSystemProjectionRuntimeHooks {
         )
     }
 
+    internal fun defaultCustomPropertyProviderInterfaceDefinition(
+        value: Any,
+        existingInterfaceIds: Set<Guid>,
+    ): WinRtInspectableInterfaceDefinition? {
+        if (!FeatureSwitches.enableDefaultCustomTypeMappings ||
+            !FeatureSwitches.enableICustomPropertyProviderSupport ||
+            IID.ICustomPropertyProvider in existingInterfaceIds
+        ) {
+            return null
+        }
+        return createCustomPropertyProviderDefinition(value).interfaceDefinitions.singleOrNull()
+    }
+
     private fun shouldExposeWinUiXamlMetadataProvider(definition: WinRtCcwDefinition): Boolean =
         XamlProjectionConfiguration.supportsWinUiOnlyTypes &&
             definition.interfaceDefinitions.any { it.interfaceId == WinUiXamlInterfaceIds.IApplicationOverrides } &&

@@ -156,6 +156,26 @@ class XamlSystemProjectionRuntimeTest {
         }
     }
 
+    @Test
+    fun plain_objects_gain_default_custom_property_provider_projection() {
+        val target = PlainBindableTarget("plain-value")
+
+        ComWrappersSupport.createCCWForObject(target, IID.ICustomPropertyProvider).use { reference ->
+            val projected =
+                ComWrappersSupport.createRcwForComObject(
+                    reference.getRefPointer().asRawAddress(),
+                    WinRtTypeHandle(
+                        TypeNameSupport.getNameForType(WinRtCustomPropertyProvider::class),
+                        IID.ICustomPropertyProvider,
+                    ),
+                ) as WinRtCustomPropertyProvider
+
+            assertNull(projected.getCustomProperty("value"))
+            assertNull(projected.getIndexedProperty("value", Int::class))
+            assertEquals("plain-value", projected.getStringRepresentation())
+        }
+    }
+
     private class TestCommand : WinRtCommand {
         val executed = mutableListOf<Any?>()
         private val handlers = linkedSetOf<WinRtCanExecuteChangedHandler>()
@@ -230,5 +250,9 @@ class XamlSystemProjectionRuntimeTest {
                 Int::class -> 7
                 else -> null
             }
+    }
+
+    private data class PlainBindableTarget(val label: String) {
+        override fun toString(): String = label
     }
 }

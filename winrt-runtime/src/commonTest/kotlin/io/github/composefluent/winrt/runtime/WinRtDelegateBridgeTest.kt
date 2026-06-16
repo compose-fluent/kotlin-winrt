@@ -319,6 +319,7 @@ class WinRtDelegateBridgeTest {
                                         WinRtTypeSignature.delegate(delegateIid),
                                     ),
                                     IID.IStringable,
+                                    IID.ICustomPropertyProvider,
                                     IID.IWeakReferenceSource,
                                     IID.IMarshal,
                                     IID.IAgileObject,
