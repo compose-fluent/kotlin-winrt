@@ -214,6 +214,9 @@ private fun authoredCcwReturnAbiBindingUnsupportedReason(
             } else {
                 "collection ${binding.describeAbiKind()} uses unsupported authored ABI shape"
             }
+        KotlinProjectionAbiValueKind.MappedBindableIterable,
+        KotlinProjectionAbiValueKind.MappedBindableVector,
+        KotlinProjectionAbiValueKind.MappedBindableVectorView -> null
         KotlinProjectionAbiValueKind.Struct ->
             if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
                 authoredCcwCustomStructAbiIsSupported(binding) ||

@@ -3245,6 +3245,9 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMap,
         KotlinProjectionAbiValueKind.MappedMapView -> authoringCcwWriteMappedCollectionReturnCode(binding, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.MappedBindableIterable,
+        KotlinProjectionAbiValueKind.MappedBindableVector,
+        KotlinProjectionAbiValueKind.MappedBindableVectorView -> authoringCcwWriteBindableCollectionReturnCode(binding, outExpression, valueExpression)
         KotlinProjectionAbiValueKind.MappedKeyValuePair -> authoringCcwWriteMappedKeyValuePairReturnCode(binding, outExpression, valueExpression)
         KotlinProjectionAbiValueKind.MappedAsyncAction,
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
@@ -3392,6 +3395,26 @@ class KotlinProjectionSupportRenderer {
             }
             else -> null
         }
+
+    private fun authoringCcwWriteBindableCollectionReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val projectionClass = when (binding.kind) {
+            KotlinProjectionAbiValueKind.MappedBindableIterable -> WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedBindableVector -> WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME
+            KotlinProjectionAbiValueKind.MappedBindableVectorView -> WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME
+            else -> return CodeBlock.of("error(%S)", "Unsupported authored ABI bindable collection return ${binding.describeAbiKind()}")
+        }
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.fromManaged(%L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            projectionClass,
+            valueExpression,
+        )
+    }
 
     private fun authoringCcwWriteCustomObjectReturnCode(
         binding: KotlinProjectionAbiTypeBinding,

@@ -5207,6 +5207,69 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun authoring_ccw_writes_bindable_collection_returns_through_runtime_projection() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Snapshot",
+                                    returnTypeName = "Windows.UI.Xaml.Interop.IBindableVectorView",
+                                    methodRowId = 9,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "items",
+                                            typeName = "Microsoft.UI.Xaml.Interop.IBindableVector",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
+
+        assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtBindableVectorProjection.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeSnapshot(__arg0)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtBindableVectorViewProjection.fromManaged(__result)"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("IBindableVectorView uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI return"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+    }
+
+    @Test
     fun renderer_uses_visibility_modifiers_and_metadata_companion_shells() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
