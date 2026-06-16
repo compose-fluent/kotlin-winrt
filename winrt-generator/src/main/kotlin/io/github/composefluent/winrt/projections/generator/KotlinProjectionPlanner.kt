@@ -1464,6 +1464,8 @@ class KotlinProjectionPlanner(
                 normalizedType.kind == WinRtTypeRefKind.Array -> KotlinProjectionAbiValueKind.Array
                 isWinRtObjectTypeName(rawTypeName) -> KotlinProjectionAbiValueKind.Object
                 isProjectedKeyValuePair -> KotlinProjectionAbiValueKind.MappedKeyValuePair
+                rawTypeName == "Windows.Foundation.IPropertyValue" ||
+                    resolvedTypeName == "Windows.Foundation.IPropertyValue" -> KotlinProjectionAbiValueKind.PropertyValue
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
                 eventHandlerKind != null -> KotlinProjectionAbiValueKind.Delegate
                 resolvedType != null -> when (resolvedType.kind) {

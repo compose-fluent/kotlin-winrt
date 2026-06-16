@@ -70,6 +70,7 @@ import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
+import io.github.composefluent.winrt.runtime.WinRtPropertyValueProjection
 import io.github.composefluent.winrt.runtime.WinRtPlatformApi
 import io.github.composefluent.winrt.runtime.WinRtTypeSignature
 import io.github.composefluent.winrt.runtime.WinRtTypeHandle
@@ -336,6 +337,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMapView -> mappedCollectionParameterMarshaler(parameterBinding)
         KotlinProjectionAbiValueKind.MappedKeyValuePair -> mappedKeyValuePairParameterMarshaler(parameterBinding)
+        KotlinProjectionAbiValueKind.PropertyValue -> propertyValueParameterMarshaler(parameterBinding)
         KotlinProjectionAbiValueKind.MappedAsyncAction,
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,
@@ -460,6 +462,17 @@ private fun asyncReferenceParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
 
+private fun propertyValueParameterMarshaler(
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): KotlinProjectionAbiMarshalerPlan =
+    KotlinProjectionAbiMarshalerPlan(
+        name = parameterBinding.name,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%T.fromManaged(%L)", WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME, parameterBinding.name),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+    )
+
 private fun genericParameterMarshaler(
     parameterName: String,
     parameterBinding: KotlinProjectionAbiParameterBinding,
@@ -537,6 +550,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.MappedBindableVectorView,
         KotlinProjectionAbiValueKind.Array,
         KotlinProjectionAbiValueKind.Unsupported -> return null
+        KotlinProjectionAbiValueKind.PropertyValue -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.MappedKeyValuePair -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Struct ->
@@ -703,6 +717,12 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
             }
         KotlinProjectionAbiValueKind.MappedKeyValuePair ->
             mappedKeyValuePairReturnReadback(returnBinding)
+        KotlinProjectionAbiValueKind.PropertyValue ->
+            CodeBlock.of(
+                "val __resultPointer = %T.readPointer(__resultOut)\nval __result = %T.tryFromBorrowedAbi(__resultPointer)\nreturn __result\n",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME,
+            )
         KotlinProjectionAbiValueKind.Unit,
         KotlinProjectionAbiValueKind.MappedIterable,
         KotlinProjectionAbiValueKind.MappedVector,

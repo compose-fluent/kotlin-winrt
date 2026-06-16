@@ -2884,6 +2884,7 @@ class KotlinProjectionSupportRenderer {
                 }
             }
         KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", WINRT_OBJECT_MARSHALLER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        KotlinProjectionAbiValueKind.PropertyValue -> CodeBlock.of("%T.tryFromBorrowedAbi(rawArgs[%L] as %T)", WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
             "%T.Metadata.wrap(%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable())",
@@ -3195,6 +3196,13 @@ class KotlinProjectionSupportRenderer {
             valueExpression,
             PLATFORM_ABI_CLASS_NAME,
             outExpression,
+        )
+        KotlinProjectionAbiValueKind.PropertyValue -> CodeBlock.of(
+            "%T.writePointer(%L, %T.fromManaged(%L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME,
+            valueExpression,
         )
         KotlinProjectionAbiValueKind.MappedIterable,
         KotlinProjectionAbiValueKind.MappedVector,

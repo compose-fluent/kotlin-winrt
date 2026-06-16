@@ -712,6 +712,7 @@ class KotlinProjectionGeneratorTest {
             "IClosable",
             "IReference",
             "IReferenceArray",
+            "IPropertyValue",
         )
         val notSimpleLookup = listOf(
             "IBindableVector",
@@ -784,6 +785,12 @@ class KotlinProjectionGeneratorTest {
             MappedTypeExpectation(
                 "Windows.Foundation.IReference",
                 KotlinProjectionAbiValueKind.Reference,
+                simpleLookup = true,
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.IPropertyValue",
+                KotlinProjectionAbiValueKind.PropertyValue,
+                runtimeOwned = true,
                 simpleLookup = true,
             ),
             MappedTypeExpectation(
@@ -5062,6 +5069,72 @@ class KotlinProjectionGeneratorTest {
         assertFalse(ccwFactories, ccwFactories.contains("argument IReference(Boolean) uses unsupported authored ABI shape"))
         assertFalse(ccwFactories, ccwFactories.contains("argument IReferenceArray(String) uses unsupported authored ABI shape"))
         assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI argument"))
+        assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
+    }
+
+    @Test
+    fun authoring_ccw_decodes_and_writes_property_value_through_runtime_value_projection() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555578"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Normalize",
+                                    returnTypeName = "Windows.Foundation.IPropertyValue",
+                                    methodRowId = 7,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "value",
+                                            typeName = "Windows.Foundation.IPropertyValue",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
+
+        assertFalse(filesByName.containsKey("IPropertyValue.kt"))
+        assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
+        assertTrue(ccwFactories, ccwFactories.contains("ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtPropertyValueProjection.tryFromBorrowedAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeNormalize(__arg0)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtPropertyValueProjection.fromManaged(__result)"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
+        assertFalse(ccwFactories, ccwFactories.contains("IPropertyValue uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI argument"))
+        assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI return"))
         assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
     }
 

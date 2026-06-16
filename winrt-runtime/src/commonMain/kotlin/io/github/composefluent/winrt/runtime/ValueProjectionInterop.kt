@@ -127,7 +127,7 @@ object WinRtReferenceArrayProjection {
         }
 }
 
-internal object WinRtPropertyValueProjection {
+object WinRtPropertyValueProjection {
     fun createMarshaler(value: Any?): WinRtProjectionMarshaler? {
         if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
             return null
