@@ -2452,8 +2452,7 @@ class KotlinProjectionSupportRenderer {
                 "Support renderer requires authored CCW binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to carry ABI slot metadata before rendering authoring CCW definitions."
             }
             require(
-                authoredCcwBindingHasMemberBody(interfacePlan.type, binding) ||
-                    authoredCcwBindingHasIntentionalFallback(interfacePlan.type, binding),
+                authoredCcwBindingHasMemberBody(interfacePlan.type, binding),
             ) {
                 "Support renderer requires authored CCW binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to map to an authored method, property, or event body before rendering authoring CCW definitions."
             }
@@ -2607,7 +2606,11 @@ class KotlinProjectionSupportRenderer {
         } else if (authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
             authoringCcwOrdinaryMemberHandlerCode(runtimeClassPlan, interfacePlan, binding)
         } else {
-            authoringCcwUnsupportedMemberHandlerCode(binding)
+            val reason = authoredCcwBindingUnsupportedReason(typeRenderer, interfacePlan.type, binding)
+                ?: "unsupported authored ABI shape"
+            error(
+                "Support renderer requires authored CCW binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to be validated before rendering authoring CCW definitions; unsupported $reason.",
+            )
         }
     }
     private fun authoringCcwEventHandlerCode(
@@ -3505,12 +3508,6 @@ class KotlinProjectionSupportRenderer {
             interfaceId,
         )
     }
-
-    private fun authoringCcwUnsupportedMemberHandlerCode(binding: KotlinProjectionInstanceMemberBinding): CodeBlock =
-        CodeBlock.of(
-            "%T.E_NOTIMPL.value\n",
-            KNOWN_HRESULTS_CLASS_NAME,
-        )
 
     private fun authoringCcwFactoryRegisterFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
         val code = CodeBlock.builder()
