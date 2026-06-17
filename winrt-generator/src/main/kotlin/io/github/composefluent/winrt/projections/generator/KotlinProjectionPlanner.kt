@@ -1511,6 +1511,18 @@ class KotlinProjectionPlanner(
         } else {
             null
         }
+        val structFieldBindings = if (kind == KotlinProjectionAbiValueKind.Struct && resolvedType?.kind == WinRtTypeKind.Struct) {
+            resolvedType.fields.map { field ->
+                classifyAbiTypeBinding(
+                    typeName = field.typeName,
+                    currentNamespace = resolvedType.namespace,
+                    typesByQualifiedName = typesByQualifiedName,
+                    includeDelegateInvokeShape = false,
+                )
+            }
+        } else {
+            emptyList()
+        }
         val interfaceId = when (resolvedType?.kind) {
             WinRtTypeKind.RuntimeClass -> resolvedType.defaultInterfaceName
                 ?.let { defaultInterfaceName ->
@@ -1533,6 +1545,7 @@ class KotlinProjectionPlanner(
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             delegateInvokeShape = delegateInvokeShape,
             typeArguments = typeArguments,
+            structFieldBindings = structFieldBindings,
         )
     }
 

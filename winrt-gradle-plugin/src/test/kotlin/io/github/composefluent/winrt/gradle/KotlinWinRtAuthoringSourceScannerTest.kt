@@ -921,7 +921,18 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     returnTypeName = "Void",
                                     parameters = listOf(WinRtParameterDefinition("peer", "Sample.Peer")),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "SetPeerInterfaceCore",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("peer", "Sample.IPeer")),
+                                ),
                             ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("77777777-7777-8888-9999-aaaaaaaaaaaa"),
                         ),
                     ),
                 ),
@@ -936,7 +947,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt").readText()
         assertTrue(generated.contains("Peer.Metadata.wrap"))
+        assertTrue(generated.contains("Peer.Metadata.wrap(IInspectableReference"))
+        assertTrue(generated.contains("IPeer.Metadata.wrap(IUnknownReference"))
+        assertFalse(generated.contains("IPeer.Metadata.wrap(IInspectableReference"))
         assertTrue(generated.contains("(value as PeerProvider).__winrtAuthoringInvokeSetPeerCore(__arg0)"))
+        assertTrue(generated.contains("(value as PeerProvider).__winrtAuthoringInvokeSetPeerInterfaceCore(__arg0)"))
     }
 
     @Test

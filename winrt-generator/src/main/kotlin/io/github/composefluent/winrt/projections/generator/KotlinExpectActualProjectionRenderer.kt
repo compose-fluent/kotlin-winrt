@@ -237,8 +237,10 @@ internal class KotlinExpectActualProjectionRenderer(
             .filterNot(WinRtPropertyDefinition::isStatic)
             .filter { it.hasNativeProjectionGetterAccessor() }
             .all { property ->
-                interfaceProperties[property.name.replaceFirstChar(Char::lowercase)] ==
-                    propertyCoverage(plan.type.qualifiedName, property, plan.typesByQualifiedName)
+                val interfaceCoverage = interfaceProperties[property.name.replaceFirstChar(Char::lowercase)]
+                    ?: return@all false
+                val classCoverage = propertyCoverage(plan.type.qualifiedName, property, plan.typesByQualifiedName)
+                interfaceCoverage.coversRuntimeClassProperty(classCoverage)
             }
         val classEventsCovered = plan.type.events
             .filterNot(WinRtEventDefinition::isStatic)
@@ -330,6 +332,15 @@ internal class KotlinExpectActualProjectionRenderer(
             setterMethodName = property.setterMethodName,
             isNoException = property.isNoException,
         )
+
+    private fun RuntimeClassPropertyCoverage.coversRuntimeClassProperty(
+        runtimeClassProperty: RuntimeClassPropertyCoverage,
+    ): Boolean =
+        typeName == runtimeClassProperty.typeName &&
+            getterMethodName == runtimeClassProperty.getterMethodName &&
+            isNoException == runtimeClassProperty.isNoException &&
+            (runtimeClassProperty.isReadOnly ||
+                (!isReadOnly && setterMethodName == runtimeClassProperty.setterMethodName))
 
     private fun eventCoverage(event: WinRtEventDefinition): RuntimeClassEventCoverage =
         RuntimeClassEventCoverage(

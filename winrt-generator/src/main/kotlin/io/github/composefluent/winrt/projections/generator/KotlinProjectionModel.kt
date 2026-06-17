@@ -1207,6 +1207,7 @@ data class KotlinProjectionAbiTypeBinding(
     val enumUnderlyingType: WinRtIntegralType? = null,
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val typeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
+    val structFieldBindings: List<KotlinProjectionAbiTypeBinding> = emptyList(),
 )
 
 data class KotlinProjectionAbiParameterBinding(

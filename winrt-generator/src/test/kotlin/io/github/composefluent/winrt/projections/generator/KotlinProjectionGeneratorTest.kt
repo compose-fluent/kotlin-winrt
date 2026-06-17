@@ -2219,6 +2219,193 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_runtime_class_slice_uses_public_interface_setters_for_forwarded_properties() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IKeyboardAccelerator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Modifiers",
+                                    typeName = "Windows.System.VirtualKeyModifiers",
+                                    getterMethodName = "get_Modifiers",
+                                    setterMethodName = "set_Modifiers",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "KeyboardAccelerator",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Object",
+                            defaultInterfaceName = "Sample.Foundation.IKeyboardAccelerator",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IKeyboardAccelerator", isDefault = true),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Modifiers",
+                                    typeName = "Windows.System.VirtualKeyModifiers",
+                                    getterMethodName = "get_Modifiers",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.System",
+                            name = "VirtualKeyModifiers",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.UInt32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Control", 1u),
+                                WinRtEnumMemberDefinition("Shift", 2u),
+                            ),
+                            customAttributes = listOf(WinRtCustomAttributeDefinition("System.FlagsAttribute")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/KeyboardAccelerator.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/KeyboardAccelerator.kt").contents
+        assertTrue(common, common.contains("public expect class KeyboardAccelerator internal constructor("))
+        assertTrue(common, common.contains("IKeyboardAccelerator"))
+        assertTrue(jvm, jvm.contains("IKeyboardAccelerator by IKeyboardAcceleratorJvmProjection.wrap("))
+        assertFalse(jvm, jvm.contains("override val modifiers"))
+        assertFalse(jvm, jvm.contains("override var modifiers"))
+    }
+
+    @Test
+    fun nullable_struct_property_setter_uses_full_struct_signature_for_reference_iid() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IReference",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("61C17706-2D65-11E0-9AE8-D48564015472"),
+                            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Single"),
+                                WinRtFieldDefinition("Y", "Single"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Controls.Primitives",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls.Primitives",
+                            name = "IFlyoutShowOptions",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555581"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Position",
+                                    typeName = "Windows.Foundation.IReference<Windows.Foundation.Point>",
+                                    getterMethodName = "get_Position",
+                                    setterMethodName = "set_Position",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls.Primitives",
+                            name = "FlyoutShowOptions",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Object",
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val typesByQualifiedName = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .associateBy(WinRtTypeDefinition::qualifiedName)
+        val referencePointBinding = KotlinProjectionPlanner().classifyAbiTypeBinding(
+            typeName = "Windows.Foundation.IReference<Windows.Foundation.Point>",
+            currentNamespace = "Microsoft.UI.Xaml.Controls.Primitives",
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        val options = KotlinProjectionRenderer().renderBoundProperty(
+            plan = KotlinTypeProjectionPlan(
+                type = typesByQualifiedName.getValue("Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions"),
+                packageName = "microsoft.ui.xaml.controls.primitives",
+                relativePath = "microsoft/ui/xaml/controls/primitives/FlyoutShowOptions.kt",
+                declarationKind = KotlinProjectionDeclarationKind.Class,
+                typeDeclarationDescriptor = WinRtTypeDeclarationDescriptor(
+                    typeName = "Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions",
+                    declarationKind = WinRtTypeKind.RuntimeClass,
+                    writesProjectedDeclaration = true,
+                    writesAbiDeclaration = true,
+                    writesWrapperDeclaration = true,
+                    writesImplementationClass = false,
+                    writesHelperClass = true,
+                    netStandardBranch = false,
+                ),
+                typesByQualifiedName = typesByQualifiedName,
+                instanceMemberBindings = listOf(
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "POSITION_GETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions",
+                        slotConstantName = "POSITION_GETTER_SLOT",
+                        slot = 6,
+                        returnBinding = referencePointBinding,
+                    ),
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "POSITION_SETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions",
+                        slotConstantName = "POSITION_SETTER_SLOT",
+                        slot = 7,
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", referencePointBinding)),
+                    ),
+                ),
+            ),
+            property = typesByQualifiedName
+                .getValue("Microsoft.UI.Xaml.Controls.Primitives.IFlyoutShowOptions")
+                .properties
+                .single { it.name == "Position" },
+        ).toString()
+
+        assertTrue(options, options.contains("WinRtReferenceProjectionInterop.setReferenceValue("))
+        assertTrue(
+            options,
+            Regex("""WinRtTypeSignature\.struct\("Windows\.Foundation\.Point",[\s\S]*WinRtTypeSignature\.float32\(\),[\s\S]*WinRtTypeSignature\.float32\(\)""")
+                .containsMatchIn(options),
+        )
+        assertFalse(options, options.contains("WinRtTypeSignature.struct(\"Windows.Foundation.Point\")"))
+    }
+
+    @Test
     fun generator_escapes_keyword_property_access_in_single_source_runtime_class_forwarders() {
         val model = keywordPackagePropertyModel(propertyTypeName = "Int")
 
