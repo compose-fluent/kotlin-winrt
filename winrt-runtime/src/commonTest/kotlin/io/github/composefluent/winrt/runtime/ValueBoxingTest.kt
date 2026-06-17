@@ -76,6 +76,22 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun built_in_point_reference_projection_exposes_known_i_reference_iid() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val point = Point(12.5f, 34.5f)
+        WinRtReferenceProjection.createMarshaler(point, IID.IReferenceOfPoint).use { marshaler ->
+            val abi = marshaler?.abi ?: error("Point IReference marshaler should not be null.")
+            IUnknownReference(abi.asRawComPtr(), IID.IReferenceOfPoint, preventReleaseOnDispose = true).use { reference ->
+                reference.queryInterface(IID.IReferenceOfPoint).getOrThrow().use { typed ->
+                    val projected = WinRtReferenceProjection.fromAbi(typed.pointer.asRawAddress(), IID.IReferenceOfPoint)
+                    assertEquals(point, projected)
+                }
+            }
+        }
+    }
+
+    @Test
     fun boxed_ccws_expose_reference_and_property_value_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
 

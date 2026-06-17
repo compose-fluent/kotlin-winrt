@@ -945,7 +945,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             )
             WinRtTypeKind.Struct -> CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName, semanticHelpers), rawArg, rawAddressType)
             WinRtTypeKind.RuntimeClass,
-            WinRtTypeKind.Interface,
             -> {
                 if (parameter.typeName in authoredRuntimeClassNames) {
                     return CodeBlock.of(
@@ -966,6 +965,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     iidType,
                 )
             }
+            WinRtTypeKind.Interface -> CodeBlock.of(
+                "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IUnknown, preventReleaseOnDispose = true))",
+                projectionClassName(parameter.typeName, semanticHelpers),
+                iUnknownReferenceType,
+                platformAbiType,
+                rawArg,
+                rawAddressType,
+                iidType,
+            )
             null -> throw IllegalArgumentException(
                 "Authored WinRT override parameter '${parameter.name}' of type '${parameter.typeName}' has no metadata.",
             )

@@ -372,7 +372,18 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
         }
     KotlinProjectionAbiValueKind.Struct ->
         nativeStructClassName(binding)?.let {
-            CodeBlock.of("%T.struct(%S)", WINRT_TYPE_SIGNATURE_CLASS_NAME, binding.resolvedTypeName)
+            val fieldSignatures = binding.structFieldBindings.map { fieldBinding ->
+                abiTypeSignature(fieldBinding) ?: return null
+            }
+            CodeBlock.builder()
+                .add("%T.struct(%S", WINRT_TYPE_SIGNATURE_CLASS_NAME, binding.resolvedTypeName)
+                .apply {
+                    fieldSignatures.forEach { fieldSignature ->
+                        add(", %L", fieldSignature)
+                    }
+                }
+                .add(")")
+                .build()
         }
     KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
