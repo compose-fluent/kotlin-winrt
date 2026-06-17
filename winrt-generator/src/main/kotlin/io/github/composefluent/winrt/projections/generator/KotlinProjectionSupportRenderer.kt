@@ -149,6 +149,7 @@ class KotlinProjectionSupportRenderer {
         genericAbiSupportFileName: String = "WinRTGenericAbiSupport",
         eventProjectionHelperFilePrefix: String = "WinRTEventProjectionHelper",
         namespaceAdditionsClassName: ClassName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME,
+        supportOwnerIdentity: String? = null,
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         validateAuthoringMetadataProjectionPlans(inventory, plans)
@@ -171,6 +172,7 @@ class KotlinProjectionSupportRenderer {
                     excludedProjectionTypeNames,
                     emitProjectionRegistrar,
                     genericTypeInstantiationsClassName,
+                    supportOwnerIdentity,
                 ),
                 renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
@@ -545,6 +547,7 @@ class KotlinProjectionSupportRenderer {
         excludedProjectionTypeNames: Set<String>,
         emitProjectionRegistrar: Boolean,
         genericTypeInstantiationsClassName: ClassName,
+        supportOwnerIdentity: String?,
     ): KotlinProjectionFile? {
         val registrarEntries = if (emitProjectionRegistrar) {
             registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames).size
@@ -555,32 +558,36 @@ class KotlinProjectionSupportRenderer {
         val genericAbiRegistryEntries = inventory.genericAbiInventory.genericAbiDelegates.size +
             inventory.genericAbiInventory.derivedGenericInterfaces.size
         val xamlComponentResourceEntries = winUiXamlComponentResourceDictionaryRuntimeClassNames(model, plans).size
-        val rows = listOf(
+        val rows = listOfNotNull(
             compilerSupportManifestRow(
                 kind = "projection-registrar",
                 className = WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "projection-registrar.tsv",
                 entries = registrarEntries,
+                owner = supportOwnerIdentity.orEmpty(),
             ),
             compilerSupportManifestRow(
                 kind = "generic-type-instantiation",
                 className = genericTypeInstantiationsClassName.canonicalName,
                 sourceFile = "generic-instantiations.tsv",
                 entries = genericInstantiationEntries,
+                owner = supportOwnerIdentity.orEmpty(),
             ),
             compilerSupportManifestRow(
                 kind = "generic-abi-registry",
                 className = WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "generic-abi-registry.tsv",
                 entries = genericAbiRegistryEntries,
+                owner = supportOwnerIdentity.orEmpty(),
             ),
             compilerSupportManifestRow(
                 kind = "xaml-component-resource",
                 className = "$SUPPORT_PACKAGE.WinUiXamlComponentResources",
                 sourceFile = "xaml-component-resources.tsv",
                 entries = xamlComponentResourceEntries,
+                owner = supportOwnerIdentity.orEmpty(),
             ),
-        ).filterNot { row -> row.endsWith("\t0") }
+        )
         if (rows.isEmpty()) {
             return null
         }
@@ -590,7 +597,7 @@ class KotlinProjectionSupportRenderer {
             contents = rows.joinToString(
                 separator = "\n",
                 postfix = "\n",
-                prefix = "kind\tclassName\tsourceFile\tentries\n",
+                prefix = "kind\tclassName\tsourceFile\tentries\towner\n",
             ),
         )
     }
@@ -600,8 +607,13 @@ class KotlinProjectionSupportRenderer {
         className: String,
         sourceFile: String,
         entries: Int,
-    ): String =
-        listOf(kind, className, sourceFile, entries.toString()).joinToString("\t")
+        owner: String,
+    ): String? =
+        if (entries == 0) {
+            null
+        } else {
+            listOf(kind, className, sourceFile, entries.toString(), owner).joinToString("\t")
+        }
 
     private fun renderGenericTypeInstantiationCompilerInput(
         descriptors: List<WinRtGenericInstantiationWriterDescriptor>,

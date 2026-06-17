@@ -410,13 +410,14 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
         val existing = if (Files.isRegularFile(manifest)) {
             Files.readAllLines(manifest).filter(String::isNotBlank)
         } else {
-            listOf("kind\tclassName\tsourceFile\tentries")
+            listOf("kind\tclassName\tsourceFile\tentries\towner")
         }
         val row = listOf(
             "authoring-type-details-registrar",
             registrarClassName,
             "authoring-type-details-registrars.tsv",
             "1",
+            "",
         ).joinToString("\t")
         if (row !in existing.drop(1)) {
             Files.writeString(manifest, (existing + row).joinToString(separator = "\n", postfix = "\n"))

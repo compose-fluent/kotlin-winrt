@@ -7,6 +7,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
@@ -19,6 +20,7 @@ abstract class GenerateWinRtMingwApplicationEntryTask : DefaultTask() {
     abstract val legacyOutputDirectories: ConfigurableFileCollection
 
     @get:Input
+    @get:Optional
     abstract val mainClass: Property<String>
 
     @TaskAction
@@ -29,7 +31,11 @@ abstract class GenerateWinRtMingwApplicationEntryTask : DefaultTask() {
             .filterNot(outputRoot::equals)
             .forEach(GradleFileOperations::deleteDirectory)
         GradleFileOperations.cleanDirectory(outputRoot)
-        val mainFunction = nativeMainFunctionName(mainClass.get())
+        val mainClassValue = mainClass.orNull.orEmpty()
+        if (mainClassValue.isBlank()) {
+            return
+        }
+        val mainFunction = nativeMainFunctionName(mainClassValue)
         val source = outputRoot
             .resolve("io/github/composefluent/winrt/application/WinRtMingwApplicationEntry.kt")
         Files.createDirectories(source.parent)

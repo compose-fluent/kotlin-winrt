@@ -695,6 +695,37 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_input_owner_scopes_content_addressed_class_artifacts() {
+        val entries = listOf(
+            KotlinWinRtProjectionRegistrarEntry(
+                kotlinClassName = "java.lang.String",
+                projectedTypeName = "Sample.Foundation.Widget",
+                kind = "RuntimeClass",
+                baseTypeName = "Sample.Foundation.WidgetBase",
+                metadataClassName = "",
+            ),
+        )
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-projection-support-owner-class-")
+
+        val libraryInternalName = writeProjectionSupportInitializerClass(
+            entries = entries,
+            outputDirectory = outputDirectory,
+            ownerIdentity = "sample-lib.jar",
+        )
+        val applicationInternalName = writeProjectionSupportInitializerClass(
+            entries = entries,
+            outputDirectory = outputDirectory,
+            ownerIdentity = "sample-app.jar",
+        )
+
+        assertNotNull(libraryInternalName)
+        assertNotNull(applicationInternalName)
+        assertTrue(libraryInternalName != applicationInternalName)
+        assertFalse(Files.exists(outputDirectory.resolve("$libraryInternalName.class")))
+        assertTrue(Files.isRegularFile(outputDirectory.resolve("$applicationInternalName.class")))
+    }
+
+    @Test
     fun projection_support_initializer_input_deletes_stale_content_addressed_class_artifacts() {
         val outputDirectory = Files.createTempDirectory("kotlin-winrt-projection-support-stale-class-")
         val firstEntries = listOf(

@@ -68,7 +68,7 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
                 if (lines.isEmpty()) {
                     return@forEach
                 }
-                val key = CompilerSupportSourceKey(row.kind, row.className, source.name)
+                val key = CompilerSupportSourceKey(row.kind, row.className, source.name, row.owner)
                 val targetRows = sourceRows.getOrPut(key) { mutableListOf(lines.first()) }
                 targetRows += lines.asSequence().drop(1).filter(String::isNotBlank)
                 val mergedRows = sourceFileRows.getOrPut(source.name) { mutableListOf(lines.first()) }
@@ -78,14 +78,15 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
         val sourceFileEntryCounts = sourceFileRows.mapValues { (_, lines) ->
             lines.drop(1).distinct().size
         }
-        val manifestRows = mutableListOf("kind\tclassName\tsourceFile\tentries")
-        sourceRows.toSortedMap(compareBy<CompilerSupportSourceKey> { it.kind }.thenBy { it.className }.thenBy { it.sourceFile })
+        val manifestRows = mutableListOf(COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER)
+        sourceRows.toSortedMap(compareBy<CompilerSupportSourceKey> { it.kind }.thenBy { it.className }.thenBy { it.sourceFile }.thenBy { it.owner })
             .forEach { (key, lines) ->
                 manifestRows += listOf(
                     key.kind,
                     key.className,
                     key.sourceFile,
                     sourceFileEntryCounts.getValue(key.sourceFile).toString(),
+                    key.owner,
                 ).joinToString("\t")
             }
         sourceFileRows.toSortedMap()
@@ -169,12 +170,14 @@ private data class CompilerSupportManifestRow(
     val kind: String,
     val className: String,
     val sourceFile: String,
+    val owner: String,
 )
 
 private data class CompilerSupportSourceKey(
     val kind: String,
     val className: String,
     val sourceFile: String,
+    val owner: String,
 )
 
 private val RETIRED_RUNTIME_DISCOVERY_COMPILER_SUPPORT_KINDS = setOf(
@@ -199,7 +202,7 @@ private fun CompilerSupportManifestRow.rejectRetiredRuntimeDiscoveryKind(manifes
 private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifestRow> =
     manifest.readLines()
         .also { lines ->
-            if (lines.firstOrNull() != COMPILER_SUPPORT_MANIFEST_HEADER) {
+            if (lines.firstOrNull() !in COMPILER_SUPPORT_MANIFEST_HEADERS) {
                 throw GradleException(
                     "Compiler support manifest ${manifest.absolutePath} has unexpected header.",
                 )
@@ -210,14 +213,20 @@ private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifes
         .filter(String::isNotBlank)
         .mapIndexed { index, line ->
             val parts = line.split('\t')
-            if (parts.size != 4 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+            if (parts.size !in 4..5 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
                 throw GradleException(
                     "Compiler support manifest ${manifest.absolutePath} has malformed row ${index + 2}.",
                 )
             }
-            CompilerSupportManifestRow(parts[0], parts[1], parts[2])
+            CompilerSupportManifestRow(parts[0], parts[1], parts[2], parts.getOrNull(4).orEmpty())
         }
         .toList()
 
 private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
     "kind\tclassName\tsourceFile\tentries"
+
+private const val COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER: String =
+    "kind\tclassName\tsourceFile\tentries\towner"
+
+private val COMPILER_SUPPORT_MANIFEST_HEADERS: Set<String> =
+    setOf(COMPILER_SUPPORT_MANIFEST_HEADER, COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER)
