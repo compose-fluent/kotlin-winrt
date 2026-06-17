@@ -213,6 +213,11 @@ internal fun winRtEventProjectionHelperFilePrefix(ownerIdentity: String?): Strin
     return "WinRTEventProjectionHelper_$suffix"
 }
 
+internal fun winRtProjectionSupportAnchorFileName(ownerIdentity: String?): String {
+    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTProjectionSupportAnchor"
+    return "WinRTProjectionSupportAnchor_$suffix"
+}
+
 internal fun winRtNamespaceAdditionsClassName(ownerIdentity: String?): ClassName =
     winRtSupportOwnerClassName(ownerIdentity, WINRT_NAMESPACE_ADDITIONS_CLASS_NAME)
 

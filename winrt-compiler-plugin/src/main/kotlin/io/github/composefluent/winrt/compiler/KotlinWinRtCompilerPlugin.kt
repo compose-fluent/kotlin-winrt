@@ -263,11 +263,13 @@ class KotlinWinRtIrGenerationExtension(
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
         val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
-        val projectionSupportOwnerIdentity = compilerSupportEntries
-            .filter { entry -> entry.kind == "projection-registrar" }
-            .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
-            ?.owner
-            .orEmpty()
+        val projectionSupportOwnerIdentity = authoringTargetArtifactName
+            ?.takeIf(String::isNotBlank)
+            ?: compilerSupportEntries
+                .filter { entry -> entry.kind == "projection-registrar" }
+                .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
+                ?.owner
+                .orEmpty()
         val genericTypeInstantiationEntries = readGenericTypeInstantiationEntries(compilerSupportEntries)
         val genericTypeInstantiationSupportClassName = compilerSupportEntries
             .filter { entry -> entry.kind == "generic-type-instantiation" }
@@ -4412,11 +4414,12 @@ class KotlinWinRtIrGenerationExtension(
         if (entries.isEmpty()) {
             return null
         }
-        val file = requireCompilerSupportPrerequisite(
+        val lookupFile = requireCompilerSupportPrerequisite(
             description = "projection registrar",
             prerequisite = "module file",
             value = moduleFragment.files.firstOrNull(),
         )
+        val file = moduleFragment.projectionSupportAnchorFile(ownerIdentity) ?: lookupFile
         val registerGeneratedProjectionTypeIndex = requireCompilerSupportPrerequisite(
             description = "projection registrar",
             prerequisite = "io.github.composefluent.winrt.runtime.registerGeneratedProjectionTypeIndex with 4 regular parameters",
@@ -4425,7 +4428,7 @@ class KotlinWinRtIrGenerationExtension(
                     FqName("io.github.composefluent.winrt.runtime"),
                     Name.identifier("registerGeneratedProjectionTypeIndex"),
                 ),
-                file,
+                lookupFile,
             )
                 .map { symbol -> symbol.owner }
                 .singleOrNull { function ->
@@ -4446,7 +4449,6 @@ class KotlinWinRtIrGenerationExtension(
         val resolvedEntries = resolveProjectionRegistrarClasses(entries) { className ->
             pluginContext.findClassSymbol(ClassId.topLevel(FqName(className)), file)
         }
-        val moduleFiles = moduleFragment.files.takeIf { it.isNotEmpty() } ?: listOf(file)
         val chunkFunctions = resolvedEntries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE).mapIndexed { index, chunk ->
             pluginContext.irFactory.buildFun {
                 name = Name.identifier("kotlinWinRtProjectionSupportInitialize_${initializerHash}_${index.toString().padStart(3, '0')}")
@@ -4454,7 +4456,7 @@ class KotlinWinRtIrGenerationExtension(
                 visibility = DescriptorVisibilities.INTERNAL
                 modality = Modality.FINAL
             }.apply {
-                parent = moduleFiles[index % moduleFiles.size]
+                parent = file
                 val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
                 body = chunkBuilder.irBlockBody {
                     chunk.forEach { (entry, projectedClass) ->
@@ -4484,6 +4486,13 @@ class KotlinWinRtIrGenerationExtension(
         }
         file.declarations += function
         return function.symbol
+    }
+
+    private fun IrModuleFragment.projectionSupportAnchorFile(ownerIdentity: String): IrFile? {
+        val anchorFileName = winRtProjectionSupportAnchorFileName(ownerIdentity)
+        return files.firstOrNull { file ->
+            file.fileEntry.name.replace('\\', '/').substringAfterLast('/') == "$anchorFileName.kt"
+        }
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -5844,6 +5853,15 @@ private fun winRtAuthoringHostExportsClassName(ownerIdentity: String): String {
         "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports"
     } else {
         "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_$suffix"
+    }
+}
+
+private fun winRtProjectionSupportAnchorFileName(ownerIdentity: String): String {
+    val suffix = ownerIdentity.toKotlinSupportIdentifierSuffix()
+    return if (suffix.isBlank()) {
+        "WinRTProjectionSupportAnchor"
+    } else {
+        "WinRTProjectionSupportAnchor_$suffix"
     }
 }
 

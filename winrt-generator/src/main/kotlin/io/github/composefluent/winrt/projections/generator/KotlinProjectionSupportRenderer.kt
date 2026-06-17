@@ -174,6 +174,7 @@ class KotlinProjectionSupportRenderer {
                     genericTypeInstantiationsClassName,
                     supportOwnerIdentity,
                 ),
+                renderProjectionSupportAnchor(supportOwnerIdentity).takeIf { emitProjectionRegistrar },
                 renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
                 renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
@@ -212,6 +213,16 @@ class KotlinProjectionSupportRenderer {
             ))
         }
     }
+
+    private fun renderProjectionSupportAnchor(supportOwnerIdentity: String?): KotlinProjectionFile =
+        winRtProjectionSupportAnchorFileName(supportOwnerIdentity).let { fileName ->
+            supportFile(
+                "$fileName.kt",
+                supportFileSpec(fileName)
+                    .addFileComment("Owner-scoped compiler-plugin anchor for generated projection support initializers.")
+                    .build(),
+            )
+        }
 
     private fun renderDispatcherQueueSynchronizationContextAdditions(plans: List<KotlinTypeProjectionPlan>): List<KotlinProjectionFile> {
         val planNames = plans.mapTo(linkedSetOf()) { it.type.qualifiedName }
