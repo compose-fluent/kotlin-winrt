@@ -15684,6 +15684,8 @@ class KotlinProjectionGeneratorTest {
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations.kt"))
         assertTrue(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_lib_jar.kt"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport.kt"))
+        assertTrue(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor_sample_lib_jar.kt"))
+        assertFalse(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor.kt"))
         assertTrue(artifactScopedFilesByName.keys.any { name -> name.startsWith("WinRTEventProjectionHelper_sample_lib_jar_") })
         assertFalse(artifactScopedFilesByName.containsKey("WinRTEventProjectionHelper_000.kt"))
         val secondArtifactScopedFilesByName = KotlinProjectionGenerator(
@@ -15702,6 +15704,7 @@ class KotlinProjectionGeneratorTest {
         )
         assertTrue(secondArtifactScopedFilesByName.getValue("compiler-support.tsv").contents.contains("\tsample-app.jar"))
         assertTrue(secondArtifactScopedFilesByName.keys.any { name -> name.startsWith("WinRTEventProjectionHelper_sample_app_jar_") })
+        assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor_sample_app_jar.kt"))
         assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_app_jar.kt"))
         assertFalse(secondArtifactScopedFilesByName.containsKey("WinRTEventProjectionHelper_000.kt"))
         val eventProjectionHelpers = filesByName.values
