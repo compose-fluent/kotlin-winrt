@@ -1195,21 +1195,6 @@ class KotlinProjectionSupportRenderer {
         return supportFile("WinRTAuthoringAbiClasses.kt", fileBuilder.build())
     }
 
-    private fun unsupportedAuthoringAbiArrayOperationFunction(): FunSpec =
-        FunSpec.builder("unsupportedAuthoringAbiArrayOperation")
-            .addModifiers(KModifier.PRIVATE)
-            .addParameter("projectedTypeName", String::class)
-            .addParameter("operation", String::class)
-            .addCode(
-                CodeBlock.of(
-                    "throw %T(%S + operation + %S + projectedTypeName)\n",
-                    ClassName("kotlin", "UnsupportedOperationException"),
-                    "Authoring ABI array operation is not implemented yet: ",
-                    " for ",
-                ),
-            )
-            .build()
-
     private fun renderAuthoringCustomQueryInterfacePlan(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
@@ -1735,6 +1720,18 @@ class KotlinProjectionSupportRenderer {
             require(slotOrder.containsKey(binding.slotConstantName)) {
                 "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to carry ABI slot metadata before rendering server activation factory definitions."
             }
+            require(
+                interfacePlan.type.methods
+                    .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                    .any { method -> binding.bindingName == method.abiSlotConstantName(interfacePlan.type.methods) },
+            ) {
+                "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to map to a factory method body before rendering server activation factory definitions."
+            }
+            authoredCcwBindingUnsupportedReason(typeRenderer, interfacePlan.type, binding)?.let { reason ->
+                throw IllegalArgumentException(
+                    "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to use supported authored ABI metadata before rendering server activation factory definitions; unsupported $reason.",
+                )
+            }
         }
         val methods = interfacePlan.instanceMemberBindings.sortedWith(
             compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder.getValue(it.slotConstantName) }
@@ -1769,9 +1766,13 @@ class KotlinProjectionSupportRenderer {
         val method = interfacePlan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfacePlan.type.methods) }
-            ?: return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
-        if (!authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
-            return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+            ?: error(
+                "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to map to a factory method body before rendering server activation factory definitions.",
+            )
+        authoredCcwBindingUnsupportedReason(typeRenderer, interfacePlan.type, binding)?.let { reason ->
+            error(
+                "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to be validated before rendering server activation factory definitions; unsupported $reason.",
+            )
         }
         val isComposableFactoryMethod =
             AuthoringServerFactoryInterfaceKind.Composable in kinds &&
@@ -1782,7 +1783,9 @@ class KotlinProjectionSupportRenderer {
             isComposableFactoryMethod -> AuthoringServerFactoryInterfaceKind.Composable
             AuthoringServerFactoryInterfaceKind.Constructor in kinds -> AuthoringServerFactoryInterfaceKind.Constructor
             AuthoringServerFactoryInterfaceKind.Static in kinds -> AuthoringServerFactoryInterfaceKind.Static
-            else -> return CodeBlock.of("%T.E_NOTIMPL.value\n", KNOWN_HRESULTS_CLASS_NAME)
+            else -> error(
+                "Support renderer requires authored factory binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to map to an activatable, static, or composable factory kind before rendering server activation factory definitions.",
+            )
         }
         val projectedType = ClassName(runtimeClassPlan.packageName, runtimeClassPlan.type.name)
         val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
@@ -2211,53 +2214,6 @@ class KotlinProjectionSupportRenderer {
             .addParameter("data", RAW_ADDRESS_CLASS_NAME)
             .addCode("arrayMarshaler().disposeAbiArray(length, data)\n")
             .build()
-
-    private fun authoringAbiArrayUnsupportedFunction(name: String, projectedType: ClassName): FunSpec {
-        val builder = FunSpec.builder(name)
-        when (name) {
-            "CreateMarshalerArray", "FromManagedArray" -> {
-                builder.addParameter("values", Array::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
-                builder.returns(ANY.copy(nullable = true))
-            }
-            "GetAbiArray", "DisposeMarshalerArray" -> {
-                builder.addParameter("marshaler", ANY.copy(nullable = true))
-                if (name == "GetAbiArray") {
-                    builder.returns(RAW_ADDRESS_CLASS_NAME)
-                }
-            }
-            "FromAbiArray", "DisposeAbiArray" -> {
-                builder.addParameter("length", Int::class)
-                builder.addParameter("data", RAW_ADDRESS_CLASS_NAME)
-                if (name == "FromAbiArray") {
-                    builder.returns(List::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
-                }
-            }
-            "CopyAbiArray" -> {
-                builder.addParameter("marshaler", ANY.copy(nullable = true))
-                builder.addParameter("destination", RAW_ADDRESS_CLASS_NAME)
-            }
-        }
-        val returnStatement = when (name) {
-            "GetAbiArray" -> "return %T.nullPointer\n"
-            "FromAbiArray" -> "return null\n"
-            "CreateMarshalerArray", "FromManagedArray" -> "return null\n"
-            else -> ""
-        }
-        return builder
-            .addCode(
-                CodeBlock.builder()
-                    .add("unsupportedAuthoringAbiArrayOperation(%S, %S)\n", projectedType.canonicalName, name)
-                    .apply {
-                        if (returnStatement == "return %T.nullPointer\n") {
-                            add(returnStatement, PLATFORM_ABI_CLASS_NAME)
-                        } else {
-                            add(returnStatement)
-                        }
-                    }
-                    .build(),
-            )
-            .build()
-    }
 
     private fun authoringAbiClassFromAbiLookupFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
         val code = CodeBlock.builder()
