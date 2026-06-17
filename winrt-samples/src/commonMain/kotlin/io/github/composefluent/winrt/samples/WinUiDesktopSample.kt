@@ -14,7 +14,7 @@ import microsoft.ui.xaml.controls.Page
 import microsoft.ui.xaml.input.TappedEventHandler
 import microsoft.ui.xaml.input.TappedRoutedEventArgs
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
-import io.github.composefluent.winrt.runtime.RuntimeScope
+import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 
 data class WinUiDesktopSampleResult(
     val dependencyPropertyUnsetValueAvailable: Boolean,
@@ -35,7 +35,7 @@ object WinUiDesktopSample {
     }
 
     fun launchForSmoke(): WinUiDesktopSampleResult =
-        RuntimeScope.initializeSingleThreaded().use {
+        WinRtWindowsAppSdkBootstrap.initializeApplicationHost().use {
             WinUiDesktopApp().launchCore()
         }
 }

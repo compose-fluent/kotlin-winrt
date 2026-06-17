@@ -406,25 +406,22 @@ private fun applicationHostSource(
         return create_vm(&kotlin_winrt_vm, (void **)env, &args) == JNI_OK ? 0 : 1;
     }
 
-    static jobject kotlin_winrt_initialize_deployment(JNIEnv *env) {
-        ${if (unpackaged) """
+    static jobject kotlin_winrt_initialize_application_host(JNIEnv *env) {
         jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRtWindowsAppSdkLauncherSupport");
         if (support_class == NULL) {
             return NULL;
         }
-        jmethodID initialize = (*env)->GetStaticMethodID(env, support_class, "initializeForUnpackagedApp", "()Ljava/lang/AutoCloseable;");
+        jmethodID initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Z)Ljava/lang/AutoCloseable;");
         if (initialize == NULL) {
             return NULL;
         }
-        return (*env)->CallStaticObjectMethod(env, support_class, initialize);
-        """.trimIndent() else "return NULL;"}
+        return (*env)->CallStaticObjectMethod(env, support_class, initialize, ${if (unpackaged) "JNI_TRUE" else "JNI_FALSE"});
     }
 
-    static void kotlin_winrt_close_deployment(JNIEnv *env, jobject deployment) {
-        ${if (unpackaged) """
+    static void kotlin_winrt_close_application_host(JNIEnv *env, jobject application_host) {
         jclass support_class;
         jmethodID close;
-        if (deployment == NULL) {
+        if (application_host == NULL) {
             return;
         }
         support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRtWindowsAppSdkLauncherSupport");
@@ -433,14 +430,13 @@ private fun applicationHostSource(
         }
         close = (*env)->GetStaticMethodID(env, support_class, "close", "(Ljava/lang/AutoCloseable;)V");
         if (close != NULL) {
-            (*env)->CallStaticVoidMethod(env, support_class, close, deployment);
+            (*env)->CallStaticVoidMethod(env, support_class, close, application_host);
         }
-        """.trimIndent() else "(void)env; (void)deployment;"}
     }
 
     int wmain(int argc, wchar_t **wargv) {
         JNIEnv *env = NULL;
-        jobject deployment = NULL;
+        jobject application_host = NULL;
         jclass main_class;
         jmethodID main_method;
         jobjectArray args;
@@ -448,7 +444,7 @@ private fun applicationHostSource(
         if (kotlin_winrt_create_vm(&env) != 0 || env == NULL) {
             return 1;
         }
-        deployment = kotlin_winrt_initialize_deployment(env);
+        application_host = kotlin_winrt_initialize_application_host(env);
         if ((*env)->ExceptionCheck(env)) {
             (*env)->ExceptionDescribe(env);
             return 1;
@@ -456,13 +452,13 @@ private fun applicationHostSource(
         main_class = (*env)->FindClass(env, "$mainClassPath");
         if (main_class == NULL) {
             (*env)->ExceptionDescribe(env);
-            kotlin_winrt_close_deployment(env, deployment);
+            kotlin_winrt_close_application_host(env, application_host);
             return 1;
         }
         main_method = (*env)->GetStaticMethodID(env, main_class, "main", "([Ljava/lang/String;)V");
         if (main_method == NULL) {
             (*env)->ExceptionDescribe(env);
-            kotlin_winrt_close_deployment(env, deployment);
+            kotlin_winrt_close_application_host(env, application_host);
             return 1;
         }
         jclass string_class = (*env)->FindClass(env, "java/lang/String");
@@ -481,7 +477,7 @@ private fun applicationHostSource(
             (*env)->ExceptionDescribe(env);
             exit_code = 1;
         }
-        kotlin_winrt_close_deployment(env, deployment);
+        kotlin_winrt_close_application_host(env, application_host);
         if ((*env)->ExceptionCheck(env)) {
             (*env)->ExceptionDescribe(env);
             exit_code = 1;

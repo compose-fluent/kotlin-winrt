@@ -2534,6 +2534,8 @@ class KotlinWinRtPluginTest {
         assertTrue(source.contains("JNI_CreateJavaVM"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
         assertTrue(source.contains("WinRtWindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("initializeApplicationHost\", \"(Z)Ljava/lang/AutoCloseable;\""))
+        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, JNI_TRUE)"))
         assertTrue(source.contains("KOTLIN_WINRT_JVM_OPTIONS"))
         assertTrue(source.contains(System.getProperty("java.home").replace("\\", "\\\\")))
         assertFalse(source.contains("java/lang/reflect"))
@@ -2597,7 +2599,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun application_host_task_omits_windows_app_sdk_launcher_for_packaged_apps() {
+    fun application_host_task_initializes_runtime_scope_for_packaged_apps_without_unpackaged_deployment() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
         val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
         Files.createDirectories(jar.parent)
@@ -2623,9 +2625,45 @@ class KotlinWinRtPluginTest {
         }
 
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
-        assertFalse(source.contains("WinRtWindowsAppSdkLauncherSupport"))
-        assertTrue(source.contains("return NULL;"))
+        assertTrue(source.contains("WinRtWindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("initializeApplicationHost\", \"(Z)Ljava/lang/AutoCloseable;\""))
+        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, JNI_FALSE)"))
+        assertFalse(source.contains("initializeForUnpackagedApp"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
+    }
+
+    @Test
+    fun mingw_application_entry_initializes_host_scope_with_package_mode() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+        val unpackagedTask = project.tasks.register(
+            "generateUnpackagedMingwEntry",
+            GenerateWinRtMingwApplicationEntryTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("generated/unpackaged"))
+            registeredTask.legacyOutputDirectories.from(project.files())
+            registeredTask.mainClass.set("sample.MainKt")
+            registeredTask.packageMode.set(WinRtApplicationPackageMode.Unpackaged.name)
+        }.get()
+        val packagedTask = project.tasks.register(
+            "generatePackagedMingwEntry",
+            GenerateWinRtMingwApplicationEntryTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("generated/packaged"))
+            registeredTask.legacyOutputDirectories.from(project.files())
+            registeredTask.mainClass.set("sample.MainKt")
+            registeredTask.packageMode.set(WinRtApplicationPackageMode.Packaged.name)
+        }.get()
+
+        unpackagedTask.generate()
+        packagedTask.generate()
+
+        val relativeSource = Path.of("io/github/composefluent/winrt/application/WinRtMingwApplicationEntry.kt")
+        val unpackagedSource = Files.readString(unpackagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
+        val packagedSource = Files.readString(packagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
+        assertTrue(unpackagedSource.contains("WinRtWindowsAppSdkBootstrap.initializeApplicationHost(unpackaged = true).use"))
+        assertTrue(packagedSource.contains("WinRtWindowsAppSdkBootstrap.initializeApplicationHost(unpackaged = false).use"))
+        assertFalse(unpackagedSource.contains("WinRtWindowsAppSdkBootstrap.initialize()"))
+        assertFalse(packagedSource.contains("WinRtWindowsAppSdkBootstrap.initialize()"))
     }
 
     @Test
@@ -8198,6 +8236,10 @@ class KotlinWinRtPluginTest {
             object WinRtWindowsAppSdkBootstrap {
                 fun initialize() {
                 }
+
+                fun initializeApplicationHost(unpackaged: Boolean = true): AutoCloseable =
+                    AutoCloseable {
+                    }
             }
             """.trimIndent(),
         )

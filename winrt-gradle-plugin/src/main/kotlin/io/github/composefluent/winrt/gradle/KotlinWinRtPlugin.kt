@@ -490,6 +490,7 @@ private fun configureWinRtApplicationTasks(
                 project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"),
             )
             task.mainClass.set(extension.application.mainClass)
+            task.packageMode.set(project.provider { extension.application.packageMode.get().name })
         },
     )
     addGeneratedSourcesToKotlinMultiplatformCommonMain(project, mingwApplicationEntryTask)
