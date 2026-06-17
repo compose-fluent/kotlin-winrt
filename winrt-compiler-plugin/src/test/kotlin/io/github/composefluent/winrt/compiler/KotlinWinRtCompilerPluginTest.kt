@@ -323,7 +323,7 @@ class KotlinWinRtCompilerPluginTest {
             manifest,
             """
             kind	className	sourceFile	entries
-            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	extra
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	owner	extra
             """.trimIndent() + "\n",
         )
 
