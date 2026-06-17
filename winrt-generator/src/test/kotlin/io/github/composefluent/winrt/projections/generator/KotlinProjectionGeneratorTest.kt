@@ -9208,9 +9208,16 @@ class KotlinProjectionGeneratorTest {
         val filesByName = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
+        val pointContents = filesByName.getValue("Point.kt").contents
         val delegateContents = filesByName.getValue("TransformHandler.kt").contents
         val transformerContents = filesByName.getValue("ITransformer.kt").contents
 
+        assertTrue(pointContents.contains("WinRtValueBoxingRegistration.registerStruct("))
+        assertTrue(pointContents.contains("Point::class"))
+        assertTrue(pointContents.contains("\"Sample.Foundation.Point\""))
+        assertTrue(pointContents.contains("\"struct(Sample.Foundation.Point;f4;f4)\""))
+        assertTrue(pointContents.contains("emptyArray<Point>()::class"))
+        assertTrue(pointContents.contains("Metadata.register()"))
         assertTrue(delegateContents.contains("WinRtDelegateValueKind.GUID"))
         assertTrue(delegateContents.contains("WinRtDelegateValueKind.STRUCT"))
         assertTrue(delegateContents.contains("parameterStructAdapters = listOf(null, Point.Metadata)"))
