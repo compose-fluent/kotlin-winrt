@@ -1088,11 +1088,11 @@ class KotlinWinRtPluginTest {
         Files.writeString(
             localRoot.resolve("compiler-support.tsv"),
             """
-            kind	className	sourceFile	entries
-            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
-            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_local_jar	generic-instantiations.tsv	1
-            future-support	io.github.composefluent.winrt.projections.support.FutureSupport	future-support.tsv	1
-            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1
+            kind	className	sourceFile	entries	owner
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	local.jar
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_local_jar	generic-instantiations.tsv	1	local.jar
+            future-support	io.github.composefluent.winrt.projections.support.FutureSupport	future-support.tsv	1	local.jar
+            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1	local.jar
             """.trimIndent(),
         )
         Files.writeString(
@@ -1126,10 +1126,10 @@ class KotlinWinRtPluginTest {
         Files.writeString(
             dependencyRoot.resolve("compiler-support.tsv"),
             """
-            kind	className	sourceFile	entries
-            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
-            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency_jar	generic-instantiations.tsv	1
-            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1
+            kind	className	sourceFile	entries	owner
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	dependency.jar
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency_jar	generic-instantiations.tsv	1	dependency.jar
+            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1	dependency.jar
             """.trimIndent(),
         )
         Files.writeString(
@@ -1179,15 +1179,18 @@ class KotlinWinRtPluginTest {
         val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
         val futureSupport = Files.readString(outputRoot.resolve("future-support.tsv"))
         assertTrue(manifest.contains("projection-registrar"))
+        assertTrue(manifest.contains("kind\tclassName\tsourceFile\tentries\towner"))
+        assertTrue(manifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv\t2\tlocal.jar"))
+        assertTrue(manifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv\t2\tdependency.jar"))
         assertTrue(manifest.contains("future-support\tio.github.composefluent.winrt.projections.support.FutureSupport"))
         assertTrue(
             manifest.contains(
-                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_local_jar\tgeneric-instantiations.tsv\t2",
+                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_local_jar\tgeneric-instantiations.tsv\t2\tlocal.jar",
             ),
         )
         assertTrue(
             manifest.contains(
-                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency_jar\tgeneric-instantiations.tsv\t2",
+                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency_jar\tgeneric-instantiations.tsv\t2\tdependency.jar",
             ),
         )
         assertTrue(manifest.contains("xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUiXamlComponentResources"))
@@ -1252,7 +1255,7 @@ class KotlinWinRtPluginTest {
             localRoot.resolve("compiler-support.tsv"),
             """
             kind	className	sourceFile	entries
-            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	extra
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	owner	extra
             """.trimIndent(),
         )
         Files.writeString(

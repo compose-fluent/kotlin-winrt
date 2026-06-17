@@ -263,6 +263,11 @@ class KotlinWinRtIrGenerationExtension(
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
         val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
+        val projectionSupportOwnerIdentity = compilerSupportEntries
+            .filter { entry -> entry.kind == "projection-registrar" }
+            .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
+            ?.owner
+            .orEmpty()
         val genericTypeInstantiationEntries = readGenericTypeInstantiationEntries(compilerSupportEntries)
         val genericTypeInstantiationSupportClassName = compilerSupportEntries
             .filter { entry -> entry.kind == "generic-type-instantiation" }
@@ -270,13 +275,14 @@ class KotlinWinRtIrGenerationExtension(
             ?.className
         val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
         val authoringRegistrarEntries = readAuthoringTypeDetailsRegistrarEntries(compilerSupportEntries)
-        writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries)
+        writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
         val genericTypeInstantiationIntrinsicCalls =
             collectGenericTypeInstantiationSupportIntrinsicCalls(moduleFragment)
         val projectionSupportInitialize = addProjectionSupportInitializerFunction(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
             entries = projectionRegistrarEntries,
+            ownerIdentity = projectionSupportOwnerIdentity,
         )
         val genericTypeInstantiationSupport = addGenericTypeInstantiationSupportFunctions(
             moduleFragment = moduleFragment,
@@ -3799,6 +3805,7 @@ class KotlinWinRtIrGenerationExtension(
     private fun writeCompilerSupportClasses(
         entries: List<KotlinWinRtCompilerSupportManifestEntry>,
         projectionRegistrarEntries: List<KotlinWinRtProjectionRegistrarEntry>,
+        projectionSupportOwnerIdentity: String,
     ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         Files.deleteIfExists(outputDirectory.resolve(STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
@@ -3806,6 +3813,7 @@ class KotlinWinRtIrGenerationExtension(
         writeProjectionSupportInitializerClass(
             entries = projectionRegistrarEntries,
             outputDirectory = outputDirectory,
+            ownerIdentity = projectionSupportOwnerIdentity,
         )
     }
 
@@ -4399,6 +4407,7 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
         entries: List<KotlinWinRtProjectionRegistrarEntry>,
+        ownerIdentity: String,
     ): IrSimpleFunctionSymbol? {
         if (entries.isEmpty()) {
             return null
@@ -4424,7 +4433,7 @@ class KotlinWinRtIrGenerationExtension(
                 }
                 ?.symbol,
         )
-        val initializerHash = projectionSupportInitializerHash(entries)
+        val initializerHash = projectionSupportInitializerHash(entries, ownerIdentity)
         val function = pluginContext.irFactory.buildFun {
             name = Name.identifier("kotlinWinRtProjectionSupportInitialize_$initializerHash")
             returnType = pluginContext.irBuiltIns.unitType
@@ -5769,22 +5778,26 @@ data class KotlinWinRtCompilerSupportManifestEntry(
     val className: String,
     val sourceFile: String,
     val entries: Int,
+    val owner: String = "",
 )
 
 fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> {
     val entries = readRequiredTsvRows(
         path = path,
         description = "compiler support manifest",
-        expectedHeader = COMPILER_SUPPORT_MANIFEST_HEADER,
+        expectedHeader = setOf(
+            COMPILER_SUPPORT_MANIFEST_HEADER,
+            COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER,
+        ),
         parse = ::parseCompilerSupportManifestLine,
     )
     val duplicate = entries
-        .groupBy { entry -> Triple(entry.kind, entry.className, entry.sourceFile) }
+        .groupBy { entry -> listOf(entry.kind, entry.className, entry.sourceFile, entry.owner) }
         .entries
         .firstOrNull { (_, values) -> values.size > 1 }
         ?.key
     require(duplicate == null) {
-        "kotlin-winrt compiler plugin found duplicate compiler support manifest entry for kind ${duplicate!!.first}, class ${duplicate.second}, and source file ${duplicate.third} in $path."
+        "kotlin-winrt compiler plugin found duplicate compiler support manifest entry for kind ${duplicate!![0]}, class ${duplicate[1]}, source file ${duplicate[2]}, and owner ${duplicate[3]} in $path."
     }
     return entries
 }
@@ -5799,7 +5812,7 @@ fun readCompilerSupportManifestIfConfigured(path: String?): List<KotlinWinRtComp
 
 private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerSupportManifestEntry? {
     val parts = line.split('\t')
-    if (parts.size != 4) {
+    if (parts.size !in 4..5) {
         return null
     }
     if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
@@ -5821,6 +5834,7 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
         className = parts[1],
         sourceFile = parts[2],
         entries = entries,
+        owner = parts.getOrNull(4).orEmpty(),
     )
 }
 
@@ -5855,6 +5869,9 @@ private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
 
 private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
     "kind\tclassName\tsourceFile\tentries"
+
+private const val COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER: String =
+    "kind\tclassName\tsourceFile\tentries\towner"
 
 private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupportManifestExpectedEntry> =
     mapOf(
@@ -6048,12 +6065,13 @@ private fun parseAuthoringTypeDetailsRegistrarLine(line: String): KotlinWinRtAut
 fun writeProjectionSupportInitializerClass(
     entries: List<KotlinWinRtProjectionRegistrarEntry>,
     outputDirectory: Path,
+    ownerIdentity: String = "",
 ): String? {
     if (entries.isEmpty()) {
         deleteStaleProjectionSupportInitializerClasses(outputDirectory, currentInternalName = null)
         return null
     }
-    val internalName = projectionSupportInitializerInternalName(entries)
+    val internalName = projectionSupportInitializerInternalName(entries, ownerIdentity)
     deleteStaleProjectionSupportInitializerClasses(outputDirectory, internalName)
     val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
     classWriter.visit(
@@ -6142,27 +6160,34 @@ fun deleteStaleProjectionSupportInitializerClasses(
 
 fun projectionSupportInitializerInternalName(
     entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    ownerIdentity: String = "",
 ): String {
-    val digest = projectionSupportInitializerHash(entries)
+    val digest = projectionSupportInitializerHash(entries, ownerIdentity)
     return "$PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX$digest"
 }
 
 fun projectionSupportInitializerHash(
     entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    ownerIdentity: String = "",
 ): String =
     MessageDigest.getInstance("SHA-256")
         .digest(
-            entries
-                .sortedWith(compareBy(KotlinWinRtProjectionRegistrarEntry::kotlinClassName, KotlinWinRtProjectionRegistrarEntry::projectedTypeName))
-                .joinToString(separator = "\n") { entry ->
-                    listOf(
-                        entry.kotlinClassName,
-                        entry.projectedTypeName,
-                        entry.kind,
-                        entry.baseTypeName,
-                        entry.metadataClassName,
-                    ).joinToString("\t")
-                }
+            buildString {
+                append("owner\t")
+                append(ownerIdentity)
+                append('\n')
+                entries
+                    .sortedWith(compareBy(KotlinWinRtProjectionRegistrarEntry::kotlinClassName, KotlinWinRtProjectionRegistrarEntry::projectedTypeName))
+                    .joinTo(this, separator = "\n") { entry ->
+                        listOf(
+                            entry.kotlinClassName,
+                            entry.projectedTypeName,
+                            entry.kind,
+                            entry.baseTypeName,
+                            entry.metadataClassName,
+                        ).joinToString("\t")
+                    }
+            }
                 .toByteArray(StandardCharsets.UTF_8),
         )
         .joinToString(separator = "") { byte -> "%02x".format(byte) }
@@ -6385,10 +6410,24 @@ private fun <T> readRequiredTsvRows(
     description: String,
     expectedHeader: String,
     parse: (String) -> T?,
+): List<T> =
+    readRequiredTsvRows(
+        path = path,
+        description = description,
+        expectedHeader = setOf(expectedHeader),
+        parse = parse,
+    )
+
+private fun <T> readRequiredTsvRows(
+    path: Path,
+    description: String,
+    expectedHeader: Set<String>,
+    parse: (String) -> T?,
 ): List<T> {
     val lines = Files.readAllLines(path)
-    require(lines.firstOrNull() == expectedHeader) {
-        "kotlin-winrt compiler plugin expected $description header '$expectedHeader' in $path."
+    val actualHeader = lines.firstOrNull()
+    require(actualHeader != null && actualHeader in expectedHeader) {
+        "kotlin-winrt compiler plugin expected $description header ${expectedHeader.joinToString(prefix = "'", postfix = "'", separator = "' or '")} in $path."
     }
     return lines
         .asSequence()

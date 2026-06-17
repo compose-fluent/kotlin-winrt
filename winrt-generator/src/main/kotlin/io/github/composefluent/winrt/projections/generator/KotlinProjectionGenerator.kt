@@ -1727,6 +1727,7 @@ class KotlinProjectionGenerator(
             genericAbiSupportFileName = genericAbiSupportFileName,
             eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             namespaceAdditionsClassName = namespaceAdditionsClassName,
+            supportOwnerIdentity = supportOwnerIdentity,
         )
         val files = when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> supportRendererFiles

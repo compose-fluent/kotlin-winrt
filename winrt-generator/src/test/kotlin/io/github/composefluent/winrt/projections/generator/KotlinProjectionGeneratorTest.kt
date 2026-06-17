@@ -15608,7 +15608,7 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val compilerSupportManifest = filesByName.getValue("compiler-support.tsv").contents
-        assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries"))
+        assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries\towner"))
         assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv"))
         assertFalse(compilerSupportManifest.contains("event-source\t"))
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
@@ -15667,7 +15667,17 @@ class KotlinProjectionGeneratorTest {
             .contents
         assertTrue(
             artifactScopedManifest.contains(
-                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_lib_jar\tgeneric-instantiations.tsv",
+                "projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv\t",
+            ),
+        )
+        assertTrue(
+            artifactScopedManifest.contains(
+                "\tsample-lib.jar",
+            ),
+        )
+        assertTrue(
+            artifactScopedManifest.contains(
+                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_lib_jar\tgeneric-instantiations.tsv\t",
             ),
         )
         assertTrue(artifactScopedGenericSupport.contains("object WinRTGenericTypeInstantiations_sample_lib_jar"))
@@ -15687,9 +15697,10 @@ class KotlinProjectionGeneratorTest {
         assertFalse(secondArtifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations.kt"))
         assertTrue(
             secondArtifactScopedFilesByName.getValue("compiler-support.tsv").contents.contains(
-                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_app_jar\tgeneric-instantiations.tsv",
+                "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_app_jar\tgeneric-instantiations.tsv\t",
             ),
         )
+        assertTrue(secondArtifactScopedFilesByName.getValue("compiler-support.tsv").contents.contains("\tsample-app.jar"))
         assertTrue(secondArtifactScopedFilesByName.keys.any { name -> name.startsWith("WinRTEventProjectionHelper_sample_app_jar_") })
         assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_app_jar.kt"))
         assertFalse(secondArtifactScopedFilesByName.containsKey("WinRTEventProjectionHelper_000.kt"))
