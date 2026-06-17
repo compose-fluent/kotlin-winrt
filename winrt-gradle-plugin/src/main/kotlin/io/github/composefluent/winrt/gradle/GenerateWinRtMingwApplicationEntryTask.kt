@@ -23,6 +23,9 @@ abstract class GenerateWinRtMingwApplicationEntryTask : DefaultTask() {
     @get:Optional
     abstract val mainClass: Property<String>
 
+    @get:Input
+    abstract val packageMode: Property<String>
+
     @TaskAction
     fun generate() {
         val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
@@ -36,10 +39,11 @@ abstract class GenerateWinRtMingwApplicationEntryTask : DefaultTask() {
             return
         }
         val mainFunction = nativeMainFunctionName(mainClassValue)
+        val unpackaged = packageMode.get() == WinRtApplicationPackageMode.Unpackaged.name
         val source = outputRoot
             .resolve("io/github/composefluent/winrt/application/WinRtMingwApplicationEntry.kt")
         Files.createDirectories(source.parent)
-        Files.writeString(source, mingwApplicationEntrySource(mainFunction))
+        Files.writeString(source, mingwApplicationEntrySource(mainFunction, unpackaged))
     }
 }
 
@@ -57,7 +61,7 @@ private fun nativeMainFunctionName(mainClass: String): String {
     return normalized
 }
 
-private fun mingwApplicationEntrySource(mainFunctionName: String): String {
+private fun mingwApplicationEntrySource(mainFunctionName: String, unpackaged: Boolean): String {
     val userMainPackage = mainFunctionName.substringBeforeLast('.', missingDelimiterValue = "")
     val userMainName = mainFunctionName.substringAfterLast('.')
     if (userMainPackage.isBlank() || userMainName.isBlank()) {
@@ -72,8 +76,9 @@ private fun mingwApplicationEntrySource(mainFunctionName: String): String {
         import $userMainPackage.$userMainName as userMain
 
         fun main() {
-            WinRtWindowsAppSdkBootstrap.initialize()
-            userMain()
+            WinRtWindowsAppSdkBootstrap.initializeApplicationHost(unpackaged = $unpackaged).use {
+                userMain()
+            }
         }
     """.trimIndent() + "\n"
 }

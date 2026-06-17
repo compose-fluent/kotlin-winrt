@@ -6,6 +6,10 @@ object WinRtWindowsAppSdkLauncherSupport {
         WinRtWindowsAppSdkDeployment.initializeForUnpackagedApp()
 
     @JvmStatic
+    fun initializeApplicationHost(unpackaged: Boolean): AutoCloseable =
+        WinRtApplicationHostScope.initialize(unpackaged)
+
+    @JvmStatic
     fun close(scope: AutoCloseable?) {
         scope?.close()
     }

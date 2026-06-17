@@ -36,6 +36,7 @@
 - [x] Completed authored CCW support-output fallback cleanup: removed stale authored ABI class array unsupported helpers, required server activation factory bindings to fail before handler rendering when their ABI shape is unsupported, and extended generated-output audits so authored CCW support files cannot contain hidden `Unsupported authored ABI`, `Authored ReceiveArray parameter`, or `unsupportedAuthoringAbiArrayOperation` fallback tokens.
 - [x] Completed WinUI sample merge gate: `:winrt-samples:runWinRtApplicationHost` passes with Windows App SDK `2.1.3`, `runWinUiSmoke=true`, `autoExitWinUi=true`, `skipSettingsCard=true`, and `skipShimmer=true`.
 - [x] Completed WinUI Controls sample DPI manifest parity: generated Win32 application manifests now align with `.cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp/app.manifest` by declaring `true/PM` and `PerMonitorV2, PerMonitor`, so JVM and `mingwX64` WinUI hosts do not run under system-DPI virtualization.
+- [x] Completed XAML application host lifetime fix: `runWinRtApplicationHost` and the `mingwX64` native application entry now create a runtime-owned STA application-host scope before user `main`, generated hosts pass the packaged/unpackaged deployment mode into that scope, custom launchers can use `WinRtWindowsAppSdkBootstrap.initializeApplicationHost(...)`, and sample smoke paths no longer wrap XAML startup in raw `RuntimeScope.initializeSingleThreaded()`.
 
 ## Module Alignment
 

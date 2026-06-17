@@ -304,20 +304,22 @@ class DemoApp : Application() {
 
 Do not wrap `Application.start` in `RuntimeScope.initializeSingleThreaded()`. XAML application startup owns its WinRT module lifetime. `RuntimeScope` remains the normal scope for non-XAML WinRT API calls.
 
-If you use a custom launcher or a Gradle `JavaExec` task instead of `runWinRtApplicationHost`, initialize the unpackaged Windows App SDK payload before `Application.start`:
+If you use a custom launcher or a Gradle `JavaExec` task instead of `runWinRtApplicationHost`, create the same application host scope before `Application.start`:
 
 ```kotlin
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 
 fun main() {
-    WinRtWindowsAppSdkBootstrap.initialize().use {
+    WinRtWindowsAppSdkBootstrap.initializeApplicationHost().use {
         Application.start {
             DemoApp()
         }
     }
 }
 ```
+
+For packaged custom launchers, pass `unpackaged = false`; the generated hosts do this from `winRt { application { packageMode } }`.
 
 When `winRt { application {} }` is enabled, the plugin wires unpackaged `JavaExec` tasks to the staged payload and passes `-Dkotlin.winrt.runtimeAssetsRoot=...`. Custom native launchers or external packaging tools still need to place the staged `kotlin-winrt-runtime-assets` directory beside the launcher or pass `-Dkotlin.winrt.runtimeAssetsRoot=<path>`.
 
