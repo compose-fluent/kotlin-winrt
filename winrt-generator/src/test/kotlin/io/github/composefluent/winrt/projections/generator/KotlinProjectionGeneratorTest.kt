@@ -22316,6 +22316,81 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_renderer_rejects_server_factory_unsupported_binding_before_emitting_notimpl_handler() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateFromHandle",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("handle", "Sample.Foundation.NativeHandle"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateFromHandle",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("handle", "Sample.Foundation.NativeHandle"),
+                                    ),
+                                    isStatic = true,
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val normalizedModel = model.normalized()
+        val plans = KotlinProjectionPlanner().plan(normalizedModel)
+        val error = runCatching {
+            KotlinProjectionSupportRenderer().render(
+                model = normalizedModel,
+                plans = plans,
+                context = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            )
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Support renderer requires authored factory binding Sample.Foundation.IWidgetStatics.CREATEFROMHANDLE_SLOT to use supported authored ABI metadata before rendering server activation factory definitions; unsupported parameter handle Unsupported(Sample.Foundation.NativeHandle) uses unsupported authored ABI shape.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_composable_factory_create_without_trailing_object_parameters_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -23033,6 +23108,9 @@ class KotlinProjectionGeneratorTest {
             "fun installEventSources()",
             "fun createEventSource(",
             "WinRtEventSourceRuntime.createEventSource(",
+            "unsupportedAuthoringAbiArrayOperation",
+            "Unsupported authored ABI",
+            "Authored ReceiveArray parameter",
         )
         kotlinFiles.forEach { file ->
             forbiddenTokens.forEach { token ->
