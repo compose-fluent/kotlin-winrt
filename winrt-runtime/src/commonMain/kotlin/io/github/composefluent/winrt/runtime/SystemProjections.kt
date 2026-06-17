@@ -250,27 +250,6 @@ internal object CommonWinRtBuiltInProjectionMappings {
         )
 
         registerStruct(EventRegistrationToken::class)
-        WinRtValueBoxingRegistration.registerStruct(
-            type = Point::class,
-            projectedTypeName = "Windows.Foundation.Point",
-            signature = "struct(Windows.Foundation.Point;f4;f4)",
-            adapter = Point.Metadata,
-            arrayType = emptyArray<Point>()::class,
-        )
-        WinRtValueBoxingRegistration.registerStruct(
-            type = Size::class,
-            projectedTypeName = "Windows.Foundation.Size",
-            signature = "struct(Windows.Foundation.Size;f4;f4)",
-            adapter = Size.Metadata,
-            arrayType = emptyArray<Size>()::class,
-        )
-        WinRtValueBoxingRegistration.registerStruct(
-            type = Rect::class,
-            projectedTypeName = "Windows.Foundation.Rect",
-            signature = "struct(Windows.Foundation.Rect;f4;f4;f4;f4)",
-            adapter = Rect.Metadata,
-            arrayType = emptyArray<Rect>()::class,
-        )
 
         registerReferenceArrayType(String::class, emptyArray<String>()::class)
         registerReferenceArrayType(Guid::class, emptyArray<Guid>()::class)
