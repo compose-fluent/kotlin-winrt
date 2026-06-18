@@ -78,6 +78,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtSystemProjectionMarshalersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtSystemProjectionMarshalers")
     private val winRtTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRtTypeSignature")
     private val winRtKeyValuePairAdapterMember = MemberName("io.github.composefluent.winrt.runtime", "winRtKeyValuePairAdapter")
+    private val winRtAsMember = MemberName("io.github.composefluent.winrt.runtime", "winrtAs", isExtension = true)
     private val instantType = ClassName("kotlin.time", "Instant")
     private val durationType = ClassName("kotlin.time", "Duration")
     private val enumIntegralAbiDescriptors = mapOf(
@@ -579,22 +580,29 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     ): CodeBlock =
         when (vtableMethod.propertyAccessor) {
             PropertyAccessor.Getter -> CodeBlock.of(
-                "(value as %T).%L",
-                dispatchTarget.className,
+                "%L.%L",
+                renderDispatchTargetProjection(dispatchTarget),
                 projectedPropertyName(vtableMethod.property ?: error("Getter accessor has no property.")),
             )
             PropertyAccessor.Setter -> CodeBlock.of(
-                "(value as %T).%L = %L",
-                dispatchTarget.className,
+                "%L.%L = %L",
+                renderDispatchTargetProjection(dispatchTarget),
                 projectedPropertyName(vtableMethod.property ?: error("Setter accessor has no property.")),
                 bridgeArguments,
             )
             null -> CodeBlock.of(
-                "(value as %T).%L(%L)",
-                dispatchTarget.className,
+                "%L.%L(%L)",
+                renderDispatchTargetProjection(dispatchTarget),
                 dispatchMethodName,
                 bridgeArguments,
             )
+        }
+
+    private fun renderDispatchTargetProjection(dispatchTarget: AuthoringDispatchTarget): CodeBlock =
+        if (dispatchTarget.usesWinRtProjectionCast) {
+            CodeBlock.of("(value.%M(%T.Metadata.TYPE_HANDLE) as %T)", winRtAsMember, dispatchTarget.className, dispatchTarget.className)
+        } else {
+            CodeBlock.of("(value as %T)", dispatchTarget.className)
         }
 
     private fun renderIterableFirstProjection(
@@ -620,11 +628,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             )
         val elementAdapter = renderCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)
         return CodeBlock.of(
-            "%T.writePointer(%L, %T.detachReference((value as %T).iterator(), %L))",
+            "%T.writePointer(%L, %T.detachReference(%L.iterator(), %L))",
             platformAbiType,
             outExpression,
             winRtIteratorProjectionType,
-            dispatchTarget.className,
+            renderDispatchTargetProjection(dispatchTarget),
             elementAdapter,
         )
     }
@@ -738,6 +746,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (!shouldDispatchThroughBaseBridge) {
             return AuthoringDispatchTarget(
                 className = sourceClassName(candidate),
+                usesWinRtProjectionCast = false,
                 methodName = ::projectedMethodName,
             )
         }
@@ -746,6 +755,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             ?: error("Authored WinRT override interface ${type.qualifiedName} has no declaring WinRT base class.")
         return AuthoringDispatchTarget(
             className = projectionClassName(dispatchBase, semanticHelpers),
+            usesWinRtProjectionCast = true,
             methodName = ::authoringInvokeBridgeName,
         )
     }
@@ -2366,6 +2376,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private data class AuthoringDispatchTarget(
         val className: ClassName,
+        val usesWinRtProjectionCast: Boolean,
         val methodName: (WinRtMethodDefinition) -> String,
     )
 

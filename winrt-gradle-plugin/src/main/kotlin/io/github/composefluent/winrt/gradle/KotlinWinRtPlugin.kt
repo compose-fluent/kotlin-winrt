@@ -4,11 +4,11 @@ import io.github.composefluent.winrt.compiler.KotlinWinRtCommandLineProcessor
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
-import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
@@ -35,6 +35,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import java.io.File
+import java.util.Properties
 import java.nio.file.Path
 import org.gradle.jvm.tasks.Jar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -186,7 +187,6 @@ private fun configureWinRtLibraryModel(
             }
         }
     }
-    configureWinRtIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
     val dependencyIdentities = project.configurations.create(
         KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION,
         Action { configuration ->
@@ -198,8 +198,8 @@ private fun configureWinRtLibraryModel(
             )
         },
     )
-    configureWinRtIdentityProjectDependencies(project, dependencyIdentities, includeExternalModules = true)
-    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project, dependencyIdentities)
+    configureWinRtIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
+    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -256,8 +256,7 @@ private fun configureWinRtApplicationTasks(
             )
         },
     )
-    configureWinRtIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
-    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project, identityDependencies)
+    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -1084,6 +1083,9 @@ private fun configureWinRtAuthoredCandidateValidation(
         if (!compileTask.name.startsWith("compileKotlin")) {
             return@all
         }
+        if (!compileTask.isMingwX64CompileTask()) {
+            return@all
+        }
         val outputDirectory = nativeAuthoringOutputDirectory(project, compileTask.name)
         compileTask.outputs.dir(outputDirectory)
         val outputs = compilerAuthoringOutputs(
@@ -1426,7 +1428,8 @@ private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
                         kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
                     )
                 } else {
-                    kotlinWinRtLocalGeneratorWorkerClasspath(project).takeIf { it.isNotEmpty() }?.let { files ->
+                    (kotlinWinRtLocalGeneratorWorkerClasspath(project) ?: kotlinWinRtPluginMetadataGeneratorWorkerClasspath())
+                        ?.let { files ->
                         project.dependencies.add(configuration.name, project.files(files))
                     } ?: run {
                         project.dependencies.add(
@@ -1493,12 +1496,10 @@ private fun kotlinWinRtRuntimeDependency(project: Project): Any {
     if (localRuntimeProject != null) {
         return project.dependencies.project(mapOf("path" to localRuntimeProject.path))
     }
-    val runtimeClasspath = kotlinWinRtCodeSourceFile(Guid::class.java)
-    return if (runtimeClasspath != null) {
-        project.files(runtimeClasspath)
-    } else {
-        "io.github.compose-fluent:winrt-runtime:${kotlinWinRtPluginVersion()}"
-    }
+    return kotlinWinRtPluginMetadataArtifact(project, "winrt-runtime")
+        ?: kotlinWinRtCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")
+        ?.let(project::files)
+        ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRtPluginVersion()}"
 }
 
 private fun kotlinWinRtAuthoringDependency(project: Project): Any {
@@ -1506,12 +1507,10 @@ private fun kotlinWinRtAuthoringDependency(project: Project): Any {
     if (localAuthoringProject != null) {
         return project.dependencies.project(mapOf("path" to localAuthoringProject.path))
     }
-    val authoringClasspath = kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.WinRtAuthoringHostExports::class.java)
-    return if (authoringClasspath != null) {
-        project.files(authoringClasspath)
-    } else {
-        "io.github.compose-fluent:winrt-authoring:${kotlinWinRtPluginVersion()}"
-    }
+    return kotlinWinRtPluginMetadataArtifact(project, "winrt-authoring")
+        ?: kotlinWinRtCodeSourceFile(io.github.composefluent.winrt.authoring.WinRtAuthoringHostExports::class.java)
+            ?.let(project::files)
+        ?: "io.github.compose-fluent:winrt-authoring:${kotlinWinRtPluginVersion()}"
 }
 
 private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List<Any> {
@@ -1522,23 +1521,87 @@ private fun kotlinWinRtCompilerPluginRuntimeDependencies(project: Project): List
         runtimeDependencies += project.dependencies.project(mapOf("path" to localMetadataProject.path))
         return runtimeDependencies
     }
-    val metadataClasspath = kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java)
-    runtimeDependencies += if (metadataClasspath != null) {
-        project.files(metadataClasspath)
-    } else {
-        "io.github.compose-fluent:winrt-metadata:${kotlinWinRtPluginVersion()}"
-    }
+    runtimeDependencies += kotlinWinRtPluginMetadataArtifact(project, "winrt-metadata")
+        ?: kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java)
+            ?.let(project::files)
+        ?: "io.github.compose-fluent:winrt-metadata:${kotlinWinRtPluginVersion()}"
     return runtimeDependencies
 }
 
-private fun kotlinWinRtLocalGeneratorWorkerClasspath(project: Project): List<File> =
-    listOfNotNull(
-        kotlinWinRtCodeSourceFile(Guid::class.java),
+private fun kotlinWinRtLocalGeneratorWorkerClasspath(project: Project): List<File>? {
+    val files = listOf(
+        kotlinWinRtCodeSourceFile("io.github.composefluent.winrt.runtime.Guid"),
         kotlinWinRtCodeSourceFile(WinRtMetadataSource::class.java),
         kotlinWinRtCodeSourceFile(KotlinProjectionGenerator::class.java),
     )
+    if (files.any { file -> file == null || !file.exists() }) {
+        return null
+    }
+    return files
+        .filterNotNull()
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
-        .filter { file -> file.exists() }
+}
+
+private fun kotlinWinRtPluginMetadataGeneratorWorkerClasspath(): List<File>? {
+    val metadataFile = kotlinWinRtPluginUnderTestMetadataFile() ?: return null
+    val classpath = Properties().run {
+        metadataFile.inputStream().use(::load)
+        getProperty("implementation-classpath").orEmpty()
+    }
+    val files = classpath
+        .split(File.pathSeparatorChar)
+        .mapNotNull { path -> path.takeIf(String::isNotBlank)?.let(::File) }
+        .filter { file ->
+            val name = file.name
+            (name.startsWith("winrt-runtime-jvm") ||
+                name.startsWith("winrt-metadata") ||
+                name.startsWith("winrt-generator")) &&
+                name.endsWith(".jar") &&
+                file.isFile
+        }
+        .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
+    return files.takeIf { found ->
+        found.any { it.name.startsWith("winrt-runtime-jvm") } &&
+            found.any { it.name.startsWith("winrt-metadata") } &&
+            found.any { it.name.startsWith("winrt-generator") }
+    }
+}
+
+private fun kotlinWinRtPluginUnderTestMetadataFile(): File? {
+    val codeSource = kotlinWinRtCodeSourceFile(KotlinWinRtPlugin::class.java) ?: return null
+    var current = codeSource.canonicalFile
+    if (current.isFile) {
+        current = current.parentFile ?: return null
+    }
+    while (current != current.parentFile) {
+        val metadataFile = current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
+        if (metadataFile.isFile) {
+            return metadataFile
+        }
+        if (current.name == "build") {
+            break
+        }
+        current = current.parentFile ?: break
+    }
+    return current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
+        .takeIf(File::isFile)
+}
+
+private fun kotlinWinRtPluginMetadataArtifact(project: Project, moduleName: String): Any? {
+    val metadataFile = kotlinWinRtPluginUnderTestMetadataFile() ?: return null
+    val classpath = Properties().run {
+        metadataFile.inputStream().use(::load)
+        getProperty("implementation-classpath").orEmpty()
+    }
+    return classpath
+        .split(File.pathSeparatorChar)
+        .mapNotNull { path -> path.takeIf(String::isNotBlank)?.let(::File) }
+        .firstOrNull { file ->
+            val name = file.name
+            name.startsWith(moduleName) && name.endsWith(".jar") && file.isFile
+        }
+        ?.let(project::files)
+}
 
 private fun kotlinWinRtAuthoringScannerRuntimeClasspath(project: Project): Any =
     project.files(
@@ -1648,20 +1711,12 @@ private fun configureWinRtIdentityProjectDependencies(
             }
         }
     }
-    fun kotlinSourceSetConfigurationNames(sourceSet: KotlinSourceSet): List<String> =
-        buildList {
-            add(sourceSet.apiConfigurationName)
-            add(sourceSet.implementationConfigurationName)
-            add("${sourceSet.apiConfigurationName}Metadata")
-            add("${sourceSet.implementationConfigurationName}Metadata")
-        }
-
     project.configurations.configureEach(::observeConfiguration)
     project.gradle.projectsEvaluated {
         scanConfiguration("api")
         scanConfiguration("implementation")
         project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.sourceSets?.forEach { sourceSet ->
-            kotlinSourceSetConfigurationNames(sourceSet).forEach(::scanConfiguration)
+            sourceSet.kotlinWinRtIdentitySourceConfigurationNames().forEach(::scanConfiguration)
         }
     }
 }
@@ -1676,17 +1731,54 @@ private fun String.isWinRtIdentityDependencySourceConfiguration(): Boolean =
                 endsWith("ImplementationMetadata")
             ))
 
+private fun KotlinSourceSet.kotlinWinRtIdentitySourceConfigurationNames(): List<String> =
+    buildList {
+        add(apiConfigurationName)
+        add(implementationConfigurationName)
+        add("${apiConfigurationName}Metadata")
+        add("${implementationConfigurationName}Metadata")
+    }
+
 private fun kotlinWinRtIdentityFiles(
     project: Project,
-    identityDependencies: org.gradle.api.artifacts.Configuration,
 ): org.gradle.api.file.FileCollection =
-    identityDependencies.incoming.artifactView { view ->
-        view.isLenient = true
-        view.attributes.attribute(
-            Usage.USAGE_ATTRIBUTE,
-            project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
-        )
-    }.files
+    project.objects.fileCollection().from(
+        project.provider {
+            val dependenciesByKey = linkedMapOf<String, Dependency>()
+            project.configurations
+                .filter { configuration -> configuration.name.isWinRtIdentityDependencySourceConfiguration() }
+                .forEach { configuration ->
+                    configuration.allDependencies.forEach { dependency ->
+                        val key = when (dependency) {
+                            is ProjectDependency -> "project:${dependency.path}"
+                            is ExternalModuleDependency -> "module:${dependency.group}:${dependency.name}:${dependency.version}"
+                            else -> null
+                        }
+                        if (key != null) {
+                            dependenciesByKey.putIfAbsent(key, dependency.copy())
+                        }
+                    }
+                }
+            if (dependenciesByKey.isEmpty()) {
+                emptySet<File>()
+            } else {
+                val identityDependencies = project.configurations.detachedConfiguration(
+                    *dependenciesByKey.values.toTypedArray(),
+                )
+                identityDependencies.attributes.attribute(
+                    Usage.USAGE_ATTRIBUTE,
+                    project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+                )
+                identityDependencies.incoming.artifactView { view ->
+                    view.isLenient = true
+                    view.attributes.attribute(
+                        Usage.USAGE_ATTRIBUTE,
+                        project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+                    )
+                }.files.files
+            }
+        }
+    )
 
 private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     project: Project,
@@ -1710,6 +1802,11 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
 
 private fun KotlinNativeTarget.isMingwX64Target(): Boolean =
     konanTarget.name.equals("mingw_x64", ignoreCase = true)
+
+private fun KotlinNativeCompile.isMingwX64CompileTask(): Boolean =
+    target.equals("mingw_x64", ignoreCase = true) ||
+        target.equals("mingwX64", ignoreCase = true) ||
+        name.contains("mingw", ignoreCase = true)
 
 private fun kotlinWinRtAuthoringTargetArtifactName(project: Project): Provider<String> =
     runCatching {
