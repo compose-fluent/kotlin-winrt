@@ -1079,7 +1079,7 @@ class KotlinProjectionRenderer(
     internal fun renderRuntimeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
-        if (plan.hasRuntimeClassDerivedTypes && KotlinProjectionModifier.Sealed !in plan.modifiers) {
+        if (plan.requiresOpenRuntimeClassShell()) {
             builder.addModifiers(KModifier.OPEN)
         }
         if (KotlinProjectionModifier.Sealed in plan.modifiers) {
@@ -1169,10 +1169,10 @@ class KotlinProjectionRenderer(
             )
         }
         builder.addProperty(
-            PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
+                PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
                 .addModifiers(KModifier.OVERRIDE)
                 .apply {
-                    if (plan.hasRuntimeClassDerivedTypes && KotlinProjectionModifier.Sealed !in plan.modifiers) {
+                    if (plan.requiresOpenRuntimeClassShell()) {
                         addModifiers(KModifier.OPEN)
                     }
                 }
@@ -1221,7 +1221,7 @@ class KotlinProjectionRenderer(
         ) {
             val defaultCacheType = if (
                 plan.runtimeClassBaseTypeName != null ||
-                plan.hasRuntimeClassDerivedTypes ||
+                plan.requiresOpenRuntimeClassShell() ||
                 defaultObjectReferencePlan?.usesInner == true ||
                 defaultObjectReferencePlan?.usesDefaultInterfaceObjRef == true
             ) {
@@ -1844,18 +1844,6 @@ class KotlinProjectionRenderer(
             ?.interfaceDescriptors
             ?.any { descriptor -> descriptor.interfaceTypeName == rawName && descriptor.isOverridableInterface } == true
     }
-
-    private val KotlinTypeProjectionPlan.hasRuntimeClassDerivedTypes: Boolean
-        get() =
-            classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor ->
-                descriptor.isOverridableInterface
-            } == true ||
-                typesByQualifiedName.values.any { candidate ->
-                    candidate.kind == WinRtTypeKind.RuntimeClass &&
-                        candidate.baseTypeName?.let { baseName ->
-                            baseName == type.qualifiedName || baseName == type.name
-                        } == true
-                }
 
     private fun addRuntimeClassIdentityMembers(
         builder: TypeSpec.Builder,
@@ -3466,18 +3454,26 @@ private fun KotlinTypeProjectionPlan.requiresApplicationModelCoreAliasImports():
     winAppSdkCoveredApplicationModelCoreInterface(type.qualifiedName) != null
 
 internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
-    (
-        classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor ->
-            descriptor.isOverridableInterface
-        } == true ||
-            typesByQualifiedName.values.any { candidate ->
-                candidate.kind == WinRtTypeKind.RuntimeClass &&
-                    candidate.baseTypeName?.let { baseName ->
-                        baseName == type.qualifiedName || baseName == type.name
-                    } == true
-            }
-        ) &&
-        KotlinProjectionCompanionKind.ComposableFactory in companionKinds
+    type.kind == WinRtTypeKind.RuntimeClass &&
+        KotlinProjectionCompanionKind.ComposableFactory in companionKinds &&
+        KotlinProjectionModifier.Sealed !in modifiers
+
+private fun KotlinTypeProjectionPlan.requiresOpenRuntimeClassShell(): Boolean =
+    supportsDerivedComposableConstruction() ||
+        (
+            KotlinProjectionModifier.Sealed !in modifiers &&
+                (
+                    classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor ->
+                        descriptor.isOverridableInterface
+                    } == true ||
+                        typesByQualifiedName.values.any { candidate ->
+                            candidate.kind == WinRtTypeKind.RuntimeClass &&
+                                candidate.baseTypeName?.let { baseName ->
+                                    baseName == type.qualifiedName || baseName == type.name
+                                } == true
+                        }
+                    )
+            )
 
 private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshaller(
     plan: KotlinTypeProjectionPlan,

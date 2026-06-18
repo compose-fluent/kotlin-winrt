@@ -692,7 +692,18 @@ internal fun dependencyProjectedTypeNames(
     identityFiles: Iterable<java.io.File>,
 ): Set<String> =
     identityFiles
-        .flatMap { identityFile -> dependencyProjectedTypeNames(model, readProjectionSurfaceIdentity(identityFile)) }
+        .flatMap { identityFile ->
+            dependencyProjectedTypeNames(model, readProjectionSurfaceIdentity(identityFile)) +
+                readAuthoringMetadataIndexRows(identityFile).mapNotNull { row ->
+                    parseAuthoringMetadataIndexRows(listOf(row), identityFile.absolutePath).values
+                        .firstOrNull()
+                        ?.qualifiedName
+                } +
+                readAuthoredHostManifests(identityFile)
+                    .map(Path::of)
+                    .filter(Files::isRegularFile)
+                    .flatMap { path -> readAuthoredHostManifestActivatableClasses(path.toFile()) }
+        }
         .toSortedSet()
 
 internal fun dependencyProjectionSurfaceTypeNames(
@@ -747,9 +758,29 @@ private fun dependencyProjectedTypeNames(
     model: WinRtMetadataModel,
     identity: ProjectionSurfaceIdentity,
 ): List<String> {
+    val typesByName = model.namespaces
+        .flatMap { namespace -> namespace.types }
+        .associateBy(WinRtTypeDefinition::qualifiedName)
     return (identity.includeTypes + identity.projectedTypes.orEmpty())
         .distinct()
-        .filter { typeName -> model.namespaces.any { namespace -> namespace.types.any { it.qualifiedName == typeName } } }
+        .flatMap { typeName -> dependencyOwnedTypeAndBaseChain(typeName, typesByName) }
+        .distinct()
+}
+
+private fun dependencyOwnedTypeAndBaseChain(
+    typeName: String,
+    typesByName: Map<String, WinRtTypeDefinition>,
+): List<String> {
+    val result = mutableListOf<String>()
+    var currentName: String? = typeName
+    while (!currentName.isNullOrBlank()) {
+        val current = typesByName[currentName] ?: break
+        if (!result.add(current.qualifiedName)) {
+            break
+        }
+        currentName = current.baseTypeName
+    }
+    return result
 }
 
 internal fun automaticXamlComponentResourceDictionaryTypes(

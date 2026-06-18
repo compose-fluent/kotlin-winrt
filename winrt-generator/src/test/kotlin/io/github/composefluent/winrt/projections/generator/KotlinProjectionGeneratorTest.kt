@@ -8679,8 +8679,8 @@ class KotlinProjectionGeneratorTest {
         val baseContents = generated.getValue("WidgetBase.kt").contents
         val widgetContents = generated.getValue("Widget.kt").contents
 
-        assertTrue(baseContents.contains("public open class WidgetBase internal constructor("))
-        assertTrue(baseContents.contains("open override val nativeObject: ComObjectReference"))
+        assertTrue(baseContents, baseContents.contains("public open class WidgetBase internal constructor("))
+        assertTrue(baseContents, baseContents.contains("open override val nativeObject: ComObjectReference"))
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains(") : WidgetBase(_inner, kotlin.Unit),"))
         assertTrue(widgetContents.contains("IWidget"))
@@ -11093,7 +11093,7 @@ class KotlinProjectionGeneratorTest {
         val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
         val widgetContents = filesByName.getValue("Widget.kt").contents
 
-        assertTrue(widgetContents.contains("class Widget internal constructor("))
+        assertTrue(widgetContents.contains("public open class Widget"))
         assertTrue(widgetContents.contains(": IWidget"))
         assertTrue(widgetContents.contains("IWidgetExtra"))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))

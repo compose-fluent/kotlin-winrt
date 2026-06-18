@@ -712,11 +712,14 @@ internal fun readAuthoredHostManifests(identityFile: java.io.File): List<String>
     return readJsonStringArray(match.groupValues[1])
 }
 
-internal fun authoredHostManifestDeclaresActivatableClasses(manifest: java.io.File): Boolean {
+internal fun readAuthoredHostManifestActivatableClasses(manifest: java.io.File): List<String> {
     val content = manifest.takeIf { it.isFile }?.readText().orEmpty()
-    val defaultTargets = readJsonStringArrayField(content, "activatableClasses")
-    val explicitTargets = readJsonStringMap(content, "activatableClassTargets").keys
-    return (defaultTargets + explicitTargets).any { it.isNotBlank() }
+    return readJsonStringArrayField(content, "activatableClasses") +
+        readJsonStringMap(content, "activatableClassTargets").keys
+}
+
+internal fun authoredHostManifestDeclaresActivatableClasses(manifest: java.io.File): Boolean {
+    return readAuthoredHostManifestActivatableClasses(manifest).any { it.isNotBlank() }
 }
 
 internal fun readAuthoredTargetArtifacts(identityFile: java.io.File): List<String> {

@@ -19,6 +19,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.JavaExec
 import org.gradle.testfixtures.ProjectBuilder
@@ -1424,6 +1425,44 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun dependency_identity_authored_host_manifest_suppresses_downstream_authored_runtime_class_projection() {
+        val project = ProjectBuilder.builder().build()
+        val root = project.layout.buildDirectory.dir("dependency-authored-host").get().asFile.toPath()
+        val dependencyIdentity = root.resolve("kotlin-winrt.json")
+        val hostManifest = root.resolve("dependency.host.json")
+        Files.createDirectories(root)
+        Files.writeString(
+            hostManifest,
+            """
+            {
+              "schemaVersion": 1,
+              "model": "jvm-authoring-host",
+              "assemblyName": "dependency",
+              "hostExportsClass": "sample.DependencyHostExports",
+              "targetArtifact": "dependency.jar",
+              "activatableClasses": ["androidx.compose.ui.window.WinUIXamlApplication"],
+              "activatableClassTargets": {}
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            dependencyIdentity,
+            """
+            {
+              "includeTypes": [],
+              "projectedTypes": [],
+              "authoredHostManifests": [${hostManifest.toString().toJsonString()}]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            setOf("androidx.compose.ui.window.WinUIXamlApplication"),
+            dependencyProjectedTypeNames(WinRtMetadataModel(emptyList()), listOf(dependencyIdentity.toFile())),
+        )
+    }
+
+    @Test
     fun dependency_identity_projected_types_bound_downstream_suppression_to_actual_generated_types() {
         val project = ProjectBuilder.builder().build()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
@@ -1482,7 +1521,7 @@ class KotlinWinRtPluginTest {
             {
               "includeNamespaces": ["Sample.Dependency"],
               "includeTypes": [],
-              "projectedTypes": ["Sample.Dependency.SharedWidget"],
+              "projectedTypes": ["Sample.Dependency.SharedWidget", "Sample.Dependency.DerivedWidget"],
               "excludeNamespaces": [],
               "excludeTypes": []
             }
@@ -1497,6 +1536,12 @@ class KotlinWinRtPluginTest {
                             namespace = "Sample.Dependency",
                             name = "SharedWidget",
                             kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Dependency",
+                            name = "DerivedWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Dependency.SharedWidget",
                         ),
                     ),
                 ),
@@ -1521,7 +1566,8 @@ class KotlinWinRtPluginTest {
             .generate(model)
             .associateBy { it.relativePath }
 
-        assertEquals(setOf("Sample.Dependency.SharedWidget"), dependencyOwnedTypes)
+        assertEquals(setOf("Sample.Dependency.DerivedWidget", "Sample.Dependency.SharedWidget"), dependencyOwnedTypes)
+        assertFalse(filesByPath.containsKey("sample/dependency/DerivedWidget.kt"))
         assertFalse(filesByPath.containsKey("sample/dependency/SharedWidget.kt"))
         assertTrue(filesByPath.containsKey("sample/application/AppWidget.kt"))
         val registrar = filesByPath.getValue("kotlin-winrt-support/projection-registrar.tsv").contents
@@ -1575,6 +1621,32 @@ class KotlinWinRtPluginTest {
         project.tasks.named("runWinRtApplicationHost").get()
         assertEquals("buildWinRtApplicationHost", project.extensions.extraProperties["kotlinWinRtApplicationHostTask"])
         assertEquals("runWinRtApplicationHost", project.extensions.extraProperties["kotlinWinRtRunApplicationHostTask"])
+    }
+
+    @Test
+    fun resolvable_identity_configuration_does_not_mutate_after_resolution() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val application = ProjectBuilder.builder().withName("app").withParent(root).build()
+        val library = ProjectBuilder.builder().withName("lib").withParent(root).build()
+
+        library.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        application.pluginManager.apply("java")
+        application.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":lib")))
+        application.extensions.getByType(WinRtExtension::class.java).application {}
+
+        val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
+        identityConfiguration.incoming.artifactView { view ->
+            view.isLenient = true
+            view.attributes.attribute(
+                Usage.USAGE_ATTRIBUTE,
+                application.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+            )
+        }.files.files
+
+        application.dependencies.add("implementation", application.dependencies.create("sample:late-dependency:1.0"))
+
+        assertEquals(org.gradle.api.artifacts.Configuration.State.RESOLVED, identityConfiguration.state)
     }
 
     @Test
@@ -1907,11 +1979,13 @@ class KotlinWinRtPluginTest {
         application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":runtime")))
 
         val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
-        val dependencyProjectPaths = identityConfiguration.dependencies
-            .filterIsInstance<org.gradle.api.artifacts.ProjectDependency>()
-            .map { it.path }
+        assertTrue(identityConfiguration.dependencies.isEmpty())
+        val applicationIdentityTask = application.tasks.named(
+            "generateWinRtApplicationIdentity",
+            GenerateWinRtApplicationIdentityTask::class.java,
+        ).get()
 
-        assertEquals(listOf(":library"), dependencyProjectPaths)
+        assertTrue(applicationIdentityTask.dependencyIdentityFiles.files.isNotEmpty())
     }
 
     @Test
@@ -1939,11 +2013,13 @@ class KotlinWinRtPluginTest {
         }
 
         val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
-        val dependencyProjectPaths = identityConfiguration.dependencies
-            .filterIsInstance<ProjectDependency>()
-            .map { it.path }
+        assertTrue(identityConfiguration.dependencies.isEmpty())
+        val applicationIdentityTask = application.tasks.named(
+            "generateWinRtApplicationIdentity",
+            GenerateWinRtApplicationIdentityTask::class.java,
+        ).get()
 
-        assertEquals(listOf(":library"), dependencyProjectPaths)
+        assertTrue(applicationIdentityTask.dependencyIdentityFiles.files.isNotEmpty())
     }
 
     @Test
@@ -6772,6 +6848,24 @@ class KotlinWinRtPluginTest {
                 validationTaskName in dependencies,
             )
         }
+    }
+
+    @Test
+    fun authored_candidate_validation_is_registered_only_for_winui_native_targets() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.configure(KotlinMultiplatformExtension::class.java) { kotlin ->
+            kotlin.mingwX64("winuiMingw")
+            kotlin.linuxX64("linux")
+        }
+
+        val taskNames = project.tasks.names
+        assertTrue("validateCompileKotlinWinuiMingwWinRtAuthoredCandidates" in taskNames)
+        assertTrue("validateCompileKotlinWinuiMingwWinRtNativeAuthoringExports" in taskNames)
+        assertFalse("validateCompileKotlinLinuxWinRtAuthoredCandidates" in taskNames)
+        assertFalse("validateCompileKotlinLinuxWinRtNativeAuthoringExports" in taskNames)
     }
 
     @Test
