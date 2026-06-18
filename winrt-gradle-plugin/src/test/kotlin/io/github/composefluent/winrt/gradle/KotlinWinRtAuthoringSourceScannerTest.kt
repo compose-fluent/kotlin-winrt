@@ -358,7 +358,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer))"))
         assertTrue(generated.contains("rawArgs"))
         assertTrue(generated.contains("LaunchActivatedEventArgs.Metadata.wrap"))
-        assertTrue(generated.contains("winrtAs(Application.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
+        assertTrue(generated.contains("Guid(\"aaaaaaaa-1111-2222-3333-444444444444\")"))
         assertTrue(generated.contains("__winrtAuthoringInvokeOnLaunched(__arg0)"))
         assertTrue(generated.contains("try {"))
         assertTrue(generated.contains("ExceptionHelpers.setErrorInfo(__exception)"))
@@ -575,12 +576,12 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt").readText()
         assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
-        assertTrue(generated.contains("winrtAs(Widget.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeadd_Changed(__arg0)"))
         assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
         assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Int64))"))
         assertTrue(generated.contains("val __arg0 = EventRegistrationToken(rawArgs[0] as Long)"))
-        assertTrue(generated.contains("winrtAs(Widget.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
@@ -677,12 +678,12 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalWidget_TypeDetails.kt").readText()
         assertTrue(generated.contains("WidgetChangedHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
-        assertTrue(generated.contains("winrtAs(Widget.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeadd_Changed(__arg0)"))
         assertTrue(generated.contains("EventRegistrationToken.Metadata.copyTo(__result as EventRegistrationToken"))
         assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Int64))"))
         assertTrue(generated.contains("val __arg0 = EventRegistrationToken(rawArgs[0] as Long)"))
-        assertTrue(generated.contains("winrtAs(Widget.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeremove_Changed(__arg0)"))
     }
 
@@ -761,6 +762,11 @@ class KotlinWinRtAuthoringSourceScannerTest {
                     types = listOf(
                         WinRtTypeDefinition(
                             namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "ContentControl",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
                             name = "IContentControlOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = io.github.composefluent.winrt.runtime.Guid("2504174a-017e-5a2d-9c28-d97c66ae9937"),
@@ -794,7 +800,9 @@ class KotlinWinRtAuthoringSourceScannerTest {
             Regex("""ComMethodSignature\.of\(\s*ComAbiValueKind\.Pointer,\s*ComAbiValueKind\.Pointer\s*\)""").containsMatchIn(generated),
         )
         assertTrue(generated, !generated.contains("ComMethodSignature.of(ComAbiValueKind.Pointer, , ComAbiValueKind.Pointer)"))
-        assertTrue(generated.contains("(value.winrtAs(ContentControl.Metadata.TYPE_HANDLE) as ContentControl).__winrtAuthoringInvokeOnContentChanged(__arg0, __arg1)"))
+        assertTrue(generated.contains("(value.winrtAs(WinRtTypeHandle("))
+        assertTrue(generated.contains("Guid(\"2504174a-017e-5a2d-9c28-d97c66ae9937\")"))
+        assertTrue(generated.contains("__winrtAuthoringInvokeOnContentChanged(__arg0, __arg1)"))
         assertFalse(generated.contains("(value as ContentControl).__winrtAuthoringInvokeOnContentChanged"))
         assertTrue(generated, !generated.contains("ContentControl::class.java"))
         assertTrue(generated, !generated.contains("Any::class.java, Any::class.java"))
@@ -956,7 +964,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("Peer.Metadata.wrap(IInspectableReference"))
         assertTrue(generated.contains("IPeer.Metadata.wrap(IUnknownReference"))
         assertFalse(generated.contains("IPeer.Metadata.wrap(IInspectableReference"))
-        assertTrue(generated.contains("winrtAs(PeerProvider.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeSetPeerCore(__arg0)"))
         assertTrue(generated.contains("__winrtAuthoringInvokeSetPeerInterfaceCore(__arg0)"))
     }
@@ -1036,7 +1044,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         val generated = output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt").readText()
         assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[0] as RawAddress) as Peer"))
         assertTrue(generated, !generated.contains("Peer.Metadata.wrap"))
-        assertTrue(generated.contains("winrtAs(PeerProvider.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeSetPeerCore(__arg0)"))
     }
 
@@ -1154,7 +1162,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalStringable_TypeDetails.kt").readText()
         assertTrue(generated.contains("HString.fromHandle(rawArgs[0] as RawAddress, owner = false)"))
-        assertTrue(generated.contains("winrtAs(IStringableBase.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeTransform(__arg0)"))
         assertTrue(generated.contains("PlatformAbi.writePointer("))
         assertTrue(generated.contains("rawArgs[1] as RawAddress"))
@@ -1646,7 +1654,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         )
 
         val generated = output.resolve("sample/WinRT_LocalContentControl_TypeDetails.kt").readText()
-        assertTrue(generated.contains("(value.winrtAs(UIElement.Metadata.TYPE_HANDLE) as UIElement).__winrtAuthoringInvokeOnDisconnectVisualChildren()"))
+        assertTrue(generated.contains("(value.winrtAs(WinRtTypeHandle("))
+        assertTrue(generated.contains("__winrtAuthoringInvokeOnDisconnectVisualChildren()"))
         assertFalse(generated.contains("(value as UIElement).__winrtAuthoringInvokeOnDisconnectVisualChildren"))
         assertTrue(generated, !generated.contains("ContentControl::__class.java"))
         assertTrue(generated, !generated.contains("findDeclaredMethod"))
@@ -1730,7 +1739,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("IID.IReference"))
         assertTrue(generated.contains("WinRtTypeSignature.int32()"))
         assertTrue(generated.contains("as Int?"))
-        assertTrue(generated.contains("winrtAs(SettingsOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
+        assertTrue(generated.contains("Guid(\"11111111-1111-1111-1111-111111111111\")"))
         assertTrue(generated.contains("__winrtAuthoringInvokeSetRetryCountCore(__arg0)"))
         assertTrue(generated.contains("WinRtReferenceProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtTypeSignature.string()"))
@@ -1819,7 +1829,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalWidgetOwner_TypeDetails.kt").readText()
         assertTrue(generated.contains("WidgetHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
-        assertTrue(generated.contains("winrtAs(WidgetOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeSetWidgetHandlerCore(__arg0)"))
         assertTrue(generated.contains("MarshalDelegate.fromProjected(__result as WinRtProjectedDelegate)"))
         assertTrue(generated, !generated.contains("detachCCWForObject(__result"))
@@ -2084,7 +2094,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))
         assertTrue(generated.contains("WinRtListProjection.fromAbi(rawArgs[0] as RawAddress"))
-        assertTrue(generated.contains("winrtAs(AutomationPeer.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated.contains("__winrtAuthoringInvokeSetNamesCore(__arg0)"))
         assertTrue(generated.contains("WinRtReadOnlyDictionaryProjection.fromAbi(rawArgs[0]"))
         assertTrue(generated.contains("as RawAddress"))
@@ -2214,7 +2224,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         val generated = output.resolve("sample/WinRT_LocalBufferOwner_TypeDetails.kt").readText()
         assertTrue(generated, generated.contains("ComMethodSignature.of(ComAbiValueKind.Int32"))
         assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { rawArgs ->"))
-        assertTrue(generated, generated.contains("winrtAs(BufferOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeGetNumbers()"))
         assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() *"))
         assertTrue(generated, generated.contains("4)"))
@@ -2224,16 +2234,16 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
         assertTrue(generated, !generated.contains("__arg0"))
         assertTrue(generated, !generated.contains("rawArgs[2]"))
-        assertTrue(generated, generated.contains("winrtAs(BufferOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeGetNames()"))
         assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() * 8"))
         assertTrue(generated, generated.contains("PlatformAbi.writePointer(PlatformAbi.slice(__returnArrayData, __index.toLong() *"))
         assertTrue(generated, generated.contains("8, 8), HString.create(__element).handle)"))
-        assertTrue(generated, generated.contains("winrtAs(BufferOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeGetThings()"))
         assertTrue(generated, generated.contains("ComWrappersSupport.detachCCWForObject(__element"))
         assertTrue(generated, generated.contains("Guid(\"55555555-3333-2222-1111-000000000000\")"))
-        assertTrue(generated, generated.contains("winrtAs(BufferOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeGetPoints()"))
         assertTrue(generated, generated.contains("PlatformAbi.allocateBytesOwned(__result.size.toLong() *"))
         assertTrue(generated, generated.contains("Point.Metadata.layout.sizeBytes, Point.Metadata.layout.alignmentBytes)"))
@@ -2303,7 +2313,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalBufferOwner_TypeDetails.kt").readText()
         assertTrue(generated, generated.contains("val __arg1 = rawArgs[2] as Int"))
-        assertTrue(generated, generated.contains("winrtAs(BufferOwner.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeGetNumbers(__arg1)"))
         assertTrue(generated, generated.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress, __result.size)"))
         assertTrue(generated, generated.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
@@ -2412,17 +2422,17 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("val __arrayData = rawArgs[1] as RawAddress"))
         assertTrue(generated, generated.contains("Array(__arrayLength) { __index ->"))
         assertTrue(generated, generated.contains("PlatformAbi.readInt32"))
-        assertTrue(generated, generated.contains("winrtAs(BufferConsumer.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeSetNumbers(__arg0)"))
         assertTrue(generated, generated.contains("HString.fromHandle(PlatformAbi.readPointer"))
-        assertTrue(generated, generated.contains("winrtAs(BufferConsumer.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeSetNames(__arg0)"))
         assertTrue(generated, generated.contains("IThing.Metadata.wrap(IInspectableReference"))
         assertTrue(generated, generated.contains("PlatformAbi.toRawComPtr(PlatformAbi.readPointer"))
-        assertTrue(generated, generated.contains("winrtAs(BufferConsumer.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeSetThings(__arg0)"))
         assertTrue(generated, generated.contains("Point.Metadata.fromAbi(PlatformAbi.slice(__arrayData"))
-        assertTrue(generated, generated.contains("winrtAs(BufferConsumer.Metadata.TYPE_HANDLE)"))
+        assertTrue(generated, generated.contains("winrtAs(WinRtTypeHandle("))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeSetPoints(__arg0)"))
     }
 
