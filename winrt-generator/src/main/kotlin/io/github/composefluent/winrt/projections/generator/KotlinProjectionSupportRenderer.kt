@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
+import io.github.composefluent.winrt.metadata.WinRtGenericAbiDelegateDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
 import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
@@ -112,7 +113,8 @@ class KotlinProjectionSupportRenderer {
         useProjectionIntrinsics = true,
     )
     private val planner = KotlinProjectionPlanner()
-    private val eventProjectionHelperTypesPerFile: Int = 256
+    private val eventProjectionHelperTypesPerFile: Int = 96
+    private val projectionSupportAnchorShardCount: Int = 16
     private val AUTHORING_ABI_OPERATIONS = listOf(
         "GetAbi",
         "FromAbi",
@@ -133,6 +135,7 @@ class KotlinProjectionSupportRenderer {
         "IInspectable",
         "IWeakReferenceSource",
     )
+    private val GENERIC_ABI_SOURCE_SHARD_SIZE = 48
 
     fun render(
         model: WinRtMetadataModel,
@@ -161,7 +164,6 @@ class KotlinProjectionSupportRenderer {
                 renderTypeShapeDescriptorCompilerInput(plans),
                 renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
                 renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
-                renderGenericAbiSupportSource(inventory.genericAbiInventory, genericAbiSupportFileName),
                 renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
                 renderGenericTypeInstantiations(genericInstantiationWriters, genericTypeInstantiationsClassName),
                 renderCompilerSupportManifest(
@@ -172,9 +174,9 @@ class KotlinProjectionSupportRenderer {
                     excludedProjectionTypeNames,
                     emitProjectionRegistrar,
                     genericTypeInstantiationsClassName,
+                    genericAbiSupportFileName,
                     supportOwnerIdentity,
                 ),
-                renderProjectionSupportAnchor(supportOwnerIdentity).takeIf { emitProjectionRegistrar },
                 renderWinUiXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
                 renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
@@ -204,6 +206,10 @@ class KotlinProjectionSupportRenderer {
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
             ).forEach(::add)
+            if (emitProjectionRegistrar) {
+                addAll(renderProjectionSupportAnchors(supportOwnerIdentity))
+            }
+            addAll(renderGenericAbiSupportSources(inventory.genericAbiInventory, genericAbiSupportFileName))
             addAll(renderDispatcherQueueSynchronizationContextAdditions(plans))
             addAll(renderEventProjectionHelpers(
                 model,
@@ -214,8 +220,11 @@ class KotlinProjectionSupportRenderer {
         }
     }
 
-    private fun renderProjectionSupportAnchor(supportOwnerIdentity: String?): KotlinProjectionFile =
-        winRtProjectionSupportAnchorFileName(supportOwnerIdentity).let { fileName ->
+    private fun renderProjectionSupportAnchors(supportOwnerIdentity: String?): List<KotlinProjectionFile> {
+        val baseFileName = winRtProjectionSupportAnchorFileName(supportOwnerIdentity)
+        return (listOf(baseFileName) + (0 until projectionSupportAnchorShardCount).map { index ->
+            "${baseFileName}_${index.toString().padStart(3, '0')}"
+        }).map { fileName ->
             supportFile(
                 "$fileName.kt",
                 supportFileSpec(fileName)
@@ -223,6 +232,7 @@ class KotlinProjectionSupportRenderer {
                     .build(),
             )
         }
+    }
 
     private fun renderDispatcherQueueSynchronizationContextAdditions(plans: List<KotlinTypeProjectionPlan>): List<KotlinProjectionFile> {
         val planNames = plans.mapTo(linkedSetOf()) { it.type.qualifiedName }
@@ -558,6 +568,7 @@ class KotlinProjectionSupportRenderer {
         excludedProjectionTypeNames: Set<String>,
         emitProjectionRegistrar: Boolean,
         genericTypeInstantiationsClassName: ClassName,
+        genericAbiSupportFileName: String,
         supportOwnerIdentity: String?,
     ): KotlinProjectionFile? {
         val registrarEntries = if (emitProjectionRegistrar) {
@@ -586,7 +597,7 @@ class KotlinProjectionSupportRenderer {
             ),
             compilerSupportManifestRow(
                 kind = "generic-abi-registry",
-                className = WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
+                className = "$SUPPORT_PACKAGE.$genericAbiSupportFileName",
                 sourceFile = "generic-abi-registry.tsv",
                 entries = genericAbiRegistryEntries,
                 owner = supportOwnerIdentity.orEmpty(),
@@ -726,13 +737,85 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
-    private fun renderGenericAbiSupportSource(
+    private fun renderGenericAbiSupportSources(
         inventory: WinRtGenericAbiInventory,
         genericAbiSupportFileName: String,
-    ): KotlinProjectionFile? {
+    ): List<KotlinProjectionFile> {
         if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
-            return null
+            return emptyList()
         }
+        val entryClass = ClassName(SUPPORT_PACKAGE, "GenericAbiDelegateEntry")
+        val delegates = inventory.genericAbiDelegates.sortedWith(
+            compareBy(
+                { descriptor -> descriptor.abiDelegateName },
+                { descriptor -> descriptor.sourceGenericType.typeName },
+            ),
+        ).distinctBy { descriptor ->
+            descriptor.abiDelegateName + "\u0000" + descriptor.sourceGenericType.typeName + "\u0000" +
+                descriptor.typeArrayShape.joinToString("\u0000")
+        }
+        val delegatesByName = delegates.distinctBy(WinRtGenericAbiDelegateDescriptor::abiDelegateName)
+        val delegatesBySourceType = delegates.groupBy { descriptor -> descriptor.sourceGenericType.typeName }.toSortedMap()
+        val derivedInterfaces = inventory.derivedGenericInterfaces.distinct().sorted()
+        val delegatesByNameChunks = delegatesByName.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
+        val delegatesBySourceTypeChunks = delegatesBySourceType.entries.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
+        val derivedInterfaceChunks = derivedInterfaces.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
+        val delegateRegistrationChunks = delegates.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
+        val shardPrefix = genericAbiSupportShardFunctionPrefix(genericAbiSupportFileName)
+        val objectBuilder = TypeSpec.objectBuilder(genericAbiSupportFileName)
+            .addModifiers(KModifier.INTERNAL)
+            .addFunction(
+                FunSpec.builder("delegateNamed")
+                    .addParameter("name", stringTypeName())
+                    .returns(entryClass.copy(nullable = true))
+                    .apply {
+                        delegatesByNameChunks.forEachIndexed { index, _ ->
+                            val resultName = "delegateNamedChunk${index}Result"
+                            addStatement("val %L = %LDelegateNamedChunk%L(name)", resultName, shardPrefix, index)
+                            addStatement("if (%L != null) return %L", resultName, resultName)
+                        }
+                        addStatement("return null")
+                    }
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("delegatesForSourceType")
+                    .addParameter("sourceGenericType", stringTypeName())
+                    .returns(List::class.asClassName().parameterizedBy(entryClass))
+                    .apply {
+                        delegatesBySourceTypeChunks.forEachIndexed { index, _ ->
+                            val resultName = "delegatesForSourceTypeChunk${index}Result"
+                            addStatement("val %L = %LDelegatesForSourceTypeChunk%L(sourceGenericType)", resultName, shardPrefix, index)
+                            addStatement("if (%L != null) return %L", resultName, resultName)
+                        }
+                        addStatement("return emptyList()")
+                    }
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("isDerivedGenericInterface")
+                    .addParameter("typeName", stringTypeName())
+                    .returns(Boolean::class)
+                    .apply {
+                        derivedInterfaceChunks.forEachIndexed { index, _ ->
+                            val resultName = "isDerivedGenericInterfaceChunk${index}Result"
+                            addStatement("val %L = %LIsDerivedGenericInterfaceChunk%L(typeName)", resultName, shardPrefix, index)
+                            addStatement("if (%L != null) return %L", resultName, resultName)
+                        }
+                        addStatement("return false")
+                    }
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("registerAbiDelegates")
+                    .addParameter("register", genericAbiRegisterFunctionTypeName())
+                    .apply {
+                        delegateRegistrationChunks.forEachIndexed { index, _ ->
+                            addStatement("%LRegisterAbiDelegatesChunk%L(register)", shardPrefix, index)
+                        }
+                    }
+                    .build(),
+            )
         val fileSpec = supportFileSpec(genericAbiSupportFileName)
             .addType(
                 dataClass(
@@ -747,9 +830,136 @@ class KotlinProjectionSupportRenderer {
                     ),
                 ),
             )
+            .addType(objectBuilder.build())
             .build()
-        return supportFile("$genericAbiSupportFileName.kt", fileSpec)
+        val shardFiles = (0 until maxOf(
+            delegatesByNameChunks.size,
+            delegatesBySourceTypeChunks.size,
+            derivedInterfaceChunks.size,
+            delegateRegistrationChunks.size,
+        )).map { index ->
+            val shardFileName = "${genericAbiSupportFileName}_${index.toString().padStart(3, '0')}"
+            val builder = supportFileSpec(shardFileName)
+            delegatesByNameChunks.getOrNull(index)?.let { chunk ->
+                builder.addFunction(genericAbiDelegateNamedChunk("${shardPrefix}DelegateNamedChunk$index", chunk, entryClass))
+            }
+            delegatesBySourceTypeChunks.getOrNull(index)?.let { chunk ->
+                builder.addFunction(genericAbiDelegatesForSourceTypeChunk("${shardPrefix}DelegatesForSourceTypeChunk$index", chunk, entryClass))
+            }
+            derivedInterfaceChunks.getOrNull(index)?.let { chunk ->
+                builder.addFunction(genericAbiDerivedInterfaceChunk("${shardPrefix}IsDerivedGenericInterfaceChunk$index", chunk))
+            }
+            delegateRegistrationChunks.getOrNull(index)?.let { chunk ->
+                builder.addFunction(genericAbiRegisterDelegatesChunk("${shardPrefix}RegisterAbiDelegatesChunk$index", chunk))
+            }
+            supportFile("$shardFileName.kt", builder.build())
+        }
+        return listOf(supportFile("$genericAbiSupportFileName.kt", fileSpec)) + shardFiles
     }
+
+    private fun genericAbiDelegateNamedChunk(
+        functionName: String,
+        delegates: List<WinRtGenericAbiDelegateDescriptor>,
+        entryClass: ClassName,
+    ): FunSpec =
+        FunSpec.builder(functionName)
+            .addModifiers(KModifier.INTERNAL)
+            .addParameter("name", stringTypeName())
+            .returns(entryClass.copy(nullable = true))
+            .apply {
+                beginControlFlow("return when (name)")
+                delegates.forEach { descriptor ->
+                    addStatement("%S -> %L", descriptor.abiDelegateName, genericAbiDelegateEntryCode(descriptor))
+                }
+                addStatement("else -> null")
+                endControlFlow()
+            }
+            .build()
+
+    private fun genericAbiDelegatesForSourceTypeChunk(
+        functionName: String,
+        entries: List<Map.Entry<String, List<WinRtGenericAbiDelegateDescriptor>>>,
+        entryClass: ClassName,
+    ): FunSpec =
+        FunSpec.builder(functionName)
+            .addModifiers(KModifier.INTERNAL)
+            .addParameter("sourceGenericType", stringTypeName())
+            .returns(List::class.asClassName().parameterizedBy(entryClass).copy(nullable = true))
+            .apply {
+                beginControlFlow("return when (sourceGenericType)")
+                entries.forEach { (sourceGenericType, descriptors) ->
+                    addStatement("%S -> %L", sourceGenericType, genericAbiDelegateEntryListCode(descriptors))
+                }
+                addStatement("else -> null")
+                endControlFlow()
+            }
+            .build()
+
+    private fun genericAbiDerivedInterfaceChunk(
+        functionName: String,
+        typeNames: List<String>,
+    ): FunSpec =
+        FunSpec.builder(functionName)
+            .addModifiers(KModifier.INTERNAL)
+            .addParameter("typeName", stringTypeName())
+            .returns(Boolean::class.asClassName().copy(nullable = true))
+            .apply {
+                beginControlFlow("return when (typeName)")
+                typeNames.forEach { typeName ->
+                    addStatement("%S -> true", typeName)
+                }
+                addStatement("else -> null")
+                endControlFlow()
+            }
+            .build()
+
+    private fun genericAbiRegisterDelegatesChunk(
+        functionName: String,
+        delegates: List<WinRtGenericAbiDelegateDescriptor>,
+    ): FunSpec =
+        FunSpec.builder(functionName)
+            .addModifiers(KModifier.INTERNAL)
+            .addParameter("register", genericAbiRegisterFunctionTypeName())
+            .apply {
+                delegates.forEach { descriptor ->
+                    addStatement("register(%L, %S)", stringListCode(descriptor.typeArrayShape), descriptor.abiDelegateName)
+                }
+            }
+            .build()
+
+    private fun genericAbiSupportShardFunctionPrefix(genericAbiSupportFileName: String): String =
+        genericAbiSupportFileName.replaceFirstChar { char -> char.lowercase() }
+
+    private fun genericAbiDelegateEntryListCode(
+        delegates: List<WinRtGenericAbiDelegateDescriptor>,
+    ): CodeBlock {
+        if (delegates.isEmpty()) {
+            return CodeBlock.of("emptyList()")
+        }
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        delegates.forEach { descriptor ->
+            code.add("%L,\n", genericAbiDelegateEntryCode(descriptor))
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun genericAbiDelegateEntryCode(
+        descriptor: WinRtGenericAbiDelegateDescriptor,
+    ): CodeBlock =
+        CodeBlock.of(
+            "%T(%S, %S, %S, %S, %L, %L)",
+            ClassName(SUPPORT_PACKAGE, "GenericAbiDelegateEntry"),
+            descriptor.abiDelegateName,
+            descriptor.sourceGenericType.typeName,
+            descriptor.operationName,
+            descriptor.declaration,
+            stringListCode(descriptor.abiParameterTypeNames),
+            stringListCode(descriptor.typeArrayShape),
+        )
 
     private fun renderGenericTypeInstantiations(
         descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
@@ -4313,6 +4523,9 @@ class KotlinProjectionSupportRenderer {
 
     private fun stringListTypeName(): TypeName =
         List::class.asClassName().parameterizedBy(stringTypeName())
+
+    private fun genericAbiRegisterFunctionTypeName(): TypeName =
+        Function2::class.asClassName().parameterizedBy(stringListTypeName(), stringTypeName(), UNIT)
 
     private fun io.github.composefluent.winrt.metadata.WinRtRequiredMappedHelperPlanDescriptor.toSupportPlanString(): String =
         listOf(

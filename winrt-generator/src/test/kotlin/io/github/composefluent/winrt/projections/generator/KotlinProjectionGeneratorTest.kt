@@ -15806,7 +15806,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv"))
         assertFalse(compilerSupportManifest.contains("event-source\t"))
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
-        assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic\tgeneric-abi-registry.tsv"))
+        assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.projections.support.WinRTGenericAbiSupport\tgeneric-abi-registry.tsv"))
 
         val typeShapeDescriptors = filesByName.getValue("type-shape-descriptors.tsv").contents
         assertTrue(typeShapeDescriptors.contains("projectedTypeName\tkey\tvalue"))
@@ -15819,13 +15819,21 @@ class KotlinProjectionGeneratorTest {
 
         val genericAbiRegistry = filesByName.getValue("generic-abi-registry.tsv").contents
         val genericAbiSupportSource = filesByName.getValue("WinRTGenericAbiSupport.kt").contents
+        val genericAbiSupportShardSource = filesByName.getValue("WinRTGenericAbiSupport_000.kt").contents
         assertTrue(genericAbiRegistry.contains("_get_Value_int"))
         assertTrue(genericAbiRegistry.contains("Windows.Foundation.IReference<Int>"))
         assertTrue(genericAbiSupportSource.contains("data class GenericAbiDelegateEntry"))
+        assertTrue(genericAbiSupportSource.contains("object WinRTGenericAbiSupport"))
+        assertTrue(genericAbiSupportSource.contains("fun delegateNamed(name: String)"))
+        assertTrue(genericAbiSupportSource.contains("fun delegatesForSourceType(sourceGenericType: String)"))
+        assertTrue(genericAbiSupportSource.contains("fun isDerivedGenericInterface(typeName: String)"))
+        assertTrue(genericAbiSupportSource.contains("fun registerAbiDelegates(register: Function2<List<String>, String, Unit>)"))
+        assertTrue(genericAbiSupportSource.contains("winRTGenericAbiSupportDelegateNamedChunk0(name)"))
+        assertTrue(genericAbiSupportShardSource.contains("internal fun winRTGenericAbiSupportDelegateNamedChunk0"))
+        assertTrue(genericAbiSupportShardSource.contains("_get_Value_int"))
         assertFalse(genericAbiSupportSource.contains("WinRTGenericAbiRegistry"))
         assertFalse(genericAbiSupportSource.contains("WinRtGenericAbiSupportIntrinsic"))
         assertFalse(genericAbiSupportSource.contains("Class.forName"))
-        assertFalse(genericAbiSupportSource.contains("_get_Value_Int"))
         assertFalse(genericAbiSupportSource.contains("GENERIC_ABI_DELEGATES"))
         val genericTypeInstantiations = filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents
         val genericInstantiations = filesByName.getValue("generic-instantiations.tsv").contents
@@ -15877,6 +15885,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(artifactScopedGenericSupport.contains("object WinRTGenericTypeInstantiations_sample_lib_jar"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations.kt"))
         assertTrue(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_lib_jar.kt"))
+        assertTrue(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_lib_jar_000.kt"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport.kt"))
         assertTrue(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor_sample_lib_jar.kt"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor.kt"))
@@ -15900,6 +15909,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(secondArtifactScopedFilesByName.keys.any { name -> name.startsWith("WinRTEventProjectionHelper_sample_app_jar_") })
         assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor_sample_app_jar.kt"))
         assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_app_jar.kt"))
+        assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_app_jar_000.kt"))
         assertFalse(secondArtifactScopedFilesByName.containsKey("WinRTEventProjectionHelper_000.kt"))
         val eventProjectionHelpers = filesByName.values
             .filter { file -> file.relativePath.contains("/WinRTEventProjectionHelper_") || file.relativePath.contains("/_EventSource_") }
