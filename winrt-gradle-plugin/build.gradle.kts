@@ -1,4 +1,5 @@
 import org.gradle.api.tasks.testing.Test
+import org.gradle.plugin.devel.tasks.PluginUnderTestMetadata
 
 plugins {
     alias(libs.plugins.kotlinJvm) apply false
@@ -19,7 +20,7 @@ java {
 }
 
 dependencies {
-    implementation(gradleApi())
+    compileOnly(gradleApi())
     implementation(projects.winrtAuthoring)
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
@@ -36,6 +37,17 @@ tasks.withType<Test>().configureEach {
     minHeapSize = "64m"
     maxHeapSize = "128m"
     jvmArgs("-XX:+UseSerialGC")
+}
+
+tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
+    pluginClasspath.setFrom(
+        tasks.named("jar"),
+        configurations.named("runtimeClasspath").map { runtimeClasspath ->
+            runtimeClasspath.filter { file ->
+                file.isFile && file.extension.equals("jar", ignoreCase = true)
+            }
+        },
+    )
 }
 
 gradlePlugin {

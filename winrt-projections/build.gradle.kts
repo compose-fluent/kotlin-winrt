@@ -45,7 +45,14 @@ val auditGeneratedWinRtProjectionOutput by tasks.registering(
     group = "verification"
     description = "Fails if generated projection source leaks fallback invocation or JVM-only reflection paths."
     dependsOn("generateWinRtProjections")
+    dependsOn("compileKotlinJvm")
     generatedSourcesDirectory.set(generatedWinRtProjectionSources)
+    compiledClassesDirectories.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+    maxTotalClassBytes.set(
+        projectionUseFullWindowsSdk.map { useFullWindowsSdk ->
+            if (useFullWindowsSdk) 150_000_000L else 75_000_000L
+        },
+    )
 }
 
 tasks.named("check") {
