@@ -275,7 +275,10 @@ class KotlinWinRtIrGenerationExtension(
             .filter { entry -> entry.kind == "generic-type-instantiation" }
             .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
             ?.className
-        val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
+        val genericAbiSupportClassName = compilerSupportEntries
+            .filter { entry -> entry.kind == "generic-abi-registry" }
+            .maxByOrNull(KotlinWinRtCompilerSupportManifestEntry::entries)
+            ?.className
         val authoringRegistrarEntries = readAuthoringTypeDetailsRegistrarEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
         val genericTypeInstantiationIntrinsicCalls =
@@ -291,13 +294,14 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext = pluginContext,
             entries = genericTypeInstantiationEntries,
             supportClassName = genericTypeInstantiationSupportClassName,
+            ownerIdentity = projectionSupportOwnerIdentity,
             includeInitializeAll = "initializeAll" in genericTypeInstantiationIntrinsicCalls,
             includeInitializeBySourceType = "initializeBySourceType" in genericTypeInstantiationIntrinsicCalls,
         )
         val genericAbiSupport = addGenericAbiSupportFunctions(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
-            entries = genericAbiRegistryEntries,
+            supportClassName = genericAbiSupportClassName,
         )
         lowerProjectionSupportIntrinsicCalls(
             moduleFragment = moduleFragment,
@@ -4449,14 +4453,16 @@ class KotlinWinRtIrGenerationExtension(
         val resolvedEntries = resolveProjectionRegistrarClasses(entries) { className ->
             pluginContext.findClassSymbol(ClassId.topLevel(FqName(className)), file)
         }
+        val anchorFiles = moduleFragment.projectionSupportAnchorFiles(ownerIdentity).ifEmpty { listOf(file) }
         val chunkFunctions = resolvedEntries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE).mapIndexed { index, chunk ->
+            val chunkFile = anchorFiles[index % anchorFiles.size]
             pluginContext.irFactory.buildFun {
                 name = Name.identifier("kotlinWinRtProjectionSupportInitialize_${initializerHash}_${index.toString().padStart(3, '0')}")
                 returnType = pluginContext.irBuiltIns.unitType
                 visibility = DescriptorVisibilities.INTERNAL
                 modality = Modality.FINAL
             }.apply {
-                parent = file
+                parent = chunkFile
                 val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
                 body = chunkBuilder.irBlockBody {
                     chunk.forEach { (entry, projectedClass) ->
@@ -4489,10 +4495,30 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     private fun IrModuleFragment.projectionSupportAnchorFile(ownerIdentity: String): IrFile? {
+        projectionSupportAnchorFiles(ownerIdentity).firstOrNull()?.let { return it }
         val anchorFileName = winRtProjectionSupportAnchorFileName(ownerIdentity)
         return files.firstOrNull { file ->
             file.fileEntry.name.replace('\\', '/').substringAfterLast('/') == "$anchorFileName.kt"
         }
+    }
+
+    private fun IrModuleFragment.projectionSupportAnchorFiles(ownerIdentity: String): List<IrFile> {
+        val anchorFileName = winRtProjectionSupportAnchorFileName(ownerIdentity)
+        val ownerAnchors = files.filter { file ->
+            val name = file.fileEntry.name.replace('\\', '/').substringAfterLast('/')
+            name == "$anchorFileName.kt" ||
+                (name.startsWith("${anchorFileName}_") && name.endsWith(".kt"))
+        }
+        if (ownerAnchors.isNotEmpty()) {
+            return ownerAnchors.sortedBy { file -> file.fileEntry.name.replace('\\', '/') }
+        }
+        return files
+            .filter { file ->
+                val name = file.fileEntry.name.replace('\\', '/').substringAfterLast('/')
+                name == "WinRTProjectionSupportAnchor.kt" ||
+                    (name.startsWith("WinRTProjectionSupportAnchor_") && name.endsWith(".kt"))
+            }
+            .sortedBy { file -> file.fileEntry.name.replace('\\', '/') }
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -4555,6 +4581,7 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
         entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
         supportClassName: String?,
+        ownerIdentity: String?,
         includeInitializeAll: Boolean,
         includeInitializeBySourceType: Boolean,
     ): GenericTypeInstantiationSupportFunctions? {
@@ -4566,10 +4593,15 @@ class KotlinWinRtIrGenerationExtension(
             prerequisite = "compiler support manifest className",
             value = supportClassName?.takeIf(String::isNotBlank),
         )
+        val hostFile = moduleFragment.projectionSupportAnchorFile(ownerIdentity ?: "")
+            ?: moduleFragment.files.firstOrNull { irFile ->
+                !irFile.fileEntry.name.contains("AuthoringTypeDetailsRegistrar") &&
+                    !irFile.fileEntry.name.contains("WinRTEventProjectionHelper")
+            }
         val file = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
-            prerequisite = "module file",
-            value = moduleFragment.files.firstOrNull(),
+            prerequisite = "projection support anchor or non-authoring module file",
+            value = hostFile,
         )
         val supportClass = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
@@ -4633,15 +4665,17 @@ class KotlinWinRtIrGenerationExtension(
             compareBy(KotlinWinRtGenericTypeInstantiationEntry::sourceType, KotlinWinRtGenericTypeInstantiationEntry::className),
         )
         val entryChunks = sortedEntries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
+        val anchorFiles = moduleFragment.projectionSupportAnchorFiles(ownerIdentity ?: "").ifEmpty { listOf(file) }
         val initializeAllChunks = if (includeInitializeAll) {
             entryChunks.mapIndexed { index, chunk ->
+                val chunkFile = anchorFiles[index % anchorFiles.size]
                 pluginContext.irFactory.buildFun {
                     name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeAll_${index.toString().padStart(3, '0')}")
                     returnType = pluginContext.irBuiltIns.unitType
                     visibility = DescriptorVisibilities.INTERNAL
                     modality = Modality.FINAL
                 }.apply {
-                    parent = file
+                    parent = chunkFile
                     val chunkBuilder = DeclarationIrBuilder(pluginContext, symbol)
                     body = chunkBuilder.irBlockBody {
                         chunk.forEach { entry ->
@@ -4681,13 +4715,14 @@ class KotlinWinRtIrGenerationExtension(
         }
         val initializeBySourceTypeChunks = if (includeInitializeBySourceType) {
             entryChunks.mapIndexed { index, chunk ->
+                val chunkFile = anchorFiles[index % anchorFiles.size]
                 pluginContext.irFactory.buildFun {
                     name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeBySourceType_${index.toString().padStart(3, '0')}")
                     returnType = pluginContext.irBuiltIns.unitType
                     visibility = DescriptorVisibilities.INTERNAL
                     modality = Modality.FINAL
                 }.apply {
-                    parent = file
+                    parent = chunkFile
                     parameters = listOf(
                         pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
                             name = Name.identifier("sourceType")
@@ -4751,8 +4786,12 @@ class KotlinWinRtIrGenerationExtension(
         } else {
             null
         }
-        file.declarations += initializeAllChunks
-        file.declarations += initializeBySourceTypeChunks
+        initializeAllChunks.forEach { chunkFunction ->
+            (chunkFunction.parent as? IrFile ?: file).declarations += chunkFunction
+        }
+        initializeBySourceTypeChunks.forEach { chunkFunction ->
+            (chunkFunction.parent as? IrFile ?: file).declarations += chunkFunction
+        }
         initializeAll?.let(file.declarations::add)
         initializeBySourceType?.let(file.declarations::add)
         return GenericTypeInstantiationSupportFunctions(
@@ -4858,9 +4897,9 @@ class KotlinWinRtIrGenerationExtension(
     private fun addGenericAbiSupportFunctions(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
-        entries: List<KotlinWinRtGenericAbiRegistryEntry>,
+        supportClassName: String?,
     ): GenericAbiSupportFunctions? {
-        if (entries.isEmpty()) {
+        if (supportClassName.isNullOrBlank()) {
             return null
         }
         val file = requireCompilerSupportPrerequisite(
@@ -4868,298 +4907,35 @@ class KotlinWinRtIrGenerationExtension(
             prerequisite = "module file",
             value = moduleFragment.files.firstOrNull(),
         )
-        val entryClass = requireCompilerSupportPrerequisite(
+        val supportClass = requireCompilerSupportPrerequisite(
             description = "generic ABI registry",
-            prerequisite = "class io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry",
-            value = pluginContext.findClassSymbol(
-                ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry")),
-                file,
-            ),
+            prerequisite = "class $supportClassName",
+            value = pluginContext.findClassSymbol(ClassId.topLevel(FqName(supportClassName)), file),
         )
-        val entryConstructor = entryClass.owner.declarations
-            .filterIsInstance<IrConstructor>()
-            .singleOrNull { constructor ->
-                constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 6
-            }
-            ?.symbol
-            .let { symbol ->
-                requireCompilerSupportPrerequisite(
-                    description = "generic ABI registry",
-                    prerequisite = "GenericAbiDelegateEntry constructor with 6 regular parameters",
-                    value = symbol,
-                )
-            }
-        val intrinsicClass = requireCompilerSupportPrerequisite(
-            description = "generic ABI registry",
-            prerequisite = "class io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
-            value = pluginContext.findClassSymbol(
-                ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic")),
-                file,
-            ),
-        )
-        val delegateNamedIntrinsic = requireCompilerSupportPrerequisite(
-            description = "generic ABI registry",
-            prerequisite = "WinRtGenericAbiSupportIntrinsic.delegateNamed with 1 regular parameter",
-            value = intrinsicClass.functionNamedWithRegularParameterCount("delegateNamed", 1),
-        )
-        val delegatesForSourceTypeIntrinsic =
-            requireCompilerSupportPrerequisite(
-                description = "generic ABI registry",
-                prerequisite = "WinRtGenericAbiSupportIntrinsic.delegatesForSourceType with 1 regular parameter",
-                value = intrinsicClass.functionNamedWithRegularParameterCount("delegatesForSourceType", 1),
-            )
-        val isDerivedGenericInterfaceIntrinsic =
-            requireCompilerSupportPrerequisite(
-                description = "generic ABI registry",
-                prerequisite = "WinRtGenericAbiSupportIntrinsic.isDerivedGenericInterface with 1 regular parameter",
-                value = intrinsicClass.functionNamedWithRegularParameterCount("isDerivedGenericInterface", 1),
-            )
-        val registerAbiDelegatesIntrinsic =
-            requireCompilerSupportPrerequisite(
-                description = "generic ABI registry",
-                prerequisite = "WinRtGenericAbiSupportIntrinsic.registerAbiDelegates with 1 regular parameter",
-                value = intrinsicClass.functionNamedWithRegularParameterCount("registerAbiDelegates", 1),
-            )
-        val listOf = pluginContext.findFunctionSymbols(
-            CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
-            file,
-        ).singleOrNull { function ->
-            function.owner.parameters
-                .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
-                ?.varargElementType != null
-        }.let { symbol ->
-            requireCompilerSupportPrerequisite(
-                description = "generic ABI registry",
-                prerequisite = "kotlin.collections.listOf vararg function",
-                value = symbol,
-            )
-        }
-        val emptyList = pluginContext.findFunctionSymbols(
-            CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
-            file,
-        ).singleOrNull().let { symbol ->
-            requireCompilerSupportPrerequisite(
-                description = "generic ABI registry",
-                prerequisite = "kotlin.collections.emptyList function",
-                value = symbol,
-            )
-        }
-        val function2 = requireCompilerSupportPrerequisite(
-            description = "generic ABI registry",
-            prerequisite = "class kotlin.Function2",
-            value = pluginContext.findClassSymbol(KOTLIN_FUNCTION2_CLASS_ID, file),
-        )
-        val function2Invoke = requireCompilerSupportPrerequisite(
-            description = "generic ABI registry",
-            prerequisite = "kotlin.Function2.invoke",
-            value = function2.functionNamed("invoke"),
-        )
-
-        val delegates = entries
-            .filter { entry -> entry.kind == "delegate" }
-            .sortedWith(compareBy(KotlinWinRtGenericAbiRegistryEntry::name, KotlinWinRtGenericAbiRegistryEntry::sourceGenericType))
-        val derivedInterfaces = entries
-            .filter { entry -> entry.kind == "derived-interface" }
-            .map { entry -> entry.name }
-            .distinct()
-            .sorted()
-
-        val delegateNamed = pluginContext.irFactory.buildFun {
-            name = Name.identifier("kotlinWinRtGenericAbiDelegateNamed")
-            returnType = delegateNamedIntrinsic.owner.returnType
-            visibility = DescriptorVisibilities.INTERNAL
-            modality = Modality.FINAL
-        }.apply {
-            parent = file
-            parameters = listOf(
-                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
-                    name = Name.identifier("name")
-                    type = pluginContext.irBuiltIns.stringType
-                    kind = IrParameterKind.Regular
-                }, this),
-            )
-        }
-        val delegateNamedBuilder = DeclarationIrBuilder(pluginContext, delegateNamed.symbol)
-        val nameParameter = delegateNamed.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-        delegateNamed.body = delegateNamedBuilder.irBlockBody {
-            +delegateNamedBuilder.irWhen(
-                type = delegateNamed.returnType,
-                branches = delegates.map { entry ->
-                    delegateNamedBuilder.irBranch(
-                        condition = delegateNamedBuilder.irEquals(
-                            delegateNamedBuilder.irGet(nameParameter),
-                            delegateNamedBuilder.irString(entry.name),
-                        ),
-                        result = delegateNamedBuilder.genericAbiDelegateEntryCall(
-                            pluginContext = pluginContext,
-                            entryConstructor = entryConstructor,
-                            listOf = listOf,
-                            entry = entry,
-                        ),
-                    )
-                } + delegateNamedBuilder.irElseBranch(
-                    delegateNamedBuilder.irNull(delegateNamed.returnType),
-                )
-            )
-        }
-
-        val delegatesForSourceType = pluginContext.irFactory.buildFun {
-            name = Name.identifier("kotlinWinRtGenericAbiDelegatesForSourceType")
-            returnType = delegatesForSourceTypeIntrinsic.owner.returnType
-            visibility = DescriptorVisibilities.INTERNAL
-            modality = Modality.FINAL
-        }.apply {
-            parent = file
-            parameters = listOf(
-                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
-                    name = Name.identifier("sourceGenericType")
-                    type = pluginContext.irBuiltIns.stringType
-                    kind = IrParameterKind.Regular
-                }, this),
-            )
-        }
-        val delegatesForSourceTypeBuilder = DeclarationIrBuilder(pluginContext, delegatesForSourceType.symbol)
-        val sourceGenericTypeParameter =
-            delegatesForSourceType.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-        val delegatesBySourceType = delegates.groupBy { entry -> entry.sourceGenericType }.toSortedMap()
-        delegatesForSourceType.body = delegatesForSourceTypeBuilder.irBlockBody {
-            +delegatesForSourceTypeBuilder.irWhen(
-                type = delegatesForSourceType.returnType,
-                branches = delegatesBySourceType.entries.map { (sourceGenericType, sourceEntries) ->
-                    delegatesForSourceTypeBuilder.irBranch(
-                        condition = delegatesForSourceTypeBuilder.irEquals(
-                            delegatesForSourceTypeBuilder.irGet(sourceGenericTypeParameter),
-                            delegatesForSourceTypeBuilder.irString(sourceGenericType),
-                        ),
-                        result = delegatesForSourceTypeBuilder.genericAbiDelegateEntryList(
-                            pluginContext = pluginContext,
-                            entryConstructor = entryConstructor,
-                            listOf = listOf,
-                            entries = sourceEntries,
-                        ),
-                    )
-                } + delegatesForSourceTypeBuilder.irElseBranch(
-                    delegatesForSourceTypeBuilder.irCall(emptyList),
-                )
-            )
-        }
-
-        val isDerivedGenericInterface = pluginContext.irFactory.buildFun {
-            name = Name.identifier("kotlinWinRtGenericAbiIsDerivedGenericInterface")
-            returnType = isDerivedGenericInterfaceIntrinsic.owner.returnType
-            visibility = DescriptorVisibilities.INTERNAL
-            modality = Modality.FINAL
-        }.apply {
-            parent = file
-            parameters = listOf(
-                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
-                    name = Name.identifier("typeName")
-                    type = pluginContext.irBuiltIns.stringType
-                    kind = IrParameterKind.Regular
-                }, this),
-            )
-        }
-        val isDerivedGenericInterfaceBuilder = DeclarationIrBuilder(pluginContext, isDerivedGenericInterface.symbol)
-        val typeNameParameter = isDerivedGenericInterface.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-        isDerivedGenericInterface.body = isDerivedGenericInterfaceBuilder.irBlockBody {
-            +isDerivedGenericInterfaceBuilder.irWhen(
-                type = isDerivedGenericInterface.returnType,
-                branches = derivedInterfaces.map { typeName ->
-                    isDerivedGenericInterfaceBuilder.irBranch(
-                        condition = isDerivedGenericInterfaceBuilder.irEquals(
-                            isDerivedGenericInterfaceBuilder.irGet(typeNameParameter),
-                            isDerivedGenericInterfaceBuilder.irString(typeName),
-                        ),
-                        result = isDerivedGenericInterfaceBuilder.irBoolean(true),
-                    )
-                } + isDerivedGenericInterfaceBuilder.irElseBranch(
-                    isDerivedGenericInterfaceBuilder.irBoolean(false),
-                )
-            )
-        }
-
-        val registerAbiDelegates = pluginContext.irFactory.buildFun {
-            name = Name.identifier("kotlinWinRtGenericAbiRegisterAbiDelegates")
-            returnType = registerAbiDelegatesIntrinsic.owner.returnType
-            visibility = DescriptorVisibilities.INTERNAL
-            modality = Modality.FINAL
-        }.apply {
-            parent = file
-            parameters = listOf(
-                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
-                    name = Name.identifier("register")
-                    type = registerAbiDelegatesIntrinsic.owner.parameters
-                        .single { parameter -> parameter.kind == IrParameterKind.Regular }
-                        .type
-                    kind = IrParameterKind.Regular
-                }, this),
-            )
-        }
-        val registerAbiDelegatesBuilder = DeclarationIrBuilder(pluginContext, registerAbiDelegates.symbol)
-        val registerParameter = registerAbiDelegates.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-        registerAbiDelegates.body = registerAbiDelegatesBuilder.irBlockBody {
-            delegates.forEach { entry ->
-                +registerAbiDelegatesBuilder.irCall(function2Invoke).apply {
-                    arguments[0] = registerAbiDelegatesBuilder.irGet(registerParameter)
-                    arguments[1] = registerAbiDelegatesBuilder.irStringList(pluginContext, listOf, entry.typeArrayShape)
-                    arguments[2] = registerAbiDelegatesBuilder.irString(entry.name)
-                }
-            }
-        }
-
-        file.declarations += delegateNamed
-        file.declarations += delegatesForSourceType
-        file.declarations += isDerivedGenericInterface
-        file.declarations += registerAbiDelegates
         return GenericAbiSupportFunctions(
-            delegateNamed = delegateNamed.symbol,
-            delegatesForSourceType = delegatesForSourceType.symbol,
-            isDerivedGenericInterface = isDerivedGenericInterface.symbol,
-            registerAbiDelegates = registerAbiDelegates.symbol,
+            supportClass = supportClass,
+            delegateNamed = requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "$supportClassName.delegateNamed with 1 regular parameter",
+                value = supportClass.functionNamedWithRegularParameterCount("delegateNamed", 1),
+            ),
+            delegatesForSourceType = requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "$supportClassName.delegatesForSourceType with 1 regular parameter",
+                value = supportClass.functionNamedWithRegularParameterCount("delegatesForSourceType", 1),
+            ),
+            isDerivedGenericInterface = requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "$supportClassName.isDerivedGenericInterface with 1 regular parameter",
+                value = supportClass.functionNamedWithRegularParameterCount("isDerivedGenericInterface", 1),
+            ),
+            registerAbiDelegates = requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "$supportClassName.registerAbiDelegates with 1 regular parameter",
+                value = supportClass.functionNamedWithRegularParameterCount("registerAbiDelegates", 1),
+            ),
         )
     }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun DeclarationIrBuilder.genericAbiDelegateEntryList(
-        pluginContext: IrPluginContext,
-        entryConstructor: IrConstructorSymbol,
-        listOf: IrSimpleFunctionSymbol,
-        entries: List<KotlinWinRtGenericAbiRegistryEntry>,
-    ): IrExpression {
-        val parameter = listOf.owner.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
-        return irCall(listOf).apply {
-            arguments[0] = IrVarargImpl(
-                startOffset = startOffset,
-                endOffset = endOffset,
-                type = parameter.type,
-                varargElementType = pluginContext.irBuiltIns.anyNType,
-                elements = entries.map { entry ->
-                    genericAbiDelegateEntryCall(
-                        pluginContext = pluginContext,
-                        entryConstructor = entryConstructor,
-                        listOf = listOf,
-                        entry = entry,
-                    )
-                },
-            )
-        }
-    }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun DeclarationIrBuilder.genericAbiDelegateEntryCall(
-        pluginContext: IrPluginContext,
-        entryConstructor: IrConstructorSymbol,
-        listOf: IrSimpleFunctionSymbol,
-        entry: KotlinWinRtGenericAbiRegistryEntry,
-    ): IrExpression =
-        irCall(entryConstructor).apply {
-            arguments[0] = irString(entry.name)
-            arguments[1] = irString(entry.sourceGenericType)
-            arguments[2] = irString(entry.operation)
-            arguments[3] = irString(entry.declaration)
-            arguments[4] = irStringList(pluginContext, listOf, entry.abiParameterTypes)
-            arguments[5] = irStringList(pluginContext, listOf, entry.typeArrayShape)
-        }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun lowerGenericAbiSupportIntrinsicCalls(
@@ -5183,12 +4959,14 @@ class KotlinWinRtIrGenerationExtension(
                     return when (genericAbiCall) {
                         "delegateNamed" -> support?.let {
                             builder.irCall(it.delegateNamed).apply {
-                                arguments[0] = call.arguments[1]
+                                dispatchReceiver = builder.irGetObject(it.supportClass)
+                                arguments[1] = call.arguments[1]
                             }
                         } ?: builder.irNull()
                         "delegatesForSourceType" -> support?.let {
                             builder.irCall(it.delegatesForSourceType).apply {
-                                arguments[0] = call.arguments[1]
+                                dispatchReceiver = builder.irGetObject(it.supportClass)
+                                arguments[1] = call.arguments[1]
                             }
                         } ?: builder.irCall(
                             pluginContext.findFunctionSymbols(
@@ -5198,12 +4976,14 @@ class KotlinWinRtIrGenerationExtension(
                         )
                         "isDerivedGenericInterface" -> support?.let {
                             builder.irCall(it.isDerivedGenericInterface).apply {
-                                arguments[0] = call.arguments[1]
+                                dispatchReceiver = builder.irGetObject(it.supportClass)
+                                arguments[1] = call.arguments[1]
                             }
                         } ?: builder.irBoolean(false)
                         "registerAbiDelegates" -> support?.let {
                             builder.irCall(it.registerAbiDelegates).apply {
-                                arguments[0] = call.arguments[1]
+                                dispatchReceiver = builder.irGetObject(it.supportClass)
+                                arguments[1] = call.arguments[1]
                             }
                         } ?: builder.irUnit()
                         else -> call
@@ -5228,6 +5008,7 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     private data class GenericAbiSupportFunctions(
+        val supportClass: IrClassSymbol,
         val delegateNamed: IrSimpleFunctionSymbol,
         val delegatesForSourceType: IrSimpleFunctionSymbol,
         val isDerivedGenericInterface: IrSimpleFunctionSymbol,
@@ -5602,6 +5383,8 @@ private val KOTLIN_FUNCTION2_CLASS_ID =
 private val GENERIC_ABI_SUPPORT_INTRINSIC_FUNCTIONS =
     setOf("delegateNamed", "delegatesForSourceType", "isDerivedGenericInterface", "registerAbiDelegates")
 
+private const val GENERIC_ABI_LOOKUP_SHARD_SIZE = 48
+
 private val WINRT_COM_VTABLE_INVOKER_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.ComVtableInvoker")
 
@@ -5902,7 +5685,7 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
             sourceFile = "generic-instantiations.tsv",
         ),
         "generic-abi-registry" to CompilerSupportManifestExpectedEntry(
-            className = "io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
+            className = null,
             sourceFile = "generic-abi-registry.tsv",
         ),
         "xaml-component-resource" to CompilerSupportManifestExpectedEntry(

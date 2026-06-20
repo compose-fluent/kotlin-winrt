@@ -79,7 +79,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtSystemProjectionMarshalersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtSystemProjectionMarshalers")
     private val winRtTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRtTypeSignature")
     private val winRtKeyValuePairAdapterMember = MemberName("io.github.composefluent.winrt.runtime", "winRtKeyValuePairAdapter")
-    private val winRtAsMember = MemberName("io.github.composefluent.winrt.runtime", "winrtAs", isExtension = true)
     private val instantType = ClassName("kotlin.time", "Instant")
     private val durationType = ClassName("kotlin.time", "Duration")
     private val enumIntegralAbiDescriptors = mapOf(
@@ -600,11 +599,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
 
     private fun renderDispatchTargetProjection(dispatchTarget: AuthoringDispatchTarget): CodeBlock =
-        if (dispatchTarget.usesWinRtProjectionCast) {
-            CodeBlock.of("(value.%M(%L) as %T)", winRtAsMember, dispatchTarget.typeHandleExpression, dispatchTarget.className)
-        } else {
-            CodeBlock.of("(value as %T)", dispatchTarget.className)
-        }
+        CodeBlock.of("(value as %T)", dispatchTarget.className)
 
     private fun renderIterableFirstProjection(
         interfaceType: WinRtTypeDefinition,
@@ -748,7 +743,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (!shouldDispatchThroughBaseBridge) {
             return AuthoringDispatchTarget(
                 className = sourceClassName(candidate),
-                usesWinRtProjectionCast = false,
                 methodName = ::projectedMethodName,
             )
         }
@@ -757,53 +751,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             ?: error("Authored WinRT override interface ${type.qualifiedName} has no declaring WinRT base class.")
         return AuthoringDispatchTarget(
             className = projectionClassName(dispatchBase, semanticHelpers),
-            usesWinRtProjectionCast = true,
-            typeHandleExpression = renderDispatchTargetTypeHandle(dispatchBase, type, typesByName, semanticHelpers),
             methodName = ::authoringInvokeBridgeName,
         )
     }
-
-    private fun renderDispatchTargetTypeHandle(
-        dispatchBase: String,
-        dispatchInterface: WinRtTypeDefinition,
-        typesByName: Map<String, WinRtTypeDefinition>,
-        semanticHelpers: WinRtMetadataSemanticHelpers,
-    ): CodeBlock {
-        val baseTypeName = dispatchBase.substringBefore('<').removeSuffix("?")
-        val baseType = typesByName[dispatchBase] ?: typesByName[baseTypeName]
-            ?: throw IllegalArgumentException(
-                "Authored WinRT override dispatch target '$dispatchBase' is missing from metadata.",
-            )
-        val baseClassName = projectionClassName(baseType.qualifiedName, semanticHelpers)
-        return when (baseType.kind) {
-            WinRtTypeKind.Interface -> CodeBlock.of("%T.Metadata.TYPE_HANDLE", baseClassName)
-            WinRtTypeKind.RuntimeClass -> {
-                val interfaceId = baseType.defaultInterfaceIid(typesByName)
-                    ?: dispatchInterface.iid
-                    ?: throw IllegalArgumentException(
-                        "Authored WinRT override dispatch target '$dispatchBase' has no default or dispatch interface IID metadata.",
-                    )
-                CodeBlock.of("%T(%S, %T(%S))", winRtTypeHandleType, baseClassName.canonicalName, guidType, interfaceId.toString())
-            }
-            else -> throw IllegalArgumentException(
-                "Authored WinRT override dispatch target '$dispatchBase' is not a runtime class or interface.",
-            )
-        }
-    }
-
-    private fun WinRtTypeDefinition.defaultInterfaceIid(typesByName: Map<String, WinRtTypeDefinition>) =
-        defaultInterface
-            ?.normalized()
-            ?.let { interfaceType ->
-                typesByName[interfaceType.qualifiedName]
-                    ?: typesByName[interfaceType.typeName.substringBefore('<').removeSuffix("?")]
-            }
-            ?.iid
-            ?: defaultInterfaceName
-                ?.let { interfaceName ->
-                    typesByName[interfaceName] ?: typesByName[interfaceName.substringBefore('<').removeSuffix("?")]
-                }
-                ?.iid
 
     private fun validateAuthoredArrayParameterSupport(
         method: WinRtMethodDefinition,
@@ -2421,8 +2371,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private data class AuthoringDispatchTarget(
         val className: ClassName,
-        val usesWinRtProjectionCast: Boolean,
-        val typeHandleExpression: CodeBlock = CodeBlock.of(""),
         val methodName: (WinRtMethodDefinition) -> String,
     )
 
