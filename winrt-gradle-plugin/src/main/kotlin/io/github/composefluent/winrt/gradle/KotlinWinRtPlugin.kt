@@ -1,6 +1,5 @@
 package io.github.composefluent.winrt.gradle
 
-import io.github.composefluent.winrt.compiler.KotlinWinRtCommandLineProcessor
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
@@ -8,7 +7,6 @@ import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
-import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
@@ -199,7 +197,8 @@ private fun configureWinRtLibraryModel(
         },
     )
     configureWinRtIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
-    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project)
+    configureWinRtIdentityProjectDependencies(project, dependencyIdentities, includeExternalModules = true)
+    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project, dependencyIdentities)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -256,7 +255,8 @@ private fun configureWinRtApplicationTasks(
             )
         },
     )
-    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project)
+    configureWinRtIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
+    val dependencyIdentityFiles = kotlinWinRtIdentityFiles(project, identityDependencies)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -1616,8 +1616,7 @@ private fun kotlinWinRtAuthoringScannerRuntimeClasspath(project: Project): Any =
     )
 
 private fun kotlinWinRtCompilerPluginClasspathJar(project: Project): Any? {
-    val compilerPluginClass = KotlinWinRtCommandLineProcessor::class.java
-    return kotlinWinRtCodeSourceFile(compilerPluginClass)?.let { file -> project.files(file) }
+    return kotlinWinRtPluginMetadataArtifact(project, "winrt-compiler-plugin")
 }
 
 private fun kotlinWinRtCodeSourceFile(type: Class<*>): File? {
@@ -1741,44 +1740,15 @@ private fun KotlinSourceSet.kotlinWinRtIdentitySourceConfigurationNames(): List<
 
 private fun kotlinWinRtIdentityFiles(
     project: Project,
+    identityDependencies: org.gradle.api.artifacts.Configuration,
 ): org.gradle.api.file.FileCollection =
-    project.objects.fileCollection().from(
-        project.provider {
-            val dependenciesByKey = linkedMapOf<String, Dependency>()
-            project.configurations
-                .filter { configuration -> configuration.name.isWinRtIdentityDependencySourceConfiguration() }
-                .forEach { configuration ->
-                    configuration.allDependencies.forEach { dependency ->
-                        val key = when (dependency) {
-                            is ProjectDependency -> "project:${dependency.path}"
-                            is ExternalModuleDependency -> "module:${dependency.group}:${dependency.name}:${dependency.version}"
-                            else -> null
-                        }
-                        if (key != null) {
-                            dependenciesByKey.putIfAbsent(key, dependency.copy())
-                        }
-                    }
-                }
-            if (dependenciesByKey.isEmpty()) {
-                emptySet<File>()
-            } else {
-                val identityDependencies = project.configurations.detachedConfiguration(
-                    *dependenciesByKey.values.toTypedArray(),
-                )
-                identityDependencies.attributes.attribute(
-                    Usage.USAGE_ATTRIBUTE,
-                    project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
-                )
-                identityDependencies.incoming.artifactView { view ->
-                    view.isLenient = true
-                    view.attributes.attribute(
-                        Usage.USAGE_ATTRIBUTE,
-                        project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
-                    )
-                }.files.files
-            }
-        }
-    )
+    identityDependencies.incoming.artifactView { view ->
+        view.isLenient = true
+        view.attributes.attribute(
+            Usage.USAGE_ATTRIBUTE,
+            project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+        )
+    }.files
 
 private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     project: Project,
