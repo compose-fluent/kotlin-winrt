@@ -73,4 +73,49 @@ class WinRtActivationFactorySupportTest {
             }
         }
     }
+
+    @Test
+    fun activation_factory_ccw_returns_hresult_and_error_info_for_factory_exception() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        ComWrappersSupport.clearRegistriesForTests()
+        val restrictedErrorInfo = WinRtRestrictedErrorInfo(
+            description = "outer activation failure",
+            restrictedDescription = "inner activation failure",
+            reference = "ACT123",
+            capabilitySid = "S-1-15-3-1",
+        )
+
+        ComWrappersSupport.createCCWForActivationFactory(
+            WinRtActivationFactory {
+                throw WinRtAccessDeniedException(
+                    message = "denied",
+                    hResult = KnownHResults.E_ACCESSDENIED,
+                    restrictedErrorInfo = restrictedErrorInfo,
+                )
+            },
+        ).use { factory ->
+            PlatformAbi.confinedScope().use { scope ->
+                val instanceOut = PlatformAbi.allocatePointerSlot(scope)
+                val hResult = HResult(
+                    ComVtableInvoker.invokeArgs(
+                        instance = factory.pointer,
+                        slot = IActivationFactoryVftblSlots.ActivateInstance,
+                        arg0 = instanceOut,
+                    ),
+                )
+
+                assertEquals(KnownHResults.E_ACCESSDENIED, hResult)
+                assertTrue(PlatformAbi.isNull(PlatformAbi.readPointer(instanceOut)))
+
+                val roundTrip = ExceptionHelpers.exceptionFor(
+                    KnownHResults.E_ACCESSDENIED,
+                    "Activation factory callback",
+                )
+                assertEquals(restrictedErrorInfo, roundTrip.restrictedErrorInfo)
+            }
+        }
+    }
 }

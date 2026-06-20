@@ -339,6 +339,42 @@ class WinRtCollectionProjectionTest {
     }
 
     @Test
+    fun map_view_entries_compose_key_value_pair_and_nullable_value_helpers() {
+        val keyAdapter = WinRtReferenceValueAdapters.string
+        val valueAdapter = WinRtReferenceValueAdapters.valueType(
+            projectedType = Int::class,
+            projectedTypeName = "Int32",
+            typeSignature = WinRtTypeSignature.int32(),
+            nullableInterfaceId = IID.NullableInt,
+        )
+        val managed = linkedMapOf("one" to 1, "two" to 2)
+        val abi = WinRtReadOnlyDictionaryProjection.fromManaged(managed, keyAdapter, valueAdapter)
+
+        try {
+            ComObjectReference(abi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+                ComObjectReference(
+                    owner.pointer,
+                    mapViewInterfaceIdFor(keyAdapter, valueAdapter),
+                    preventReleaseOnDispose = true,
+                ).use { borrowed ->
+                    WinRtReadOnlyDictionaryProjection.fromAbi(
+                        borrowed.getRefPointer().asRawAddress(),
+                        keyAdapter,
+                        valueAdapter,
+                    )!!.use { projected ->
+                        assertEquals(managed, projected.toMap())
+                        assertEquals(setOf("one" to 1, "two" to 2), projected.entries.map { it.key to it.value }.toSet())
+                    }
+                }
+            }
+        } finally {
+            if (!PlatformAbi.isNull(abi)) {
+                IUnknownReference(abi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).close()
+            }
+        }
+    }
+
+    @Test
     fun mutable_dictionary_helpers_mutate_managed_map_and_project_back() {
         val allocated = mutableListOf<AutoCloseable>()
         val keyAdapter = labelAdapter(allocated)
