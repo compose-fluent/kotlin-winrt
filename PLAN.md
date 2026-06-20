@@ -45,6 +45,52 @@
 - [x] Completed WinUI Controls sample DPI manifest parity: generated Win32 application manifests now align with `.cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp/app.manifest` by declaring `true/PM` and `PerMonitorV2, PerMonitor`, so JVM and `mingwX64` WinUI hosts do not run under system-DPI virtualization.
 - [x] Completed XAML application host lifetime fix: `runWinRtApplicationHost` and the `mingwX64` native application entry now create a runtime-owned STA application-host scope before user `main`, generated hosts pass the packaged/unpackaged deployment mode into that scope, custom launchers can use `WinRtWindowsAppSdkBootstrap.initializeApplicationHost(...)`, and sample smoke paths no longer wrap XAML startup in raw `RuntimeScope.initializeSingleThreaded()`.
 
+## Post-Baseline Completion Queue
+
+The remaining completion work runs in this order after the completed baseline: `winrt-runtime` hardening -> `winrt-authoring` parity -> `winrt-projections` size/output pass -> `winrt-samples` expansion -> final `winrt-projections` release pass. This queue is for post-baseline hardening and validation; it must not move runtime behavior into samples or derive generator/runtime contracts from sample failures.
+
+### Runtime Hardening First
+
+- [x] Runtime-01: validate `.cswinrt/src/WinRT.Runtime` COM lifetime parity in `winrt-runtime` for RCW/CCW identity caches, `QueryInterface`, `AddRef`/`Release`, explicit disposal, finalization, repeated casts, and cross-thread release behavior.
+- [x] Runtime-02: close weak-reference, agile-reference, and reference-tracker parity gaps against `.cswinrt/src/WinRT.Runtime/Interop/IReferenceTracker.cs`, `IWeakReferenceSource*`, and `IAgileReference*`, tracking WinRT semantics rather than `.NET` target-framework branches.
+- [x] Runtime-03: harden restricted-error-info and exception bridging for Kotlin exceptions crossing activation factories, authored CCWs, delegates, callbacks, and async completions, with HRESULT and restricted-error-info round-trip coverage.
+- [x] Runtime-04: validate collection, bindable, async, nullable, `IReference<T>`, `IReferenceArray<T>`, `IKeyValuePair<TKey,TValue>`, and `IMapView` composition through shared runtime projection helpers instead of new per-shape branch tables.
+- [x] Runtime-05: stabilize WinUI/XAML runtime hooks for application-host scope, Windows App SDK deployment, XAML metadata providers, resource manager wiring, runtime assets, and packaged/unpackaged startup on JVM and `mingwX64`.
+- [x] Runtime gate: before leaving this queue slice, run targeted Windows validation with `.\gradlew.bat :winrt-runtime:jvmTest :winrt-runtime:mingwX64Test validateWinRtMingwParity`.
+
+### Authoring Second
+
+- [x] Authoring-01: continue replacing source-scanner-derived authoring inputs with compiler-symbol or IR-visible authoring metadata in `winrt-compiler-plugin`, while keeping scanner artifacts only as narrow transition inputs.
+- [x] Authoring-02: expand `.cswinrt/src/Authoring/WinRT.SourceGenerator` parity for complex runtime-class inheritance, default interfaces, overridable interfaces, composable factories, protected overrides, and WinUI control-derived classes.
+- [x] Authoring-03: extend authored CCW marshaling validation for arrays, nullable structs, generic collections, delegates, events, async references, custom runtime objects, `IPropertyValue`, and mixed object/interface/runtime-class parameters and returns.
+- [x] Authoring-04: harden native authoring host fixtures for multiple activatable classes, dependency factory chaining, unload behavior, repeated activation, interface query coverage, and native consumer validation.
+- [x] Authoring-05: improve generator and compiler-plugin diagnostics for unsupported authoring members, invalid projected types, bad visibility, invalid constructors or factory shapes, and unsafe runtime-class casts; unsupported shapes must fail before handler rendering.
+- [x] Authoring gate: before leaving this queue slice, run `.\gradlew.bat :winrt-authoring:native-component-fixture:verifyNativeAuthoringComponentFixture :winrt-authoring:native-consumer-fixture:verifyNativeAuthoringConsumerFixture`.
+
+### Projections Third
+
+- [x] Projections-01: finish the current generated projection size-reduction slice for prebuilt Windows SDK and Windows App SDK artifacts without changing Maven coordinates, projected API compatibility, runtime hot-path behavior, or multi-module classpath safety.
+- [x] Projections-02: keep owner-scoped support output deterministic across compiler-support TSVs, generic ABI support, event helpers, projection registrars, TypeDetails, fixed-shape ABI helpers, and module-local support facades.
+- [x] Projections-03: strengthen generated-output audits for duplicate FQNs, duplicate helper emission, repeated type/category branch tables, JVM-only leakage into common or native output, stale support registries, forbidden fallback bodies, and unexpected source or class-size growth.
+- [x] Projections-04: keep Windows SDK and Windows App SDK prebuilt projection compile gates fixed for JVM and `mingwX64`, including `:winrt-projections:windows-sdk:*` and `:winrt-projections:windows-app-sdk:*` compile tasks.
+- [x] Projections-05: validate third-party WinMD and NuGet projection inputs with dependency identity, preprojected dependency suppression, owner-scoped support manifests, and local-generation opt-in behavior.
+- [x] Projection gate: before leaving this queue slice, run `.\gradlew.bat validateWinRtProjectionCompile`.
+
+### Samples Fourth
+
+- [x] Samples-01: keep `winrt-samples` validation-only; do not add sample-local runtime, generator, authoring, packaging, or projection workarounds.
+- [x] Samples-02: expand JVM WinUI sample coverage for window lifetime, resource loading, XAML metadata provider aggregation, Windows App SDK deployment, common control events, collection binding, and application shutdown.
+- [x] Samples-03: expand `mingwX64` WinUI sample coverage for native application entry, authored control override, DPI manifest behavior, packaged and unpackaged modes, resource staging, and runtime asset layout.
+- [x] Samples-04: add an authoring end-to-end sample where a Kotlin-authored WinRT component is consumed by another Kotlin app, covering activation factories, interface query, events, collections, async, and exception propagation.
+- [x] Samples-05: add a packaging validation sample for appx/msix layout, PRI/MRT resource indexing, dependency payload staging, signing or test-install hooks, and Windows App SDK payload resolution after the owning upstream contracts are stable.
+- [x] Sample gate: before leaving this queue slice, run `.\gradlew.bat validateWinRtSampleSmoke validateWinRtQueue16`.
+
+### Projections Final Pass
+
+- [x] Projection-Final-01: review sample expansion fallout for projected API-shape issues and move any required fixes back to metadata, generator, runtime, or authoring instead of sample glue.
+- [x] Projection-Final-02: remeasure projection artifact size, class duplication, generated support ownership, binary/source compatibility, and Maven coordinate stability after samples pass.
+- [x] Projection-Final-03: run the release-facing projection validation gates again before treating Windows SDK and Windows App SDK projection artifacts as publish-ready.
+
 ## Module Alignment
 
 - [x] `.cswinrt/src/WinRT.Runtime` maps to `winrt-runtime`, which owns ABI primitives, HRESULT/error-info, HSTRING ownership, COM/WinRT initialization, platform calls, object identity, activation, marshaling, delegates/events, collections, async, weak/agile/reference tracking, custom projections, and WinUI runtime hooks.
