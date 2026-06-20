@@ -1,7 +1,15 @@
 package io.github.composefluent.winrt.compiler
 
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRtType
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.compiler.authoring.projectionTypeIndexRecordForSourceType
+import io.github.composefluent.winrt.metadata.WinRtMetadataModel
+import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRtNamespace
+import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.runtime.Guid
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
@@ -183,6 +191,63 @@ class KotlinWinRtCompilerPluginTest {
         assertTrue(storage.registeredExtensions[IrGenerationExtension].orEmpty().any { extension ->
             extension is KotlinWinRtIrGenerationExtension
         })
+    }
+
+    @Test
+    fun authoring_type_details_dispatches_overrides_through_kotlin_base_cast() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-type-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "App",
+            sourceTypeName = "sample.App",
+            winRtBaseClassName = "Microsoft.UI.Xaml.Application",
+            winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+        )
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Application",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "LaunchActivatedEventArgs",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IApplicationOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("a33e81ef-c665-503b-8827-d27ef1720a06"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "OnLaunched",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(
+                                        io.github.composefluent.winrt.metadata.WinRtParameterDefinition(
+                                            name = "args",
+                                            typeName = "Microsoft.UI.Xaml.LaunchActivatedEventArgs",
+                                        ),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(listOf(candidate), model, output)
+
+        val contents = output.resolve("sample/WinRT_App_TypeDetails.kt").toFile().readText()
+        assertTrue(contents, contents.contains("(value as Application).__winrtAuthoringInvokeOnLaunched(__arg0)"))
+        assertFalse(contents, contents.contains("value.winrtAs("))
     }
 
     @Test
@@ -592,7 +657,7 @@ class KotlinWinRtCompilerPluginTest {
                 ),
                 KotlinWinRtCompilerSupportManifestEntry(
                     kind = "generic-abi-registry",
-                    className = "io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
+                    className = "io.github.composefluent.winrt.projections.support.WinRTGenericAbiSupport",
                     sourceFile = "generic-abi-registry.tsv",
                     entries = 4,
                 ),

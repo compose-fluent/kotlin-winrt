@@ -305,8 +305,7 @@ object KotlinWinRtAuthoringScannerCli {
     private fun parseImports(file: KotlinLightSource): KotlinImports {
         val explicit = linkedMapOf<String, String>()
         val wildcards = mutableListOf<String>()
-        file.imports().forEach { directive ->
-            val imported = directive.substringAfter("import").trim()
+        file.imports().forEach { imported ->
             val path = imported.substringBefore(" as ").trim()
             if (path.endsWith(".*")) {
                 wildcards += path.removeSuffix(".*")
@@ -376,7 +375,10 @@ object KotlinWinRtAuthoringScannerCli {
                 .orEmpty()
 
         fun imports(): List<String> =
-            tree.root.descendantsOfType(KtNodeTypes.IMPORT_DIRECTIVE).map(::nodeText)
+            Regex("""(?m)^\s*import\s+([^\r\n]+)""")
+                .findAll(text)
+                .map { match -> match.groupValues[1].trim() }
+                .toList()
 
         fun classes(): List<LighterASTNode> =
             tree.root.descendantsOfType(KtNodeTypes.CLASS)
@@ -475,11 +477,16 @@ object KotlinWinRtAuthoringScannerCli {
             packageName: String,
             imports: KotlinImports,
         ): KotlinWinRtAuthoredRuntimeClassAnnotation {
+            val leadingDeclarationText = text.substring(0, classNode.startOffset)
             val modifierText = classNode.children()
                 .firstOrNull { child -> child.tokenType == KtNodeTypes.MODIFIER_LIST }
                 ?.let(::nodeText)
-                ?: return KotlinWinRtAuthoredRuntimeClassAnnotation()
-            val annotationText = authoredRuntimeClassAnnotationText(modifierText, packageName, imports)
+                .orEmpty()
+            val modifierAnnotationText = authoredRuntimeClassAnnotationText(modifierText, packageName, imports)
+            val annotationText = modifierAnnotationText
+                ?.takeIf { annotation -> annotation.substringAfter('@').contains('(') }
+                ?: authoredRuntimeClassAnnotationText(leadingDeclarationText, packageName, imports)
+                ?: modifierAnnotationText
                 ?: return KotlinWinRtAuthoredRuntimeClassAnnotation()
             val positionalArguments = annotationPositionalArguments(annotationText)
             return KotlinWinRtAuthoredRuntimeClassAnnotation(
@@ -568,8 +575,39 @@ object KotlinWinRtAuthoringScannerCli {
                 acceptedNames += "WinRtAuthoredRuntimeClass"
             }
             return acceptedNames.firstNotNullOfOrNull { name ->
-                Regex("""@${Regex.escape(name)}(?:\(([^@]*)\))?""").find(modifierText)?.value
+                annotationTextForName(modifierText, name)
             }
+        }
+
+        private fun annotationTextForName(modifierText: String, name: String): String? {
+            val match = Regex("""@${Regex.escape(name)}\b""").findAll(modifierText).lastOrNull() ?: return null
+            var index = match.range.last + 1
+            while (index < modifierText.length && modifierText[index].isWhitespace()) {
+                index += 1
+            }
+            if (modifierText.getOrNull(index) != '(') {
+                return modifierText.substring(match.range.first, index)
+            }
+            var depth = 0
+            var inString = false
+            var escaped = false
+            while (index < modifierText.length) {
+                val char = modifierText[index]
+                when {
+                    escaped -> escaped = false
+                    char == '\\' && inString -> escaped = true
+                    char == '"' -> inString = !inString
+                    !inString && char == '(' -> depth += 1
+                    !inString && char == ')' -> {
+                        depth -= 1
+                        if (depth == 0) {
+                            return modifierText.substring(match.range.first, index + 1)
+                        }
+                    }
+                }
+                index += 1
+            }
+            return modifierText.substring(match.range.first)
         }
 
         private fun annotationStringArgument(annotationText: String, name: String): String =
