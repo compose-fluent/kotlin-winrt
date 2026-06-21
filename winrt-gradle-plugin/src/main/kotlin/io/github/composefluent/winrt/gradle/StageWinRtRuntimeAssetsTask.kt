@@ -601,7 +601,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         outputRoot: Path,
     ) {
         sources
-            .map { source -> readAuthoringHostRuntimeConfig(source) }
+            .mapNotNull { source -> readAuthoringHostRuntimeConfig(source) }
             .groupBy { it.assemblyName }
             .forEach { (assemblyName, configs) ->
                 val activatableClasses = configs
@@ -616,7 +616,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             }
     }
 
-    private fun readAuthoringHostRuntimeConfig(source: java.io.File): AuthoringHostRuntimeConfig {
+    private fun readAuthoringHostRuntimeConfig(source: java.io.File): AuthoringHostRuntimeConfig? {
         val content = source.takeIf { it.isFile }?.readText().orEmpty()
         val assemblyName = readJsonString(content, "assemblyName")
             ?: throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' is missing assemblyName.")
@@ -628,9 +628,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val defaultTargets = readJsonStringArrayField(content, "activatableClasses")
             .filter { it.isNotBlank() && targetArtifact.isNotBlank() }
             .associateWith { targetArtifact }
-        val activatableClasses = defaultTargets + explicitTargets
-        if (activatableClasses.isEmpty()) {
+        val declaredTargets = defaultTargets + explicitTargets
+        if (declaredTargets.isEmpty()) {
             throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' does not declare any activatable class targets.")
+        }
+        val activatableClasses = declaredTargets
+            .filterValues { target -> target.endsWith(".jar", ignoreCase = true) }
+        if (activatableClasses.isEmpty()) {
+            return null
         }
         return AuthoringHostRuntimeConfig(
             assemblyName = assemblyName,

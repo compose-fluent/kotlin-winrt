@@ -606,6 +606,7 @@ private fun configureWinRtApplicationTasks(
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
             task.dependsOn(stageApplicationPackageTask)
+            task.dependsOn(buildAuthoringHostTask)
         },
     )
     val applicationHostExecutable = applicationHostTask.flatMap { task ->
