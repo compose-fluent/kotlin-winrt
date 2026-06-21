@@ -26,29 +26,29 @@ internal object WinRtApplicationManifestGenerator {
         }
         Files.writeString(
             outputRoot.resolve("$executableBaseName.exe.manifest"),
-            buildApplicationManifest(fragmentXmls, dllFileNames),
+            buildApplicationManifest(fragmentXmls, readAuthoredHostManifestRegistrations(outputRoot), dllFileNames),
         )
     }
 
-    private fun buildApplicationManifest(fragmentXmls: List<String>, frameworkFileNames: List<String>): String {
-        val entryByFileName = linkedMapOf<String, String>()
+    private fun buildApplicationManifest(
+        fragmentXmls: List<String>,
+        authoredHostRegistrations: List<LiftedRegistrationEntry>,
+        frameworkFileNames: List<String>,
+    ): String {
+        val entriesByFileName = linkedMapOf<String, LiftedRegistrationEntryBuilder>()
         val remainingFileNames = linkedMapOf<String, String>()
         frameworkFileNames.forEach { fileName -> remainingFileNames.putIfAbsent(fileName.lowercase(), fileName) }
-        fragmentXmls.forEach { xml ->
-            parseLiftedRegistrationEntries(xml).forEach { entry ->
-                val body = buildString {
-                    entry.activatableClasses.forEach { className ->
-                        append("        <winrtv1:activatableClass name='")
-                        append(escapeXml(className))
-                        append("' threadingModel='both'/>\n")
-                    }
-                }
-                if (body.isNotEmpty()) {
-                    entryByFileName.putIfAbsent(entry.path.lowercase(), manifestFileEntry(entry.path, body))
-                    remainingFileNames.remove(entry.path.lowercase())
+        (fragmentXmls.flatMap(::parseLiftedRegistrationEntries) + authoredHostRegistrations)
+            .forEach { entry ->
+                val key = entry.path.lowercase()
+                val builder = entriesByFileName.getOrPut(key) { LiftedRegistrationEntryBuilder(entry.path) }
+                entry.activatableClasses
+                    .filter(String::isNotBlank)
+                    .forEach(builder.activatableClasses::add)
+                if (builder.activatableClasses.isNotEmpty()) {
+                    remainingFileNames.remove(key)
                 }
             }
-        }
         return buildString {
             appendLine("<?xml version='1.0' encoding='utf-8' standalone='yes'?>")
             appendLine("<assembly manifestVersion='1.0'")
@@ -67,7 +67,18 @@ internal object WinRtApplicationManifestGenerator {
             appendLine("            <dpiAwareness xmlns='http://schemas.microsoft.com/SMI/2016/WindowsSettings'>PerMonitorV2, PerMonitor</dpiAwareness>")
             appendLine("        </asmv3:windowsSettings>")
             appendLine("    </asmv3:application>")
-            entryByFileName.values.forEach(::append)
+            entriesByFileName.values.forEach { entry ->
+                val body = buildString {
+                    entry.activatableClasses.forEach { className ->
+                        append("        <winrtv1:activatableClass name='")
+                        append(escapeXml(className))
+                        append("' threadingModel='both'/>\n")
+                    }
+                }
+                if (body.isNotEmpty()) {
+                    append(manifestFileEntry(entry.path, body))
+                }
+            }
             remainingFileNames.values.forEach { fileName -> append(manifestFileEntry(fileName, "")) }
             appendLine("</assembly>")
         }
@@ -101,6 +112,72 @@ internal object WinRtApplicationManifestGenerator {
         return entries
     }
 
+    private fun readAuthoredHostManifestRegistrations(outputRoot: Path): List<LiftedRegistrationEntry> {
+        val jvmRegistrations = readJvmAuthoringHostRuntimeConfigRegistrations(outputRoot)
+        val jvmAuthoredClasses = jvmRegistrations
+            .flatMap { entry -> entry.activatableClasses }
+            .toSet()
+        val entriesByFileName = linkedMapOf<String, LiftedRegistrationEntryBuilder>()
+        jvmRegistrations.forEach { entry ->
+            val key = entry.path.lowercase()
+            val builder = entriesByFileName.getOrPut(key) { LiftedRegistrationEntryBuilder(entry.path) }
+            entry.activatableClasses.forEach(builder.activatableClasses::add)
+        }
+        Files.walk(outputRoot).use { stream ->
+            stream.asSequence()
+                .filter { path -> path.isRegularFile() && path.name.endsWith(".host.json", ignoreCase = true) }
+                .sorted()
+                .forEach { manifest ->
+                    readAuthoredHostManifestEntries(manifest, jvmAuthoredClasses).forEach { entry ->
+                        val key = entry.path.lowercase()
+                        val builder = entriesByFileName.getOrPut(key) { LiftedRegistrationEntryBuilder(entry.path) }
+                        entry.activatableClasses.forEach(builder.activatableClasses::add)
+                    }
+                }
+        }
+        return entriesByFileName.values
+            .map { entry -> LiftedRegistrationEntry(entry.path, entry.activatableClasses.toList()) }
+    }
+
+    private fun readJvmAuthoringHostRuntimeConfigRegistrations(outputRoot: Path): List<LiftedRegistrationEntry> {
+        val entries = mutableListOf<LiftedRegistrationEntry>()
+        Files.walk(outputRoot).use { stream ->
+            stream.asSequence()
+                .filter { path -> path.isRegularFile() && path.name.endsWith(".runtimeconfig.json", ignoreCase = true) }
+                .sorted()
+                .forEach { runtimeConfig ->
+                    val content = runCatching { Files.readString(runtimeConfig) }.getOrDefault("")
+                    val classes = readManifestJsonStringMap(content, "activatableClasses")
+                        .filterValues { target -> target.endsWith(".jar", ignoreCase = true) }
+                        .keys
+                        .filter { className -> className.isNotBlank() }
+                        .sorted()
+                    if (classes.isNotEmpty()) {
+                        entries += LiftedRegistrationEntry(runtimeConfig.name.removeSuffix(".runtimeconfig.json") + ".dll", classes)
+                    }
+                }
+        }
+        return entries
+    }
+
+    private fun readAuthoredHostManifestEntries(
+        manifest: Path,
+        jvmAuthoredClasses: Set<String>,
+    ): List<LiftedRegistrationEntry> {
+        val content = runCatching { Files.readString(manifest) }.getOrDefault("")
+        val assemblyName = readManifestJsonString(content, "assemblyName").orEmpty()
+        val targetArtifact = readManifestJsonString(content, "targetArtifact").orEmpty()
+        val defaultTargetClasses = readManifestJsonStringArrayField(content, "activatableClasses")
+            .mapNotNull { className -> authoredHostDllForTarget(assemblyName, targetArtifact)?.let { dll -> dll to className } }
+        val explicitTargetClasses = readManifestJsonStringMap(content, "activatableClassTargets")
+            .mapNotNull { (className, target) -> authoredHostDllForTarget(assemblyName, target)?.let { dll -> dll to className } }
+        return (defaultTargetClasses + explicitTargetClasses)
+            .filter { (_, className) -> className.isNotBlank() }
+            .filterNot { (dll, className) -> className in jvmAuthoredClasses && !dll.equals("$assemblyName.dll", ignoreCase = true) }
+            .groupBy({ it.first }, { it.second })
+            .map { (dll, classes) -> LiftedRegistrationEntry(dll, classes.distinct().sorted()) }
+    }
+
     private const val executableAssemblyName = "io.github.composefluent.winrt.application"
 }
 
@@ -108,6 +185,45 @@ private data class LiftedRegistrationEntry(
     val path: String,
     val activatableClasses: List<String>,
 )
+
+private data class LiftedRegistrationEntryBuilder(
+    val path: String,
+    val activatableClasses: LinkedHashSet<String> = linkedSetOf(),
+)
+
+private fun authoredHostDllForTarget(assemblyName: String, targetArtifact: String): String? =
+    when {
+        targetArtifact.endsWith(".dll", ignoreCase = true) -> targetArtifact
+        targetArtifact.endsWith(".jar", ignoreCase = true) && assemblyName.isNotBlank() -> "$assemblyName.dll"
+        else -> null
+    }
+
+private fun readManifestJsonString(content: String, name: String): String? =
+    Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .find(content)
+        ?.groupValues
+        ?.get(1)
+        ?.decodeManifestJsonString()
+
+private fun readManifestJsonStringMap(content: String, name: String): Map<String, String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyMap()
+    return Regex(""""((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .associate { it.groupValues[1].decodeManifestJsonString() to it.groupValues[2].decodeManifestJsonString() }
+}
+
+private fun readManifestJsonStringArrayField(content: String, name: String): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .map { it.groupValues[1].decodeManifestJsonString() }
+        .toList()
+}
+
+private fun String.decodeManifestJsonString(): String =
+    replace("\\\"", "\"").replace("\\\\", "\\")
 
 private fun String.decodeXmlText(): String =
     replace("&apos;", "'")

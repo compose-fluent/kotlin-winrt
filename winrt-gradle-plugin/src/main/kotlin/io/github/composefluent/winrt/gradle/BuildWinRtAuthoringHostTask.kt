@@ -269,16 +269,14 @@ private fun authoringHostSource(hostExportsClass: String): String =
         }
     }
 
-    static void kotlin_winrt_classpath(char *buffer, DWORD count) {
+    static void kotlin_winrt_append_classpath_jars(char *buffer, DWORD count, const wchar_t *relative_pattern, const wchar_t *relative_prefix) {
         wchar_t directory[MAX_PATH * 2];
         wchar_t pattern[MAX_PATH * 2];
         WIN32_FIND_DATAW data;
         HANDLE find;
-        buffer[0] = '\0';
-        lstrcpyA(buffer, "-Djava.class.path=");
         kotlin_winrt_host_directory(directory, ARRAYSIZE(directory));
         lstrcpyW(pattern, directory);
-        kotlin_winrt_append_wide(pattern, ARRAYSIZE(pattern), L"*.jar");
+        kotlin_winrt_append_wide(pattern, ARRAYSIZE(pattern), relative_pattern);
         find = FindFirstFileW(pattern, &data);
         if (find == INVALID_HANDLE_VALUE) {
             return;
@@ -290,11 +288,19 @@ private fun authoringHostSource(hostExportsClass: String): String =
                     lstrcatA(buffer, ";");
                 }
                 lstrcpyW(jar_path, directory);
+                kotlin_winrt_append_wide(jar_path, ARRAYSIZE(jar_path), relative_prefix);
                 kotlin_winrt_append_wide(jar_path, ARRAYSIZE(jar_path), data.cFileName);
                 kotlin_winrt_append_utf8(buffer, count, jar_path);
             }
         } while (FindNextFileW(find, &data));
         FindClose(find);
+    }
+
+    static void kotlin_winrt_classpath(char *buffer, DWORD count) {
+        buffer[0] = '\0';
+        lstrcpyA(buffer, "-Djava.class.path=");
+        kotlin_winrt_append_classpath_jars(buffer, count, L"*.jar", L"");
+        kotlin_winrt_append_classpath_jars(buffer, count, L"lib\\*.jar", L"lib\\");
     }
 
     static HMODULE kotlin_winrt_load_jvm_module(void) {

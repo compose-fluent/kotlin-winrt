@@ -2435,6 +2435,209 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_registers_dependency_jvm_authored_classes_in_application_manifest() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyHostManifest = project.layout.buildDirectory.file("dependency/ui.host.json").get().asFile.toPath()
+        val dependencyJar = project.layout.buildDirectory.file("dependency/ui.jar").get().asFile.toPath()
+        val dependencyHostDll = project.layout.buildDirectory.file("dependency/ui.dll").get().asFile.toPath()
+        Files.createDirectories(dependencyHostManifest.parent)
+        Files.writeString(
+            dependencyHostManifest,
+            """{"assemblyName":"ui","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_ui_jar","targetArtifact":"ui.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{}}""",
+        )
+        Files.writeString(dependencyJar, "dependency-jar")
+        Files.writeString(dependencyHostDll, "dependency-host-dll")
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """{"authoredHostManifests":["${dependencyHostManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
+        )
+
+        val task = project.tasks.register(
+            "stageDependencyJvmAuthoredApplicationManifest",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.runtimeAssetFiles.from(project.files())
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.authoredMetadataFiles.from(project.files())
+            registeredTask.authoredHostManifestFiles.from(project.files())
+            registeredTask.authoredTargetArtifactFiles.from(project.files())
+            registeredTask.authoredHostDllFiles.from(dependencyHostDll)
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.appxManifestFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(project.files())
+            registeredTask.projectPriLayoutFiles.from(project.files())
+            registeredTask.projectPriContentFiles.from(project.files())
+            registeredTask.projectPriEmbedFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceFiles.from(project.files())
+            registeredTask.defaultProjectPriLayoutFiles.from(project.files())
+            registeredTask.defaultProjectPriContentFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.executableBaseName.set("sample-app")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        val manifest = Files.readString(outputRoot.resolve("sample-app.exe.manifest"))
+        assertTrue(manifest.contains("<asmv3:file name='ui.dll'"))
+        assertTrue(manifest.contains("<winrtv1:activatableClass name='androidx.compose.ui.window.WinUIXamlApplication' threadingModel='both'/>"))
+        assertTrue(Files.readString(outputRoot.resolve("ui.runtimeconfig.json")).contains("\"androidx.compose.ui.window.WinUIXamlApplication\": \"ui.jar\""))
+    }
+
+    @Test
+    fun runtime_assets_task_registers_dependency_native_authored_classes_without_jvm_runtimeconfig() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyHostManifest = project.layout.buildDirectory.file("dependency/winui-kmp-library.host.json").get().asFile.toPath()
+        val dependencyDll = project.layout.buildDirectory.file("dependency/winui_kmp_library.dll").get().asFile.toPath()
+        Files.createDirectories(dependencyHostManifest.parent)
+        Files.writeString(
+            dependencyHostManifest,
+            """{"assemblyName":"winui-kmp-library","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}""",
+        )
+        Files.writeString(dependencyDll, "dependency-native-dll")
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """{"authoredHostManifests":["${dependencyHostManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyDll.toString().replace("\\", "\\\\")}"]}""",
+        )
+
+        val task = project.tasks.register(
+            "stageDependencyNativeAuthoredApplicationManifest",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("native-runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.runtimeAssetFiles.from(project.files())
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.authoredMetadataFiles.from(project.files())
+            registeredTask.authoredHostManifestFiles.from(project.files())
+            registeredTask.authoredTargetArtifactFiles.from(project.files())
+            registeredTask.authoredHostDllFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.appxManifestFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(project.files())
+            registeredTask.projectPriLayoutFiles.from(project.files())
+            registeredTask.projectPriContentFiles.from(project.files())
+            registeredTask.projectPriEmbedFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceFiles.from(project.files())
+            registeredTask.defaultProjectPriLayoutFiles.from(project.files())
+            registeredTask.defaultProjectPriContentFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.executableBaseName.set("sample-app")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        val manifest = Files.readString(outputRoot.resolve("sample-app.exe.manifest"))
+        assertTrue(manifest.contains("<asmv3:file name='winui_kmp_library.dll'"))
+        assertTrue(manifest.contains("<winrtv1:activatableClass name='androidx.compose.ui.window.WinUIXamlApplication' threadingModel='both'/>"))
+        assertFalse(Files.exists(outputRoot.resolve("winui-kmp-library.runtimeconfig.json")))
+    }
+
+    @Test
+    fun runtime_assets_task_prefers_dependency_jvm_host_registration_over_native_duplicate() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyJvmManifest = project.layout.buildDirectory.file("dependency/jvm/winui-kmp-library.host.json").get().asFile.toPath()
+        val dependencyNativeManifest = project.layout.buildDirectory.file("dependency/native/winui-kmp-library.host.json").get().asFile.toPath()
+        val dependencyJar = project.layout.buildDirectory.file("dependency/jvm/winui-kmp-library.jar").get().asFile.toPath()
+        val dependencyHostDll = project.layout.buildDirectory.file("dependency/jvm/winui-kmp-library.dll").get().asFile.toPath()
+        val dependencyNativeDll = project.layout.buildDirectory.file("dependency/native/winui_kmp_library.dll").get().asFile.toPath()
+        Files.createDirectories(dependencyJvmManifest.parent)
+        Files.createDirectories(dependencyNativeManifest.parent)
+        Files.writeString(
+            dependencyJvmManifest,
+            """{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_jar","targetArtifact":"winui-kmp-library.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui-kmp-library.jar"}}""",
+        )
+        Files.writeString(
+            dependencyNativeManifest,
+            """{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_dll","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}""",
+        )
+        Files.writeString(dependencyJar, "dependency-jar")
+        Files.writeString(dependencyHostDll, "dependency-host-dll")
+        Files.writeString(dependencyNativeDll, "dependency-native-dll")
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """{"authoredHostManifests":["${dependencyJvmManifest.toString().replace("\\", "\\\\")}","${dependencyNativeManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}","${dependencyNativeDll.toString().replace("\\", "\\\\")}"]}""",
+        )
+
+        val task = project.tasks.register(
+            "stageDependencyMixedAuthoredApplicationManifest",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("mixed-runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.runtimeAssetFiles.from(project.files())
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.authoredMetadataFiles.from(project.files())
+            registeredTask.authoredHostManifestFiles.from(project.files())
+            registeredTask.authoredTargetArtifactFiles.from(project.files())
+            registeredTask.authoredHostDllFiles.from(dependencyHostDll)
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.appxManifestFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(project.files())
+            registeredTask.projectPriLayoutFiles.from(project.files())
+            registeredTask.projectPriContentFiles.from(project.files())
+            registeredTask.projectPriEmbedFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceFiles.from(project.files())
+            registeredTask.defaultProjectPriLayoutFiles.from(project.files())
+            registeredTask.defaultProjectPriContentFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.executableBaseName.set("sample-app")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        val manifest = Files.readString(outputRoot.resolve("sample-app.exe.manifest"))
+        assertTrue(manifest.contains("<asmv3:file name='winui-kmp-library.dll'"))
+        assertTrue(manifest.contains("<winrtv1:activatableClass name='androidx.compose.ui.window.WinUIXamlApplication' threadingModel='both'/>"))
+        assertTrue(manifest.contains("<asmv3:file name='winui_kmp_library.dll'"))
+        assertFalse(Regex("""<asmv3:file name='winui_kmp_library\.dll'[\s\S]*?WinUIXamlApplication[\s\S]*?</asmv3:file>""").containsMatchIn(manifest))
+        assertTrue(Files.readString(outputRoot.resolve("winui-kmp-library.runtimeconfig.json")).contains("\"androidx.compose.ui.window.WinUIXamlApplication\": \"winui-kmp-library.jar\""))
+    }
+
+    @Test
     fun runtime_assets_task_rejects_malformed_authoring_host_manifests() {
         val project = ProjectBuilder.builder().build()
         val manifest = project.layout.buildDirectory.file("component/AppComponent.host.json").get().asFile.toPath()
@@ -2685,6 +2888,8 @@ class KotlinWinRtPluginTest {
         assertTrue(source.contains("DllGetActivationFactory"))
         assertTrue(source.contains("DllCanUnloadNow"))
         assertTrue(source.contains("JNI_GetCreatedJavaVMs"))
+        assertTrue(source.contains("kotlin_winrt_append_classpath_jars(buffer, count, L\"*.jar\", L\"\")"))
+        assertTrue(source.contains("kotlin_winrt_append_classpath_jars(buffer, count, L\"lib\\\\*.jar\", L\"lib\\\\\")"))
         assertTrue(source.contains("io/github/composefluent/winrt/projections/support/WinRTAuthoringHostExports_SampleComponent_jar"))
         assertTrue(Files.readString(sourceRoot.resolve("kotlin_winrt_authoring_host.def")).contains("DllGetActivationFactory"))
         if (System.getProperty("os.name").contains("Windows", ignoreCase = true) && commandExists("clang-cl.exe")) {
