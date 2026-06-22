@@ -6706,9 +6706,10 @@ class KotlinWinRtPluginTest {
                         .replace("\\", "/")
                     def legacyGeneratedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
                     def generatedHostExports = buildRoot.resolve("generated/kotlin-winrt-native-authoring-host")
-                    def generatedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
+                    def generatedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
                         .toString()
                         .replace("\\", "/")
+                    def legacyGeneratedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
                     def commonSources = normalizedSourcePaths("commonMain")
                     def winuiSources = normalizedSourcePaths("winuiMain")
                     def mingwSources = normalizedSourcePaths("mingwX64Main")
@@ -6732,8 +6733,12 @@ class KotlinWinRtPluginTest {
                         throw new GradleException("KMP generated authoring support source must not remain under src/main/kotlin: " +
                             legacyGeneratedAuthoring.toString().replace("\\", "/"))
                     }
-                    if (!commonSources.contains(generatedApplicationEntry)) {
-                        throw new GradleException("Generated application entry source must be owned by commonMain: " + commonSources)
+                    if (commonSources.contains(generatedApplicationEntry)) {
+                        throw new GradleException("Generated application entry source must not be owned by commonMain: " + commonSources)
+                    }
+                    if (legacyGeneratedApplicationEntry.toFile().exists()) {
+                        throw new GradleException("KMP generated application entry source must not remain under src/commonMain/kotlin: " +
+                            legacyGeneratedApplicationEntry.toString().replace("\\", "/"))
                     }
                     if (winuiSources.contains(generatedProjection)) {
                         throw new GradleException("Generated projection source must not be scoped to winuiMain: " + winuiSources)
@@ -6751,8 +6756,8 @@ class KotlinWinRtPluginTest {
                     if (mingwSources.contains(generatedHostExports.resolve("src/main/kotlin").toString().replace("\\", "/"))) {
                         throw new GradleException("Generated native authoring host source must not be scoped to mingwX64Main: " + mingwSources)
                     }
-                    if (mingwSources.contains(generatedApplicationEntry)) {
-                        throw new GradleException("Generated application entry source must not be scoped to mingwX64Main: " + mingwSources)
+                    if (!mingwSources.contains(generatedApplicationEntry)) {
+                        throw new GradleException("Generated application entry source must be scoped to mingwX64Main: " + mingwSources)
                     }
                 }
             }
@@ -6768,6 +6773,97 @@ class KotlinWinRtPluginTest {
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":verifyGeneratedSourceSetOwnership")?.outcome)
+    }
+
+    @Test
+    fun mingw_application_entry_can_call_main_from_custom_intermediate_source_set() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-application-entry-source-set-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-application-entry-source-set-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "io.github.composefluent.winrt"
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                mingwX64()
+                sourceSets {
+                    winuiMain {
+                        dependsOn commonMain
+                    }
+                    mingwX64Main {
+                        dependsOn winuiMain
+                    }
+                }
+            }
+
+            winRt {
+                application {
+                    mainClass.set "sample.MainKt"
+                }
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/winuiMain/kotlin/sample/Main.kt"),
+            """
+            package sample
+
+            fun main() = Unit
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/winuiMain/kotlin/io/github/composefluent/winrt/runtime/WinRtWindowsAppSdkBootstrap.kt"),
+            """
+            package io.github.composefluent.winrt.runtime
+
+            object WinRtWindowsAppSdkBootstrap {
+                fun initializeApplicationHost(unpackaged: Boolean = true): AutoCloseable =
+                    AutoCloseable {
+                    }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("compileKotlinWinuiJvm", "compileKotlinMingwX64", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtMingwApplicationEntry")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinWinuiJvm")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinMingwX64")?.outcome)
     }
 
     @Test

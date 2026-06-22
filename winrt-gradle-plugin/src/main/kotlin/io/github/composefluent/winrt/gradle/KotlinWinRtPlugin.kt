@@ -484,15 +484,15 @@ private fun configureWinRtApplicationTasks(
         Action<GenerateWinRtMingwApplicationEntryTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Generates the Kotlin/Native mingw application entry wrapper with WinUI bootstrap."
-            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin"))
+            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"))
             task.legacyOutputDirectories.from(
-                project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"),
+                project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin"),
             )
             task.mainClass.set(extension.application.mainClass)
             task.packageMode.set(project.provider { extension.application.packageMode.get().name })
         },
     )
-    addGeneratedSourcesToKotlinMultiplatformCommonMain(project, mingwApplicationEntryTask)
+    addGeneratedSourcesToKotlinMultiplatformMingwX64Main(project, mingwApplicationEntryTask)
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
         task.dependsOn(mingwApplicationEntryTask)
     })
@@ -852,7 +852,7 @@ private fun configureWinRtGeneration(
     val generatedKmpCommonAuthoringSources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
     val generatedMingwApplicationEntrySources =
-        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
     val generatorWorkerClasspath = kotlinWinRtGeneratorWorkerClasspath(project)
     val authoringTargetArtifactName = kotlinWinRtAuthoringTargetArtifactName(project)
@@ -1768,6 +1768,21 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
         sourceSet.kotlin.srcDir(generatedSourcesTask)
+    }
+}
+
+private fun addGeneratedSourcesToKotlinMultiplatformMingwX64Main(
+    project: Project,
+    generatedSourcesTask: TaskProvider<out Task>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+        if (!target.isMingwX64Target()) {
+            return@configureEach
+        }
+        target.compilations.named("main").configure { compilation ->
+            compilation.defaultSourceSet.kotlin.srcDir(generatedSourcesTask)
+        }
     }
 }
 

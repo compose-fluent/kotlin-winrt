@@ -281,6 +281,16 @@ class KotlinWinRtIrGenerationExtension(
             ?.className
         val authoringRegistrarEntries = readAuthoringTypeDetailsRegistrarEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
+        if (moduleFragment.files.isEmpty()) {
+            val winRtTypes = metadataIndexPath
+                ?.takeIf(String::isNotBlank)
+                ?.let { path -> readAuthoringMetadataIndex(Path.of(path)) }
+                .orEmpty()
+            writeProjectionTypeIndex(emptyList(), winRtTypes)
+            writeAuthoredCandidates(emptyList(), winRtTypes)
+            writeAuthoredSupportArtifacts(emptyList())
+            return
+        }
         val genericTypeInstantiationIntrinsicCalls =
             collectGenericTypeInstantiationSupportIntrinsicCalls(moduleFragment)
         val projectionSupportInitialize = addProjectionSupportInitializerFunction(
