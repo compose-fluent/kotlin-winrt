@@ -427,7 +427,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .addModifiers(KModifier.EXPECT)
             .primaryConstructor(
                 FunSpec.constructorBuilder()
-                    .addModifiers(KModifier.INTERNAL)
+                    .addModifiers(plan.runtimeClassWrapperConstructorVisibility())
                     .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
                     .addParameter("__winrtWrapper", UNIT)
                     .build(),
@@ -464,7 +464,7 @@ internal class KotlinExpectActualProjectionRenderer(
         builder.primaryConstructor(
             FunSpec.constructorBuilder()
                 .addModifiers(KModifier.ACTUAL)
-                .addModifiers(KModifier.INTERNAL)
+                .addModifiers(plan.runtimeClassWrapperConstructorVisibility())
                 .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addParameter("__winrtWrapper", UNIT)
                 .build(),
