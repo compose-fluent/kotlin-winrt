@@ -1088,7 +1088,7 @@ class KotlinProjectionRenderer(
             )
         }
         val constructorBuilder = FunSpec.constructorBuilder()
-            .addModifiers(KModifier.INTERNAL)
+            .addModifiers(plan.runtimeClassWrapperConstructorVisibility())
             .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
             .addParameter("__winrtWrapper", UNIT)
         val supportsDerivedComposableConstruction = plan.supportsDerivedComposableConstruction()
@@ -3474,6 +3474,9 @@ private fun KotlinTypeProjectionPlan.requiresOpenRuntimeClassShell(): Boolean =
                         }
                     )
             )
+
+internal fun KotlinTypeProjectionPlan.runtimeClassWrapperConstructorVisibility(): KModifier =
+    if (type.isSealedType) KModifier.INTERNAL else KModifier.PROTECTED
 
 private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshaller(
     plan: KotlinTypeProjectionPlan,
