@@ -4121,7 +4121,7 @@ class KotlinProjectionGeneratorTest {
 
         assertEquals("windows/data/json/JsonObject.kt", file.relativePath)
         assertTrue(file.contents.contains("package windows.`data`.json"))
-        assertTrue(file.contents.contains("public class JsonObject internal constructor("))
+        assertTrue(file.contents.contains("public class JsonObject protected constructor("))
         assertTrue(file.contents.contains("private val _inner: IInspectableReference"))
         assertTrue(file.contents.contains("WinRT ABI binding is unavailable for method getNamedString"))
         assertTrue(file.contents.contains("companion object"))
@@ -5717,7 +5717,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(iWidgetContents.contains("val owner: Widget?"))
 
         val widgetContents = filesByName.getValue("Widget.kt").contents
-        assertTrue(widgetContents.contains("public class Widget protected constructor("))
+        assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
         assertTrue(widgetContents.contains("private val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
