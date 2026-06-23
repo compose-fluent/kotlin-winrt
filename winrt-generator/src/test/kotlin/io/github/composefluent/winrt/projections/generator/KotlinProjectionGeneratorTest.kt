@@ -8892,6 +8892,17 @@ class KotlinProjectionGeneratorTest {
                             name = "IApplicationOverrides",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(
+                                        io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue.TypeValue(
+                                            "Microsoft.UI.Xaml.Application",
+                                        ),
+                                    ),
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Microsoft.UI.Xaml",
@@ -8949,13 +8960,15 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val application = KotlinProjectionGenerator().generate(model)
-            .single { it.relativePath.substringAfterLast('/') == "Application.kt" }
-            .contents
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val application = filesByName.getValue("Application.kt").contents
+        val applicationOverrides = filesByName.getValue("IApplicationOverrides.kt").contents
 
         assertFalse(application, application.contains("WinRtWinUiResourceManagerBootstrap"))
         assertFalse(application, application.contains("_winUiResourceManagerRegistration"))
         assertTrue(application, application.contains("protected constructor(_inner: IInspectableReference, __winrtWrapper: Unit)"))
+        assertTrue(applicationOverrides, applicationOverrides.contains("public interface IApplicationOverrides"))
+        assertFalse(applicationOverrides, applicationOverrides.contains("internal interface IApplicationOverrides"))
         assertTrue(application, application.contains("public constructor()"))
         val constructor = application.substringAfter("public constructor()").substringBefore("override fun equals")
         assertTrue(constructor, constructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
