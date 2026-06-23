@@ -12093,6 +12093,102 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_setter_only_interface_property_with_exclusive_to_peer_getter() {
+        val getterProperty = WinRtPropertyDefinition(
+            name = "SystemBackdrop",
+            typeName = "Microsoft.UI.Xaml.Media.SystemBackdrop",
+            getterMethodName = "get_SystemBackdrop",
+            getterMethodRowId = 6,
+        )
+        val setterProperty = WinRtPropertyDefinition(
+            name = "SystemBackdrop",
+            typeName = "Microsoft.UI.Xaml.Media.SystemBackdrop",
+            setterMethodName = "put_SystemBackdrop",
+            setterMethodRowId = 6,
+        )
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "ISystemBackdrop",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555590"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "SystemBackdrop",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Media.ISystemBackdrop",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Media.ISystemBackdrop", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "IBackdropSource",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555591"),
+                            properties = listOf(getterProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "ICompositionSupportsSystemBackdrop",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555592"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.TypeValue("Microsoft.UI.Composition.CompositionTarget"),
+                                    ),
+                                ),
+                            ),
+                            properties = listOf(setterProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "CompositionTarget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Composition.IBackdropSource",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Composition.IBackdropSource", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val supportsBackdrop = filesByName.getValue("ICompositionSupportsSystemBackdrop.kt").contents
+
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("public var systemBackdrop: SystemBackdrop?"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("get() = (this.winrtAs(IBackdropSource.Metadata.TYPE_HANDLE) as IBackdropSource).systemBackdrop"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("set(`value`)"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("SYSTEMBACKDROP_SETTER_SLOT"))
+        assertFalse(supportsBackdrop, supportsBackdrop.contains("SYSTEMBACKDROP_GETTER_SLOT"))
+
+        val expectActualSources = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).joinToString("\n") { it.contents }
+        assertTrue(expectActualSources, expectActualSources.contains("var systemBackdrop: SystemBackdrop?"))
+        assertTrue(
+            expectActualSources,
+            expectActualSources.contains("get() = (this.winrtAs(IBackdropSource.Metadata.TYPE_HANDLE) as IBackdropSource).systemBackdrop"),
+        )
+    }
+
+    @Test
     fun generator_keeps_interface_proxy_custom_struct_getters_on_inline_abi_readback() {
         val interfaceType = WinRtTypeDefinition(
             namespace = "Sample.Foundation",

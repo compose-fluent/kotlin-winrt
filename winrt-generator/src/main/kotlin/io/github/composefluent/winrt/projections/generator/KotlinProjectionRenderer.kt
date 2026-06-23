@@ -167,8 +167,18 @@ class KotlinProjectionRenderer(
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
         plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { builder.addFunction(renderInterfaceMethod(it)) }
-        plan.type.properties.filterNot { it.isStatic }.filter { it.hasNativeProjectionGetterAccessor() }.forEach {
-            builder.addProperty(renderInterfaceProperty(plan.type.qualifiedName, it, plan.typesByQualifiedName))
+        plan.type.properties.filterNot { it.isStatic }.filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
+            val getterResolution = property
+                .takeIf { !it.hasNativeProjectionGetterAccessor() && it.hasNativeProjectionSetterAccessor() }
+                ?.let { findNativeProjectionGetterInterface(plan.type, it, plan.typesByQualifiedName) }
+            builder.addProperty(
+                renderInterfaceProperty(
+                    plan.type.qualifiedName,
+                    property,
+                    plan.typesByQualifiedName,
+                    override = getterResolution?.fromBaseInterface == true,
+                ),
+            )
         }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
             builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
@@ -247,7 +257,7 @@ class KotlinProjectionRenderer(
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 builder.addFunction(renderInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName))
             }
-            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionGetterAccessor() }.forEach { property ->
+            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
                 builder.addProperty(renderInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName))
             }
             interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
@@ -629,59 +639,76 @@ class KotlinProjectionRenderer(
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
-        val getterReturnBinding = renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace)
-        val getterCallPlan = requireAbiCallPlan(
-            bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
-            returnBinding = getterReturnBinding,
-            parameterBindings = emptyList(),
-            suppressHResultCheck = property.isNoException,
-        )
-        val scalarGetterInvocation = interfaceProxyScalarGetterInvocation(
-            slotInterfaceType = slotInterfaceType,
-            property = property,
-            returnBinding = getterReturnBinding,
-        )
-        val projectedObjectGetterInvocation = interfaceProxyProjectedObjectGetterInvocation(
-            slotInterfaceType = slotInterfaceType,
-            property = property,
-            returnBinding = getterReturnBinding,
-        )
-        val getterSlotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_GETTER_SLOT")
-        val noArgIntrinsicInvocation = interfaceProxyNoArgIntrinsicInvocation(
-            slotExpression = getterSlotExpression,
-            returnBinding = getterReturnBinding,
-            parameterBindings = emptyList(),
-            suppressHResultCheck = property.isNoException,
-        )
-        builder.getter(
-            FunSpec.getterBuilder()
-                .addCode(
-                    "%L\n",
-                    projectedObjectGetterInvocation ?: scalarGetterInvocation ?: noArgIntrinsicInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
-                        slotExpression = getterSlotExpression,
-                        returnBinding = getterReturnBinding,
-                        parameterBindings = emptyList(),
-                        suppressHResultCheck = property.isNoException,
-                    ) ?: renderInstanceArrayResultIntrinsicInvocation(
-                        referenceExpression = "nativeObject",
-                        slotExpression = getterSlotExpression,
-                        returnBinding = getterReturnBinding,
-                        parameterBindings = emptyList(),
-                        suppressHResultCheck = property.isNoException,
-                    ) ?: renderInstanceEnumResultIntrinsicInvocation(
-                        referenceExpression = "nativeObject",
-                        slotExpression = getterSlotExpression,
-                        returnBinding = getterReturnBinding,
-                        parameterBindings = emptyList(),
-                        suppressHResultCheck = property.isNoException,
-                    ) ?: renderInlineAbiInvocation(
-                            invokeTargetExpression = "nativeObject",
+        if (property.hasNativeProjectionGetterAccessor()) {
+            val getterReturnBinding = renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace)
+            val getterCallPlan = requireAbiCallPlan(
+                bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
+                returnBinding = getterReturnBinding,
+                parameterBindings = emptyList(),
+                suppressHResultCheck = property.isNoException,
+            )
+            val scalarGetterInvocation = interfaceProxyScalarGetterInvocation(
+                slotInterfaceType = slotInterfaceType,
+                property = property,
+                returnBinding = getterReturnBinding,
+            )
+            val projectedObjectGetterInvocation = interfaceProxyProjectedObjectGetterInvocation(
+                slotInterfaceType = slotInterfaceType,
+                property = property,
+                returnBinding = getterReturnBinding,
+            )
+            val getterSlotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_GETTER_SLOT")
+            val noArgIntrinsicInvocation = interfaceProxyNoArgIntrinsicInvocation(
+                slotExpression = getterSlotExpression,
+                returnBinding = getterReturnBinding,
+                parameterBindings = emptyList(),
+                suppressHResultCheck = property.isNoException,
+            )
+            builder.getter(
+                FunSpec.getterBuilder()
+                    .addCode(
+                        "%L\n",
+                        projectedObjectGetterInvocation ?: scalarGetterInvocation ?: noArgIntrinsicInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
                             slotExpression = getterSlotExpression,
-                            callPlan = getterCallPlan,
-                        ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
-                )
-                .build(),
-        )
+                            returnBinding = getterReturnBinding,
+                            parameterBindings = emptyList(),
+                            suppressHResultCheck = property.isNoException,
+                        ) ?: renderInstanceArrayResultIntrinsicInvocation(
+                            referenceExpression = "nativeObject",
+                            slotExpression = getterSlotExpression,
+                            returnBinding = getterReturnBinding,
+                            parameterBindings = emptyList(),
+                            suppressHResultCheck = property.isNoException,
+                        ) ?: renderInstanceEnumResultIntrinsicInvocation(
+                            referenceExpression = "nativeObject",
+                            slotExpression = getterSlotExpression,
+                            returnBinding = getterReturnBinding,
+                            parameterBindings = emptyList(),
+                            suppressHResultCheck = property.isNoException,
+                        ) ?: renderInlineAbiInvocation(
+                                invokeTargetExpression = "nativeObject",
+                                slotExpression = getterSlotExpression,
+                                callPlan = getterCallPlan,
+                            ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
+                    )
+                    .build(),
+            )
+        } else {
+            val getterInterfaceType = findNativeProjectionGetterInterface(slotInterfaceType, property, typesByQualifiedName)?.interfaceType
+                ?: error("Could not find property getter interface for ${slotInterfaceType.qualifiedName}.${property.name}")
+            val getterInterfaceClassName = resolveTypeName(getterInterfaceType.qualifiedName)
+            builder.getter(
+                FunSpec.getterBuilder()
+                    .addCode(
+                        "return (this.%M(%T.Metadata.TYPE_HANDLE) as %T).%L\n",
+                        WINRT_AS_FUNCTION_NAME,
+                        getterInterfaceClassName,
+                        getterInterfaceClassName,
+                        property.name.replaceFirstChar(Char::lowercase),
+                    )
+                    .build(),
+            )
+        }
         if (!property.isReadOnly) {
             val setterCallPlan = requireAbiCallPlan(
                 bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.set",
@@ -939,16 +966,21 @@ class KotlinProjectionRenderer(
                 }.getOrDefault(false)
             } &&
                 interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).all { property ->
-                    if (!property.hasNativeProjectionGetterAccessor()) {
+                    if (!property.hasNativeProjectionPropertyAccessor()) {
                         return@all false
                     }
                     val propertyTypeName = property.projectedPropertyTypeName(interfaceType.qualifiedName, plan.typesByQualifiedName)
-                    runCatching {
-                        buildAbiCallPlan(
-                            returnBinding = renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName, interfaceType.namespace),
-                            parameterBindings = emptyList(),
-                        ) != null
-                    }.getOrDefault(false) &&
+                    val getterAvailable = if (property.hasNativeProjectionGetterAccessor()) {
+                        runCatching {
+                            buildAbiCallPlan(
+                                returnBinding = renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName, interfaceType.namespace),
+                                parameterBindings = emptyList(),
+                            ) != null
+                        }.getOrDefault(false)
+                    } else {
+                        findNativeProjectionGetterInterface(interfaceType, property, plan.typesByQualifiedName) != null
+                    }
+                    getterAvailable &&
                         (
                             property.isReadOnly ||
                                 property.hasNativeProjectionSetterAccessor() &&

@@ -295,6 +295,8 @@ internal val WINRT_OBJECT_MARSHALER_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRtObjectMarshaler")
 internal val WINRT_PROJECTION_MARSHALER_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRtProjectionMarshaler")
+internal val WINRT_AS_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "winrtAs")
 internal val ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "acquireInterfaceReference")
 internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_FROM_ABI_FUNCTION_NAME =

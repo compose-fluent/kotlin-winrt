@@ -294,14 +294,19 @@ internal fun KotlinProjectionRenderer.renderInterfaceProperty(
     ownerTypeName: String,
     property: WinRtPropertyDefinition,
     typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
-): PropertySpec =
-    PropertySpec.builder(
+    override: Boolean = false,
+): PropertySpec {
+    val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)),
     )
         .mutable(!property.isReadOnly)
         .addModifiers(KModifier.ABSTRACT)
-        .build()
+    if (override) {
+        builder.addModifiers(KModifier.OVERRIDE)
+    }
+    return builder.build()
+}
 
 internal fun KotlinProjectionRenderer.renderStubProperty(
     ownerTypeName: String,
