@@ -98,7 +98,7 @@ internal class KotlinExpectActualProjectionRenderer(
             type.methods.all { it.genericParameterCount == 0 } &&
             type.methods.none(WinRtMethodDefinition::isStatic) &&
             type.properties.none(WinRtPropertyDefinition::isStatic) &&
-            type.properties.all { it.hasNativeProjectionGetterAccessor() } &&
+            type.properties.all { it.hasNativeProjectionPropertyAccessor() } &&
             type.events.none(WinRtEventDefinition::isStatic) &&
             type.events.all { event -> event.hasNativeProjectionAccessorPair() } &&
             type.methods
@@ -119,15 +119,20 @@ internal class KotlinExpectActualProjectionRenderer(
                 } &&
             type.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
-                .filter { it.hasNativeProjectionGetterAccessor() }
+                .filter { it.hasNativeProjectionPropertyAccessor() }
                 .all { property ->
                     val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, plan.typesByQualifiedName)
-                    canBuildJvmFfmCallPlan(
-                        returnTypeName = propertyTypeName,
-                        parameters = emptyList(),
-                        typesByQualifiedName = plan.typesByQualifiedName,
-                        currentNamespace = type.namespace,
-                    ) && (
+                    val getterAvailable = if (property.hasNativeProjectionGetterAccessor()) {
+                        canBuildJvmFfmCallPlan(
+                            returnTypeName = propertyTypeName,
+                            parameters = emptyList(),
+                            typesByQualifiedName = plan.typesByQualifiedName,
+                            currentNamespace = type.namespace,
+                        )
+                    } else {
+                        findNativeProjectionGetterInterface(type, property, plan.typesByQualifiedName) != null
+                    }
+                    getterAvailable && (
                         property.isReadOnly ||
                             property.hasNativeProjectionSetterAccessor() &&
                             canBuildJvmFfmCallPlan(
@@ -363,8 +368,20 @@ internal class KotlinExpectActualProjectionRenderer(
             .forEach { method -> builder.addFunction(baseRenderer.renderInterfaceMethod(method)) }
         plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
-            .filter { it.hasNativeProjectionGetterAccessor() }
-            .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(plan.type.qualifiedName, property, plan.typesByQualifiedName)) }
+            .filter { it.hasNativeProjectionPropertyAccessor() }
+            .forEach { property ->
+                val getterResolution = property
+                    .takeIf { !it.hasNativeProjectionGetterAccessor() && it.hasNativeProjectionSetterAccessor() }
+                    ?.let { findNativeProjectionGetterInterface(plan.type, it, plan.typesByQualifiedName) }
+                builder.addProperty(
+                    baseRenderer.renderInterfaceProperty(
+                        plan.type.qualifiedName,
+                        property,
+                        plan.typesByQualifiedName,
+                        override = getterResolution?.fromBaseInterface == true,
+                    ),
+                )
+            }
         plan.type.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
             builder.addProperty(baseRenderer.renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             baseRenderer.renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
@@ -665,7 +682,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
                 }
             }
-            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionGetterAccessor() }.forEach { property ->
+            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
                 val propertyName = property.name.replaceFirstChar(Char::lowercase)
                 if (emittedProperties.add(propertyName)) {
                     builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
@@ -749,25 +766,42 @@ internal class KotlinExpectActualProjectionRenderer(
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
-        val getterCallPlan = buildJvmInterfaceAbiCallPlan(
-            returnBinding = baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace),
-            parameterBindings = emptyList(),
-            suppressHResultCheck = property.isNoException,
-            typesByQualifiedName = typesByQualifiedName,
-        ) ?: error("Generator interface proxy parity failed to plan getter ${slotInterfaceType.qualifiedName}.${property.name}")
-        builder.getter(
-            FunSpec.getterBuilder()
-                .addCode(
-                    "%L\n",
-                    baseRenderer.renderInlineAbiInvocation(
-                        invokeTargetExpression = "nativeObject",
-                        slotExpression = CodeBlock.of("%T.Metadata.%L", baseRenderer.resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
-                        callPlan = getterCallPlan,
-                        renderInvocation = { target, slot, arguments -> renderJvmFfmInvocation(target, slot, arguments, abiShapes) },
-                    ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
-                )
-                .build(),
-        )
+        if (property.hasNativeProjectionGetterAccessor()) {
+            val getterCallPlan = buildJvmInterfaceAbiCallPlan(
+                returnBinding = baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace),
+                parameterBindings = emptyList(),
+                suppressHResultCheck = property.isNoException,
+                typesByQualifiedName = typesByQualifiedName,
+            ) ?: error("Generator interface proxy parity failed to plan getter ${slotInterfaceType.qualifiedName}.${property.name}")
+            builder.getter(
+                FunSpec.getterBuilder()
+                    .addCode(
+                        "%L\n",
+                        baseRenderer.renderInlineAbiInvocation(
+                            invokeTargetExpression = "nativeObject",
+                            slotExpression = CodeBlock.of("%T.Metadata.%L", baseRenderer.resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                            callPlan = getterCallPlan,
+                            renderInvocation = { target, slot, arguments -> renderJvmFfmInvocation(target, slot, arguments, abiShapes) },
+                        ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
+                    )
+                    .build(),
+            )
+        } else {
+            val getterInterfaceType = findNativeProjectionGetterInterface(slotInterfaceType, property, typesByQualifiedName)?.interfaceType
+                ?: error("Could not find property getter interface for ${slotInterfaceType.qualifiedName}.${property.name}")
+            val getterInterfaceClassName = baseRenderer.resolveTypeName(getterInterfaceType.qualifiedName)
+            builder.getter(
+                FunSpec.getterBuilder()
+                    .addCode(
+                        "return (this.%M(%T.Metadata.TYPE_HANDLE) as %T).%L\n",
+                        WINRT_AS_FUNCTION_NAME,
+                        getterInterfaceClassName,
+                        getterInterfaceClassName,
+                        property.name.replaceFirstChar(Char::lowercase),
+                    )
+                    .build(),
+            )
+        }
         if (!property.isReadOnly) {
             val setterCallPlan = buildJvmInterfaceAbiCallPlan(
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
