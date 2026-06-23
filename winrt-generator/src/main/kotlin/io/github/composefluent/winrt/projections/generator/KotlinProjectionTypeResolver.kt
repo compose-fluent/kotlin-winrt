@@ -165,8 +165,6 @@ internal fun redirectedWinAppSdkAbiTypeName(typeName: String, useWinAppSdkTypeRe
         return typeName
     }
     return when {
-        typeName.startsWith("Windows.UI.Composition.") ->
-            "Microsoft.UI.Composition.${typeName.removePrefix("Windows.UI.Composition.")}"
         typeName == "Windows.UI.Xaml.Data.INotifyPropertyChanged" ->
             "Microsoft.UI.Xaml.Data.INotifyPropertyChanged"
         typeName == "Windows.UI.Xaml.Data.INotifyDataErrorInfo" ->

@@ -344,6 +344,7 @@ class KotlinWinRtPluginTest {
             listOf("Microsoft.WindowsAppSDK@1.8.260416003"),
             task.nugetPackages.get(),
         )
+        assertFalse("Windows.UI.Composition" in task.excludeTypes.get())
         assertEquals(
             setOf(nugetPackageRoot.toFile()),
             task.nugetPackageContentFiles.files,
