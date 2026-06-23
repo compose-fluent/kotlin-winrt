@@ -146,7 +146,7 @@ class KotlinProjectionGenerator(
 
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
-        val plans = planner.plan(normalizedModel)
+        val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
         val renderedPlans = plans.filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(renderedPlans)
@@ -160,7 +160,7 @@ class KotlinProjectionGenerator(
 
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
-        val plans = planner.plan(normalizedModel)
+        val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
         val renderedPlans = if (groupProjectionFilesByPackageOnWrite) {
@@ -303,6 +303,7 @@ class KotlinProjectionGenerator(
         if (generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm) {
             return
         }
+        validateEventAccessorPairContracts(plans)
         validateAuthoredCcwBindingContracts(model, plans)
         validateAuthoringActivationFactorySupportContracts(model, plans)
         plans.forEach { plan ->
@@ -1039,6 +1040,14 @@ class KotlinProjectionGenerator(
                 validateInstanceEventAccessorBindingContract(plan, event)
             }
         validateStaticEventAccessorBindingContract(plan)
+    }
+
+    private fun validateEventAccessorPairContracts(plans: List<KotlinTypeProjectionPlan>) {
+        plans.forEach { plan ->
+            plan.type.events.forEach { event ->
+                validateEventAccessorPairContract(plan, event, staticEvent = event.isStatic)
+            }
+        }
     }
 
     private fun validateEventAccessorBindingContracts(plans: List<KotlinTypeProjectionPlan>) {

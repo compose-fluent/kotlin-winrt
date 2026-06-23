@@ -120,12 +120,18 @@ class KotlinProjectionPlanner(
     private val validator: KotlinProjectionContractValidator = KotlinProjectionContractValidator(),
     private val useWinAppSdkTypeRedirects: Boolean = false,
 ) {
-    fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> {
+    fun plan(
+        model: WinRtMetadataModel,
+        projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+    ): List<KotlinTypeProjectionPlan> {
         val normalized = validator.validate(model)
-        return planValidated(normalized)
+        return planValidated(normalized, projectionContext)
     }
 
-    private fun planValidated(normalized: WinRtMetadataModel): List<KotlinTypeProjectionPlan> =
+    private fun planValidated(
+        normalized: WinRtMetadataModel,
+        projectionContext: WinRtMetadataProjectionContext,
+    ): List<KotlinTypeProjectionPlan> =
         normalized.let {
             val semanticHelpers = normalized.semanticHelpers()
             val typesByQualifiedName = normalized.namespaces
@@ -147,6 +153,7 @@ class KotlinProjectionPlanner(
                     namespace = it,
                     interfaceIidsByName = interfaceIidsByName,
                     typesByQualifiedName = typesByQualifiedName,
+                    projectionContext = projectionContext,
                     semanticHelpers = semanticHelpers,
                     abiSlotBindingCache = abiSlotBindingCache,
                     abiMemberCountCache = abiMemberCountCache,
@@ -161,6 +168,7 @@ class KotlinProjectionPlanner(
         namespace: WinRtNamespace,
         interfaceIidsByName: Map<String, Guid?> = emptyMap(),
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
+        projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
         semanticHelpers: WinRtMetadataSemanticHelpers? = null,
         abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>> = mutableMapOf(),
         abiMemberCountCache: MutableMap<String, Int> = mutableMapOf(),
@@ -168,7 +176,15 @@ class KotlinProjectionPlanner(
         namespace.normalized().let { normalizedNamespace ->
             val helpers = semanticHelpers ?: WinRtMetadataModel(listOf(normalizedNamespace)).semanticHelpers()
             normalizedNamespace.types.mapNotNull { type ->
-                planType(type, interfaceIidsByName, typesByQualifiedName, helpers, abiSlotBindingCache, abiMemberCountCache)
+                planType(
+                    type,
+                    interfaceIidsByName,
+                    typesByQualifiedName,
+                    projectionContext,
+                    helpers,
+                    abiSlotBindingCache,
+                    abiMemberCountCache,
+                )
             }
         }
 
@@ -176,6 +192,7 @@ class KotlinProjectionPlanner(
         type: WinRtTypeDefinition,
         interfaceIidsByName: Map<String, Guid?>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        projectionContext: WinRtMetadataProjectionContext,
         semanticHelpers: WinRtMetadataSemanticHelpers,
         abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
         abiMemberCountCache: MutableMap<String, Int>,
@@ -224,7 +241,7 @@ class KotlinProjectionPlanner(
             packageName = packageName,
             relativePath = relativePath,
             declarationKind = declarationKind,
-            visibility = planVisibility(type, semanticHelpers),
+            visibility = planVisibility(type, projectionContext, semanticHelpers),
             modifiers = planModifiers(type),
             specializationKinds = planSpecializations(type),
             interfaceIid = type.iid,
@@ -1857,6 +1874,7 @@ class KotlinProjectionPlanner(
 
     private fun planVisibility(
         type: WinRtTypeDefinition,
+        projectionContext: WinRtMetadataProjectionContext,
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): KotlinProjectionVisibility =
         if (
@@ -1864,6 +1882,7 @@ class KotlinProjectionPlanner(
             (
                 type.kind == WinRtTypeKind.Interface &&
                     type.isExclusiveTo &&
+                    !projectionContext.publicExclusiveTo &&
                     !semanticHelpers.isCrossModuleOverridableExclusiveInterface(type)
                 )
         ) {

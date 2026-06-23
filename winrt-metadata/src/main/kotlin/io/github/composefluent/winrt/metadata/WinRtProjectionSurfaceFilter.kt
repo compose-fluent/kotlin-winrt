@@ -129,18 +129,6 @@ private fun WinRtTypeDefinition.referencedProjectionTypeNames(
         addTypeRefWithAdditionalReferences(WinRtTypeRef.fromDisplayName(typeName))
     }
 
-    fun addSetterOnlyPropertyPeerGetterSurface(property: WinRtPropertyDefinition) {
-        val hasGetter = property.getterMethodName != null || property.getterMethodRowId != null
-        val hasSetter = property.setterMethodName != null || property.setterMethodRowId != null
-        if (hasGetter || !hasSetter) return
-
-        findNativeProjectionGetterInterface(
-            setterInterfaceType = this@referencedProjectionTypeNames,
-            property = property,
-            typesByQualifiedName = typesByQualifiedName,
-        )?.dependencyTypeNames?.forEach(::add)
-    }
-
     baseType?.let(::addTypeRefWithAdditionalReferences)
     defaultInterface?.let(::addTypeRefWithAdditionalReferences)
     implementedInterfaces.forEach { addTypeRefWithAdditionalReferences(it.interfaceType) }
@@ -164,12 +152,12 @@ private fun WinRtTypeDefinition.referencedProjectionTypeNames(
     properties.forEach { property ->
         addTypeRefWithAdditionalReferences(property.type)
         addTypeNameWithAdditionalReferences(property.typeName)
-        addSetterOnlyPropertyPeerGetterSurface(property)
     }
     events.forEach { event ->
         addTypeRefWithAdditionalReferences(event.delegateType)
         addTypeNameWithAdditionalReferences(event.delegateTypeName)
     }
+    forwardedProjectionDependencyTypeNames(typesByQualifiedName).forEach(::add)
     activation.activatableFactoryInterface?.let(::addTypeRefWithAdditionalReferences)
     activation.staticInterfaces.forEach(::addTypeRefWithAdditionalReferences)
     activation.composableFactoryInterface?.let(::addTypeRefWithAdditionalReferences)

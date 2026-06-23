@@ -100,6 +100,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("{")
                 appendLine("  \"schemaVersion\": 1,")
                 appendLine("  \"model\": \"library\",")
+                appendLine("  \"projectionShapeVersion\": $CURRENT_PROJECTION_SHAPE_VERSION,")
                 appendLine("  \"metadataInputs\": ${metadataInputs.get().toJsonArray()},")
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")

@@ -152,6 +152,7 @@ class KotlinWinRtPluginTest {
         val identity = projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile().readText()
         assertTrue(identity.contains("\"includeTypes\": []"))
         assertTrue(identity.contains("\"projectedTypes\": []"))
+        assertTrue(identity.contains("\"projectionShapeVersion\": 1"))
     }
 
     @Test
@@ -992,6 +993,7 @@ class KotlinWinRtPluginTest {
 
         val json = Files.readString(task.outputFile.get().asFile.toPath())
         assertTrue(json.contains("\"model\": \"library\""))
+        assertTrue(json.contains("\"projectionShapeVersion\": 1"))
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
         assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
         assertTrue(json.contains("\"authoredMetadata\": ["))
@@ -1563,6 +1565,7 @@ class KotlinWinRtPluginTest {
             """
             {
               "includeTypes": [],
+              "projectionShapeVersion": 1,
               "projectedTypes": [],
               "authoredHostManifests": [${hostManifest.toString().toJsonString()}]
             }
@@ -1572,6 +1575,44 @@ class KotlinWinRtPluginTest {
         assertEquals(
             setOf("androidx.compose.ui.window.WinUIXamlApplication"),
             dependencyProjectedTypeNames(WinRtMetadataModel(emptyList()), listOf(dependencyIdentity.toFile())),
+        )
+    }
+
+    @Test
+    fun dependency_identity_ignores_legacy_projected_types_without_projection_shape_version() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": [],
+              "includeTypes": [],
+              "projectedTypes": ["SimpleMathComponent.SimpleMath"],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    "SimpleMathComponent",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "SimpleMathComponent",
+                            name = "SimpleMath",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            emptyList<String>(),
+            dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
         )
     }
 
@@ -1586,6 +1627,7 @@ class KotlinWinRtPluginTest {
             {
               "includeNamespaces": ["Windows.Data.Json"],
               "includeTypes": [],
+              "projectionShapeVersion": 1,
               "projectedTypes": ["SimpleMathComponent.SimpleMath"],
               "excludeNamespaces": [],
               "excludeTypes": []
@@ -1634,6 +1676,7 @@ class KotlinWinRtPluginTest {
             {
               "includeNamespaces": ["Sample.Dependency"],
               "includeTypes": [],
+              "projectionShapeVersion": 1,
               "projectedTypes": ["Sample.Dependency.SharedWidget", "Sample.Dependency.DerivedWidget"],
               "excludeNamespaces": [],
               "excludeTypes": []
@@ -7101,6 +7144,7 @@ class KotlinWinRtPluginTest {
             {
               "includeNamespaces": [],
               "includeTypes": ["Microsoft.UI.Dispatching.DispatcherQueue"],
+              "projectionShapeVersion": 1,
               "projectedTypes": ["Microsoft.UI.Dispatching.IDispatcherQueue"],
               "excludeNamespaces": [],
               "excludeTypes": []
