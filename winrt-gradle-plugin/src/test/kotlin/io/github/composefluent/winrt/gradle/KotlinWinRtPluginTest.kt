@@ -6896,6 +6896,12 @@ class KotlinWinRtPluginTest {
             }
             """.trimIndent(),
         )
+        val staleProjection = projectDir.resolve("build/generated/kotlin-winrt/src/main/kotlin/sample/StaleProjection.kt")
+        Files.createDirectories(staleProjection.parent)
+        Files.writeString(staleProjection, "package sample\ninternal class StaleProjection\n")
+        val staleAuthoring = projectDir.resolve("build/generated/kotlin-winrt-authoring/src/main/kotlin/sample/StaleAuthoring.kt")
+        Files.createDirectories(staleAuthoring.parent)
+        Files.writeString(staleAuthoring, "package sample\ninternal class StaleAuthoring\n")
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())

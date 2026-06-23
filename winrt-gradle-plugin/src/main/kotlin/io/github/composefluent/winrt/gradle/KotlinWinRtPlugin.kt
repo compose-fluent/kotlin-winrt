@@ -848,9 +848,12 @@ private fun configureWinRtGeneration(
 ) {
     val generatedJvmSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/jvmMain/kotlin")
     val generatedKmpCommonSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
+    val generatedLegacyMainSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
     val generatedJvmAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/jvmMain/kotlin")
     val generatedKmpCommonAuthoringSources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
+    val generatedLegacyMainAuthoringSources =
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
     val generatedMingwApplicationEntrySources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
@@ -1010,7 +1013,9 @@ private fun configureWinRtGeneration(
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
             task.legacyOutputDirectories.from(
                 generatedJvmSources,
+                generatedLegacyMainSources,
                 generatedJvmAuthoringSources,
+                generatedLegacyMainAuthoringSources,
                 project.layout.buildDirectory.dir("generated/kotlin-winrt-native-authoring-host"),
             )
             task.emitJvmAuthoringHostExports.set(false)
