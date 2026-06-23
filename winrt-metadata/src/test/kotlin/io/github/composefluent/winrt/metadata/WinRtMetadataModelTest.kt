@@ -2442,6 +2442,129 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun projection_surface_filter_keeps_setter_only_exclusive_interface_peer_getter_surface() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml", name = "IXamlRoot", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "XamlRoot",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IXamlRoot",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IXamlRoot", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Media", name = "ISystemBackdrop", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "ISystemBackdropOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(WinRtCustomAttributeValue.TypeValue("Microsoft.UI.Xaml.Media.SystemBackdrop")),
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "OnTargetConnected",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("connectedTarget", "Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop"),
+                                        WinRtParameterDefinition("xamlRoot", "Microsoft.UI.Xaml.XamlRoot"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "SystemBackdrop",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Media.ISystemBackdrop",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Media.ISystemBackdrop", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Media.ISystemBackdropOverrides", isOverridable = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "IBackdropSource",
+                            kind = WinRtTypeKind.Interface,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "SystemBackdrop",
+                                    typeName = "Microsoft.UI.Xaml.Media.SystemBackdrop",
+                                    getterMethodName = "get_SystemBackdrop",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "ICompositionSupportsSystemBackdrop",
+                            kind = WinRtTypeKind.Interface,
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(WinRtCustomAttributeValue.TypeValue("Microsoft.UI.Composition.CompositionTarget")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "SystemBackdrop",
+                                    typeName = "Microsoft.UI.Xaml.Media.SystemBackdrop",
+                                    setterMethodName = "put_SystemBackdrop",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "CompositionTarget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Composition.IBackdropSource",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Composition.IBackdropSource", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filtered = model.filterProjectionSurface(types = setOf("Microsoft.UI.Xaml.Media.SystemBackdrop"))
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Composition.CompositionTarget",
+                "Microsoft.UI.Composition.IBackdropSource",
+                "Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop",
+                "Microsoft.UI.Xaml.IXamlRoot",
+                "Microsoft.UI.Xaml.XamlRoot",
+                "Microsoft.UI.Xaml.Media.ISystemBackdrop",
+                "Microsoft.UI.Xaml.Media.ISystemBackdropOverrides",
+                "Microsoft.UI.Xaml.Media.SystemBackdrop",
+            ),
+            filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
+        )
+    }
+
+    @Test
     fun projection_inventory_tracks_reference_namespace_additions_for_generated_namespaces() {
         val model = WinRtMetadataModel(
             listOf(

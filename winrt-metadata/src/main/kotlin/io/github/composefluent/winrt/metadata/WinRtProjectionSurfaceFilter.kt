@@ -81,7 +81,7 @@ fun WinRtMetadataModel.filterProjectionSurface(
     val pending = ArrayDeque(includedNames)
     while (pending.isNotEmpty()) {
         val type = typesByQualifiedName[pending.removeFirst()] ?: continue
-        type.referencedProjectionTypeNames(additionalTypeReferences)
+        type.referencedProjectionTypeNames(typesByQualifiedName, additionalTypeReferences)
             .filter(typesByQualifiedName::containsKey)
             .filterNot(normalizedFilter::isProjectionDependencyExcluded)
             .forEach { referenced ->
@@ -117,6 +117,7 @@ private fun WinRtProjectionSurfaceFilter.isProjectionDependencyExcluded(qualifie
     excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) }
 
 private fun WinRtTypeDefinition.referencedProjectionTypeNames(
+    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     additionalTypeReferences: (WinRtTypeRef) -> Iterable<WinRtTypeRef>,
 ): Set<String> = buildSet {
     fun addTypeRefWithAdditionalReferences(type: WinRtTypeRef) {
@@ -126,6 +127,18 @@ private fun WinRtTypeDefinition.referencedProjectionTypeNames(
 
     fun addTypeNameWithAdditionalReferences(typeName: String) {
         addTypeRefWithAdditionalReferences(WinRtTypeRef.fromDisplayName(typeName))
+    }
+
+    fun addSetterOnlyPropertyPeerGetterSurface(property: WinRtPropertyDefinition) {
+        val hasGetter = property.getterMethodName != null || property.getterMethodRowId != null
+        val hasSetter = property.setterMethodName != null || property.setterMethodRowId != null
+        if (hasGetter || !hasSetter) return
+
+        findNativeProjectionGetterInterface(
+            setterInterfaceType = this@referencedProjectionTypeNames,
+            property = property,
+            typesByQualifiedName = typesByQualifiedName,
+        )?.dependencyTypeNames?.forEach(::add)
     }
 
     baseType?.let(::addTypeRefWithAdditionalReferences)
@@ -151,6 +164,7 @@ private fun WinRtTypeDefinition.referencedProjectionTypeNames(
     properties.forEach { property ->
         addTypeRefWithAdditionalReferences(property.type)
         addTypeNameWithAdditionalReferences(property.typeName)
+        addSetterOnlyPropertyPeerGetterSurface(property)
     }
     events.forEach { event ->
         addTypeRefWithAdditionalReferences(event.delegateType)
