@@ -8993,6 +8993,138 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun public_exclusiveto_context_keeps_exclusive_interfaces_public() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventRegistrationToken",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("value", "Long"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Component",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Component",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.TypeValue("Sample.Component.Widget"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Component",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Component.IWidgetOverrides",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Component.IWidgetOverrides",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            projectionContext = WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                publicExclusiveTo = true,
+            ),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceSource = filesByName.getValue("IWidgetOverrides.kt").contents
+
+        assertTrue(interfaceSource, interfaceSource.contains("public interface IWidgetOverrides"))
+        assertFalse(interfaceSource, interfaceSource.contains("internal interface IWidgetOverrides"))
+    }
+
+    @Test
+    fun generator_rejects_events_without_add_remove_accessor_pair_before_rendering() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Sample.Component",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Component",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Object"),
+                                        WinRtParameterDefinition("args", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Component",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555557"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "add_Changed",
+                                    returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("handler", "Sample.Component.WidgetChangedHandler"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "remove_Changed",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken"),
+                                    ),
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Component.WidgetChangedHandler",
+                                    addMethodName = "add_Changed",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionGenerator().generate(model)
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error!!.message.orEmpty(), error.message.orEmpty().contains("InvalidEventAccessors"))
+        assertTrue(error.message.orEmpty(), error.message.orEmpty().contains("valid add/remove accessor pair"))
+    }
+
+    @Test
     fun generator_skips_special_name_accessors_as_ordinary_methods() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

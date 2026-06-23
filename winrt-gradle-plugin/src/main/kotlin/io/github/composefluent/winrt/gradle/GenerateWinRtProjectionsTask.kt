@@ -712,7 +712,7 @@ internal fun dependencyProjectionSurfaceTypeNames(
     identityFiles
         .flatMap { identityFile ->
             val identity = readProjectionSurfaceIdentity(identityFile)
-            identity.includeTypes + identity.projectedTypes.orEmpty()
+            identity.includeTypes + identity.currentShapeProjectedTypes()
         }
         .distinct()
         .sorted()
@@ -761,7 +761,7 @@ private fun dependencyProjectedTypeNames(
     val typesByName = model.namespaces
         .flatMap { namespace -> namespace.types }
         .associateBy(WinRtTypeDefinition::qualifiedName)
-    return (identity.includeTypes + identity.projectedTypes.orEmpty())
+    return (identity.includeTypes + identity.currentShapeProjectedTypes())
         .distinct()
         .flatMap { typeName -> dependencyOwnedTypeAndBaseChain(typeName, typesByName) }
         .distinct()
@@ -924,16 +924,23 @@ private fun WinRtTypeDefinition.referencedTypeNames(): Set<String> = buildSet {
 internal data class ProjectionSurfaceIdentity(
     val includeNamespaces: List<String>,
     val includeTypes: List<String>,
+    val projectionShapeVersion: Int?,
     val projectedTypes: List<String>?,
     val excludeNamespaces: List<String>,
     val excludeTypes: List<String>,
 )
+
+internal const val CURRENT_PROJECTION_SHAPE_VERSION: Int = 1
+
+private fun ProjectionSurfaceIdentity.currentShapeProjectedTypes(): List<String> =
+    projectedTypes.orEmpty().takeIf { projectionShapeVersion == CURRENT_PROJECTION_SHAPE_VERSION }.orEmpty()
 
 internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): ProjectionSurfaceIdentity {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     return ProjectionSurfaceIdentity(
         includeNamespaces = readIdentityStringArray(content, "includeNamespaces"),
         includeTypes = readIdentityStringArray(content, "includeTypes"),
+        projectionShapeVersion = readOptionalIdentityInt(content, "projectionShapeVersion"),
         projectedTypes = readOptionalIdentityStringArray(content, "projectedTypes"),
         excludeNamespaces = readIdentityStringArray(content, "excludeNamespaces"),
         excludeTypes = readIdentityStringArray(content, "excludeTypes"),
@@ -951,6 +958,12 @@ private fun readOptionalIdentityStringArray(content: String, name: String): List
         .findAll(match.groupValues[1])
         .map { it.groupValues[1].decodeIdentityJsonString() }
         .toList()
+}
+
+private fun readOptionalIdentityInt(content: String, name: String): Int? {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*(\d+)""")
+        .find(content) ?: return null
+    return match.groupValues[1].toIntOrNull()
 }
 
 private fun String.decodeIdentityJsonString(): String =
