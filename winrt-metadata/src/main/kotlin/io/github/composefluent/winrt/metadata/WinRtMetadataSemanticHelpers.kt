@@ -708,6 +708,20 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             }
     }
 
+    fun isCrossModuleOverridableExclusiveInterface(type: WinRtTypeDefinition): Boolean {
+        if (!isExclusiveTo(type) || type.isProjectionInternal) return false
+        val exclusiveType = getExclusiveToType(type) ?: return false
+        if (exclusiveType.kind != WinRtTypeKind.RuntimeClass || exclusiveType.isSealedType) return false
+        return exclusiveType.implementedInterfaces.any { implemented ->
+            implemented.isOverridable &&
+                resolveTypeReference(
+                    implemented.interfaceType,
+                    exclusiveType.namespace,
+                    typesByQualifiedName,
+                ).definitionQualifiedName == type.qualifiedName
+        }
+    }
+
     fun doesAbiInterfaceImplementCcwInterface(type: WinRtTypeDefinition): Boolean =
         doesAbiInterfaceImplementCcwInterface(type, WinRtMetadataProjectionContext(sources = emptyList()))
 
@@ -1351,18 +1365,23 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         val contextSemantics = projectionContextSemantics(context)
         val exclusiveTo = isExclusiveTo(type)
         val projectionInternal = isProjectionInternal(type)
+        val crossModuleOverridableExclusive = isCrossModuleOverridableExclusiveInterface(type)
         val typeAccessibility = when {
             type.kind == WinRtTypeKind.Enum -> contextSemantics.enumAccessibility
-            exclusiveTo && !context.publicExclusiveTo -> "internal"
             projectionInternal || context.internal || context.embedded -> "internal"
+            exclusiveTo && !context.publicExclusiveTo && !crossModuleOverridableExclusive -> "internal"
             else -> "public"
         }
         return WinRtTypeProjectionContextDescriptor(
             typeName = type.qualifiedName,
             accessibility = typeAccessibility,
             enumAccessibility = contextSemantics.enumAccessibility,
-            exclusiveToAccessibility = if (exclusiveTo && !context.publicExclusiveTo) "internal" else typeAccessibility,
-            writesVtablePointer = !exclusiveTo || context.publicExclusiveTo,
+            exclusiveToAccessibility = if (exclusiveTo && !context.publicExclusiveTo && !crossModuleOverridableExclusive) {
+                "internal"
+            } else {
+                typeAccessibility
+            },
+            writesVtablePointer = !exclusiveTo || context.publicExclusiveTo || crossModuleOverridableExclusive,
             supportsDynamicInterfaceCastable = !exclusiveTo || context.idicExclusiveTo,
             partialFactoryFallbackExpression = contextSemantics.partialFactoryFallbackExpression,
         )

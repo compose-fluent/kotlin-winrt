@@ -2623,6 +2623,12 @@ class WinRtMetadataModelTest {
             kind = WinRtTypeKind.Interface,
             isExclusiveTo = true,
         )
+        val overridableExclusiveInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidgetOverridables",
+            kind = WinRtTypeKind.Interface,
+            isExclusiveTo = true,
+        )
         val widget = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "Widget",
@@ -2631,6 +2637,7 @@ class WinRtMetadataModelTest {
                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetMutable", isOverridable = true),
                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverrides"),
+                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverridables", isOverridable = true),
             ),
         )
         val bindableVector = WinRtTypeDefinition(
@@ -2640,7 +2647,10 @@ class WinRtMetadataModelTest {
         )
         val model = WinRtMetadataModel(
             listOf(
-                WinRtNamespace("Sample.Foundation", listOf(widgetInterface, widgetMutableInterface, exclusiveInterface, widget)),
+                WinRtNamespace(
+                    "Sample.Foundation",
+                    listOf(widgetInterface, widgetMutableInterface, exclusiveInterface, overridableExclusiveInterface, widget),
+                ),
                 WinRtNamespace("Microsoft.UI.Xaml.Interop", listOf(bindableVector)),
             ),
         )
@@ -2660,12 +2670,31 @@ class WinRtMetadataModelTest {
         assertEquals("public", helpers.projectionContextSemantics(context).enumAccessibility)
         assertEquals("GetActivationFactoryPartial(runtimeClassId)", helpers.projectionContextSemantics(context).partialFactoryFallbackExpression)
         assertEquals(true, helpers.isManuallyGeneratedInterface(bindableVector).manuallyGenerated)
+        assertEquals(false, helpers.isCrossModuleOverridableExclusiveInterface(exclusiveInterface))
+        assertEquals(true, helpers.isCrossModuleOverridableExclusiveInterface(overridableExclusiveInterface))
         assertEquals(false, helpers.typeProjectionContextDescriptor(exclusiveInterface, context).writesVtablePointer)
+        assertEquals(true, helpers.typeProjectionContextDescriptor(overridableExclusiveInterface, context).writesVtablePointer)
         assertEquals(false, helpers.typeProjectionContextDescriptor(exclusiveInterface, context).supportsDynamicInterfaceCastable)
+        assertEquals(
+            "internal",
+            helpers.typeProjectionContextDescriptor(exclusiveInterface, WinRtMetadataProjectionContext(sources = emptyList())).accessibility,
+        )
+        assertEquals(
+            "public",
+            helpers.typeProjectionContextDescriptor(
+                overridableExclusiveInterface,
+                WinRtMetadataProjectionContext(sources = emptyList()),
+            ).accessibility,
+        )
 
         val merge = helpers.classMemberMergeDescriptor(widget, context)
         assertEquals(
-            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetMutable", "Sample.Foundation.IWidgetOverrides"),
+            listOf(
+                "Sample.Foundation.IWidget",
+                "Sample.Foundation.IWidgetMutable",
+                "Sample.Foundation.IWidgetOverridables",
+                "Sample.Foundation.IWidgetOverrides",
+            ),
             merge.interfaceDescriptors.map { it.interfaceTypeName },
         )
         val name = merge.mergedProperties.single { it.propertyName == "Name" }

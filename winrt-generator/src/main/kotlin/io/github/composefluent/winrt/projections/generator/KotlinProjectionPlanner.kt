@@ -224,7 +224,7 @@ class KotlinProjectionPlanner(
             packageName = packageName,
             relativePath = relativePath,
             declarationKind = declarationKind,
-            visibility = planVisibility(type),
+            visibility = planVisibility(type, semanticHelpers),
             modifiers = planModifiers(type),
             specializationKinds = planSpecializations(type),
             interfaceIid = type.iid,
@@ -1855,8 +1855,18 @@ class KotlinProjectionPlanner(
         else -> false
     }
 
-    private fun planVisibility(type: WinRtTypeDefinition): KotlinProjectionVisibility =
-        if (type.isProjectionInternal || (type.kind == WinRtTypeKind.Interface && type.isExclusiveTo)) {
+    private fun planVisibility(
+        type: WinRtTypeDefinition,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionVisibility =
+        if (
+            type.isProjectionInternal ||
+            (
+                type.kind == WinRtTypeKind.Interface &&
+                    type.isExclusiveTo &&
+                    !semanticHelpers.isCrossModuleOverridableExclusiveInterface(type)
+                )
+        ) {
             KotlinProjectionVisibility.Internal
         } else {
             KotlinProjectionVisibility.Public
