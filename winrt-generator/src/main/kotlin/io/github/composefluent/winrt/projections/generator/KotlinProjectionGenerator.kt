@@ -1865,21 +1865,29 @@ private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySizeAndImports(
         var current = mutableListOf<ParsedGeneratedKotlinFile>()
         var currentSize = 0
         var currentImportedNames = emptySet<String>()
+        var currentImportedTargetsByName = emptyMap<String, Set<String>>()
         var currentDeclaredNames = emptySet<String>()
         var currentHasPackageShadowingImport = false
         for (file in this@chunkByGeneratedBodySizeAndImports) {
             val fileSize = file.body.length
             val fileImportedNames = file.importedSimpleNames()
+            val fileImportedTargetsByName = file.importedTargetsBySimpleName()
             val fileDeclaredNames = file.declaredTopLevelNames()
             val fileHasPackageShadowingImport = fileImportedNames.any(packageDeclaredNames::contains)
             val hasImportDeclarationCollision =
                 currentImportedNames.any(fileDeclaredNames::contains) ||
                     fileImportedNames.any(currentDeclaredNames::contains)
+            val hasImportTargetCollision =
+                fileImportedTargetsByName.any { (name, targets) ->
+                    val currentTargets = currentImportedTargetsByName[name].orEmpty()
+                    currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
+                }
             if (
                 current.isNotEmpty() &&
                 (
                     currentSize + fileSize > MAX_GROUPED_PROJECTION_BODY_CHARS ||
                         hasImportDeclarationCollision ||
+                        hasImportTargetCollision ||
                         currentHasPackageShadowingImport ||
                         fileHasPackageShadowingImport
                 )
@@ -1888,12 +1896,14 @@ private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySizeAndImports(
                 current = mutableListOf()
                 currentSize = 0
                 currentImportedNames = emptySet()
+                currentImportedTargetsByName = emptyMap()
                 currentDeclaredNames = emptySet()
                 currentHasPackageShadowingImport = false
             }
             current += file
             currentSize += fileSize
             currentImportedNames = currentImportedNames + fileImportedNames
+            currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
             currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
             currentHasPackageShadowingImport = currentHasPackageShadowingImport || fileHasPackageShadowingImport
         }
@@ -1915,6 +1925,34 @@ private fun ParsedGeneratedKotlinFile.importedSimpleNames(): Set<String> =
         imported.substringAfter(" as ", missingDelimiterValue = "")
             .ifBlank { imported.substringAfterLast('.') }
             .takeIf(String::isNotBlank)
+    }
+
+private fun ParsedGeneratedKotlinFile.importedTargetsBySimpleName(): Map<String, Set<String>> =
+    imports
+        .mapNotNull { importLine ->
+            val imported = importLine.removePrefix("import ").trim()
+            val target = imported.substringBefore(" as ").trim()
+            val simpleName = imported.substringAfter(" as ", missingDelimiterValue = "")
+                .ifBlank { target.substringAfterLast('.') }
+                .takeIf(String::isNotBlank)
+                ?: return@mapNotNull null
+            simpleName to target
+        }
+        .groupBy({ it.first }, { it.second })
+        .mapValues { (_, targets) -> targets.toSet() }
+
+private fun Map<String, Set<String>>.mergeImportTargets(
+    other: Map<String, Set<String>>,
+): Map<String, Set<String>> =
+    if (isEmpty()) {
+        other
+    } else {
+        buildMap {
+            putAll(this@mergeImportTargets)
+            other.forEach { (name, targets) ->
+                put(name, get(name).orEmpty() + targets)
+            }
+        }
     }
 
 private fun ParsedGeneratedKotlinFile.declaredTopLevelNames(): Set<String> =

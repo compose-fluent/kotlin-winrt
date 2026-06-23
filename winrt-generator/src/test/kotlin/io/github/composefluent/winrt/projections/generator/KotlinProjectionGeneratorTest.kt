@@ -12558,6 +12558,195 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_winappsdk_composition_members_that_reference_windows_composition_abi_types() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "ICompositionBrush",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555b0"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "CompositionBrush",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.UI.Composition.ICompositionBrush",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.UI.Composition.ICompositionBrush", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "ICompositionBrush",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555b1"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "CompositionBrush",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Composition.ICompositionBrush",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Composition.ICompositionBrush", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "ICompositionSupportsSystemBackdrop",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555b2"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "SystemBackdrop",
+                                    typeName = "Windows.UI.Composition.CompositionBrush",
+                                    getterMethodName = "get_SystemBackdrop",
+                                    getterMethodRowId = 6,
+                                    setterMethodName = "put_SystemBackdrop",
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val supportsBackdrop = filesByName.getValue("ICompositionSupportsSystemBackdrop.kt").contents
+
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("import windows.ui.composition.CompositionBrush"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("public var systemBackdrop: CompositionBrush?"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("SYSTEMBACKDROP_GETTER_SLOT"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("SYSTEMBACKDROP_SETTER_SLOT"))
+        assertTrue(supportsBackdrop, supportsBackdrop.contains("\"Windows.UI.Composition.CompositionBrush?\""))
+        assertFalse(supportsBackdrop, supportsBackdrop.contains("\"Microsoft.UI.Composition.CompositionBrush?\""))
+    }
+
+    @Test
+    fun generator_splits_grouped_projection_files_when_imported_type_simple_names_collide() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "IVisual",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555c0"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Composition",
+                            name = "Visual",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.UI.Composition.IVisual",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.UI.Composition.IVisual", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "IVisual",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555c1"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Composition",
+                            name = "Visual",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Composition.IVisual",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Composition.IVisual", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Content",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Content",
+                            name = "IContentIslandStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555c2"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Create",
+                                    returnTypeName = "Microsoft.UI.Content.ContentIsland",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("root", "Microsoft.UI.Composition.Visual"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Content",
+                            name = "IContentIslandStatics2",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555c3"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateForSystemVisual",
+                                    returnTypeName = "Microsoft.UI.Content.ContentIsland",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("root", "Windows.UI.Composition.Visual"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Content",
+                            name = "IContentIsland",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-5555555555c4"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Content",
+                            name = "ContentIsland",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Content.IContentIsland",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Content.IContentIsland", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contentFiles = KotlinProjectionGenerator()
+            .generate(model)
+            .filter { it.packageName == "microsoft.ui.content" }
+
+        assertTrue(contentFiles.size > 1)
+        contentFiles.forEach { file ->
+            assertFalse(
+                file.contents,
+                file.contents.contains("import microsoft.ui.composition.Visual\n") &&
+                    file.contents.contains("import windows.ui.composition.Visual\n"),
+            )
+        }
+    }
+
+    @Test
     fun generator_keeps_interface_proxy_custom_struct_getters_on_inline_abi_readback() {
         val interfaceType = WinRtTypeDefinition(
             namespace = "Sample.Foundation",

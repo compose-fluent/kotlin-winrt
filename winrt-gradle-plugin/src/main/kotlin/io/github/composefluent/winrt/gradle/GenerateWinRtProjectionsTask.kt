@@ -253,7 +253,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             version = parameters.windowsSdkVersion.orNull,
             includeExtensions = parameters.includeWindowsSdkExtensions.get(),
         )
-        val effectiveExcludeTypes = parameters.excludeTypes.get() + automaticProjectionExcludeTypes(parameters.nugetPackages.get())
+        val effectiveExcludeTypes = parameters.excludeTypes.get()
         var unfilteredModel = WinRtMetadataLoader.loadSources(sources)
         sources = sources.withWindowsSdkSourceForUnresolvedWindowsReferences(
             model = unfilteredModel,
@@ -806,13 +806,6 @@ internal fun automaticXamlComponentResourceDictionaryTypes(
         .sorted()
         .toList()
 }
-
-private fun automaticProjectionExcludeTypes(nugetPackages: List<String>): List<String> =
-    if (nugetPackages.any { packageSpec -> packageSpec.substringBefore('@').equals("Microsoft.WindowsAppSDK", ignoreCase = true) }) {
-        listOf("Windows.UI.Composition")
-    } else {
-        emptyList()
-    }
 
 internal fun List<WinRtMetadataSource>.withWindowsSdkSourceForProjectionRoots(
     includeNames: Set<String>,
