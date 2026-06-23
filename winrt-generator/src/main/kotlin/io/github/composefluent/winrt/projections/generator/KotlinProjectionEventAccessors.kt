@@ -43,9 +43,7 @@ internal fun findNativeProjectionGetterInterface(
 
     fun WinRtTypeDefinition.hasProjectedPropertyGetter(): Boolean =
         properties.any { candidate ->
-            candidate.name == property.name &&
-                candidate.type.normalized().typeName == property.type.normalized().typeName &&
-                candidate.hasNativeProjectionGetterAccessor()
+            candidate.name == property.name && candidate.hasNativeProjectionPropertyAccessor()
         }
 
     fun searchInterfaces(
