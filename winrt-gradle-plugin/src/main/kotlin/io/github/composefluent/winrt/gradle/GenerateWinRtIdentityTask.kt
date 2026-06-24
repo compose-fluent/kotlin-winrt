@@ -70,6 +70,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val runtimeAssetFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredMetadataFiles: ConfigurableFileCollection
 
     @get:InputFiles
@@ -103,7 +108,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"schemaVersion\": 1,")
                 appendLine("  \"model\": \"library\",")
                 appendLine("  \"projectionShapeVersion\": $CURRENT_PROJECTION_SHAPE_VERSION,")
-                appendLine("  \"metadataInputs\": ${metadataInputs.get().toJsonArray()},")
+                appendLine("  \"metadataInputs\": ${portablePublishedMetadataInputs(metadataInputs.get()).toJsonArray()},")
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
                 appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files, typeShapeDescriptorFiles.files).toJsonArray()},")
@@ -115,7 +120,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")
                 appendLine("  },")
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
-                appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
+                appendLine("  \"runtimeAssetRecords\": ${runtimeAssetRecordsToJsonArray(readRuntimeAssetRecords(runtimeAssetFiles.files))},")
                 appendLine("  \"authoredMetadataRecords\": ${authoredMetadataRecordsToJsonArray(readAuthoredMetadataRecords(authoredMetadataFiles.files))},")
                 appendLine("  \"authoringMetadataIndexRows\": ${readAuthoringMetadataIndexRows(authoringMetadataIndexFiles.files).toJsonArray()},")
                 appendLine("  \"authoredHostManifestRecords\": ${authoredHostManifestRecordsToJsonArray(readAuthoredHostManifestRecords(authoredHostManifestFiles.files))},")
@@ -266,7 +271,32 @@ private fun String.decodeIdentityJsonString(): String =
 internal fun List<String>.toJsonArray(): String =
     joinToString(prefix = "[", postfix = "]") { it.toJsonString() }
 
+private fun portablePublishedMetadataInputs(inputs: List<String>): List<String> =
+    inputs
+        .filter(::isPortablePublishedMetadataInput)
+        .distinct()
+
+private fun isPortablePublishedMetadataInput(input: String): Boolean {
+    if (input.equals("local", ignoreCase = true) ||
+        input.equals("sdk", ignoreCase = true) ||
+        input.equals("sdk+", ignoreCase = true)
+    ) {
+        return true
+    }
+    if (Regex("""\d+(?:\.\d+){1,3}\+?""").matches(input)) {
+        return true
+    }
+    if (input.startsWith("nuget:", ignoreCase = true)) {
+        val spec = input.substringAfter(':')
+        return spec.lastIndexOf('@').let { separator -> separator > 0 && separator < spec.lastIndex }
+    }
+    return false
+}
+
 private fun authoredHostManifestRecordsToJsonArray(records: List<AuthoredHostManifestRecord>): String =
+    records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
+
+private fun runtimeAssetRecordsToJsonArray(records: List<RuntimeAssetRecord>): String =
     records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
 
 internal fun authoredMetadataRecordsToJsonArray(records: List<AuthoredMetadataRecord>): String =
@@ -302,6 +332,23 @@ internal data class AuthoredMetadataRecord(
     val fileName: String,
     val contentBase64: String,
 )
+
+internal data class RuntimeAssetRecord(
+    val fileName: String,
+    val contentBase64: String,
+)
+
+internal fun readRuntimeAssetRecords(files: Iterable<File>): List<RuntimeAssetRecord> =
+    files
+        .filter(File::isFile)
+        .map { file ->
+            RuntimeAssetRecord(
+                fileName = file.toPath().name,
+                contentBase64 = Base64.getEncoder().encodeToString(file.readBytes()),
+            )
+        }
+        .distinctBy { record -> record.fileName.lowercase() }
+        .sortedBy { record -> record.fileName.lowercase() }
 
 internal fun readAuthoredMetadataRecords(files: Iterable<File>): List<AuthoredMetadataRecord> =
     files
@@ -369,6 +416,16 @@ private fun readCompilerSupportFileRecordsFromManifest(manifest: File, group: St
 }
 
 private fun AuthoredMetadataRecord.toJsonObject(): String =
+    buildString {
+        append("{")
+        append("\"fileName\":")
+        append(fileName.toJsonString())
+        append(",\"contentBase64\":")
+        append(contentBase64.toJsonString())
+        append("}")
+    }
+
+private fun RuntimeAssetRecord.toJsonObject(): String =
     buildString {
         append("{")
         append("\"fileName\":")
