@@ -48,11 +48,10 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
         Files.createDirectories(outputRoot)
         val manifests = buildList {
             localCompilerSupportManifest.orNull?.asFile?.takeIf(File::isFile)?.let(::add)
-            dependencyIdentityFiles.files
-                .flatMap(::readCompilerSupportManifests)
-                .map(::File)
-                .filter(File::isFile)
-                .forEach(::add)
+            writeDependencyCompilerSupportFileRecords(
+                records = readDependencyCompilerSupportFileRecords(dependencyIdentityFiles.files),
+                outputRoot = temporaryDir.toPath().resolve("dependency-compiler-support"),
+            ).forEach(::add)
         }.distinctBy { it.absolutePath }
         val sourceRows = linkedMapOf<CompilerSupportSourceKey, MutableList<String>>()
         val sourceFileRows = linkedMapOf<String, MutableList<String>>()
@@ -230,3 +229,46 @@ private const val COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER: String =
 
 private val COMPILER_SUPPORT_MANIFEST_HEADERS: Set<String> =
     setOf(COMPILER_SUPPORT_MANIFEST_HEADER, COMPILER_SUPPORT_MANIFEST_HEADER_WITH_OWNER)
+
+private fun readDependencyCompilerSupportFileRecords(identityFiles: Iterable<File>): List<CompilerSupportFileRecord> =
+    identityFiles
+        .filter(File::isFile)
+        .sortedBy { file -> file.absolutePath.lowercase() }
+        .flatMapIndexed { index, identityFile ->
+            readDependencyCompilerSupportFileRecordsFromIdentity(identityFile)
+                .map { record -> record.copy(group = "dependency-$index-${record.group}") }
+        }
+
+private fun readDependencyCompilerSupportFileRecordsFromIdentity(identityFile: File): List<CompilerSupportFileRecord> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val arrayContent = readIdentityJsonArrayContent(content, "compilerSupportFileRecords") ?: return emptyList()
+    return readIdentityJsonObjectArray(arrayContent)
+        .mapNotNull(::readDependencyCompilerSupportFileRecord)
+}
+
+private fun readDependencyCompilerSupportFileRecord(content: String): CompilerSupportFileRecord? {
+    val group = readPortableIdentityJsonStringField(content, "group")?.takeIf(String::isNotBlank) ?: return null
+    val fileName = readPortableIdentityJsonStringField(content, "fileName")?.takeIf(String::isNotBlank) ?: return null
+    val recordContent = readPortableIdentityJsonStringField(content, "content") ?: return null
+    return CompilerSupportFileRecord(group = group, fileName = fileName, content = recordContent)
+}
+
+private fun writeDependencyCompilerSupportFileRecords(
+    records: List<CompilerSupportFileRecord>,
+    outputRoot: Path,
+): List<File> {
+    GradleFileOperations.cleanDirectory(outputRoot)
+    val files = records
+        .distinctBy { record -> "${record.group.lowercase()}/${record.fileName.lowercase()}" }
+        .map { record ->
+            val group = requirePortableDependencyFileName(record.group, "dependency compiler support")
+            val fileName = requirePortableDependencyFileName(record.fileName, "dependency compiler support")
+            val output = outputRoot.resolve(group).resolve(fileName)
+            Files.createDirectories(output.parent)
+            Files.writeString(output, record.content)
+            output
+        }
+    return files
+        .filter { path -> path.name.equals("compiler-support.tsv", ignoreCase = true) }
+        .map(Path::toFile)
+}

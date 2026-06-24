@@ -36,6 +36,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Base64
 import java.util.jar.JarFile
 
 class KotlinWinRtPluginTest {
@@ -997,11 +998,15 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"projectionShapeVersion\": 1"))
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
         assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
-        assertTrue(json.contains("\"authoredMetadata\": ["))
-        assertTrue(json.contains("\"authoringMetadataIndexes\": ["))
+        assertTrue(json.contains("\"authoredMetadataRecords\": ["))
         assertTrue(json.contains("\"authoringMetadataIndexRows\": ["))
         assertTrue(json.contains("\"authoredHostManifestRecords\": ["))
-        assertTrue(json.contains("\"authoredTargetArtifacts\": ["))
+        assertTrue(json.contains("\"authoredTargetArtifactRecords\": ["))
+        assertTrue(json.contains("\"compilerSupportFileRecords\": ["))
+        assertFalse(json.contains("\"authoredMetadata\""))
+        assertFalse(json.contains("\"authoringMetadataIndexes\""))
+        assertFalse(json.contains("\"authoredTargetArtifacts\""))
+        assertFalse(json.contains("\"compilerSupportManifests\""))
         assertFalse(json.contains("\"authoredHostManifests\""))
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
@@ -1017,6 +1022,46 @@ class KotlinWinRtPluginTest {
                 "\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260416003\"]",
             ),
         )
+    }
+
+    @Test
+    fun identity_task_publishes_authored_metadata_as_portable_records() {
+        val project = ProjectBuilder.builder().build()
+        val authoredWinmd = project.layout.buildDirectory.file("authoring/SampleComponent.winmd").get().asFile.toPath()
+        Files.createDirectories(authoredWinmd.parent)
+        Files.writeString(authoredWinmd, "sample-winmd")
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val task = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+        task.authoredMetadataFiles.from(authoredWinmd)
+        task.generate()
+
+        val json = Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(json.contains("\"authoredMetadataRecords\": ["))
+        assertTrue(json.contains("\"fileName\":\"SampleComponent.winmd\""))
+        assertTrue(json.contains("\"contentBase64\":\"${Base64.getEncoder().encodeToString("sample-winmd".toByteArray())}\""))
+        assertFalse(json.contains("\"authoredMetadata\""))
+        assertFalse(json.contains(authoredWinmd.toString().replace("\\", "\\\\")))
+    }
+
+    @Test
+    fun identity_task_publishes_authored_target_artifacts_as_portable_records() {
+        val project = ProjectBuilder.builder().build()
+        val authoredJar = project.layout.buildDirectory.file("libs/SampleComponent.jar").get().asFile.toPath()
+        Files.createDirectories(authoredJar.parent)
+        Files.writeString(authoredJar, "sample-jar")
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val task = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+        task.authoredTargetArtifactFiles.from(authoredJar)
+        task.generate()
+
+        val json = Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(json.contains("\"authoredTargetArtifactRecords\": ["))
+        assertTrue(json.contains("\"fileName\":\"SampleComponent.jar\""))
+        assertTrue(json.contains("\"contentBase64\":\"${Base64.getEncoder().encodeToString("sample-jar".toByteArray())}\""))
+        assertFalse(json.contains("\"authoredTargetArtifacts\""))
+        assertFalse(json.contains(authoredJar.toString().replace("\\", "\\\\")))
     }
 
     @Test
@@ -1272,11 +1317,19 @@ class KotlinWinRtPluginTest {
             """.trimIndent(),
         )
         val dependencyIdentity = root.resolve("dependency-identity.json")
+        val dependencyCompilerSupportRecords = listOf(
+            dependencyRoot.resolve("compiler-support.tsv"),
+            dependencyRoot.resolve("projection-registrar.tsv"),
+            dependencyRoot.resolve("generic-instantiations.tsv"),
+            dependencyRoot.resolve("xaml-component-resources.tsv"),
+        ).joinToString(prefix = "[", postfix = "]") { file ->
+            """{"group":"dependency","fileName":${file.fileName.toString().toJsonString()},"content":${Files.readString(file).toJsonString()}}"""
+        }
         Files.writeString(
             dependencyIdentity,
             """
             {
-              "compilerSupportManifests": [${dependencyRoot.resolve("compiler-support.tsv").toString().toJsonString()}]
+              "compilerSupportFileRecords": $dependencyCompilerSupportRecords
             }
             """.trimIndent(),
         )
@@ -1525,7 +1578,6 @@ class KotlinWinRtPluginTest {
             dependencyIdentity,
             """
             {
-              "authoringMetadataIndexes": [${root.resolve("missing-metadata-index.tsv").toString().toJsonString()}],
               "authoringMetadataIndexRows": ["Microsoft.UI.Xaml.Application\tRuntimeClass\tMicrosoft.UI.Xaml.IApplicationOverrides\t"]
             }
             """.trimIndent(),
@@ -2423,9 +2475,11 @@ class KotlinWinRtPluginTest {
         Files.writeString(dependencyJar, "dependency-jar")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
+        val dependencyWinmdContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyWinmd))
+        val dependencyJarContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyJar))
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadata":["${dependencyWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifestRecords":[{"assemblyName":"DependencyComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_DependencyComponent_jar","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
+            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadataRecords":[{"fileName":"DependencyComponent.winmd","contentBase64":"$dependencyWinmdContent"}],"authoredHostManifestRecords":[{"assemblyName":"DependencyComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_DependencyComponent_jar","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}],"authoredTargetArtifactRecords":[{"fileName":"DependencyComponent.jar","contentBase64":"$dependencyJarContent"}]}""",
         )
 
         val task = project.tasks.register(
@@ -2485,11 +2539,12 @@ class KotlinWinRtPluginTest {
         )
         Files.writeString(dependencyJar, "dependency-jar")
         Files.writeString(dependencyHostDll, "dependency-host-dll")
+        val dependencyJarContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyJar))
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredHostManifestRecords":[{"assemblyName":"ui","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_ui_jar","targetArtifact":"ui.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{}}],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
+            """{"authoredHostManifestRecords":[{"assemblyName":"ui","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_ui_jar","targetArtifact":"ui.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{}}],"authoredTargetArtifactRecords":[{"fileName":"ui.jar","contentBase64":"$dependencyJarContent"}]}""",
         )
 
         val task = project.tasks.register(
@@ -2548,11 +2603,12 @@ class KotlinWinRtPluginTest {
             """{"assemblyName":"winui-kmp-library","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}""",
         )
         Files.writeString(dependencyDll, "dependency-native-dll")
+        val dependencyDllContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyDll))
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredHostManifestRecords":[{"assemblyName":"winui-kmp-library","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}],"authoredTargetArtifacts":["${dependencyDll.toString().replace("\\", "\\\\")}"]}""",
+            """{"authoredHostManifestRecords":[{"assemblyName":"winui-kmp-library","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}],"authoredTargetArtifactRecords":[{"fileName":"winui_kmp_library.dll","contentBase64":"$dependencyDllContent"}]}""",
         )
 
         val task = project.tasks.register(
@@ -2621,11 +2677,13 @@ class KotlinWinRtPluginTest {
         Files.writeString(dependencyJar, "dependency-jar")
         Files.writeString(dependencyHostDll, "dependency-host-dll")
         Files.writeString(dependencyNativeDll, "dependency-native-dll")
+        val dependencyJarContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyJar))
+        val dependencyNativeDllContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyNativeDll))
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredHostManifestRecords":[{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_jar","targetArtifact":"winui-kmp-library.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui-kmp-library.jar"}},{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_dll","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}","${dependencyNativeDll.toString().replace("\\", "\\\\")}"]}""",
+            """{"authoredHostManifestRecords":[{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_jar","targetArtifact":"winui-kmp-library.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui-kmp-library.jar"}},{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_dll","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}],"authoredTargetArtifactRecords":[{"fileName":"winui-kmp-library.jar","contentBase64":"$dependencyJarContent"},{"fileName":"winui_kmp_library.dll","contentBase64":"$dependencyNativeDllContent"}]}""",
         )
 
         val task = project.tasks.register(
@@ -2893,14 +2951,13 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun runtime_assets_task_rejects_missing_dependency_authored_assets() {
+    fun runtime_assets_task_rejects_non_portable_dependency_authored_metadata_record_names() {
         val project = ProjectBuilder.builder().build()
-        val missingWinmd = project.layout.buildDirectory.file("dependency/MissingComponent.winmd").get().asFile.toPath()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredMetadata":["${missingWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifestRecords":[],"authoredTargetArtifacts":[]}""",
+            """{"authoredMetadataRecords":[{"fileName":"dependency/MissingComponent.winmd","contentBase64":"d2lubWQ="}],"authoredHostManifestRecords":[],"authoredTargetArtifactRecords":[]}""",
         )
 
         val task = project.tasks.register(
@@ -2943,9 +3000,9 @@ class KotlinWinRtPluginTest {
         assertTrue(error is IllegalArgumentException)
         assertTrue(
             error!!.message.orEmpty(),
-            error.message.orEmpty().contains("dependency-authored metadata file"),
+            error.message.orEmpty().contains("dependency-authored metadata record"),
         )
-        assertTrue(error.message.orEmpty().contains("declared by dependency identity"))
+        assertTrue(error.message.orEmpty().contains("portable file name"))
     }
 
     @Test

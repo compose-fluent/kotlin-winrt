@@ -18,6 +18,8 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 import java.nio.file.Files
+import java.util.Base64
+import kotlin.io.path.name
 
 @CacheableTask
 abstract class GenerateWinRtIdentityTask : DefaultTask() {
@@ -114,12 +116,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  },")
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
                 appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
-                appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
-                appendLine("  \"authoringMetadataIndexes\": ${authoringMetadataIndexFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
+                appendLine("  \"authoredMetadataRecords\": ${authoredMetadataRecordsToJsonArray(readAuthoredMetadataRecords(authoredMetadataFiles.files))},")
                 appendLine("  \"authoringMetadataIndexRows\": ${readAuthoringMetadataIndexRows(authoringMetadataIndexFiles.files).toJsonArray()},")
                 appendLine("  \"authoredHostManifestRecords\": ${authoredHostManifestRecordsToJsonArray(readAuthoredHostManifestRecords(authoredHostManifestFiles.files))},")
-                appendLine("  \"authoredTargetArtifacts\": ${authoredTargetArtifactFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
-                appendLine("  \"compilerSupportManifests\": ${compilerSupportManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
+                appendLine("  \"authoredTargetArtifactRecords\": ${authoredTargetArtifactRecordsToJsonArray(readAuthoredTargetArtifactRecords(authoredTargetArtifactFiles.files))},")
+                appendLine("  \"compilerSupportFileRecords\": ${compilerSupportFileRecordsToJsonArray(readCompilerSupportFileRecords(compilerSupportManifestFiles.files))}")
                 appendLine("}")
             },
         )
@@ -216,16 +217,6 @@ private fun splitProjectionRegistrarRow(line: String): List<String> {
     return parts
 }
 
-internal fun readCompilerSupportManifests(identityFile: File): List<String> {
-    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    return readIdentityJsonStringArray(content, "compilerSupportManifests")
-}
-
-internal fun readAuthoringMetadataIndexes(identityFile: File): List<String> {
-    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    return readIdentityJsonStringArray(content, "authoringMetadataIndexes")
-}
-
 internal fun readAuthoringMetadataIndexRows(identityFile: File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     return readIdentityJsonStringArray(content, "authoringMetadataIndexRows")
@@ -278,6 +269,15 @@ internal fun List<String>.toJsonArray(): String =
 private fun authoredHostManifestRecordsToJsonArray(records: List<AuthoredHostManifestRecord>): String =
     records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
 
+internal fun authoredMetadataRecordsToJsonArray(records: List<AuthoredMetadataRecord>): String =
+    records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
+
+private fun compilerSupportFileRecordsToJsonArray(records: List<CompilerSupportFileRecord>): String =
+    records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
+
+internal fun authoredTargetArtifactRecordsToJsonArray(records: List<AuthoredTargetArtifactRecord>): String =
+    records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
+
 internal fun String?.toJsonStringOrNull(): String =
     this?.toJsonString() ?: "null"
 
@@ -296,6 +296,108 @@ internal fun String.toJsonString(): String =
             }
         }
         append('"')
+    }
+
+internal data class AuthoredMetadataRecord(
+    val fileName: String,
+    val contentBase64: String,
+)
+
+internal fun readAuthoredMetadataRecords(files: Iterable<File>): List<AuthoredMetadataRecord> =
+    files
+        .filter(File::isFile)
+        .map { file ->
+            AuthoredMetadataRecord(
+                fileName = file.toPath().name,
+                contentBase64 = Base64.getEncoder().encodeToString(file.readBytes()),
+            )
+        }
+        .distinctBy { record -> record.fileName.lowercase() }
+        .sortedBy { record -> record.fileName.lowercase() }
+
+internal data class AuthoredTargetArtifactRecord(
+    val fileName: String,
+    val contentBase64: String,
+)
+
+internal fun readAuthoredTargetArtifactRecords(files: Iterable<File>): List<AuthoredTargetArtifactRecord> =
+    files
+        .filter(File::isFile)
+        .map { file ->
+            AuthoredTargetArtifactRecord(
+                fileName = file.toPath().name,
+                contentBase64 = Base64.getEncoder().encodeToString(file.readBytes()),
+            )
+        }
+        .distinctBy { record -> record.fileName.lowercase() }
+        .sortedBy { record -> record.fileName.lowercase() }
+
+internal data class CompilerSupportFileRecord(
+    val group: String,
+    val fileName: String,
+    val content: String,
+)
+
+internal fun readCompilerSupportFileRecords(files: Iterable<File>): List<CompilerSupportFileRecord> =
+    files
+        .filter(File::isFile)
+        .sortedBy { file -> file.absolutePath.lowercase() }
+        .flatMapIndexed { index, file -> readCompilerSupportFileRecordsFromManifest(file, "compiler-support-$index") }
+        .distinctBy { record -> "${record.group.lowercase()}/${record.fileName.lowercase()}" }
+        .sortedWith(compareBy<CompilerSupportFileRecord> { it.group.lowercase() }.thenBy { it.fileName.lowercase() })
+
+private fun readCompilerSupportFileRecordsFromManifest(manifest: File, group: String): List<CompilerSupportFileRecord> {
+    val manifestPath = manifest.toPath()
+    val manifestRoot = manifestPath.parent ?: return emptyList()
+    val manifestContent = manifest.readText()
+    val records = mutableListOf(
+        CompilerSupportFileRecord(group = group, fileName = manifestPath.name, content = manifestContent),
+    )
+    manifestContent
+        .lineSequence()
+        .drop(1)
+        .filter(String::isNotBlank)
+        .mapNotNull { row -> row.split('\t').getOrNull(2) }
+        .filter(String::isNotBlank)
+        .distinct()
+        .map { sourceFile -> manifestRoot.resolve(sourceFile) }
+        .filter { source -> Files.isRegularFile(source) }
+        .forEach { source ->
+            records += CompilerSupportFileRecord(group = group, fileName = source.name, content = Files.readString(source))
+        }
+    return records
+}
+
+private fun AuthoredMetadataRecord.toJsonObject(): String =
+    buildString {
+        append("{")
+        append("\"fileName\":")
+        append(fileName.toJsonString())
+        append(",\"contentBase64\":")
+        append(contentBase64.toJsonString())
+        append("}")
+    }
+
+private fun AuthoredTargetArtifactRecord.toJsonObject(): String =
+    buildString {
+        append("{")
+        append("\"fileName\":")
+        append(fileName.toJsonString())
+        append(",\"contentBase64\":")
+        append(contentBase64.toJsonString())
+        append("}")
+    }
+
+private fun CompilerSupportFileRecord.toJsonObject(): String =
+    buildString {
+        append("{")
+        append("\"group\":")
+        append(group.toJsonString())
+        append(",\"fileName\":")
+        append(fileName.toJsonString())
+        append(",\"content\":")
+        append(content.toJsonString())
+        append("}")
     }
 
 internal data class AuthoredHostManifestRecord(

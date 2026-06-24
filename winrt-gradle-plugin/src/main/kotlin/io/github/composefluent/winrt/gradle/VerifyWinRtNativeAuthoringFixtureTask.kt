@@ -89,13 +89,19 @@ abstract class VerifyWinRtNativeAuthoringComponentFixtureTask : DefaultTask() {
 
         val identityText = identity.readText()
         check(identityText.contains(componentDllFile.absolutePath.replace("\\", "\\\\"))) {
-            "Expected native component DLL in identity authoredTargetArtifacts: $identityText"
+            "Expected native component DLL in identity runtime assets: $identityText"
         }
-        check(identityText.contains(authoredWinmdFile.absolutePath.replace("\\", "\\\\"))) {
-            "Expected native authored WinMD in identity: $identityText"
+        check(identityText.contains("\"authoredMetadataRecords\"") && identityText.contains("\"fileName\":\"${authoredWinmdFile.name}\"")) {
+            "Expected native authored WinMD portable record in identity: $identityText"
         }
-        check(identityText.contains(authoredHostManifestFile.absolutePath.replace("\\", "\\\\"))) {
-            "Expected native authored host manifest in identity: $identityText"
+        check(
+            identityText.contains("\"authoredHostManifestRecords\"") &&
+                runtimeClassNames.get().any { runtimeClassName -> identityText.contains(runtimeClassName) },
+        ) {
+            "Expected native authored host manifest record in identity: $identityText"
+        }
+        check(identityText.contains("\"authoredTargetArtifactRecords\"") && identityText.contains("\"fileName\":\"${componentDllFile.name}\"")) {
+            "Expected native authored target artifact portable record in identity: $identityText"
         }
         if ("sample.NativeJsonValueThing" in runtimeClassNames.get()) {
             val authoredWinmdText = authoredWinmdFile.readBytes().toString(Charsets.UTF_8)

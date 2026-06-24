@@ -513,10 +513,11 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             )
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
-        val dependencyAuthoredMetadataSources = parameters.dependencyIdentityFiles.files
-            .flatMap(::readAuthoredMetadata)
-            .map(Path::of)
-            .filter(Files::isRegularFile)
+        val dependencyRecords = parameters.dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
+        val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
+            records = dependencyRecords,
+            outputRoot = parameters.workDirectory.get().asFile.toPath().resolve("dependency-authored-metadata"),
+        )
             .map(WinRtMetadataSource::path)
         val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
         return if (applicationPackagingOnly) {
@@ -742,12 +743,7 @@ internal fun mergedAuthoringMetadataIndexTypes(
                             "${identityFile.absolutePath} authoringMetadataIndexRows",
                         ).values
                     }
-            } +
-        identityFiles
-            .flatMap(::readAuthoringMetadataIndexes)
-            .map(Path::of)
-            .filter(Files::isRegularFile)
-            .flatMap { path -> readAuthoringMetadataIndex(path).values }
+            }
     )
     .distinctBy { type -> type.qualifiedName }
     .sortedBy { type -> type.qualifiedName }
