@@ -133,14 +133,107 @@ class WinRtAuthoringMetadataTest {
             listOf("Sample.Component.IWidgetStatics"),
             model.semanticHelpers().factorySurfaceDescriptor(runtimeClass).staticMemberTargets,
         )
+        assertTrue(
+            model.namespaces
+                .single { namespace -> namespace.name == "Sample.Component" }
+                .types
+                .none { type -> type.name == "IWidget" },
+        )
+    }
 
-        val defaultInterface = model
+    @Test
+    fun authored_winmd_references_external_override_interfaces_without_redefining_them() {
+        val output = Files.createTempFile("kotlin-winrt-authored-external-interfaces-", ".winmd")
+
+        WinRtPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "Sample.Component",
+            runtimeClasses = listOf(
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Sample.Component.RootContentControl",
+                    baseRuntimeClassName = "Microsoft.UI.Xaml.Controls.ContentControl",
+                    interfaceNames = listOf(
+                        "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                        "Microsoft.UI.Xaml.IUIElementOverrides",
+                    ),
+                    overridableInterfaceNames = listOf(
+                        "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                        "Microsoft.UI.Xaml.IUIElementOverrides",
+                    ),
+                ),
+            ),
+            outputFile = output,
+        )
+
+        val model = WinRtMetadataLoader.load(output)
+        val runtimeClass = model
             .namespaces
             .single { namespace -> namespace.name == "Sample.Component" }
             .types
-            .single { type -> type.name == "IWidget" }
-        assertEquals(WinRtTypeKind.Interface, defaultInterface.kind)
-        assertEquals(1L, defaultInterface.availability.version)
-        assertEquals("11111111-2222-3333-4444-555555555555", defaultInterface.iid?.toString())
+            .single { type -> type.name == "RootContentControl" }
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                "Microsoft.UI.Xaml.IUIElementOverrides",
+            ),
+            runtimeClass.implementedInterfaces.map(WinRtInterfaceImplementationDefinition::interfaceName),
+        )
+        assertTrue(runtimeClass.implementedInterfaces.all(WinRtInterfaceImplementationDefinition::isOverridable))
+        assertTrue(model.namespaces.none { namespace -> namespace.name == "Microsoft.UI.Xaml" })
+    }
+
+    @Test
+    fun authored_dependency_winmd_does_not_override_real_external_interface_metadata() {
+        val dependencyOutput = Files.createTempFile("kotlin-winrt-authored-dependency-old-shape-", ".winmd")
+        val baseOutput = Files.createTempFile("kotlin-winrt-base-winui-", ".winmd")
+
+        WinRtPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample.Dependency",
+            interfaces = listOf(
+                WinRtPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                    iid = "11111111-2222-3333-4444-555555555555",
+                ),
+            ),
+            runtimeClasses = listOf(
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Sample.Dependency.HostPanel",
+                    baseRuntimeClassName = "Microsoft.UI.Xaml.Controls.Grid",
+                    interfaceNames = listOf("Microsoft.UI.Xaml.IFrameworkElementOverrides"),
+                    overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IFrameworkElementOverrides"),
+                ),
+            ),
+            outputFile = dependencyOutput,
+        )
+        WinRtPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Microsoft.UI.Xaml",
+            interfaces = listOf(
+                WinRtPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Microsoft.UI.Xaml.IFrameworkElementOverrides",
+                    iid = "ffc6fd98-f38c-5904-9ce4-97a3427cf4ba",
+                ),
+            ),
+            runtimeClasses = listOf(
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Microsoft.UI.Xaml.FrameworkElement",
+                    interfaceNames = listOf("Microsoft.UI.Xaml.IFrameworkElementOverrides"),
+                    overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IFrameworkElementOverrides"),
+                ),
+            ),
+            outputFile = baseOutput,
+        )
+
+        val model = WinRtMetadataLoader.loadSources(
+            listOf(
+                WinRtMetadataSource.path(baseOutput),
+                WinRtMetadataSource.path(dependencyOutput),
+            ),
+        )
+
+        val overrideInterface = model.namespaces
+            .single { namespace -> namespace.name == "Microsoft.UI.Xaml" }
+            .types
+            .single { type -> type.name == "IFrameworkElementOverrides" }
+        assertEquals("ffc6fd98-f38c-5904-9ce4-97a3427cf4ba", overrideInterface.iid.toString().lowercase())
     }
 }

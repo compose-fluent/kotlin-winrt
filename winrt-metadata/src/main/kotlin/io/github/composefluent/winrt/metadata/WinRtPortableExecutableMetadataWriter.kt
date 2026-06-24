@@ -22,16 +22,29 @@ object WinRtPortableExecutableMetadataWriter {
         Files.createDirectories(outputFile.parent)
         Files.write(outputFile, WinmdBuilder(assemblyName, runtimeClasses).build())
     }
+
+    fun writeProjectionFixtureWinmd(
+        assemblyName: String,
+        interfaces: List<WinRtPortableExecutableInterfaceDescriptor> = emptyList(),
+        runtimeClasses: List<WinRtAuthoredRuntimeClassDescriptor> = emptyList(),
+        outputFile: Path,
+    ) {
+        Files.createDirectories(outputFile.parent)
+        Files.write(outputFile, WinmdBuilder(assemblyName, runtimeClasses, interfaces).build())
+    }
 }
+
+data class WinRtPortableExecutableInterfaceDescriptor(
+    val interfaceName: String,
+    val iid: String,
+    val implementedInterfaceNames: List<String> = emptyList(),
+)
 
 private class WinmdBuilder(
     private val assemblyName: String,
     private val runtimeClasses: List<WinRtAuthoredRuntimeClassDescriptor>,
+    private val interfaces: List<WinRtPortableExecutableInterfaceDescriptor> = emptyList(),
 ) {
-    private val authoredInterfaceNames = runtimeClasses
-        .flatMap(WinRtAuthoredRuntimeClassDescriptor::interfaceNames)
-        .distinct()
-
     private val strings = IndexedStringHeap()
     private val blobs = IndexedBlobHeap()
     private val guid = byteArrayOf(
@@ -43,12 +56,13 @@ private class WinmdBuilder(
         val moduleName = strings.index("$assemblyName.winmd")
         val moduleTypeName = strings.index("<Module>")
         val assemblyNameIndex = strings.index(assemblyName)
+        val localTypeNames = interfaces.mapTo(mutableSetOf()) { it.interfaceName }
         val attributeTypeNames = buildSet {
-            if (runtimeClasses.isNotEmpty()) {
+            if (runtimeClasses.isNotEmpty() || interfaces.isNotEmpty()) {
                 add(WINDOWS_FOUNDATION_METADATA_VERSION)
             }
-            if (authoredInterfaceNames.isNotEmpty()) {
-                add(SYSTEM_RUNTIME_INTEROP_SERVICES_GUID)
+            if (interfaces.isNotEmpty()) {
+                add(WINDOWS_FOUNDATION_METADATA_GUID)
             }
             runtimeClasses.forEach { descriptor ->
                 if (descriptor.isActivatable) {
@@ -65,13 +79,21 @@ private class WinmdBuilder(
                 }
             }
         }
-        val baseTypeRefs = runtimeClasses
-            .map { descriptor -> descriptor.baseRuntimeClassName ?: "System.Object" }
-            .plus(attributeTypeNames)
+        val typeRefs = (
+            runtimeClasses.flatMap { descriptor ->
+                listOf(descriptor.baseRuntimeClassName ?: "System.Object") + descriptor.interfaceNames.filterNot(localTypeNames::contains)
+            } +
+                interfaces.flatMap { descriptor -> descriptor.implementedInterfaceNames.filterNot(localTypeNames::contains) } +
+                attributeTypeNames
+            )
             .distinct()
             .map { qualifiedName -> TypeRefRow(qualifiedName) }
+        val localTypeDefRowIds = buildMap {
+            interfaces.forEachIndexed { index, descriptor -> put(descriptor.interfaceName, index + 2) }
+            runtimeClasses.forEachIndexed { index, descriptor -> put(descriptor.runtimeClassName, index + 2 + interfaces.size) }
+        }
         val metadataRoot = metadataRoot(
-            tables = tablesStream(moduleName, moduleTypeName, assemblyNameIndex, baseTypeRefs),
+            tables = tablesStream(moduleName, moduleTypeName, assemblyNameIndex, typeRefs, localTypeDefRowIds),
             strings = strings.bytes(),
             guid = guid,
             blob = blobs.bytes(),
@@ -99,20 +121,26 @@ private class WinmdBuilder(
         return image.toByteArray()
     }
 
+    private fun typeDefCount(): Int = 1 + interfaces.size + runtimeClasses.size
+
+    private fun interfaceImplCount(): Int =
+        interfaces.sumOf { it.implementedInterfaceNames.size } + runtimeClasses.sumOf { it.interfaceNames.size }
+
     private fun tablesStream(
         moduleName: Int,
         moduleTypeName: Int,
         assemblyNameIndex: Int,
         typeRefs: List<TypeRefRow>,
+        localTypeDefRowIds: Map<String, Int>,
     ): ByteArray {
         val writer = BinaryWriter()
         val attributeMemberRefs = attributeMemberRefs(typeRefs)
-        val customAttributes = typeDefCustomAttributes(attributeMemberRefs) +
-            interfaceImplCustomAttributes(attributeMemberRefs)
+        val customAttributes = typeDefCustomAttributes(attributeMemberRefs, localTypeDefRowIds) +
+            interfaceImplCustomAttributes(attributeMemberRefs, localTypeDefRowIds)
         val validMask = (1L shl TABLE_MODULE) or
             (if (typeRefs.isEmpty()) 0L else 1L shl TABLE_TYPE_REF) or
             (1L shl TABLE_TYPE_DEF) or
-            (if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) 1L shl TABLE_INTERFACE_IMPL else 0L) or
+            (if (interfaceImplCount() > 0) 1L shl TABLE_INTERFACE_IMPL else 0L) or
             (if (attributeMemberRefs.isEmpty()) 0L else 1L shl TABLE_MEMBER_REF) or
             (if (customAttributes.isEmpty()) 0L else 1L shl TABLE_CUSTOM_ATTRIBUTE) or
             (1L shl TABLE_ASSEMBLY)
@@ -127,9 +155,9 @@ private class WinmdBuilder(
         if (typeRefs.isNotEmpty()) {
             writer.int32(typeRefs.size)
         }
-        writer.int32(1 + authoredInterfaceNames.size + runtimeClasses.size)
-        if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) {
-            writer.int32(runtimeClasses.sumOf { it.interfaceNames.size })
+        writer.int32(typeDefCount())
+        if (interfaceImplCount() > 0) {
+            writer.int32(interfaceImplCount())
         }
         if (attributeMemberRefs.isNotEmpty()) {
             writer.int32(attributeMemberRefs.size)
@@ -154,9 +182,9 @@ private class WinmdBuilder(
         writer.index(0)
         writer.index(1)
         writer.index(1)
-        authoredInterfaceNames.forEach { interfaceName ->
-            val namespace = interfaceName.substringBeforeLast('.', missingDelimiterValue = "")
-            val name = interfaceName.substringAfterLast('.')
+        interfaces.forEach { descriptor ->
+            val namespace = descriptor.interfaceName.substringBeforeLast('.', missingDelimiterValue = "")
+            val name = descriptor.interfaceName.substringAfterLast('.')
             writer.int32(TYPE_ATTRIBUTES_PUBLIC or TYPE_ATTRIBUTES_WINDOWS_RUNTIME or TYPE_ATTRIBUTES_INTERFACE or TYPE_ATTRIBUTES_ABSTRACT)
             writer.index(strings.index(name))
             writer.index(strings.index(namespace))
@@ -168,19 +196,25 @@ private class WinmdBuilder(
             val namespace = descriptor.runtimeClassName.substringBeforeLast('.', missingDelimiterValue = "")
             val name = descriptor.runtimeClassName.substringAfterLast('.')
             val baseTypeName = descriptor.baseRuntimeClassName ?: "System.Object"
-            val baseTypeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == baseTypeName } + 1
             writer.int32(TYPE_ATTRIBUTES_PUBLIC or TYPE_ATTRIBUTES_WINDOWS_RUNTIME or TYPE_ATTRIBUTES_BEFORE_FIELD_INIT or if (descriptor.isSealed) TYPE_ATTRIBUTES_SEALED else 0)
             writer.index(strings.index(name))
             writer.index(strings.index(namespace))
-            writer.index((baseTypeRefRowId shl 2) or CODED_TYPE_DEF_OR_REF_TYPE_REF)
+            writer.index(codedTypeDefOrRef(typeRefs, localTypeDefRowIds, baseTypeName))
             writer.index(1)
             writer.index(1)
         }
+        interfaces.forEach { descriptor ->
+            val typeDefRowId = requireNotNull(localTypeDefRowIds[descriptor.interfaceName])
+            descriptor.implementedInterfaceNames.forEach { interfaceName ->
+                writer.index(typeDefRowId)
+                writer.index(codedTypeDefOrRef(typeRefs, localTypeDefRowIds, interfaceName))
+            }
+        }
         runtimeClasses.forEachIndexed { classIndex, descriptor ->
+            val typeDefRowId = classIndex + 2 + interfaces.size
             descriptor.interfaceNames.forEach { interfaceName ->
-                val interfaceTypeDefRowId = authoredInterfaceNames.indexOf(interfaceName) + 2
-                writer.index(classIndex + 2 + authoredInterfaceNames.size)
-                writer.index(interfaceTypeDefRowId shl 2)
+                writer.index(typeDefRowId)
+                writer.index(codedTypeDefOrRef(typeRefs, localTypeDefRowIds, interfaceName))
             }
         }
         attributeMemberRefs.forEach { memberRef ->
@@ -209,10 +243,10 @@ private class WinmdBuilder(
         listOf(
             WINDOWS_FOUNDATION_METADATA_DEFAULT to emptyList<Int>(),
             WINDOWS_FOUNDATION_METADATA_OVERRIDABLE to emptyList(),
+            WINDOWS_FOUNDATION_METADATA_GUID to listOf(ELEMENT_TYPE_STRING),
             WINDOWS_FOUNDATION_METADATA_ACTIVATABLE to listOf(ELEMENT_TYPE_U4),
             WINDOWS_FOUNDATION_METADATA_STATIC to listOf(ELEMENT_TYPE_STRING),
             WINDOWS_FOUNDATION_METADATA_VERSION to listOf(ELEMENT_TYPE_U4),
-            SYSTEM_RUNTIME_INTEROP_SERVICES_GUID to listOf(ELEMENT_TYPE_STRING),
         )
             .mapNotNull { typeName ->
                 val typeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == typeName.first } + 1
@@ -225,13 +259,16 @@ private class WinmdBuilder(
                 }
             }
 
-    private fun interfaceImplCustomAttributes(memberRefs: List<AttributeMemberRefRow>): List<CustomAttributeRow> {
+    private fun interfaceImplCustomAttributes(
+        memberRefs: List<AttributeMemberRefRow>,
+        localTypeDefRowIds: Map<String, Int>,
+    ): List<CustomAttributeRow> {
         val memberRefRowIds = memberRefs
             .mapIndexed { index, memberRef -> memberRef.attributeTypeName to index + 1 }
             .toMap()
         val rows = mutableListOf<CustomAttributeRow>()
         val emptyAttributeBlobIndex = blobs.index(emptyCustomAttributeBlob())
-        var interfaceImplRowId = 1
+        var interfaceImplRowId = interfaces.sumOf { it.implementedInterfaceNames.size } + 1
         runtimeClasses.forEach { descriptor ->
             descriptor.interfaceNames.forEach { interfaceName ->
                 if (interfaceName == descriptor.interfaceNames.first()) {
@@ -264,21 +301,24 @@ private class WinmdBuilder(
         return rows
     }
 
-    private fun typeDefCustomAttributes(memberRefs: List<AttributeMemberRefRow>): List<CustomAttributeRow> {
+    private fun typeDefCustomAttributes(
+        memberRefs: List<AttributeMemberRefRow>,
+        localTypeDefRowIds: Map<String, Int>,
+    ): List<CustomAttributeRow> {
         val memberRefRowIds = memberRefs
             .mapIndexed { index, memberRef -> memberRef.attributeTypeName to index + 1 }
             .toMap()
         val rows = mutableListOf<CustomAttributeRow>()
-        authoredInterfaceNames.forEachIndexed { index, _ ->
-            val typeDefRowId = index + 2
-            memberRefRowIds[SYSTEM_RUNTIME_INTEROP_SERVICES_GUID]?.let { memberRefRowId ->
+        interfaces.forEach { descriptor ->
+            val typeDefRowId = requireNotNull(localTypeDefRowIds[descriptor.interfaceName])
+            memberRefRowIds[WINDOWS_FOUNDATION_METADATA_GUID]?.let { memberRefRowId ->
                 rows += CustomAttributeRow(
                     parentToken = hasCustomAttributeToken(
                         rowId = typeDefRowId,
                         tag = CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF,
                     ),
                     memberRefRowId = memberRefRowId,
-                    valueBlobIndex = blobs.index(guidStringCustomAttributeBlob(AUTHORED_INTERFACE_GUID)),
+                    valueBlobIndex = blobs.index(stringCustomAttributeBlob(descriptor.iid)),
                 )
             }
             memberRefRowIds[WINDOWS_FOUNDATION_METADATA_VERSION]?.let { memberRefRowId ->
@@ -293,7 +333,7 @@ private class WinmdBuilder(
             }
         }
         runtimeClasses.forEachIndexed { index, descriptor ->
-            val typeDefRowId = index + 2 + authoredInterfaceNames.size
+            val typeDefRowId = index + 2 + interfaces.size
             memberRefRowIds[WINDOWS_FOUNDATION_METADATA_VERSION]?.let { memberRefRowId ->
                 rows += CustomAttributeRow(
                     parentToken = hasCustomAttributeToken(
@@ -343,6 +383,23 @@ private class WinmdBuilder(
     private fun hasCustomAttributeToken(rowId: Int, tag: Int): Int =
         (rowId shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) or tag
 
+    private fun codedTypeRef(typeRefs: List<TypeRefRow>, qualifiedName: String): Int {
+        val typeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == qualifiedName } + 1
+        require(typeRefRowId > 0) { "WinMD TypeRef '$qualifiedName' was not declared." }
+        return (typeRefRowId shl CODED_TYPE_DEF_OR_REF_TAG_BITS) or CODED_TYPE_DEF_OR_REF_TYPE_REF
+    }
+
+    private fun codedTypeDefOrRef(
+        typeRefs: List<TypeRefRow>,
+        localTypeDefRowIds: Map<String, Int>,
+        qualifiedName: String,
+    ): Int {
+        localTypeDefRowIds[qualifiedName]?.let { typeDefRowId ->
+            return (typeDefRowId shl CODED_TYPE_DEF_OR_REF_TAG_BITS) or CODED_TYPE_DEF_OR_REF_TYPE_DEF
+        }
+        return codedTypeRef(typeRefs, qualifiedName)
+    }
+
     private fun emptyCustomAttributeBlob(): ByteArray =
         byteArrayOf(
             0x01,
@@ -362,9 +419,6 @@ private class WinmdBuilder(
             0x00,
             0x00,
         )
-
-    private fun guidStringCustomAttributeBlob(value: String): ByteArray =
-        stringCustomAttributeBlob(value)
 
     private fun stringCustomAttributeBlob(value: String): ByteArray {
         val encoded = value.toByteArray(StandardCharsets.UTF_8)
@@ -520,6 +574,8 @@ private class WinmdBuilder(
         const val TABLE_MEMBER_REF = 10
         const val TABLE_CUSTOM_ATTRIBUTE = 12
         const val TABLE_ASSEMBLY = 0x20
+        const val CODED_TYPE_DEF_OR_REF_TAG_BITS = 2
+        const val CODED_TYPE_DEF_OR_REF_TYPE_DEF = 0
         const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1
         const val CODED_MEMBER_REF_PARENT_TYPE_REF = 1
         const val CODED_MEMBER_REF_PARENT_TAG_BITS = 3
@@ -533,7 +589,6 @@ private class WinmdBuilder(
         const val ELEMENT_TYPE_U4 = 0x09
         const val ELEMENT_TYPE_STRING = 0x0e
         const val DEFAULT_VERSION = 1
-        const val AUTHORED_INTERFACE_GUID = "11111111-2222-3333-4444-555555555555"
         const val TYPE_ATTRIBUTES_PUBLIC = 0x00000001
         const val TYPE_ATTRIBUTES_WINDOWS_RUNTIME = 0x00004000
         const val TYPE_ATTRIBUTES_SEALED = 0x00000100
@@ -543,9 +598,9 @@ private class WinmdBuilder(
         const val WINDOWS_FOUNDATION_METADATA_DEFAULT = "Windows.Foundation.Metadata.DefaultAttribute"
         const val WINDOWS_FOUNDATION_METADATA_OVERRIDABLE = "Windows.Foundation.Metadata.OverridableAttribute"
         const val WINDOWS_FOUNDATION_METADATA_ACTIVATABLE = "Windows.Foundation.Metadata.ActivatableAttribute"
+        const val WINDOWS_FOUNDATION_METADATA_GUID = "Windows.Foundation.Metadata.GuidAttribute"
         const val WINDOWS_FOUNDATION_METADATA_STATIC = "Windows.Foundation.Metadata.StaticAttribute"
         const val WINDOWS_FOUNDATION_METADATA_VERSION = "Windows.Foundation.Metadata.VersionAttribute"
-        const val SYSTEM_RUNTIME_INTEROP_SERVICES_GUID = "System.Runtime.InteropServices.GuidAttribute"
     }
 }
 
