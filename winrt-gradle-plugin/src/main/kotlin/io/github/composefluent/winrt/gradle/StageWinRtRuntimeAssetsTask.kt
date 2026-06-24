@@ -227,12 +227,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             origin = "declared by dependency identity",
         )
         copyOptionalFiles(authoredHostManifestFiles.files.map { it.toPath() }, outputRoot)
-        val dependencyHostManifests = dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map(Path::of)
-        copyRequiredFiles(
-            paths = dependencyHostManifests,
+        val dependencyHostManifests = writeDependencyAuthoredHostManifestRecords(
+            records = dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifestRecords),
             outputRoot = outputRoot,
-            description = "dependency-authored host manifest",
-            origin = "declared by dependency identity",
         )
         stageAuthoringHostRuntimeConfigs(
             sources = authoredHostManifestFiles.files.filter(java.io.File::isFile) + dependencyHostManifests.map(Path::toFile),
@@ -616,6 +613,27 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             }
     }
 
+    private fun writeDependencyAuthoredHostManifestRecords(
+        records: List<AuthoredHostManifestRecord>,
+        outputRoot: Path,
+    ): List<Path> =
+        records
+            .distinctBy { record -> record.assemblyName.lowercase() to record.targetArtifact.lowercase() }
+            .groupBy { record -> record.assemblyName.lowercase() }
+            .flatMap { (_, assemblyRecords) ->
+                val useTargetSuffix = assemblyRecords.size > 1
+                assemblyRecords.map { record ->
+                    val stem = if (useTargetSuffix) {
+                        "${record.assemblyName}-${record.targetArtifact.toGeneratedFileStem()}"
+                    } else {
+                        record.assemblyName
+                    }
+                    val output = outputRoot.resolve("$stem.host.json")
+                    Files.writeString(output, record.toHostManifestJson())
+                    output
+                }
+            }
+
     private fun readAuthoringHostRuntimeConfig(source: java.io.File): AuthoringHostRuntimeConfig? {
         val content = source.takeIf { it.isFile }?.readText().orEmpty()
         val assemblyName = readJsonString(content, "assemblyName")
@@ -711,11 +729,33 @@ internal fun readAuthoredMetadata(identityFile: java.io.File): List<String> {
     return readJsonStringArray(match.groupValues[1])
 }
 
-internal fun readAuthoredHostManifests(identityFile: java.io.File): List<String> {
+internal fun readAuthoredHostManifestRecords(identityFile: java.io.File): List<AuthoredHostManifestRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val match = Regex(""""authoredHostManifests"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
-    return readJsonStringArray(match.groupValues[1])
+    val arrayContent = readJsonArrayContent(content, "authoredHostManifestRecords") ?: return emptyList()
+    return readJsonObjectArray(arrayContent)
+        .mapNotNull(::readAuthoredHostManifestRecord)
 }
+
+private fun AuthoredHostManifestRecord.toHostManifestJson(): String =
+    buildString {
+        appendLine("{")
+        appendLine("  \"schemaVersion\": 1,")
+        appendLine("  \"model\": \"dependency-authoring-host\",")
+        appendLine("  \"assemblyName\": ${assemblyName.toJsonString()},")
+        hostExportsClass?.let { value ->
+            appendLine("  \"hostExportsClass\": ${value.toJsonString()},")
+        }
+        appendLine("  \"targetArtifact\": ${targetArtifact.toJsonString()},")
+        appendLine("  \"activatableClasses\": ${activatableClasses.toJsonArray()},")
+        appendLine("  \"activatableClassTargets\": ${activatableClassTargets.toJsonObject()}")
+        appendLine("}")
+    }
+
+private fun String.toGeneratedFileStem(): String =
+    map { char -> if (char.isLetterOrDigit()) char else '_' }
+        .joinToString("")
+        .trim('_')
+        .ifBlank { "authoring_host" }
 
 internal fun readAuthoredHostManifestActivatableClasses(manifest: java.io.File): List<String> {
     val content = manifest.takeIf { it.isFile }?.readText().orEmpty()
@@ -746,6 +786,69 @@ private fun readJsonStringMap(content: String, name: String): Map<String, String
     return Regex(""""((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"""")
         .findAll(match.groupValues[1])
         .associate { it.groupValues[1].decodeJsonString() to it.groupValues[2].decodeJsonString() }
+}
+
+private fun readJsonObjectArray(content: String): List<String> {
+    val objects = mutableListOf<String>()
+    var depth = 0
+    var start = -1
+    var inString = false
+    var escaping = false
+    content.forEachIndexed { index, char ->
+        when {
+            escaping -> escaping = false
+            inString && char == '\\' -> escaping = true
+            char == '"' -> inString = !inString
+            inString -> Unit
+            char == '{' -> {
+                if (depth == 0) {
+                    start = index
+                }
+                depth++
+            }
+            char == '}' -> {
+                depth--
+                if (depth == 0 && start >= 0) {
+                    objects += content.substring(start, index + 1)
+                    start = -1
+                }
+            }
+        }
+    }
+    return objects
+}
+
+private fun readJsonArrayContent(content: String, name: String): String? {
+    val field = Regex(""""${Regex.escape(name)}"\s*:""").find(content) ?: return null
+    var index = field.range.last + 1
+    while (index < content.length && content[index].isWhitespace()) {
+        index++
+    }
+    if (index >= content.length || content[index] != '[') {
+        return null
+    }
+    val start = index + 1
+    var depth = 0
+    var inString = false
+    var escaping = false
+    while (index < content.length) {
+        val char = content[index]
+        when {
+            escaping -> escaping = false
+            inString && char == '\\' -> escaping = true
+            char == '"' -> inString = !inString
+            inString -> Unit
+            char == '[' -> depth++
+            char == ']' -> {
+                depth--
+                if (depth == 0) {
+                    return content.substring(start, index)
+                }
+            }
+        }
+        index++
+    }
+    return null
 }
 
 internal fun readJsonStringArrayField(content: String, name: String): List<String> {

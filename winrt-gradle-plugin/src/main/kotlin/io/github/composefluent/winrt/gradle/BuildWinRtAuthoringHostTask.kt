@@ -49,8 +49,10 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
         Files.createDirectories(outputRoot)
         Files.createDirectories(sourceRoot)
-        val manifests = (authoredHostManifestFiles.files + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map { java.io.File(it) })
-            .map(::readHostBuildManifest)
+        val manifests = (
+            authoredHostManifestFiles.files.map(::readHostBuildManifest) +
+                dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifestRecords).mapNotNull(::hostBuildManifestFromRecord)
+            )
             .distinctBy { it.assemblyName.lowercase() }
         if (manifests.isEmpty()) {
             return
@@ -147,6 +149,22 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
             throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' has invalid hostExportsClass '$hostExportsClass'.")
         }
         return HostBuildManifest(assemblyName, hostExportsClass)
+    }
+
+    private fun hostBuildManifestFromRecord(record: AuthoredHostManifestRecord): HostBuildManifest? {
+        val hostExportsClass = record.hostExportsClass?.takeIf(String::isNotBlank) ?: return null
+        if (!record.targetArtifact.endsWith(".jar", ignoreCase = true)) {
+            return null
+        }
+        if ((record.activatableClasses + record.activatableClassTargets.keys).none { it.isNotBlank() }) {
+            return null
+        }
+        if (!hostExportsClass.matches(JVM_CLASS_NAME_REGEX)) {
+            throw IllegalArgumentException(
+                "Kotlin/WinRT authoring host record for '${record.assemblyName}' has invalid hostExportsClass '$hostExportsClass'.",
+            )
+        }
+        return HostBuildManifest(record.assemblyName, hostExportsClass)
     }
 
     private fun findExecutable(name: String): Path? {
