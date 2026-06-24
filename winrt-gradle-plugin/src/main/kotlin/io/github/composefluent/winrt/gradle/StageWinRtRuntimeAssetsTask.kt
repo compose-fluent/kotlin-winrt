@@ -220,6 +220,10 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             outputRoot = outputRoot,
             description = "declared runtime asset",
         )
+        writeDependencyRuntimeAssetRecords(
+            records = dependencyIdentityFiles.files.flatMap(::readDependencyRuntimeAssetRecords),
+            outputRoot = outputRoot,
+        )
         copyOptionalFiles(authoredMetadataFiles.files.map { it.toPath() }, outputRoot)
         writeDependencyAuthoredMetadataRecords(
             records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords),
@@ -714,11 +718,32 @@ internal fun readNuGetPackages(identityFile: java.io.File): List<String> {
     return readJsonStringArray(match.groupValues[1])
 }
 
-internal fun readRuntimeAssets(identityFile: java.io.File): List<String> {
+internal fun readDependencyRuntimeAssetRecords(identityFile: java.io.File): List<RuntimeAssetRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val match = Regex(""""runtimeAssets"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
-    return readJsonStringArray(match.groupValues[1])
+    val arrayContent = readIdentityJsonArrayContent(content, "runtimeAssetRecords") ?: return emptyList()
+    return readIdentityJsonObjectArray(arrayContent)
+        .mapNotNull(::readDependencyRuntimeAssetRecord)
 }
+
+private fun readDependencyRuntimeAssetRecord(content: String): RuntimeAssetRecord? {
+    val fileName = readPortableIdentityJsonStringField(content, "fileName")?.takeIf(String::isNotBlank) ?: return null
+    val contentBase64 = readPortableIdentityJsonStringField(content, "contentBase64")?.takeIf(String::isNotBlank) ?: return null
+    return RuntimeAssetRecord(fileName = fileName, contentBase64 = contentBase64)
+}
+
+internal fun writeDependencyRuntimeAssetRecords(
+    records: List<RuntimeAssetRecord>,
+    outputRoot: Path,
+): List<Path> =
+    records
+        .distinctBy { record -> record.fileName.lowercase() }
+        .map { record ->
+            val fileName = requirePortableDependencyFileName(record.fileName, "dependency runtime asset")
+            val output = outputRoot.resolve(fileName)
+            Files.createDirectories(output.parent)
+            Files.write(output, Base64.getDecoder().decode(record.contentBase64))
+            output
+        }
 
 internal fun readDependencyAuthoredMetadataRecords(identityFile: java.io.File): List<AuthoredMetadataRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()

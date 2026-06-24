@@ -622,6 +622,10 @@ class KotlinWinRtPluginTest {
             "$validationTaskName must depend on native compile",
             "compileKotlinWinuiMingw" in validationDependencies,
         )
+        assertTrue(
+            "$validationTaskName must depend on scanner-generated authored artifacts",
+            "generateWinRtProjections" in validationDependencies,
+        )
         val exportValidationTaskName = "validateCompileKotlinWinuiMingwWinRtNativeAuthoringExports"
         assertTrue(project.tasks.names.contains("linkReleaseSharedWinuiMingw"))
         val exportValidationTask = project.tasks.named(
@@ -853,6 +857,8 @@ class KotlinWinRtPluginTest {
             kotlin.compiler.execution.strategy=in-process
             """.trimIndent(),
         )
+        Files.createDirectories(producer)
+        Files.writeString(producer.resolve("UpstreamComponent.dll"), "upstream-runtime")
         writeGradleFile(
             producer.resolve("build.gradle"),
             """
@@ -903,7 +909,10 @@ class KotlinWinRtPluginTest {
         )
         val moduleMetadata = Files.readString(repository.resolve("test/winrt/producer/1.0/producer-1.0.module"))
         assertTrue(moduleMetadata.contains(KOTLIN_WINRT_IDENTITY_USAGE))
-        assertTrue(Files.readString(repository.resolve("test/winrt/producer/1.0/producer-1.0.json")).contains("UpstreamComponent.dll"))
+        val producerIdentity = Files.readString(repository.resolve("test/winrt/producer/1.0/producer-1.0.json"))
+        assertTrue(producerIdentity.contains("\"runtimeAssetRecords\""))
+        assertTrue(producerIdentity.contains("\"fileName\":\"UpstreamComponent.dll\""))
+        assertFalse(producerIdentity.contains("\"runtimeAssets\""))
 
         writeGradleFile(
             consumer.resolve("settings.gradle.kts"),
@@ -997,7 +1006,8 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"model\": \"library\""))
         assertTrue(json.contains("\"projectionShapeVersion\": 1"))
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
-        assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
+        assertFalse(json.contains("\"runtimeAssets\""))
+        assertTrue(json.contains("\"runtimeAssetRecords\": ["))
         assertTrue(json.contains("\"authoredMetadataRecords\": ["))
         assertTrue(json.contains("\"authoringMetadataIndexRows\": ["))
         assertTrue(json.contains("\"authoredHostManifestRecords\": ["))
@@ -1022,6 +1032,52 @@ class KotlinWinRtPluginTest {
                 "\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260416003\"]",
             ),
         )
+    }
+
+    @Test
+    fun identity_task_publishes_runtime_assets_as_portable_records() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeDll = project.layout.buildDirectory.file("runtime/SampleRuntime.dll").get().asFile.toPath()
+        Files.createDirectories(runtimeDll.parent)
+        Files.writeString(runtimeDll, "sample-runtime")
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
+        extension.runtimeAsset(runtimeDll)
+        val task = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+        task.generate()
+
+        val json = Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(json.contains("\"runtimeAssetRecords\": ["))
+        assertTrue(json.contains("\"fileName\":\"SampleRuntime.dll\""))
+        assertTrue(json.contains("\"contentBase64\":\"${Base64.getEncoder().encodeToString("sample-runtime".toByteArray())}\""))
+        assertFalse(json.contains("\"runtimeAssets\""))
+        assertFalse(json.contains(runtimeDll.toString().replace("\\", "\\\\")))
+    }
+
+    @Test
+    fun identity_task_omits_local_metadata_input_paths_from_published_identity() {
+        val project = ProjectBuilder.builder().build()
+        val localWinmd = project.layout.buildDirectory.file("metadata/ProducerOnly.winmd").get().asFile.toPath()
+        Files.createDirectories(localWinmd.parent)
+        Files.writeString(localWinmd, "producer-winmd")
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
+        extension.winmd("sdk+")
+        extension.winmd("10.0.26100.0+")
+        extension.winmd("nuget:Contoso.Metadata@1.2.3")
+        extension.winmd(localWinmd)
+        extension.winmd("""nuget:D:\a\producer\metadata""")
+
+        val task = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
+        task.generate()
+
+        val json = Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(json.contains("\"metadataInputs\": [\"sdk+\", \"10.0.26100.0+\", \"nuget:Contoso.Metadata@1.2.3\"]"))
+        assertFalse(json.contains("ProducerOnly.winmd"))
+        assertFalse(json.contains(localWinmd.toString().replace("\\", "\\\\")))
+        assertFalse(json.contains("""D:\\a\\producer\\metadata"""))
     }
 
     @Test
@@ -2475,11 +2531,12 @@ class KotlinWinRtPluginTest {
         Files.writeString(dependencyJar, "dependency-jar")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
+        val dependencyDllContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyDll))
         val dependencyWinmdContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyWinmd))
         val dependencyJarContent = Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyJar))
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadataRecords":[{"fileName":"DependencyComponent.winmd","contentBase64":"$dependencyWinmdContent"}],"authoredHostManifestRecords":[{"assemblyName":"DependencyComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_DependencyComponent_jar","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}],"authoredTargetArtifactRecords":[{"fileName":"DependencyComponent.jar","contentBase64":"$dependencyJarContent"}]}""",
+            """{"runtimeAssetRecords":[{"fileName":"DependencyComponent.dll","contentBase64":"$dependencyDllContent"}],"authoredMetadataRecords":[{"fileName":"DependencyComponent.winmd","contentBase64":"$dependencyWinmdContent"}],"authoredHostManifestRecords":[{"assemblyName":"DependencyComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_DependencyComponent_jar","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}],"authoredTargetArtifactRecords":[{"fileName":"DependencyComponent.jar","contentBase64":"$dependencyJarContent"}]}""",
         )
 
         val task = project.tasks.register(
@@ -2490,7 +2547,7 @@ class KotlinWinRtPluginTest {
             registeredTask.nugetPackages.set(emptyList())
             registeredTask.runtimeAssets.set(listOf(appDll.toString()))
             registeredTask.runtimeAssetFiles.from(appDll)
-            registeredTask.dependencyRuntimeAssetFiles.from(dependencyDll)
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
             registeredTask.authoredMetadataFiles.from(appWinmd)
             registeredTask.authoredHostManifestFiles.from(appHostManifest)
             registeredTask.authoredTargetArtifactFiles.from(appJar)
@@ -2886,6 +2943,59 @@ class KotlinWinRtPluginTest {
             error.message.orEmpty().contains("declared runtime asset file"),
         )
         assertTrue(error.message.orEmpty().contains(missingDll.toString()))
+    }
+
+    @Test
+    fun runtime_assets_task_stages_dependency_runtime_asset_records_without_producer_paths() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        val dependencyDllContent = Base64.getEncoder().encodeToString("dependency-runtime".toByteArray())
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """{"runtimeAssets":["D:\\a\\skiko\\skiko\\missing\\DependencyRuntime.dll"],"runtimeAssetRecords":[{"fileName":"DependencyRuntime.dll","contentBase64":"$dependencyDllContent"}]}""",
+        )
+
+        val task = project.tasks.register(
+            "stageDependencyRuntimeAssetRecords",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.runtimeAssetFiles.from(project.files())
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.authoredMetadataFiles.from(project.files())
+            registeredTask.authoredHostManifestFiles.from(project.files())
+            registeredTask.authoredTargetArtifactFiles.from(project.files())
+            registeredTask.authoredHostDllFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.appxManifestFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(project.files())
+            registeredTask.projectPriLayoutFiles.from(project.files())
+            registeredTask.projectPriContentFiles.from(project.files())
+            registeredTask.projectPriEmbedFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceFiles.from(project.files())
+            registeredTask.defaultProjectPriLayoutFiles.from(project.files())
+            registeredTask.defaultProjectPriContentFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val stagedDll = task.outputDirectory.get().asFile.toPath().resolve("DependencyRuntime.dll")
+        assertTrue(Files.isRegularFile(stagedDll))
+        assertEquals("dependency-runtime", Files.readString(stagedDll))
     }
 
     @Test

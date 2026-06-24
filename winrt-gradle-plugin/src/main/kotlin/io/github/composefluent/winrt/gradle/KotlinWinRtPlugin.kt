@@ -143,6 +143,7 @@ private fun configureWinRtLibraryModel(
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
+            task.runtimeAssetFiles.from(extension.runtimeAssets)
             task.authoringMetadataIndexFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
@@ -363,11 +364,6 @@ private fun configureWinRtApplicationTasks(
             )
             task.runtimeAssets.set(extension.runtimeAssets)
             task.runtimeAssetFiles.from(extension.runtimeAssets)
-            task.dependencyRuntimeAssetFiles.from(
-                dependencyIdentityFiles.elements.map { elements ->
-                    elements.map { it.asFile }.flatMap(::readRuntimeAssets)
-                },
-            )
             val dependencyNuGetPackages = dependencyIdentityFiles.elements.map { elements ->
                 elements.map { it.asFile }.flatMap(::readNuGetPackages)
             }
@@ -1179,6 +1175,7 @@ private fun registerWinRtAuthoredCandidateValidation(
             task.outputFile.set(
                 project.layout.buildDirectory.file("kotlin-winrt/validation/${compileTaskName}/authored-candidates.txt"),
             )
+            task.dependsOn("generateWinRtProjections")
             task.dependsOn(compileTaskProvider)
         },
     )
