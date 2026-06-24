@@ -512,12 +512,17 @@ data class WinRtMetadataCache(
 object WinRtMetadataSourceResolver {
     fun resolve(sources: List<WinRtMetadataSource>): WinRtMetadataCache {
         val resolvedSources = sources.map(::resolveSource)
+        val seenFiles = linkedSetOf<String>()
         val resolvedFiles = resolvedSources
             .asSequence()
-            .flatMap { source -> source.files.asSequence() }
+            .flatMap { source ->
+                source.files
+                    .asSequence()
+                    .map { resolved -> resolved.copy(file = canonicalizePath(resolved.file)) }
+                    .sortedBy { resolved -> canonicalPathKey(resolved.file) }
+            }
             .map { resolved -> resolved.copy(file = canonicalizePath(resolved.file)) }
-            .distinctBy { resolved -> canonicalPathKey(resolved.file) }
-            .sortedBy { resolved -> canonicalPathKey(resolved.file) }
+            .filter { resolved -> seenFiles.add(canonicalPathKey(resolved.file)) }
             .toList()
         val files = resolvedFiles.map(WinRtResolvedMetadataFile::file)
         val packageAssets = resolvedSources

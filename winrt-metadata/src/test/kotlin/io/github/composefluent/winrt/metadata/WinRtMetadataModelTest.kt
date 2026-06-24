@@ -2442,6 +2442,54 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun projection_surface_filter_keeps_required_interface_augmentation_closure() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IResourceDictionary",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IResourceDictionaryMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IResourceDictionary"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "ResourceDictionary",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IResourceDictionaryMap",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IResourceDictionaryMap", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filtered = model.filterProjectionSurface(types = setOf("Microsoft.UI.Xaml.ResourceDictionary"))
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Xaml.IResourceDictionary",
+                "Microsoft.UI.Xaml.IResourceDictionaryMap",
+                "Microsoft.UI.Xaml.ResourceDictionary",
+            ),
+            filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
+        )
+    }
+
+    @Test
     fun projection_surface_filter_keeps_setter_only_exclusive_interface_peer_getter_surface() {
         val model = WinRtMetadataModel(
             listOf(

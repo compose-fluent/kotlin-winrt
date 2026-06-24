@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRtAuthoringCandidateFile
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
@@ -8,6 +9,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtAuthoredRuntimeClassDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtPortableExecutableMetadataWriter
+import io.github.composefluent.winrt.metadata.WinRtPortableExecutableInterfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
@@ -7513,6 +7515,77 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun compiler_authored_type_details_load_dependency_authored_metadata_records() {
+        val project = ProjectBuilder.builder().build()
+        val root = project.layout.buildDirectory.dir("compiler-authored-details").get().asFile.toPath()
+        val dependencyWinmd = root.resolve("DependencyComponent.winmd")
+        WinRtPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "DependencyComponent",
+            interfaces = listOf(
+                WinRtPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Dependency.Component.IWidget",
+                    iid = "22222222-3333-4444-5555-666666666666",
+                ),
+            ),
+            outputFile = dependencyWinmd,
+        )
+        val dependencyIdentity = root.resolve("dependency/kotlin-winrt.json")
+        Files.createDirectories(dependencyIdentity.parent)
+        Files.writeString(
+            dependencyIdentity,
+            """{"authoredMetadataRecords":[{"fileName":"DependencyComponent.winmd","contentBase64":"${Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyWinmd))}"}]}""",
+        )
+        val candidates = root.resolve("compiler-candidates.tsv")
+        KotlinWinRtAuthoringCandidateFile.write(
+            candidates,
+            listOf(
+                KotlinWinRtAuthoredTypeCandidate(
+                    packageName = "sample",
+                    className = "AuthoredWidget",
+                    sourceTypeName = "sample.AuthoredWidget",
+                    winRtBaseClassName = null,
+                    winRtInterfaceNames = listOf("Dependency.Component.IWidget"),
+                    overridableInterfaceNames = emptyList(),
+                    isPublic = true,
+                ),
+            ),
+        )
+
+        val task = project.tasks.register(
+            "generateCompilerAuthoredTypeDetailsUnderTest",
+            GenerateWinRtCompilerAuthoredTypeDetailsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("compiler-authored-details-output"))
+            registeredTask.legacyOutputDirectories.from(project.files())
+            registeredTask.compilerCandidates.from(candidates)
+            registeredTask.metadataInputs.set(emptyList())
+            registeredTask.metadataInputFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity.toFile())
+            registeredTask.includeNamespaces.set(emptyList())
+            registeredTask.includeTypes.set(emptyList())
+            registeredTask.excludeNamespaces.set(emptyList())
+            registeredTask.excludeTypes.set(emptyList())
+            registeredTask.includeWindowsSdkExtensions.set(false)
+            registeredTask.generateWindowsSdkProjection.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.authoringAssemblyName.set("Sample")
+        }.get()
+
+        task.generate()
+
+        val details = task.outputDirectory.get().asFile.toPath()
+            .resolve("sample/WinRT_AuthoredWidget_TypeDetails.kt")
+        assertTrue(Files.isRegularFile(details))
+        assertTrue(Files.readString(details).contains("22222222-3333-4444-5555-666666666666"))
+    }
+
+    @Test
     fun authored_candidate_validation_is_registered_only_for_winui_native_targets() {
         val project = ProjectBuilder.builder().build()
 
@@ -9390,8 +9463,14 @@ private fun writeWindowsAppSdkPackage(
     if (includeWinUiWinmd) {
         val winmdRoot = packageRoot.resolve("lib/net8.0")
         Files.createDirectories(winmdRoot)
-        WinRtPortableExecutableMetadataWriter.writeAuthoredWinmd(
+        WinRtPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
             assemblyName = "Microsoft.UI.Xaml",
+            interfaces = listOf(
+                WinRtPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Microsoft.UI.Xaml.IResourceDictionary",
+                    iid = "11111111-2222-3333-4444-555555555555",
+                ),
+            ),
             runtimeClasses = listOf(
                 WinRtAuthoredRuntimeClassDescriptor(
                     runtimeClassName = "Microsoft.UI.Xaml.ResourceDictionary",

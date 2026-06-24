@@ -204,7 +204,13 @@ abstract class GenerateWinRtCompilerAuthoredTypeDetailsTask @Inject constructor(
             )
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
-        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
+        val dependencyRecords = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
+        val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
+            records = dependencyRecords,
+            outputRoot = temporaryDir.toPath().resolve("dependency-authored-metadata"),
+        )
+            .map(WinRtMetadataSource::path)
+        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
         return sources.ifEmpty {
             if (hasProjectionFilter && generateWindowsSdkProjection.get()) {
                 listOf(WinRtMetadataSource.windowsSdk())

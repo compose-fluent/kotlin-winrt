@@ -613,7 +613,7 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
-    fun resolves_mixed_metadata_sources_into_deterministic_cache_order() {
+    fun resolves_mixed_metadata_sources_by_source_priority_with_deterministic_in_source_order() {
         val assembly = buildManagedMetadataSample()
         val root = Files.createTempDirectory("kotlin-winrt-metadata-mixed-sources")
         val fileInput = root.resolve("file").resolve("Zeta.winmd")
@@ -645,13 +645,15 @@ class WinRtMetadataLoaderTest {
             ),
         )
 
-        assertEquals(firstCache.files.map { it.toCanonicalTestPath() }, secondCache.files.map { it.toCanonicalTestPath() })
-        assertEquals(firstCache.resolvedFiles.map { it.file.toCanonicalTestPath() }, firstCache.files.map { it.toCanonicalTestPath() })
-        val resolvedFileOrder = firstCache.files.map { it.toCanonicalTestPath() }
         assertEquals(
-            resolvedFileOrder.sortedWith(String.CASE_INSENSITIVE_ORDER),
-            resolvedFileOrder,
+            listOf(packageWinmd, directoryWinmd, fileInput).map { it.toCanonicalTestPath() },
+            firstCache.files.map { it.toCanonicalTestPath() },
         )
+        assertEquals(
+            listOf(fileInput, directoryWinmd, packageWinmd).map { it.toCanonicalTestPath() },
+            secondCache.files.map { it.toCanonicalTestPath() },
+        )
+        assertEquals(firstCache.resolvedFiles.map { it.file.toCanonicalTestPath() }, firstCache.files.map { it.toCanonicalTestPath() })
         assertEquals(3, firstCache.files.size)
     }
 
@@ -996,6 +998,24 @@ class WinRtMetadataLoaderTest {
         assertTrue(inventory.table("ManifestResource").single().rowCount > 0)
         assertTrue(inventory.table("NestedClass").single().rowCount > 0)
         assertTrue(inventory.table("MethodSpec").single().modeled)
+    }
+
+    @Test
+    fun loads_exclusive_interface_properties_from_cli_metadata() {
+        val assembly = buildExclusiveInterfacePropertyMetadataSample()
+
+        val model = WinRtMetadataLoader.load(assembly).normalized()
+        val composition = model.namespaces.single { it.name == "Microsoft.UI.Composition" }
+        val supportsBackdrop = composition.types.single { it.name == "ICompositionSupportsSystemBackdrop" }
+
+        assertTrue(supportsBackdrop.isExclusiveTo)
+        assertEquals(emptyList<String>(), supportsBackdrop.methods.map { it.name })
+        val property = supportsBackdrop.properties.single()
+        assertEquals("SystemBackdrop", property.name)
+        assertEquals("Microsoft.UI.Xaml.Media.SystemBackdrop", property.typeName)
+        assertEquals("get_SystemBackdrop", property.getterMethodName)
+        assertEquals("set_SystemBackdrop", property.setterMethodName)
+        assertTrue(property.hasValidAccessors)
     }
 
     private fun findWindowsAppSdkPackage(): Path? {
@@ -1513,6 +1533,66 @@ class WinRtMetadataLoaderTest {
             command = listOf(dotnet.toString(), "build", "-nologo", "-clp:ErrorsOnly"),
         )
         return mainDir.resolve("bin/Debug/net8.0/AuxiliaryMetadata.dll")
+    }
+
+    private fun buildExclusiveInterfacePropertyMetadataSample(): Path {
+        val dotnet = findDotnet()
+        assumeTrue("dotnet CLI is required for exclusive interface property metadata tests", dotnet != null)
+        val tempDir = Files.createTempDirectory("kotlin-winrt-exclusive-property-metadata-test")
+        val projectDir = tempDir.resolve("ExclusivePropertyMetadata")
+        projectDir.createDirectories()
+
+        projectDir.resolve("ExclusivePropertyMetadata.csproj").writeText(
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <ImplicitUsings>disable</ImplicitUsings>
+                <Nullable>disable</Nullable>
+                <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+                <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+              </PropertyGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        projectDir.resolve("MetadataTypes.cs").writeText(
+            """
+            namespace Windows.Foundation.Metadata
+            {
+                using System;
+
+                [AttributeUsage(AttributeTargets.Interface, AllowMultiple = false)]
+                public sealed class ExclusiveToAttribute : Attribute
+                {
+                    public ExclusiveToAttribute(Type type) {}
+                }
+            }
+
+            namespace Microsoft.UI.Xaml.Media
+            {
+                public class SystemBackdrop {}
+            }
+
+            namespace Microsoft.UI.Composition
+            {
+                [Windows.Foundation.Metadata.ExclusiveTo(typeof(CompositionTarget))]
+                public interface ICompositionSupportsSystemBackdrop
+                {
+                    Microsoft.UI.Xaml.Media.SystemBackdrop SystemBackdrop { get; set; }
+                }
+
+                public class CompositionTarget : ICompositionSupportsSystemBackdrop
+                {
+                    public Microsoft.UI.Xaml.Media.SystemBackdrop SystemBackdrop { get; set; }
+                }
+            }
+            """.trimIndent(),
+        )
+        runProcess(
+            workingDirectory = projectDir,
+            command = listOf(dotnet!!.toString(), "build", "-nologo", "-clp:ErrorsOnly"),
+        )
+        return projectDir.resolve("bin/Debug/net8.0/ExclusivePropertyMetadata.dll")
     }
 
     private fun buildWindowsSdkMetadataRoot(
