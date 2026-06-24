@@ -465,11 +465,6 @@ private fun configureWinRtApplicationTasks(
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.executableBaseName.set(project.name)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
-            task.authoredTargetArtifactFiles.from(
-                dependencyIdentityFiles.elements.map { elements ->
-                    elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
-                },
-            )
             task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
                 spec.include("*.dll")
             })

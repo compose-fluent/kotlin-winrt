@@ -23,6 +23,7 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Base64
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -220,11 +221,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             description = "declared runtime asset",
         )
         copyOptionalFiles(authoredMetadataFiles.files.map { it.toPath() }, outputRoot)
-        copyRequiredFiles(
-            paths = dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata).map(Path::of),
+        writeDependencyAuthoredMetadataRecords(
+            records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords),
             outputRoot = outputRoot,
-            description = "dependency-authored metadata",
-            origin = "declared by dependency identity",
         )
         copyOptionalFiles(authoredHostManifestFiles.files.map { it.toPath() }, outputRoot)
         val dependencyHostManifests = writeDependencyAuthoredHostManifestRecords(
@@ -236,11 +235,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             outputRoot = outputRoot,
         )
         copyOptionalFiles(authoredTargetArtifactFiles.files.map { it.toPath() }, outputRoot)
-        copyRequiredFiles(
-            paths = dependencyIdentityFiles.files.flatMap(::readAuthoredTargetArtifacts).map(Path::of),
+        writeDependencyAuthoredTargetArtifactRecords(
+            records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredTargetArtifactRecords),
             outputRoot = outputRoot,
-            description = "dependency-authored target artifact",
-            origin = "declared by dependency identity",
         )
         authoredHostDllFiles.files
             .asSequence()
@@ -723,16 +720,37 @@ internal fun readRuntimeAssets(identityFile: java.io.File): List<String> {
     return readJsonStringArray(match.groupValues[1])
 }
 
-internal fun readAuthoredMetadata(identityFile: java.io.File): List<String> {
+internal fun readDependencyAuthoredMetadataRecords(identityFile: java.io.File): List<AuthoredMetadataRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val match = Regex(""""authoredMetadata"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
-    return readJsonStringArray(match.groupValues[1])
+    val arrayContent = readIdentityJsonArrayContent(content, "authoredMetadataRecords") ?: return emptyList()
+    return readIdentityJsonObjectArray(arrayContent)
+        .mapNotNull(::readDependencyAuthoredMetadataRecord)
 }
+
+private fun readDependencyAuthoredMetadataRecord(content: String): AuthoredMetadataRecord? {
+    val fileName = readPortableIdentityJsonStringField(content, "fileName")?.takeIf(String::isNotBlank) ?: return null
+    val contentBase64 = readPortableIdentityJsonStringField(content, "contentBase64")?.takeIf(String::isNotBlank) ?: return null
+    return AuthoredMetadataRecord(fileName = fileName, contentBase64 = contentBase64)
+}
+
+internal fun writeDependencyAuthoredMetadataRecords(
+    records: List<AuthoredMetadataRecord>,
+    outputRoot: Path,
+): List<Path> =
+    records
+        .distinctBy { record -> record.fileName.lowercase() }
+        .map { record ->
+            val fileName = requirePortableDependencyFileName(record.fileName, "dependency-authored metadata")
+            val output = outputRoot.resolve(fileName)
+            Files.createDirectories(output.parent)
+            Files.write(output, Base64.getDecoder().decode(record.contentBase64))
+            output
+        }
 
 internal fun readAuthoredHostManifestRecords(identityFile: java.io.File): List<AuthoredHostManifestRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val arrayContent = readJsonArrayContent(content, "authoredHostManifestRecords") ?: return emptyList()
-    return readJsonObjectArray(arrayContent)
+    val arrayContent = readIdentityJsonArrayContent(content, "authoredHostManifestRecords") ?: return emptyList()
+    return readIdentityJsonObjectArray(arrayContent)
         .mapNotNull(::readAuthoredHostManifestRecord)
 }
 
@@ -757,6 +775,16 @@ private fun String.toGeneratedFileStem(): String =
         .trim('_')
         .ifBlank { "authoring_host" }
 
+internal fun requirePortableDependencyFileName(fileName: String, description: String): String {
+    require(fileName.isNotBlank()) {
+        "Kotlin/WinRT identity $description record has a blank fileName."
+    }
+    require(Path.of(fileName).fileName.toString() == fileName && fileName != "." && fileName != "..") {
+        "Kotlin/WinRT identity $description record must use a portable file name, but was '$fileName'."
+    }
+    return fileName
+}
+
 internal fun readAuthoredHostManifestActivatableClasses(manifest: java.io.File): List<String> {
     val content = manifest.takeIf { it.isFile }?.readText().orEmpty()
     return readJsonStringArrayField(content, "activatableClasses") +
@@ -767,18 +795,37 @@ internal fun authoredHostManifestDeclaresActivatableClasses(manifest: java.io.Fi
     return readAuthoredHostManifestActivatableClasses(manifest).any { it.isNotBlank() }
 }
 
-internal fun readAuthoredTargetArtifacts(identityFile: java.io.File): List<String> {
+internal fun readDependencyAuthoredTargetArtifactRecords(identityFile: java.io.File): List<AuthoredTargetArtifactRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val match = Regex(""""authoredTargetArtifacts"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
-    return readJsonStringArray(match.groupValues[1])
+    val arrayContent = readIdentityJsonArrayContent(content, "authoredTargetArtifactRecords") ?: return emptyList()
+    return readIdentityJsonObjectArray(arrayContent)
+        .mapNotNull(::readDependencyAuthoredTargetArtifactRecord)
 }
 
+private fun readDependencyAuthoredTargetArtifactRecord(content: String): AuthoredTargetArtifactRecord? {
+    val fileName = readPortableIdentityJsonStringField(content, "fileName")?.takeIf(String::isNotBlank) ?: return null
+    val contentBase64 = readPortableIdentityJsonStringField(content, "contentBase64")?.takeIf(String::isNotBlank) ?: return null
+    return AuthoredTargetArtifactRecord(fileName = fileName, contentBase64 = contentBase64)
+}
+
+internal fun writeDependencyAuthoredTargetArtifactRecords(
+    records: List<AuthoredTargetArtifactRecord>,
+    outputRoot: Path,
+): List<Path> =
+    records
+        .distinctBy { record -> record.fileName.lowercase() }
+        .map { record ->
+            val fileName = requirePortableDependencyFileName(record.fileName, "dependency-authored target artifact")
+            val output = outputRoot.resolve(fileName)
+            Files.createDirectories(output.parent)
+            Files.write(output, Base64.getDecoder().decode(record.contentBase64))
+            output
+        }
+
 private fun readJsonString(content: String, name: String): String? =
-    Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
-        .find(content)
-        ?.groupValues
-        ?.get(1)
-        ?.decodeJsonString()
+    findJsonFieldValueStart(content, name)
+        ?.takeIf { index -> index < content.length && content[index] == '"' }
+        ?.let { index -> readJsonQuotedString(content, index) }
 
 private fun readJsonStringMap(content: String, name: String): Map<String, String> {
     val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
@@ -787,6 +834,12 @@ private fun readJsonStringMap(content: String, name: String): Map<String, String
         .findAll(match.groupValues[1])
         .associate { it.groupValues[1].decodeJsonString() to it.groupValues[2].decodeJsonString() }
 }
+
+internal fun readPortableIdentityJsonStringField(content: String, name: String): String? =
+    readJsonString(content, name)
+
+internal fun readIdentityJsonObjectArray(content: String): List<String> =
+    readJsonObjectArray(content)
 
 private fun readJsonObjectArray(content: String): List<String> {
     val objects = mutableListOf<String>()
@@ -817,6 +870,9 @@ private fun readJsonObjectArray(content: String): List<String> {
     }
     return objects
 }
+
+internal fun readIdentityJsonArrayContent(content: String, name: String): String? =
+    readJsonArrayContent(content, name)
 
 private fun readJsonArrayContent(content: String, name: String): String? {
     val field = Regex(""""${Regex.escape(name)}"\s*:""").find(content) ?: return null
@@ -858,13 +914,87 @@ internal fun readJsonStringArrayField(content: String, name: String): List<Strin
 }
 
 private fun readJsonStringArray(content: String): List<String> =
-    Regex(""""((?:\\.|[^"\\])*)"""")
-        .findAll(content)
-        .map { it.groupValues[1].decodeJsonString() }
-        .toList()
+    buildList {
+        var index = 0
+        while (index < content.length) {
+            if (content[index] == '"') {
+                val end = findJsonStringEnd(content, index)
+                add(content.substring(index + 1, end).decodeJsonString())
+                index = end + 1
+            } else {
+                index++
+            }
+        }
+    }
+
+private fun findJsonFieldValueStart(content: String, name: String): Int? {
+    var index = 0
+    while (index < content.length) {
+        if (content[index] != '"') {
+            index++
+            continue
+        }
+        val keyEnd = findJsonStringEnd(content, index)
+        val key = content.substring(index + 1, keyEnd).decodeJsonString()
+        index = keyEnd + 1
+        while (index < content.length && content[index].isWhitespace()) {
+            index++
+        }
+        if (index >= content.length || content[index] != ':') {
+            continue
+        }
+        index++
+        while (index < content.length && content[index].isWhitespace()) {
+            index++
+        }
+        if (key == name) {
+            return index
+        }
+    }
+    return null
+}
+
+private fun readJsonQuotedString(content: String, startQuote: Int): String =
+    content.substring(startQuote + 1, findJsonStringEnd(content, startQuote)).decodeJsonString()
+
+private fun findJsonStringEnd(content: String, startQuote: Int): Int {
+    var index = startQuote + 1
+    var escaping = false
+    while (index < content.length) {
+        val char = content[index]
+        when {
+            escaping -> escaping = false
+            char == '\\' -> escaping = true
+            char == '"' -> return index
+        }
+        index++
+    }
+    throw IllegalArgumentException("Malformed Kotlin/WinRT identity JSON string.")
+}
 
 private fun String.decodeJsonString(): String =
-    replace("\\\"", "\"").replace("\\\\", "\\")
+    buildString {
+        var index = 0
+        while (index < this@decodeJsonString.length) {
+            val char = this@decodeJsonString[index++]
+            if (char != '\\' || index >= this@decodeJsonString.length) {
+                append(char)
+                continue
+            }
+            when (val escaped = this@decodeJsonString[index++]) {
+                '\\' -> append('\\')
+                '"' -> append('"')
+                'b' -> append('\b')
+                'n' -> append('\n')
+                'r' -> append('\r')
+                't' -> append('\t')
+                else -> {
+                    append('\\')
+                    append(escaped)
+                }
+            }
+        }
+    }
 
 private fun Map<String, String>.toJsonObject(): String =
     entries
