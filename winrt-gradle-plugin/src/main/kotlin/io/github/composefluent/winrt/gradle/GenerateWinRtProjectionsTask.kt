@@ -699,10 +699,8 @@ internal fun dependencyProjectedTypeNames(
                         .firstOrNull()
                         ?.qualifiedName
                 } +
-                readAuthoredHostManifests(identityFile)
-                    .map(Path::of)
-                    .filter(Files::isRegularFile)
-                    .flatMap { path -> readAuthoredHostManifestActivatableClasses(path.toFile()) }
+                readAuthoredHostManifestRecords(identityFile)
+                    .flatMap { record -> record.activatableClasses + record.activatableClassTargets.keys }
         }
         .toSortedSet()
 

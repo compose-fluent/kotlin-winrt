@@ -117,7 +117,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
                 appendLine("  \"authoringMetadataIndexes\": ${authoringMetadataIndexFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
                 appendLine("  \"authoringMetadataIndexRows\": ${readAuthoringMetadataIndexRows(authoringMetadataIndexFiles.files).toJsonArray()},")
-                appendLine("  \"authoredHostManifests\": ${authoredHostManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
+                appendLine("  \"authoredHostManifestRecords\": ${authoredHostManifestRecordsToJsonArray(readAuthoredHostManifestRecords(authoredHostManifestFiles.files))},")
                 appendLine("  \"authoredTargetArtifacts\": ${authoredTargetArtifactFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
                 appendLine("  \"compilerSupportManifests\": ${compilerSupportManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
                 appendLine("}")
@@ -275,6 +275,9 @@ private fun String.decodeIdentityJsonString(): String =
 internal fun List<String>.toJsonArray(): String =
     joinToString(prefix = "[", postfix = "]") { it.toJsonString() }
 
+private fun authoredHostManifestRecordsToJsonArray(records: List<AuthoredHostManifestRecord>): String =
+    records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
+
 internal fun String?.toJsonStringOrNull(): String =
     this?.toJsonString() ?: "null"
 
@@ -294,3 +297,99 @@ internal fun String.toJsonString(): String =
         }
         append('"')
     }
+
+internal data class AuthoredHostManifestRecord(
+    val assemblyName: String,
+    val hostExportsClass: String?,
+    val targetArtifact: String,
+    val activatableClasses: List<String>,
+    val activatableClassTargets: Map<String, String>,
+)
+
+internal fun readAuthoredHostManifestRecords(files: Iterable<File>): List<AuthoredHostManifestRecord> =
+    files
+        .filter(File::isFile)
+        .mapNotNull { file -> readAuthoredHostManifestRecord(file.readText()) }
+        .distinctBy(AuthoredHostManifestRecord::recordIdentity)
+        .sortedWith(
+            compareBy<AuthoredHostManifestRecord> { it.assemblyName.lowercase() }
+                .thenBy { it.targetArtifact.lowercase() }
+                .thenBy { it.hostExportsClass.orEmpty() },
+        )
+
+internal fun readAuthoredHostManifestRecord(content: String): AuthoredHostManifestRecord? {
+    val assemblyName = readIdentityJsonStringField(content, "assemblyName")?.takeIf(String::isNotBlank)
+        ?: return null
+    val activatableClasses = readIdentityJsonStringArrayField(content, "activatableClasses")
+        .filter(String::isNotBlank)
+        .distinct()
+        .sorted()
+    val activatableClassTargets = readIdentityJsonStringMapField(content, "activatableClassTargets")
+        .filterKeys(String::isNotBlank)
+        .toSortedMap()
+    if (activatableClasses.isEmpty() && activatableClassTargets.isEmpty()) {
+        return null
+    }
+    return AuthoredHostManifestRecord(
+        assemblyName = assemblyName,
+        hostExportsClass = readIdentityJsonStringField(content, "hostExportsClass")?.takeIf(String::isNotBlank),
+        targetArtifact = readIdentityJsonStringField(content, "targetArtifact").orEmpty(),
+        activatableClasses = activatableClasses,
+        activatableClassTargets = activatableClassTargets,
+    )
+}
+
+private fun AuthoredHostManifestRecord.toJsonObject(): String =
+    buildString {
+        append("{")
+        append("\"assemblyName\":")
+        append(assemblyName.toJsonString())
+        hostExportsClass?.let { value ->
+            append(",\"hostExportsClass\":")
+            append(value.toJsonString())
+        }
+        append(",\"targetArtifact\":")
+        append(targetArtifact.toJsonString())
+        append(",\"activatableClasses\":")
+        append(activatableClasses.toJsonArray())
+        append(",\"activatableClassTargets\":")
+        append(activatableClassTargets.toJsonObject())
+        append("}")
+    }
+
+private fun AuthoredHostManifestRecord.recordIdentity(): String =
+    listOf(assemblyName.lowercase(), targetArtifact.lowercase(), hostExportsClass.orEmpty()).joinToString("\u0000")
+
+private fun Map<String, String>.toJsonObject(): String =
+    entries
+        .sortedBy { it.key }
+        .joinToString(prefix = "{", postfix = "}") { (key, value) ->
+            "${key.toJsonString()}:${value.toJsonString()}"
+        }
+
+private fun readIdentityJsonStringField(content: String, name: String): String? =
+    Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .find(content)
+        ?.groupValues
+        ?.get(1)
+        ?.decodeIdentityJsonString()
+
+private fun readIdentityJsonStringArrayField(content: String, name: String): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .map { it.groupValues[1].decodeIdentityJsonString() }
+        .toList()
+}
+
+private fun readIdentityJsonStringMapField(content: String, name: String): Map<String, String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyMap()
+    return Regex(""""((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .associate { matchResult ->
+            matchResult.groupValues[1].decodeIdentityJsonString() to
+                matchResult.groupValues[2].decodeIdentityJsonString()
+        }
+}

@@ -1000,8 +1000,9 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"authoredMetadata\": ["))
         assertTrue(json.contains("\"authoringMetadataIndexes\": ["))
         assertTrue(json.contains("\"authoringMetadataIndexRows\": ["))
-        assertTrue(json.contains("\"authoredHostManifests\": ["))
+        assertTrue(json.contains("\"authoredHostManifestRecords\": ["))
         assertTrue(json.contains("\"authoredTargetArtifacts\": ["))
+        assertFalse(json.contains("\"authoredHostManifests\""))
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
         assertTrue(json.contains("\"projectedTypes\": ["))
@@ -1545,22 +1546,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val root = project.layout.buildDirectory.dir("dependency-authored-host").get().asFile.toPath()
         val dependencyIdentity = root.resolve("kotlin-winrt.json")
-        val hostManifest = root.resolve("dependency.host.json")
         Files.createDirectories(root)
-        Files.writeString(
-            hostManifest,
-            """
-            {
-              "schemaVersion": 1,
-              "model": "jvm-authoring-host",
-              "assemblyName": "dependency",
-              "hostExportsClass": "sample.DependencyHostExports",
-              "targetArtifact": "dependency.jar",
-              "activatableClasses": ["androidx.compose.ui.window.WinUIXamlApplication"],
-              "activatableClassTargets": {}
-            }
-            """.trimIndent(),
-        )
         Files.writeString(
             dependencyIdentity,
             """
@@ -1568,7 +1554,15 @@ class KotlinWinRtPluginTest {
               "includeTypes": [],
               "projectionShapeVersion": 1,
               "projectedTypes": [],
-              "authoredHostManifests": [${hostManifest.toString().toJsonString()}]
+              "authoredHostManifestRecords": [
+                {
+                  "assemblyName": "dependency",
+                  "hostExportsClass": "sample.DependencyHostExports",
+                  "targetArtifact": "dependency.jar",
+                  "activatableClasses": ["androidx.compose.ui.window.WinUIXamlApplication"],
+                  "activatableClassTargets": {}
+                }
+              ]
             }
             """.trimIndent(),
         )
@@ -2431,7 +2425,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadata":["${dependencyWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifests":["${dependencyHostManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
+            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadata":["${dependencyWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifestRecords":[{"assemblyName":"DependencyComponent","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_DependencyComponent_jar","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
         )
 
         val task = project.tasks.register(
@@ -2495,7 +2489,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredHostManifests":["${dependencyHostManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
+            """{"authoredHostManifestRecords":[{"assemblyName":"ui","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_ui_jar","targetArtifact":"ui.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{}}],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}"]}""",
         )
 
         val task = project.tasks.register(
@@ -2558,7 +2552,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredHostManifests":["${dependencyHostManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyDll.toString().replace("\\", "\\\\")}"]}""",
+            """{"authoredHostManifestRecords":[{"assemblyName":"winui-kmp-library","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}],"authoredTargetArtifacts":["${dependencyDll.toString().replace("\\", "\\\\")}"]}""",
         )
 
         val task = project.tasks.register(
@@ -2631,7 +2625,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredHostManifests":["${dependencyJvmManifest.toString().replace("\\", "\\\\")}","${dependencyNativeManifest.toString().replace("\\", "\\\\")}"],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}","${dependencyNativeDll.toString().replace("\\", "\\\\")}"]}""",
+            """{"authoredHostManifestRecords":[{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_jar","targetArtifact":"winui-kmp-library.jar","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui-kmp-library.jar"}},{"assemblyName":"winui-kmp-library","hostExportsClass":"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_dll","targetArtifact":"winui_kmp_library.dll","activatableClasses":["androidx.compose.ui.window.WinUIXamlApplication"],"activatableClassTargets":{"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}}],"authoredTargetArtifacts":["${dependencyJar.toString().replace("\\", "\\\\")}","${dependencyNativeDll.toString().replace("\\", "\\\\")}"]}""",
         )
 
         val task = project.tasks.register(
@@ -2679,6 +2673,56 @@ class KotlinWinRtPluginTest {
         assertTrue(manifest.contains("<asmv3:file name='winui_kmp_library.dll'"))
         assertFalse(Regex("""<asmv3:file name='winui_kmp_library\.dll'[\s\S]*?WinUIXamlApplication[\s\S]*?</asmv3:file>""").containsMatchIn(manifest))
         assertTrue(Files.readString(outputRoot.resolve("winui-kmp-library.runtimeconfig.json")).contains("\"androidx.compose.ui.window.WinUIXamlApplication\": \"winui-kmp-library.jar\""))
+    }
+
+    @Test
+    fun authoring_host_build_consumes_only_dependency_jvm_host_records() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "authoredHostManifestRecords": [
+                {
+                  "assemblyName": "winui-kmp-library",
+                  "hostExportsClass": "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_winui_kmp_library_jar",
+                  "targetArtifact": "winui-kmp-library.jar",
+                  "activatableClasses": ["androidx.compose.ui.window.WinUIXamlApplication"],
+                  "activatableClassTargets": {"androidx.compose.ui.window.WinUIXamlApplication":"winui-kmp-library.jar"}
+                },
+                {
+                  "assemblyName": "winui-kmp-library",
+                  "targetArtifact": "winui_kmp_library.dll",
+                  "activatableClasses": ["androidx.compose.ui.window.WinUIXamlApplication"],
+                  "activatableClassTargets": {"androidx.compose.ui.window.WinUIXamlApplication":"winui_kmp_library.dll"}
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "buildDependencyJvmAuthoringHost",
+            BuildWinRtAuthoringHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("authoring-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("authoring-host/src"))
+            registeredTask.authoredHostManifestFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.commandWorkingDirectory.set(project.layout.projectDirectory)
+        }.get()
+
+        task.build()
+
+        val source = Files.readString(
+            task.generatedSourceDirectory.get().asFile.toPath()
+                .resolve("winui_kmp_library_kotlin_winrt_authoring_host.c"),
+        )
+        assertTrue(source.contains("WinRTAuthoringHostExports_winui_kmp_library_jar"))
+        assertFalse(source.contains("WinRTAuthoringHostExports_winui_kmp_library_dll"))
     }
 
     @Test
@@ -2856,7 +2900,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"authoredMetadata":["${missingWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifests":[],"authoredTargetArtifacts":[]}""",
+            """{"authoredMetadata":["${missingWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifestRecords":[],"authoredTargetArtifacts":[]}""",
         )
 
         val task = project.tasks.register(
