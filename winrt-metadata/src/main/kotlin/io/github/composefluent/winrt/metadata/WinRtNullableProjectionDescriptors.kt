@@ -53,6 +53,10 @@ private fun String.isXamlDependencyPropertyTypeName(): Boolean =
 private fun String.isNonNullableXamlPropertyRuntimeClassTypeName(): Boolean =
     isXamlDependencyPropertyTypeName() || isXamlCollectionRuntimeClassTypeName()
 
-private fun String.isXamlCollectionRuntimeClassTypeName(): Boolean =
-    (startsWith("Microsoft.UI.Xaml.") || startsWith("Windows.UI.Xaml.")) &&
-        substringAfterLast('.').endsWith("Collection")
+private fun String.isXamlCollectionRuntimeClassTypeName(): Boolean {
+    if (!startsWith("Microsoft.UI.Xaml.") && !startsWith("Windows.UI.Xaml.")) {
+        return false
+    }
+    val simpleName = substringAfterLast('.')
+    return simpleName.endsWith("Collection") || simpleName == "ResourceDictionary"
+}
