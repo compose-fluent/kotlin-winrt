@@ -527,6 +527,19 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun cast_extension_returns_existing_projected_kotlin_subclass() {
+        val projected = TestDerivedRuntimeClassWrapper(
+            pointer = WinRTInspectableComObject.inspectableBox("payload", "test.DerivedRuntimeClass")
+                .detachReference(IID.IInspectable),
+        )
+
+        val cast = projected.asWinRT<TestBaseRuntimeClassWrapper>()
+
+        assertSame(projected, cast)
+        projected.nativeObject.close()
+    }
+
+    @Test
     fun generic_cast_rejects_targets_without_registered_winrt_interface_iid() {
         ComWrappersSupport.clearRegistriesForTests()
         val projected = ProjectedInspectableObject(
@@ -594,6 +607,16 @@ class ComWrappersSupportTest {
         override val nativeObject: ComObjectReference
             get() = inspectable
     }
+
+    private open class TestBaseRuntimeClassWrapper(
+        pointer: RawAddress,
+    ) : IWinRTObject {
+        override val nativeObject: ComObjectReference = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+    }
+
+    private class TestDerivedRuntimeClassWrapper(
+        pointer: RawAddress,
+    ) : TestBaseRuntimeClassWrapper(pointer)
 
     private interface TestProjectedInterface
 
