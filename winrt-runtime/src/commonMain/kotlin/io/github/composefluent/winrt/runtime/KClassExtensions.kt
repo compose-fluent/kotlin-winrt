@@ -12,8 +12,6 @@ internal fun KClass<*>.registeredWinRtType(): WinRtTypeId<*>? = WinRtTypeRegistr
 
 internal fun KClass<*>.typeDisplayName(): String = qualifiedName ?: simpleName ?: "<anonymous>"
 
-internal expect fun platformTryInitializeGeneratedWinRtMetadata(type: KClass<*>)
-
 // ---------------------------------------------------------------------------
 // Enum support — driven by WinRtTypeId.enumAbiValue / enumEntries.
 // No Java reflection; enums must supply entries at registration time.

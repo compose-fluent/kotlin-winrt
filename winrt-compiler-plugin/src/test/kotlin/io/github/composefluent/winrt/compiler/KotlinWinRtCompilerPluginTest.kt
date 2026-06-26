@@ -737,6 +737,7 @@ class KotlinWinRtCompilerPluginTest {
             0,
         )
         assertTrue(methodNames.contains("initialize"))
+        assertTrue(methodNames.contains("<clinit>"))
         assertFalse(methodNames.contains("registerChunk000"))
         val chunkClass = outputDirectory.resolve("${internalName}_Chunk000.class")
         assertTrue(Files.isRegularFile(chunkClass))
