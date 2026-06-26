@@ -7202,6 +7202,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("STATIC_COUNT_GETTER_SLOT"))
         assertTrue(widgetContents.contains("const val STATIC_COUNT_SETTER_SLOT: Int ="))
         assertTrue(widgetContents.contains("slot = STATIC_COUNT_SETTER_SLOT"))
+        assertTrue(widgetContents.contains("public companion object Metadata"))
         assertTrue(widgetContents.contains("val staticToken: DependencyProperty"))
         assertFalse(widgetContents.contains("val staticToken: DependencyProperty?"))
         assertTrue(widgetContents.contains("STATIC_STATICTOKEN_GETTER_SLOT"))
@@ -12228,6 +12229,90 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contentPropertySource, contentPropertySource.contains("var content: kotlin.Any?"))
         assertTrue(contentPropertySource, contentPropertySource.contains("isNull(__resultPointer)) return null"))
         assertFalse(contentPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
+    }
+
+    @Test
+    fun generator_keeps_xaml_collection_properties_non_nullable() {
+        val settersProperty = WinRtPropertyDefinition(
+            name = "Setters",
+            typeName = "Microsoft.UI.Xaml.SetterBaseCollection",
+            getterMethodName = "get_Setters",
+            getterMethodRowId = 6,
+        )
+        val basedOnProperty = WinRtPropertyDefinition(
+            name = "BasedOn",
+            typeName = "Microsoft.UI.Xaml.Style",
+            getterMethodName = "get_BasedOn",
+            setterMethodName = "put_BasedOn",
+            getterMethodRowId = 7,
+            setterMethodRowId = 8,
+        )
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "ISetterBaseCollection",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555590"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "SetterBaseCollection",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.ISetterBaseCollection",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.ISetterBaseCollection", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IStyle",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555591"),
+                            properties = listOf(settersProperty, basedOnProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Style",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IStyle",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IStyle", isDefault = true),
+                            ),
+                            properties = listOf(settersProperty, basedOnProperty),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val stylePlan = KotlinProjectionPlanner().plan(model)
+            .single { it.type.qualifiedName == "Microsoft.UI.Xaml.Style" }
+        val renderer = KotlinProjectionRenderer()
+        val settersPropertySource = renderer.renderBoundProperty(stylePlan, settersProperty).toString()
+        val basedOnPropertySource = renderer.renderBoundProperty(stylePlan, basedOnProperty).toString()
+
+        assertEquals(
+            "Microsoft.UI.Xaml.SetterBaseCollection",
+            stylePlan.instanceMemberBindings.first { it.bindingName == "SETTERS_GETTER_SLOT" }.returnBinding.typeName,
+        )
+        assertTrue(
+            settersPropertySource,
+            settersPropertySource.contains("val setters: microsoft.ui.xaml.SetterBaseCollection"),
+        )
+        assertFalse(settersPropertySource.contains("val setters: microsoft.ui.xaml.SetterBaseCollection?"))
+        assertFalse(settersPropertySource.contains("getNullableProjectedRuntimeClass("))
+        assertEquals(
+            "Microsoft.UI.Xaml.Style?",
+            stylePlan.instanceMemberBindings.first { it.bindingName == "BASEDON_GETTER_SLOT" }.returnBinding.typeName,
+        )
+        assertTrue(
+            basedOnPropertySource,
+            basedOnPropertySource.contains("var basedOn: microsoft.ui.xaml.Style?"),
+        )
     }
 
     @Test
