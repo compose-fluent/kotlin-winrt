@@ -94,6 +94,20 @@ class WinRtMetadataModelTest {
                     WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IStyle", isDefault = true),
                 ),
             ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "IResourceDictionary",
+                kind = WinRtTypeKind.Interface,
+            ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "ResourceDictionary",
+                kind = WinRtTypeKind.RuntimeClass,
+                defaultInterfaceName = "Microsoft.UI.Xaml.IResourceDictionary",
+                implementedInterfaces = listOf(
+                    WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IResourceDictionary", isDefault = true),
+                ),
+            ),
         ).associateBy(WinRtTypeDefinition::qualifiedName)
         val dependencyProperty = WinRtPropertyDefinition(
             name = "BackgroundProperty",
@@ -111,6 +125,12 @@ class WinRtMetadataModelTest {
             getterMethodRowId = 8,
             setterMethodRowId = 9,
         )
+        val resourcesProperty = WinRtPropertyDefinition(
+            name = "Resources",
+            typeName = "Microsoft.UI.Xaml.ResourceDictionary",
+            getterMethodRowId = 10,
+            setterMethodRowId = 11,
+        )
 
         assertEquals(
             "Microsoft.UI.Xaml.DependencyProperty",
@@ -123,6 +143,10 @@ class WinRtMetadataModelTest {
         assertEquals(
             "Microsoft.UI.Xaml.Style?",
             basedOnProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IStyle", types),
+        )
+        assertEquals(
+            "Microsoft.UI.Xaml.ResourceDictionary",
+            resourcesProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IApplication", types),
         )
     }
 

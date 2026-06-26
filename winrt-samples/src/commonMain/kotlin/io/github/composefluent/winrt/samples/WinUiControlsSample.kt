@@ -123,9 +123,9 @@ class WinUiControlsApp : Application(), AutoCloseable {
         println("winui-controls: install resources current")
         val application = checkNotNull(Application.current) { "Expected current WinUI application while installing resources." }
         println("winui-controls: install resources dictionary")
-        val resources = checkNotNull(application.resources) { "Expected WinUI application resources." }
+        val resources = application.resources
         println("winui-controls: install resources merged dictionaries")
-        val mergedDictionaries = checkNotNull(resources.mergedDictionaries) { "Expected merged resource dictionaries." }
+        val mergedDictionaries = resources.mergedDictionaries
         println("winui-controls: install resources create controls resources")
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")

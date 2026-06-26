@@ -96,13 +96,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             return
         }
         println("winui-kmp-library: install resources dictionary")
-        val resources = checkNotNull(this.resources) {
-            "Application resources were not initialized."
-        }
+        val resources = this.resources
         println("winui-kmp-library: install resources merged dictionaries")
-        val mergedDictionaries = checkNotNull(resources.mergedDictionaries) {
-            "Application resources did not expose merged dictionaries."
-        }
+        val mergedDictionaries = resources.mergedDictionaries
         println("winui-kmp-library: install resources create controls resources")
         val controlsResources = loadXamlControlsResources()
         println("winui-kmp-library: install resources add")
