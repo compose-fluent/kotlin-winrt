@@ -191,13 +191,17 @@ dependencies {
 
 winRT {
     windowsSdk(includeExtensions = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3")
+    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+        generateProjection = false
+    }
 }
 ```
 
 Projection artifact versions follow their metadata baseline. Snapshot projection builds append the kotlin-winrt snapshot suffix, for example `10.0.26100.0-kotlin-winrt-0.1.0-SNAPSHOT`.
 
-When a project intentionally needs a local projection from a NuGet package, opt in explicitly:
+Prebuilt projections are never selected implicitly from a Windows SDK or NuGet version declaration. Add the prebuilt projection artifact to `dependencies` when you want to use it. A `nugetPackage(...)` declaration defaults to local projection generation; set `generateProjection = false` only when the projection surface is supplied by an explicit dependency and the NuGet package is needed for runtime assets.
+
+When a project intentionally needs a local projection from a NuGet package, keep projection generation enabled:
 
 ```kotlin
 winRT {

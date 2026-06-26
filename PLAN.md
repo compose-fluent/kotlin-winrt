@@ -65,6 +65,7 @@
 - [x] Completed WinUI Controls sample DPI manifest parity: generated Win32 application manifests now align with `.cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp/app.manifest` by declaring `true/PM` and `PerMonitorV2, PerMonitor`, so JVM and `mingwX64` WinUI hosts do not run under system-DPI virtualization.
 - [x] Completed XAML application host lifetime fix: `runWinRTApplicationHost` and the `mingwX64` native application entry now create a runtime-owned STA application-host scope before user `main`, generated hosts pass the packaged/unpackaged deployment mode into that scope, custom launchers can use `WinRTWindowsAppSdkBootstrap.initializeApplicationHost(...)`, and sample smoke paths no longer wrap XAML startup in raw `RuntimeScope.initializeSingleThreaded()`.
 - [x] Completed CsWinRT-style prebuilt projection package split: mirror `.cswinrt/src/Projections/Windows`, `.cswinrt/src/Projections/Windows.UI.Xaml`, and `.cswinrt/src/Projections/WinAppSDK` as separate Kotlin prebuilt artifacts so Windows SDK, legacy `Windows.UI.Xaml`, and Windows App SDK / WinUI surfaces have explicit module and publication boundaries.
+- [x] Completed prebuilt projection opt-in semantics: prebuilt projection usage is driven by explicit `dependencies` entries for the prebuilt artifacts, while `nugetPackage(...)` keeps local projection generation unless `generateProjection = false` is set on a package that is supplied through an explicit prebuilt dependency.
 
 ## Post-Baseline Completion Queue
 

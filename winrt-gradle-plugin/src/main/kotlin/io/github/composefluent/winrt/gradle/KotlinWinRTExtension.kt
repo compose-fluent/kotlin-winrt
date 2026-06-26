@@ -85,7 +85,7 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
     override val nugetPackages: NamedNuGetPackageContainer =
         objects.domainObjectContainer(KotlinWinRTNuGetPackage::class.java) { name ->
             objects.newInstance(KotlinWinRTNuGetPackage::class.java, name).also { nugetPackage ->
-                nugetPackage.generateProjectionProperty.convention(defaultNuGetPackageGenerateProjection(name))
+                nugetPackage.generateProjectionProperty.convention(true)
             }
         }
 
@@ -321,11 +321,4 @@ abstract class KotlinWinRTNuGetPackage @Inject constructor(
         set(value) = generateProjectionProperty.set(value)
 
     override fun getName(): String = packageId
-}
-
-internal fun defaultNuGetPackageGenerateProjection(packageId: String): Boolean {
-    val normalizedPackageId = packageId.lowercase()
-    return normalizedPackageId != "microsoft.windowsappsdk" &&
-        normalizedPackageId != "microsoft.windowssdk" &&
-        !normalizedPackageId.startsWith("microsoft.windows.sdk")
 }

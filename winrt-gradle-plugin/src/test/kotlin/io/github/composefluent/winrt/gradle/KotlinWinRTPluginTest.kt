@@ -425,7 +425,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun prebuilt_nuget_package_defaults_to_runtime_asset_without_projection_generation() {
+    fun microsoft_nuget_packages_default_to_local_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
@@ -436,7 +436,10 @@ class KotlinWinRTPluginTest {
         val generationTask = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
         val identityTask = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
 
-        assertEquals(emptyList<String>(), generationTask.nugetPackages.get())
+        assertEquals(
+            setOf("Microsoft.WindowsAppSDK@1.8.260416003", "Microsoft.Windows.SDK.NET.Ref@10.0.26100.0"),
+            generationTask.nugetPackages.get().toSet(),
+        )
         assertEquals(
             setOf("Microsoft.WindowsAppSDK@1.8.260416003", "Microsoft.Windows.SDK.NET.Ref@10.0.26100.0"),
             identityTask.nugetPackages.get().toSet(),
@@ -456,6 +459,23 @@ class KotlinWinRTPluginTest {
 
         assertEquals(listOf("Sample.Package@1.0.0"), generationTask.nugetPackages.get())
         assertEquals(listOf("Sample.Package@1.0.0"), identityTask.nugetPackages.get())
+    }
+
+    @Test
+    fun prebuilt_nuget_package_can_opt_out_of_local_projection_generation() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
+            pkg.generateProjection = false
+        }
+
+        val generationTask = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
+        val identityTask = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+
+        assertEquals(emptyList<String>(), generationTask.nugetPackages.get())
+        assertEquals(listOf("Microsoft.WindowsAppSDK@1.8.260416003"), identityTask.nugetPackages.get())
     }
 
     @Test
