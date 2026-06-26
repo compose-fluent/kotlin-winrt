@@ -45,7 +45,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun xaml_dependency_property_identifiers_project_as_non_nullable() {
+    fun xaml_style_core_properties_use_cswinrt_aligned_nullability() {
         val types = listOf(
             WinRtTypeDefinition(
                 namespace = "Microsoft.UI.Xaml",
@@ -66,16 +66,50 @@ class WinRtMetadataModelTest {
                 name = "Button",
                 kind = WinRtTypeKind.RuntimeClass,
             ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "ISetterBaseCollection",
+                kind = WinRtTypeKind.Interface,
+            ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "SetterBaseCollection",
+                kind = WinRtTypeKind.RuntimeClass,
+                defaultInterfaceName = "Microsoft.UI.Xaml.ISetterBaseCollection",
+                implementedInterfaces = listOf(
+                    WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.ISetterBaseCollection", isDefault = true),
+                ),
+            ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "IStyle",
+                kind = WinRtTypeKind.Interface,
+            ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "Style",
+                kind = WinRtTypeKind.RuntimeClass,
+                defaultInterfaceName = "Microsoft.UI.Xaml.IStyle",
+                implementedInterfaces = listOf(
+                    WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IStyle", isDefault = true),
+                ),
+            ),
         ).associateBy(WinRtTypeDefinition::qualifiedName)
         val dependencyProperty = WinRtPropertyDefinition(
             name = "BackgroundProperty",
             typeName = "Microsoft.UI.Xaml.DependencyProperty",
             getterMethodRowId = 6,
         )
-        val runtimeClassProperty = WinRtPropertyDefinition(
-            name = "Owner",
-            typeName = "Microsoft.UI.Xaml.Controls.Button",
+        val settersProperty = WinRtPropertyDefinition(
+            name = "Setters",
+            typeName = "Microsoft.UI.Xaml.SetterBaseCollection",
             getterMethodRowId = 7,
+        )
+        val basedOnProperty = WinRtPropertyDefinition(
+            name = "BasedOn",
+            typeName = "Microsoft.UI.Xaml.Style",
+            getterMethodRowId = 8,
+            setterMethodRowId = 9,
         )
 
         assertEquals(
@@ -83,8 +117,12 @@ class WinRtMetadataModelTest {
             dependencyProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.Controls.IControlStatics", types),
         )
         assertEquals(
-            "Microsoft.UI.Xaml.Controls.Button?",
-            runtimeClassProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.Controls.IControl", types),
+            "Microsoft.UI.Xaml.SetterBaseCollection",
+            settersProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IStyle", types),
+        )
+        assertEquals(
+            "Microsoft.UI.Xaml.Style?",
+            basedOnProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IStyle", types),
         )
     }
 
