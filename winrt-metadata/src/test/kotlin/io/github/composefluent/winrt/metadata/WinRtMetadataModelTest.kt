@@ -45,6 +45,50 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun xaml_dependency_property_identifiers_project_as_non_nullable() {
+        val types = listOf(
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "IDependencyProperty",
+                kind = WinRtTypeKind.Interface,
+            ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml",
+                name = "DependencyProperty",
+                kind = WinRtTypeKind.RuntimeClass,
+                defaultInterfaceName = "Microsoft.UI.Xaml.IDependencyProperty",
+                implementedInterfaces = listOf(
+                    WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IDependencyProperty", isDefault = true),
+                ),
+            ),
+            WinRtTypeDefinition(
+                namespace = "Microsoft.UI.Xaml.Controls",
+                name = "Button",
+                kind = WinRtTypeKind.RuntimeClass,
+            ),
+        ).associateBy(WinRtTypeDefinition::qualifiedName)
+        val dependencyProperty = WinRtPropertyDefinition(
+            name = "BackgroundProperty",
+            typeName = "Microsoft.UI.Xaml.DependencyProperty",
+            getterMethodRowId = 6,
+        )
+        val runtimeClassProperty = WinRtPropertyDefinition(
+            name = "Owner",
+            typeName = "Microsoft.UI.Xaml.Controls.Button",
+            getterMethodRowId = 7,
+        )
+
+        assertEquals(
+            "Microsoft.UI.Xaml.DependencyProperty",
+            dependencyProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.Controls.IControlStatics", types),
+        )
+        assertEquals(
+            "Microsoft.UI.Xaml.Controls.Button?",
+            runtimeClassProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.Controls.IControl", types),
+        )
+    }
+
+    @Test
     fun interface_signature_new_properties_use_accessor_identity() {
         val type = WinRtTypeDefinition(
             namespace = "Sample.Foundation",

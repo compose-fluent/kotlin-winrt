@@ -7111,7 +7111,7 @@ class KotlinProjectionGeneratorTest {
                                 ),
                                 WinRtPropertyDefinition(
                                     name = "StaticToken",
-                                    typeName = "Sample.Foundation.DependencyProperty",
+                                    typeName = "Microsoft.UI.Xaml.DependencyProperty",
                                     getterMethodName = "get_StaticToken",
                                     getterMethodRowId = 15,
                                 ),
@@ -7154,19 +7154,24 @@ class KotlinProjectionGeneratorTest {
                                 ),
                             ),
                         ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
                         WinRtTypeDefinition(
-                            namespace = "Sample.Foundation",
+                            namespace = "Microsoft.UI.Xaml",
                             name = "IDependencyProperty",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("55555555-5555-5555-5555-555555555555"),
                         ),
                         WinRtTypeDefinition(
-                            namespace = "Sample.Foundation",
+                            namespace = "Microsoft.UI.Xaml",
                             name = "DependencyProperty",
                             kind = WinRtTypeKind.RuntimeClass,
-                            defaultInterfaceName = "Sample.Foundation.IDependencyProperty",
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IDependencyProperty",
                             implementedInterfaces = listOf(
-                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IDependencyProperty", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IDependencyProperty", isDefault = true),
                             ),
                         ),
                     ),
@@ -7198,6 +7203,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("const val STATIC_COUNT_SETTER_SLOT: Int ="))
         assertTrue(widgetContents.contains("slot = STATIC_COUNT_SETTER_SLOT"))
         assertTrue(widgetContents.contains("val staticToken: DependencyProperty"))
+        assertFalse(widgetContents.contains("val staticToken: DependencyProperty?"))
         assertTrue(widgetContents.contains("STATIC_STATICTOKEN_GETTER_SLOT"))
         assertTrue(widgetContents.contains("staticToken"))
         assertTrue(widgetContents.contains("val changed: WinRtEvent<EventHandlerCallback<Int>> by"))
