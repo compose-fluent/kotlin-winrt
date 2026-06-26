@@ -11,10 +11,10 @@ import kotlin.reflect.KClass
  */
 @Suppress("UNCHECKED_CAST")
 inline fun <reified T : Any> Any.asWinRT(): T {
-    val typeHandle = requireRegisteredWinRTInterfaceTypeHandle(T::class)
     if (this is T) {
         return this
     }
+    val typeHandle = requireRegisteredWinRTInterfaceTypeHandle(T::class)
     if (this is IWinRTObject && primaryTypeHandle == typeHandle) {
         return this as T
     }
