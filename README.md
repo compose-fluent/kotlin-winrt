@@ -29,7 +29,7 @@ WinUI validation runs through both the generated JVM application host and the `m
 - `winrt-metadata`: WinMD loading and normalized metadata model construction.
 - `winrt-generator`: Kotlin source generation for WinRT and WinUI projection bindings.
 - `winrt-compiler-plugin`: compiler-visible projection and authoring support.
-- `winrt-projections`: generated projection output and prebuilt Windows SDK / Windows App SDK projection artifacts.
+- `winrt-projections`: generated projection output and prebuilt Windows SDK / Windows.UI.Xaml / Windows App SDK projection artifacts.
 - `winrt-authoring`: Kotlin-authored WinRT type, TypeDetails, host manifest, and native export support.
 - `winrt-samples`: validation applications and sample surfaces.
 
@@ -180,11 +180,12 @@ fun readProfile(json: String): String =
 
 ## Prebuilt Projections
 
-For the default Windows SDK and Windows App SDK / WinUI surface, prefer the prebuilt projection artifacts:
+For the default Windows SDK, Windows.UI.Xaml, and Windows App SDK / WinUI surfaces, prefer the prebuilt projection artifacts:
 
 ```kotlin
 dependencies {
     implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
+    implementation("io.github.compose-fluent:winrt-projections-windows-ui-xaml:10.0.26100.0")
     implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.1.3")
 }
 
