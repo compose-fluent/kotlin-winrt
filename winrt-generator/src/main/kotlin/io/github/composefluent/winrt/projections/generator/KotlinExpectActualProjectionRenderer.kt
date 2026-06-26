@@ -1,10 +1,10 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtEventDefinition
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeKind
-import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTEventDefinition
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
+import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
 import io.github.composefluent.winrt.metadata.metadataParameterCategoryFor
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import com.squareup.kotlinpoet.CodeBlock
@@ -40,7 +40,7 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun canRenderExpectActualInterfaceSlice(plan: KotlinTypeProjectionPlan): Boolean {
         if (
             plan.declarationKind != KotlinProjectionDeclarationKind.Interface ||
-            plan.type.kind != WinRtTypeKind.Interface ||
+            plan.type.kind != WinRTTypeKind.Interface ||
             plan.type.genericParameterCount != 0 ||
             plan.mutableCollectionBindings.isNotEmpty() ||
             plan.readOnlyCollectionBindings.isNotEmpty()
@@ -57,13 +57,13 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun canRenderExpectActualRuntimeClassSlice(plan: KotlinTypeProjectionPlan): Boolean {
         if (
             plan.declarationKind != KotlinProjectionDeclarationKind.Class ||
-            plan.type.kind != WinRtTypeKind.RuntimeClass ||
+            plan.type.kind != WinRTTypeKind.RuntimeClass ||
             plan.type.genericParameterCount != 0 ||
-            plan.type.baseTypeName?.let { !isWinRtObjectTypeName(it) } == true ||
-            plan.type.methods.any(WinRtMethodDefinition::isStatic) ||
-            plan.type.properties.any(WinRtPropertyDefinition::isStatic) ||
+            plan.type.baseTypeName?.let { !isWinRTObjectTypeName(it) } == true ||
+            plan.type.methods.any(WinRTMethodDefinition::isStatic) ||
+            plan.type.properties.any(WinRTPropertyDefinition::isStatic) ||
             plan.type.properties.any { !it.hasNativeProjectionGetterAccessor() } ||
-            plan.type.events.any(WinRtEventDefinition::isStatic) ||
+            plan.type.events.any(WinRTEventDefinition::isStatic) ||
             plan.staticInterfaceNames.isNotEmpty() ||
             plan.activatableFactoryInterfaceName != null ||
             plan.composableFactoryInterfaceName != null ||
@@ -91,18 +91,18 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun canRenderExpectActualInterfaceType(
         plan: KotlinTypeProjectionPlan,
-        type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
+        type: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
     ): Boolean =
-            type.kind == WinRtTypeKind.Interface &&
+            type.kind == WinRTTypeKind.Interface &&
             type.genericParameterCount == 0 &&
             type.methods.all { it.genericParameterCount == 0 } &&
-            type.methods.none(WinRtMethodDefinition::isStatic) &&
-            type.properties.none(WinRtPropertyDefinition::isStatic) &&
+            type.methods.none(WinRTMethodDefinition::isStatic) &&
+            type.properties.none(WinRTPropertyDefinition::isStatic) &&
             type.properties.all { it.hasNativeProjectionPropertyAccessor() } &&
-            type.events.none(WinRtEventDefinition::isStatic) &&
+            type.events.none(WinRTEventDefinition::isStatic) &&
             type.events.all { event -> event.hasNativeProjectionAccessorPair() } &&
             type.methods
-                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
                 .all { method ->
                     canBuildJvmFfmCallPlan(
                         returnTypeName = method.projectedKotlinReturnTypeName(),
@@ -118,7 +118,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     )
                 } &&
             type.properties
-                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filterNot(WinRTPropertyDefinition::isStatic)
                 .filter { it.hasNativeProjectionPropertyAccessor() }
                 .all { property ->
                     val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, plan.typesByQualifiedName)
@@ -152,7 +152,7 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun canBuildJvmFfmCallPlan(
         returnTypeName: String,
         parameters: List<KotlinProjectionAbiParameterBinding>,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
         currentNamespace: String? = null,
     ): Boolean =
         runCatching {
@@ -172,19 +172,19 @@ internal class KotlinExpectActualProjectionRenderer(
             )?.jvmFfmShapeOrNull() != null
         }.getOrDefault(false)
 
-    private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
+    private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition> =
         plan.type.implementedInterfaces
             .filter { implemented -> isPublicRuntimeClassInterface(plan, implemented.interfaceName) }
-            .mapNotNull { implemented -> plan.typesByQualifiedName[implemented.interfaceName.rawWinRtTypeName()] }
+            .mapNotNull { implemented -> plan.typesByQualifiedName[implemented.interfaceName.rawWinRTTypeName()] }
             .distinctBy { it.qualifiedName }
 
-    private fun publicRuntimeClassInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
+    private fun publicRuntimeClassInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition> =
         publicRuntimeClassInterfaceProxyTypes(plan, publicRuntimeClassInterfaces(plan))
 
     private fun publicRuntimeClassInterfaceProxyTypes(
         plan: KotlinTypeProjectionPlan,
-        publicInterfaces: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
-    ): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
+        publicInterfaces: List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
+    ): List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition> =
         publicInterfaces
             .flatMap { interfaceType ->
                 baseRenderer.collectInterfaceProxyTypes(
@@ -200,31 +200,31 @@ internal class KotlinExpectActualProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         interfaceName: String,
     ): Boolean {
-        val rawName = interfaceName.rawWinRtTypeName()
+        val rawName = interfaceName.rawWinRTTypeName()
         val descriptor = plan.classMemberMergeDescriptor
             ?.interfaceDescriptors
             ?.firstOrNull { it.interfaceTypeName == rawName }
         return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
     }
 
-    private fun String.rawWinRtTypeName(): String =
+    private fun String.rawWinRTTypeName(): String =
         substringBefore('<').removeSuffix("?")
 
     private fun runtimeClassMembersAreCoveredByPublicInterface(
         plan: KotlinTypeProjectionPlan,
-        interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): Boolean {
         if (interfaceTypes.isEmpty()) {
             return false
         }
         val interfaceMethods = interfaceTypes.flatMap { interfaceType ->
             interfaceType.methods
-                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
                 .map { method -> projectedMethodSignatureKey(method) to methodCoverage(method) }
         }.toMap()
         val interfaceProperties = interfaceTypes.flatMap { interfaceType ->
             interfaceType.properties
-                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filterNot(WinRTPropertyDefinition::isStatic)
                 .filter { it.hasNativeProjectionGetterAccessor() }
                 .map { property ->
                     property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(interfaceType.qualifiedName, property, plan.typesByQualifiedName)
@@ -232,14 +232,14 @@ internal class KotlinExpectActualProjectionRenderer(
         }.toMap()
         val interfaceEvents = interfaceTypes.flatMap { interfaceType ->
             interfaceType.events
-                .filterNot(WinRtEventDefinition::isStatic)
+                .filterNot(WinRTEventDefinition::isStatic)
                 .map { event -> event.name.replaceFirstChar(Char::lowercase) to eventCoverage(event) }
         }.toMap()
         val classMethodsCovered = plan.type.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .all { method -> interfaceMethods[projectedMethodSignatureKey(method)] == methodCoverage(method) }
         val classPropertiesCovered = plan.type.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
+            .filterNot(WinRTPropertyDefinition::isStatic)
             .filter { it.hasNativeProjectionGetterAccessor() }
             .all { property ->
                 val interfaceCoverage = interfaceProperties[property.name.replaceFirstChar(Char::lowercase)]
@@ -248,7 +248,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 interfaceCoverage.coversRuntimeClassProperty(classCoverage)
             }
         val classEventsCovered = plan.type.events
-            .filterNot(WinRtEventDefinition::isStatic)
+            .filterNot(WinRTEventDefinition::isStatic)
             .all { event ->
                 interfaceEvents[event.name.replaceFirstChar(Char::lowercase)] == eventCoverage(event)
             }
@@ -256,15 +256,15 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun interfaceProxyMembersAreConflictFree(
-        interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): Boolean {
         val methods = mutableMapOf<String, RuntimeClassMethodCoverage>()
         val properties = mutableMapOf<String, RuntimeClassPropertyCoverage>()
         val events = mutableMapOf<String, RuntimeClassEventCoverage>()
         interfaceTypes.forEach { interfaceType ->
             interfaceType.methods
-                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
                 .forEach { method ->
                     val key = projectedMethodSignatureKey(method)
                     val coverage = methodCoverage(method)
@@ -274,7 +274,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     }
                 }
             interfaceType.properties
-                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filterNot(WinRTPropertyDefinition::isStatic)
                 .filter { it.hasNativeProjectionGetterAccessor() }
                 .forEach { property ->
                     val key = property.name.replaceFirstChar(Char::lowercase)
@@ -285,7 +285,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     }
                 }
             interfaceType.events
-                .filterNot(WinRtEventDefinition::isStatic)
+                .filterNot(WinRTEventDefinition::isStatic)
                 .forEach { event ->
                     val key = event.name.replaceFirstChar(Char::lowercase)
                     val coverage = eventCoverage(event)
@@ -318,7 +318,7 @@ internal class KotlinExpectActualProjectionRenderer(
         val removeMethodName: String?,
     )
 
-    private fun methodCoverage(method: WinRtMethodDefinition): RuntimeClassMethodCoverage =
+    private fun methodCoverage(method: WinRTMethodDefinition): RuntimeClassMethodCoverage =
         RuntimeClassMethodCoverage(
             returnTypeName = method.returnTypeName,
             parameters = method.parameters.map { it.name to it.typeName },
@@ -327,8 +327,8 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun propertyCoverage(
         ownerTypeName: String,
-        property: WinRtPropertyDefinition,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        property: WinRTPropertyDefinition,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): RuntimeClassPropertyCoverage =
         RuntimeClassPropertyCoverage(
             typeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName),
@@ -347,14 +347,14 @@ internal class KotlinExpectActualProjectionRenderer(
             (runtimeClassProperty.isReadOnly ||
                 (!isReadOnly && setterMethodName == runtimeClassProperty.setterMethodName))
 
-    private fun eventCoverage(event: WinRtEventDefinition): RuntimeClassEventCoverage =
+    private fun eventCoverage(event: WinRTEventDefinition): RuntimeClassEventCoverage =
         RuntimeClassEventCoverage(
             delegateTypeName = event.delegateTypeName,
             addMethodName = event.addMethodName,
             removeMethodName = event.removeMethodName,
         )
 
-    private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =
+    private fun projectedMethodSignatureKey(method: WinRTMethodDefinition): String =
         "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
 
     private fun renderCommonInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
@@ -364,10 +364,10 @@ internal class KotlinExpectActualProjectionRenderer(
             builder.addSuperinterface(baseRenderer.resolveTypeName(implemented.interfaceName))
         }
         plan.type.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .forEach { method -> builder.addFunction(baseRenderer.renderInterfaceMethod(method)) }
         plan.type.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
+            .filterNot(WinRTPropertyDefinition::isStatic)
             .filter { it.hasNativeProjectionPropertyAccessor() }
             .forEach { property ->
                 val getterResolution = property
@@ -382,7 +382,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     ),
                 )
             }
-        plan.type.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
+        plan.type.events.filterNot(WinRTEventDefinition::isStatic).forEach { event ->
             builder.addProperty(baseRenderer.renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             baseRenderer.renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
         }
@@ -531,7 +531,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     .build(),
             )
             interfaceType.methods
-                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
                 .forEach { method ->
                     val key = "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
                     if (emittedMethods.add(key)) {
@@ -539,7 +539,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     }
                 }
             interfaceType.properties
-                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filterNot(WinRTPropertyDefinition::isStatic)
                 .filter { it.hasNativeProjectionGetterAccessor() }
                 .forEach { property ->
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
@@ -548,7 +548,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     }
                 }
             interfaceType.events
-                .filterNot(WinRtEventDefinition::isStatic)
+                .filterNot(WinRTEventDefinition::isStatic)
                 .forEach { event ->
                     val eventName = event.name.replaceFirstChar(Char::lowercase)
                     if (emittedEvents.add(eventName)) {
@@ -561,7 +561,7 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun renderJvmRuntimeClassForwardMethod(
         cacheName: String,
-        method: WinRtMethodDefinition,
+        method: WinRTMethodDefinition,
     ): FunSpec {
         val objectShape = runtimeObjectMethodShape(method)
         return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
@@ -584,8 +584,8 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun renderJvmRuntimeClassForwardProperty(
         cacheName: String,
         ownerTypeName: String,
-        property: WinRtPropertyDefinition,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        property: WinRTPropertyDefinition,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): PropertySpec {
         val propertyName = property.name.replaceFirstChar(Char::lowercase)
         val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)
@@ -606,7 +606,7 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun renderJvmRuntimeClassForwardEventProperty(
         cacheName: String,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
     ): PropertySpec {
         val propertyName = event.name.replaceFirstChar(Char::lowercase)
         return PropertySpec.builder(
@@ -620,7 +620,7 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun renderJvmRuntimeClassForwardEventFunctions(
         cacheName: String,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
     ): List<FunSpec> {
         val typeName = baseRenderer.resolveTypeName(event.delegateTypeName)
         return listOf(
@@ -676,19 +676,19 @@ internal class KotlinExpectActualProjectionRenderer(
         val emittedProperties = mutableSetOf<String>()
         val emittedEvents = mutableSetOf<String>()
         baseRenderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
-            interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
+            interfaceType.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 val key = projectedMethodSignatureKey(method)
                 if (emittedMethods.add(key)) {
                     builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
                 }
             }
-            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
+            interfaceType.properties.filterNot(WinRTPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
                 val propertyName = property.name.replaceFirstChar(Char::lowercase)
                 if (emittedProperties.add(propertyName)) {
                     builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
                 }
             }
-            interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
+            interfaceType.events.filterNot(WinRTEventDefinition::isStatic).forEach { event ->
                 val eventName = event.name.replaceFirstChar(Char::lowercase)
                 if (emittedEvents.add(eventName)) {
                     builder.addProperty(
@@ -718,9 +718,9 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun renderJvmInterfaceProxyMethod(
-        slotInterfaceType: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
-        method: WinRtMethodDefinition,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        slotInterfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
+        method: WinRTMethodDefinition,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): FunSpec {
         val returnBinding = baseRenderer.renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), typesByQualifiedName, slotInterfaceType.namespace)
@@ -754,9 +754,9 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun renderJvmInterfaceProxyProperty(
-        slotInterfaceType: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
-        property: WinRtPropertyDefinition,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        slotInterfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
+        property: WinRTPropertyDefinition,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): PropertySpec {
         val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName)
@@ -793,9 +793,8 @@ internal class KotlinExpectActualProjectionRenderer(
             builder.getter(
                 FunSpec.getterBuilder()
                     .addCode(
-                        "return (this.%M(%T.Metadata.TYPE_HANDLE) as %T).%L\n",
+                        "return this.%M<%T>().%L\n",
                         WINRT_AS_FUNCTION_NAME,
-                        getterInterfaceClassName,
                         getterInterfaceClassName,
                         property.name.replaceFirstChar(Char::lowercase),
                     )
@@ -1000,14 +999,14 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun jvmInterfaceProjectionSupportClassName(
         plan: KotlinTypeProjectionPlan,
-        interfaceType: io.github.composefluent.winrt.metadata.WinRtTypeDefinition = plan.type,
+        interfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition = plan.type,
     ): ClassName =
         (baseRenderer.resolveTypeName(interfaceType.qualifiedName) as? ClassName)
             ?.let { ClassName(it.packageName, "${interfaceType.name}JvmProjection") }
             ?: ClassName(plan.packageName, "${interfaceType.name}JvmProjection")
 
     private fun jvmInterfaceProjectionSupportClassName(
-        interfaceType: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
+        interfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
     ): ClassName =
         (baseRenderer.resolveTypeName(interfaceType.qualifiedName) as? ClassName)
             ?.let { ClassName(it.packageName, "${interfaceType.name}JvmProjection") }
@@ -1018,7 +1017,7 @@ internal class KotlinExpectActualProjectionRenderer(
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
         suppressHResultCheck: Boolean,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): KotlinProjectionAbiCallPlan? {
         val callPlan = baseRenderer.buildAbiCallPlan(
             returnBinding = returnBinding,
@@ -1030,7 +1029,7 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun KotlinProjectionAbiCallPlan.withJvmProjectedInterfaceReturnReadback(
         returnBinding: KotlinProjectionAbiTypeBinding,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): KotlinProjectionAbiCallPlan? {
         if (returnBinding.kind != KotlinProjectionAbiValueKind.ProjectedInterface) {
             return this
@@ -1053,13 +1052,13 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun projectedInterfaceType(
         binding: KotlinProjectionAbiTypeBinding,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
-    ): io.github.composefluent.winrt.metadata.WinRtTypeDefinition? {
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
+    ): io.github.composefluent.winrt.metadata.WinRTTypeDefinition? {
         if (binding.kind != KotlinProjectionAbiValueKind.ProjectedInterface || binding.typeArguments.isNotEmpty()) {
             return null
         }
-        return typesByQualifiedName[binding.resolvedTypeName.rawWinRtTypeName()]
-            ?: typesByQualifiedName[binding.typeName.rawWinRtTypeName()]
+        return typesByQualifiedName[binding.resolvedTypeName.rawWinRTTypeName()]
+            ?: typesByQualifiedName[binding.typeName.rawWinRTTypeName()]
     }
 }
 
@@ -1094,15 +1093,15 @@ private fun KotlinProjectionAbiCallPlan.jvmFfmShapeOrNull(): List<KotlinProjecti
     }.jvmFfmShapeOrNull()
 
 private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKind(
-    typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
 ): Boolean =
     customObjectAbi(this) == null &&
         kind in supportedExpectActualJvmMemberAbiKinds &&
         when (kind) {
             KotlinProjectionAbiValueKind.ProjectedInterface -> {
-                val type = typesByQualifiedName[resolvedTypeName.rawExpectActualWinRtTypeName()]
-                    ?: typesByQualifiedName[typeName.rawExpectActualWinRtTypeName()]
-                type?.kind == WinRtTypeKind.Interface &&
+                val type = typesByQualifiedName[resolvedTypeName.rawExpectActualWinRTTypeName()]
+                    ?: typesByQualifiedName[typeName.rawExpectActualWinRTTypeName()]
+                type?.kind == WinRTTypeKind.Interface &&
                     type.genericParameterCount == 0 &&
                     typeArguments.isEmpty()
             }
@@ -1111,7 +1110,7 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKi
             else -> true
         }
 
-private fun String.rawExpectActualWinRtTypeName(): String =
+private fun String.rawExpectActualWinRTTypeName(): String =
     substringBefore('<').removeSuffix("?")
 
 private val supportedExpectActualJvmMemberAbiKinds = setOf(

@@ -1,8 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
-object WinRtAuthoringSupportIntrinsic {
+object WinRTAuthoringSupportIntrinsic {
     fun ensureInitialized(): Nothing = error(
-        "WinRtAuthoringSupportIntrinsic.ensureInitialized was not lowered. " +
+        "WinRTAuthoringSupportIntrinsic.ensureInitialized was not lowered. " +
             "Apply the kotlin-winrt compiler plugin to this compilation.",
     )
 }

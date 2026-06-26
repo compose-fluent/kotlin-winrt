@@ -1,44 +1,44 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMetadataModel
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
-import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
-import io.github.composefluent.winrt.metadata.WinRtEventDefinition
-import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
-import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
-import io.github.composefluent.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
-import io.github.composefluent.winrt.metadata.WinRtMetadataParameterCategory
-import io.github.composefluent.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtNamespace
-import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
-import io.github.composefluent.winrt.metadata.WinRtProjectedAttributeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeRef
-import io.github.composefluent.winrt.metadata.WinRtTypeKind
-import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
-import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
+import io.github.composefluent.winrt.metadata.WinRTCustomMappedMemberOutputDescriptor
+import io.github.composefluent.winrt.metadata.WinRTEventDefinition
+import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
+import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
+import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
+import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventory
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventoryBuilder
+import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTObjectReferenceSurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTParameterDefinition
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTProjectedAttributeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTRequiredInterfaceAugmentationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTSignatureWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDeclarationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeRef
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
+import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
+import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
-import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
-import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -55,34 +55,34 @@ import io.github.composefluent.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.composefluent.winrt.runtime.NativeScalarFieldSpec
 import io.github.composefluent.winrt.runtime.NativeStructLayout
 import io.github.composefluent.winrt.runtime.NativeStructScalarKind
-import io.github.composefluent.winrt.runtime.WinRtBindableIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorViewProjection
-import io.github.composefluent.winrt.runtime.WinRtCollectionInterfaceIds
-import io.github.composefluent.winrt.runtime.WinRtDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtListProjection
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtTypeSignature
-import io.github.composefluent.winrt.runtime.WinRtTypeHandle
-import io.github.composefluent.winrt.runtime.WinRtUri
-import io.github.composefluent.winrt.runtime.WinRtDelegateBridge
-import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
-import io.github.composefluent.winrt.runtime.WinRtDelegateReference
-import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
-import io.github.composefluent.winrt.runtime.WinRtEvent
+import io.github.composefluent.winrt.runtime.WinRTBindableIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorViewProjection
+import io.github.composefluent.winrt.runtime.WinRTCollectionInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRTDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTListProjection
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyListProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceArrayProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTUri
+import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
+import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
+import io.github.composefluent.winrt.runtime.WinRTDelegateReference
+import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
+import io.github.composefluent.winrt.runtime.WinRTEvent
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -111,7 +111,7 @@ import kotlin.io.path.extension
 
 internal fun KotlinProjectionRenderer.renderBoundEventFunctions(
     plan: KotlinTypeProjectionPlan,
-    event: WinRtEventDefinition,
+    event: WinRTEventDefinition,
     override: Boolean = false,
 ): List<FunSpec>? {
     val addBinding = plan.instanceMemberBindings.firstOrNull {
@@ -130,7 +130,7 @@ internal fun KotlinProjectionRenderer.renderBoundEventFunctions(
 
 internal fun KotlinProjectionRenderer.renderBoundStaticEventFunctions(
     plan: KotlinTypeProjectionPlan,
-    event: WinRtEventDefinition,
+    event: WinRTEventDefinition,
 ): List<FunSpec>? {
     val addBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT"
@@ -149,8 +149,8 @@ internal fun KotlinProjectionRenderer.renderBoundStaticEventFunctions(
 }
 
 internal fun KotlinProjectionRenderer.renderStaticEventSourceFunctions(
-    event: WinRtEventDefinition,
-    eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+    event: WinRTEventDefinition,
+    eventInvokeDescriptor: WinRTEventInvokeDescriptor?,
 ): List<FunSpec> {
     return renderEventSourceBackedFunctions(
         event = event,
@@ -160,10 +160,10 @@ internal fun KotlinProjectionRenderer.renderStaticEventSourceFunctions(
 }
 
 private fun KotlinProjectionRenderer.renderEventSourceBackedFunctions(
-    event: WinRtEventDefinition,
-    eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+    event: WinRTEventDefinition,
+    eventInvokeDescriptor: WinRTEventInvokeDescriptor?,
     modifiers: List<KModifier>,
-    projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    projectedAttributes: List<WinRTProjectedAttributeDescriptor> = emptyList(),
 ): List<FunSpec> {
     val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
     val propertyName = event.name.replaceFirstChar(Char::lowercase)
@@ -185,12 +185,12 @@ private fun KotlinProjectionRenderer.renderEventSourceBackedFunctions(
 }
 
 internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
-    event: WinRtEventDefinition,
-    eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+    event: WinRTEventDefinition,
+    eventInvokeDescriptor: WinRTEventInvokeDescriptor?,
     addInvocation: CodeBlock,
     removeInvocation: CodeBlock,
     modifiers: List<KModifier>,
-    projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    projectedAttributes: List<WinRTProjectedAttributeDescriptor> = emptyList(),
 ): List<FunSpec> {
     val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
     return listOf(
@@ -211,8 +211,8 @@ internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
 }
 
 internal fun KotlinProjectionRenderer.renderEventProperty(
-    event: WinRtEventDefinition,
-    eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+    event: WinRTEventDefinition,
+    eventInvokeDescriptor: WinRTEventInvokeDescriptor?,
     abstract: Boolean,
     override: Boolean = false,
     modifiers: List<KModifier> = if (override) listOf(KModifier.OVERRIDE) else emptyList(),
@@ -293,7 +293,7 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
 }
 
 internal fun KotlinProjectionRenderer.renderEventFunctions(
-    event: WinRtEventDefinition,
+    event: WinRTEventDefinition,
     abstract: Boolean,
     override: Boolean = false,
     modifiers: List<KModifier> = if (override) listOf(KModifier.OVERRIDE) else emptyList(),
@@ -328,9 +328,9 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(
 
 internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
     plan: KotlinTypeProjectionPlan,
-    staticMethods: List<WinRtMethodDefinition>,
-    staticProperties: List<WinRtPropertyDefinition>,
-    staticEvents: List<WinRtEventDefinition>,
+    staticMethods: List<WinRTMethodDefinition>,
+    staticProperties: List<WinRTPropertyDefinition>,
+    staticEvents: List<WinRTEventDefinition>,
 ): TypeSpec =
     TypeSpec.companionObjectBuilder("Metadata")
         .apply {
@@ -370,16 +370,16 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
 
 internal fun mergedStaticMethods(
     plan: KotlinTypeProjectionPlan,
-    staticMethods: List<WinRtMethodDefinition>,
-): List<WinRtMethodDefinition> {
-    val merged = linkedMapOf<String, WinRtMethodDefinition>()
+    staticMethods: List<WinRTMethodDefinition>,
+): List<WinRTMethodDefinition> {
+    val merged = linkedMapOf<String, WinRTMethodDefinition>()
     staticMethods.forEach { method ->
         merged.putIfAbsent(method.projectionSignatureIgnoringStaticKey(), method.copy(isStatic = true))
     }
     plan.staticInterfaceNames
         .mapNotNull(plan.typesByQualifiedName::get)
-        .flatMap(WinRtTypeDefinition::methods)
-        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .flatMap(WinRTTypeDefinition::methods)
+        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .forEach { method ->
             merged.putIfAbsent(method.projectionSignatureIgnoringStaticKey(), method.copy(isStatic = true))
         }
@@ -388,10 +388,10 @@ internal fun mergedStaticMethods(
 
 internal fun mergedStaticProperties(
     plan: KotlinTypeProjectionPlan,
-    staticProperties: List<WinRtPropertyDefinition>,
-): List<WinRtPropertyDefinition> {
-    val merged = linkedMapOf<String, WinRtPropertyDefinition>()
-    fun add(property: WinRtPropertyDefinition) {
+    staticProperties: List<WinRTPropertyDefinition>,
+): List<WinRTPropertyDefinition> {
+    val merged = linkedMapOf<String, WinRTPropertyDefinition>()
+    fun add(property: WinRTPropertyDefinition) {
         val staticProperty = property.copy(isStatic = true)
         val key = staticProperty.projectionSignatureIgnoringStaticKey()
         merged[key] = merged[key]?.mergeStaticAccessor(staticProperty) ?: staticProperty
@@ -399,29 +399,29 @@ internal fun mergedStaticProperties(
     staticProperties.forEach(::add)
     plan.staticInterfaceNames
         .mapNotNull(plan.typesByQualifiedName::get)
-        .flatMap(WinRtTypeDefinition::properties)
+        .flatMap(WinRTTypeDefinition::properties)
         .forEach(::add)
     return merged.values.toList()
 }
 
 private fun mergedStaticEvents(
     plan: KotlinTypeProjectionPlan,
-    staticEvents: List<WinRtEventDefinition>,
-): List<WinRtEventDefinition> {
-    val merged = linkedMapOf<String, WinRtEventDefinition>()
+    staticEvents: List<WinRTEventDefinition>,
+): List<WinRTEventDefinition> {
+    val merged = linkedMapOf<String, WinRTEventDefinition>()
     staticEvents.forEach { event ->
         merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
     }
     plan.staticInterfaceNames
         .mapNotNull(plan.typesByQualifiedName::get)
-        .flatMap(WinRtTypeDefinition::events)
+        .flatMap(WinRTTypeDefinition::events)
         .forEach { event ->
             merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
         }
     return merged.values.toList()
 }
 
-private fun WinRtPropertyDefinition.mergeStaticAccessor(other: WinRtPropertyDefinition): WinRtPropertyDefinition {
+private fun WinRTPropertyDefinition.mergeStaticAccessor(other: WinRTPropertyDefinition): WinRTPropertyDefinition {
     require(name == other.name && typeName == other.typeName) {
         "Can only merge identical static properties: $name:$typeName vs ${other.name}:${other.typeName}"
     }
@@ -437,7 +437,7 @@ private fun WinRtPropertyDefinition.mergeStaticAccessor(other: WinRtPropertyDefi
 
 internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     plan: KotlinTypeProjectionPlan,
-    method: WinRtMethodDefinition,
+    method: WinRTMethodDefinition,
 ): FunSpec? {
     if (isActivationFactoryCreateMethod(plan, method)) {
         return FunSpec.builder(method.projectedMethodName())
@@ -482,7 +482,7 @@ private fun KotlinProjectionRenderer.renderStaticArrayResultIntrinsicInvocation(
         1 -> {
             val parameter = binding.parameterBindings.single()
             if (
-                parameter.category != WinRtMetadataParameterCategory.In ||
+                parameter.category != WinRTMetadataParameterCategory.In ||
                 parameter.typeBinding.kind !in setOf(
                     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
                     KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -520,7 +520,7 @@ private fun KotlinProjectionRenderer.renderStaticStringProjectedObjectIntrinsicI
     }
     val parameter = binding.parameterBindings.single()
     if (
-        parameter.category != WinRtMetadataParameterCategory.In ||
+        parameter.category != WinRTMetadataParameterCategory.In ||
         parameter.typeBinding.kind != KotlinProjectionAbiValueKind.String ||
         parameter.typeBinding.typeName.endsWith("?")
     ) {
@@ -556,7 +556,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorUnitIntrinsicInvocati
         return null
     }
     val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRtMetadataParameterCategory.In) {
+        if (parameter.category != WinRTMetadataParameterCategory.In) {
             return null
         }
         descriptorIntrinsicArgument(parameter) ?: return null
@@ -587,7 +587,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorBooleanIntrinsicInvoc
         return null
     }
     val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRtMetadataParameterCategory.In) {
+        if (parameter.category != WinRTMetadataParameterCategory.In) {
             return null
         }
         descriptorIntrinsicArgument(parameter) ?: return null
@@ -623,7 +623,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrin
     }
     val returnType = resolvedReturnClassName(binding.returnBinding) ?: return null
     val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRtMetadataParameterCategory.In) {
+        if (parameter.category != WinRTMetadataParameterCategory.In) {
             return null
         }
         descriptorIntrinsicArgument(parameter) ?: return null
@@ -655,7 +655,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
     }
     val returnShape = scalarIntrinsicReturnShape(binding.returnBinding) ?: return null
     val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRtMetadataParameterCategory.In) {
+        if (parameter.category != WinRTMetadataParameterCategory.In) {
             return null
         }
         descriptorIntrinsicArgument(parameter) ?: return null
@@ -677,7 +677,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
 
 internal fun staticMethodBindingName(
     plan: KotlinTypeProjectionPlan,
-    method: WinRtMethodDefinition,
+    method: WinRTMethodDefinition,
 ): String {
     val declaringStaticMethod = plan.staticInterfaceNames
         .mapNotNull(plan.typesByQualifiedName::get)
@@ -690,8 +690,8 @@ internal fun staticMethodBindingName(
         val (staticInterface, staticMethod) = declaringStaticMethod
         val staticInterfaces = plan.staticInterfaceNames.mapNotNull(plan.typesByQualifiedName::get)
         val staticMethodNameCounts = staticInterfaces
-            .flatMap { interfaceType -> interfaceType.methods.filter(WinRtMethodDefinition::isProjectedCallableMethod) }
-            .groupingBy(WinRtMethodDefinition::name)
+            .flatMap { interfaceType -> interfaceType.methods.filter(WinRTMethodDefinition::isProjectedCallableMethod) }
+            .groupingBy(WinRTMethodDefinition::name)
             .eachCount()
         "STATIC_${staticMethod.staticBindingSlotConstantName(staticInterface.methods, staticMethodNameCounts)}"
     } else {
@@ -701,7 +701,7 @@ internal fun staticMethodBindingName(
 
 internal fun isActivationFactoryCreateMethod(
     plan: KotlinTypeProjectionPlan,
-    method: WinRtMethodDefinition,
+    method: WinRTMethodDefinition,
 ): Boolean =
     method.name == "create" &&
         method.parameters.isEmpty() &&
@@ -710,7 +710,7 @@ internal fun isActivationFactoryCreateMethod(
 
 internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     plan: KotlinTypeProjectionPlan,
-    property: WinRtPropertyDefinition,
+    property: WinRTPropertyDefinition,
 ): PropertySpec? {
     val getterBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
@@ -761,7 +761,7 @@ private fun KotlinProjectionRenderer.renderStaticIntrinsicSetter(
         return null
     }
     val parameterBinding = binding.parameterBindings.single()
-    if (parameterBinding.category != WinRtMetadataParameterCategory.In) {
+    if (parameterBinding.category != WinRTMetadataParameterCategory.In) {
         return null
     }
     val intrinsicFunction = when (parameterBinding.typeBinding.kind) {
@@ -1009,7 +1009,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
 internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
-        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .map { method ->
             FunSpec.constructorBuilder()
@@ -1028,7 +1028,7 @@ internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinType
 internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
-        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
@@ -1075,7 +1075,7 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
-        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .map { method ->
             val returnBinding = KotlinProjectionAbiTypeBinding(
@@ -1118,8 +1118,8 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
 
 private fun KotlinProjectionRenderer.renderActivationFactoryCreateIntrinsicInvocation(
     factoryClassName: TypeName,
-    factoryType: WinRtTypeDefinition,
-    method: WinRtMethodDefinition,
+    factoryType: WinRTTypeDefinition,
+    method: WinRTMethodDefinition,
     returnBinding: KotlinProjectionAbiTypeBinding,
     parameterBindings: List<KotlinProjectionAbiParameterBinding>,
     suppressHResultCheck: Boolean,
@@ -1133,7 +1133,7 @@ private fun KotlinProjectionRenderer.renderActivationFactoryCreateIntrinsicInvoc
         return null
     }
     val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRtMetadataParameterCategory.In) {
+        if (parameter.category != WinRTMetadataParameterCategory.In) {
             return null
         }
         descriptorIntrinsicArgument(parameter) ?: return null
@@ -1157,7 +1157,7 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
     val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
-        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
@@ -1180,7 +1180,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
     val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
-        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
@@ -1200,10 +1200,10 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
 
 private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
-    factoryType: WinRtTypeDefinition,
+    factoryType: WinRTTypeDefinition,
     factoryClassName: TypeName,
-    method: WinRtMethodDefinition,
-    userParameters: List<WinRtParameterDefinition>,
+    method: WinRTMethodDefinition,
+    userParameters: List<WinRTParameterDefinition>,
 ): CodeBlock {
     val parameterBindings = userParameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
@@ -1297,10 +1297,10 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
 
 private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
-    factoryType: WinRtTypeDefinition,
+    factoryType: WinRTTypeDefinition,
     factoryClassName: TypeName,
-    method: WinRtMethodDefinition,
-    userParameters: List<WinRtParameterDefinition>,
+    method: WinRTMethodDefinition,
+    userParameters: List<WinRTParameterDefinition>,
 ): CodeBlock {
     val parameterBindings = userParameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
@@ -1390,9 +1390,9 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
 }
 
 private fun KotlinProjectionRenderer.renderComposableFactoryInspectableIntrinsicInvocation(
-    factoryType: WinRtTypeDefinition,
+    factoryType: WinRTTypeDefinition,
     factoryClassName: TypeName,
-    method: WinRtMethodDefinition,
+    method: WinRTMethodDefinition,
     abiArguments: List<KotlinProjectionComArgument>,
     postCallStatements: List<CodeBlock>,
     finallyStatements: List<CodeBlock>,
@@ -1445,18 +1445,18 @@ private fun CodeBlock.Builder.addComposableFactoryInnerCleanup() {
     add("}\n")
 }
 
-private fun composableUserParameters(method: WinRtMethodDefinition): Pair<WinRtMethodDefinition, List<WinRtParameterDefinition>>? {
-    if (isWinRtVoidTypeName(method.returnType.typeName) || method.parameters.size < 2) {
+private fun composableUserParameters(method: WinRTMethodDefinition): Pair<WinRTMethodDefinition, List<WinRTParameterDefinition>>? {
+    if (isWinRTVoidTypeName(method.returnType.typeName) || method.parameters.size < 2) {
         return null
     }
     val trailing = method.parameters.takeLast(2)
-    if (trailing.any { parameter -> !isWinRtObjectTypeName(parameter.type.typeName) }) {
+    if (trailing.any { parameter -> !isWinRTObjectTypeName(parameter.type.typeName) }) {
         return null
     }
     return method to method.parameters.dropLast(2)
 }
 
-private fun factoryCreateFunctionName(method: WinRtMethodDefinition): String =
+private fun factoryCreateFunctionName(method: WinRTMethodDefinition): String =
     method.name.replaceFirstChar(Char::lowercase)
 
 internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(

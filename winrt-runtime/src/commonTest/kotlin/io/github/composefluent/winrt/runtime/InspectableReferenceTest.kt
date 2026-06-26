@@ -107,7 +107,7 @@ class InspectableReferenceTest {
                 try {
                     inspectable.tryGetRuntimeClassName()
                     throw AssertionError("Expected disposed reference to reject calls")
-                } catch (error: WinRtObjectDisposedException) {
+                } catch (error: WinRTObjectDisposedException) {
                     assertTrue(error.message!!.contains("disposed"))
                 }
             } finally {

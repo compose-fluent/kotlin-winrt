@@ -1,17 +1,17 @@
 package io.github.composefluent.winrt.runtime
 
-internal fun createPropertyValueHost(value: Any): WinRtInspectableComObject {
+internal fun createPropertyValueHost(value: Any): WinRTInspectableComObject {
     val definition = InteropRuntimeHooks.augmentInspectableDefinition(
         value = value,
-        definition = WinRtCcwDefinition(
+        definition = WinRTCcwDefinition(
             interfaceDefinitions = listOf(
                 createPropertyValueInterfaceDefinition(value),
             ),
             defaultInterfaceId = IID.IPropertyValue,
-            runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
+            runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForType(value::class),
         ),
     )
-    return WinRtInspectableComObject(
+    return WinRTInspectableComObject(
         interfaceDefinitions = definition.interfaceDefinitions,
         hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
         defaultInterfaceId = definition.defaultInterfaceId,
@@ -20,13 +20,13 @@ internal fun createPropertyValueHost(value: Any): WinRtInspectableComObject {
     )
 }
 
-internal fun createPropertyValueInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition =
-    WinRtInspectableInterfaceDefinition(
+internal fun createPropertyValueInterfaceDefinition(value: Any): WinRTInspectableInterfaceDefinition =
+    WinRTInspectableInterfaceDefinition(
         interfaceId = IID.IPropertyValue,
         methods = buildPropertyValueMethods(value),
     )
 
-private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDefinition> {
+private fun buildPropertyValueMethods(value: Any): List<WinRTInspectableMethodDefinition> {
     val scalarGetters =
         listOf(
             PropertyType.UInt8,
@@ -72,24 +72,24 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
         )
     return buildList {
         add(
-            WinRtInspectableMethodDefinition(
+            WinRTInspectableMethodDefinition(
                 signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, WinRtValueBoxing.propertyTypeOf(value).code)
+                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, WinRTValueBoxing.propertyTypeOf(value).code)
                 KnownHResults.S_OK.value
             },
         )
         add(
-            WinRtInspectableMethodDefinition(
+            WinRTInspectableMethodDefinition(
                 signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (WinRtValueBoxing.isNumericScalar(value)) 1 else 0)
+                PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (WinRTValueBoxing.isNumericScalar(value)) 1 else 0)
                 KnownHResults.S_OK.value
             },
         )
         scalarGetters.forEach { propertyType ->
             add(
-                WinRtInspectableMethodDefinition(
+                WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                 ) { rawArgs ->
                     ValueBoxingInterop.writePropertyValue(propertyType, value, rawArgs[0] as RawAddress)
@@ -99,7 +99,7 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
         }
         arrayGetters.forEach { propertyType ->
             add(
-                WinRtInspectableMethodDefinition(
+                WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                 ) { rawArgs ->
                     ValueBoxingInterop.writePropertyValueArray(

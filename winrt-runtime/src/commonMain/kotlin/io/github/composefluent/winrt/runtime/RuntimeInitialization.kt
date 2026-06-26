@@ -7,13 +7,13 @@ package io.github.composefluent.winrt.runtime
 internal object PlatformRuntimeInitialization {
     fun initializeCom(apartmentType: ApartmentType): HResult {
         if (!PlatformRuntime.isWindows) return KnownHResults.S_OK
-        return HResult(WinRtPlatformApi.coInitializeExRaw(apartmentType))
+        return HResult(WinRTPlatformApi.coInitializeExRaw(apartmentType))
     }
 
     fun uninitializeCom() {
         if (!PlatformRuntime.isWindows) return
         XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
-        WinRtComposableObjectReference.closeRuntimeReferences()
+        WinRTComposableObjectReference.closeRuntimeReferences()
         ComWrappersSupport.clearRuntimeCache()
         PlatformFinalization.drain()
         uninitializeComApartment()
@@ -22,20 +22,20 @@ internal object PlatformRuntimeInitialization {
     fun uninitializeComApartment() {
         if (!PlatformRuntime.isWindows) return
         try {
-            WinRtPlatformApi.coUninitializeRaw()
+            WinRTPlatformApi.coUninitializeRaw()
         } finally {
             PlatformFinalization.drain()
         }
     }
 
-    fun initializeWinRt(apartmentType: ApartmentType): HResult {
+    fun initializeWinRT(apartmentType: ApartmentType): HResult {
         if (!PlatformRuntime.isWindows) return KnownHResults.S_OK
-        return HResult(WinRtPlatformApi.roInitializeRaw(apartmentType))
+        return HResult(WinRTPlatformApi.roInitializeRaw(apartmentType))
     }
 
-    fun uninitializeWinRt() {
+    fun uninitializeWinRT() {
         if (!PlatformRuntime.isWindows) return
-        WinRtPlatformApi.roUninitializeRaw()
+        WinRTPlatformApi.roUninitializeRaw()
     }
 }
 
@@ -53,12 +53,12 @@ object ComRuntime {
     fun uninitialize() = PlatformRuntimeInitialization.uninitializeCom()
 }
 
-object WinRtRuntime {
+object WinRTRuntime {
     fun initializeSingleThreaded(): HResult =
-        PlatformRuntimeInitialization.initializeWinRt(ApartmentType.SingleThreaded)
+        PlatformRuntimeInitialization.initializeWinRT(ApartmentType.SingleThreaded)
 
     fun initializeMultithreaded(): HResult =
-        PlatformRuntimeInitialization.initializeWinRt(ApartmentType.MultiThreaded)
+        PlatformRuntimeInitialization.initializeWinRT(ApartmentType.MultiThreaded)
 
     fun getActivationFactory(runtimeClassName: String, interfaceId: Guid = IID.IActivationFactory): Result<IUnknownReference> =
         runCatching {
@@ -70,5 +70,5 @@ object WinRtRuntime {
             ActivationFactory.activateInstance(runtimeClassName)
         }
 
-    fun uninitialize() = PlatformRuntimeInitialization.uninitializeWinRt()
+    fun uninitialize() = PlatformRuntimeInitialization.uninitializeWinRT()
 }

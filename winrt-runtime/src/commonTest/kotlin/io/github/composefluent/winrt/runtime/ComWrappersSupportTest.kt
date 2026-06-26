@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -30,7 +31,7 @@ class ComWrappersSupportTest {
             TestRuntimeClassWrapper(inspectable).also(created::add)
         }
 
-        val host = WinRtInspectableComObject.inspectableBox(
+        val host = WinRTInspectableComObject.inspectableBox(
             value = "payload",
             runtimeClassName = "test.RuntimeClass",
         )
@@ -91,10 +92,10 @@ class ComWrappersSupportTest {
         ComWrappersSupport.registerRuntimeClassFactory("test.RuntimeClass") { inspectable ->
             TestRuntimeClassWrapper(inspectable).also(created::add)
         }
-        val host = WinRtInspectableComObject(
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
-                WinRtInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
+                WinRTInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
+                WinRTInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
             ),
             runtimeClassName = "test.RuntimeClass",
         )
@@ -118,10 +119,10 @@ class ComWrappersSupportTest {
         val defaultInterfaceId = Guid("46464646-4646-4646-4646-464646464646")
         val secondaryInterfaceId = Guid("47474747-4747-4747-4747-474747474747")
         val managed = TestManagedType("registered")
-        val host = WinRtInspectableComObject(
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
-                WinRtInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
+                WinRTInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
+                WinRTInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
             ),
             runtimeClassName = "test.Registered",
         )
@@ -158,21 +159,21 @@ class ComWrappersSupportTest {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("48484848-4848-4848-4848-484848484848")
         ComWrappersSupport.registerAuthoringTypeDetailsFactory(NonUnwrappableProjectionWrapper::class) {
-            WinRtCcwDefinition(
+            WinRTCcwDefinition(
                 interfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(interfaceId, methods = emptyList()),
+                    WinRTInspectableInterfaceDefinition(interfaceId, methods = emptyList()),
                 ),
                 defaultInterfaceId = interfaceId,
                 runtimeClassName = "test.AuthoredProjectionWrapper",
             )
         }
-        val nativeHost = WinRtInspectableComObject.inspectableBox(
+        val nativeHost = WinRTInspectableComObject.inspectableBox(
             value = "native",
             runtimeClassName = "test.Native",
         )
         val value = NonUnwrappableProjectionWrapper(nativeHost.detachReference(IID.IInspectable))
 
-        winRtProjectionMarshaler(value, "test.AuthoredProjectionWrapper", interfaceId).use { marshaler ->
+        winRTProjectionMarshaler(value, "test.AuthoredProjectionWrapper", interfaceId).use { marshaler ->
             assertFalse(PlatformAbi.isNull(marshaler.abi))
         }
         value.nativeObject.close()
@@ -182,10 +183,10 @@ class ComWrappersSupportTest {
     fun aggregated_reference_query_interface_releases_temporary_qi_reference_and_wraps_borrowed_pointer() {
         val defaultInterfaceId = Guid("26262626-2626-2626-2626-262626262626")
         val secondaryInterfaceId = Guid("27272727-2727-2727-2727-272727272727")
-        val host = WinRtInspectableComObject(
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
-                WinRtInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
+                WinRTInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
+                WinRTInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
             ),
             defaultInterfaceId = defaultInterfaceId,
             runtimeClassName = "test.Aggregated",
@@ -209,14 +210,14 @@ class ComWrappersSupportTest {
     @Test
     fun create_rcw_uses_static_type_and_helper_type_registration() {
         ComWrappersSupport.clearRegistriesForTests()
-        val interfaceType = WinRtTypeHandle("test.IFoo", Guid("11111111-1111-1111-1111-111111111111"))
-        val helperType = WinRtTypeHandle("test.IFoo.Helper", Guid("22222222-2222-2222-2222-222222222222"))
+        val interfaceType = WinRTTypeHandle("test.IFoo", Guid("11111111-1111-1111-1111-111111111111"))
+        val helperType = WinRTTypeHandle("test.IFoo.Helper", Guid("22222222-2222-2222-2222-222222222222"))
         ComWrappersSupport.registerHelperType(interfaceType, helperType)
         ComWrappersSupport.registerTypedRcwFactory(helperType) { inspectable ->
             TestTypedWrapper(helperType, inspectable)
         }
 
-        val host = WinRtInspectableComObject.inspectableBox(
+        val host = WinRTInspectableComObject.inspectableBox(
             value = "payload",
             runtimeClassName = "test.RuntimeClass",
         )
@@ -232,10 +233,10 @@ class ComWrappersSupportTest {
     fun create_rcw_falls_back_to_single_interface_optimized_object_for_inspectable_ptr_without_registered_factory() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("34343434-3434-3434-3434-343434343434")
-        val typeHandle = WinRtTypeHandle("test.IFallback", interfaceId)
-        val host = WinRtInspectableComObject(
+        val typeHandle = WinRTTypeHandle("test.IFallback", interfaceId)
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = interfaceId,
                     methods = emptyList(),
                 ),
@@ -258,9 +259,9 @@ class ComWrappersSupportTest {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("44444444-4444-4444-4444-444444444444")
         ComWrappersSupport.registerCcwFactory(TestManagedType::class) { value ->
-            WinRtCcwDefinition(
+            WinRTCcwDefinition(
                 interfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = interfaceId,
                         methods = emptyList(),
                     ),
@@ -288,9 +289,9 @@ class ComWrappersSupportTest {
         val overrideInterfaceId = Guid("31313131-3131-3131-3131-313131313131")
         val baseDefaultInterfaceId = Guid("32323232-3232-3232-3232-323232323232")
         ComWrappersSupport.registerCcwFactory(TestComposableManagedType::class) {
-            WinRtCcwDefinition(
+            WinRTCcwDefinition(
                 interfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = overrideInterfaceId,
                         methods = emptyList(),
                     ),
@@ -299,9 +300,9 @@ class ComWrappersSupportTest {
                 runtimeClassName = "test.ComposableDerived",
             )
         }
-        val innerHost = WinRtInspectableComObject(
+        val innerHost = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = baseDefaultInterfaceId,
                     methods = emptyList(),
                 ),
@@ -343,9 +344,9 @@ class ComWrappersSupportTest {
         val primaryInspectableId = Guid("33333333-3333-3333-3333-333333333333")
         val defaultInterfaceId = Guid("34343434-3434-3434-3434-343434343434")
         ComWrappersSupport.registerCcwFactory(TestComposableManagedType::class) {
-            WinRtCcwDefinition(
+            WinRTCcwDefinition(
                 interfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = defaultInterfaceId,
                         methods = emptyList(),
                     ),
@@ -355,21 +356,21 @@ class ComWrappersSupportTest {
             )
         }
         val managed = TestComposableManagedType("tracked")
-        val instanceHost = WinRtInspectableComObject(
+        val instanceHost = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = primaryInspectableId,
                     methods = emptyList(),
                 ),
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = defaultInterfaceId,
                     methods = emptyList(),
                 ),
             ),
             hiddenInterfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = IID.IReferenceTracker,
-                    methods = List(9) { WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { 1 } },
+                    methods = List(9) { WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { 1 } },
                 ),
             ),
             defaultInterfaceId = defaultInterfaceId,
@@ -400,15 +401,15 @@ class ComWrappersSupportTest {
         val publicInterfaceId = Guid("67676767-6767-6767-6767-676767676767")
         val hiddenInterfaceId = Guid("68686868-6868-6868-6868-686868686868")
         ComWrappersSupport.registerCcwFactory(TestManagedType::class) {
-            WinRtCcwDefinition(
+            WinRTCcwDefinition(
                 interfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = publicInterfaceId,
                         methods = emptyList(),
                     ),
                 ),
                 hiddenInterfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = hiddenInterfaceId,
                         methods = emptyList(),
                     ),
@@ -450,15 +451,15 @@ class ComWrappersSupportTest {
         ComWrappersSupport.clearRegistriesForTests()
         val publicInterfaceId = Guid("69696969-6969-6969-6969-696969696969")
         ComWrappersSupport.registerCcwFactory(TestManagedType::class) {
-            WinRtCcwDefinition(
+            WinRTCcwDefinition(
                 interfaceDefinitions = listOf(
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = publicInterfaceId,
                         methods = emptyList(),
                     ),
-                    WinRtInspectableInterfaceDefinition(
+                    WinRTInspectableInterfaceDefinition(
                         interfaceId = IID.IMarshal,
-                        baseKind = WinRtComInterfaceBaseKind.IUnknown,
+                        baseKind = WinRTComInterfaceBaseKind.IUnknown,
                         methods = emptyList(),
                     ),
                 ),
@@ -491,28 +492,62 @@ class ComWrappersSupportTest {
     @Test
     fun cast_extension_rehydrates_registered_typed_wrapper() {
         ComWrappersSupport.clearRegistriesForTests()
-        val interfaceType = WinRtTypeHandle("test.IFoo", Guid("55555555-5555-5555-5555-555555555555"))
-        ComWrappersSupport.registerTypedRcwFactory(interfaceType) { inspectable ->
-            TestTypedWrapper(interfaceType, inspectable)
+        val sourceInterfaceType = WinRTTypeHandle("test.ISource", Guid("55555555-5555-5555-5555-555555555551"))
+        val targetInterfaceType = WinRTTypeHandle("test.ITarget", Guid("55555555-5555-5555-5555-555555555552"))
+        ComWrappersSupport.registerTypedRcwFactory(sourceInterfaceType) { inspectable ->
+            TestSourceWrapper(sourceInterfaceType, inspectable)
         }
+        ComWrappersSupport.registerTypedRcwFactory(targetInterfaceType) { inspectable ->
+            TestTargetWrapper(targetInterfaceType, inspectable)
+        }
+        WinRTTypeRegistry.register<TestProjectedInterface>(
+            projectedTypeName = sourceInterfaceType.projectedTypeName,
+            iid = sourceInterfaceType.interfaceId,
+            isWindowsRuntimeType = true,
+        )
+        WinRTTypeRegistry.register<TargetProjectedInterface>(
+            projectedTypeName = targetInterfaceType.projectedTypeName,
+            iid = targetInterfaceType.interfaceId,
+            isWindowsRuntimeType = true,
+        )
 
         val projected = ProjectedInspectableObject(
-            pointer = WinRtInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
+            pointer = WinRTInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
                 .detachReference(IID.IInspectable)
         )
 
-        val cast = projected.winrtAs(interfaceType) as TestTypedWrapper
-        assertEquals(interfaceType, cast.primaryTypeHandle)
-        cast.nativeObject.close()
+        val source = projected.asWinRT<TestProjectedInterface>() as TestSourceWrapper
+        val interfaceTypedSource: TestProjectedInterface = source
+        val target = interfaceTypedSource.asWinRT<TargetProjectedInterface>() as TestTargetWrapper
+        assertEquals(sourceInterfaceType, source.primaryTypeHandle)
+        assertEquals(targetInterfaceType, target.primaryTypeHandle)
+        target.nativeObject.close()
+        source.nativeObject.close()
+        projected.nativeObject.close()
+    }
+
+    @Test
+    fun generic_cast_rejects_targets_without_registered_winrt_interface_iid() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val projected = ProjectedInspectableObject(
+            pointer = WinRTInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
+                .detachReference(IID.IInspectable)
+        )
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            projected.asWinRT<UnregisteredProjectedInterface>()
+        }
+
+        assertTrue(error.message.orEmpty().contains("not a registered WinRT interface type"))
         projected.nativeObject.close()
     }
 
     private data class TestManagedType(val name: String)
 
-    private class TestComposableManagedType(val name: String) : WinRtComposableObject {
-        var composableReference: WinRtComposableObjectReference? = null
+    private class TestComposableManagedType(val name: String) : WinRTComposableObject {
+        var composableReference: WinRTComposableObjectReference? = null
 
-        override val winRtComposableObjectReference: WinRtComposableObjectReference?
+        override val winRTComposableObjectReference: WinRTComposableObjectReference?
             get() = composableReference
     }
 
@@ -537,10 +572,32 @@ class ComWrappersSupportTest {
     }
 
     private class TestTypedWrapper(
-        override val primaryTypeHandle: WinRtTypeHandle,
+        override val primaryTypeHandle: WinRTTypeHandle,
         private val inspectable: IInspectableReference,
     ) : IWinRTObject {
         override val nativeObject: ComObjectReference
             get() = inspectable
     }
+
+    private class TestSourceWrapper(
+        override val primaryTypeHandle: WinRTTypeHandle,
+        private val inspectable: IInspectableReference,
+    ) : TestProjectedInterface, IWinRTObject {
+        override val nativeObject: ComObjectReference
+            get() = inspectable
+    }
+
+    private class TestTargetWrapper(
+        override val primaryTypeHandle: WinRTTypeHandle,
+        private val inspectable: IInspectableReference,
+    ) : TargetProjectedInterface, IWinRTObject {
+        override val nativeObject: ComObjectReference
+            get() = inspectable
+    }
+
+    private interface TestProjectedInterface
+
+    private interface TargetProjectedInterface
+
+    private interface UnregisteredProjectedInterface
 }

@@ -7,9 +7,9 @@ plugins {
     id("io.github.composefluent.winrt")
 }
 
-val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.1.3")
-val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
+val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 
 kotlin {
@@ -38,7 +38,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     application {
         mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
     }
@@ -56,7 +56,7 @@ winRt {
 val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
     group = "verification"
     description = "Verifies the KMP WinUI application suppresses projection types owned by transitive WinRT libraries."
-    dependsOn("generateWinRtProjections")
+    dependsOn("generateWinRTProjections")
     val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
     inputs.files(generatedSources)
 
@@ -72,11 +72,11 @@ val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
 }
 
 val auditGeneratedWinuiKmpProjectionOutput by tasks.registering(
-    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRtProjectionOutputTask::class,
+    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRTProjectionOutputTask::class,
 ) {
     group = "verification"
     description = "Fails if generated KMP WinUI projection source leaks fallback invocation or JVM-only reflection paths."
-    dependsOn("generateWinRtProjections")
+    dependsOn("generateWinRTProjections")
     val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
     generatedSourcesDirectory.set(generatedSources)
 }
@@ -85,7 +85,7 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     group = "verification"
     description = "Runs the KMP WinRT library consumed by a KMP WinRT application sample."
     dependsOn("compileKotlinWinuiJvm")
-    dependsOn("stageWinRtRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssets")
     mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
     classpath(
         layout.buildDirectory.dir("classes/kotlin/winuiJvm/main"),
@@ -117,7 +117,7 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     }
 }
 
-tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>("buildWinRtApplicationHost") {
+tasks.named<io.github.composefluent.winrt.gradle.BuildWinRTApplicationHostTask>("buildWinRTApplicationHost") {
     val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
     val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
     dependsOn(winuiJvmJar)
@@ -140,7 +140,7 @@ private val winuiKmpOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<Exec>("runWinRtApplicationHost") {
+tasks.named<Exec>("runWinRTApplicationHost") {
     val hostJvmOptions = winuiKmpOptionProperties.joinToString(";") { name ->
         val defaultValue = if (name == "kotlin.winrt.samples.autoExitWinUi") "true" else ""
         "-D$name=${providers.systemProperty(name).orElse(defaultValue).get()}"
@@ -149,7 +149,7 @@ tasks.named<Exec>("runWinRtApplicationHost") {
 }
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRtApplicationPackage")
+    dependsOn("stageWinRTApplicationPackage")
     workingDir(layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release"))
     executable(layout.buildDirectory.file("kotlin-winrt/application-layout/mingwX64/release/${project.name}.exe").get().asFile.absolutePath)
     environment(
@@ -166,7 +166,7 @@ tasks.named<Exec>("runReleaseExecutableMingwX64") {
 val verifyWinuiKmpJvmRun by tasks.registering {
     group = "verification"
     description = "Runs the KMP WinUI sample through the generated JVM application host path."
-    dependsOn(tasks.named("runWinRtApplicationHost"))
+    dependsOn(tasks.named("runWinRTApplicationHost"))
 }
 
 val verifyWinuiKmpMingwRun by tasks.registering {
@@ -179,8 +179,8 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
     group = "verification"
     description = "Verifies the KMP WinUI dependency is a native authored DLL with composable/overridable support."
     val library = project(":winrt-samples:winui-kmp-library")
-    dependsOn(library.tasks.named("validateCompileKotlinMingwX64WinRtNativeAuthoringExports"))
-    dependsOn("stageWinRtRuntimeAssets")
+    dependsOn(library.tasks.named("validateCompileKotlinMingwX64WinRTNativeAuthoringExports"))
+    dependsOn("stageWinRTRuntimeAssets")
 
     val nativeAuthoringRoot = library.layout.buildDirectory.dir("kotlin-winrt/native-authoring/compileKotlinMingwX64")
     val generatedTypeDetailsRoot =

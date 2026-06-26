@@ -8,7 +8,7 @@ internal object RawObjectAbiSupport {
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invoke(resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             val pointer = PlatformAbi.readPointer(resultOut)
             return if (PlatformAbi.isNull(pointer)) null else wrap(pointer)
         }
@@ -19,7 +19,7 @@ internal object RawObjectAbiSupport {
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invoke(resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             val pointer = PlatformAbi.readPointer(resultOut)
             return if (PlatformAbi.isNull(pointer)) null else pointer
         }
@@ -31,7 +31,7 @@ internal object RawObjectAbiSupport {
             val indexOut = PlatformAbi.allocateInt32Slot(scope)
             val foundOut = PlatformAbi.allocateInt8Slot(scope)
             val hResult = invoke(indexOut, foundOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return (PlatformAbi.readInt8(foundOut).toInt() != 0) to PlatformAbi.readInt32(indexOut).toUInt()
         }
 
@@ -45,7 +45,7 @@ internal object RawObjectAbiSupport {
             val itemsOut = PlatformAbi.allocatePointerArray(scope, capacity)
             val countOut = PlatformAbi.allocateInt32Slot(scope)
             val hResult = invoke(itemsOut, countOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             val actualCount = PlatformAbi.readInt32(countOut)
             return List(actualCount) { index ->
                 wrap(PlatformAbi.readPointerAt(itemsOut, index))
@@ -63,7 +63,7 @@ internal object RawObjectAbiSupport {
                 PlatformAbi.writePointerAt(itemsAbi, index, item)
             }
             val hResult = invoke(items.size, itemsAbi)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
         }
     }
 
@@ -74,7 +74,7 @@ internal object RawObjectAbiSupport {
             val firstOut = PlatformAbi.allocatePointerSlot(scope)
             val secondOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invoke(firstOut, secondOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return PlatformAbi.readPointer(firstOut) to PlatformAbi.readPointer(secondOut)
         }
 }

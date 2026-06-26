@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-enum class WinRtAbiCategory {
+enum class WinRTAbiCategory {
     BLITTABLE,
     STRING,
     INTERFACE,
@@ -10,7 +10,7 @@ enum class WinRtAbiCategory {
     DELEGATE,
 }
 
-class WinRtAbiArray internal constructor(
+class WinRTAbiArray internal constructor(
     val length: Int,
     val data: RawAddress,
     private val cleanup: (() -> Unit)? = null,
@@ -21,7 +21,7 @@ class WinRtAbiArray internal constructor(
 }
 
 class Marshaler<T> internal constructor(
-    val abiCategory: WinRtAbiCategory,
+    val abiCategory: WinRTAbiCategory,
     private val createMarshalerImpl: (T?) -> Any?,
     private val getAbiImpl: (Any?) -> Any?,
     private val fromAbiImpl: (Any?) -> T?,
@@ -30,11 +30,11 @@ class Marshaler<T> internal constructor(
     private val copyManagedImpl: (T?, RawAddress) -> Unit,
     private val disposeMarshalerImpl: (Any?) -> Unit,
     private val disposeAbiImpl: (Any?) -> Unit,
-    private val createMarshalerArrayImpl: (Array<out T?>?) -> WinRtAbiArray?,
+    private val createMarshalerArrayImpl: (Array<out T?>?) -> WinRTAbiArray?,
     private val fromAbiArrayImpl: (Int, RawAddress) -> List<T?>?,
-    private val fromManagedArrayImpl: (Array<out T?>?) -> WinRtAbiArray?,
+    private val fromManagedArrayImpl: (Array<out T?>?) -> WinRTAbiArray?,
     private val copyManagedArrayImpl: (Array<out T?>?, RawAddress) -> Unit,
-    private val disposeMarshalerArrayImpl: (WinRtAbiArray?) -> Unit,
+    private val disposeMarshalerArrayImpl: (WinRTAbiArray?) -> Unit,
     private val disposeAbiArrayImpl: (Int, RawAddress) -> Unit,
 ) {
     fun createMarshaler(value: T?): Any? = createMarshalerImpl(value)
@@ -61,17 +61,17 @@ class Marshaler<T> internal constructor(
         disposeAbiImpl(value)
     }
 
-    fun createMarshalerArray(values: Array<out T?>?): WinRtAbiArray? = createMarshalerArrayImpl(values)
+    fun createMarshalerArray(values: Array<out T?>?): WinRTAbiArray? = createMarshalerArrayImpl(values)
 
     fun fromAbiArray(length: Int, data: RawAddress): List<T?>? = fromAbiArrayImpl(length, data)
 
-    fun fromManagedArray(values: Array<out T?>?): WinRtAbiArray? = fromManagedArrayImpl(values)
+    fun fromManagedArray(values: Array<out T?>?): WinRTAbiArray? = fromManagedArrayImpl(values)
 
     fun copyManagedArray(values: Array<out T?>?, destination: RawAddress) {
         copyManagedArrayImpl(values, destination)
     }
 
-    fun disposeMarshalerArray(array: WinRtAbiArray?) {
+    fun disposeMarshalerArray(array: WinRTAbiArray?) {
         disposeMarshalerArrayImpl(array)
     }
 
@@ -109,7 +109,7 @@ class Marshaler<T> internal constructor(
         fun string(): Marshaler<String> = MarshalString.marshaler()
 
         fun <T : Any> interfaceType(
-            typeHandle: WinRtTypeHandle,
+            typeHandle: WinRTTypeHandle,
             expectedType: KClass<T>,
             projector: (Any?) -> T = { expectedType.castProjected(it) },
         ): Marshaler<T> = MarshalInterface.of(typeHandle, expectedType, projector)
@@ -123,14 +123,14 @@ class Marshaler<T> internal constructor(
 
         fun <T> genericParameter(): Marshaler<T> = MarshalGenericParameter.of()
 
-        fun <T> referenceValueAdapter(adapter: WinRtReferenceValueAdapter<T>): Marshaler<T> =
+        fun <T> referenceValueAdapter(adapter: WinRTReferenceValueAdapter<T>): Marshaler<T> =
             MarshalReferenceValueAdapter.of(adapter)
     }
 }
 
 object MarshalBlittable {
     fun int8(): Marshaler<Byte> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT8,
         toAbi = { it },
         fromAbi = { abi ->
@@ -145,7 +145,7 @@ object MarshalBlittable {
     )
 
     fun uint8(): Marshaler<UByte> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT8,
         toAbi = { it.toByte() },
         fromAbi = { abi ->
@@ -160,7 +160,7 @@ object MarshalBlittable {
     )
 
     fun int16(): Marshaler<Short> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT16,
         toAbi = { it },
         fromAbi = { abi ->
@@ -175,7 +175,7 @@ object MarshalBlittable {
     )
 
     fun uint16(): Marshaler<UShort> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT16,
         toAbi = { it.toShort() },
         fromAbi = { abi ->
@@ -190,7 +190,7 @@ object MarshalBlittable {
     )
 
     fun boolean(): Marshaler<Boolean> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT8,
         toAbi = BooleanMarshaller::toAbi,
         fromAbi = { abi ->
@@ -204,7 +204,7 @@ object MarshalBlittable {
     )
 
     fun char16(): Marshaler<Char> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.CHAR16,
         toAbi = CharMarshaller::toAbi,
         fromAbi = { abi ->
@@ -219,7 +219,7 @@ object MarshalBlittable {
     )
 
     fun int32(): Marshaler<Int> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT32,
         toAbi = { it },
         fromAbi = { abi ->
@@ -234,7 +234,7 @@ object MarshalBlittable {
     )
 
     fun uint32(): Marshaler<UInt> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT32,
         toAbi = { it.toInt() },
         fromAbi = { abi ->
@@ -249,7 +249,7 @@ object MarshalBlittable {
     )
 
     fun int64(): Marshaler<Long> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT64,
         toAbi = { it },
         fromAbi = { abi ->
@@ -264,7 +264,7 @@ object MarshalBlittable {
     )
 
     fun uint64(): Marshaler<ULong> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.INT64,
         toAbi = { it.toLong() },
         fromAbi = { abi ->
@@ -279,7 +279,7 @@ object MarshalBlittable {
     )
 
     fun float32(): Marshaler<Float> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.FLOAT32,
         toAbi = { it },
         fromAbi = { abi ->
@@ -293,7 +293,7 @@ object MarshalBlittable {
     )
 
     fun float64(): Marshaler<Double> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.DOUBLE,
         toAbi = { it },
         fromAbi = { abi ->
@@ -307,7 +307,7 @@ object MarshalBlittable {
     )
 
     fun guid(): Marshaler<Guid> = scalar(
-        category = WinRtAbiCategory.BLITTABLE,
+        category = WinRTAbiCategory.BLITTABLE,
         abiKind = NativeStructScalarKind.GUID,
         toAbi = { it },
         fromAbi = { abi ->
@@ -322,7 +322,7 @@ object MarshalBlittable {
 
     @Suppress("UNCHECKED_CAST")
     private fun <T, ABI : Any> scalar(
-        category: WinRtAbiCategory,
+        category: WinRTAbiCategory,
         abiKind: NativeStructScalarKind,
         toAbi: (T) -> ABI,
         fromAbi: (Any?) -> T,
@@ -377,7 +377,7 @@ object MarshalBlittable {
 object MarshalString {
     fun marshaler(): Marshaler<String> =
         pointerMarshaler(
-            category = WinRtAbiCategory.STRING,
+            category = WinRTAbiCategory.STRING,
             nullFromAbi = { NativeStringMarshaller.fromAbi(PlatformAbi.nullPointer) },
             createMarshaler = NativeStringMarshaller::createMarshaler,
             getAbiPointer = { value ->
@@ -405,12 +405,12 @@ object MarshalString {
 
 object MarshalInterface {
     fun <T : Any> of(
-        typeHandle: WinRtTypeHandle,
+        typeHandle: WinRTTypeHandle,
         expectedType: KClass<T>,
         projector: (Any?) -> T = { expectedType.castProjected(it) },
     ): Marshaler<T> =
         pointerMarshaler(
-            category = WinRtAbiCategory.INTERFACE,
+            category = WinRTAbiCategory.INTERFACE,
             createMarshaler = { value ->
                 when (value) {
                     null -> null
@@ -452,7 +452,7 @@ object MarshalInspectable {
         projector: (Any?) -> T = { expectedType.castProjected(it) },
     ): Marshaler<T> =
         pointerMarshaler(
-            category = WinRtAbiCategory.INSPECTABLE,
+            category = WinRTAbiCategory.INSPECTABLE,
             createMarshaler = { value ->
                 when (value) {
                     null -> null
@@ -489,19 +489,19 @@ object MarshalInspectable {
 
     fun any(): Marshaler<Any?> =
         pointerMarshaler(
-            category = WinRtAbiCategory.INSPECTABLE,
-            createMarshaler = WinRtObjectMarshaller::createMarshaler,
+            category = WinRTAbiCategory.INSPECTABLE,
+            createMarshaler = WinRTObjectMarshaller::createMarshaler,
             getAbiPointer = { value ->
                 when (value) {
                     null -> PlatformAbi.nullPointer
-                    is WinRtObjectMarshaler -> value.abi
+                    is WinRTObjectMarshaler -> value.abi
                     is ComObjectReference -> value.pointer.asRawAddress()
                     is RawAddress -> value
                     else -> error("Expected inspectable marshaler, got '${abiTypeName(value)}'.")
                 }
             },
-            fromAbiPointer = WinRtObjectMarshaller::fromAbi,
-            fromManagedPointer = WinRtObjectMarshaller::fromManaged,
+            fromAbiPointer = WinRTObjectMarshaller::fromAbi,
+            fromManagedPointer = WinRTObjectMarshaller::fromManaged,
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
             disposeAbiPointer = { pointer ->
                 if (!PlatformAbi.isNull(pointer)) {
@@ -514,19 +514,19 @@ object MarshalInspectable {
 object MarshalGenericParameter {
     fun <T> of(): Marshaler<T> =
         pointerMarshaler(
-            category = WinRtAbiCategory.INSPECTABLE,
-            createMarshaler = WinRtObjectMarshaller::createMarshaler,
+            category = WinRTAbiCategory.INSPECTABLE,
+            createMarshaler = WinRTObjectMarshaller::createMarshaler,
             getAbiPointer = { value ->
                 when (value) {
                     null -> PlatformAbi.nullPointer
-                    is WinRtObjectMarshaler -> value.abi
+                    is WinRTObjectMarshaler -> value.abi
                     is ComObjectReference -> value.pointer.asRawAddress()
                     is RawAddress -> value
                     else -> error("Expected generic parameter marshaler, got '${abiTypeName(value)}'.")
                 }
             },
-            fromAbiPointer = { pointer -> WinRtGenericParameterProjection.fromAbi(pointer) },
-            fromManagedPointer = { value -> WinRtGenericParameterProjection.fromManaged(value) },
+            fromAbiPointer = { pointer -> WinRTGenericParameterProjection.fromAbi(pointer) },
+            fromManagedPointer = { value -> WinRTGenericParameterProjection.fromManaged(value) },
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
             disposeAbiPointer = { pointer ->
                 if (!PlatformAbi.isNull(pointer)) {
@@ -537,15 +537,15 @@ object MarshalGenericParameter {
 }
 
 object MarshalReferenceValueAdapter {
-    fun <T> of(adapter: WinRtReferenceValueAdapter<T>): Marshaler<T> =
+    fun <T> of(adapter: WinRTReferenceValueAdapter<T>): Marshaler<T> =
         pointerMarshaler(
-            category = WinRtAbiCategory.INTERFACE,
+            category = WinRTAbiCategory.INTERFACE,
             nullFromAbi = { adapter.projector(null) },
             createMarshaler = { value -> value?.let(adapter::createOutputMarshaler) },
             getAbiPointer = { value ->
                 when (value) {
                     null -> PlatformAbi.nullPointer
-                    is WinRtObjectMarshaler -> value.abi
+                    is WinRTObjectMarshaler -> value.abi
                     is ComObjectReference -> value.pointer.asRawAddress()
                     is RawAddress -> value
                     else -> error("Expected reference-value adapter marshaler, got '${abiTypeName(value)}'.")
@@ -568,18 +568,18 @@ object MarshalReferenceValueAdapter {
 }
 
 object MarshalDelegate {
-    fun createMarshaler(value: WinRtDelegateReference?): WinRtDelegateReference? =
-        value?.let { WinRtDelegateReference.fromAbi(it.getRefPointer().asRawAddress(), it.descriptor) }
+    fun createMarshaler(value: WinRTDelegateReference?): WinRTDelegateReference? =
+        value?.let { WinRTDelegateReference.fromAbi(it.getRefPointer().asRawAddress(), it.descriptor) }
 
-    fun getAbi(value: WinRtDelegateReference?): RawAddress = value?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
+    fun getAbi(value: WinRTDelegateReference?): RawAddress = value?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
 
-    fun fromAbi(pointer: RawAddress, descriptor: WinRtDelegateDescriptor): WinRtDelegateReference? =
-        WinRtDelegateReference.fromAbi(pointer, descriptor)
+    fun fromAbi(pointer: RawAddress, descriptor: WinRTDelegateDescriptor): WinRTDelegateReference? =
+        WinRTDelegateReference.fromAbi(pointer, descriptor)
 
-    fun fromManaged(value: WinRtDelegateHandle?): RawAddress =
+    fun fromManaged(value: WinRTDelegateHandle?): RawAddress =
         value?.createReference()?.useAndGetRef() ?: PlatformAbi.nullPointer
 
-    fun fromProjected(value: WinRtProjectedDelegate?): RawAddress {
+    fun fromProjected(value: WinRTProjectedDelegate?): RawAddress {
         ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
             return reference.getRefPointer().asRawAddress()
         }
@@ -587,26 +587,26 @@ object MarshalDelegate {
             ?: PlatformAbi.nullPointer
     }
 
-    fun disposeMarshaler(value: WinRtDelegateReference?) {
+    fun disposeMarshaler(value: WinRTDelegateReference?) {
         value?.close()
     }
 
-    fun disposeAbi(pointer: RawAddress, descriptor: WinRtDelegateDescriptor) {
+    fun disposeAbi(pointer: RawAddress, descriptor: WinRTDelegateDescriptor) {
         if (PlatformAbi.isNull(pointer)) {
             return
         }
-        WinRtDelegateReference.fromAbi(pointer, descriptor)?.close()
+        WinRTDelegateReference.fromAbi(pointer, descriptor)?.close()
     }
 
-    fun createMarshalerArray(values: Array<out WinRtDelegateReference?>?): WinRtAbiArray? =
+    fun createMarshalerArray(values: Array<out WinRTDelegateReference?>?): WinRTAbiArray? =
         createPointerArrayFromMarshallers(
             values = values,
             createMarshaler = ::createMarshaler,
-            getAbiPointer = { value -> getAbi(value as? WinRtDelegateReference) },
-            disposeMarshaler = { value -> disposeMarshaler(value as? WinRtDelegateReference) },
+            getAbiPointer = { value -> getAbi(value as? WinRTDelegateReference) },
+            disposeMarshaler = { value -> disposeMarshaler(value as? WinRTDelegateReference) },
         )
 
-    fun fromManagedArray(values: Array<out WinRtDelegateHandle?>?): WinRtAbiArray? =
+    fun fromManagedArray(values: Array<out WinRTDelegateHandle?>?): WinRTAbiArray? =
         createPointerArrayFromAbiValues(
             values = values,
             fromManagedPointer = ::fromManaged,
@@ -616,8 +616,8 @@ object MarshalDelegate {
     fun fromAbiArray(
         length: Int,
         data: RawAddress,
-        descriptor: WinRtDelegateDescriptor,
-    ): List<WinRtDelegateReference?>? =
+        descriptor: WinRTDelegateDescriptor,
+    ): List<WinRTDelegateReference?>? =
         decodePointerArray(
             length = length,
             data = data,
@@ -627,7 +627,7 @@ object MarshalDelegate {
     fun disposeAbiArray(
         length: Int,
         data: RawAddress,
-        descriptor: WinRtDelegateDescriptor,
+        descriptor: WinRTDelegateDescriptor,
     ) {
         disposePointerArray(length, data) { pointer ->
             disposeAbi(pointer, descriptor)
@@ -636,7 +636,7 @@ object MarshalDelegate {
 }
 
 private fun <T> pointerMarshaler(
-    category: WinRtAbiCategory,
+    category: WinRTAbiCategory,
     nullFromAbi: () -> T? = { null },
     createMarshaler: (T?) -> Any?,
     getAbiPointer: (Any?) -> RawAddress,
@@ -688,7 +688,7 @@ private fun <T> createBlittableArray(
     values: Array<out T?>?,
     abiKind: NativeStructScalarKind,
     copyManaged: (T, RawAddress) -> Unit,
-): WinRtAbiArray? {
+): WinRTAbiArray? {
     if (values == null) {
         return null
     }
@@ -709,7 +709,7 @@ private fun <T> createBlittableArray(
                 copyManaged(value, slice)
             }
         }
-        WinRtAbiArray(values.size, data, scope::close)
+        WinRTAbiArray(values.size, data, scope::close)
     } catch (error: Throwable) {
         scope.close()
         throw error
@@ -754,7 +754,7 @@ private fun <T> createPointerArrayFromMarshallers(
     createMarshaler: (T?) -> Any?,
     getAbiPointer: (Any?) -> RawAddress,
     disposeMarshaler: (Any?) -> Unit,
-): WinRtAbiArray? {
+): WinRTAbiArray? {
     if (values == null) {
         return null
     }
@@ -768,7 +768,7 @@ private fun <T> createPointerArrayFromMarshallers(
             marshalers += marshaler
             PlatformAbi.writePointerAt(data, index, getAbiPointer(marshaler))
         }
-        WinRtAbiArray(
+        WinRTAbiArray(
             length = values.size,
             data = data,
         ) {
@@ -786,7 +786,7 @@ private fun <T> createPointerArrayFromAbiValues(
     values: Array<out T?>?,
     fromManagedPointer: (T?) -> RawAddress,
     disposeAbiPointer: (RawAddress) -> Unit,
-): WinRtAbiArray? {
+): WinRTAbiArray? {
     if (values == null) {
         return null
     }
@@ -800,7 +800,7 @@ private fun <T> createPointerArrayFromAbiValues(
             ownedPointers += pointer
             PlatformAbi.writePointerAt(data, index, pointer)
         }
-        WinRtAbiArray(
+        WinRTAbiArray(
             length = values.size,
             data = data,
         ) {
@@ -885,7 +885,7 @@ private fun abiPointer(value: Any?): RawAddress =
         is ReferencedHString -> value.handle
         is HString -> value.handle
         is ComObjectReference -> value.pointer.asRawAddress()
-        is WinRtObjectMarshaler -> value.abi
+        is WinRTObjectMarshaler -> value.abi
         else -> error("Expected pointer-backed ABI value, got '${abiTypeName(value)}'.")
     }
 

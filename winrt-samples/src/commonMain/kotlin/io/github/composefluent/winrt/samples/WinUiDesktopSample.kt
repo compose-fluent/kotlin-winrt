@@ -14,7 +14,7 @@ import microsoft.ui.xaml.controls.Page
 import microsoft.ui.xaml.input.TappedEventHandler
 import microsoft.ui.xaml.input.TappedRoutedEventArgs
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
 
 data class WinUiDesktopSampleResult(
     val dependencyPropertyUnsetValueAvailable: Boolean,
@@ -35,7 +35,7 @@ object WinUiDesktopSample {
     }
 
     fun launchForSmoke(): WinUiDesktopSampleResult =
-        WinRtWindowsAppSdkBootstrap.initializeApplicationHost().use {
+        WinRTWindowsAppSdkBootstrap.initializeApplicationHost().use {
             WinUiDesktopApp().launchCore()
         }
 }
@@ -69,7 +69,7 @@ class WinUiDesktopApp : Application() {
         window.activate()
         println("winui: window activated native")
         myWindow = window
-        if (winRtSampleOption("kotlin.winrt.samples.autoNavigateWinUi")) {
+        if (winRTSampleOption("kotlin.winrt.samples.autoNavigateWinUi")) {
             println("winui: auto navigation requested")
             showMainPage()
         }

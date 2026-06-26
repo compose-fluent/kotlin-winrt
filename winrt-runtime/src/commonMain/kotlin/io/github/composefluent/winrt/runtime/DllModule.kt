@@ -7,7 +7,7 @@ internal class DllModule private constructor(
 ) {
     fun getActivationFactory(runtimeClassName: String): ActivationResult {
         HString.create(runtimeClassName).use { classId ->
-            return WinRtPlatformApi.dllGetActivationFactoryRaw(
+            return WinRTPlatformApi.dllGetActivationFactoryRaw(
                 getActivationFactoryPointer,
                 classId.handle,
             ).toActivationResult()
@@ -30,8 +30,8 @@ internal class DllModule private constructor(
         }
 
         private fun create(fileName: String): DllModule? {
-            val moduleHandle = WinRtPlatformApi.tryLoadLibraryExWRaw(
-                WinRtPlatformApi.resolveModulePathRaw(fileName),
+            val moduleHandle = WinRTPlatformApi.tryLoadLibraryExWRaw(
+                WinRTPlatformApi.resolveModulePathRaw(fileName),
                 loadLibrarySearchDllLoadDir or loadLibrarySearchDefaultDirs,
             )
             if (PlatformAbi.isNull(moduleHandle)) {
@@ -39,9 +39,9 @@ internal class DllModule private constructor(
             }
 
             val getActivationFactoryPointer =
-                WinRtPlatformApi.tryGetProcAddressRaw(moduleHandle, dllGetActivationFactory)
+                WinRTPlatformApi.tryGetProcAddressRaw(moduleHandle, dllGetActivationFactory)
             if (PlatformAbi.isNull(getActivationFactoryPointer)) {
-                WinRtPlatformApi.freeLibraryRaw(moduleHandle)
+                WinRTPlatformApi.freeLibraryRaw(moduleHandle)
                 return null
             }
 

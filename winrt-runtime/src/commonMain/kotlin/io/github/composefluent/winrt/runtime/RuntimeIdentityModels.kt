@@ -8,12 +8,12 @@ package io.github.composefluent.winrt.runtime
  */
 data class RuntimeClassId(val value: String)
 
-data class WinRtTypeHandle(
+data class WinRTTypeHandle(
     val projectedTypeName: String,
     val interfaceId: Guid,
 )
 
-data class WinRtInspectableInfo(
+data class WinRTInspectableInfo(
     val runtimeClassName: String?,
     val interfaceIds: List<Guid>,
 )

@@ -59,7 +59,7 @@ internal object ExceptionProjection {
  * Public generator-facing facade for the built-in custom ABI mappings mirrored from
  * `.cswinrt/src/WinRT.Runtime/Projections.cs`.
  */
-object WinRtSystemProjectionMarshalers {
+object WinRTSystemProjectionMarshalers {
     fun dateTimeFromAbi(source: RawAddress): Instant =
         DateTimeProjection.fromAbi(PlatformAbi.readInt64(source))
 
@@ -122,12 +122,12 @@ object WinRtSystemProjectionMarshalers {
         TypeProjection.disposeAbi(source)
     }
 
-    fun uriFromAbi(pointer: RawAddress): WinRtUri? =
+    fun uriFromAbi(pointer: RawAddress): WinRTUri? =
         UriProjection.fromAbi(pointer)
 
     fun <T : Any> objectFromAbi(
         pointer: RawAddress,
-        typeHandle: WinRtTypeHandle,
+        typeHandle: WinRTTypeHandle,
         expectedType: KClass<T>,
     ): T? {
         if (PlatformAbi.isNull(pointer)) {
@@ -139,7 +139,7 @@ object WinRtSystemProjectionMarshalers {
             @Suppress("UNCHECKED_CAST")
             return projected as T
         }
-        throw WinRtInvalidCastException(
+        throw WinRTInvalidCastException(
             "Expected projected value assignable to ${expectedType.typeDisplayName()}.",
             KnownHResults.E_NOINTERFACE,
         )
@@ -162,13 +162,13 @@ object WinRtSystemProjectionMarshalers {
         }
 }
 
-@WinRtGuid("9E365E57-48B2-4160-956F-C7385120BBFC")
+@WinRTGuid("9E365E57-48B2-4160-956F-C7385120BBFC")
 internal interface IUriRuntimeClassProjection
 
-@WinRtGuid("30D5A829-7FA4-4026-83BB-D75BAE4EA99E")
+@WinRTGuid("30D5A829-7FA4-4026-83BB-D75BAE4EA99E")
 internal interface IClosableProjection
 
-class WinRtClosableObject(
+class WinRTClosableObject(
     private val inspectable: IInspectableReference,
 ) : AutoCloseable, IWinRTObject {
     override val nativeObject: ComObjectReference
@@ -177,17 +177,17 @@ class WinRtClosableObject(
     override fun close() {
         inspectable.tryQueryInterface(IID.IDisposable)?.use { closable ->
             val hr = ComVtableInvoker.invoke(closable.pointer, slot = 6)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             return
         }
-        throw WinRtUnsupportedOperationException(
+        throw WinRTUnsupportedOperationException(
             "Object does not implement Windows.Foundation.IClosable.",
             KnownHResults.E_NOINTERFACE,
         )
     }
 }
 
-internal object CommonWinRtBuiltInProjectionMappings {
+internal object CommonWinRTBuiltInProjectionMappings {
     fun register() {
         Projections.registerCustomAbiTypeMapping(
             publicType = Instant::class,
@@ -271,8 +271,8 @@ internal object CommonWinRtBuiltInProjectionMappings {
         isRuntimeClass: Boolean = false,
         isWindowsRuntimeType: Boolean = false,
     ) {
-        WinRtTypeRegistry.update(type) { existing ->
-            WinRtTypeId(
+        WinRTTypeRegistry.update(type) { existing ->
+            WinRTTypeId(
                 kClass = type,
                 projectedTypeName = projectedTypeName,
                 guid = guid ?: existing?.guid,
@@ -294,7 +294,7 @@ internal object CommonWinRtBuiltInProjectionMappings {
 
     internal fun registerStruct(publicType: KClass<*>) {
         val registeredType =
-            publicType.registeredWinRtType()
+            publicType.registeredWinRTType()
                 ?: publicType.windowsRuntimeStructType()
                 ?: error("Struct type '${publicType.typeDisplayName()}' is missing WindowsRuntimeType metadata.")
         val signature =
@@ -321,15 +321,15 @@ internal object CommonWinRtBuiltInProjectionMappings {
         TypeNameSupport.registerReferenceArrayType(elementType, arrayType)
     }
 
-    private fun KClass<*>.windowsRuntimeStructType(): WinRtTypeId<*>? {
+    private fun KClass<*>.windowsRuntimeStructType(): WinRTTypeId<*>? {
         val signature = builtInStructSignatures[this] ?: return null
         val projectedName = signature.removePrefix("struct(").substringBefore(';')
-        return WinRtTypeId(
+        return WinRTTypeId(
             kClass = this,
             projectedTypeName = projectedName,
             signature = signature,
             isWindowsRuntimeType = true,
-        ).also(WinRtTypeRegistry::register)
+        ).also(WinRTTypeRegistry::register)
     }
 
     private val builtInStructSignatures: Map<KClass<*>, String> = mapOf(

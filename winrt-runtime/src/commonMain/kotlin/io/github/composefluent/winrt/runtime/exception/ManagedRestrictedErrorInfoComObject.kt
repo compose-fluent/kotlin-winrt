@@ -16,9 +16,9 @@ import io.github.composefluent.winrt.runtime.ManagedReferenceHostSupport
 import io.github.composefluent.winrt.runtime.NativeCallbackHandle
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RawAddress
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtRestrictedErrorInfo
-import io.github.composefluent.winrt.runtime.WinRtUnsupportedOperationException
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTRestrictedErrorInfo
+import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException
 import io.github.composefluent.winrt.runtime.asRawComPtr
 import io.github.composefluent.winrt.runtime.platformHResultFromThrowable
 
@@ -31,7 +31,7 @@ import io.github.composefluent.winrt.runtime.platformHResultFromThrowable
  */
 internal class ManagedRestrictedErrorInfoComObject(
     private val hResult: HResult,
-    private val errorInfo: WinRtRestrictedErrorInfo,
+    private val errorInfo: WinRTRestrictedErrorInfo,
 ) : AutoCloseable {
     private val scope = PlatformAbi.sharedScope()
     private val state = ManagedComHostState(::cleanup)
@@ -118,7 +118,7 @@ internal class ManagedRestrictedErrorInfoComObject(
         value: String?,
     ): Int =
         runCatching {
-            PlatformAbi.writePointer(resultPointer, WinRtPlatformApi.sysAllocStringRaw(value))
+            PlatformAbi.writePointer(resultPointer, WinRTPlatformApi.sysAllocStringRaw(value))
             KnownHResults.S_OK.value
         }.getOrElse { failure ->
             platformHResultFromThrowable(failure).value

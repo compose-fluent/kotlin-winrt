@@ -8,7 +8,7 @@ internal object RawAbiResultSupport {
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invoke(resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return wrap(PlatformAbi.readPointer(resultOut))
         }
 
@@ -26,7 +26,7 @@ internal object RawAbiResultSupport {
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt32Slot(scope)
             val hResult = invoke(resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return PlatformAbi.readInt32(resultOut)
         }
 
@@ -40,7 +40,7 @@ internal object RawAbiResultSupport {
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt8Slot(scope)
             val hResult = invoke(resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return PlatformAbi.readInt8(resultOut).toInt() != 0
         }
 
@@ -50,7 +50,7 @@ internal object RawAbiResultSupport {
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateDoubleSlot(scope)
             val hResult = invoke(resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return PlatformAbi.readDouble(resultOut)
         }
 }

@@ -22,7 +22,7 @@ abstract class EventSourceState<T : Any> protected constructor(
     private var shutdownRegistration: AutoCloseable? = null
 
     internal var token: EventRegistrationToken = EventRegistrationToken()
-    internal var eventInvokeHandle: WinRtDelegateHandle? = null
+    internal var eventInvokeHandle: WinRTDelegateHandle? = null
     internal val eventInvoke: T by lazy(LazyThreadSafetyMode.NONE, ::createEventInvoke)
 
     protected abstract fun createEventInvoke(): T
@@ -99,8 +99,8 @@ abstract class EventSourceState<T : Any> protected constructor(
             }
         val eventPointer = pointers.first
         if (!PlatformAbi.isNull(eventPointer)) {
-            WinRtPlatformApi.addRefRaw(eventPointer)
-            val countAfterRelease = WinRtPlatformApi.releaseRaw(eventPointer)
+            WinRTPlatformApi.addRefRaw(eventPointer)
+            val countAfterRelease = WinRTPlatformApi.releaseRaw(eventPointer)
             if (countAfterRelease > managedReferenceCount) {
                 return true
             }
@@ -170,11 +170,11 @@ abstract class EventSourceState<T : Any> protected constructor(
             if (PlatformAbi.isNull(pointer)) {
                 return PlatformAbi.nullPointer
             }
-            val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTrackerTarget)
+            val result = WinRTPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTrackerTarget)
             if (result.hResultValue != KnownHResults.S_OK.value || PlatformAbi.isNull(result.pointer)) {
                 return PlatformAbi.nullPointer
             }
-            WinRtPlatformApi.releaseRaw(result.pointer)
+            WinRTPlatformApi.releaseRaw(result.pointer)
             return result.pointer
         }
     }

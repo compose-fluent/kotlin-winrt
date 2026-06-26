@@ -15,7 +15,7 @@ object WinUiResourceManagerSupport {
     class Registration internal constructor(
         private val applicationPointer: RawComPtr,
         private val token: EventRegistrationToken,
-        private val delegateHandle: WinRtDelegateHandle,
+        private val delegateHandle: WinRTDelegateHandle,
         private val resourceManagerReference: ComObjectReference,
         val priPath: Path,
     ) : AutoCloseable {
@@ -46,11 +46,11 @@ object WinUiResourceManagerSupport {
         val priPath = preferredPriPath() ?: return null
         val resourceManagerReference = createResourceManager(priPath)
         return runCatching {
-            val delegateHandle = WinRtDelegateBridge.createUnitDelegate(
+            val delegateHandle = WinRTDelegateBridge.createUnitDelegate(
                 iid = WinUiResourceManagerRuntime.resourceManagerRequestedHandlerIid(),
                 parameterKinds = listOf(
-                    WinRtDelegateValueKind.IUNKNOWN,
-                    WinRtDelegateValueKind.IUNKNOWN,
+                    WinRTDelegateValueKind.IUNKNOWN,
+                    WinRTDelegateValueKind.IUNKNOWN,
                 ),
             ) { args ->
                 val requestedArgs = (args[1] as? IUnknownReference)
@@ -93,7 +93,7 @@ object WinUiResourceManagerSupport {
     }
 
     internal fun preferredPriPath(): Path? =
-        preferredPriPath { fileName -> Path(WinRtPlatformApi.resolveModulePathRaw(fileName)) }
+        preferredPriPath { fileName -> Path(WinRTPlatformApi.resolveModulePathRaw(fileName)) }
 
     internal fun preferredPriPath(runtimeAssetsRoot: Path): Path? =
         preferredPriPath { fileName -> Path(runtimeAssetsRoot, fileName) }
@@ -125,7 +125,7 @@ object WinUiResourceManagerSupport {
                             .queryInterface(iidIResourceManager)
                             .getOrThrow()
                     },
-                ) ?: throw WinRtUnsupportedOperationException(
+                ) ?: throw WinRTUnsupportedOperationException(
                     "ResourceManager.CreateResourceManager returned a null object reference.",
                     KnownHResults.E_POINTER,
                 )

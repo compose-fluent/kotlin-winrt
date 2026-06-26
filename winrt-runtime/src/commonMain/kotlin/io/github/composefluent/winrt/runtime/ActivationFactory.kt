@@ -15,7 +15,7 @@ object ActivationFactory {
                 !FeatureSwitches.enableManifestFreeActivation &&
                 !FeatureSwitches.manifestFreeActivationReportOriginalException
             ) {
-                throw WinRtUnsupportedOperationException(
+                throw WinRTUnsupportedOperationException(
                     message =
                         "Failed to activate type with runtime class name '$runtimeClassName' with 'RoGetActivationFactory' " +
                             "(it returned 0x80040154, ie. 'REGDB_E_CLASSNOTREG'). Make sure to add the activatable class id " +

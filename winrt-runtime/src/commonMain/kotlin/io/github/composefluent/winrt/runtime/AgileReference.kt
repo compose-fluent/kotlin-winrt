@@ -103,7 +103,7 @@ class AgileReference(
             agileReference = null
             cookie = PlatformAbi.nullPointer
         } else {
-            val result = WinRtPlatformApi.roGetAgileReferenceRaw(instance.pointer.asRawAddress(), IID.IUnknown)
+            val result = WinRTPlatformApi.roGetAgileReferenceRaw(instance.pointer.asRawAddress(), IID.IUnknown)
             val hResult = HResult(result.hResultValue)
             if (result.isSuccess) {
                 agileReference = AgileReferenceInterfaceReference(result.pointer, IID.IAgileReference)
@@ -124,7 +124,7 @@ class AgileReference(
             git().getInterfaceFromGlobal(cookie, IID.IUnknown)
         }
 
-    internal fun getReference(typeHandle: WinRtTypeHandle): IUnknownReference? =
+    internal fun getReference(typeHandle: WinRTTypeHandle): IUnknownReference? =
         if (PlatformAbi.isNull(cookie)) {
             agileReference?.resolve(typeHandle.interfaceId)
         } else {
@@ -141,7 +141,7 @@ class AgileReference(
     companion object {
         private val stdGlobalInterfaceTableClsid = guidOf("00000323-0000-0000-C000-000000000046")
         private val globalInterfaceTable by lazy {
-            val result = WinRtPlatformApi.coCreateInstanceRaw(
+            val result = WinRTPlatformApi.coCreateInstanceRaw(
                 classId = stdGlobalInterfaceTableClsid,
                 interfaceId = IID.IGlobalInterfaceTable,
             )

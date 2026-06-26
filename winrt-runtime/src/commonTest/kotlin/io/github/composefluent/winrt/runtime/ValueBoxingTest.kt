@@ -50,26 +50,26 @@ class ValueBoxingTest {
         ComWrappersSupport.clearRegistriesForTests()
         registerProjectedPointBoxing()
 
-        assertEquals(42, WinRtReferenceProjection.fromAbi(WinRtReferenceProjection.fromManaged(42, IID.NullableInt), IID.NullableInt))
+        assertEquals(42, WinRTReferenceProjection.fromAbi(WinRTReferenceProjection.fromManaged(42, IID.NullableInt), IID.NullableInt))
         assertEquals(
             12.seconds,
-            WinRtReferenceProjection.fromAbi(
-                WinRtReferenceProjection.fromManaged(12.seconds, IID.NullableTimeSpan),
+            WinRTReferenceProjection.fromAbi(
+                WinRTReferenceProjection.fromManaged(12.seconds, IID.NullableTimeSpan),
                 IID.NullableTimeSpan,
             ),
         )
         assertEquals(
             ProjectedPoint(7f, 8f),
-            WinRtReferenceProjection.fromAbi(
-                WinRtReferenceProjection.fromManaged(ProjectedPoint(7f, 8f), IID.IReferenceOfPoint),
+            WinRTReferenceProjection.fromAbi(
+                WinRTReferenceProjection.fromManaged(ProjectedPoint(7f, 8f), IID.IReferenceOfPoint),
                 IID.IReferenceOfPoint,
             ),
         )
 
         val points = arrayOf(ProjectedPoint(1f, 2f), ProjectedPoint(3f, 4f))
         val projectedPoints =
-            WinRtReferenceArrayProjection.fromAbi(
-                WinRtReferenceArrayProjection.fromManaged(points, IID.IReferenceArrayOfPoint),
+            WinRTReferenceArrayProjection.fromAbi(
+                WinRTReferenceArrayProjection.fromManaged(points, IID.IReferenceArrayOfPoint),
                 IID.IReferenceArrayOfPoint,
             ) ?: error("Projected array should not be null.")
         assertEquals(points.toList(), projectedPoints.toList())
@@ -154,7 +154,7 @@ class ValueBoxingTest {
     fun value_reference_projection_hosts_get_iids_matches_reference_order() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        val referencePointer = WinRtReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
+        val referencePointer = WinRTReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
         try {
             assertInspectableGetIids(
                 pointer = referencePointer,
@@ -175,7 +175,7 @@ class ValueBoxingTest {
             IUnknownReference(referencePointer.asRawComPtr(), IID.NullableString).close()
         }
 
-        val arrayPointer = WinRtReferenceArrayProjection.fromManaged(arrayOf("one", "two"), IID.IReferenceArrayOfString)
+        val arrayPointer = WinRTReferenceArrayProjection.fromManaged(arrayOf("one", "two"), IID.IReferenceArrayOfString)
         try {
             assertInspectableGetIids(
                 pointer = arrayPointer,
@@ -201,7 +201,7 @@ class ValueBoxingTest {
     fun reference_projection_hosts_expose_reference_ccw_suffix_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        val pointer = WinRtReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
+        val pointer = WinRTReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
         try {
             IUnknownReference(pointer.asRawComPtr(), IID.NullableString, preventReleaseOnDispose = true).use { reference ->
                 listOf(
@@ -228,7 +228,7 @@ class ValueBoxingTest {
     fun property_value_projection_hosts_expose_reference_ccw_suffix_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        val pointer = WinRtPropertyValueProjection.fromManaged("projection-runtime")
+        val pointer = WinRTPropertyValueProjection.fromManaged("projection-runtime")
         try {
             IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = true).use { reference ->
                 listOf(
@@ -257,7 +257,7 @@ class ValueBoxingTest {
         }
         ComWrappersSupport.clearRegistriesForTests()
 
-        val uri = WinRtUri("https://example.com/runtime-117?value=1")
+        val uri = WinRTUri("https://example.com/runtime-117?value=1")
         val uriPointer = ComWrappersSupport.createCCWForObject(uri, IID.IInspectable).useAndGetRef()
         try {
             assertEquals(uri, ComWrappersSupport.createRcwForComObject(uriPointer))
@@ -277,7 +277,7 @@ class ValueBoxingTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     closeablePointer,
-                    WinRtTypeHandle(TypeNameSupport.getNameForType(AutoCloseable::class), IID.IDisposable),
+                    WinRTTypeHandle(TypeNameSupport.getNameForType(AutoCloseable::class), IID.IDisposable),
                 ) as AutoCloseable
             projected.close()
             assertTrue(closeable.closed)
@@ -292,7 +292,7 @@ class ValueBoxingTest {
 
         val pointer = ComWrappersSupport.createCCWForObject(9.seconds, IID.IInspectable).useAndGetRef()
         try {
-            assertEquals(9.seconds, WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer))
+            assertEquals(9.seconds, WinRTBindableObjectMarshaller.fromBorrowedAbi(pointer))
         } finally {
             IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
         }
@@ -302,14 +302,14 @@ class ValueBoxingTest {
     fun object_marshaler_unboxes_native_like_property_value_strings() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        val host = WinRtInspectableComObject(
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = listOf(createPropertyValueInterfaceDefinition("button content")),
             defaultInterfaceId = IID.IPropertyValue,
-            runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(String::class),
+            runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForType(String::class),
         )
         val reference = host.createReference(IID.IInspectable)
         try {
-            assertEquals("button content", WinRtObjectMarshaller.fromAbi(reference.pointer.asRawAddress()))
+            assertEquals("button content", WinRTObjectMarshaller.fromAbi(reference.pointer.asRawAddress()))
         } finally {
             reference.close()
             host.close()
@@ -339,12 +339,12 @@ class ValueBoxingTest {
             IUnknownReference(priorityPointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(priorityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
+                    val projected = WinRTPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
                     assertEquals(2, projected.getValue())
                 }
             }
             assertEquals(TestPriority.High, ComWrappersSupport.createRcwForComObject(priorityPointer))
-            assertEquals(TestPriority.High, WinRtBindableObjectMarshaller.fromBorrowedAbi(priorityPointer))
+            assertEquals(TestPriority.High, WinRTBindableObjectMarshaller.fromBorrowedAbi(priorityPointer))
         } finally {
             IUnknownReference(priorityPointer.asRawComPtr(), IID.IInspectable).close()
         }
@@ -354,12 +354,12 @@ class ValueBoxingTest {
             IUnknownReference(visibilityPointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(visibilityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
+                    val projected = WinRTPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
                     assertEquals(1u, projected.getValue())
                 }
             }
             assertEquals(TestVisibility.Visible, ComWrappersSupport.createRcwForComObject(visibilityPointer))
-            assertEquals(TestVisibility.Visible, WinRtBindableObjectMarshaller.fromBorrowedAbi(visibilityPointer))
+            assertEquals(TestVisibility.Visible, WinRTBindableObjectMarshaller.fromBorrowedAbi(visibilityPointer))
         } finally {
             IUnknownReference(visibilityPointer.asRawComPtr(), IID.IInspectable).close()
         }
@@ -409,14 +409,14 @@ class ValueBoxingTest {
                     }
                     assertEquals(expected, actual)
                 } finally {
-                    WinRtPlatformApi.coTaskMemFreeRaw(ids)
+                    WinRTPlatformApi.coTaskMemFreeRaw(ids)
                 }
             }
         }
     }
 
     private fun registerProjectedPointBoxing() {
-        WinRtValueBoxingRegistration.registerStruct(
+        WinRTValueBoxingRegistration.registerStruct(
             type = ProjectedPoint::class,
             projectedTypeName = "Windows.Foundation.Point",
             signature = "struct(Windows.Foundation.Point;f4;f4)",
@@ -473,14 +473,14 @@ class ValueBoxingTest {
     }
 
     private fun registerEnumDescriptors() {
-        WinRtTypeRegistry.register<TestPriority>(
+        WinRTTypeRegistry.register<TestPriority>(
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
             enumAbiValue = { it.abiValue },
             enumEntries = TestPriority.entries.toTypedArray(),
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<TestVisibility>(
+        WinRTTypeRegistry.register<TestVisibility>(
             projectedTypeName = "Contoso.Visibility",
             signature = "enum(Contoso.Visibility;u4)",
             enumAbiValue = { it.abiValue.toInt() },

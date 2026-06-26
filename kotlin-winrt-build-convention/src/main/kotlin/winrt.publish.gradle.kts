@@ -4,7 +4,7 @@ plugins {
 
 val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")
 
-fun resolveWinRtVersion() = providers
+fun resolveWinRTVersion() = providers
     .gradleProperty("winrt.baseVersion")
     .orElse("0.1.0")
     .zip(
@@ -23,7 +23,7 @@ fun resolveWinRtVersion() = providers
     }
 
 group = "io.github.compose-fluent"
-version = resolveWinRtVersion().get()
+version = resolveWinRTVersion().get()
 
 mavenPublishing {
     publishToMavenCentral()

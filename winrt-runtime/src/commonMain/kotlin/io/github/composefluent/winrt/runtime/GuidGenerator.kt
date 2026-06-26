@@ -9,45 +9,45 @@ object GuidGenerator {
     fun getGuid(
         type: KClass<*>,
     ): Guid {
-        type.registeredWinRtType()?.guid?.let { return it }
-        type.registeredWinRtType()?.iid?.let { return it }
+        type.registeredWinRTType()?.guid?.let { return it }
+        type.registeredWinRTType()?.iid?.let { return it }
         val guidType = TypeExtensions.getGuidType(type)
-        guidType.registeredWinRtType()?.guid?.let { return it }
-        guidType.registeredWinRtType()?.iid?.let { return it }
+        guidType.registeredWinRTType()?.guid?.let { return it }
+        guidType.registeredWinRTType()?.iid?.let { return it }
         throw IllegalStateException("Unable to determine WinRT GUID for '${type.typeDisplayName()}'.")
     }
 
     fun getIID(
         type: KClass<*>,
     ): Guid {
-        type.registeredWinRtType()?.iid?.let { return it }
+        type.registeredWinRTType()?.iid?.let { return it }
         return getGuid(type)
     }
 
     fun getSignature(
         type: KClass<*>,
     ): String {
-        WinRtTypeClassifier.classify(type)?.let { return it.signature.render() }
-        type.registeredWinRtType()?.signature?.let { return it }
+        WinRTTypeClassifier.classify(type)?.let { return it.signature.render() }
+        type.registeredWinRTType()?.signature?.let { return it }
 
         val guidType = TypeExtensions.getGuidType(type)
-        guidType.registeredWinRtType()?.signature?.let { return it }
+        guidType.registeredWinRTType()?.signature?.let { return it }
 
         if (TypeExtensions.isDelegate(type)) {
-            return WinRtTypeSignature.delegate(getGuid(type)).render()
+            return WinRTTypeSignature.delegate(getGuid(type)).render()
         }
 
         Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(type)?.let { defaultInterface ->
-            val runtimeClassName = type.registeredWinRtType()?.runtimeClassName
+            val runtimeClassName = type.registeredWinRTType()?.runtimeClassName
                 ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
                 ?: throw IllegalStateException("Runtime class '${type.typeDisplayName()}' is missing a registered runtime class name.")
-            return WinRtTypeSignature.runtimeClass(
+            return WinRTTypeSignature.runtimeClass(
                 runtimeClassName = runtimeClassName,
-                defaultInterface = WinRtTypeSignature.guid(getGuid(defaultInterface)),
+                defaultInterface = WinRTTypeSignature.guid(getGuid(defaultInterface)),
             ).render()
         }
 
-        val runtimeClassName = type.registeredWinRtType()?.runtimeClassName
+        val runtimeClassName = type.registeredWinRTType()?.runtimeClassName
             ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
         runtimeClassName
             ?.let(Projections::tryGetDefaultInterfaceSignatureForRuntimeClassName)
@@ -55,7 +55,7 @@ object GuidGenerator {
                 return "rc($runtimeClassName;$defaultInterfaceSignature)"
             }
 
-        return WinRtTypeSignature.guid(getGuid(type)).render()
+        return WinRTTypeSignature.guid(getGuid(type)).render()
     }
 
     fun createIID(

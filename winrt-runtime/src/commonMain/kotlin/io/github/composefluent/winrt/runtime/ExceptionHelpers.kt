@@ -50,13 +50,13 @@ object ExceptionHelpers {
     fun exceptionFor(
         hResult: HResult,
         operation: String = "WinRT call",
-    ): WinRtRuntimeException {
+    ): WinRTRuntimeException {
         val restrictedErrorInfo = tryGetRestrictedErrorInfo(hResult)
         val message = buildMessage(operation, hResult, restrictedErrorInfo)
         return when (hResult) {
-            E_INVALIDARG -> WinRtIllegalArgumentException(message, hResult, restrictedErrorInfo)
-            E_POINTER -> WinRtNullReferenceException(message, hResult, restrictedErrorInfo)
-            E_BOUNDS -> WinRtIndexOutOfBoundsException(message, hResult, restrictedErrorInfo)
+            E_INVALIDARG -> WinRTIllegalArgumentException(message, hResult, restrictedErrorInfo)
+            E_POINTER -> WinRTNullReferenceException(message, hResult, restrictedErrorInfo)
+            E_BOUNDS -> WinRTIndexOutOfBoundsException(message, hResult, restrictedErrorInfo)
             E_CHANGED_STATE,
             E_ILLEGAL_STATE_CHANGE,
             E_ILLEGAL_METHOD_CALL,
@@ -65,34 +65,34 @@ object ExceptionHelpers {
             CO_E_NOTINITIALIZED,
             REGDB_E_CLASSNOTREG,
             RPC_E_CHANGED_MODE,
-            -> WinRtIllegalStateException(message, hResult, restrictedErrorInfo)
+            -> WinRTIllegalStateException(message, hResult, restrictedErrorInfo)
 
-            E_XAMLPARSEFAILED -> WinRtXamlParseException(message, hResult, restrictedErrorInfo)
-            E_LAYOUTCYCLE -> WinRtLayoutCycleException(message, hResult, restrictedErrorInfo)
-            E_ELEMENTNOTAVAILABLE -> WinRtElementNotAvailableException(message, hResult, restrictedErrorInfo)
-            E_ELEMENTNOTENABLED -> WinRtElementNotEnabledException(message, hResult, restrictedErrorInfo)
+            E_XAMLPARSEFAILED -> WinRTXamlParseException(message, hResult, restrictedErrorInfo)
+            E_LAYOUTCYCLE -> WinRTLayoutCycleException(message, hResult, restrictedErrorInfo)
+            E_ELEMENTNOTAVAILABLE -> WinRTElementNotAvailableException(message, hResult, restrictedErrorInfo)
+            E_ELEMENTNOTENABLED -> WinRTElementNotEnabledException(message, hResult, restrictedErrorInfo)
             ERROR_INVALID_WINDOW_HANDLE ->
-                WinRtInvalidWindowHandleException(
+                WinRTInvalidWindowHandleException(
                     message.ifBlank { invalidWindowHandleMessage() },
                     hResult,
                     restrictedErrorInfo,
                 )
 
-            RO_E_CLOSED -> WinRtObjectDisposedException(message, hResult, restrictedErrorInfo)
-            E_NOTIMPL -> WinRtNotImplementedException(message, hResult, restrictedErrorInfo)
-            E_NOINTERFACE -> WinRtInvalidCastException(message, hResult, restrictedErrorInfo)
-            E_OUTOFMEMORY -> WinRtOutOfMemoryException(message, hResult, restrictedErrorInfo)
-            E_NOTSUPPORTED -> WinRtUnsupportedOperationException(message, hResult, restrictedErrorInfo)
-            E_ACCESSDENIED -> WinRtAccessDeniedException(message, hResult, restrictedErrorInfo)
-            ERROR_ARITHMETIC_OVERFLOW -> WinRtArithmeticException(message, hResult, restrictedErrorInfo)
-            ERROR_FILENAME_EXCED_RANGE -> WinRtPathTooLongException(message, hResult, restrictedErrorInfo)
-            ERROR_FILE_NOT_FOUND -> WinRtFileNotFoundException(message, hResult, restrictedErrorInfo)
-            ERROR_HANDLE_EOF -> WinRtEndOfFileException(message, hResult, restrictedErrorInfo)
-            ERROR_PATH_NOT_FOUND -> WinRtDirectoryNotFoundException(message, hResult, restrictedErrorInfo)
-            ERROR_BAD_FORMAT -> WinRtBadImageFormatException(message, hResult, restrictedErrorInfo)
-            ERROR_CANCELLED -> WinRtCancelledException(message, hResult, restrictedErrorInfo)
-            ERROR_TIMEOUT -> WinRtTimeoutException(message, hResult, restrictedErrorInfo)
-            else -> WinRtRuntimeException(message, hResult, restrictedErrorInfo = restrictedErrorInfo)
+            RO_E_CLOSED -> WinRTObjectDisposedException(message, hResult, restrictedErrorInfo)
+            E_NOTIMPL -> WinRTNotImplementedException(message, hResult, restrictedErrorInfo)
+            E_NOINTERFACE -> WinRTInvalidCastException(message, hResult, restrictedErrorInfo)
+            E_OUTOFMEMORY -> WinRTOutOfMemoryException(message, hResult, restrictedErrorInfo)
+            E_NOTSUPPORTED -> WinRTUnsupportedOperationException(message, hResult, restrictedErrorInfo)
+            E_ACCESSDENIED -> WinRTAccessDeniedException(message, hResult, restrictedErrorInfo)
+            ERROR_ARITHMETIC_OVERFLOW -> WinRTArithmeticException(message, hResult, restrictedErrorInfo)
+            ERROR_FILENAME_EXCED_RANGE -> WinRTPathTooLongException(message, hResult, restrictedErrorInfo)
+            ERROR_FILE_NOT_FOUND -> WinRTFileNotFoundException(message, hResult, restrictedErrorInfo)
+            ERROR_HANDLE_EOF -> WinRTEndOfFileException(message, hResult, restrictedErrorInfo)
+            ERROR_PATH_NOT_FOUND -> WinRTDirectoryNotFoundException(message, hResult, restrictedErrorInfo)
+            ERROR_BAD_FORMAT -> WinRTBadImageFormatException(message, hResult, restrictedErrorInfo)
+            ERROR_CANCELLED -> WinRTCancelledException(message, hResult, restrictedErrorInfo)
+            ERROR_TIMEOUT -> WinRTTimeoutException(message, hResult, restrictedErrorInfo)
+            else -> WinRTRuntimeException(message, hResult, restrictedErrorInfo = restrictedErrorInfo)
         }
     }
 
@@ -122,9 +122,9 @@ object ExceptionHelpers {
             return
         }
         runCatching {
-            val restrictedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return
+            val restrictedErrorInfo = WinRTPlatformApi.borrowRestrictedErrorInfoRaw() ?: return
             try {
-                WinRtPlatformApi.reportUnhandledErrorRaw(restrictedErrorInfo)
+                WinRTPlatformApi.reportUnhandledErrorRaw(restrictedErrorInfo)
                     ?.let(::HResult)
                     ?.requireSuccess("RoReportUnhandledError")
             } finally {
@@ -135,7 +135,7 @@ object ExceptionHelpers {
 
     fun formatMessage(hResult: HResult): String? =
         if (PlatformRuntime.isWindows) {
-            WinRtPlatformApi.tryFormatMessageRaw(hResult.value)
+            WinRTPlatformApi.tryFormatMessageRaw(hResult.value)
                 ?.trimEnd('\r', '\n')
                 ?.takeIf { it.isNotBlank() }
         } else {
@@ -145,7 +145,7 @@ object ExceptionHelpers {
     private fun buildMessage(
         operation: String,
         hResult: HResult,
-        restrictedErrorInfo: WinRtRestrictedErrorInfo?,
+        restrictedErrorInfo: WinRTRestrictedErrorInfo?,
     ): String {
         val restrictedMessage = buildRestrictedMessage(restrictedErrorInfo)
         val baseMessage = when {
@@ -163,7 +163,7 @@ object ExceptionHelpers {
     private fun invalidWindowHandleMessage(): String =
         "Invalid window handle. Consider WindowNative and InitializeWithWindow."
 
-    private fun buildRestrictedMessage(restrictedErrorInfo: WinRtRestrictedErrorInfo?): String? {
+    private fun buildRestrictedMessage(restrictedErrorInfo: WinRTRestrictedErrorInfo?): String? {
         if (restrictedErrorInfo == null) {
             return null
         }
@@ -175,12 +175,12 @@ object ExceptionHelpers {
         }.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
-    private fun tryGetRestrictedErrorInfo(expectedHResult: HResult): WinRtRestrictedErrorInfo? {
+    private fun tryGetRestrictedErrorInfo(expectedHResult: HResult): WinRTRestrictedErrorInfo? {
         if (!PlatformRuntime.isWindows) {
             return null
         }
         val platformInfo = runCatching {
-            val borrowedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return@runCatching null
+            val borrowedErrorInfo = WinRTPlatformApi.borrowRestrictedErrorInfoRaw() ?: return@runCatching null
             IUnknownReference(borrowedErrorInfo.asRawComPtr(), IID.IRestrictedErrorInfo).use { errorInfo ->
                 val details = readRestrictedErrorInfo(errorInfo) ?: return@runCatching null
                 if (details.hResult != expectedHResult) {
@@ -219,7 +219,7 @@ object ExceptionHelpers {
 
             RestrictedErrorInfoDetails(
                 hResult = HResult(PlatformAbi.readInt32(errorOut)),
-                info = WinRtRestrictedErrorInfo(
+                info = WinRTRestrictedErrorInfo(
                     description = readAndFreeBstr(descriptionOut).ifBlank { null },
                     restrictedDescription = readAndFreeBstr(restrictedDescriptionOut).ifBlank { null },
                     reference =
@@ -234,11 +234,11 @@ object ExceptionHelpers {
         }
 
     private fun readAndFreeBstr(slot: RawAddress): String =
-        WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(slot))
+        WinRTPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(slot))
 
     private data class RestrictedErrorInfoDetails(
         val hResult: HResult,
-        val info: WinRtRestrictedErrorInfo,
+        val info: WinRTRestrictedErrorInfo,
     )
 }
 
@@ -248,7 +248,7 @@ object ExceptionHelpers {
 
 internal fun platformHResultFromThrowable(error: Throwable): HResult =
     when (error) {
-        is WinRtRuntimeException -> error.hResult ?: ExceptionHelpers.E_FAIL
+        is WinRTRuntimeException -> error.hResult ?: ExceptionHelpers.E_FAIL
         is kotlin.coroutines.cancellation.CancellationException -> ExceptionHelpers.ERROR_CANCELLED
         is NotImplementedError -> ExceptionHelpers.E_NOTIMPL
         is NullPointerException -> ExceptionHelpers.E_POINTER

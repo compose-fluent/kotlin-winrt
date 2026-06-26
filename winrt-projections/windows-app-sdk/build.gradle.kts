@@ -11,13 +11,13 @@ base {
     archivesName.set("winrt-projections-windows-app-sdk")
 }
 
-val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkVersion")
+val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkVersion")
     .orElse("10.0.26100.0")
-val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkArtifactVersion")
+val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkArtifactVersion")
     .orElse(providers.provider { projectionArtifactVersion(projectionWindowsSdkVersion.get(), rootProject.version.toString()) })
-val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsAppSdkVersion")
+val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkVersion")
     .orElse("2.1.3")
-val projectionWindowsAppSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsAppSdkArtifactVersion")
+val projectionWindowsAppSdkArtifactVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkArtifactVersion")
     .orElse(providers.provider { projectionArtifactVersion(projectionWindowsAppSdkVersion.get(), rootProject.version.toString()) })
 
 version = projectionWindowsAppSdkArtifactVersion.get()
@@ -36,7 +36,7 @@ dependencies {
     commonMainImplementation(project(":winrt-projections:windows-sdk"))
 }
 
-winRt {
+winRT {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     nugetPackage("Microsoft.WindowsAppSDK", projectionWindowsAppSdkVersion.get()) {
         generateProjection = true
@@ -75,10 +75,10 @@ winRt {
 
 fun projectionArtifactVersion(
     metadataVersion: String,
-    kotlinWinRtVersion: String,
+    kotlinWinRTVersion: String,
 ): String =
-    if (kotlinWinRtVersion.endsWith("-SNAPSHOT")) {
-        "$metadataVersion-kotlin-winrt-$kotlinWinRtVersion"
+    if (kotlinWinRTVersion.endsWith("-SNAPSHOT")) {
+        "$metadataVersion-kotlin-winrt-$kotlinWinRTVersion"
     } else {
         metadataVersion
     }

@@ -8,7 +8,7 @@ internal actual fun platformTryProjectBindableInspectable(pointer: RawAddress): 
 
 internal actual fun platformEnsureInspectableProjectionInteropRegistered() {
     ensureProjectionMappingsRegistered()
-    WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
+    WinRTBuiltInProjectionRuntimeHooks.ensureRegistered()
 }
 
 internal actual fun platformTryProjectInspectable(
@@ -19,9 +19,9 @@ internal actual fun platformTryProjectInspectable(
 internal actual fun platformTryCreateProjectedReference(
     value: Any,
     interfaceId: Guid?,
-): ComObjectReference? = WinRtBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
+): ComObjectReference? = WinRTBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
 
-internal actual fun platformCreateSyntheticCcwDefinition(value: Any): WinRtCcwDefinition? =
+internal actual fun platformCreateSyntheticCcwDefinition(value: Any): WinRTCcwDefinition? =
     createSyntheticInspectableCcwDefinition(value)
 
 internal actual fun platformRuntimeClassNameFor(value: Any): String? =

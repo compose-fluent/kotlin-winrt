@@ -9,17 +9,17 @@ class ModuleHandleLookupTest {
         if (!PlatformRuntime.isWindows) {
             return
         }
-        val loadedModule = WinRtPlatformApi.tryLoadLibraryExWRaw("kernel32.dll", flags = 0)
+        val loadedModule = WinRTPlatformApi.tryLoadLibraryExWRaw("kernel32.dll", flags = 0)
         assertFalse(PlatformAbi.isNull(loadedModule))
         try {
-            val procedure = WinRtPlatformApi.tryGetProcAddressRaw(loadedModule, "GetLastError")
+            val procedure = WinRTPlatformApi.tryGetProcAddressRaw(loadedModule, "GetLastError")
             assertFalse(PlatformAbi.isNull(procedure))
 
-            val addressModule = WinRtPlatformApi.tryGetModuleHandleExFromAddressRaw(procedure)
+            val addressModule = WinRTPlatformApi.tryGetModuleHandleExFromAddressRaw(procedure)
             assertFalse(PlatformAbi.isNull(addressModule))
-            WinRtPlatformApi.freeLibraryRaw(addressModule)
+            WinRTPlatformApi.freeLibraryRaw(addressModule)
         } finally {
-            WinRtPlatformApi.freeLibraryRaw(loadedModule)
+            WinRTPlatformApi.freeLibraryRaw(loadedModule)
         }
     }
 }

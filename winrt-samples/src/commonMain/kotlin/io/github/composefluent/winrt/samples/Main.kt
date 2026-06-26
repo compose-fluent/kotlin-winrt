@@ -23,17 +23,17 @@ fun main() {
 }
 
 fun shouldRunNativeSmoke(): Boolean =
-    winRtSampleOption("kotlin.winrt.samples.runNativeSmoke")
+    winRTSampleOption("kotlin.winrt.samples.runNativeSmoke")
 
 fun shouldRunComponentSmoke(): Boolean =
-    winRtSampleOption("kotlin.winrt.samples.runComponentSmoke")
+    winRTSampleOption("kotlin.winrt.samples.runComponentSmoke")
 
 fun shouldRunWinUiSmoke(): Boolean =
-    winRtSampleOption("kotlin.winrt.samples.runWinUiSmoke")
+    winRTSampleOption("kotlin.winrt.samples.runWinUiSmoke")
 
 private fun hasExplicitSmokeSelection(): Boolean =
-    winRtSampleOptionConfigured("kotlin.winrt.samples.runNativeSmoke") ||
-        winRtSampleOptionConfigured("kotlin.winrt.samples.runComponentSmoke") ||
-        winRtSampleOptionConfigured("kotlin.winrt.samples.runWinUiSmoke")
+    winRTSampleOptionConfigured("kotlin.winrt.samples.runNativeSmoke") ||
+        winRTSampleOptionConfigured("kotlin.winrt.samples.runComponentSmoke") ||
+        winRTSampleOptionConfigured("kotlin.winrt.samples.runWinUiSmoke")
 
 internal expect fun runWinUiSample()

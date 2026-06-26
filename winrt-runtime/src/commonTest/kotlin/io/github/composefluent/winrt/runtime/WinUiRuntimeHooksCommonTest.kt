@@ -73,12 +73,12 @@ class WinUiRuntimeHooksCommonTest {
     @Test
     fun resource_manager_requested_handler_iid_matches_parameterized_signature() {
         val expected = ParameterizedInterfaceId.createFromSignature(
-            WinRtTypeSignature.parameterizedInterface(
+            WinRTTypeSignature.parameterizedInterface(
                 "9de1c534-6ae1-11e0-84e1-18a905bcc53f",
-                WinRtTypeSignature.object_(),
-                WinRtTypeSignature.runtimeClass(
+                WinRTTypeSignature.object_(),
+                WinRTTypeSignature.runtimeClass(
                     "Microsoft.UI.Xaml.ResourceManagerRequestedEventArgs",
-                    WinRtTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
+                    WinRTTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
                 ),
             ),
         )

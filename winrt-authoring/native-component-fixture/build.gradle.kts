@@ -13,7 +13,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     windowsSdk(generateProjection = true)
     nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
         generateProjection = true
@@ -28,12 +28,12 @@ winRt {
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
-    io.github.composefluent.winrt.gradle.VerifyWinRtNativeAuthoringComponentFixtureTask::class,
+    io.github.composefluent.winrt.gradle.VerifyWinRTNativeAuthoringComponentFixtureTask::class,
 ) {
     group = "verification"
     description = "Validates that a real authored mingwX64 component exports WinRT activation entry points."
-    dependsOn("validateCompileKotlinMingwX64WinRtNativeAuthoringExports")
-    dependsOn("generateWinRtIdentity")
+    dependsOn("validateCompileKotlinMingwX64WinRTNativeAuthoringExports")
+    dependsOn("generateWinRTIdentity")
     componentDll.set(layout.buildDirectory.file("bin/mingwX64/releaseShared/native_component_fixture.dll"))
     authoredWinmd.set(layout.buildDirectory.file("kotlin-winrt/native-authoring/compileKotlinMingwX64/kotlin-winrt-authoring/native-component-fixture.winmd"))
     authoredHostManifest.set(layout.buildDirectory.file("kotlin-winrt/native-authoring/compileKotlinMingwX64/kotlin-winrt-authoring/native-component-fixture.host.json"))

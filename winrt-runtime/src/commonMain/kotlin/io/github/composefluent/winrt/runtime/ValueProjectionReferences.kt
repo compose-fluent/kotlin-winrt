@@ -50,14 +50,14 @@ internal enum class PropertyType(val code: Int) {
         private val byCode = entries.associateBy(PropertyType::code)
 
         fun fromCode(code: Int): PropertyType =
-            byCode[code] ?: throw WinRtInvalidCastException(
+            byCode[code] ?: throw WinRTInvalidCastException(
                 "Unsupported Windows.Foundation.PropertyType value: $code",
                 HResult(TYPE_E_TYPEMISMATCH),
             )
     }
 }
 
-internal class WinRtReferenceReference(
+internal class WinRTReferenceReference(
     pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
@@ -72,7 +72,7 @@ internal class WinRtReferenceReference(
             val resultOut = PlatformAbi.allocateBytes(scope, sizeBytes, alignmentBytes)
             comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             try {
                 readValue(resultOut)
             } finally {
@@ -81,7 +81,7 @@ internal class WinRtReferenceReference(
         }
 }
 
-internal class WinRtReferenceArrayReference(
+internal class WinRTReferenceArrayReference(
     pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
@@ -95,7 +95,7 @@ internal class WinRtReferenceArrayReference(
             val dataOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, countOut, dataOut)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             val length = PlatformAbi.readInt32(countOut)
             val data = PlatformAbi.readPointer(dataOut)
             try {
@@ -106,7 +106,7 @@ internal class WinRtReferenceArrayReference(
         }
 }
 
-internal class WinRtPropertyValueReference(
+internal class WinRTPropertyValueReference(
     pointer: RawAddress,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = preventReleaseOnDispose) {
@@ -115,7 +115,7 @@ internal class WinRtPropertyValueReference(
             val resultOut = PlatformAbi.allocateInt32Slot(scope)
             comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             PropertyType.fromCode(PlatformAbi.readInt32(resultOut))
         }
 
@@ -124,7 +124,7 @@ internal class WinRtPropertyValueReference(
             val resultOut = PlatformAbi.allocateInt8Slot(scope)
             comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 7, resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             PlatformAbi.readInt8(resultOut).toInt() != 0
         }
 

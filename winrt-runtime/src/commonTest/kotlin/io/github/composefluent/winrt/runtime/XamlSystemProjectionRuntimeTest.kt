@@ -23,8 +23,8 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer().asRawAddress(),
-                    WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtCommand::class), IID.ICommand),
-                ) as WinRtCommand
+                    WinRTTypeHandle(TypeNameSupport.getNameForType(WinRTCommand::class), IID.ICommand),
+                ) as WinRTCommand
 
             assertTrue(projected.canExecute("go"))
             assertFalse(projected.canExecute("stop"))
@@ -33,7 +33,7 @@ class XamlSystemProjectionRuntimeTest {
             assertEquals(listOf<Any?>("payload"), command.executed)
 
             val received = mutableListOf<Pair<Any?, Any?>>()
-            val handler: WinRtCanExecuteChangedHandler = { sender, args -> received += sender to args }
+            val handler: WinRTCanExecuteChangedHandler = { sender, args -> received += sender to args }
             projected.addCanExecuteChanged(handler)
 
             command.raise(sender = "sender", args = "args")
@@ -53,46 +53,46 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer().asRawAddress(),
-                    WinRtTypeHandle(
-                        TypeNameSupport.getNameForType(WinRtPropertyChangedNotifier::class),
+                    WinRTTypeHandle(
+                        TypeNameSupport.getNameForType(WinRTPropertyChangedNotifier::class),
                         IID.MUX_INotifyPropertyChanged,
                     ),
-                ) as WinRtPropertyChangedNotifier
+                ) as WinRTPropertyChangedNotifier
 
             val received = mutableListOf<Pair<Any?, String?>>()
-            val handler: WinRtPropertyChangedHandler = { sender, args -> received += sender to args?.propertyName }
+            val handler: WinRTPropertyChangedHandler = { sender, args -> received += sender to args?.propertyName }
             projected.addPropertyChanged(handler)
 
-            notifier.raise("vm", WinRtPropertyChangedEventArgs("Title"))
+            notifier.raise("vm", WinRTPropertyChangedEventArgs("Title"))
             assertEquals(listOf<Pair<Any?, String?>>("vm" to "Title"), received)
 
             projected.removePropertyChanged(handler)
-            notifier.raise("vm2", WinRtPropertyChangedEventArgs("Ignored"))
+            notifier.raise("vm2", WinRTPropertyChangedEventArgs("Ignored"))
             assertEquals(listOf<Pair<Any?, String?>>("vm" to "Title"), received)
         }
     }
 
     @Test
     fun runtime_class_event_args_project_from_runtime_name() {
-        val propertyChanged = WinRtPropertyChangedEventArgs("Name")
+        val propertyChanged = WinRTPropertyChangedEventArgs("Name")
         val collectionChanged =
-            WinRtNotifyCollectionChangedEventArgs(
-                action = WinRtNotifyCollectionChangedAction.Replace,
+            WinRTNotifyCollectionChangedEventArgs(
+                action = WinRTNotifyCollectionChangedAction.Replace,
                 newItems = listOf("new"),
                 oldItems = listOf("old"),
                 newStartingIndex = 3,
                 oldStartingIndex = 1,
             )
-        val dataErrors = WinRtDataErrorsChangedEventArgs("Field")
+        val dataErrors = WinRTDataErrorsChangedEventArgs("Field")
 
         ComWrappersSupport.createCCWForObject(propertyChanged).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRtPropertyChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRTPropertyChangedEventArgs
             assertEquals("Name", projected.propertyName)
         }
 
         ComWrappersSupport.createCCWForObject(collectionChanged).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRtNotifyCollectionChangedEventArgs
-            assertEquals(WinRtNotifyCollectionChangedAction.Replace, projected.action)
+            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRTNotifyCollectionChangedEventArgs
+            assertEquals(WinRTNotifyCollectionChangedAction.Replace, projected.action)
             assertEquals(listOf("new"), projected.newItems)
             assertEquals(listOf("old"), projected.oldItems)
             assertEquals(3, projected.newStartingIndex)
@@ -100,7 +100,7 @@ class XamlSystemProjectionRuntimeTest {
         }
 
         ComWrappersSupport.createCCWForObject(dataErrors).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRtDataErrorsChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRTDataErrorsChangedEventArgs
             assertEquals("Field", projected.propertyName)
         }
     }
@@ -114,11 +114,11 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer().asRawAddress(),
-                    WinRtTypeHandle(
-                        TypeNameSupport.getNameForType(WinRtCustomPropertyProvider::class),
+                    WinRTTypeHandle(
+                        TypeNameSupport.getNameForType(WinRTCustomPropertyProvider::class),
                         IID.ICustomPropertyProvider,
                     ),
-                ) as WinRtCustomPropertyProvider
+                ) as WinRTCustomPropertyProvider
 
             val property = projected.getCustomProperty("value")
             assertNotNull(property)
@@ -134,8 +134,8 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer().asRawAddress(),
-                    WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtServiceProvider::class), IID.IServiceProvider),
-                ) as WinRtServiceProvider
+                    WinRTTypeHandle(TypeNameSupport.getNameForType(WinRTServiceProvider::class), IID.IServiceProvider),
+                ) as WinRTServiceProvider
 
             assertEquals("string-service", projected.getService(String::class))
             assertEquals(7, projected.getService(Int::class))
@@ -149,8 +149,8 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer().asRawAddress(),
-                    WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtStringable::class), IID.IStringable),
-                ) as WinRtStringable
+                    WinRTTypeHandle(TypeNameSupport.getNameForType(WinRTStringable::class), IID.IStringable),
+                ) as WinRTStringable
 
             assertEquals("42", projected.toString())
         }
@@ -164,11 +164,11 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer().asRawAddress(),
-                    WinRtTypeHandle(
-                        TypeNameSupport.getNameForType(WinRtCustomPropertyProvider::class),
+                    WinRTTypeHandle(
+                        TypeNameSupport.getNameForType(WinRTCustomPropertyProvider::class),
                         IID.ICustomPropertyProvider,
                     ),
-                ) as WinRtCustomPropertyProvider
+                ) as WinRTCustomPropertyProvider
 
             assertNull(projected.getCustomProperty("value"))
             assertNull(projected.getIndexedProperty("value", Int::class))
@@ -176,9 +176,9 @@ class XamlSystemProjectionRuntimeTest {
         }
     }
 
-    private class TestCommand : WinRtCommand {
+    private class TestCommand : WinRTCommand {
         val executed = mutableListOf<Any?>()
-        private val handlers = linkedSetOf<WinRtCanExecuteChangedHandler>()
+        private val handlers = linkedSetOf<WinRTCanExecuteChangedHandler>()
 
         override fun canExecute(parameter: Any?): Boolean = parameter != "stop"
 
@@ -186,11 +186,11 @@ class XamlSystemProjectionRuntimeTest {
             executed += parameter
         }
 
-        override fun addCanExecuteChanged(handler: WinRtCanExecuteChangedHandler) {
+        override fun addCanExecuteChanged(handler: WinRTCanExecuteChangedHandler) {
             handlers += handler
         }
 
-        override fun removeCanExecuteChanged(handler: WinRtCanExecuteChangedHandler) {
+        override fun removeCanExecuteChanged(handler: WinRTCanExecuteChangedHandler) {
             handlers -= handler
         }
 
@@ -202,31 +202,31 @@ class XamlSystemProjectionRuntimeTest {
         }
     }
 
-    private class TestPropertyChangedNotifier : WinRtPropertyChangedNotifier {
-        private val handlers = linkedSetOf<WinRtPropertyChangedHandler>()
+    private class TestPropertyChangedNotifier : WinRTPropertyChangedNotifier {
+        private val handlers = linkedSetOf<WinRTPropertyChangedHandler>()
 
-        override fun addPropertyChanged(handler: WinRtPropertyChangedHandler) {
+        override fun addPropertyChanged(handler: WinRTPropertyChangedHandler) {
             handlers += handler
         }
 
-        override fun removePropertyChanged(handler: WinRtPropertyChangedHandler) {
+        override fun removePropertyChanged(handler: WinRTPropertyChangedHandler) {
             handlers -= handler
         }
 
         fun raise(
             sender: Any?,
-            args: WinRtPropertyChangedEventArgs?,
+            args: WinRTPropertyChangedEventArgs?,
         ) {
             handlers.toList().forEach { handler -> handler(sender, args) }
         }
     }
 
-    private class TestBindableTarget : WinRtBindableCustomPropertyImplementation {
+    private class TestBindableTarget : WinRTBindableCustomPropertyImplementation {
         var value: Int = 5
 
-        override fun getCustomProperty(name: String): WinRtCustomProperty? =
+        override fun getCustomProperty(name: String): WinRTCustomProperty? =
             if (name == "value") {
-                WinRtBindableCustomProperty(
+                WinRTBindableCustomProperty(
                     canRead = true,
                     canWrite = true,
                     name = "value",
@@ -240,10 +240,10 @@ class XamlSystemProjectionRuntimeTest {
                 null
             }
 
-        override fun getIndexedProperty(indexParameterType: KClass<*>?): WinRtCustomProperty? = null
+        override fun getIndexedProperty(indexParameterType: KClass<*>?): WinRTCustomProperty? = null
     }
 
-    private class TestServiceProvider : WinRtServiceProvider {
+    private class TestServiceProvider : WinRTServiceProvider {
         override fun getService(type: KClass<*>?): Any? =
             when (type) {
                 String::class -> "string-service"

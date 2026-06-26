@@ -303,7 +303,7 @@ private fun RawAddress.writeBytes(values: ByteArray) {
     }
 }
 
-actual object WinRtPlatformApi {
+actual object WinRTPlatformApi {
     private const val roInitSingleThreaded = 0
     private const val roInitMultithreaded = 1
 
@@ -378,7 +378,7 @@ actual object WinRtPlatformApi {
         GetProcAddress(oleaut32Module, "SysStringLen")?.reinterpret()
     }
 
-    private val winRtErrorModule by lazy {
+    private val winRTErrorModule by lazy {
         sequenceOf(
             "api-ms-win-core-winrt-error-l1-1-1.dll",
             "api-ms-win-core-winrt-error-l1-1-0.dll",
@@ -387,17 +387,17 @@ actual object WinRtPlatformApi {
     }
 
     private val getRestrictedErrorInfoProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
-        GetProcAddress(winRtErrorModule, "GetRestrictedErrorInfo")?.reinterpret()
+        GetProcAddress(winRTErrorModule, "GetRestrictedErrorInfo")?.reinterpret()
             ?: GetProcAddress(combaseModule, "GetRestrictedErrorInfo")?.reinterpret()
     }
 
     private val setRestrictedErrorInfoProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
-        GetProcAddress(winRtErrorModule, "SetRestrictedErrorInfo")?.reinterpret()
+        GetProcAddress(winRTErrorModule, "SetRestrictedErrorInfo")?.reinterpret()
             ?: GetProcAddress(combaseModule, "SetRestrictedErrorInfo")?.reinterpret()
     }
 
     private val roReportUnhandledErrorProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
-        GetProcAddress(winRtErrorModule, "RoReportUnhandledError")?.reinterpret()
+        GetProcAddress(winRTErrorModule, "RoReportUnhandledError")?.reinterpret()
             ?: GetProcAddress(combaseModule, "RoReportUnhandledError")?.reinterpret()
     }
 
@@ -770,7 +770,7 @@ actual object WinRtPlatformApi {
     actual fun checkSucceededRaw(result: Int) {
         val hResult = HResult(result)
         if (hResult.isFailure) {
-            throw WinRtExceptionTranslator.exceptionFor(hResult)
+            throw WinRTExceptionTranslator.exceptionFor(hResult)
         }
     }
 

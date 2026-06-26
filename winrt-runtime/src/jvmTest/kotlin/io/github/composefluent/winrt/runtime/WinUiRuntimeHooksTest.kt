@@ -7,7 +7,7 @@ import java.nio.file.Files
 class WinUiRuntimeHooksTest {
     @Test
     fun xaml_metadata_provider_registry_loads_runtime_asset_manifest() {
-        val previousRoot = System.getProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName)
+        val previousRoot = System.getProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName)
         val root = Files.createTempDirectory("kotlin-winrt-xaml-provider-assets-")
         Files.writeString(
             root.resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
@@ -20,7 +20,7 @@ class WinUiRuntimeHooksTest {
         )
 
         try {
-            System.setProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, root.toString())
+            System.setProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName, root.toString())
             WinUiXamlMetadataProviderRegistry.clearForTests()
 
             assertEquals(
@@ -33,9 +33,9 @@ class WinUiRuntimeHooksTest {
         } finally {
             WinUiXamlMetadataProviderRegistry.clearForTests()
             if (previousRoot == null) {
-                System.clearProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName)
+                System.clearProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName)
             } else {
-                System.setProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, previousRoot)
+                System.setProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName, previousRoot)
             }
         }
     }

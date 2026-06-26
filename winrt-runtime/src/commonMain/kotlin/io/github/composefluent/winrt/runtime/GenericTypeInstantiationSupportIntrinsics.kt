@@ -1,12 +1,12 @@
 package io.github.composefluent.winrt.runtime
 
-object WinRtGenericTypeInstantiationSupportIntrinsic {
+object WinRTGenericTypeInstantiationSupportIntrinsic {
     fun initializeAll(): Unit =
-        error("WinRtGenericTypeInstantiationSupportIntrinsic.initializeAll was not lowered by the kotlin-winrt compiler plugin.")
+        error("WinRTGenericTypeInstantiationSupportIntrinsic.initializeAll was not lowered by the kotlin-winrt compiler plugin.")
 
     fun initializeBySourceType(sourceType: String): Unit =
         error(
-            "WinRtGenericTypeInstantiationSupportIntrinsic.initializeBySourceType was not lowered by the kotlin-winrt compiler plugin: " +
+            "WinRTGenericTypeInstantiationSupportIntrinsic.initializeBySourceType was not lowered by the kotlin-winrt compiler plugin: " +
                 sourceType,
         )
 }

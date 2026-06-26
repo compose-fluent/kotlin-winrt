@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
-object WinRtProjectionSupportIntrinsic {
+object WinRTProjectionSupportIntrinsic {
     fun ensureInitialized(): Unit =
-        error("WinRtProjectionSupportIntrinsic.ensureInitialized was not lowered by the kotlin-winrt compiler plugin.")
+        error("WinRTProjectionSupportIntrinsic.ensureInitialized was not lowered by the kotlin-winrt compiler plugin.")
 }

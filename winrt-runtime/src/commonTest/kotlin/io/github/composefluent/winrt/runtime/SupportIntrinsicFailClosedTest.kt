@@ -8,19 +8,19 @@ class SupportIntrinsicFailClosedTest {
     @Test
     fun projection_support_marker_fails_when_not_lowered() {
         val failure = expectIntrinsicFailure {
-            WinRtProjectionSupportIntrinsic.ensureInitialized()
+            WinRTProjectionSupportIntrinsic.ensureInitialized()
         }
 
-        assertTrue(failure.message.orEmpty().contains("WinRtProjectionSupportIntrinsic.ensureInitialized was not lowered"))
+        assertTrue(failure.message.orEmpty().contains("WinRTProjectionSupportIntrinsic.ensureInitialized was not lowered"))
     }
 
     @Test
     fun generic_type_instantiation_markers_fail_when_not_lowered() {
         val initializeAllFailure = expectIntrinsicFailure {
-            WinRtGenericTypeInstantiationSupportIntrinsic.initializeAll()
+            WinRTGenericTypeInstantiationSupportIntrinsic.initializeAll()
         }
         val initializeBySourceTypeFailure = expectIntrinsicFailure {
-            WinRtGenericTypeInstantiationSupportIntrinsic.initializeBySourceType("Windows.Foundation.Collections.IVector")
+            WinRTGenericTypeInstantiationSupportIntrinsic.initializeBySourceType("Windows.Foundation.Collections.IVector")
         }
 
         assertTrue(initializeAllFailure.message.orEmpty().contains("initializeAll was not lowered"))
@@ -30,16 +30,16 @@ class SupportIntrinsicFailClosedTest {
     @Test
     fun generic_abi_markers_fail_when_not_lowered() {
         val delegateNamedFailure = expectIntrinsicFailure {
-            WinRtGenericAbiSupportIntrinsic.delegateNamed("_get_Value_Int")
+            WinRTGenericAbiSupportIntrinsic.delegateNamed("_get_Value_Int")
         }
         val delegatesForSourceTypeFailure = expectIntrinsicFailure {
-            WinRtGenericAbiSupportIntrinsic.delegatesForSourceType("Windows.Foundation.IReference<Int32>")
+            WinRTGenericAbiSupportIntrinsic.delegatesForSourceType("Windows.Foundation.IReference<Int32>")
         }
         val isDerivedFailure = expectIntrinsicFailure {
-            WinRtGenericAbiSupportIntrinsic.isDerivedGenericInterface("Windows.Foundation.Collections.IVector")
+            WinRTGenericAbiSupportIntrinsic.isDerivedGenericInterface("Windows.Foundation.Collections.IVector")
         }
         val registerFailure = expectIntrinsicFailure {
-            WinRtGenericAbiSupportIntrinsic.registerAbiDelegates { _, _ -> }
+            WinRTGenericAbiSupportIntrinsic.registerAbiDelegates { _, _ -> }
         }
 
         assertTrue(delegateNamedFailure.message.orEmpty().contains("delegateNamed was not lowered"))
@@ -51,10 +51,10 @@ class SupportIntrinsicFailClosedTest {
     @Test
     fun authoring_support_marker_fails_when_not_lowered() {
         val failure = expectIntrinsicFailure {
-            WinRtAuthoringSupportIntrinsic.ensureInitialized()
+            WinRTAuthoringSupportIntrinsic.ensureInitialized()
         }
 
-        assertTrue(failure.message.orEmpty().contains("WinRtAuthoringSupportIntrinsic.ensureInitialized was not lowered"))
+        assertTrue(failure.message.orEmpty().contains("WinRTAuthoringSupportIntrinsic.ensureInitialized was not lowered"))
     }
 
     private fun expectIntrinsicFailure(block: () -> Unit): IllegalStateException =

@@ -9,7 +9,7 @@ class ComVtableInvokerCallbackBridgeTest {
         ComAbiInteropBridge.createRawInt32Callback(
             parameterKinds = listOf(ComAbiValueKind.Pointer),
         ) {
-            throw WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)
+            throw WinRTAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)
         }.use { handle ->
             assertEquals(KnownHResults.E_ACCESSDENIED.value, invokeInt32PointerCallback(handle))
         }

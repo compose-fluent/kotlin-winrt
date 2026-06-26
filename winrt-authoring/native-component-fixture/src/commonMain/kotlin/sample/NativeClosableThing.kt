@@ -1,13 +1,13 @@
 package sample
 
-import io.github.composefluent.winrt.runtime.WinRtAuthoredRuntimeClass
+import io.github.composefluent.winrt.runtime.WinRTAuthoredRuntimeClass
 import io.github.composefluent.winrt.runtime.AsyncInfo
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.EventRegistrationTokenTable
 import io.github.composefluent.winrt.runtime.PlatformAbi
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncResultWriter
-import io.github.composefluent.winrt.runtime.WinRtTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncResultWriter
+import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import windows.data.json.JsonArray
 import windows.data.json.JsonObject
 import windows.data.json.JsonValue
@@ -21,17 +21,17 @@ import windows.storage.streams.UnicodeEncoding
 import kotlin.time.Duration
 import kotlin.time.Instant
 
-@WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IClosable"])
+@WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IClosable"])
 class NativeClosableThing {
     fun close() = Unit
 }
 
-@WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+@WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
 class NativeStringableThing {
     override fun toString(): String = "NativeStringableThing"
 }
 
-@WinRtAuthoredRuntimeClass(
+@WinRTAuthoredRuntimeClass(
     interfaceNames = ["windows.data.json.IJsonValue"],
     staticFactoryInterfaceNames = ["windows.data.json.IJsonValueStatics"],
 )
@@ -67,7 +67,7 @@ class NativeJsonValueThing private constructor(
     }
 }
 
-@WinRtAuthoredRuntimeClass(interfaceNames = ["windows.storage.streams.IDataReader"])
+@WinRTAuthoredRuntimeClass(interfaceNames = ["windows.storage.streams.IDataReader"])
 class NativeDataReaderThing {
     val unconsumedBufferLength: UInt
         get() = 4u
@@ -119,11 +119,11 @@ class NativeDataReaderThing {
     fun readTimeSpan(): Duration =
         Duration.parse("PT1H2M3.4567S")
 
-    fun loadAsync(count: UInt): WinRtAsyncOperationReference<UInt> =
+    fun loadAsync(count: UInt): WinRTAsyncOperationReference<UInt> =
         AsyncInfo.fromResult(
             result = count.coerceAtMost(unconsumedBufferLength),
-            resultSignature = WinRtTypeSignature.uint32(),
-            resultWriter = WinRtAsyncResultWriter { value, resultOut ->
+            resultSignature = WinRTTypeSignature.uint32(),
+            resultWriter = WinRTAsyncResultWriter { value, resultOut ->
                 PlatformAbi.writeInt32(resultOut, value.toInt())
             },
         )
@@ -137,7 +137,7 @@ class NativeDataReaderThing {
     }
 }
 
-@WinRtAuthoredRuntimeClass(interfaceNames = ["windows.foundation.collections.IPropertySet"])
+@WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.collections.IPropertySet"])
 class NativePropertySetThing {
     private val values = linkedMapOf<String, Any?>("existing" to "value")
     private val mapChangedHandlers =

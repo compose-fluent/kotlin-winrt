@@ -8,11 +8,11 @@ plugins {
     id("io.github.composefluent.winrt")
 }
 
-val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.1.3")
-val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRt.samples.winUIEssentialVersion")
+val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
     .orElse("1.6.7")
-val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRt.samples.nugetGlobalPackagesRoot")
+val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRT.samples.nugetGlobalPackagesRoot")
 
 kotlin {
     jvmToolchain(25)
@@ -47,7 +47,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     type("Windows.Foundation.IStringable")
     type("Windows.Foundation.Point")
     namespace("Windows.Data.Json")
@@ -140,7 +140,7 @@ val standardSampleSmokeDefaults = mapOf(
     "kotlin.winrt.samples.autoExitWinUi" to "true",
 )
 
-tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>("buildWinRtApplicationHost") {
+tasks.named<io.github.composefluent.winrt.gradle.BuildWinRTApplicationHostTask>("buildWinRTApplicationHost") {
     val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
     val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
     dependsOn(winuiJvmJar)
@@ -154,7 +154,7 @@ tasks.named<io.github.composefluent.winrt.gradle.BuildWinRtApplicationHostTask>(
     )
 }
 
-tasks.named<Exec>("runWinRtApplicationHost") {
+tasks.named<Exec>("runWinRTApplicationHost") {
     val hostJvmOptions = sampleJvmOptionProperties.joinToString(";") { name ->
         "-D$name=${providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "false").get()}"
     }
@@ -162,7 +162,7 @@ tasks.named<Exec>("runWinRtApplicationHost") {
 }
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRtApplicationPackage")
+    dependsOn("stageWinRTApplicationPackage")
     workingDir(layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release"))
     executable(layout.buildDirectory.file("kotlin-winrt/application-layout/mingwX64/release/${project.name}.exe").get().asFile.absolutePath)
     sampleJvmOptionProperties.forEach { name ->
@@ -172,12 +172,12 @@ tasks.named<Exec>("runReleaseExecutableMingwX64") {
     }
 }
 
-val verifyWinRtSampleIdentity by tasks.registering {
+val verifyWinRTSampleIdentity by tasks.registering {
     group = "verification"
     description = "Verifies the sample application aggregates Kotlin WinRT identity metadata from projection dependencies."
     val identityFile = layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json")
     val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.orNull
-    dependsOn(tasks.named("generateWinRtApplicationIdentity"))
+    dependsOn(tasks.named("generateWinRTApplicationIdentity"))
     inputs.file(identityFile)
 
     doLast {
@@ -193,7 +193,7 @@ val verifyWinRtSampleIdentity by tasks.registering {
         }
         if (expectedWindowsAppSdkVersion == null) {
             check("Microsoft.WindowsAppSDK" !in identityJson) {
-                "WindowsAppSDK should only be declared when kotlinWinRt.samples.windowsAppSdkVersion is set."
+                "WindowsAppSDK should only be declared when kotlinWinRT.samples.windowsAppSdkVersion is set."
             }
         } else {
             val expectedPackage = "Microsoft.WindowsAppSDK@$expectedWindowsAppSdkVersion"
@@ -204,11 +204,11 @@ val verifyWinRtSampleIdentity by tasks.registering {
     }
 }
 
-val verifyWinRtSampleRuntimeAssets by tasks.registering {
+val verifyWinRTSampleRuntimeAssets by tasks.registering {
     group = "verification"
     description = "Verifies the sample application stages local WinRT component runtime assets."
     val runtimeAssetsDir = layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
-    dependsOn(tasks.named("stageWinRtRuntimeAssets"))
+    dependsOn(tasks.named("stageWinRTRuntimeAssets"))
     inputs.dir(runtimeAssetsDir)
 
     doLast {
@@ -218,21 +218,21 @@ val verifyWinRtSampleRuntimeAssets by tasks.registering {
     }
 }
 
-val verifyWinRtSampleRun by tasks.registering {
+val verifyWinRTSampleRun by tasks.registering {
     group = "verification"
     description = "Runs the sample application through the native Kotlin/WinRT host without opt-in native WinRT smoke tests."
-    dependsOn(tasks.named("runWinRtApplicationHost"))
+    dependsOn(tasks.named("runWinRTApplicationHost"))
 }
 
-val verifyWinRtSampleMingwRun by tasks.registering {
+val verifyWinRTSampleMingwRun by tasks.registering {
     group = "verification"
     description = "Runs the sample application through the mingwX64 executable."
     dependsOn(tasks.named("runReleaseExecutableMingwX64"))
 }
 
 tasks.named("check") {
-    dependsOn(verifyWinRtSampleIdentity)
-    dependsOn(verifyWinRtSampleRuntimeAssets)
-    dependsOn(verifyWinRtSampleRun)
-    dependsOn(verifyWinRtSampleMingwRun)
+    dependsOn(verifyWinRTSampleIdentity)
+    dependsOn(verifyWinRTSampleRuntimeAssets)
+    dependsOn(verifyWinRTSampleRun)
+    dependsOn(verifyWinRTSampleMingwRun)
 }

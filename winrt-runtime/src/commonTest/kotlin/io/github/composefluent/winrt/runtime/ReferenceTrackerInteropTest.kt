@@ -54,7 +54,7 @@ class ReferenceTrackerInteropTest {
             assertEquals(1, host.objectAddRefCalls)
             assertEquals(1, host.trackerAddRefFromSourceCalls)
 
-            WinRtPlatformApi.releaseRaw(pointer.asRawAddress())
+            WinRTPlatformApi.releaseRaw(pointer.asRawAddress())
             reference.close()
             assertEquals(2, host.objectReleaseCalls)
         }

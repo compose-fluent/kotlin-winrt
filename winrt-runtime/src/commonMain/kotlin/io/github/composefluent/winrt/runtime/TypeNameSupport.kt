@@ -40,7 +40,7 @@ object TypeNameSupport {
         baseRcwTypeCache.clear()
         if (runtimeClassName != null) {
             registeredProjectionTypes[runtimeClassName] = type
-            WinRtTypeRegistry.registerAlias(type, runtimeClassName)
+            WinRTTypeRegistry.registerAlias(type, runtimeClassName)
         }
     }
 
@@ -140,10 +140,10 @@ object TypeNameSupport {
             boxedRuntimeClassName(type)?.let { return it }
         }
 
-        WinRtTypeClassifier.classify(type)?.let { return it.canonicalRuntimeName }
+        WinRTTypeClassifier.classify(type)?.let { return it.canonicalRuntimeName }
 
-        type.registeredWinRtType()?.projectedTypeName
-            ?.takeIf { type.registeredWinRtType()?.isWindowsRuntimeType == true || type.registeredWinRtType()?.isRuntimeClass == true }
+        type.registeredWinRTType()?.projectedTypeName
+            ?.takeIf { type.registeredWinRTType()?.isWindowsRuntimeType == true || type.registeredWinRTType()?.isRuntimeClass == true }
             ?.let { return it }
 
         Projections.findCustomAbiTypeNameForType(type)?.let { return it }
@@ -151,7 +151,7 @@ object TypeNameSupport {
         inferRuntimeClassName(type)?.let { return it }
 
         if (flags.contains(TypeNameGenerationFlag.ForGetRuntimeClassName)) {
-            return runtimeClassNameForNonWinRtType(type) ?: ""
+            return runtimeClassNameForNonWinRTType(type) ?: ""
         }
 
         return typeName(type)
@@ -160,9 +160,9 @@ object TypeNameSupport {
     internal fun inferRuntimeClassName(
         type: KClass<*>,
     ): String? =
-        type.registeredWinRtType()?.runtimeClassName
+        type.registeredWinRTType()?.runtimeClassName
             ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
-            ?: type.registeredWinRtType()?.takeIf { it.isRuntimeClass }?.projectedTypeName
+            ?: type.registeredWinRTType()?.takeIf { it.isRuntimeClass }?.projectedTypeName
 
     internal fun clearRegistriesForTests() {
         registeredProjectionTypes.clear()
@@ -178,24 +178,24 @@ object TypeNameSupport {
     private fun resolveTypeByName(
         runtimeClassName: String,
     ): KClass<*>? {
-        WinRtReferenceTypeNames.parseReferenceElement(runtimeClassName)?.let { elementTypeName ->
+        WinRTReferenceTypeNames.parseReferenceElement(runtimeClassName)?.let { elementTypeName ->
             return resolveTypeByName(elementTypeName)
         }
-        WinRtReferenceTypeNames.parseReferenceArrayElement(runtimeClassName)?.let { elementTypeName ->
+        WinRTReferenceTypeNames.parseReferenceArrayElement(runtimeClassName)?.let { elementTypeName ->
             return resolveTypeByName(elementTypeName)?.let(::arrayClassForElementType)
         }
 
         Projections.findCustomKClassForAbiTypeName(runtimeClassName)?.let { return it }
-        WinRtTypeRegistry.findByName(runtimeClassName)?.let { return it.kClass }
+        WinRTTypeRegistry.findByName(runtimeClassName)?.let { return it.kClass }
         registeredProjectionTypes[runtimeClassName]?.let { return it }
-        WinRtTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeType }
+        WinRTTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeType }
 
         val genericBaseName = runtimeClassName.substringBefore('<')
         if (genericBaseName != runtimeClassName) {
             Projections.findCustomKClassForAbiTypeName(genericBaseName)?.let { return it }
-            WinRtTypeRegistry.findByName(genericBaseName)?.let { return it.kClass }
+            WinRTTypeRegistry.findByName(genericBaseName)?.let { return it.kClass }
             registeredProjectionTypes[genericBaseName]?.let { return it }
-            WinRtTypeClassifier.resolve(genericBaseName)?.let { return it.representativeType }
+            WinRTTypeClassifier.resolve(genericBaseName)?.let { return it.representativeType }
         }
 
         return null
@@ -204,14 +204,14 @@ object TypeNameSupport {
     private fun arrayClassForElementType(
         elementType: KClass<*>,
     ): KClass<*>? =
-        WinRtTypeClassifier.primitiveArrayTypeForElementType(elementType)
+        WinRTTypeClassifier.primitiveArrayTypeForElementType(elementType)
             ?: registeredReferenceArrayTypes[elementType]
 
     private fun referenceArrayRuntimeClassName(type: KClass<*>): String? {
-        if (WinRtTypeClassifier.primitiveArrayElementType(type) == null && registeredArrayElementTypes[type] == null) {
+        if (WinRTTypeClassifier.primitiveArrayElementType(type) == null && registeredArrayElementTypes[type] == null) {
             return null
         }
-        return WinRtValueBoxing.boxedRuntimeClassNameForType(type)
+        return WinRTValueBoxing.boxedRuntimeClassNameForType(type)
     }
 
     // Kotlin common KClass does not preserve Array<T>'s element type. Match CsWinRT's

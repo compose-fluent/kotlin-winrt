@@ -21,9 +21,9 @@ internal object ManifestFreeActivation {
             }
 
             return try {
-                WinRtPlatformApi.queryInterfaceRaw(activationFactoryResult.pointer, interfaceId).toActivationResult()
+                WinRTPlatformApi.queryInterfaceRaw(activationFactoryResult.pointer, interfaceId).toActivationResult()
             } finally {
-                WinRtPlatformApi.releaseRaw(activationFactoryResult.pointer)
+                WinRTPlatformApi.releaseRaw(activationFactoryResult.pointer)
             }
         }
 

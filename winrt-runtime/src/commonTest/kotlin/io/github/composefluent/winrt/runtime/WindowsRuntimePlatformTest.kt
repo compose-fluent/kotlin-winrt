@@ -11,41 +11,41 @@ import kotlin.test.assertTrue
 class WindowsRuntimePlatformTest {
     @Test
     fun win32_last_error_is_translated_to_hresult() {
-        assertEquals(HResult(0x80070002.toInt()), WinRtExceptionTranslator.hResultFromWin32(2))
-        assertEquals(HResult(0x8007007E.toInt()), WinRtExceptionTranslator.hResultFromWin32(126))
+        assertEquals(HResult(0x80070002.toInt()), WinRTExceptionTranslator.hResultFromWin32(2))
+        assertEquals(HResult(0x8007007E.toInt()), WinRTExceptionTranslator.hResultFromWin32(126))
     }
 
     @Test
     fun hresult_translation_returns_semantic_runtime_exception_types() {
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_INVALIDARG) is WinRtIllegalArgumentException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_POINTER) is WinRtNullReferenceException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_BOUNDS) is WinRtIndexOutOfBoundsException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_NOTIMPL) is WinRtNotImplementedException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_NOINTERFACE) is WinRtInvalidCastException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_OUTOFMEMORY) is WinRtOutOfMemoryException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_ACCESSDENIED) is WinRtAccessDeniedException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.ERROR_TIMEOUT) is WinRtTimeoutException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.REGDB_E_CLASSNOTREG) is WinRtIllegalStateException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(ExceptionHelpers.ERROR_FILE_NOT_FOUND) is WinRtFileNotFoundException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(ExceptionHelpers.ERROR_BAD_FORMAT) is WinRtBadImageFormatException)
-        assertTrue(WinRtExceptionTranslator.exceptionFor(ExceptionHelpers.E_XAMLPARSEFAILED) is WinRtXamlParseException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_INVALIDARG) is WinRTIllegalArgumentException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_POINTER) is WinRTNullReferenceException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_BOUNDS) is WinRTIndexOutOfBoundsException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_NOTIMPL) is WinRTNotImplementedException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_NOINTERFACE) is WinRTInvalidCastException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_OUTOFMEMORY) is WinRTOutOfMemoryException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.E_ACCESSDENIED) is WinRTAccessDeniedException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.ERROR_TIMEOUT) is WinRTTimeoutException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.REGDB_E_CLASSNOTREG) is WinRTIllegalStateException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.ERROR_FILE_NOT_FOUND) is WinRTFileNotFoundException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.ERROR_BAD_FORMAT) is WinRTBadImageFormatException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.E_XAMLPARSEFAILED) is WinRTXamlParseException)
     }
 
     @Test
     fun throwable_to_hresult_translation_matches_runtime_owner() {
-        assertEquals(KnownHResults.E_INVALIDARG, WinRtExceptionTranslator.hResultFromException(IllegalArgumentException("bad arg")))
-        assertEquals(KnownHResults.E_BOUNDS, WinRtExceptionTranslator.hResultFromException(IndexOutOfBoundsException("bad index")))
-        assertEquals(KnownHResults.E_NOTSUPPORTED, WinRtExceptionTranslator.hResultFromException(UnsupportedOperationException("unsupported")))
-        assertEquals(KnownHResults.ERROR_CANCELLED, WinRtExceptionTranslator.hResultFromException(CancellationException("cancelled")))
+        assertEquals(KnownHResults.E_INVALIDARG, WinRTExceptionTranslator.hResultFromException(IllegalArgumentException("bad arg")))
+        assertEquals(KnownHResults.E_BOUNDS, WinRTExceptionTranslator.hResultFromException(IndexOutOfBoundsException("bad index")))
+        assertEquals(KnownHResults.E_NOTSUPPORTED, WinRTExceptionTranslator.hResultFromException(UnsupportedOperationException("unsupported")))
+        assertEquals(KnownHResults.ERROR_CANCELLED, WinRTExceptionTranslator.hResultFromException(CancellationException("cancelled")))
         assertEquals(
             KnownHResults.ERROR_TIMEOUT,
-            WinRtExceptionTranslator.hResultFromException(WinRtTimeoutException("timeout", KnownHResults.ERROR_TIMEOUT)),
+            WinRTExceptionTranslator.hResultFromException(WinRTTimeoutException("timeout", KnownHResults.ERROR_TIMEOUT)),
         )
         assertEquals(
             KnownHResults.E_ACCESSDENIED,
-            WinRtExceptionTranslator.hResultFromException(WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)),
+            WinRTExceptionTranslator.hResultFromException(WinRTAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)),
         )
-        assertEquals(ExceptionHelpers.E_FAIL, WinRtExceptionTranslator.hResultFromException(IllegalStateException("missing")))
+        assertEquals(ExceptionHelpers.E_FAIL, WinRTExceptionTranslator.hResultFromException(IllegalStateException("missing")))
     }
 
     @Test
@@ -70,17 +70,17 @@ class WindowsRuntimePlatformTest {
             return
         }
 
-        val kernel32 = WinRtPlatformApi.tryLoadLibraryExWRaw("kernel32.dll", 0)
+        val kernel32 = WinRTPlatformApi.tryLoadLibraryExWRaw("kernel32.dll", 0)
         try {
             assertTrue(!PlatformAbi.isNull(kernel32))
-            val getLastError = WinRtPlatformApi.tryGetProcAddressRaw(kernel32, "GetLastError")
+            val getLastError = WinRTPlatformApi.tryGetProcAddressRaw(kernel32, "GetLastError")
             assertTrue(!PlatformAbi.isNull(getLastError))
             assertEquals(
                 PlatformAbi.nullPointer,
-                WinRtPlatformApi.tryGetProcAddressRaw(kernel32, "DefinitelyMissingExport"),
+                WinRTPlatformApi.tryGetProcAddressRaw(kernel32, "DefinitelyMissingExport"),
             )
         } finally {
-            WinRtPlatformApi.freeLibraryRaw(kernel32)
+            WinRTPlatformApi.freeLibraryRaw(kernel32)
         }
     }
 
@@ -119,7 +119,7 @@ class WindowsRuntimePlatformTest {
                 )
                 assertEquals(
                     "boom",
-                    WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(descriptionOut)),
+                    WinRTPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(descriptionOut)),
                 )
             }
         }
@@ -159,7 +159,7 @@ class WindowsRuntimePlatformTest {
         ManagedRestrictedErrorInfoComObject(
             hResult = ExceptionHelpers.E_FAIL,
             errorInfo =
-                WinRtRestrictedErrorInfo(
+                WinRTRestrictedErrorInfo(
                     description = "outer message",
                     restrictedDescription = "inner message",
                     reference = "ABC123",
@@ -184,16 +184,16 @@ class WindowsRuntimePlatformTest {
                 )
                 assertEquals(
                     "outer message",
-                    WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(descriptionOut)),
+                    WinRTPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(descriptionOut)),
                 )
                 assertEquals(ExceptionHelpers.E_FAIL.value, PlatformAbi.readInt32(hResultOut))
                 assertEquals(
                     "inner message",
-                    WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(restrictedDescriptionOut)),
+                    WinRTPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(restrictedDescriptionOut)),
                 )
                 assertEquals(
                     "",
-                    WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(capabilitySidOut)),
+                    WinRTPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(capabilitySidOut)),
                 )
 
                 val referenceOut = PlatformAbi.allocatePointerSlot(scope)
@@ -203,7 +203,7 @@ class WindowsRuntimePlatformTest {
                 )
                 assertEquals(
                     "ABC123",
-                    WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(referenceOut)),
+                    WinRTPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(referenceOut)),
                 )
             }
         }
@@ -215,7 +215,7 @@ class WindowsRuntimePlatformTest {
             return
         }
 
-        val details = WinRtRestrictedErrorInfo(
+        val details = WinRTRestrictedErrorInfo(
             description = "outer message",
             restrictedDescription = "inner message",
             reference = "ABC123",
@@ -238,11 +238,11 @@ class WindowsRuntimePlatformTest {
         }
 
         ExceptionHelpers.setErrorInfo(
-            WinRtRuntimeException(
+            WinRTRuntimeException(
                 message = "managed failure",
                 hResult = ExceptionHelpers.E_FAIL,
                 restrictedErrorInfo =
-                    WinRtRestrictedErrorInfo(
+                    WinRTRestrictedErrorInfo(
                         description = "outer message",
                         restrictedDescription = "inner message",
                         reference = "ABC123",

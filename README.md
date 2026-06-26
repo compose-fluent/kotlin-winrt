@@ -132,7 +132,7 @@ plugins {
     id("io.github.composefluent.winrt") version "0.1.0-SNAPSHOT"
 }
 
-winRt {
+winRT {
     windowsSdk(generateProjection = true)
     namespace("Windows.Data.Json")
 }
@@ -155,7 +155,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     windowsSdk(generateProjection = true)
     namespace("Windows.Data.Json")
 }
@@ -188,7 +188,7 @@ dependencies {
     implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.1.3")
 }
 
-winRt {
+winRT {
     windowsSdk(includeExtensions = true)
     nugetPackage("Microsoft.WindowsAppSDK", "2.1.3")
 }
@@ -199,7 +199,7 @@ Projection artifact versions follow their metadata baseline. Snapshot projection
 When a project intentionally needs a local projection from a NuGet package, opt in explicitly:
 
 ```kotlin
-winRt {
+winRT {
     windowsSdk(includeExtensions = true, generateProjection = true)
     nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
         generateProjection = true
@@ -232,7 +232,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     application {
         mainClass.set("sample.MainKt")
         // console.set(true) enables a console window for diagnostics.
@@ -246,7 +246,7 @@ winRt {
 Run the JVM application through the generated host:
 
 ```powershell
-.\gradlew.bat runWinRtApplicationHost
+.\gradlew.bat runWinRTApplicationHost
 ```
 
 Run the native executable path:
@@ -255,7 +255,7 @@ Run the native executable path:
 .\gradlew.bat runReleaseExecutableMingwX64
 ```
 
-`runWinRtApplicationHost` and `runReleaseExecutableMingwX64` depend on the staging tasks automatically. They stage WinRT runtime assets, authored host DLLs, Windows App SDK payloads, and application layout files before launch. Do not wire `stageWinRtRuntimeAssets`, `buildWinRtAuthoringHost`, `buildWinRtApplicationHost`, or `stageWinRtApplicationPackage` manually for the normal run path.
+`runWinRTApplicationHost` and `runReleaseExecutableMingwX64` depend on the staging tasks automatically. They stage WinRT runtime assets, authored host DLLs, Windows App SDK payloads, and application layout files before launch. Do not wire `stageWinRTRuntimeAssets`, `buildWinRTAuthoringHost`, `buildWinRTApplicationHost`, or `stageWinRTApplicationPackage` manually for the normal run path.
 
 A minimal WinUI entry point starts XAML directly:
 
@@ -304,14 +304,14 @@ class DemoApp : Application() {
 
 Do not wrap `Application.start` in `RuntimeScope.initializeSingleThreaded()`. XAML application startup owns its WinRT module lifetime. `RuntimeScope` remains the normal scope for non-XAML WinRT API calls.
 
-If you use a custom launcher or a Gradle `JavaExec` task instead of `runWinRtApplicationHost`, create the same application host scope before `Application.start`:
+If you use a custom launcher or a Gradle `JavaExec` task instead of `runWinRTApplicationHost`, create the same application host scope before `Application.start`:
 
 ```kotlin
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 
 fun main() {
-    WinRtWindowsAppSdkBootstrap.initializeApplicationHost().use {
+    WinRTWindowsAppSdkBootstrap.initializeApplicationHost().use {
         Application.start {
             DemoApp()
         }
@@ -319,9 +319,9 @@ fun main() {
 }
 ```
 
-For packaged custom launchers, pass `unpackaged = false`; the generated hosts do this from `winRt { application { packageMode } }`.
+For packaged custom launchers, pass `unpackaged = false`; the generated hosts do this from `winRT { application { packageMode } }`.
 
-When `winRt { application {} }` is enabled, the plugin wires unpackaged `JavaExec` tasks to the staged payload and passes `-Dkotlin.winrt.runtimeAssetsRoot=...`. Custom native launchers or external packaging tools still need to place the staged `kotlin-winrt-runtime-assets` directory beside the launcher or pass `-Dkotlin.winrt.runtimeAssetsRoot=<path>`.
+When `winRT { application {} }` is enabled, the plugin wires unpackaged `JavaExec` tasks to the staged payload and passes `-Dkotlin.winrt.runtimeAssetsRoot=...`. Custom native launchers or external packaging tools still need to place the staged `kotlin-winrt-runtime-assets` directory beside the launcher or pass `-Dkotlin.winrt.runtimeAssetsRoot=<path>`.
 
 ## Validation
 
@@ -329,17 +329,17 @@ Use Windows for full build and runtime validation:
 
 ```powershell
 .\gradlew.bat test
-.\gradlew.bat validateWinRtMingwParity
-.\gradlew.bat validateWinRtFullWindowsSdkProjectionGate
+.\gradlew.bat validateWinRTMingwParity
+.\gradlew.bat validateWinRTFullWindowsSdkProjectionGate
 .\gradlew.bat :winrt-samples:check
 ```
 
 Useful focused sample runs:
 
 ```powershell
-.\gradlew.bat :winrt-samples:runWinRtApplicationHost
+.\gradlew.bat :winrt-samples:runWinRTApplicationHost
 .\gradlew.bat :winrt-samples:runReleaseExecutableMingwX64
-.\gradlew.bat :winrt-samples:winui-kmp-app:runWinRtApplicationHost
+.\gradlew.bat :winrt-samples:winui-kmp-app:runWinRTApplicationHost
 .\gradlew.bat :winrt-samples:winui-kmp-app:runReleaseExecutableMingwX64
 ```
 

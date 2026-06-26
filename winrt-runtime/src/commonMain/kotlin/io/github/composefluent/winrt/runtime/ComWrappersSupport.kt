@@ -2,16 +2,16 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-data class WinRtCcwDefinition(
-    val interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
+data class WinRTCcwDefinition(
+    val interfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
     val defaultInterfaceId: Guid,
     val runtimeClassName: String? = null,
-    val hiddenInterfaceDefinitions: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+    val hiddenInterfaceDefinitions: List<WinRTInspectableInterfaceDefinition> = emptyList(),
     val queryInterfaceFallback: ((Any, Guid) -> RawAddress?)? = null,
 )
 
 class SingleInterfaceOptimizedObject(
-    override val primaryTypeHandle: WinRtTypeHandle,
+    override val primaryTypeHandle: WinRTTypeHandle,
     override val nativeObject: ComObjectReference,
 ) : IWinRTObject {
     override val hasUnwrappableNativeObject: Boolean
@@ -19,14 +19,14 @@ class SingleInterfaceOptimizedObject(
 }
 
 object ComWrappersSupport {
-    private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
+    private val typedRcwFactories = ConcurrentCacheMap<WinRTTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
-    private val interfaceProjectionFactoriesByHandle = ConcurrentCacheMap<WinRtTypeHandle, (IUnknownReference) -> Any>()
+    private val interfaceProjectionFactoriesByHandle = ConcurrentCacheMap<WinRTTypeHandle, (IUnknownReference) -> Any>()
     private val interfaceProjectionFactoriesByTypeName = ConcurrentCacheMap<String, (IUnknownReference) -> Any>()
     private val authoringActivationFactories = ConcurrentCacheMap<String, () -> ComObjectReference>()
     private val authoringActivationFactoryFallbacks = SnapshotList<(String, Guid) -> ActivationResult>()
-    private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
-    private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRtCcwDefinition>()
+    private val helperTypeRegistry = ConcurrentCacheMap<WinRTTypeHandle, WinRTTypeHandle>()
+    private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRTCcwDefinition>()
     private val ccwHostCache = WeakKeyStateMap<Any, CachedCcwHost>()
     private val rcwCache = WeakValueCache<Long, Any>()
     private val runtimeClassNameLookups = SnapshotList<(KClass<*>) -> String?>()
@@ -38,7 +38,7 @@ object ComWrappersSupport {
     }
 
     fun registerTypedRcwFactory(
-        typeHandle: WinRtTypeHandle,
+        typeHandle: WinRTTypeHandle,
         factory: (IInspectableReference) -> Any,
     ): Boolean = typedRcwFactories.putIfAbsent(typeHandle, factory) == null
 
@@ -48,7 +48,7 @@ object ComWrappersSupport {
     ): Boolean = runtimeClassFactories.putIfAbsent(runtimeClassName, factory) == null
 
     fun registerInterfaceProjectionFactory(
-        typeHandle: WinRtTypeHandle,
+        typeHandle: WinRTTypeHandle,
         factory: (IUnknownReference) -> Any,
     ): Boolean {
         require(typeHandle.projectedTypeName.isNotBlank()) { "Projected interface type name must not be blank." }
@@ -65,12 +65,12 @@ object ComWrappersSupport {
     }
 
     fun wrapGeneratedInterfaceProjection(
-        typeHandle: WinRtTypeHandle,
+        typeHandle: WinRTTypeHandle,
         instance: IUnknownReference,
     ): Any =
         resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
             ?.invoke(instance)
-            ?: throw WinRtUnsupportedOperationException(
+            ?: throw WinRTUnsupportedOperationException(
                 "Generated interface projection factory for '${typeHandle.projectedTypeName}' is not registered.",
                 KnownHResults.E_NOINTERFACE,
             )
@@ -81,7 +81,7 @@ object ComWrappersSupport {
     ): Any =
         resolveInterfaceProjectionFactory(null, projectedTypeName)
             ?.invoke(instance)
-            ?: throw WinRtUnsupportedOperationException(
+            ?: throw WinRTUnsupportedOperationException(
                 "Generated interface projection factory for '$projectedTypeName' is not registered.",
                 KnownHResults.E_NOINTERFACE,
             )
@@ -134,13 +134,13 @@ object ComWrappersSupport {
     }
 
     fun registerHelperType(
-        projectedType: WinRtTypeHandle,
-        helperType: WinRtTypeHandle,
+        projectedType: WinRTTypeHandle,
+        helperType: WinRTTypeHandle,
     ): Boolean = helperTypeRegistry.putIfAbsent(projectedType, helperType) == null
 
     fun registerCcwFactory(
         implementationType: KClass<*>,
-        factory: (Any) -> WinRtCcwDefinition,
+        factory: (Any) -> WinRTCcwDefinition,
     ): Boolean {
         traceCcw("register CCW factory type=${implementationType.qualifiedName}")
         return ccwFactories.putIfAbsent(implementationType, factory) == null
@@ -148,7 +148,7 @@ object ComWrappersSupport {
 
     fun registerAuthoringTypeDetailsFactory(
         implementationType: KClass<*>,
-        factory: (Any) -> WinRtCcwDefinition,
+        factory: (Any) -> WinRTCcwDefinition,
     ): Boolean = registerCcwFactory(implementationType, factory)
 
     fun registerProjectionType(
@@ -197,9 +197,9 @@ object ComWrappersSupport {
             lookup(projectedTypeName)?.takeIf { it.isNotBlank() }
         }
 
-    fun getInspectableInfo(pointer: RawAddress): WinRtInspectableInfo? =
-        WinRtInspectableComObject.findInspectableInfo(pointer)?.let {
-            WinRtInspectableInfo(it.runtimeClassName, it.interfaceIds)
+    fun getInspectableInfo(pointer: RawAddress): WinRTInspectableInfo? =
+        WinRTInspectableComObject.findInspectableInfo(pointer)?.let {
+            WinRTInspectableInfo(it.runtimeClassName, it.interfaceIds)
         }
 
     internal fun clearRuntimeCache() {
@@ -212,7 +212,7 @@ object ComWrappersSupport {
         expectedType: KClass<T>,
     ): T? {
         val managedValue = rcwCache[PlatformAbi.pointerKey(pointer)]
-            ?: WinRtInspectableComObject.findManagedValue(pointer)
+            ?: WinRTInspectableComObject.findManagedValue(pointer)
             ?: return null
         if (!expectedType.isInstance(managedValue)) {
             return null
@@ -224,7 +224,7 @@ object ComWrappersSupport {
 
     fun tryUnwrapObject(
         value: Any?,
-        interfaceType: WinRtTypeHandle? = null,
+        interfaceType: WinRTTypeHandle? = null,
     ): ComObjectReference? {
         if (value is ComObjectReference) {
             return if (interfaceType == null || interfaceType.interfaceId == value.interfaceId) {
@@ -233,17 +233,17 @@ object ComWrappersSupport {
                 value.tryQueryInterface(interfaceType.interfaceId)
             }
         }
-        return WinRtBorrowedReferenceSupport.tryBorrowReference(
+        return WinRTBorrowedReferenceSupport.tryBorrowReference(
             value = value,
             interfaceType = interfaceType,
-            unwrapWinRtObject = ::borrowableWinRtObject,
+            unwrapWinRTObject = ::borrowableWinRTObject,
             cloneReference = ::cloneComReference,
         )
     }
 
     fun createRcwForComObject(
         pointer: RawAddress,
-        staticallyDeterminedType: WinRtTypeHandle? = null,
+        staticallyDeterminedType: WinRTTypeHandle? = null,
         tryUseCache: Boolean = true,
     ): Any? {
         platformEnsureInspectableProjectionInteropRegistered()
@@ -254,15 +254,15 @@ object ComWrappersSupport {
         val pointerKey = rcwCacheKey(pointer)
         if (tryUseCache) {
             rcwCache[pointerKey]?.let { cached ->
-                val cachedWinRt = cached as? IWinRTObject
-                if (cachedWinRt != null && cachedWinRt.nativeObject.isDisposed) {
+                val cachedWinRT = cached as? IWinRTObject
+                if (cachedWinRT != null && cachedWinRT.nativeObject.isDisposed) {
                     rcwCache.remove(pointerKey)
                     return@let
                 }
                 if (staticallyDeterminedType == null) {
                     return cached
                 }
-                if (cachedWinRt != null && cachedWinRt.isInterfaceImplemented(staticallyDeterminedType, false)) {
+                if (cachedWinRT != null && cachedWinRT.isInterfaceImplemented(staticallyDeterminedType, false)) {
                     return cached
                 }
             }
@@ -332,12 +332,12 @@ object ComWrappersSupport {
     }
 
     fun createCCWForActivationFactory(
-        factory: WinRtActivationFactory,
-        factoryInterfaces: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+        factory: WinRTActivationFactory,
+        factoryInterfaces: List<WinRTInspectableInterfaceDefinition> = emptyList(),
         interfaceId: Guid = IID.IActivationFactory,
     ): ComObjectReference {
-        val definition = WinRtActivationFactorySupport.createCcwDefinition(factory, factoryInterfaces)
-        val host = WinRtInspectableComObject(
+        val definition = WinRTActivationFactorySupport.createCcwDefinition(factory, factoryInterfaces)
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
             defaultInterfaceId = definition.defaultInterfaceId,
@@ -350,10 +350,10 @@ object ComWrappersSupport {
 
     private fun createCachedCcwHost(value: Any): CachedCcwHost {
         val definition = createCcwDefinition(value)
-        val composableInnerReference = (value as? WinRtComposableObject)
-            ?.winRtComposableObjectReference
+        val composableInnerReference = (value as? WinRTComposableObject)
+            ?.winRTComposableObjectReference
             ?.inner
-        val host = WinRtInspectableComObject(
+        val host = WinRTInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
             defaultInterfaceId = definition.defaultInterfaceId,
@@ -381,8 +381,8 @@ object ComWrappersSupport {
         value: Any,
         interfaceId: Guid?,
     ): ComObjectReference? {
-        val composableReference = (value as? WinRtComposableObject)
-            ?.winRtComposableObjectReference
+        val composableReference = (value as? WinRTComposableObject)
+            ?.winRTComposableObjectReference
             ?: return null
         val outerReference = composableReference.outer
         traceCcw(
@@ -408,9 +408,9 @@ object ComWrappersSupport {
         if (value == null) {
             return PlatformAbi.nullPointer
         }
-        val winRtObject = value as? IWinRTObject
-        if (winRtObject != null && winRtObject.hasUnwrappableNativeObject) {
-            val nativeObject = winRtObject.nativeObject
+        val winRTObject = value as? IWinRTObject
+        if (winRTObject != null && winRTObject.hasUnwrappableNativeObject) {
+            val nativeObject = winRTObject.nativeObject
             if (interfaceId == null || interfaceId == nativeObject.interfaceId) {
                 return PlatformAbi.fromRawComPtr(nativeObject.getRefPointer())
             }
@@ -433,8 +433,8 @@ object ComWrappersSupport {
         value: Any,
         interfaceId: Guid?,
     ): RawAddress? {
-        val composableReference = (value as? WinRtComposableObject)
-            ?.winRtComposableObjectReference
+        val composableReference = (value as? WinRTComposableObject)
+            ?.winRTComposableObjectReference
             ?: return null
         val outerReference = composableReference.outer
         val detachedPointer = if (interfaceId == null || interfaceId == outerReference.interfaceId) {
@@ -443,7 +443,7 @@ object ComWrappersSupport {
             queryInterfacePointerForAbi(outerReference, interfaceId)
         } else {
             queryInterfacePointerForAbi(outerReference, interfaceId)
-        } ?: throw WinRtUnsupportedOperationException(
+        } ?: throw WinRTUnsupportedOperationException(
             "Composable CCW does not implement interface '$interfaceId'.",
             KnownHResults.E_NOINTERFACE,
         )
@@ -458,7 +458,7 @@ object ComWrappersSupport {
         value: Any,
         outerInterfaceId: Guid? = null,
         createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
-    ): WinRtComposableObjectReference =
+    ): WinRTComposableObjectReference =
         createComposableCCWForObject(
             value = value,
             outerInterfaceId = outerInterfaceId,
@@ -471,12 +471,12 @@ object ComWrappersSupport {
         outerInterfaceId: Guid?,
         instanceInterfaceId: Guid? = null,
         createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
-    ): WinRtComposableObjectReference {
+    ): WinRTComposableObjectReference {
         platformEnsureInspectableProjectionInteropRegistered()
         val definition = createCcwDefinition(value)
         var innerReference: IInspectableReference? = null
-        lateinit var host: WinRtInspectableComObject
-        host = WinRtInspectableComObject(
+        lateinit var host: WinRTInspectableComObject
+        host = WinRTInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
             defaultInterfaceId = definition.defaultInterfaceId,
@@ -514,7 +514,7 @@ object ComWrappersSupport {
                 }
                 val instancePointer = PlatformAbi.readPointer(instanceOut)
                 if (PlatformAbi.isNull(instancePointer)) {
-                    throw WinRtUnsupportedOperationException(
+                    throw WinRTUnsupportedOperationException(
                         "Composable factory returned a null instance pointer.",
                         KnownHResults.E_POINTER,
                     )
@@ -565,7 +565,7 @@ object ComWrappersSupport {
                     }
                 } finally {
                     if (!isAggregation) {
-                        WinRtPlatformApi.releaseRaw(instancePointer)
+                        WinRTPlatformApi.releaseRaw(instancePointer)
                     }
                 }
                 val projectedReference = if (isAggregation) {
@@ -575,7 +575,7 @@ object ComWrappersSupport {
                 } else {
                     composedReference
                 }
-                WinRtComposableObjectReference(
+                WinRTComposableObjectReference(
                     instance = projectedReference,
                     inner = innerReference,
                     composed = composedReference.takeUnless { it === projectedReference },
@@ -614,8 +614,8 @@ object ComWrappersSupport {
     }
 
     private fun registerBuiltInCcwFactories() {
-        ccwFactories[WinRtActivationFactory::class] = { value ->
-            WinRtActivationFactorySupport.createCcwDefinition(value as WinRtActivationFactory)
+        ccwFactories[WinRTActivationFactory::class] = { value ->
+            WinRTActivationFactorySupport.createCcwDefinition(value as WinRTActivationFactory)
         }
     }
 
@@ -627,7 +627,7 @@ object ComWrappersSupport {
 
     private fun createRcwCore(
         pointer: RawAddress,
-        staticallyDeterminedType: WinRtTypeHandle?,
+        staticallyDeterminedType: WinRTTypeHandle?,
     ): Any? {
         val inspectable = wrapInspectable(pointer)
         if (inspectable != null) {
@@ -675,7 +675,7 @@ object ComWrappersSupport {
     }
 
     private fun resolveFactory(
-        staticallyDeterminedType: WinRtTypeHandle?,
+        staticallyDeterminedType: WinRTTypeHandle?,
         runtimeClassName: String?,
     ): ((IInspectableReference) -> Any)? {
         if (staticallyDeterminedType != null) {
@@ -691,7 +691,7 @@ object ComWrappersSupport {
     }
 
     private fun resolveInterfaceProjectionFactory(
-        staticallyDeterminedType: WinRtTypeHandle?,
+        staticallyDeterminedType: WinRTTypeHandle?,
         projectedTypeName: String?,
     ): ((IUnknownReference) -> Any)? {
         if (staticallyDeterminedType != null) {
@@ -711,13 +711,13 @@ object ComWrappersSupport {
         }
 
     private fun hasReferenceTracker(pointer: RawAddress): Boolean {
-        val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTracker)
+        val result = WinRTPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTracker)
         val trackerPointer = result.pointer
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(trackerPointer)) {
             return false
         }
-        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
-        WinRtPlatformApi.releaseRaw(trackerPointer)
+        WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
+        WinRTPlatformApi.releaseRaw(trackerPointer)
         return true
     }
 
@@ -727,7 +727,7 @@ object ComWrappersSupport {
     ): RawAddress? {
         // Mirrors CsWinRT IObjectReference.TryAs(Guid, out IntPtr) used from ICustomQueryInterface:
         // the QI result is an ABI-owned pointer and must not take the aggregated As<T>() release path.
-        val result = WinRtPlatformApi.queryInterfaceRaw(
+        val result = WinRTPlatformApi.queryInterfaceRaw(
             PlatformAbi.fromRawComPtr(reference.pointer),
             requestedInterfaceId,
         )
@@ -735,7 +735,7 @@ object ComWrappersSupport {
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(queriedPointer)) {
             return null
         }
-        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
         return queriedPointer
     }
 
@@ -743,29 +743,29 @@ object ComWrappersSupport {
         pointer: RawAddress,
         requestedInterfaceId: Guid,
     ): RawAddress {
-        val result = WinRtPlatformApi.queryInterfaceRaw(pointer, requestedInterfaceId)
+        val result = WinRTPlatformApi.queryInterfaceRaw(pointer, requestedInterfaceId)
         val queriedPointer = result.pointer
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(queriedPointer)) {
-            throw WinRtUnsupportedOperationException(
+            throw WinRTUnsupportedOperationException(
                 "Composable factory instance does not implement interface '$requestedInterfaceId'.",
                 KnownHResults.E_NOINTERFACE,
             )
         }
-        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
         return queriedPointer
     }
 
     private fun rcwCacheKey(pointer: RawAddress): Long {
-        val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IUnknown)
+        val result = WinRTPlatformApi.queryInterfaceRaw(pointer, IID.IUnknown)
         val unknownPointer = result.pointer
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(unknownPointer)) {
             return PlatformAbi.pointerKey(pointer)
         }
-        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
         return try {
             PlatformAbi.pointerKey(unknownPointer)
         } finally {
-            WinRtPlatformApi.releaseRaw(unknownPointer)
+            WinRTPlatformApi.releaseRaw(unknownPointer)
         }
     }
 
@@ -796,7 +796,7 @@ object ComWrappersSupport {
         }
     }
 
-    private fun createCcwDefinition(value: Any): WinRtCcwDefinition {
+    private fun createCcwDefinition(value: Any): WinRTCcwDefinition {
         findCcwFactory(value)?.let { factory ->
             traceCcw("create CCW definition value=${value::class.qualifiedName} source=registered-factory")
             return InteropRuntimeHooks.augmentInspectableDefinition(
@@ -816,9 +816,9 @@ object ComWrappersSupport {
             value,
             XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
                 value,
-                WinRtCcwDefinition(
+                WinRTCcwDefinition(
                     interfaceDefinitions = listOf(
-                        WinRtInspectableInterfaceDefinition(
+                        WinRTInspectableInterfaceDefinition(
                             interfaceId = IID.IInspectable,
                             methods = emptyList(),
                         ),
@@ -830,13 +830,13 @@ object ComWrappersSupport {
         )
     }
 
-    private fun findCcwFactory(value: Any): ((Any) -> WinRtCcwDefinition)? {
+    private fun findCcwFactory(value: Any): ((Any) -> WinRTCcwDefinition)? {
         ccwFactories[value::class]?.let { return it }
         return ccwFactories.entries.firstOrNull { (type, _) -> type.isInstance(value) }?.value
     }
 
     private fun ownedReference(
-        host: WinRtInspectableComObject,
+        host: WinRTInspectableComObject,
         interfaceId: Guid,
     ): ComObjectReference =
         ManagedReferenceHostSupport.wrapOwnedReference(
@@ -867,7 +867,7 @@ object ComWrappersSupport {
     }
 
     private class CachedCcwHost(
-        private val host: WinRtInspectableComObject,
+        private val host: WinRTInspectableComObject,
         val defaultInterfaceId: Guid,
     ) {
         private val lock = PlatformLock()

@@ -10,7 +10,7 @@ private const val IREFERENCE_ARRAY_GENERIC_INTERFACE = "61C17707-2D65-11E0-9AE8-
  * `IReferenceArray<T>`, and `IPropertyValue` support without making those structs
  * built-in runtime public model types.
  */
-object WinRtValueBoxingRegistration {
+object WinRTValueBoxingRegistration {
     fun <T : Any> registerStruct(
         type: KClass<T>,
         projectedTypeName: String,
@@ -27,7 +27,7 @@ object WinRtValueBoxingRegistration {
             known?.referenceArrayInterfaceId ?: ParameterizedInterfaceId.createFromSignature(
                 "pinterface({${IREFERENCE_ARRAY_GENERIC_INTERFACE.lowercase()}};$signature)",
             )
-        val metadata = WinRtValueTypeMetadata(
+        val metadata = WinRTValueTypeMetadata(
             projectedClass = type,
             nullableInterfaceId = nullableInterfaceId,
             referenceArrayInterfaceId = referenceArrayInterfaceId,
@@ -45,7 +45,7 @@ object WinRtValueBoxingRegistration {
                 abiLayout = adapter.layout.abiLayout,
                 exactUnbox = { value ->
                     if (!type.isInstance(value)) {
-                        throw WinRtInvalidCastException(
+                        throw WinRTInvalidCastException(
                             "Expected projected value assignable to ${type.typeDisplayName()}.",
                             HResult(TYPE_E_TYPEMISMATCH),
                         )
@@ -62,7 +62,7 @@ object WinRtValueBoxingRegistration {
             helperType = type,
             abiTypeName = projectedTypeName,
         )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
             type = type,
             projectedTypeName = projectedTypeName,
             helperType = type,

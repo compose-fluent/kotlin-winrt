@@ -3,39 +3,39 @@ package io.github.composefluent.winrt.runtime
 import kotlin.reflect.KClass
 
 // ---------------------------------------------------------------------------
-// Registry lookup — replaces the old expect fun platformRegisterWinRtType.
+// Registry lookup — replaces the old expect fun platformRegisterWinRTType.
 // Annotation scanning has been removed; all types must be registered explicitly
-// via WinRtTypeRegistry.register() or the Projections helpers.
+// via WinRTTypeRegistry.register() or the Projections helpers.
 // ---------------------------------------------------------------------------
 
-internal fun KClass<*>.registeredWinRtType(): WinRtTypeId<*>? = WinRtTypeRegistry.findByClass(this)
+internal fun KClass<*>.registeredWinRTType(): WinRTTypeId<*>? = WinRTTypeRegistry.findByClass(this)
 
 internal fun KClass<*>.typeDisplayName(): String = qualifiedName ?: simpleName ?: "<anonymous>"
 
 // ---------------------------------------------------------------------------
-// Enum support — driven by WinRtTypeId.enumAbiValue / enumEntries.
+// Enum support — driven by WinRTTypeId.enumAbiValue / enumEntries.
 // No Java reflection; enums must supply entries at registration time.
 // ---------------------------------------------------------------------------
 
 internal fun isEnumType(type: KClass<*>): Boolean =
-    type.registeredWinRtType()?.enumAbiValue != null
+    type.registeredWinRTType()?.enumAbiValue != null
 
 @Suppress("UNCHECKED_CAST")
 internal fun enumConstants(type: KClass<*>): Array<Any>? =
-    (type.registeredWinRtType()?.enumEntries as? Array<Any>)
+    (type.registeredWinRTType()?.enumEntries as? Array<Any>)
 
 // ---------------------------------------------------------------------------
 // Exception / assignability checks — reflection-free.
-// "is exception" is stored in WinRtTypeId.isExceptionType at registration.
-// Array element type is handled by WinRtTypeClassifier (already in commonMain).
+// "is exception" is stored in WinRTTypeId.isExceptionType at registration.
+// Array element type is handled by WinRTTypeClassifier (already in commonMain).
 // ---------------------------------------------------------------------------
 
 internal fun isExceptionType(type: KClass<*>): Boolean =
-    type.registeredWinRtType()?.isExceptionType == true
+    type.registeredWinRTType()?.isExceptionType == true
 
 /** Returns the array element KClass if [type] is a typed array registered in the registry, else null. */
 internal fun arrayElementType(type: KClass<*>): KClass<*>? =
-    WinRtTypeClassifier.primitiveArrayElementType(type)
+    WinRTTypeClassifier.primitiveArrayElementType(type)
         ?: TypeNameSupport.registeredArrayElementType(type)
 
 /** Cross-platform assignability: target is a supertype of candidate if candidate is registered
@@ -44,7 +44,7 @@ internal fun isAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): 
     when {
         targetType == candidateType -> true
         // Exception hierarchy: check via isExceptionType registration
-        targetType == Exception::class -> candidateType.registeredWinRtType()?.isExceptionType == true
+        targetType == Exception::class -> candidateType.registeredWinRTType()?.isExceptionType == true
         else -> false
     }
 
@@ -52,21 +52,21 @@ internal fun isAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): 
 // Primitive / name helpers — pure KClass, no java.* bridge.
 // ---------------------------------------------------------------------------
 
-internal fun isPrimitiveWinRtType(type: KClass<*>): Boolean =
-    type.registeredWinRtType()?.let { it.isWindowsRuntimeType && !it.isRuntimeClass && it.guid == null } == true
+internal fun isPrimitiveWinRTType(type: KClass<*>): Boolean =
+    type.registeredWinRTType()?.let { it.isWindowsRuntimeType && !it.isRuntimeClass && it.guid == null } == true
 
 internal fun typeName(type: KClass<*>): String =
     type.qualifiedName ?: type.simpleName ?: "<anonymous>"
 
 internal fun boxedRuntimeClassName(type: KClass<*>): String? =
-    WinRtValueBoxing.boxedRuntimeClassNameForType(type)
+    WinRTValueBoxing.boxedRuntimeClassNameForType(type)
 
-internal fun runtimeClassNameForNonWinRtType(type: KClass<*>): String? =
+internal fun runtimeClassNameForNonWinRTType(type: KClass<*>): String? =
     ComWrappersSupport.getRuntimeClassNameForNonWinRTTypeFromLookupTable(type)
 
 // ---------------------------------------------------------------------------
 // Projection bootstrap — no longer platform-specific; both targets run the
-// same WinRtBuiltInProjectionMappings code.
+// same WinRTBuiltInProjectionMappings code.
 // ---------------------------------------------------------------------------
 
 private var projectionMappingsRegistered = false
@@ -76,7 +76,7 @@ internal fun ensureProjectionMappingsRegistered() {
     if (projectionMappingsRegistered || projectionMappingsRegistering) return
     projectionMappingsRegistering = true
     try {
-        WinRtBuiltInProjectionMappings.register()
+        WinRTBuiltInProjectionMappings.register()
         projectionMappingsRegistered = true
     } finally {
         projectionMappingsRegistering = false

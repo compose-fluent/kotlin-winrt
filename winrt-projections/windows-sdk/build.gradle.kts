@@ -11,9 +11,9 @@ base {
     archivesName.set("winrt-projections-windows-sdk")
 }
 
-val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkVersion")
+val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkVersion")
     .orElse("10.0.26100.0")
-val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRt.projections.windowsSdkArtifactVersion")
+val projectionWindowsSdkArtifactVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkArtifactVersion")
     .orElse(providers.provider { projectionArtifactVersion(projectionWindowsSdkVersion.get(), rootProject.version.toString()) })
 
 version = projectionWindowsSdkArtifactVersion.get()
@@ -27,7 +27,7 @@ kotlin {
     mingwX64()
 }
 
-winRt {
+winRT {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     namespace("Windows")
     excludeNamespace("Windows.UI.Xaml")
@@ -47,10 +47,10 @@ winRt {
 
 fun projectionArtifactVersion(
     metadataVersion: String,
-    kotlinWinRtVersion: String,
+    kotlinWinRTVersion: String,
 ): String =
-    if (kotlinWinRtVersion.endsWith("-SNAPSHOT")) {
-        "$metadataVersion-kotlin-winrt-$kotlinWinRtVersion"
+    if (kotlinWinRTVersion.endsWith("-SNAPSHOT")) {
+        "$metadataVersion-kotlin-winrt-$kotlinWinRTVersion"
     } else {
         metadataVersion
     }

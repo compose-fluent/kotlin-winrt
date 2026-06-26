@@ -31,14 +31,14 @@ class CommonRuntimeModelsTest {
 
     @Test
     fun winrt_exception_models_preserve_hresult_and_restricted_info() {
-        val restrictedInfo = WinRtRestrictedErrorInfo(
+        val restrictedInfo = WinRTRestrictedErrorInfo(
             description = "description",
             restrictedDescription = "restricted",
             reference = "ref",
             capabilitySid = "sid",
         )
 
-        val error = WinRtAccessDeniedException(
+        val error = WinRTAccessDeniedException(
             message = "denied",
             hResult = KnownHResults.E_ACCESSDENIED,
             restrictedErrorInfo = restrictedInfo,
@@ -50,8 +50,8 @@ class CommonRuntimeModelsTest {
 
     @Test
     fun async_status_rejects_unknown_abi_values() {
-        val error = assertFailsWith<WinRtIllegalArgumentException> {
-            WinRtAsyncStatus.fromAbi(99)
+        val error = assertFailsWith<WinRTIllegalArgumentException> {
+            WinRTAsyncStatus.fromAbi(99)
         }
 
         assertEquals(KnownHResults.E_INVALIDARG, error.hResult)

@@ -10,13 +10,13 @@ class IWinRTObjectTest {
     @Test
     fun caches_query_interface_results_by_type_handle() {
         val requestedInterface = Guid("12345678-1234-1234-1234-1234567890AB")
-        val typeHandle = WinRtTypeHandle("test.IFoo", requestedInterface)
+        val typeHandle = WinRTTypeHandle("test.IFoo", requestedInterface)
         val queriedReference = FakeComObjectReference(requestedInterface)
         val nativeReference = FakeComObjectReference(
             IID.IInspectable,
             mapOf(requestedInterface to queriedReference),
         )
-        val instance = FakeWinRtObject(nativeReference)
+        val instance = FakeWinRTObject(nativeReference)
 
         try {
             assertTrue(instance.isInterfaceImplemented(typeHandle, throwIfNotImplemented = false))
@@ -32,9 +32,9 @@ class IWinRTObjectTest {
     @Test
     fun reports_missing_interface_without_caching_false_result() {
         val requestedInterface = Guid("12345678-1234-1234-1234-1234567890AC")
-        val typeHandle = WinRtTypeHandle("test.IMissing", requestedInterface)
+        val typeHandle = WinRTTypeHandle("test.IMissing", requestedInterface)
         val nativeReference = FakeComObjectReference(IID.IInspectable)
-        val instance = FakeWinRtObject(nativeReference)
+        val instance = FakeWinRTObject(nativeReference)
 
         try {
             assertFalse(instance.isInterfaceImplemented(typeHandle, throwIfNotImplemented = false))
@@ -43,7 +43,7 @@ class IWinRTObjectTest {
             try {
                 instance.getObjectReferenceForType(typeHandle)
                 throw AssertionError("Expected missing interface lookup to fail")
-            } catch (error: WinRtUnsupportedOperationException) {
+            } catch (error: WinRTUnsupportedOperationException) {
                 assertEquals(KnownHResults.E_NOINTERFACE, error.hResult)
             }
 
@@ -55,9 +55,9 @@ class IWinRTObjectTest {
 
     @Test
     fun additional_type_data_is_stable_per_instance() {
-        val typeHandle = WinRtTypeHandle("test.IHelper", Guid("12345678-1234-1234-1234-1234567890AD"))
+        val typeHandle = WinRTTypeHandle("test.IHelper", Guid("12345678-1234-1234-1234-1234567890AD"))
         val nativeReference = FakeComObjectReference(IID.IInspectable)
-        val instance = FakeWinRtObject(nativeReference)
+        val instance = FakeWinRTObject(nativeReference)
         var factoryCalls = 0
 
         try {
@@ -80,9 +80,9 @@ class IWinRTObjectTest {
     @Test
     fun primary_type_handle_short_circuits_query_interface_lookup() {
         val primaryInterface = Guid("12345678-1234-1234-1234-1234567890AE")
-        val typeHandle = WinRtTypeHandle("test.IPrimary", primaryInterface)
+        val typeHandle = WinRTTypeHandle("test.IPrimary", primaryInterface)
         val nativeReference = FakeComObjectReference(primaryInterface)
-        val instance = FakeWinRtObject(nativeReference, primaryTypeHandle = typeHandle)
+        val instance = FakeWinRTObject(nativeReference, primaryTypeHandle = typeHandle)
 
         try {
             assertTrue(instance.isInterfaceImplemented(typeHandle, throwIfNotImplemented = true))
@@ -94,9 +94,9 @@ class IWinRTObjectTest {
     }
 }
 
-private class FakeWinRtObject(
+private class FakeWinRTObject(
     override val nativeObject: ComObjectReference,
-    override val primaryTypeHandle: WinRtTypeHandle? = null,
+    override val primaryTypeHandle: WinRTTypeHandle? = null,
     override val hasUnwrappableNativeObject: Boolean = true,
 ) : IWinRTObject
 

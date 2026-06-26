@@ -20,7 +20,7 @@ object NativeStringMarshaller {
 
     fun disposeAbi(handle: RawAddress) {
         if (!PlatformAbi.isNull(handle)) {
-            WinRtPlatformApi.windowsDeleteStringRaw(handle)
+            WinRTPlatformApi.windowsDeleteStringRaw(handle)
         }
     }
 

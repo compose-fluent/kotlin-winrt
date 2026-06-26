@@ -165,7 +165,7 @@ jobs:
             .\gradlew.bat `
               :winrt-projections:windows-sdk:compileKotlinJvm `
               :winrt-projections:windows-sdk:compileKotlinMingwX64 `
-              "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
               $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -173,8 +173,8 @@ jobs:
           .\gradlew.bat `
             :winrt-projections:windows-app-sdk:compileKotlinJvm `
             :winrt-projections:windows-app-sdk:compileKotlinMingwX64 `
-            "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            "-PkotlinWinRT.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRT.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
             $releaseArgs `
             --no-configuration-cache
 
@@ -192,15 +192,15 @@ jobs:
           foreach ($sdkVersion in $sdkVersions) {
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishToMavenLocal `
-              "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
               $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           .\gradlew.bat `
             :winrt-projections:windows-app-sdk:publishToMavenLocal `
-            "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            "-PkotlinWinRT.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRT.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
             $releaseArgs `
             --no-configuration-cache
 
@@ -246,14 +246,14 @@ jobs:
           foreach ($sdkVersion in $sdkVersions) {
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishAllPublicationsToMavenCentralRepository `
-              "-PkotlinWinRt.projections.windowsSdkVersion=$sdkVersion" `
+              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
               $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           .\gradlew.bat `
             :winrt-projections:windows-app-sdk:publishAllPublicationsToMavenCentralRepository `
-            "-PkotlinWinRt.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
-            "-PkotlinWinRt.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
+            "-PkotlinWinRT.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
+            "-PkotlinWinRT.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
             $releaseArgs `
             --no-configuration-cache

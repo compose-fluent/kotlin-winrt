@@ -3,18 +3,18 @@ package io.github.composefluent.winrt.runtime
 object ParameterizedInterfaceId {
     private val namespace = Guid("D57AF411-737B-C042-ABAE-878B1E16ADEE")
 
-    fun createFromSignature(signature: WinRtTypeSignature): Guid =
+    fun createFromSignature(signature: WinRTTypeSignature): Guid =
         createFromSignature(signature.render())
 
     fun createFromParameterizedInterface(
         genericInterface: Guid,
-        vararg arguments: WinRtTypeSignature,
-    ): Guid = createFromSignature(WinRtTypeSignature.parameterizedInterface(genericInterface, *arguments))
+        vararg arguments: WinRTTypeSignature,
+    ): Guid = createFromSignature(WinRTTypeSignature.parameterizedInterface(genericInterface, *arguments))
 
     fun createFromParameterizedInterface(
         genericInterface: String,
-        vararg arguments: WinRtTypeSignature,
-    ): Guid = createFromSignature(WinRtTypeSignature.parameterizedInterface(genericInterface, *arguments))
+        vararg arguments: WinRTTypeSignature,
+    ): Guid = createFromSignature(WinRTTypeSignature.parameterizedInterface(genericInterface, *arguments))
 
     fun createFromSignature(signature: String): Guid {
         val hash = Sha1.digest(namespace.toLittleEndianBytes() + signature.encodeToByteArray())

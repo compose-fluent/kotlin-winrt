@@ -8,17 +8,17 @@ package io.github.composefluent.winrt.runtime
  * while the remaining value-classification and adapter tables stay behind target seams until the
  * broader `ValueBoxing` owner is fully migrated.
  */
-object WinRtReferenceProjection {
+object WinRTReferenceProjection {
     fun createMarshaler(
         value: Any?,
         interfaceId: Guid,
-    ): WinRtProjectionMarshaler? {
+    ): WinRTProjectionMarshaler? {
         if (value == null) {
             return null
         }
         val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
         borrowedProjectionMarshaler(value, typeHandle)?.let { return it }
-        return WinRtProjectionMarshaler.hosted(
+        return WinRTProjectionMarshaler.hosted(
             host = createReferenceHost(interfaceId, value),
             interfaceId = interfaceId,
         )
@@ -53,7 +53,7 @@ object WinRtReferenceProjection {
         }
 }
 
-object WinRtReferenceProjectionInterop {
+object WinRTReferenceProjectionInterop {
     @Suppress("UNCHECKED_CAST")
     fun <T> getReferenceValue(
         reference: ComObjectReference,
@@ -68,7 +68,7 @@ object WinRtReferenceProjectionInterop {
                 arg0 = resultOut,
             )
             HResult(hr).requireSuccess()
-            WinRtReferenceProjection.fromAbi(PlatformAbi.readPointer(resultOut), interfaceId) as T
+            WinRTReferenceProjection.fromAbi(PlatformAbi.readPointer(resultOut), interfaceId) as T
         }
 
     fun setReferenceValue(
@@ -77,7 +77,7 @@ object WinRtReferenceProjectionInterop {
         value: Any?,
         interfaceId: Guid,
     ) {
-        WinRtReferenceProjection.createMarshaler(value, interfaceId).use { valueAbi ->
+        WinRTReferenceProjection.createMarshaler(value, interfaceId).use { valueAbi ->
             val hr = ComVtableInvoker.invokeArgs(
                 instance = reference.pointer,
                 slot = slot,
@@ -88,15 +88,15 @@ object WinRtReferenceProjectionInterop {
     }
 }
 
-object WinRtReferenceArrayProjection {
+object WinRTReferenceArrayProjection {
     fun createMarshaler(
         value: Any?,
         interfaceId: Guid,
-    ): WinRtProjectionMarshaler? {
+    ): WinRTProjectionMarshaler? {
         if (value == null) {
             return null
         }
-        return WinRtProjectionMarshaler.hosted(
+        return WinRTProjectionMarshaler.hosted(
             host = createReferenceArrayHost(interfaceId, value),
             interfaceId = interfaceId,
         )
@@ -127,18 +127,18 @@ object WinRtReferenceArrayProjection {
         }
 }
 
-object WinRtPropertyValueProjection {
-    fun createMarshaler(value: Any?): WinRtProjectionMarshaler? {
-        if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
+object WinRTPropertyValueProjection {
+    fun createMarshaler(value: Any?): WinRTProjectionMarshaler? {
+        if (value == null || !WinRTValueBoxing.isPropertyValueCompatible(value)) {
             return null
         }
-        return WinRtProjectionMarshaler.owned(
+        return WinRTProjectionMarshaler.owned(
             ValueBoxingInterop.createPropertyValueReference(value),
         )
     }
 
     fun fromManaged(value: Any?): RawAddress =
-        if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
+        if (value == null || !WinRTValueBoxing.isPropertyValueCompatible(value)) {
             PlatformAbi.nullPointer
         } else {
             ValueBoxingInterop.createPropertyValueReference(value).useAndGetRef()

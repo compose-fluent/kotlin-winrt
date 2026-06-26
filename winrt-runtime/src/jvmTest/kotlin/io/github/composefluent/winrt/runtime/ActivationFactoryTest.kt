@@ -10,21 +10,21 @@ class ActivationFactoryJvmTest {
         val root = Files.createTempDirectory("kotlin-winrt-runtime-assets-")
         val asset = root.resolve("SimpleMathComponent.dll")
         Files.write(asset, byteArrayOf(0))
-        withSystemProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, root.toString()) {
-            assertEquals(asset.toString(), WinRtPlatformApi.resolveModulePathRaw(asset.fileName.toString()))
+        withSystemProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName, root.toString()) {
+            assertEquals(asset.toString(), WinRTPlatformApi.resolveModulePathRaw(asset.fileName.toString()))
         }
     }
 
     @Test
     fun jvm_module_path_uses_working_directory_runtime_assets() {
         val workingDirectory = Files.createTempDirectory("kotlin-winrt-working-dir-")
-        val assetsRoot = workingDirectory.resolve(WinRtRuntimeAssets.runtimeAssetsDirectoryName)
+        val assetsRoot = workingDirectory.resolve(WinRTRuntimeAssets.runtimeAssetsDirectoryName)
         Files.createDirectories(assetsRoot)
         val asset = assetsRoot.resolve("SimpleMathComponent.dll")
         Files.write(asset, byteArrayOf(0))
         withSystemProperty("user.dir", workingDirectory.toString()) {
-            withSystemProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, null) {
-                assertEquals(asset.toString(), WinRtPlatformApi.resolveModulePathRaw(asset.fileName.toString()))
+            withSystemProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName, null) {
+                assertEquals(asset.toString(), WinRTPlatformApi.resolveModulePathRaw(asset.fileName.toString()))
             }
         }
     }

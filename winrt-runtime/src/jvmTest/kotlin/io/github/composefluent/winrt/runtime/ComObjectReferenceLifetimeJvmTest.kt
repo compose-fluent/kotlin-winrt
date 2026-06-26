@@ -57,10 +57,10 @@ class ComObjectReferenceLifetimeJvmTest {
         assertEquals(1, cleanupCount.get())
     }
 
-    private fun inspectableHost(cleanupCount: AtomicInteger): WinRtInspectableComObject =
-        WinRtInspectableComObject(
+    private fun inspectableHost(cleanupCount: AtomicInteger): WinRTInspectableComObject =
+        WinRTInspectableComObject(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = IID.IInspectable,
                     methods = emptyList(),
                 ),

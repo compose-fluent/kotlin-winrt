@@ -1,53 +1,53 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMetadataModel
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
-import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
-import io.github.composefluent.winrt.metadata.WinRtEventDefinition
-import io.github.composefluent.winrt.metadata.WinRtEventHelperSubclassDescriptor
-import io.github.composefluent.winrt.metadata.WinRtEventHandlerKind
-import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
-import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
-import io.github.composefluent.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
-import io.github.composefluent.winrt.metadata.WinRtIntegralType
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
-import io.github.composefluent.winrt.metadata.WinRtMetadataParameterCategory
-import io.github.composefluent.winrt.metadata.WinRtMetadataSource
-import io.github.composefluent.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtNamespace
-import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
-import io.github.composefluent.winrt.metadata.WinRtProjectedAttributeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeRef
-import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
-import io.github.composefluent.winrt.metadata.WinRtTypeKind
-import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
+import io.github.composefluent.winrt.metadata.WinRTCustomMappedMemberOutputDescriptor
+import io.github.composefluent.winrt.metadata.WinRTEventDefinition
+import io.github.composefluent.winrt.metadata.WinRTEventHelperSubclassDescriptor
+import io.github.composefluent.winrt.metadata.WinRTEventHandlerKind
+import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
+import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
+import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
+import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
+import io.github.composefluent.winrt.metadata.WinRTIntegralType
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventory
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventoryBuilder
+import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRTMetadataSource
+import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTObjectReferenceSurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTParameterDefinition
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTProjectedAttributeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTRequiredInterfaceAugmentationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTSignatureWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDeclarationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeRef
+import io.github.composefluent.winrt.metadata.WinRTTypeRefKind
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
+import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.metadata.projectionInventory
-import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
-import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
-import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
-import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRTGuidTypeName
+import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
-import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
-import io.github.composefluent.winrt.metadata.winRtEventHandlerKindForTypeName
+import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
+import io.github.composefluent.winrt.metadata.winRTEventHandlerKindForTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -64,34 +64,34 @@ import io.github.composefluent.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.composefluent.winrt.runtime.NativeScalarFieldSpec
 import io.github.composefluent.winrt.runtime.NativeStructLayout
 import io.github.composefluent.winrt.runtime.NativeStructScalarKind
-import io.github.composefluent.winrt.runtime.WinRtBindableIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorViewProjection
-import io.github.composefluent.winrt.runtime.WinRtCollectionInterfaceIds
-import io.github.composefluent.winrt.runtime.WinRtDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtListProjection
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtTypeSignature
-import io.github.composefluent.winrt.runtime.WinRtTypeHandle
-import io.github.composefluent.winrt.runtime.WinRtUri
-import io.github.composefluent.winrt.runtime.WinRtDelegateBridge
-import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
-import io.github.composefluent.winrt.runtime.WinRtDelegateReference
-import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
-import io.github.composefluent.winrt.runtime.WinRtEvent
+import io.github.composefluent.winrt.runtime.WinRTBindableIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorViewProjection
+import io.github.composefluent.winrt.runtime.WinRTCollectionInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRTDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTListProjection
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyListProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceArrayProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTUri
+import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
+import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
+import io.github.composefluent.winrt.runtime.WinRTDelegateReference
+import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
+import io.github.composefluent.winrt.runtime.WinRTEvent
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -121,7 +121,7 @@ class KotlinProjectionGenerator(
     private val renderer: KotlinProjectionRenderer = KotlinProjectionRenderer(),
     private val supportRenderer: KotlinProjectionSupportRenderer = KotlinProjectionSupportRenderer(),
     private val emitSupportFiles: Boolean = false,
-    private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+    private val projectionContext: WinRTMetadataProjectionContext = WinRTMetadataProjectionContext(sources = emptyList()),
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
     private val authoredRuntimeClassNames: Set<String> = emptySet(),
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
@@ -129,14 +129,14 @@ class KotlinProjectionGenerator(
     private val supportOwnerIdentity: String? = null,
     private val emitJvmAuthoringHostExports: Boolean = true,
 ) {
-    private val genericTypeInstantiationsClassName = winRtGenericTypeInstantiationsClassName(supportOwnerIdentity)
-    private val authoringHostExportsClassName = winRtAuthoringHostExportsClassName(supportOwnerIdentity)
-    private val authoringServerActivationFactoriesClassName = winRtAuthoringServerActivationFactoriesClassName(supportOwnerIdentity)
-    private val authoringModuleActivationFactoryPlanClassName = winRtAuthoringModuleActivationFactoryPlanClassName(supportOwnerIdentity)
-    private val modulePlatformAbiCallClassName = winRtModulePlatformAbiCallClassName(supportOwnerIdentity)
-    private val genericAbiSupportFileName = winRtGenericAbiSupportFileName(supportOwnerIdentity)
-    private val eventProjectionHelperFilePrefix = winRtEventProjectionHelperFilePrefix(supportOwnerIdentity)
-    private val namespaceAdditionsClassName = winRtNamespaceAdditionsClassName(supportOwnerIdentity)
+    private val genericTypeInstantiationsClassName = winRTGenericTypeInstantiationsClassName(supportOwnerIdentity)
+    private val authoringHostExportsClassName = winRTAuthoringHostExportsClassName(supportOwnerIdentity)
+    private val authoringServerActivationFactoriesClassName = winRTAuthoringServerActivationFactoriesClassName(supportOwnerIdentity)
+    private val authoringModuleActivationFactoryPlanClassName = winRTAuthoringModuleActivationFactoryPlanClassName(supportOwnerIdentity)
+    private val modulePlatformAbiCallClassName = winRTModulePlatformAbiCallClassName(supportOwnerIdentity)
+    private val genericAbiSupportFileName = winRTGenericAbiSupportFileName(supportOwnerIdentity)
+    private val eventProjectionHelperFilePrefix = winRTEventProjectionHelperFilePrefix(supportOwnerIdentity)
+    private val namespaceAdditionsClassName = winRTNamespaceAdditionsClassName(supportOwnerIdentity)
 
     init {
         require(emitSupportFiles || projectionContext.sources.isEmpty()) {
@@ -144,7 +144,7 @@ class KotlinProjectionGenerator(
         }
     }
 
-    fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
+    fun generate(model: WinRTMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
@@ -158,7 +158,7 @@ class KotlinProjectionGenerator(
         return projectionFiles + supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
     }
 
-    fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
+    fun generateTo(model: WinRTMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
@@ -203,7 +203,7 @@ class KotlinProjectionGenerator(
         )
     }
 
-    private fun completeProjectionModel(model: WinRtMetadataModel): WinRtMetadataModel {
+    private fun completeProjectionModel(model: WinRTMetadataModel): WinRTMetadataModel {
         val normalizedModel = model.normalized()
         if (projectionContext.sources.isEmpty() || projectionContext.include.isEmpty()) {
             return normalizedModel
@@ -216,23 +216,23 @@ class KotlinProjectionGenerator(
             excludedTypes = projectionContext.excludedTypes,
             additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
         )
-        return WinRtMetadataModel(supplementalModel.namespaces + normalizedModel.namespaces).normalized()
+        return WinRTMetadataModel(supplementalModel.namespaces + normalizedModel.namespaces).normalized()
     }
 
-    private fun WinRtMetadataProjectionContext.withWindowsSdkSourceForWindowsProjectionRoots(): WinRtMetadataProjectionContext {
-        if (sources.any { source -> source is WinRtMetadataSource.WindowsSdk }) {
+    private fun WinRTMetadataProjectionContext.withWindowsSdkSourceForWindowsProjectionRoots(): WinRTMetadataProjectionContext {
+        if (sources.any { source -> source is WinRTMetadataSource.WindowsSdk }) {
             return this
         }
         if (include.none { name -> name == "Windows" || name.startsWith("Windows.") }) {
             return this
         }
-        return copy(sources = listOf(WinRtMetadataSource.windowsSdk()) + sources)
+        return copy(sources = listOf(WinRTMetadataSource.windowsSdk()) + sources)
     }
 
-    private fun authoredProjectedTypeNames(model: WinRtMetadataModel): Set<String> =
+    private fun authoredProjectedTypeNames(model: WinRTMetadataModel): Set<String> =
         suppressedProjectionTypeNames
 
-    private fun WinRtMetadataModel.withoutExcludedProjectionSurfaceReferences(): WinRtMetadataModel {
+    private fun WinRTMetadataModel.withoutExcludedProjectionSurfaceReferences(): WinRTMetadataModel {
         val excludedProjectionSurfaceNames = projectionContext.excludedTypes
         if (excludedProjectionSurfaceNames.isEmpty()) {
             return this
@@ -278,18 +278,18 @@ class KotlinProjectionGenerator(
         )
     }
 
-    private fun WinRtTypeRef.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames: Set<String>): Boolean =
+    private fun WinRTTypeRef.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames: Set<String>): Boolean =
         when (kind) {
-            WinRtTypeRefKind.Named ->
+            WinRTTypeRefKind.Named ->
                 qualifiedName.orEmpty().isExcludedProjectionSurface(excludedProjectionSurfaceNames) ||
                     typeArguments.any { argument -> argument.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames) }
 
-            WinRtTypeRefKind.Array ->
+            WinRTTypeRefKind.Array ->
                 elementType?.referencesExcludedProjectionSurface(excludedProjectionSurfaceNames) == true
 
-            WinRtTypeRefKind.GenericTypeParameter,
-            WinRtTypeRefKind.MethodTypeParameter,
-            WinRtTypeRefKind.Unknown,
+            WinRTTypeRefKind.GenericTypeParameter,
+            WinRTTypeRefKind.MethodTypeParameter,
+            WinRTTypeRefKind.Unknown,
             -> false
         }
 
@@ -297,7 +297,7 @@ class KotlinProjectionGenerator(
         excludedProjectionSurfaceNames.any { excluded -> this == excluded || startsWith("$excluded.") }
 
     private fun validateGeneratorContracts(
-        model: WinRtMetadataModel,
+        model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ) {
         if (generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm) {
@@ -314,14 +314,14 @@ class KotlinProjectionGenerator(
         validateEventAccessorBindingContracts(plans)
         validateEventSourceHelperContracts(model, plans)
         val runtimeClassStaticInterfaceNames = plans
-            .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass }
+            .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass }
             .flatMap { plan -> plan.staticInterfaceNames }
             .toSet()
         plans.forEach { plan ->
             if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
                 plan.activatableFactoryInterfaceName?.let { factoryName ->
                     val factoryType = plan.typesByQualifiedName[factoryName]
-                    require(factoryType?.kind == WinRtTypeKind.Interface) {
+                    require(factoryType?.kind == WinRTTypeKind.Interface) {
                         "Generator requires runtime class ${plan.type.qualifiedName} activatable factory interface $factoryName to be present in the metadata model."
                     }
                     require(plan.activatableFactoryInterfaceIid != null) {
@@ -333,7 +333,7 @@ class KotlinProjectionGenerator(
             if (KotlinProjectionCompanionKind.StaticInterfaces in plan.companionKinds) {
                 plan.staticInterfaceBindings.forEach { binding ->
                     val staticType = plan.typesByQualifiedName[binding.qualifiedName]
-                    require(staticType?.kind == WinRtTypeKind.Interface) {
+                    require(staticType?.kind == WinRTTypeKind.Interface) {
                         "Generator requires runtime class ${plan.type.qualifiedName} static interface ${binding.qualifiedName} to be present in the metadata model."
                     }
                     require(binding.iid != null) {
@@ -347,14 +347,14 @@ class KotlinProjectionGenerator(
                 }
                 val defaultInterfaceType = plan.typesByQualifiedName[defaultInterfaceName]
                     ?: plan.typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
-                require(defaultInterfaceType?.kind == WinRtTypeKind.Interface) {
+                require(defaultInterfaceType?.kind == WinRTTypeKind.Interface) {
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to be present in the metadata model."
                 }
                 require(plan.defaultInterfaceIid != null) {
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID before projection rendering."
                 }
             }
-            if (plan.type.kind == WinRtTypeKind.RuntimeClass) {
+            if (plan.type.kind == WinRTTypeKind.RuntimeClass) {
                 plan.implementedInterfaceBindings
                     .filterNot { isMappedCollectionInterfaceName(it.qualifiedName) }
                     .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
@@ -363,7 +363,7 @@ class KotlinProjectionGenerator(
                         if (interfaceType == null && binding.qualifiedName.substringBeforeLast('.', "") != plan.type.namespace) {
                             return@forEach
                         }
-                        require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                        require(interfaceType?.kind == WinRTTypeKind.Interface) {
                             "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to be present in the metadata model."
                         }
                         require(binding.iid != null) {
@@ -382,7 +382,7 @@ class KotlinProjectionGenerator(
                     if (interfaceType == null && requiredInterfaceName.substringBeforeLast('.', "") != plan.type.namespace) {
                         return@forEach
                     }
-                    require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                    require(interfaceType?.kind == WinRTTypeKind.Interface) {
                         "Generator requires ${plan.projectionContractSubject()} required interface $requiredInterfaceName to be present in the metadata model."
                     }
                     require(interfaceType.iid != null) {
@@ -429,7 +429,7 @@ class KotlinProjectionGenerator(
                         "Generator requires runtime class ${plan.type.qualifiedName} to carry composable factory interface metadata before projection rendering.",
                     )
                 val factoryType = plan.typesByQualifiedName[factoryName]
-                require(factoryType?.kind == WinRtTypeKind.Interface) {
+                require(factoryType?.kind == WinRTTypeKind.Interface) {
                     "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface $factoryName to be present in the metadata model."
                 }
                 require(plan.composableFactoryInterfaceIid != null) {
@@ -441,7 +441,7 @@ class KotlinProjectionGenerator(
                     )
                 val defaultInterfaceType = plan.typesByQualifiedName[defaultInterfaceName]
                     ?: plan.typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
-                require(defaultInterfaceType?.kind == WinRtTypeKind.Interface) {
+                require(defaultInterfaceType?.kind == WinRTTypeKind.Interface) {
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to be present in the metadata model for composable projection."
                 }
                 require(plan.defaultInterfaceIid != null) {
@@ -453,12 +453,12 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateEventSourceHelperContracts(
-        model: WinRtMetadataModel,
+        model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ) {
         val typesByQualifiedName = model.namespaces
-            .flatMap(WinRtNamespace::types)
-            .associateBy(WinRtTypeDefinition::qualifiedName)
+            .flatMap(WinRTNamespace::types)
+            .associateBy(WinRTTypeDefinition::qualifiedName)
         val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
         val descriptorsByOwnerAndEvent = planner.eventSourceDescriptors(model, plans)
             .associateBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
@@ -471,15 +471,15 @@ class KotlinProjectionGenerator(
 
     private fun validateRuntimeClassEventSourceHelperContracts(
         plan: KotlinTypeProjectionPlan,
-        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRTEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
     ) {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
             return
         }
         plan.type.events
-            .filterNot(WinRtEventDefinition::isStatic)
+            .filterNot(WinRTEventDefinition::isStatic)
             .forEach { event ->
                 val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
                     ?: return@forEach
@@ -505,11 +505,11 @@ class KotlinProjectionGenerator(
 
     private fun validateStaticEventSourceHelperContracts(
         plan: KotlinTypeProjectionPlan,
-        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRTEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
     ) {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
             return
         }
         eventSourceStaticEvents(plan)
@@ -532,16 +532,16 @@ class KotlinProjectionGenerator(
             }
     }
 
-    private fun eventSourceStaticEvents(plan: KotlinTypeProjectionPlan): List<WinRtEventDefinition> {
-        val merged = linkedMapOf<String, WinRtEventDefinition>()
+    private fun eventSourceStaticEvents(plan: KotlinTypeProjectionPlan): List<WinRTEventDefinition> {
+        val merged = linkedMapOf<String, WinRTEventDefinition>()
         plan.type.events
-            .filter(WinRtEventDefinition::isStatic)
+            .filter(WinRTEventDefinition::isStatic)
             .forEach { event ->
                 merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
             }
         plan.staticInterfaceNames
             .mapNotNull(plan.typesByQualifiedName::get)
-            .flatMap(WinRtTypeDefinition::events)
+            .flatMap(WinRTTypeDefinition::events)
             .forEach { event ->
                 merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
             }
@@ -550,16 +550,16 @@ class KotlinProjectionGenerator(
 
     private fun validateInterfaceNativeProjectionEventSourceHelperContracts(
         plan: KotlinTypeProjectionPlan,
-        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRTEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
     ) {
-        if (plan.type.kind != WinRtTypeKind.Interface || !canRenderInterfaceWrapperSafely(plan)) {
+        if (plan.type.kind != WinRTTypeKind.Interface || !canRenderInterfaceWrapperSafely(plan)) {
             return
         }
         renderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
             interfaceType.events
-                .filterNot(WinRtEventDefinition::isStatic)
+                .filterNot(WinRTEventDefinition::isStatic)
                 .forEach { event ->
                     val eventTypeName = plan.typesByQualifiedName[interfaceType.qualifiedName]
                         ?.events
@@ -584,11 +584,11 @@ class KotlinProjectionGenerator(
 
     private fun validateEventSourceHelperContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         ownerTypeName: String,
         eventTypeName: String,
-        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRTEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
     ) {
         val descriptor = descriptorsByOwnerAndEvent[ownerTypeName to eventTypeName]
@@ -619,7 +619,7 @@ class KotlinProjectionGenerator(
     private fun validateProjectedAttributeContract(
         plan: KotlinTypeProjectionPlan,
         ownerLabel: String,
-        attribute: WinRtProjectedAttributeDescriptor,
+        attribute: WinRTProjectedAttributeDescriptor,
     ) {
         require(renderProjectedAttributeAnnotation(attribute) != null) {
             "Generator requires ${plan.projectionContractSubject()} $ownerLabel projected attribute ${attribute.metadataTypeName} to use renderable attribute metadata before projection rendering."
@@ -627,7 +627,7 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateAuthoredCcwBindingContracts(
-        model: WinRtMetadataModel,
+        model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ) {
         if (!projectionContext.component) {
@@ -641,7 +641,7 @@ class KotlinProjectionGenerator(
         }
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         plans
-            .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
+            .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
             .forEach { authoredPlan ->
                 authoredPlan.type.implementedInterfaces
                     .map { implementation -> implementation.interfaceName.substringBefore('<') }
@@ -657,7 +657,7 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateAuthoringActivationFactorySupportContracts(
-        model: WinRtMetadataModel,
+        model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ) {
         if (!projectionContext.component) {
@@ -671,7 +671,7 @@ class KotlinProjectionGenerator(
         }
         val semanticHelpers = model.semanticHelpers()
         plans
-            .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
+            .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
             .filterNot { plan -> semanticHelpers.isStatic(plan.type) }
             .forEach { plan ->
                 val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
@@ -683,7 +683,7 @@ class KotlinProjectionGenerator(
                 factoryInterfaceNames.forEach { interfaceName ->
                     val interfaceType = plan.typesByQualifiedName[interfaceName]
                         ?: plan.typesByQualifiedName[interfaceName.substringBefore('<').removeSuffix("?")]
-                    require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                    require(interfaceType?.kind == WinRTTypeKind.Interface) {
                         "Generator requires authored runtime class ${plan.type.qualifiedName} activation factory interface $interfaceName to be present in the metadata model before authoring support rendering."
                     }
                     require(interfaceType.iid != null) {
@@ -699,13 +699,13 @@ class KotlinProjectionGenerator(
     ) {
         val interfaceType = interfacePlan.type
         interfaceType.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .forEach { method ->
                 val bindingName = method.abiSlotConstantName(interfaceType.methods)
                 validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, bindingName)
             }
         interfaceType.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
+            .filterNot(WinRTPropertyDefinition::isStatic)
             .forEach { property ->
                 if (property.hasNativeProjectionGetterAccessor()) {
                     validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, "${property.name.uppercase()}_GETTER_SLOT")
@@ -715,7 +715,7 @@ class KotlinProjectionGenerator(
                 }
             }
         interfaceType.events
-            .filterNot(WinRtEventDefinition::isStatic)
+            .filterNot(WinRTEventDefinition::isStatic)
             .forEach { event ->
                 if (event.hasNativeProjectionAddAccessor()) {
                     validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, "${event.name.uppercase()}_ADD_SLOT")
@@ -756,10 +756,10 @@ class KotlinProjectionGenerator(
 
     private fun validateFactoryCreateBindingContracts(
         plan: KotlinTypeProjectionPlan,
-        factoryType: WinRtTypeDefinition,
+        factoryType: WinRTTypeDefinition,
     ) {
         factoryType.methods
-            .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+            .filter(WinRTMethodDefinition::isProjectedCallableMethod)
             .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
             .forEach { method ->
                 validateFactoryCreateAbiBindingContract(
@@ -777,10 +777,10 @@ class KotlinProjectionGenerator(
 
     private fun validateComposableFactoryCreateBindingContracts(
         plan: KotlinTypeProjectionPlan,
-        factoryType: WinRtTypeDefinition,
+        factoryType: WinRTTypeDefinition,
     ) {
         factoryType.methods
-            .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+            .filter(WinRTMethodDefinition::isProjectedCallableMethod)
             .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
             .forEach { method ->
                 val userParameters = requireComposableFactoryUserParameters(plan, factoryType, method)
@@ -796,14 +796,14 @@ class KotlinProjectionGenerator(
 
     private fun requireComposableFactoryUserParameters(
         plan: KotlinTypeProjectionPlan,
-        factoryType: WinRtTypeDefinition,
-        method: WinRtMethodDefinition,
-    ): List<WinRtParameterDefinition> {
+        factoryType: WinRTTypeDefinition,
+        method: WinRTMethodDefinition,
+    ): List<WinRTParameterDefinition> {
         require(method.parameters.size >= 2) {
             "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface ${factoryType.qualifiedName} method ${method.name} to end with baseInterface and innerInterface object parameters before projection rendering."
         }
         val trailing = method.parameters.takeLast(2)
-        require(trailing.all { parameter -> isWinRtObjectTypeName(parameter.type.typeName) }) {
+        require(trailing.all { parameter -> isWinRTObjectTypeName(parameter.type.typeName) }) {
             "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface ${factoryType.qualifiedName} method ${method.name} to end with baseInterface and innerInterface object parameters before projection rendering."
         }
         return method.parameters.dropLast(2)
@@ -811,10 +811,10 @@ class KotlinProjectionGenerator(
 
     private fun validateFactoryCreateAbiBindingContract(
         plan: KotlinTypeProjectionPlan,
-        factoryType: WinRtTypeDefinition,
-        method: WinRtMethodDefinition,
+        factoryType: WinRTTypeDefinition,
+        method: WinRTMethodDefinition,
         returnBinding: KotlinProjectionAbiTypeBinding,
-        parameters: List<WinRtParameterDefinition>,
+        parameters: List<WinRTParameterDefinition>,
     ) {
         validateProjectedAbiBindingContract(
             plan = plan,
@@ -834,25 +834,25 @@ class KotlinProjectionGenerator(
     }
 
     private fun composableFactoryUserParameters(
-        method: WinRtMethodDefinition,
-    ): Pair<WinRtMethodDefinition, List<WinRtParameterDefinition>>? {
-        if (isWinRtVoidTypeName(method.returnType.typeName) || method.parameters.size < 2) {
+        method: WinRTMethodDefinition,
+    ): Pair<WinRTMethodDefinition, List<WinRTParameterDefinition>>? {
+        if (isWinRTVoidTypeName(method.returnType.typeName) || method.parameters.size < 2) {
             return null
         }
         val trailing = method.parameters.takeLast(2)
-        if (trailing.any { parameter -> !isWinRtObjectTypeName(parameter.type.typeName) }) {
+        if (trailing.any { parameter -> !isWinRTObjectTypeName(parameter.type.typeName) }) {
             return null
         }
         return method to method.parameters.dropLast(2)
     }
 
     private fun validateInstanceMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
             return
         }
         val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .filter { method -> method.methodRowId != null }
             .filterNot { method -> method.hasKotlinOwnedRuntimeMethodProjection(plan, mappedCollectionMemberNames) }
             .forEach { method ->
@@ -863,7 +863,7 @@ class KotlinProjectionGenerator(
             }
     }
 
-    private fun WinRtMethodDefinition.hasKotlinOwnedRuntimeMethodProjection(
+    private fun WinRTMethodDefinition.hasKotlinOwnedRuntimeMethodProjection(
         plan: KotlinTypeProjectionPlan,
         mappedCollectionMemberNames: Set<String>,
     ): Boolean =
@@ -875,10 +875,10 @@ class KotlinProjectionGenerator(
             }
 
     private fun validateStaticMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
             return
         }
-        val staticMethods = plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedStaticMethod)
+        val staticMethods = plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedStaticMethod)
         mergedStaticMethods(plan, staticMethods).forEach { method ->
             if (isActivationFactoryCreateMethod(plan, method)) {
                 return@forEach
@@ -903,7 +903,7 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateDelegateInvokeBindingContracts(plan: KotlinTypeProjectionPlan) {
-        if (plan.type.kind != WinRtTypeKind.Delegate) {
+        if (plan.type.kind != WinRTTypeKind.Delegate) {
             return
         }
         val invokeShape = plan.delegateInvokeShape ?: return
@@ -925,7 +925,7 @@ class KotlinProjectionGenerator(
         }
         val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
+            .filterNot(WinRTPropertyDefinition::isStatic)
             .filterNot { property -> property.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .forEach { property ->
                 if (property.hasNativeProjectionGetterAccessor()) {
@@ -988,17 +988,17 @@ class KotlinProjectionGenerator(
 
     private fun validateEventDelegateContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
     ) {
         val delegateTypeName = event.delegateTypeName
         val rawDelegateTypeName = delegateTypeName.substringBefore('<').removeSuffix("?")
-        val eventHandlerKind = winRtEventHandlerKindForTypeName(rawDelegateTypeName)
+        val eventHandlerKind = winRTEventHandlerKindForTypeName(rawDelegateTypeName)
         if (eventHandlerKind != null) {
             validateMappedEventDelegateContract(plan, event, eventHandlerKind)
             return
         }
         val delegateType = eventDelegateType(delegateTypeName, plan)
-        require(delegateType?.kind == WinRtTypeKind.Delegate) {
+        require(delegateType?.kind == WinRTTypeKind.Delegate) {
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} delegate $delegateTypeName to be present in the metadata model."
         }
         require(delegateType.iid != null) {
@@ -1009,21 +1009,21 @@ class KotlinProjectionGenerator(
 
     private fun validateMappedEventDelegateContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
-        eventHandlerKind: WinRtEventHandlerKind,
+        event: WinRTEventDefinition,
+        eventHandlerKind: WinRTEventHandlerKind,
     ) {
         val expectedArgumentCount = when (eventHandlerKind) {
-            WinRtEventHandlerKind.EventHandler,
-            WinRtEventHandlerKind.VectorChangedEventHandler,
-            WinRtEventHandlerKind.AsyncActionProgressHandler -> 1
-            WinRtEventHandlerKind.TypedEventHandler,
-            WinRtEventHandlerKind.MapChangedEventHandler,
-            WinRtEventHandlerKind.AsyncOperationProgressHandler -> 2
-            WinRtEventHandlerKind.PropertyChangedEventHandler,
-            WinRtEventHandlerKind.BindableVectorChangedEventHandler,
-            WinRtEventHandlerKind.NotifyCollectionChangedEventHandler -> 0
+            WinRTEventHandlerKind.EventHandler,
+            WinRTEventHandlerKind.VectorChangedEventHandler,
+            WinRTEventHandlerKind.AsyncActionProgressHandler -> 1
+            WinRTEventHandlerKind.TypedEventHandler,
+            WinRTEventHandlerKind.MapChangedEventHandler,
+            WinRTEventHandlerKind.AsyncOperationProgressHandler -> 2
+            WinRTEventHandlerKind.PropertyChangedEventHandler,
+            WinRTEventHandlerKind.BindableVectorChangedEventHandler,
+            WinRTEventHandlerKind.NotifyCollectionChangedEventHandler -> 0
         }
-        val argumentCount = WinRtTypeRef.fromDisplayName(event.delegateTypeName)
+        val argumentCount = WinRTTypeRef.fromDisplayName(event.delegateTypeName)
             .normalized()
             .typeArguments
             .size
@@ -1055,11 +1055,11 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateStaticEventAccessorBindingContract(plan: KotlinTypeProjectionPlan) {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
             return
         }
         buildList {
-            addAll(plan.type.events.filter(WinRtEventDefinition::isStatic))
+            addAll(plan.type.events.filter(WinRTEventDefinition::isStatic))
             plan.staticInterfaceNames
                 .mapNotNull(plan.typesByQualifiedName::get)
                 .forEach { staticInterface -> addAll(staticInterface.events) }
@@ -1075,15 +1075,15 @@ class KotlinProjectionGenerator(
 
     private fun shouldValidateEventAbiContracts(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
     ): Boolean =
         generationLayout != KotlinProjectionGenerationLayout.ExpectActualJvm ||
-            plan.type.kind != WinRtTypeKind.RuntimeClass ||
+            plan.type.kind != WinRTTypeKind.RuntimeClass ||
             !event.isStatic
 
     private fun validateInstanceEventAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
     ) {
         validateEventAccessorPairContract(plan, event)
         if (event.hasNativeProjectionAddAccessor()) {
@@ -1106,7 +1106,7 @@ class KotlinProjectionGenerator(
 
     private fun validateStaticEventAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
     ) {
         validateEventAccessorPairContract(plan, event, staticEvent = true)
         if (event.hasNativeProjectionAddAccessor()) {
@@ -1129,7 +1129,7 @@ class KotlinProjectionGenerator(
 
     private fun validateEventAccessorPairContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         staticEvent: Boolean = false,
     ) {
         require(event.hasNativeProjectionAddAccessor() == event.hasNativeProjectionRemoveAccessor()) {
@@ -1140,7 +1140,7 @@ class KotlinProjectionGenerator(
 
     private fun validateEventAddAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         bindingName: String,
         binding: KotlinProjectionInstanceMemberBinding,
     ) {
@@ -1157,7 +1157,7 @@ class KotlinProjectionGenerator(
 
     private fun validateEventAddAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         bindingName: String,
         binding: KotlinProjectionStaticMemberBinding,
     ) {
@@ -1174,11 +1174,11 @@ class KotlinProjectionGenerator(
 
     private fun validateEventAddAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor?,
+        marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor?,
         suppressHResultCheck: Boolean,
         validateAbiCallPlan: Boolean = true,
     ) {
@@ -1203,7 +1203,7 @@ class KotlinProjectionGenerator(
 
     private fun validateEventRemoveAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         bindingName: String,
         binding: KotlinProjectionInstanceMemberBinding,
     ) {
@@ -1220,7 +1220,7 @@ class KotlinProjectionGenerator(
 
     private fun validateEventRemoveAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         bindingName: String,
         binding: KotlinProjectionStaticMemberBinding,
     ) {
@@ -1237,11 +1237,11 @@ class KotlinProjectionGenerator(
 
     private fun validateEventRemoveAccessorBindingContract(
         plan: KotlinTypeProjectionPlan,
-        event: WinRtEventDefinition,
+        event: WinRTEventDefinition,
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor?,
+        marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor?,
         suppressHResultCheck: Boolean,
         validateAbiCallPlan: Boolean = true,
     ) {
@@ -1280,11 +1280,11 @@ class KotlinProjectionGenerator(
     private fun KotlinProjectionStaticMemberBinding.isStaticEventAccessorBinding(
         plan: KotlinTypeProjectionPlan,
     ): Boolean {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
             return false
         }
         return buildList {
-            addAll(plan.type.events.filter(WinRtEventDefinition::isStatic))
+            addAll(plan.type.events.filter(WinRTEventDefinition::isStatic))
             plan.staticInterfaceNames
                 .mapNotNull(plan.typesByQualifiedName::get)
                 .forEach { staticInterface -> addAll(staticInterface.events) }
@@ -1299,7 +1299,7 @@ class KotlinProjectionGenerator(
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+        marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor? = null,
         suppressHResultCheck: Boolean = marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
         delegateInvokeContext: Boolean = false,
         validateAbiCallPlan: Boolean = true,
@@ -1403,7 +1403,7 @@ class KotlinProjectionGenerator(
                 return
             }
             val structType = plan.typesByQualifiedName[typeBinding.resolvedTypeName.removeSuffix("?")]
-            require(structType?.kind == WinRtTypeKind.Struct) {
+            require(structType?.kind == WinRTTypeKind.Struct) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole struct ${typeBinding.resolvedTypeName} to be present in the metadata model before projection rendering."
             }
             require(canRenderNativeStructMetadata(structType, plan)) {
@@ -1556,7 +1556,7 @@ class KotlinProjectionGenerator(
     }
 
     private fun canRenderNativeStructMetadata(
-        type: WinRtTypeDefinition,
+        type: WinRTTypeDefinition,
         plan: KotlinTypeProjectionPlan,
     ): Boolean =
         type.fields
@@ -1564,15 +1564,15 @@ class KotlinProjectionGenerator(
             .all { field -> canRenderNativeStructField(field, type.namespace, plan) }
 
     private fun canRenderNativeStructField(
-        field: WinRtFieldDefinition,
+        field: WinRTFieldDefinition,
         currentNamespace: String,
         plan: KotlinTypeProjectionPlan,
     ): Boolean {
-        if (isWinRtGuidTypeName(field.typeName) || winRtFundamentalTypeForName(field.typeName) != null) {
+        if (isWinRTGuidTypeName(field.typeName) || winRTFundamentalTypeForName(field.typeName) != null) {
             return true
         }
         val rawTypeName = field.typeName.substringBefore('<').removeSuffix("?")
-        if (isWinRtObjectTypeName(rawTypeName)) {
+        if (isWinRTObjectTypeName(rawTypeName)) {
             return true
         }
         if (
@@ -1589,13 +1589,13 @@ class KotlinProjectionGenerator(
             else -> plan.typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") }
         }
         val resolvedType = qualifiedName?.let(plan.typesByQualifiedName::get)
-        if (resolvedType?.kind == WinRtTypeKind.Interface || resolvedType?.kind == WinRtTypeKind.RuntimeClass) {
+        if (resolvedType?.kind == WinRTTypeKind.Interface || resolvedType?.kind == WinRTTypeKind.RuntimeClass) {
             return true
         }
-        if (resolvedType?.kind == WinRtTypeKind.Enum) {
+        if (resolvedType?.kind == WinRTTypeKind.Enum) {
             return true
         }
-        if (resolvedType?.kind == WinRtTypeKind.Struct) {
+        if (resolvedType?.kind == WinRTTypeKind.Struct) {
             return canRenderNativeStructMetadata(resolvedType, plan)
         }
         val mappedType = mappedTypeByAbiName(rawTypeName)
@@ -1605,13 +1605,13 @@ class KotlinProjectionGenerator(
     private fun eventDelegateType(
         delegateTypeName: String,
         plan: KotlinTypeProjectionPlan,
-    ): WinRtTypeDefinition? =
+    ): WinRTTypeDefinition? =
         projectionType(delegateTypeName, plan)
 
     private fun projectionType(
         typeName: String,
         plan: KotlinTypeProjectionPlan,
-    ): WinRtTypeDefinition? {
+    ): WinRTTypeDefinition? {
         val rawName = typeName.substringBefore('<').removeSuffix("?")
         return plan.typesByQualifiedName[typeName]
             ?: plan.typesByQualifiedName[rawName]
@@ -1621,7 +1621,7 @@ class KotlinProjectionGenerator(
     private fun requiredInterfaceType(
         requiredInterfaceName: String,
         plan: KotlinTypeProjectionPlan,
-    ): WinRtTypeDefinition? {
+    ): WinRTTypeDefinition? {
         val rawName = requiredInterfaceName.substringBefore('<').removeSuffix("?")
         return plan.typesByQualifiedName[requiredInterfaceName]
             ?: plan.typesByQualifiedName[rawName]
@@ -1630,18 +1630,18 @@ class KotlinProjectionGenerator(
 
     private fun KotlinTypeProjectionPlan.projectionContractSubject(): String {
         val kind = when (type.kind) {
-            WinRtTypeKind.RuntimeClass -> "runtime class"
-            WinRtTypeKind.Interface -> "interface"
-            WinRtTypeKind.Delegate -> "delegate"
-            WinRtTypeKind.Struct -> "struct"
-            WinRtTypeKind.Enum -> "enum"
-            WinRtTypeKind.Unknown -> "type"
+            WinRTTypeKind.RuntimeClass -> "runtime class"
+            WinRTTypeKind.Interface -> "interface"
+            WinRTTypeKind.Delegate -> "delegate"
+            WinRTTypeKind.Struct -> "struct"
+            WinRTTypeKind.Enum -> "enum"
+            WinRTTypeKind.Unknown -> "type"
         }
         return "$kind ${type.qualifiedName}"
     }
 
     private fun KotlinTypeProjectionPlan.requiresDefaultInterfaceContract(): Boolean {
-        if (type.kind != WinRtTypeKind.RuntimeClass || type.isStaticType || type.isAttributeType) {
+        if (type.kind != WinRTTypeKind.RuntimeClass || type.isStaticType || type.isAttributeType) {
             return false
         }
         val defaultInterfaceName = defaultInterfaceName ?: return false
@@ -1701,14 +1701,14 @@ class KotlinProjectionGenerator(
         currentPlan != null &&
             any { plan ->
                 plan.packageName == currentPlan.packageName &&
-                    plan.type.kind == WinRtTypeKind.Struct &&
+                    plan.type.kind == WinRTTypeKind.Struct &&
                     plan.type.name == "Duration"
             }
 
     private fun projectedSlotLiteralMap(plans: List<KotlinTypeProjectionPlan>): Map<KotlinProjectionSlotLiteralKey, Int> =
         plans
             .asSequence()
-            .filter { plan -> plan.type.kind == WinRtTypeKind.Interface }
+            .filter { plan -> plan.type.kind == WinRTTypeKind.Interface }
             .flatMap { plan ->
                 plan.abiSlotBindings.asSequence().map { binding ->
                     KotlinProjectionSlotLiteralKey(plan.type.qualifiedName, binding.constantName) to binding.slot
@@ -1717,7 +1717,7 @@ class KotlinProjectionGenerator(
             .toMap()
 
     private fun supportFiles(
-        model: WinRtMetadataModel,
+        model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     ): List<KotlinProjectionFile> {

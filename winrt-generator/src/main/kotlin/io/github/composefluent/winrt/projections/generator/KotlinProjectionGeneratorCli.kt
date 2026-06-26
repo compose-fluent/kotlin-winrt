@@ -1,8 +1,8 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
-import io.github.composefluent.winrt.metadata.WinRtMetadataSource
+import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import java.nio.file.Files
 import java.nio.file.Path
@@ -13,8 +13,8 @@ import kotlin.streams.asSequence
 
 fun main(args: Array<String>) {
     val options = KotlinProjectionGeneratorOptions.parse(args.toList())
-    val metadataSources = options.metadataSources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
-    val model = WinRtMetadataLoader.loadSources(metadataSources).filterProjectionSurface(
+    val metadataSources = options.metadataSources.ifEmpty { listOf(WinRTMetadataSource.windowsSdk()) }
+    val model = WinRTMetadataLoader.loadSources(metadataSources).filterProjectionSurface(
         namespaces = options.namespaces,
         types = options.types,
         excludedNamespaces = options.excludedNamespaces,
@@ -23,7 +23,7 @@ fun main(args: Array<String>) {
     )
     val fileCount = KotlinProjectionGenerator(
         emitSupportFiles = true,
-        projectionContext = WinRtMetadataProjectionContext(
+        projectionContext = WinRTMetadataProjectionContext(
             sources = metadataSources,
             include = options.namespaces + options.types,
             exclude = options.excludedNamespaces + options.excludedTypes,
@@ -37,7 +37,7 @@ fun main(args: Array<String>) {
 
 internal data class KotlinProjectionGeneratorOptions(
     val outputDirectory: Path,
-    val metadataSources: List<WinRtMetadataSource>,
+    val metadataSources: List<WinRTMetadataSource>,
     val namespaces: Set<String>,
     val types: Set<String>,
     val excludedNamespaces: Set<String>,
@@ -47,7 +47,7 @@ internal data class KotlinProjectionGeneratorOptions(
     companion object {
         fun parse(args: List<String>): KotlinProjectionGeneratorOptions {
             var outputDirectory: Path? = null
-            val metadataSources = mutableListOf<WinRtMetadataSource>()
+            val metadataSources = mutableListOf<WinRTMetadataSource>()
             val namespaces = mutableSetOf<String>()
             val types = mutableSetOf<String>()
             val excludedNamespaces = mutableSetOf<String>()
@@ -58,7 +58,7 @@ internal data class KotlinProjectionGeneratorOptions(
                 when (val arg = args[index]) {
                     "--output" -> outputDirectory = Path.of(args.valueAfter(index, arg)).also { index++ }
                     "--winmd", "--metadata" -> {
-                        metadataSources.add(WinRtMetadataSource.parse(args.valueAfter(index, arg)))
+                        metadataSources.add(WinRTMetadataSource.parse(args.valueAfter(index, arg)))
                         index++
                     }
                     "--namespace" -> namespaces += args.valueAfter(index, arg).also { index++ }

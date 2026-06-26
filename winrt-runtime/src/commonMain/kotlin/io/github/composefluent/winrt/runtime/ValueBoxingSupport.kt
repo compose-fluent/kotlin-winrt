@@ -5,38 +5,38 @@ package io.github.composefluent.winrt.runtime
 private const val DISP_E_OVERFLOW: Int = 0x8002000A.toInt()
 
 internal fun unboxInspectablePointer(pointer: RawAddress): Any {
-    WinRtInspectableComObject.findManagedValue(pointer)?.let { return it }
+    WinRTInspectableComObject.findManagedValue(pointer)?.let { return it }
     tryProjectBorrowedInspectableValue(pointer)?.let { return it }
     return ComWrappersSupport.createRcwForComObject(pointer)
-        ?: WinRtInvalidCastException("Unable to project inspectable value.", HResult(TYPE_E_TYPEMISMATCH))
+        ?: WinRTInvalidCastException("Unable to project inspectable value.", HResult(TYPE_E_TYPEMISMATCH))
 }
 
 internal fun coerceString(value: Any): String =
     when (value) {
         is String -> value
         is Guid -> value.toString()
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to String.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRTInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to String.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 internal fun coerceGuid(value: Any): Guid =
     when (value) {
         is Guid -> value
         is String -> runCatching { Guid(value) }.getOrElse {
-            throw WinRtInvalidCastException("Cannot parse Guid from '$value'.", HResult(TYPE_E_TYPEMISMATCH))
+            throw WinRTInvalidCastException("Cannot parse Guid from '$value'.", HResult(TYPE_E_TYPEMISMATCH))
         }
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Guid.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRTInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Guid.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 internal fun coerceBoolean(value: Any): Boolean =
     when (value) {
         is Boolean -> value
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Boolean.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRTInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Boolean.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 internal fun coerceChar(value: Any): Char =
     when (value) {
         is Char -> value
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Char.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRTInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Char.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 internal fun coerceUByte(value: Any): UByte = numericCoerce("UByte", value) { (it as Number).toLong().toUByte() }
@@ -74,11 +74,11 @@ private fun <T> numericCoerce(
             value is Float ||
             value is Double
     if (!coercible) {
-        throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to $label.", HResult(TYPE_E_TYPEMISMATCH))
+        throw WinRTInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to $label.", HResult(TYPE_E_TYPEMISMATCH))
     }
     return try {
         convert(value)
     } catch (_: Throwable) {
-        throw WinRtInvalidCastException("Numeric coercion overflow for $label.", HResult(DISP_E_OVERFLOW))
+        throw WinRTInvalidCastException("Numeric coercion overflow for $label.", HResult(DISP_E_OVERFLOW))
     }
 }
