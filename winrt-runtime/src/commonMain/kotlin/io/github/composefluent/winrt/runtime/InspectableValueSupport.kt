@@ -1,13 +1,13 @@
 package io.github.composefluent.winrt.runtime
 
-internal fun createSyntheticValueCcwDefinition(value: Any): WinRtCcwDefinition? {
+internal fun createSyntheticValueCcwDefinition(value: Any): WinRTCcwDefinition? {
     val interfaceDefinitions =
         buildList {
-            if (WinRtValueBoxing.isPropertyValueCompatible(value)) {
+            if (WinRTValueBoxing.isPropertyValueCompatible(value)) {
                 add(createPropertyValueInterfaceDefinition(value))
             }
-            WinRtValueBoxing.createReferenceArrayInterfaceDefinition(value)?.let(::add)
-                ?: WinRtValueBoxing.createReferenceInterfaceDefinition(value)?.let(::add)
+            WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value)?.let(::add)
+                ?: WinRTValueBoxing.createReferenceInterfaceDefinition(value)?.let(::add)
         }
     if (interfaceDefinitions.isEmpty()) {
         return null
@@ -18,17 +18,17 @@ internal fun createSyntheticValueCcwDefinition(value: Any): WinRtCcwDefinition? 
         } else {
             interfaceDefinitions.first().interfaceId
         }
-    return WinRtCcwDefinition(
+    return WinRTCcwDefinition(
         interfaceDefinitions = interfaceDefinitions,
         defaultInterfaceId = defaultInterfaceId,
-        runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
+        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForType(value::class),
     )
 }
 
-internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRtCcwDefinition? {
+internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRTCcwDefinition? {
     createSyntheticValueCcwDefinition(value)?.let { return it }
     if (value is AutoCloseable) {
-        return WinRtCcwDefinition(
+        return WinRTCcwDefinition(
             interfaceDefinitions = listOf(createClosableInspectableInterfaceDefinition(value)),
             defaultInterfaceId = IID.IDisposable,
             runtimeClassName = defaultInspectableRuntimeClassNameFor(value),
@@ -38,7 +38,7 @@ internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRtCcwDefini
 }
 
 internal fun defaultInspectableRuntimeClassNameFor(value: Any): String? {
-    WinRtValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
+    WinRTValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
     if (value is AutoCloseable) {
         return TypeNameSupport.getNameForType(AutoCloseable::class).takeIf(String::isNotBlank)
     }
@@ -50,11 +50,11 @@ internal fun defaultInspectableRuntimeClassNameFor(value: Any): String? {
     return lookupName.takeIf(String::isNotBlank)
 }
 
-private fun createClosableInspectableInterfaceDefinition(value: AutoCloseable): WinRtInspectableInterfaceDefinition =
-    WinRtInspectableInterfaceDefinition(
+private fun createClosableInspectableInterfaceDefinition(value: AutoCloseable): WinRTInspectableInterfaceDefinition =
+    WinRTInspectableInterfaceDefinition(
         interfaceId = IID.IDisposable,
         methods = listOf(
-            WinRtInspectableMethodDefinition(
+            WinRTInspectableMethodDefinition(
                 signature = ComMethodSignature.of(),
             ) { _ ->
                 value.close()
@@ -69,13 +69,13 @@ internal fun tryProjectInspectableValue(
 ): Any? {
     if (!runtimeClassName.isNullOrBlank()) {
         TypeNameSupport.findRcwKClassByNameCached(runtimeClassName)?.let { projectedType ->
-            WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
+            WinRTValueBoxing.tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
         }
     }
 
-    WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asRawAddress())?.let { return it }
-    WinRtValueBoxing.tryProjectInspectableReference(inspectable)?.let { return it }
-    WinRtValueBoxing.tryProjectInspectableReferenceArray(inspectable)?.let { return it }
+    WinRTPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asRawAddress())?.let { return it }
+    WinRTValueBoxing.tryProjectInspectableReference(inspectable)?.let { return it }
+    WinRTValueBoxing.tryProjectInspectableReferenceArray(inspectable)?.let { return it }
     return null
 }
 

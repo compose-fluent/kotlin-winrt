@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
-internal object WinRtMarshalingContext {
+internal object WinRTMarshalingContext {
     const val Local = 0
     const val NoSharedMemory = 1
     const val DifferentMachine = 2
@@ -8,7 +8,7 @@ internal object WinRtMarshalingContext {
     const val CrossContext = 4
 }
 
-internal object WinRtMarshalingFlags {
+internal object WinRTMarshalingFlags {
     const val Normal = 0
     const val TableStrong = 1
     const val TableWeak = 2
@@ -31,9 +31,9 @@ internal class MarshalInterfaceReference(
     fun getUnmarshalClass(
         interfaceId: Guid,
         sourcePointer: RawAddress = PlatformAbi.nullPointer,
-        destinationContext: Int = WinRtMarshalingContext.InProc,
+        destinationContext: Int = WinRTMarshalingContext.InProc,
         destinationContextPointer: RawAddress = PlatformAbi.nullPointer,
-        flags: Int = WinRtMarshalingFlags.Normal,
+        flags: Int = WinRTMarshalingFlags.Normal,
     ): Guid =
         PlatformAbi.confinedScope().use { scope ->
             val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
@@ -58,9 +58,9 @@ internal class MarshalInterfaceReference(
     fun getMarshalSizeMax(
         interfaceId: Guid,
         sourcePointer: RawAddress = PlatformAbi.nullPointer,
-        destinationContext: Int = WinRtMarshalingContext.InProc,
+        destinationContext: Int = WinRTMarshalingContext.InProc,
         destinationContextPointer: RawAddress = PlatformAbi.nullPointer,
-        flags: Int = WinRtMarshalingFlags.Normal,
+        flags: Int = WinRTMarshalingFlags.Normal,
     ): UInt =
         PlatformAbi.confinedScope().use { scope ->
             val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
@@ -86,9 +86,9 @@ internal class MarshalInterfaceReference(
         streamPointer: RawAddress,
         interfaceId: Guid,
         interfacePointer: RawAddress = PlatformAbi.nullPointer,
-        destinationContext: Int = WinRtMarshalingContext.InProc,
+        destinationContext: Int = WinRTMarshalingContext.InProc,
         destinationContextPointer: RawAddress = PlatformAbi.nullPointer,
-        flags: Int = WinRtMarshalingFlags.Normal,
+        flags: Int = WinRTMarshalingFlags.Normal,
     ) {
         PlatformAbi.confinedScope().use { scope ->
             val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
@@ -159,7 +159,7 @@ internal object FreeThreadedMarshalerSupport {
         lock.withLock {
             proxy?.let { return@withLock it }
 
-            val result = WinRtPlatformApi.coCreateFreeThreadedMarshalerRaw()
+            val result = WinRTPlatformApi.coCreateFreeThreadedMarshalerRaw()
             HResult(result.hResultValue).requireSuccess("CoCreateFreeThreadedMarshaler")
             check(!PlatformAbi.isNull(result.pointer)) {
                 "CoCreateFreeThreadedMarshaler returned a null pointer with success HRESULT."
@@ -178,7 +178,7 @@ internal object FreeThreadedMarshalerSupport {
             inProcFreeThreadedMarshalerIid?.let { return@withLock it }
             val resolved = proxy().getUnmarshalClass(
                 interfaceId = IID.IUnknown,
-                destinationContext = WinRtMarshalingContext.InProc,
+                destinationContext = WinRTMarshalingContext.InProc,
             )
             inProcFreeThreadedMarshalerIid = resolved
             resolved

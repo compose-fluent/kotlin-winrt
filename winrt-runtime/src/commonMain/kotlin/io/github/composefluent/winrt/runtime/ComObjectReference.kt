@@ -69,7 +69,7 @@ open class ComObjectReference internal constructor(
         throwIfDisposed()
         val pointer = ComVtableInvoker.invokePointer(comPtr.raw, vtableSlot)
         if (PlatformAbi.isNull(pointer)) {
-            throw WinRtUnsupportedOperationException(
+            throw WinRTUnsupportedOperationException(
                 "Fast ABI default-interface object reference returned a null pointer from vtable slot $vtableSlot",
                 KnownHResults.E_POINTER,
             )
@@ -82,7 +82,7 @@ open class ComObjectReference internal constructor(
 
     fun asInspectable(): IInspectableReference =
         tryAsInspectable()
-            ?: throw WinRtUnsupportedOperationException(
+            ?: throw WinRTUnsupportedOperationException(
                 "QueryInterface failed for ${IID.IInspectable} with ${KnownHResults.E_NOINTERFACE}",
                 KnownHResults.E_NOINTERFACE,
             )

@@ -4,13 +4,13 @@ internal object WinUiResourceManagerRuntime {
     val resourceManagerRequestedEventArgsIid: Guid = guidOf("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a")
 
     fun resourceManagerRequestedHandlerIid(): Guid {
-        val argsSignature = WinRtTypeSignature.runtimeClass(
+        val argsSignature = WinRTTypeSignature.runtimeClass(
             resourceManagerRequestedEventArgsClassName,
-            WinRtTypeSignature.guid(resourceManagerRequestedEventArgsIid),
+            WinRTTypeSignature.guid(resourceManagerRequestedEventArgsIid),
         )
-        val signature = WinRtTypeSignature.parameterizedInterface(
+        val signature = WinRTTypeSignature.parameterizedInterface(
             typedEventHandlerGuid,
-            WinRtTypeSignature.object_(),
+            WinRTTypeSignature.object_(),
             argsSignature,
         )
         return ParameterizedInterfaceId.createFromSignature(signature)

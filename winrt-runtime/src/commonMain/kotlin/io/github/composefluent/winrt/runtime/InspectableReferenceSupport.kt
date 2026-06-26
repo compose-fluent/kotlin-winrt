@@ -9,7 +9,7 @@ internal object ActivationFactoryReferenceSupport {
         PlatformAbi.confinedScope().use { scope ->
             val instanceOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invokeActivate(instanceOut)
-            WinRtPlatformApi.checkSucceededRaw(hResult)
+            WinRTPlatformApi.checkSucceededRaw(hResult)
             return wrapInspectable(PlatformAbi.readPointer(instanceOut)).also(initializeReferenceTracker)
         }
 }
@@ -26,7 +26,7 @@ internal object InspectableReferenceSupport {
                 if (noThrow) {
                     return null
                 }
-                WinRtPlatformApi.checkSucceededRaw(hResult)
+                WinRTPlatformApi.checkSucceededRaw(hResult)
             }
 
             val handle = PlatformAbi.readPointer(hStringOut)

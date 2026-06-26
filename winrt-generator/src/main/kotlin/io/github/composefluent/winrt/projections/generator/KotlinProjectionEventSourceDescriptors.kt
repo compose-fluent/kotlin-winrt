@@ -1,28 +1,28 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtEventHelperSubclassDescriptor
-import io.github.composefluent.winrt.metadata.WinRtEventHandlerKind
-import io.github.composefluent.winrt.metadata.WinRtMetadataModel
-import io.github.composefluent.winrt.metadata.WinRtNamespace
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRTEventHelperSubclassDescriptor
+import io.github.composefluent.winrt.metadata.WinRTEventHandlerKind
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeRef
 import io.github.composefluent.winrt.metadata.semanticHelpers
-import io.github.composefluent.winrt.metadata.winRtEventHandlerKindForTypeName
+import io.github.composefluent.winrt.metadata.winRTEventHandlerKindForTypeName
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 internal fun KotlinProjectionPlanner.eventSourceDescriptors(
-    model: WinRtMetadataModel,
+    model: WinRTMetadataModel,
     plans: List<KotlinTypeProjectionPlan>,
-): List<WinRtEventHelperSubclassDescriptor> {
+): List<WinRTEventHelperSubclassDescriptor> {
     val helpers = model.semanticHelpers()
     val metadataDescriptors = model.namespaces
-        .flatMap(WinRtNamespace::types)
+        .flatMap(WinRTNamespace::types)
         .flatMap(helpers::eventHelperSubclassDescriptors)
         .filter { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName in plans.requiredEventSourceDescriptorKeys() }
     val typesByQualifiedName = model.namespaces
-        .flatMap(WinRtNamespace::types)
-        .associateBy(WinRtTypeDefinition::qualifiedName)
+        .flatMap(WinRTNamespace::types)
+        .associateBy(WinRTTypeDefinition::qualifiedName)
     return (metadataDescriptors + plans.flatMap { plan ->
         boundRuntimeClassCollectionEventSourceDescriptors(plan, typesByQualifiedName)
     })
@@ -73,9 +73,9 @@ private fun List<KotlinTypeProjectionPlan>.requiredEventSourceDescriptorKeys(): 
 
 private fun KotlinProjectionPlanner.boundRuntimeClassCollectionEventSourceDescriptors(
     plan: KotlinTypeProjectionPlan,
-    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-): List<WinRtEventHelperSubclassDescriptor> {
-    if (plan.type.kind != io.github.composefluent.winrt.metadata.WinRtTypeKind.RuntimeClass) {
+    typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+): List<WinRTEventHelperSubclassDescriptor> {
+    if (plan.type.kind != io.github.composefluent.winrt.metadata.WinRTTypeKind.RuntimeClass) {
         return emptyList()
     }
     return plan.type.events
@@ -83,7 +83,7 @@ private fun KotlinProjectionPlanner.boundRuntimeClassCollectionEventSourceDescri
         .mapNotNull { event ->
             val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
                 ?: return@mapNotNull null
-            val runtimeEventKind = winRtEventHandlerKindForTypeName(event.delegateTypeName)
+            val runtimeEventKind = winRTEventHandlerKindForTypeName(event.delegateTypeName)
             if (runtimeEventKind == null || !runtimeEventKind.isCollectionEventSourceHandler()) {
                 return@mapNotNull null
             }
@@ -93,7 +93,7 @@ private fun KotlinProjectionPlanner.boundRuntimeClassCollectionEventSourceDescri
             }
             val runtimeEventType = event.delegateType.normalized()
             val eventTypeName = runtimeEventType.typeName
-            WinRtEventHelperSubclassDescriptor(
+            WinRTEventHelperSubclassDescriptor(
                 eventTypeName = eventTypeName,
                 projectedEventTypeName = eventTypeName,
                 abiEventTypeName = renderEventSourceAbiTypeName(runtimeEventType),
@@ -106,26 +106,26 @@ private fun KotlinProjectionPlanner.boundRuntimeClassCollectionEventSourceDescri
         }
 }
 
-private fun WinRtEventHandlerKind.isCollectionEventSourceHandler(): Boolean =
-    this == WinRtEventHandlerKind.VectorChangedEventHandler ||
-        this == WinRtEventHandlerKind.BindableVectorChangedEventHandler ||
-        this == WinRtEventHandlerKind.MapChangedEventHandler
+private fun WinRTEventHandlerKind.isCollectionEventSourceHandler(): Boolean =
+    this == WinRTEventHandlerKind.VectorChangedEventHandler ||
+        this == WinRTEventHandlerKind.BindableVectorChangedEventHandler ||
+        this == WinRTEventHandlerKind.MapChangedEventHandler
 
-private fun WinRtEventHandlerKind.matchesCollectionEventOwner(
+private fun WinRTEventHandlerKind.matchesCollectionEventOwner(
     eventName: String,
     ownerTypeName: String,
 ): Boolean =
     when (this) {
-        WinRtEventHandlerKind.VectorChangedEventHandler ->
+        WinRTEventHandlerKind.VectorChangedEventHandler ->
             eventName == "VectorChanged" &&
                 ownerTypeName.substringBefore('<').removeSuffix("?") == "Windows.Foundation.Collections.IObservableVector"
-        WinRtEventHandlerKind.BindableVectorChangedEventHandler ->
+        WinRTEventHandlerKind.BindableVectorChangedEventHandler ->
             eventName == "VectorChanged" &&
                 ownerTypeName.substringBefore('<').removeSuffix("?") in setOf(
                     "Microsoft.UI.Xaml.Interop.IBindableObservableVector",
                     "Windows.UI.Xaml.Interop.IBindableObservableVector",
                 )
-        WinRtEventHandlerKind.MapChangedEventHandler ->
+        WinRTEventHandlerKind.MapChangedEventHandler ->
             eventName == "MapChanged" &&
                 ownerTypeName.substringBefore('<').removeSuffix("?") == "Windows.Foundation.Collections.IObservableMap"
         else -> false
@@ -134,7 +134,7 @@ private fun WinRtEventHandlerKind.matchesCollectionEventOwner(
 private fun KotlinProjectionPlanner.closedDelegateInterfaceId(
     eventTypeName: String,
     currentNamespace: String,
-    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    typesByQualifiedName: Map<String, WinRTTypeDefinition>,
 ): io.github.composefluent.winrt.runtime.Guid? {
     val binding = classifyAbiTypeBinding(
         typeName = eventTypeName,
@@ -155,7 +155,7 @@ private fun delegateInterfaceIdForBinding(
     }
     val signatures = binding.typeArguments.map { argument -> eventSourceTypeSignature(argument) ?: return null }
     return io.github.composefluent.winrt.runtime.ParameterizedInterfaceId.createFromSignature(
-        io.github.composefluent.winrt.runtime.WinRtTypeSignature.parameterizedInterface(
+        io.github.composefluent.winrt.runtime.WinRTTypeSignature.parameterizedInterface(
             delegateIid,
             *signatures.toTypedArray(),
         ),
@@ -164,48 +164,48 @@ private fun delegateInterfaceIdForBinding(
 
 private fun eventSourceTypeSignature(
     binding: KotlinProjectionAbiTypeBinding,
-): io.github.composefluent.winrt.runtime.WinRtTypeSignature? =
+): io.github.composefluent.winrt.runtime.WinRTTypeSignature? =
     when (binding.kind) {
-        KotlinProjectionAbiValueKind.String -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.string()
+        KotlinProjectionAbiValueKind.String -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.string()
         KotlinProjectionAbiValueKind.Object,
         KotlinProjectionAbiValueKind.InspectableReference,
-        KotlinProjectionAbiValueKind.GenericParameter -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.object_()
-        KotlinProjectionAbiValueKind.Boolean -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.boolean()
-        KotlinProjectionAbiValueKind.Int8 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.int8()
-        KotlinProjectionAbiValueKind.UInt8 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.uint8()
-        KotlinProjectionAbiValueKind.Int16 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.int16()
-        KotlinProjectionAbiValueKind.UInt16 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.uint16()
-        KotlinProjectionAbiValueKind.Int32 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.int32()
-        KotlinProjectionAbiValueKind.UInt32 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.uint32()
-        KotlinProjectionAbiValueKind.Int64 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.int64()
-        KotlinProjectionAbiValueKind.UInt64 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.uint64()
-        KotlinProjectionAbiValueKind.Float -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.float32()
-        KotlinProjectionAbiValueKind.Double -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.float64()
-        KotlinProjectionAbiValueKind.Char16 -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.char16()
-        KotlinProjectionAbiValueKind.GuidValue -> io.github.composefluent.winrt.runtime.WinRtTypeSignature.guidValue()
+        KotlinProjectionAbiValueKind.GenericParameter -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.object_()
+        KotlinProjectionAbiValueKind.Boolean -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.boolean()
+        KotlinProjectionAbiValueKind.Int8 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.int8()
+        KotlinProjectionAbiValueKind.UInt8 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.uint8()
+        KotlinProjectionAbiValueKind.Int16 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.int16()
+        KotlinProjectionAbiValueKind.UInt16 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.uint16()
+        KotlinProjectionAbiValueKind.Int32 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.int32()
+        KotlinProjectionAbiValueKind.UInt32 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.uint32()
+        KotlinProjectionAbiValueKind.Int64 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.int64()
+        KotlinProjectionAbiValueKind.UInt64 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.uint64()
+        KotlinProjectionAbiValueKind.Float -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.float32()
+        KotlinProjectionAbiValueKind.Double -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.float64()
+        KotlinProjectionAbiValueKind.Char16 -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.char16()
+        KotlinProjectionAbiValueKind.GuidValue -> io.github.composefluent.winrt.runtime.WinRTTypeSignature.guidValue()
         KotlinProjectionAbiValueKind.ProjectedInterface ->
             binding.interfaceId?.let { interfaceId ->
                 if (binding.typeArguments.isEmpty()) {
-                    io.github.composefluent.winrt.runtime.WinRtTypeSignature.guid(interfaceId)
+                    io.github.composefluent.winrt.runtime.WinRTTypeSignature.guid(interfaceId)
                 } else {
                     val arguments = binding.typeArguments.map { argument -> eventSourceTypeSignature(argument) ?: return null }
-                    io.github.composefluent.winrt.runtime.WinRtTypeSignature.parameterizedInterface(interfaceId, *arguments.toTypedArray())
+                    io.github.composefluent.winrt.runtime.WinRTTypeSignature.parameterizedInterface(interfaceId, *arguments.toTypedArray())
                 }
             }
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
             binding.interfaceId?.let { interfaceId ->
-                io.github.composefluent.winrt.runtime.WinRtTypeSignature.runtimeClass(
+                io.github.composefluent.winrt.runtime.WinRTTypeSignature.runtimeClass(
                     binding.resolvedTypeName,
-                    io.github.composefluent.winrt.runtime.WinRtTypeSignature.guid(interfaceId),
+                    io.github.composefluent.winrt.runtime.WinRTTypeSignature.guid(interfaceId),
                 )
             }
         KotlinProjectionAbiValueKind.Delegate ->
-            binding.delegateInvokeShape?.interfaceId?.let(io.github.composefluent.winrt.runtime.WinRtTypeSignature::delegate)
-                ?: binding.interfaceId?.let(io.github.composefluent.winrt.runtime.WinRtTypeSignature::delegate)
+            binding.delegateInvokeShape?.interfaceId?.let(io.github.composefluent.winrt.runtime.WinRTTypeSignature::delegate)
+                ?: binding.interfaceId?.let(io.github.composefluent.winrt.runtime.WinRTTypeSignature::delegate)
         else -> null
     }
 
-private fun renderEventSourceAbiTypeName(type: WinRtTypeRef): String {
+private fun renderEventSourceAbiTypeName(type: WinRTTypeRef): String {
     val normalized = type.normalized()
     if (normalized.typeArguments.isEmpty()) {
         return "ABI.${normalized.typeName}"

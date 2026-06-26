@@ -16,6 +16,6 @@ internal expect fun platformTryCreateProjectedReference(
     interfaceId: Guid?,
 ): ComObjectReference?
 
-internal expect fun platformCreateSyntheticCcwDefinition(value: Any): WinRtCcwDefinition?
+internal expect fun platformCreateSyntheticCcwDefinition(value: Any): WinRTCcwDefinition?
 
 internal expect fun platformRuntimeClassNameFor(value: Any): String?

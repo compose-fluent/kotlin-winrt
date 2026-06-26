@@ -7,13 +7,13 @@ class HString private constructor(
     fun toKString(): String =
         PlatformAbi.confinedScope().use { scope ->
             val lengthOut = PlatformAbi.allocateInt32Slot(scope)
-            val buffer = WinRtPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
+            val buffer = WinRTPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
             PlatformAbi.readUtf16(buffer, PlatformAbi.readInt32(lengthOut))
         }
 
     override fun close() {
         if (owner && !PlatformAbi.isNull(handle)) {
-            WinRtPlatformApi.windowsDeleteStringRaw(handle)
+            WinRTPlatformApi.windowsDeleteStringRaw(handle)
         }
     }
 
@@ -26,8 +26,8 @@ class HString private constructor(
             PlatformAbi.confinedScope().use { scope ->
                 val utf16 = PlatformAbi.allocateUtf16(scope, value)
                 val out = PlatformAbi.allocatePointerSlot(scope)
-                WinRtPlatformApi.checkSucceededRaw(
-                    WinRtPlatformApi.windowsCreateStringRaw(
+                WinRTPlatformApi.checkSucceededRaw(
+                    WinRTPlatformApi.windowsCreateStringRaw(
                         utf16,
                         value.length,
                         out,
@@ -53,8 +53,8 @@ class HString private constructor(
                 val utf16 = PlatformAbi.allocateUtf16(scope, value, nulTerminated = true)
                 val header = PlatformAbi.allocateBytes(scope, PlatformAbi.hStringHeaderSizeBytes)
                 val out = PlatformAbi.allocatePointerSlot(scope)
-                WinRtPlatformApi.checkSucceededRaw(
-                    WinRtPlatformApi.windowsCreateStringReferenceRaw(
+                WinRTPlatformApi.checkSucceededRaw(
+                    WinRTPlatformApi.windowsCreateStringReferenceRaw(
                         utf16Chars = utf16,
                         length = value.length,
                         header = header,

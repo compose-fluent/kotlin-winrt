@@ -5,10 +5,10 @@ package io.github.composefluent.winrt.runtime
 import kotlin.reflect.KClass
 
 // ---------------------------------------------------------------------------
-// WinRtValueAdapter — per-type ABI read/write/array marshalling adapter.
+// WinRTValueAdapter — per-type ABI read/write/array marshalling adapter.
 // ---------------------------------------------------------------------------
 
-internal class WinRtValueAdapter<T : Any>(
+internal class WinRTValueAdapter<T : Any>(
     val projectedClass: KClass<*>,
     val nullableInterfaceId: Guid?,
     val referenceArrayInterfaceId: Guid?,
@@ -115,8 +115,8 @@ internal fun <T : Any> directValueAdapter(
     readOwnedValue: (RawAddress) -> T,
     writeTransferredValue: (T, RawAddress) -> Unit,
     disposeTransferredValue: (RawAddress) -> Unit = {},
-): WinRtValueAdapter<T> =
-    WinRtValueAdapter(
+): WinRTValueAdapter<T> =
+    WinRTValueAdapter(
         projectedClass = projectedClass,
         nullableInterfaceId = nullableInterfaceId,
         referenceArrayInterfaceId = referenceArrayInterfaceId,
@@ -142,7 +142,7 @@ internal fun <T : Any> pointerValueAdapter(
     createPointer: (T) -> RawAddress,
     readOwnedPointer: (RawAddress) -> T,
     disposeOwnedPointer: (RawAddress) -> Unit,
-): WinRtValueAdapter<T> =
+): WinRTValueAdapter<T> =
     directValueAdapter(
         projectedClass = projectedClass,
         nullableInterfaceId = nullableInterfaceId,
@@ -205,7 +205,7 @@ internal object ValueBoxingInterop {
             exactUnbox = { it as KClass<*> },
             readOwnedValue = { source ->
                 TypeProjection.fromAbi(source)
-                    ?: throw WinRtInvalidCastException("Expected non-null projected KClass value.", HResult(TYPE_E_TYPEMISMATCH))
+                    ?: throw WinRTInvalidCastException("Expected non-null projected KClass value.", HResult(TYPE_E_TYPEMISMATCH))
             },
             writeTransferredValue = TypeProjection::copyTo,
             disposeTransferredValue = TypeProjection::disposeAbi,
@@ -224,14 +224,14 @@ internal object ValueBoxingInterop {
             writeTransferredValue = { value, destination -> PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value)) },
         )
 
-    private val dynamicAdaptersByClass = ConcurrentCacheMap<KClass<*>, WinRtValueAdapter<*>>()
-    private val dynamicAdaptersByNullableIid = ConcurrentCacheMap<Guid, WinRtValueAdapter<*>>()
-    private val dynamicAdaptersByReferenceArrayIid = ConcurrentCacheMap<Guid, WinRtValueAdapter<*>>()
-    private val dynamicAdaptersByPropertyType = ConcurrentCacheMap<PropertyType, WinRtValueAdapter<*>>()
-    private val dynamicAdaptersByPropertyTypeArray = ConcurrentCacheMap<PropertyType, WinRtValueAdapter<*>>()
+    private val dynamicAdaptersByClass = ConcurrentCacheMap<KClass<*>, WinRTValueAdapter<*>>()
+    private val dynamicAdaptersByNullableIid = ConcurrentCacheMap<Guid, WinRTValueAdapter<*>>()
+    private val dynamicAdaptersByReferenceArrayIid = ConcurrentCacheMap<Guid, WinRTValueAdapter<*>>()
+    private val dynamicAdaptersByPropertyType = ConcurrentCacheMap<PropertyType, WinRTValueAdapter<*>>()
+    private val dynamicAdaptersByPropertyTypeArray = ConcurrentCacheMap<PropertyType, WinRTValueAdapter<*>>()
 
-    private val builtInAdapters: List<WinRtValueAdapter<*>> =
-        listOf<WinRtValueAdapter<*>>(
+    private val builtInAdapters: List<WinRTValueAdapter<*>> =
+        listOf<WinRTValueAdapter<*>>(
             directValueAdapter(
                 projectedClass = Byte::class,
                 nullableInterfaceId = IID.NullableSByte,
@@ -433,7 +433,7 @@ internal object ValueBoxingInterop {
     private val builtInAdaptersByPropertyTypeArray =
         builtInAdapters.mapNotNull { adapter -> adapter.propertyTypeArray?.let { it to adapter } }.toMap()
 
-    internal fun registerAdapter(adapter: WinRtValueAdapter<*>) {
+    internal fun registerAdapter(adapter: WinRTValueAdapter<*>) {
         dynamicAdaptersByClass[adapter.projectedClass] = adapter
         adapter.nullableInterfaceId?.let { dynamicAdaptersByNullableIid[it] = adapter }
         adapter.referenceArrayInterfaceId?.let { dynamicAdaptersByReferenceArrayIid[it] = adapter }
@@ -449,19 +449,19 @@ internal object ValueBoxingInterop {
         dynamicAdaptersByPropertyTypeArray.clear()
     }
 
-    internal fun adapterForReferenceInterface(interfaceId: Guid): WinRtValueAdapter<*>? =
+    internal fun adapterForReferenceInterface(interfaceId: Guid): WinRTValueAdapter<*>? =
         dynamicAdaptersByNullableIid[interfaceId] ?: builtInAdaptersByNullableIid[interfaceId]
 
-    internal fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRtValueAdapter<*>? =
+    internal fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRTValueAdapter<*>? =
         dynamicAdaptersByReferenceArrayIid[interfaceId] ?: builtInAdaptersByReferenceArrayIid[interfaceId]
 
-    internal fun adapterForPropertyType(propertyType: PropertyType): WinRtValueAdapter<*>? =
+    internal fun adapterForPropertyType(propertyType: PropertyType): WinRTValueAdapter<*>? =
         dynamicAdaptersByPropertyType[propertyType] ?: builtInAdaptersByPropertyType[propertyType]
 
-    internal fun adapterForPropertyTypeArray(propertyType: PropertyType): WinRtValueAdapter<*>? =
+    internal fun adapterForPropertyTypeArray(propertyType: PropertyType): WinRTValueAdapter<*>? =
         dynamicAdaptersByPropertyTypeArray[propertyType] ?: builtInAdaptersByPropertyTypeArray[propertyType]
 
-    internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
+    internal fun inspectableArrayAdapter(): WinRTValueAdapter<Any> = objectAdapter
 
     internal fun writePropertyValue(expectedType: PropertyType, value: Any, destination: RawAddress) {
         val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
@@ -470,7 +470,7 @@ internal object ValueBoxingInterop {
             return
         }
         val adapter = adapterForPropertyType(expectedType)
-            ?: throw WinRtInvalidCastException("Unsupported property value getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
+            ?: throw WinRTInvalidCastException("Unsupported property value getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         adapter.writeCoercedPropertyValue(value, destination)
     }
 
@@ -481,18 +481,18 @@ internal object ValueBoxingInterop {
         dataOut: RawAddress,
     ) {
         val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
-            ?: throw WinRtInvalidCastException("Value is not an array for $expectedType", HResult(TYPE_E_TYPEMISMATCH))
+            ?: throw WinRTInvalidCastException("Value is not an array for $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         val adapter =
             when (expectedType) {
                 PropertyType.InspectableArray -> objectAdapter
                 else -> adapterForPropertyTypeArray(expectedType)
-            } ?: throw WinRtInvalidCastException("Unsupported property value array getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
+            } ?: throw WinRTInvalidCastException("Unsupported property value array getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         val coerced = boxedElements.map { element ->
             if (element == null) {
                 null
             } else {
                 @Suppress("UNCHECKED_CAST")
-                (adapter as WinRtValueAdapter<Any>).coercePropertyValue(element)
+                (adapter as WinRTValueAdapter<Any>).coercePropertyValue(element)
             }
         }.toTypedArray()
         val (length, data) = adapter.createTransferredArray(coerced)
@@ -501,14 +501,14 @@ internal object ValueBoxingInterop {
     }
 
     fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
-        WinRtReferenceReference(pointer, interfaceId).use { readReferenceValue(interfaceId, it) }
+        WinRTReferenceReference(pointer, interfaceId).use { readReferenceValue(interfaceId, it) }
 
     fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? =
-        WinRtReferenceArrayReference(pointer, interfaceId).use { readReferenceArrayValue(interfaceId, it) }
+        WinRTReferenceArrayReference(pointer, interfaceId).use { readReferenceArrayValue(interfaceId, it) }
 
-    internal fun readReferenceValue(interfaceId: Guid, reference: WinRtReferenceReference): Any? {
+    internal fun readReferenceValue(interfaceId: Guid, reference: WinRTReferenceReference): Any? {
         val adapter = adapterForReferenceInterface(interfaceId)
-            ?: throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+            ?: throw WinRTInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
         return reference.readValue(
             sizeBytes = adapter.abiLayout.byteSize,
             alignmentBytes = adapter.abiLayout.byteAlignment,
@@ -517,25 +517,25 @@ internal object ValueBoxingInterop {
         )
     }
 
-    internal fun readReferenceArrayValue(interfaceId: Guid, reference: WinRtReferenceArrayReference): Array<Any?>? {
+    internal fun readReferenceArrayValue(interfaceId: Guid, reference: WinRTReferenceArrayReference): Array<Any?>? {
         val adapter = adapterForReferenceArrayInterface(interfaceId)
-            ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+            ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
         return reference.readValue(
             readArray = adapter::readOwnedArray,
             disposeArray = adapter::disposeOwnedArray,
         )
     }
 
-    fun createReferenceInterfaceDefinition(interfaceId: Guid, value: Any): WinRtInspectableInterfaceDefinition {
+    fun createReferenceInterfaceDefinition(interfaceId: Guid, value: Any): WinRTInspectableInterfaceDefinition {
         val adapter = adapterForReferenceInterface(interfaceId)
         val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
         if (adapter == null && (enumDescriptor == null || enumDescriptor.nullableInterfaceId != interfaceId)) {
-            throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+            throw WinRTInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
         }
-        return WinRtInspectableInterfaceDefinition(
+        return WinRTInspectableInterfaceDefinition(
             interfaceId = interfaceId,
             methods = listOf(
-                WinRtInspectableMethodDefinition(
+                WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                 ) { rawArgs ->
                     val destination = rawArgs.singleOrNull() as? RawAddress
@@ -551,15 +551,15 @@ internal object ValueBoxingInterop {
         )
     }
 
-    fun createReferenceArrayInterfaceDefinition(interfaceId: Guid, value: Any): WinRtInspectableInterfaceDefinition {
+    fun createReferenceArrayInterfaceDefinition(interfaceId: Guid, value: Any): WinRTInspectableInterfaceDefinition {
         val adapter = adapterForReferenceArrayInterface(interfaceId)
-            ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+            ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
         val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
-            ?: throw WinRtInvalidCastException("IReferenceArray host requires an array value.", HResult(TYPE_E_TYPEMISMATCH))
-        return WinRtInspectableInterfaceDefinition(
+            ?: throw WinRTInvalidCastException("IReferenceArray host requires an array value.", HResult(TYPE_E_TYPEMISMATCH))
+        return WinRTInspectableInterfaceDefinition(
             interfaceId = interfaceId,
             methods = listOf(
-                WinRtInspectableMethodDefinition(
+                WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                 ) { rawArgs ->
                     if (rawArgs.size != 2) {
@@ -574,8 +574,8 @@ internal object ValueBoxingInterop {
         )
     }
 
-    fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle =
-        WinRtTypeHandle(value::class.typeDisplayName(), interfaceId)
+    fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRTTypeHandle =
+        WinRTTypeHandle(value::class.typeDisplayName(), interfaceId)
 
     fun createPropertyValueReference(value: Any): ComObjectReference =
         createPropertyValueHost(value).createPrimaryReference()
@@ -592,7 +592,7 @@ internal object ValueBoxingInterop {
                         it.comPtr.throwIfDisposed()
                         ComVtableInvoker.invokeArgs(it.comPtr.raw, slot, resultOut)
                     }
-                WinRtPlatformApi.checkSucceededRaw(hr)
+                WinRTPlatformApi.checkSucceededRaw(hr)
                 try {
                     scalarAdapter.readValue(resultOut)
                 } finally {
@@ -615,7 +615,7 @@ internal object ValueBoxingInterop {
                         it.comPtr.throwIfDisposed()
                         ComVtableInvoker.invokeArgs(it.comPtr.raw, slot, countOut, dataOut)
                     }
-                WinRtPlatformApi.checkSucceededRaw(hr)
+                WinRTPlatformApi.checkSucceededRaw(hr)
                 val length = PlatformAbi.readInt32(countOut)
                 val data = PlatformAbi.readPointer(dataOut)
                 try {
@@ -629,7 +629,7 @@ internal object ValueBoxingInterop {
     }
 
     fun readOwnedPropertyValue(pointer: RawAddress): Any? =
-        WinRtPropertyValueReference(pointer).use { it.getValue() }
+        WinRTPropertyValueReference(pointer).use { it.getValue() }
 
     fun tryProjectBorrowedPropertyValue(pointer: RawAddress): Any? {
         val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
@@ -641,7 +641,7 @@ internal object ValueBoxingInterop {
             borrowed.close()
         } ?: return null
         return propertyValue.use { reference ->
-            WinRtPropertyValueReference(reference.pointer.asRawAddress(), preventReleaseOnDispose = true).getValue()
+            WinRTPropertyValueReference(reference.pointer.asRawAddress(), preventReleaseOnDispose = true).getValue()
         }
     }
 }

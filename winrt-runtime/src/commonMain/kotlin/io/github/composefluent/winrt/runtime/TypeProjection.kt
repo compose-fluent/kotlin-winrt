@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-internal enum class WinRtTypeKind {
+internal enum class WinRTTypeKind {
     Primitive,
     Metadata,
     Custom,
@@ -30,13 +30,13 @@ internal object TypeProjection {
         }
         val kind =
             when {
-                value == KClass::class -> WinRtTypeKind.Metadata
-                isPrimitiveWinRtType(value) -> WinRtTypeKind.Primitive
-                Projections.isTypeWindowsRuntimeType(value) -> WinRtTypeKind.Metadata
-                else -> WinRtTypeKind.Custom
+                value == KClass::class -> WinRTTypeKind.Metadata
+                isPrimitiveWinRTType(value) -> WinRTTypeKind.Primitive
+                Projections.isTypeWindowsRuntimeType(value) -> WinRTTypeKind.Metadata
+                else -> WinRTTypeKind.Custom
             }
         val typeName =
-            if (kind == WinRtTypeKind.Custom) {
+            if (kind == WinRTTypeKind.Custom) {
                 value.qualifiedName ?: value.simpleName ?: "<anonymous>"
             } else {
                 TypeNameSupport.getNameForType(value)
@@ -67,7 +67,7 @@ internal object TypeProjection {
     fun disposeAbi(source: RawAddress) {
         val name = PlatformAbi.readPointer(LAYOUT.slice(source, "name"))
         if (!PlatformAbi.isNull(name)) {
-            WinRtPlatformApi.windowsDeleteStringRaw(name)
+            WinRTPlatformApi.windowsDeleteStringRaw(name)
         }
     }
 
@@ -77,14 +77,14 @@ internal object TypeProjection {
     )
 }
 
-internal object WinRtBuiltInProjectionMappings {
+internal object WinRTBuiltInProjectionMappings {
     fun register() {
         registerAlwaysOnMappings()
         if (!FeatureSwitches.enableDefaultCustomTypeMappings) {
             return
         }
 
-        CommonWinRtBuiltInProjectionMappings.register()
+        CommonWinRTBuiltInProjectionMappings.register()
         XamlSystemProjectionMappings.register()
         registerUriProjection()
     }
@@ -95,15 +95,15 @@ internal object WinRtBuiltInProjectionMappings {
             helperType = TypeProjection::class,
             abiTypeName = "Windows.UI.Xaml.Interop.TypeName",
         )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
             type = KClass::class,
             projectedTypeName = "Windows.UI.Xaml.Interop.TypeName",
             helperType = TypeProjection::class,
             signature = "struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))",
-            boxedName = WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
+            boxedName = WinRTReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
             isWindowsRuntimeType = true,
         )
-        CommonWinRtBuiltInProjectionMappings.registerReferenceArrayType(
+        CommonWinRTBuiltInProjectionMappings.registerReferenceArrayType(
             elementType = KClass::class,
             arrayType = emptyArray<KClass<*>>()::class,
         )
@@ -111,13 +111,13 @@ internal object WinRtBuiltInProjectionMappings {
 
     private fun registerUriProjection() {
         Projections.registerCustomAbiTypeMapping(
-            publicType = WinRtUri::class,
+            publicType = WinRTUri::class,
             helperType = UriProjection::class,
             abiTypeName = "Windows.Foundation.Uri",
             isRuntimeClass = true,
         )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
-            type = WinRtUri::class,
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
+            type = WinRTUri::class,
             projectedTypeName = "Windows.Foundation.Uri",
             helperType = UriProjection::class,
             signature = "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
@@ -127,10 +127,10 @@ internal object WinRtBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
         Projections.registerDefaultInterfaceType(
-            runtimeClass = WinRtUri::class,
+            runtimeClass = WinRTUri::class,
             defaultInterface = IUriRuntimeClassProjection::class,
         )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
             type = IUriRuntimeClassProjection::class,
             projectedTypeName = "Windows.Foundation.IUriRuntimeClass",
             guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),

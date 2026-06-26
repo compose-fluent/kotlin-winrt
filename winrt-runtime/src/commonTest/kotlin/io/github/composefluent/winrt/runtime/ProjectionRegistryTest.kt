@@ -68,8 +68,8 @@ class ProjectionRegistryTest {
 
         assertEquals(SampleMappedTypeHelper::class, Projections.findCustomHelperTypeMapping(PlainManagedType::class))
         assertEquals(SampleDefaultInterface::class, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(PlainManagedType::class))
-        assertNull(WinRtTypeRegistry.findByClass(PlainManagedType::class))
-        assertNull(WinRtTypeRegistry.findByName(PlainManagedType::class.qualifiedName ?: ""))
+        assertNull(WinRTTypeRegistry.findByClass(PlainManagedType::class))
+        assertNull(WinRTTypeRegistry.findByName(PlainManagedType::class.qualifiedName ?: ""))
         assertNull(TypeNameSupport.findKClassByNameCached(PlainManagedType::class.qualifiedName ?: ""))
         assertFalse(Projections.isTypeWindowsRuntimeType(PlainManagedType::class))
     }
@@ -101,7 +101,7 @@ class ProjectionRegistryTest {
             baseTypeName = "Contoso.SampleRuntimeClass",
         )
 
-        val typeId = WinRtTypeRegistry.findByClass(SampleRuntimeClass::class) ?: error("Generated runtime class was not registered.")
+        val typeId = WinRTTypeRegistry.findByClass(SampleRuntimeClass::class) ?: error("Generated runtime class was not registered.")
         assertEquals("Contoso.GeneratedRuntimeClass", typeId.projectedTypeName)
         assertEquals("Contoso.GeneratedRuntimeClass", typeId.runtimeClassName)
         assertTrue(typeId.isRuntimeClass)
@@ -121,16 +121,16 @@ class ProjectionRegistryTest {
 
         ensureProjectionMappingsRegistered()
 
-        assertNull(WinRtTypeRegistry.findByClass(GeneratedRegistrarRuntimeClass::class))
+        assertNull(WinRTTypeRegistry.findByClass(GeneratedRegistrarRuntimeClass::class))
         assertNull(TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarRuntimeClass"))
-        assertNull(WinRtTypeRegistry.findByClass(FallbackIndexedRuntimeClass::class))
+        assertNull(WinRTTypeRegistry.findByClass(FallbackIndexedRuntimeClass::class))
         assertNull(TypeNameSupport.findRcwKClassByNameCached("Contoso.FallbackIndexedRuntimeClass"))
     }
 
     @Test
     fun generated_interface_projection_registry_wraps_by_type_handle_and_type_name() {
         ComWrappersSupport.clearRegistriesForTests()
-        val typeHandle = WinRtTypeHandle(
+        val typeHandle = WinRTTypeHandle(
             projectedTypeName = "Contoso.IGeneratedInterface",
             interfaceId = Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
         )
@@ -207,7 +207,7 @@ class ProjectionRegistryTest {
     @Test
     fun guid_generator_uses_registered_default_interface_signature_when_kclass_cannot_represent_it() {
         ComWrappersSupport.clearRegistriesForTests()
-        WinRtTypeRegistry.register<SampleGenericRuntimeClass>(
+        WinRTTypeRegistry.register<SampleGenericRuntimeClass>(
             projectedTypeName = "Contoso.SampleGenericRuntimeClass",
             runtimeClassName = "Contoso.SampleGenericRuntimeClass",
             isRuntimeClass = true,
@@ -257,27 +257,27 @@ class ProjectionRegistryTest {
 
         assertEquals(DateTimeProjection::class, TypeExtensions.findHelperType(Instant::class))
         assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
-        assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRtUri::class))
+        assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRTUri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
         assertEquals(
             "Windows.Foundation.IUriRuntimeClass",
-            WinRtTypeRegistry.findByClass(IUriRuntimeClassProjection::class)?.projectedTypeName,
+            WinRTTypeRegistry.findByClass(IUriRuntimeClassProjection::class)?.projectedTypeName,
         )
         assertNull(TypeNameSupport.findKClassByNameCached(IUriRuntimeClassProjection::class.typeDisplayName()))
         assertEquals(
             "Windows.Foundation.IClosable",
-            WinRtTypeRegistry.findByClass(IClosableProjection::class)?.projectedTypeName,
+            WinRTTypeRegistry.findByClass(IClosableProjection::class)?.projectedTypeName,
         )
         assertNull(TypeNameSupport.findKClassByNameCached(IClosableProjection::class.typeDisplayName()))
         assertTrue(Projections.isTypeWindowsRuntimeType(KClass::class))
         assertEquals(
-            WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
-            WinRtValueBoxing.boxedRuntimeClassNameForType(KClass::class),
+            WinRTReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
+            WinRTValueBoxing.boxedRuntimeClassNameForType(KClass::class),
         )
-        assertEquals(WinRtTypeKind.Metadata.ordinal, TypeProjection.fromManaged(KClass::class).kind)
+        assertEquals(WinRTTypeKind.Metadata.ordinal, TypeProjection.fromManaged(KClass::class).kind)
         assertEquals(
             "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
-            GuidGenerator.getSignature(WinRtUri::class),
+            GuidGenerator.getSignature(WinRTUri::class),
         )
         assertEquals(
             "Windows.Foundation.IReference`1<Int32>",
@@ -292,19 +292,19 @@ class ProjectionRegistryTest {
     @Test
     fun explicit_runtime_metadata_registration_backfills_runtime_type_tables() {
         ComWrappersSupport.clearRegistriesForTests()
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
             type = AnnotatedStruct::class,
             projectedTypeName = "Contoso.AnnotatedStruct",
             signature = "struct(Contoso.AnnotatedStruct;i4)",
             isWindowsRuntimeType = true,
         )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
             type = AnnotatedDefaultInterface::class,
             projectedTypeName = "Contoso.AnnotatedDefaultInterface",
             iid = Guid("44444444-4444-4444-4444-444444444444"),
             isWindowsRuntimeType = true,
         )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+        CommonWinRTBuiltInProjectionMappings.registerMetadata(
             type = AnnotatedRuntimeClass::class,
             projectedTypeName = "Contoso.AnnotatedRuntimeClass",
             helperType = AnnotatedRuntimeClassHelper::class,
@@ -368,14 +368,14 @@ class ProjectionRegistryTest {
         override val nativeObject: ComObjectReference,
     ) : SampleGeneratedInterface, IWinRTObject
 
-    @WinRtGuid("44444444-4444-4444-4444-444444444444")
+    @WinRTGuid("44444444-4444-4444-4444-444444444444")
     private interface AnnotatedDefaultInterface
 
     private class AnnotatedRuntimeClassHelper
 
     @WindowsRuntimeType("rc(Contoso.AnnotatedRuntimeClass;{44444444-4444-4444-4444-444444444444})")
     @WindowsRuntimeHelperType(AnnotatedRuntimeClassHelper::class)
-    @WinRtDefaultInterface(AnnotatedDefaultInterface::class)
+    @WinRTDefaultInterface(AnnotatedDefaultInterface::class)
     private class AnnotatedRuntimeClass
 
     @WindowsRuntimeType("struct(Contoso.AnnotatedStruct;i4)")
@@ -389,13 +389,13 @@ class ProjectionRegistryTest {
     }
 
     private fun registerTestTypeDescriptors() {
-        WinRtTypeRegistry.register<SampleDefaultInterface>(
+        WinRTTypeRegistry.register<SampleDefaultInterface>(
             projectedTypeName = SampleDefaultInterface::class.qualifiedName ?: SampleDefaultInterface::class.toString(),
             guid = Guid("11111111-1111-1111-1111-111111111111"),
             iid = Guid("11111111-1111-1111-1111-111111111111"),
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<SampleRuntimeClass>(
+        WinRTTypeRegistry.register<SampleRuntimeClass>(
             projectedTypeName = "Contoso.SampleRuntimeClass",
             helperType = SampleRuntimeClassHelper::class,
             defaultInterface = SampleDefaultInterface::class,
@@ -403,34 +403,34 @@ class ProjectionRegistryTest {
             isRuntimeClass = true,
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<SampleMappedType>(
+        WinRTTypeRegistry.register<SampleMappedType>(
             projectedTypeName = "Contoso.IMappedType",
             helperType = SampleMappedTypeHelper::class,
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<SampleMappedTypeHelper>(
+        WinRTTypeRegistry.register<SampleMappedTypeHelper>(
             projectedTypeName = SampleMappedTypeHelper::class.qualifiedName ?: SampleMappedTypeHelper::class.toString(),
             guid = Guid("22222222-2222-2222-2222-222222222222"),
             iid = Guid("22222222-2222-2222-2222-222222222222"),
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<SampleAnnotatedPublicType>(
+        WinRTTypeRegistry.register<SampleAnnotatedPublicType>(
             projectedTypeName = SampleAnnotatedPublicType::class.qualifiedName ?: SampleAnnotatedPublicType::class.toString(),
             helperType = SampleAnnotatedHelper::class,
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<SampleAnnotatedHelper>(
+        WinRTTypeRegistry.register<SampleAnnotatedHelper>(
             projectedTypeName = SampleAnnotatedHelper::class.qualifiedName ?: SampleAnnotatedHelper::class.toString(),
             guid = Guid("33333333-3333-3333-3333-333333333333"),
             iid = Guid("33333333-3333-3333-3333-333333333333"),
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<SampleStruct>(
+        WinRTTypeRegistry.register<SampleStruct>(
             projectedTypeName = "Contoso.SampleStruct",
             signature = "struct(Contoso.SampleStruct;i4;string)",
             isWindowsRuntimeType = true,
         )
-        WinRtTypeRegistry.register<TestProjectedEnum>(
+        WinRTTypeRegistry.register<TestProjectedEnum>(
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
             enumAbiValue = { value -> value.abiValue },

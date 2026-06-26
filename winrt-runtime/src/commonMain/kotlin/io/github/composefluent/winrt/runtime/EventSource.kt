@@ -5,7 +5,7 @@ package io.github.composefluent.winrt.runtime
  *
  * Kotlin keeps the same ownership split and cache/token behavior as `.cswinrt`, while the
  * CLR-specific function-pointer and multicast-delegate details are narrowed to explicit
- * Kotlin lambdas plus `WinRtDelegateHandle`.
+ * Kotlin lambdas plus `WinRTDelegateHandle`.
  */
 abstract class EventSource<T : Any> protected constructor(
     private val objectReference: ComObjectReference,
@@ -36,7 +36,7 @@ abstract class EventSource<T : Any> protected constructor(
     protected val eventIndex: Int
         get() = index
 
-    protected abstract fun createMarshaler(handler: T): WinRtDelegateHandle
+    protected abstract fun createMarshaler(handler: T): WinRTDelegateHandle
 
     protected abstract fun createEventSourceState(): EventSourceState<T>
 

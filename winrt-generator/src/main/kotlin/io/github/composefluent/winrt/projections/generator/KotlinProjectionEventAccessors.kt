@@ -1,35 +1,35 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtEventDefinition
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
-import io.github.composefluent.winrt.metadata.WinRtPropertyGetterInterfaceResolution
+import io.github.composefluent.winrt.metadata.WinRTEventDefinition
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTPropertyGetterInterfaceResolution
 
-internal fun WinRtEventDefinition.hasNativeProjectionAccessorPair(): Boolean =
+internal fun WinRTEventDefinition.hasNativeProjectionAccessorPair(): Boolean =
     hasValidAccessors &&
         (addMethodName != null || addMethodRowId != null) &&
         (removeMethodName != null || removeMethodRowId != null)
 
-internal fun WinRtEventDefinition.hasNativeProjectionAddAccessor(): Boolean =
+internal fun WinRTEventDefinition.hasNativeProjectionAddAccessor(): Boolean =
     hasValidAccessors && (addMethodName != null || addMethodRowId != null)
 
-internal fun WinRtEventDefinition.hasNativeProjectionRemoveAccessor(): Boolean =
+internal fun WinRTEventDefinition.hasNativeProjectionRemoveAccessor(): Boolean =
     hasValidAccessors && (removeMethodName != null || removeMethodRowId != null)
 
-internal fun WinRtPropertyDefinition.hasNativeProjectionGetterAccessor(): Boolean =
+internal fun WinRTPropertyDefinition.hasNativeProjectionGetterAccessor(): Boolean =
     hasValidAccessors && (getterMethodName != null || getterMethodRowId != null)
 
-internal fun WinRtPropertyDefinition.hasNativeProjectionSetterAccessor(): Boolean =
+internal fun WinRTPropertyDefinition.hasNativeProjectionSetterAccessor(): Boolean =
     hasValidAccessors && (setterMethodName != null || setterMethodRowId != null)
 
-internal fun WinRtPropertyDefinition.hasNativeProjectionPropertyAccessor(): Boolean =
+internal fun WinRTPropertyDefinition.hasNativeProjectionPropertyAccessor(): Boolean =
     hasNativeProjectionGetterAccessor() || hasNativeProjectionSetterAccessor()
 
 internal fun findNativeProjectionGetterInterface(
-    setterInterfaceType: WinRtTypeDefinition,
-    property: WinRtPropertyDefinition,
-    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-): WinRtPropertyGetterInterfaceResolution? =
+    setterInterfaceType: WinRTTypeDefinition,
+    property: WinRTPropertyDefinition,
+    typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+): WinRTPropertyGetterInterfaceResolution? =
     io.github.composefluent.winrt.metadata.findNativeProjectionGetterInterface(
         setterInterfaceType = setterInterfaceType,
         property = property,

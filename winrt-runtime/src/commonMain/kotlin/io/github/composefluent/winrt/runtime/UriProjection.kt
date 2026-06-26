@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 @WindowsRuntimeType("rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})")
 internal object UriProjection {
-    fun fromAbi(pointer: RawAddress): WinRtUri? {
+    fun fromAbi(pointer: RawAddress): WinRTUri? {
         if (PlatformAbi.isNull(pointer)) {
             return null
         }
@@ -14,13 +14,13 @@ internal object UriProjection {
         }
     }
 
-    fun fromInspectable(inspectable: IInspectableReference): WinRtUri {
+    fun fromInspectable(inspectable: IInspectableReference): WinRTUri {
         val raw = getStringProperty(inspectable, slot = 16)
-        return WinRtUri(raw)
+        return WinRTUri(raw)
     }
 
     fun createReference(
-        value: WinRtUri,
+        value: WinRTUri,
         interfaceId: Guid = IID.IInspectable,
     ): ComObjectReference {
         val inspectable =
@@ -36,7 +36,7 @@ internal object UriProjection {
                                 rawUri.handle,
                                 resultOut,
                             )
-                        WinRtPlatformApi.checkSucceededRaw(hr)
+                        WinRTPlatformApi.checkSucceededRaw(hr)
                         IInspectableReference(PlatformAbi.readPointer(resultOut).asRawComPtr(), IID.IInspectable)
                     }
                 }
@@ -61,7 +61,7 @@ internal object UriProjection {
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             inspectable.comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(inspectable.comPtr.raw, slot, resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             val handle = PlatformAbi.readPointer(resultOut)
             if (PlatformAbi.isNull(handle)) {
                 ""

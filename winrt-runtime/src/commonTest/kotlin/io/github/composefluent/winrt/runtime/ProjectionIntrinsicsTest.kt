@@ -7,7 +7,7 @@ class ProjectionIntrinsicsTest {
     @Test
     fun set_int32_invokes_int32_vtable_shape() {
         Int32SetterComObject.create().use { host ->
-            WinRtProjectionIntrinsic.setInt32(host.reference, slot = 6, value = -42)
+            WinRTProjectionIntrinsic.setInt32(host.reference, slot = 6, value = -42)
 
             assertEquals(-42, host.capturedValue)
         }

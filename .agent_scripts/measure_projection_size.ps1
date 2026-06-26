@@ -98,8 +98,8 @@ function Measure-GeneratedSource {
         ModuleAbiSupportFunctionCount = $functionShapes.Count
         ModuleAbiSupportFunctionNames = @($functionShapes | Sort-Object -Unique)
         ProjectionModuleAbiCallSites = [int] (Count-Pattern -Files $projectionFiles -Pattern "WinRTModulePlatformAbiCall_")
-        ProjectionIntrinsicCallSites = [int] (Count-Pattern -Files $projectionFiles -Pattern "WinRtProjectionIntrinsic\.")
-        SupportIntrinsicCallSites = [int] (Count-Pattern -Files $supportFiles -Pattern "WinRtProjectionIntrinsic\.")
+        ProjectionIntrinsicCallSites = [int] (Count-Pattern -Files $projectionFiles -Pattern "WinRTProjectionIntrinsic\.")
+        SupportIntrinsicCallSites = [int] (Count-Pattern -Files $supportFiles -Pattern "WinRTProjectionIntrinsic\.")
         ForbiddenBoxedSignatures = [int] (Count-Pattern -Files $supportFiles -Pattern "vararg|Array<Any\?>|List<Any\?>|Array<Any>|List<Any>")
     }
 }

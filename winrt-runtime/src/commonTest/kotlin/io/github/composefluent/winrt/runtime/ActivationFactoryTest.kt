@@ -56,7 +56,7 @@ class ActivationFactoryTest {
         try {
             assertEquals(
                 absolutePath(asset.toString()),
-                absolutePath(WinRtPlatformApi.resolveModulePathRaw(fileName)),
+                absolutePath(WinRTPlatformApi.resolveModulePathRaw(fileName)),
             )
         } finally {
             runCatching { SystemFileSystem.delete(asset) }
@@ -190,7 +190,7 @@ class ActivationFactoryTest {
         }
 
         RuntimeScope.initializeMultithreaded().use {
-            val instance = WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow()
+            val instance = WinRTRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow()
             instance.use {
                 assertEquals("Windows.Data.Json.JsonObject", it.getRuntimeClassName())
             }

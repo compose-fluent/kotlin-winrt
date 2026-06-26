@@ -8,12 +8,12 @@ internal fun createReferenceHost(
         value = value,
         defaultInterfaceId = interfaceId,
         interfaceDefinitions = buildList {
-            if (WinRtValueBoxing.isPropertyValueCompatible(value)) {
+            if (WinRTValueBoxing.isPropertyValueCompatible(value)) {
                 add(createPropertyValueInterfaceDefinition(value))
             }
             add(
-                WinRtValueBoxing.createReferenceInterfaceDefinition(value)
-                    ?: throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
+                WinRTValueBoxing.createReferenceInterfaceDefinition(value)
+                    ?: throw WinRTInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
             )
         },
     )
@@ -26,12 +26,12 @@ internal fun createReferenceArrayHost(
         value = value,
         defaultInterfaceId = interfaceId,
         interfaceDefinitions = buildList {
-            if (WinRtValueBoxing.isPropertyValueCompatible(value)) {
+            if (WinRTValueBoxing.isPropertyValueCompatible(value)) {
                 add(createPropertyValueInterfaceDefinition(value))
             }
             add(
-                WinRtValueBoxing.createReferenceArrayInterfaceDefinition(value)
-                    ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
+                WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value)
+                    ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
             )
         },
     )
@@ -39,17 +39,17 @@ internal fun createReferenceArrayHost(
 private fun createBoxedValueHost(
     value: Any,
     defaultInterfaceId: Guid,
-    interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
-): WinRtInspectableComObject {
+    interfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
+): WinRTInspectableComObject {
     val definition = InteropRuntimeHooks.augmentInspectableDefinition(
         value = value,
-        definition = WinRtCcwDefinition(
+        definition = WinRTCcwDefinition(
             interfaceDefinitions = interfaceDefinitions,
             defaultInterfaceId = defaultInterfaceId,
-            runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
+            runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForType(value::class),
         ),
     )
-    return WinRtInspectableComObject(
+    return WinRTInspectableComObject(
         interfaceDefinitions = definition.interfaceDefinitions,
         hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
         defaultInterfaceId = definition.defaultInterfaceId,

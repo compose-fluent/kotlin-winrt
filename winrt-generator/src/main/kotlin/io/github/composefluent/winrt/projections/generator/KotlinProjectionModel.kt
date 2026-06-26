@@ -1,41 +1,41 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMetadataModel
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
-import io.github.composefluent.winrt.metadata.WinRtClassMemberMergeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
-import io.github.composefluent.winrt.metadata.WinRtEventDefinition
-import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFastAbiClassDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
-import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
-import io.github.composefluent.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
-import io.github.composefluent.winrt.metadata.WinRtIntegralType
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
-import io.github.composefluent.winrt.metadata.WinRtProjectedAttributeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMetadataParameterCategory
-import io.github.composefluent.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtNamespace
-import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
-import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeRef
-import io.github.composefluent.winrt.metadata.WinRtTypeKind
-import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
-import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
+import io.github.composefluent.winrt.metadata.WinRTClassMemberMergeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTCustomMappedMemberOutputDescriptor
+import io.github.composefluent.winrt.metadata.WinRTEventDefinition
+import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFastAbiClassDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
+import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
+import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
+import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
+import io.github.composefluent.winrt.metadata.WinRTIntegralType
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventory
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventoryBuilder
+import io.github.composefluent.winrt.metadata.WinRTProjectedAttributeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTObjectReferenceSurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTRequiredInterfaceAugmentationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTSignatureWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDeclarationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeRef
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
+import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
+import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ActivationFactory
@@ -61,69 +61,69 @@ import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
 import io.github.composefluent.winrt.runtime.Projections
 import io.github.composefluent.winrt.runtime.RawAddress
-import io.github.composefluent.winrt.runtime.WinRtAbiArray
+import io.github.composefluent.winrt.runtime.WinRTAbiArray
 import io.github.composefluent.winrt.runtime.NativeAbiLayout
 import io.github.composefluent.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.composefluent.winrt.runtime.NativeScalarFieldSpec
 import io.github.composefluent.winrt.runtime.NativeStructAdapter
 import io.github.composefluent.winrt.runtime.NativeStructLayout
 import io.github.composefluent.winrt.runtime.NativeStructScalarKind
-import io.github.composefluent.winrt.runtime.WinRtBindableIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorViewProjection
-import io.github.composefluent.winrt.runtime.WinRtCollectionInterfaceIds
-import io.github.composefluent.winrt.runtime.WinRtDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtListProjection
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncInterfaceIds
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncProjectionInterop
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceProjectionInterop
-import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
-import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters
-import io.github.composefluent.winrt.runtime.WinRtPropertyValueProjection
-import io.github.composefluent.winrt.runtime.WinRtGenericParameterProjection
-import io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic
-import io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationSupportIntrinsic
-import io.github.composefluent.winrt.runtime.WinRtAuthoringSupportIntrinsic
-import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
-import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtSystemProjectionMarshalers
-import io.github.composefluent.winrt.runtime.WinRtTypeSignature
-import io.github.composefluent.winrt.runtime.WinRtTypeHandle
-import io.github.composefluent.winrt.runtime.WinRtUri
-import io.github.composefluent.winrt.runtime.WinRtValueBoxingRegistration
-import io.github.composefluent.winrt.runtime.WinRtDelegateBridge
-import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
-import io.github.composefluent.winrt.runtime.WinRtDelegateReference
-import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
-import io.github.composefluent.winrt.runtime.WinRtEvent
-import io.github.composefluent.winrt.runtime.WinRtObjectMarshaller
-import io.github.composefluent.winrt.runtime.WinRtProjectedDelegate
-import io.github.composefluent.winrt.runtime.WinRtClosableObject
-import io.github.composefluent.winrt.runtime.WinRtComposableObject
-import io.github.composefluent.winrt.runtime.WinRtComposableObjectReference
-import io.github.composefluent.winrt.runtime.WinRtAttributeUsage
-import io.github.composefluent.winrt.runtime.WinRtActivationFactory
-import io.github.composefluent.winrt.runtime.WinRtCcwDefinition
-import io.github.composefluent.winrt.runtime.WinRtContractVersion
-import io.github.composefluent.winrt.runtime.WinRtDefaultOverload
-import io.github.composefluent.winrt.runtime.WinRtExperimental
-import io.github.composefluent.winrt.runtime.WinRtOverload
-import io.github.composefluent.winrt.runtime.WinRtSupportedOSPlatform
-import io.github.composefluent.winrt.runtime.WinRtInspectableInterfaceDefinition
-import io.github.composefluent.winrt.runtime.WinRtInspectableMethodDefinition
+import io.github.composefluent.winrt.runtime.WinRTBindableIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorViewProjection
+import io.github.composefluent.winrt.runtime.WinRTCollectionInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRTDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTListProjection
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyListProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceArrayProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceProjectionInterop
+import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
+import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapters
+import io.github.composefluent.winrt.runtime.WinRTPropertyValueProjection
+import io.github.composefluent.winrt.runtime.WinRTGenericParameterProjection
+import io.github.composefluent.winrt.runtime.WinRTGenericAbiSupportIntrinsic
+import io.github.composefluent.winrt.runtime.WinRTGenericTypeInstantiationSupportIntrinsic
+import io.github.composefluent.winrt.runtime.WinRTAuthoringSupportIntrinsic
+import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
+import io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers
+import io.github.composefluent.winrt.runtime.WinRTTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTUri
+import io.github.composefluent.winrt.runtime.WinRTValueBoxingRegistration
+import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
+import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
+import io.github.composefluent.winrt.runtime.WinRTDelegateReference
+import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
+import io.github.composefluent.winrt.runtime.WinRTEvent
+import io.github.composefluent.winrt.runtime.WinRTObjectMarshaller
+import io.github.composefluent.winrt.runtime.WinRTProjectedDelegate
+import io.github.composefluent.winrt.runtime.WinRTClosableObject
+import io.github.composefluent.winrt.runtime.WinRTComposableObject
+import io.github.composefluent.winrt.runtime.WinRTComposableObjectReference
+import io.github.composefluent.winrt.runtime.WinRTAttributeUsage
+import io.github.composefluent.winrt.runtime.WinRTActivationFactory
+import io.github.composefluent.winrt.runtime.WinRTCcwDefinition
+import io.github.composefluent.winrt.runtime.WinRTContractVersion
+import io.github.composefluent.winrt.runtime.WinRTDefaultOverload
+import io.github.composefluent.winrt.runtime.WinRTExperimental
+import io.github.composefluent.winrt.runtime.WinRTOverload
+import io.github.composefluent.winrt.runtime.WinRTSupportedOSPlatform
+import io.github.composefluent.winrt.runtime.WinRTInspectableInterfaceDefinition
+import io.github.composefluent.winrt.runtime.WinRTInspectableMethodDefinition
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -162,9 +162,9 @@ internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClass
 internal val COM_WRAPPERS_SUPPORT_CLASS_NAME = ComWrappersSupport::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
 internal val DERIVED_COMPOSED_CLASS_NAME = DerivedComposed::class.asClassName()
-internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRtCcwDefinition::class.asClassName()
-internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectableInterfaceDefinition::class.asClassName()
-internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRtInspectableMethodDefinition::class.asClassName()
+internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRTCcwDefinition::class.asClassName()
+internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRTInspectableInterfaceDefinition::class.asClassName()
+internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRTInspectableMethodDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTGenericTypeInstantiations")
 internal val WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME =
@@ -175,7 +175,7 @@ internal val WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringModuleActivationFactoryPlan")
 internal val WINRT_NAMESPACE_ADDITIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTNamespaceAdditions")
-internal fun winRtGenericTypeInstantiationsClassName(ownerIdentity: String?): ClassName {
+internal fun winRTGenericTypeInstantiationsClassName(ownerIdentity: String?): ClassName {
     val suffix = ownerIdentity
         ?.trim()
         ?.takeIf(String::isNotEmpty)
@@ -188,45 +188,45 @@ internal fun winRtGenericTypeInstantiationsClassName(ownerIdentity: String?): Cl
     )
 }
 
-internal fun winRtAuthoringHostExportsClassName(ownerIdentity: String?): ClassName =
-    winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME)
+internal fun winRTAuthoringHostExportsClassName(ownerIdentity: String?): ClassName =
+    winRTSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME)
 
-internal fun winRtAuthoringServerActivationFactoriesClassName(ownerIdentity: String?): ClassName =
-    winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME)
+internal fun winRTAuthoringServerActivationFactoriesClassName(ownerIdentity: String?): ClassName =
+    winRTSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME)
 
-internal fun winRtAuthoringModuleActivationFactoryPlanClassName(ownerIdentity: String?): ClassName =
-    winRtSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME)
+internal fun winRTAuthoringModuleActivationFactoryPlanClassName(ownerIdentity: String?): ClassName =
+    winRTSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME)
 
-internal fun winRtModulePlatformAbiCallClassName(ownerIdentity: String?): ClassName =
-    winRtSupportOwnerClassName(
+internal fun winRTModulePlatformAbiCallClassName(ownerIdentity: String?): ClassName =
+    winRTSupportOwnerClassName(
         ownerIdentity,
         ClassName("io.github.composefluent.winrt.projections.support", "WinRTModulePlatformAbiCall"),
     )
 
-internal fun winRtGenericAbiSupportFileName(ownerIdentity: String?): String {
-    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTGenericAbiSupport"
+internal fun winRTGenericAbiSupportFileName(ownerIdentity: String?): String {
+    val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTGenericAbiSupport"
     return "WinRTGenericAbiSupport_$suffix"
 }
 
-internal fun winRtEventProjectionHelperFilePrefix(ownerIdentity: String?): String {
-    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTEventProjectionHelper"
+internal fun winRTEventProjectionHelperFilePrefix(ownerIdentity: String?): String {
+    val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTEventProjectionHelper"
     return "WinRTEventProjectionHelper_$suffix"
 }
 
-internal fun winRtProjectionSupportAnchorFileName(ownerIdentity: String?): String {
-    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTProjectionSupportAnchor"
+internal fun winRTProjectionSupportAnchorFileName(ownerIdentity: String?): String {
+    val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTProjectionSupportAnchor"
     return "WinRTProjectionSupportAnchor_$suffix"
 }
 
-internal fun winRtNamespaceAdditionsClassName(ownerIdentity: String?): ClassName =
-    winRtSupportOwnerClassName(ownerIdentity, WINRT_NAMESPACE_ADDITIONS_CLASS_NAME)
+internal fun winRTNamespaceAdditionsClassName(ownerIdentity: String?): ClassName =
+    winRTSupportOwnerClassName(ownerIdentity, WINRT_NAMESPACE_ADDITIONS_CLASS_NAME)
 
-private fun winRtSupportOwnerClassName(ownerIdentity: String?, defaultClassName: ClassName): ClassName {
-    val suffix = winRtSupportOwnerIdentifierSuffix(ownerIdentity) ?: return defaultClassName
+private fun winRTSupportOwnerClassName(ownerIdentity: String?, defaultClassName: ClassName): ClassName {
+    val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return defaultClassName
     return ClassName(defaultClassName.packageName, "${defaultClassName.simpleName}_$suffix")
 }
 
-internal fun winRtSupportOwnerIdentifierSuffix(ownerIdentity: String?): String? =
+internal fun winRTSupportOwnerIdentifierSuffix(ownerIdentity: String?): String? =
     ownerIdentity
         ?.trim()
         ?.takeIf(String::isNotEmpty)
@@ -253,80 +253,80 @@ internal val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.composeflu
 internal val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
 internal val KNOWN_HRESULTS_CLASS_NAME = KnownHResults::class.asClassName()
 internal val MARSHALER_CLASS_NAME = Marshaler::class.asClassName()
-internal val WINRT_ABI_ARRAY_CLASS_NAME = WinRtAbiArray::class.asClassName()
+internal val WINRT_ABI_ARRAY_CLASS_NAME = WinRTAbiArray::class.asClassName()
 internal val NATIVE_STRING_MARSHALER_CLASS_NAME = NativeStringMarshaller::class.asClassName()
 internal val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
 internal val PARAMETERIZED_INTERFACE_ID_CLASS_NAME = ParameterizedInterfaceId::class.asClassName()
 internal val PROJECTIONS_CLASS_NAME = Projections::class.asClassName()
-internal val WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME = WinRtBindableIterableProjection::class.asClassName()
-internal val WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME = WinRtBindableVectorProjection::class.asClassName()
-internal val WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME = WinRtBindableVectorViewProjection::class.asClassName()
-internal val WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME = WinRtCollectionInterfaceIds::class.asClassName()
-internal val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRtDictionaryProjection::class.asClassName()
-internal val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRtIterableProjection::class.asClassName()
-internal val WINRT_LIST_PROJECTION_CLASS_NAME = WinRtListProjection::class.asClassName()
-internal val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRtAsyncActionReference::class.asClassName()
-internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncActionWithProgressReference::class.asClassName()
-internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncActionWithProgressVftblSlots::class.asClassName()
-internal val WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME = WinRtAsyncInterfaceIds::class.asClassName()
-internal val WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME = WinRtAsyncOperationReference::class.asClassName()
-internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncOperationWithProgressReference::class.asClassName()
-internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationWithProgressVftblSlots::class.asClassName()
-internal val WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationVftblSlots::class.asClassName()
-internal val WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME = WinRtAsyncProjectionInterop::class.asClassName()
-internal val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRtReadOnlyDictionaryProjection::class.asClassName()
-internal val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProjection::class.asClassName()
-internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayProjection::class.asClassName()
-internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
-internal val WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME = WinRtReferenceProjectionInterop::class.asClassName()
-internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
-internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
-internal val WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME = WinRtPropertyValueProjection::class.asClassName()
-internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRtGenericParameterProjection::class.asClassName()
-internal val WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME = WinRtGenericAbiSupportIntrinsic::class.asClassName()
+internal val WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME = WinRTBindableIterableProjection::class.asClassName()
+internal val WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME = WinRTBindableVectorProjection::class.asClassName()
+internal val WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME = WinRTBindableVectorViewProjection::class.asClassName()
+internal val WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME = WinRTCollectionInterfaceIds::class.asClassName()
+internal val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRTDictionaryProjection::class.asClassName()
+internal val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRTIterableProjection::class.asClassName()
+internal val WINRT_LIST_PROJECTION_CLASS_NAME = WinRTListProjection::class.asClassName()
+internal val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRTAsyncActionReference::class.asClassName()
+internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRTAsyncActionWithProgressReference::class.asClassName()
+internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRTAsyncActionWithProgressVftblSlots::class.asClassName()
+internal val WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME = WinRTAsyncInterfaceIds::class.asClassName()
+internal val WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME = WinRTAsyncOperationReference::class.asClassName()
+internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRTAsyncOperationWithProgressReference::class.asClassName()
+internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRTAsyncOperationWithProgressVftblSlots::class.asClassName()
+internal val WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME = WinRTAsyncOperationVftblSlots::class.asClassName()
+internal val WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME = WinRTAsyncProjectionInterop::class.asClassName()
+internal val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRTReadOnlyDictionaryProjection::class.asClassName()
+internal val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRTReadOnlyListProjection::class.asClassName()
+internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRTReferenceArrayProjection::class.asClassName()
+internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRTReferenceProjection::class.asClassName()
+internal val WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME = WinRTReferenceProjectionInterop::class.asClassName()
+internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRTReferenceValueAdapter::class.asClassName()
+internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRTReferenceValueAdapters::class.asClassName()
+internal val WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME = WinRTPropertyValueProjection::class.asClassName()
+internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRTGenericParameterProjection::class.asClassName()
+internal val WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME = WinRTGenericAbiSupportIntrinsic::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME =
-    WinRtGenericTypeInstantiationSupportIntrinsic::class.asClassName()
-internal val WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME = WinRtAuthoringSupportIntrinsic::class.asClassName()
-internal val WINRT_PROJECTION_INTRINSIC_CLASS_NAME = WinRtProjectionIntrinsic::class.asClassName()
-internal val WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME = WinRtProjectionSupportIntrinsic::class.asClassName()
+    WinRTGenericTypeInstantiationSupportIntrinsic::class.asClassName()
+internal val WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME = WinRTAuthoringSupportIntrinsic::class.asClassName()
+internal val WINRT_PROJECTION_INTRINSIC_CLASS_NAME = WinRTProjectionIntrinsic::class.asClassName()
+internal val WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME = WinRTProjectionSupportIntrinsic::class.asClassName()
 internal val WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME =
-    MemberName("io.github.composefluent.winrt.runtime", "winRtKeyValuePairAdapter")
+    MemberName("io.github.composefluent.winrt.runtime", "winRTKeyValuePairAdapter")
 internal val WINRT_OBJECT_MARSHALER_FUNCTION_NAME =
-    MemberName("io.github.composefluent.winrt.runtime", "winRtObjectMarshaler")
+    MemberName("io.github.composefluent.winrt.runtime", "winRTObjectMarshaler")
 internal val WINRT_PROJECTION_MARSHALER_FUNCTION_NAME =
-    MemberName("io.github.composefluent.winrt.runtime", "winRtProjectionMarshaler")
+    MemberName("io.github.composefluent.winrt.runtime", "winRTProjectionMarshaler")
 internal val WINRT_AS_FUNCTION_NAME =
-    MemberName("io.github.composefluent.winrt.runtime", "winrtAs")
+    MemberName("io.github.composefluent.winrt.runtime", "asWinRT")
 internal val ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "acquireInterfaceReference")
 internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_FROM_ABI_FUNCTION_NAME =
-    MemberName("io.github.composefluent.winrt.runtime", "winRtPropertyChangedEventArgsFromAbi")
-internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
-internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
-internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
-internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRtTypeHandle::class.asClassName()
-internal val WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME = WinRtValueBoxingRegistration::class.asClassName()
-internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClassName()
-internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::class.asClassName()
-internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
-internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
-internal val WINRT_EVENT_CLASS_NAME = WinRtEvent::class.asClassName()
-internal val WINRT_OBJECT_MARSHALLER_CLASS_NAME = WinRtObjectMarshaller::class.asClassName()
-internal val WINRT_PROJECTED_DELEGATE_CLASS_NAME = WinRtProjectedDelegate::class.asClassName()
+    MemberName("io.github.composefluent.winrt.runtime", "winRTPropertyChangedEventArgsFromAbi")
+internal val WINRT_PLATFORM_API_CLASS_NAME = WinRTPlatformApi::class.asClassName()
+internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRTSystemProjectionMarshalers::class.asClassName()
+internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRTTypeSignature::class.asClassName()
+internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRTTypeHandle::class.asClassName()
+internal val WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME = WinRTValueBoxingRegistration::class.asClassName()
+internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRTDelegateBridge::class.asClassName()
+internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRTDelegateDescriptor::class.asClassName()
+internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRTDelegateReference::class.asClassName()
+internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRTDelegateValueKind::class.asClassName()
+internal val WINRT_EVENT_CLASS_NAME = WinRTEvent::class.asClassName()
+internal val WINRT_OBJECT_MARSHALLER_CLASS_NAME = WinRTObjectMarshaller::class.asClassName()
+internal val WINRT_PROJECTED_DELEGATE_CLASS_NAME = WinRTProjectedDelegate::class.asClassName()
 internal val WINRT_EVENT_SOURCE_CLASS_NAME = EventSource::class.asClassName()
 internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTEventProjectionHelpers")
-internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRtClosableObject::class.asClassName()
-internal val WINRT_COMPOSABLE_OBJECT_CLASS_NAME = WinRtComposableObject::class.asClassName()
-internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRtComposableObjectReference::class.asClassName()
-internal val WINRT_ACTIVATION_FACTORY_CLASS_NAME = WinRtActivationFactory::class.asClassName()
+internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRTClosableObject::class.asClassName()
+internal val WINRT_COMPOSABLE_OBJECT_CLASS_NAME = WinRTComposableObject::class.asClassName()
+internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRTComposableObjectReference::class.asClassName()
+internal val WINRT_ACTIVATION_FACTORY_CLASS_NAME = WinRTActivationFactory::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 internal val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 internal val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
 internal val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableList")
 internal val ABSTRACT_MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableMap")
 internal val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableSet")
-internal val WINRT_URI_CLASS_NAME = WinRtUri::class.asClassName()
+internal val WINRT_URI_CLASS_NAME = WinRTUri::class.asClassName()
 internal val KOTLIN_INSTANT_CLASS_NAME = ClassName("kotlin.time", "Instant")
 internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
 internal val KOTLIN_DURATION_ALIAS_CLASS_NAME = ClassName("", "TimeDuration")
@@ -353,26 +353,26 @@ internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = EventRegistrationToken::class
 internal val EXCEPTION_HELPERS_CLASS_NAME = ExceptionHelpers::class.asClassName()
 internal val EXCEPTION_CLASS_NAME = ClassName("kotlin", "Exception")
 internal val EVENT_HANDLER_CALLBACK_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "EventHandlerCallback")
-internal val WINRT_COMMAND_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtCommand")
-internal val WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtPropertyChangedNotifier")
-internal val WINRT_PROPERTY_CHANGED_NOTIFIER_PROJECTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtPropertyChangedNotifierProjection")
-internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtPropertyChangedEventArgs")
-internal val WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtPropertyChangedHandler")
-internal val WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtCollectionChangedNotifier")
-internal val WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtNotifyCollectionChangedAction")
-internal val WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtNotifyCollectionChangedEventArgs")
-internal val WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtCollectionChangedHandler")
-internal val WINRT_DATA_ERROR_INFO_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtDataErrorInfo")
-internal val WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtDataErrorInfoProjection")
-internal val WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtDataErrorsChangedEventArgs")
-internal val WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtDataErrorsChangedHandler")
-internal val WINRT_SERVICE_PROVIDER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRtServiceProvider")
-internal val WINRT_ATTRIBUTE_USAGE_CLASS_NAME = WinRtAttributeUsage::class.asClassName()
-internal val WINRT_CONTRACT_VERSION_CLASS_NAME = WinRtContractVersion::class.asClassName()
-internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRtDefaultOverload::class.asClassName()
-internal val WINRT_EXPERIMENTAL_CLASS_NAME = WinRtExperimental::class.asClassName()
-internal val WINRT_OVERLOAD_CLASS_NAME = WinRtOverload::class.asClassName()
-internal val WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME = WinRtSupportedOSPlatform::class.asClassName()
+internal val WINRT_COMMAND_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTCommand")
+internal val WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedNotifier")
+internal val WINRT_PROPERTY_CHANGED_NOTIFIER_PROJECTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedNotifierProjection")
+internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedEventArgs")
+internal val WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedHandler")
+internal val WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTCollectionChangedNotifier")
+internal val WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTNotifyCollectionChangedAction")
+internal val WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTNotifyCollectionChangedEventArgs")
+internal val WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTCollectionChangedHandler")
+internal val WINRT_DATA_ERROR_INFO_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorInfo")
+internal val WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorInfoProjection")
+internal val WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorsChangedEventArgs")
+internal val WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorsChangedHandler")
+internal val WINRT_SERVICE_PROVIDER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTServiceProvider")
+internal val WINRT_ATTRIBUTE_USAGE_CLASS_NAME = WinRTAttributeUsage::class.asClassName()
+internal val WINRT_CONTRACT_VERSION_CLASS_NAME = WinRTContractVersion::class.asClassName()
+internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRTDefaultOverload::class.asClassName()
+internal val WINRT_EXPERIMENTAL_CLASS_NAME = WinRTExperimental::class.asClassName()
+internal val WINRT_OVERLOAD_CLASS_NAME = WinRTOverload::class.asClassName()
+internal val WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME = WinRTSupportedOSPlatform::class.asClassName()
 internal val KOTLIN_UBYTE_CLASS_NAME = ClassName("kotlin", "UByte")
 internal val KOTLIN_UINT_CLASS_NAME = ClassName("kotlin", "UInt")
 internal val KOTLIN_ULONG_CLASS_NAME = ClassName("kotlin", "ULong")
@@ -431,8 +431,8 @@ enum class KotlinProjectionModifier {
 }
 
 data class KotlinTypeProjectionPlan(
-    val type: WinRtTypeDefinition,
-    val typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
+    val type: WinRTTypeDefinition,
+    val typesByQualifiedName: Map<String, WinRTTypeDefinition> = emptyMap(),
     val packageName: String,
     val relativePath: String,
     val declarationKind: KotlinProjectionDeclarationKind,
@@ -455,19 +455,19 @@ data class KotlinTypeProjectionPlan(
     val readOnlyCollectionBindings: List<KotlinProjectionReadOnlyCollectionBinding> = emptyList(),
     val mutableCollectionBindings: List<KotlinProjectionMutableCollectionBinding> = emptyList(),
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
-    val eventInvokeDescriptors: List<WinRtEventInvokeDescriptor> = emptyList(),
-    val typeDeclarationDescriptor: WinRtTypeDeclarationDescriptor,
-    val factorySurfaceDescriptor: WinRtFactorySurfaceDescriptor? = null,
-    val objectReferenceSurfaceDescriptor: WinRtObjectReferenceSurfaceDescriptor? = null,
-    val guidSignatureDescriptor: WinRtGuidSignatureDescriptor? = null,
-    val interfaceMemberSignatureSetDescriptor: WinRtInterfaceMemberSignatureSetDescriptor? = null,
-    val customMappedMemberOutputDescriptor: WinRtCustomMappedMemberOutputDescriptor? = null,
-    val classMemberMergeDescriptor: WinRtClassMemberMergeDescriptor? = null,
-    val genericAbiClassInitializationDescriptor: WinRtGenericAbiClassInitializationDescriptor? = null,
-    val requiredInterfaceAugmentationDescriptor: WinRtRequiredInterfaceAugmentationDescriptor? = null,
-    val fastAbiClassDescriptor: WinRtFastAbiClassDescriptor? = null,
-    val moduleActivationAndAuthoringDescriptor: WinRtModuleActivationAndAuthoringDescriptor? = null,
-    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    val eventInvokeDescriptors: List<WinRTEventInvokeDescriptor> = emptyList(),
+    val typeDeclarationDescriptor: WinRTTypeDeclarationDescriptor,
+    val factorySurfaceDescriptor: WinRTFactorySurfaceDescriptor? = null,
+    val objectReferenceSurfaceDescriptor: WinRTObjectReferenceSurfaceDescriptor? = null,
+    val guidSignatureDescriptor: WinRTGuidSignatureDescriptor? = null,
+    val interfaceMemberSignatureSetDescriptor: WinRTInterfaceMemberSignatureSetDescriptor? = null,
+    val customMappedMemberOutputDescriptor: WinRTCustomMappedMemberOutputDescriptor? = null,
+    val classMemberMergeDescriptor: WinRTClassMemberMergeDescriptor? = null,
+    val genericAbiClassInitializationDescriptor: WinRTGenericAbiClassInitializationDescriptor? = null,
+    val requiredInterfaceAugmentationDescriptor: WinRTRequiredInterfaceAugmentationDescriptor? = null,
+    val fastAbiClassDescriptor: WinRTFastAbiClassDescriptor? = null,
+    val moduleActivationAndAuthoringDescriptor: WinRTModuleActivationAndAuthoringDescriptor? = null,
+    val projectedAttributes: List<WinRTProjectedAttributeDescriptor> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
@@ -479,7 +479,7 @@ data class KotlinProjectionInterfaceBinding(
 data class KotlinProjectionAbiSlotBinding(
     val constantName: String,
     val slot: Int,
-    val descriptor: WinRtMethodVtableDescriptor? = null,
+    val descriptor: WinRTMethodVtableDescriptor? = null,
 )
 
 data class KotlinProjectionSlotLiteralKey(
@@ -496,9 +496,9 @@ data class KotlinProjectionInstanceMemberBinding(
     val slot: Int? = null,
     val returnBinding: KotlinProjectionAbiTypeBinding,
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
-    val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
-    val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
-    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    val signatureDescriptor: WinRTSignatureWriterDescriptor? = null,
+    val marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor? = null,
+    val projectedAttributes: List<WinRTProjectedAttributeDescriptor> = emptyList(),
     val suppressHResultCheck: Boolean = false,
 )
 
@@ -512,9 +512,9 @@ data class KotlinProjectionStaticMemberBinding(
     val slot: Int? = null,
     val returnBinding: KotlinProjectionAbiTypeBinding,
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
-    val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
-    val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
-    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    val signatureDescriptor: WinRTSignatureWriterDescriptor? = null,
+    val marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor? = null,
+    val projectedAttributes: List<WinRTProjectedAttributeDescriptor> = emptyList(),
     val suppressHResultCheck: Boolean = false,
 )
 
@@ -693,7 +693,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         customObjectAbi = KotlinProjectionCustomObjectAbi(
             interfaceId = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
-            typeHandleName = "io.github.composefluent.winrt.runtime.WinRtUri",
+            typeHandleName = "io.github.composefluent.winrt.runtime.WinRTUri",
             fromAbiFunctionName = "uriFromAbi",
         ),
         simpleAbiLookup = true,
@@ -850,14 +850,14 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
         descriptionName = "IAsyncOperationWithProgress",
     ),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRtServiceProvider"), descriptionName = "IXamlServiceProvider"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs", { WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "io.github.composefluent.winrt.runtime.WinRtDataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo", { WINRT_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "io.github.composefluent.winrt.runtime.WinRtDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyPropertyChanged", { WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("90B17601-B065-586E-83D9-9ADC3A695284"), "io.github.composefluent.winrt.runtime.WinRtPropertyChangedNotifier"), descriptionName = "INotifyPropertyChanged"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventArgs", { WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("63D0C952-396B-54F4-AF8C-BA8724A427BF"), "io.github.composefluent.winrt.runtime.WinRtPropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRTServiceProvider"), descriptionName = "IXamlServiceProvider"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs", { WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "io.github.composefluent.winrt.runtime.WinRTDataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo", { WINRT_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "io.github.composefluent.winrt.runtime.WinRTDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyPropertyChanged", { WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("90B17601-B065-586E-83D9-9ADC3A695284"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedNotifier"), descriptionName = "INotifyPropertyChanged"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventArgs", { WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("63D0C952-396B-54F4-AF8C-BA8724A427BF"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler", { WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "PropertyChangedEventHandler"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Input.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRtCommand"), descriptionName = "ICommand"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRtCommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Input.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
     KotlinProjectionMappedType(
         "Microsoft.UI.Xaml.Interop.IBindableIterable",
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
@@ -882,23 +882,23 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("530155E1-28A5-5693-87CE-30724D95A06D"), "io.github.composefluent.winrt.runtime.WinRtCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("530155E1-28A5-5693-87CE-30724D95A06D"), "io.github.composefluent.winrt.runtime.WinRTCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
     KotlinProjectionMappedType(
         "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
         { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
         runtimeOwnedProjection = true,
         descriptionName = "NotifyCollectionChangedAction",
     ),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("DA049FF2-D2E0-5FE8-8C7B-F87F26060B6F"), "io.github.composefluent.winrt.runtime.WinRtNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("DA049FF2-D2E0-5FE8-8C7B-F87F26060B6F"), "io.github.composefluent.winrt.runtime.WinRTNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRtServiceProvider"), descriptionName = "IXamlServiceProvider"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.DataErrorsChangedEventArgs", { WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "io.github.composefluent.winrt.runtime.WinRtDataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyDataErrorInfo", { WINRT_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "io.github.composefluent.winrt.runtime.WinRtDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyPropertyChanged", { WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("CF75D69C-F2F4-486B-B302-BB4C09BAEBFA"), "io.github.composefluent.winrt.runtime.WinRtPropertyChangedNotifier"), descriptionName = "INotifyPropertyChanged"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventArgs", { WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4F33A9A0-5CF4-47A4-B16F-D7FAAF17457E"), "io.github.composefluent.winrt.runtime.WinRtPropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRTServiceProvider"), descriptionName = "IXamlServiceProvider"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.DataErrorsChangedEventArgs", { WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "io.github.composefluent.winrt.runtime.WinRTDataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyDataErrorInfo", { WINRT_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "io.github.composefluent.winrt.runtime.WinRTDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyPropertyChanged", { WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("CF75D69C-F2F4-486B-B302-BB4C09BAEBFA"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedNotifier"), descriptionName = "INotifyPropertyChanged"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventArgs", { WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4F33A9A0-5CF4-47A4-B16F-D7FAAF17457E"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
     KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventHandler", { WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "PropertyChangedEventHandler"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Input.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRtCommand"), descriptionName = "ICommand"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRtCommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Input.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
     KotlinProjectionMappedType(
         "Windows.UI.Xaml.Interop.IBindableIterable",
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
@@ -923,14 +923,14 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("28B167D5-1A31-465B-9B25-D5C3AE686C40"), "io.github.composefluent.winrt.runtime.WinRtCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("28B167D5-1A31-465B-9B25-D5C3AE686C40"), "io.github.composefluent.winrt.runtime.WinRTCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
     KotlinProjectionMappedType(
         "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
         { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
         runtimeOwnedProjection = true,
         descriptionName = "NotifyCollectionChangedAction",
     ),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4CF68D33-E3F2-4964-B85E-945B4F7E2F21"), "io.github.composefluent.winrt.runtime.WinRtNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4CF68D33-E3F2-4964-B85E-945B4F7E2F21"), "io.github.composefluent.winrt.runtime.WinRTNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
     KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
 )
 
@@ -1008,8 +1008,8 @@ private val KOTLIN_CODE_IDENTIFIER_KEYWORDS = setOf(
     "while",
 )
 
-internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(
-    WinRtIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(
+internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRTIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(
+    WinRTIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Byte::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int8,
         delegateValueKindName = "INT8",
@@ -1021,7 +1021,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         comArgumentKind = KotlinProjectionComArgumentKind.Int8,
         literalRenderer = { valueBits -> CodeBlock.of("%L.toByte()", valueBits.toByte()) },
     ),
-    WinRtIntegralType.UInt8 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.UInt8 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_UBYTE_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt8,
         delegateValueKindName = "UINT8",
@@ -1035,7 +1035,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         carrierToKotlinConversionSuffix = ".toUByte()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUByte()", valueBits.toUByte()) },
     ),
-    WinRtIntegralType.Int16 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.Int16 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Short::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int16,
         delegateValueKindName = "INT16",
@@ -1047,7 +1047,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         comArgumentKind = KotlinProjectionComArgumentKind.Int16,
         literalRenderer = { valueBits -> CodeBlock.of("%L.toShort()", valueBits.toShort()) },
     ),
-    WinRtIntegralType.UInt16 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.UInt16 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_USHORT_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt16,
         delegateValueKindName = "UINT16",
@@ -1061,7 +1061,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         carrierToKotlinConversionSuffix = ".toUShort()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUShort()", valueBits.toUShort()) },
     ),
-    WinRtIntegralType.Int32 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.Int32 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Int::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int32,
         delegateValueKindName = "INT32",
@@ -1076,7 +1076,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
         literalRenderer = { valueBits -> CodeBlock.of("%L", valueBits.toInt()) },
     ),
-    WinRtIntegralType.UInt32 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.UInt32 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_UINT_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt32,
         delegateValueKindName = "UINT32",
@@ -1093,7 +1093,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         carrierToKotlinConversionSuffix = ".toUInt()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUInt()", valueBits.toUInt()) },
     ),
-    WinRtIntegralType.Int64 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.Int64 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Long::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int64,
         delegateValueKindName = "INT64",
@@ -1105,7 +1105,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         comArgumentKind = KotlinProjectionComArgumentKind.Int64,
         literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits.toLong()}L") },
     ),
-    WinRtIntegralType.UInt64 to KotlinProjectionIntegralAbiDescriptor(
+    WinRTIntegralType.UInt64 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_ULONG_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt64,
         delegateValueKindName = "UINT64",
@@ -1128,34 +1128,34 @@ internal fun mappedTypeByAbiName(abiQualifiedName: String): KotlinProjectionMapp
 internal fun mappedTypeByAbiKind(kind: KotlinProjectionAbiValueKind): KotlinProjectionMappedType? =
     MAPPED_TYPES_BY_ABI_KIND[kind]
 
-internal fun integralAbiDescriptor(type: WinRtIntegralType): KotlinProjectionIntegralAbiDescriptor =
+internal fun integralAbiDescriptor(type: WinRTIntegralType): KotlinProjectionIntegralAbiDescriptor =
     INTEGRAL_ABI_DESCRIPTORS.getValue(type)
 
-internal fun integralComAbiValueKindCode(type: WinRtIntegralType): CodeBlock =
+internal fun integralComAbiValueKindCode(type: WinRTIntegralType): CodeBlock =
     CodeBlock.of("%T.%L", COM_ABI_VALUE_KIND_CLASS_NAME, integralAbiDescriptor(type).comArgumentKind.name)
 
-internal fun integralDelegateValueKindCode(type: WinRtIntegralType): CodeBlock =
+internal fun integralDelegateValueKindCode(type: WinRTIntegralType): CodeBlock =
     CodeBlock.of("%T.%L", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME, integralAbiDescriptor(type).delegateValueKindName)
 
-internal fun integralTypeSignatureCode(type: WinRtIntegralType): CodeBlock =
+internal fun integralTypeSignatureCode(type: WinRTIntegralType): CodeBlock =
     CodeBlock.of("%T.%L()", WINRT_TYPE_SIGNATURE_CLASS_NAME, integralAbiDescriptor(type).typeSignatureFunctionName)
 
-internal fun integralProjectionIntrinsicShapeName(type: WinRtIntegralType): String? =
+internal fun integralProjectionIntrinsicShapeName(type: WinRTIntegralType): String? =
     integralAbiDescriptor(type).projectionIntrinsicShapeName
 
-internal fun integralProjectionIntrinsicGetterName(type: WinRtIntegralType): String? =
+internal fun integralProjectionIntrinsicGetterName(type: WinRTIntegralType): String? =
     integralAbiDescriptor(type).projectionIntrinsicGetterName
 
-internal fun integralProjectionIntrinsicSetterName(type: WinRtIntegralType): String? =
+internal fun integralProjectionIntrinsicSetterName(type: WinRTIntegralType): String? =
     integralAbiDescriptor(type).projectionIntrinsicSetterName
 
-internal fun integralAbiSizeExpression(type: WinRtIntegralType): CodeBlock =
+internal fun integralAbiSizeExpression(type: WinRTIntegralType): CodeBlock =
     CodeBlock.of("%L", integralAbiDescriptor(type).abiSizeBytes)
 
-internal fun integralKotlinCastExpression(type: WinRtIntegralType, expression: CodeBlock): CodeBlock =
+internal fun integralKotlinCastExpression(type: WinRTIntegralType, expression: CodeBlock): CodeBlock =
     CodeBlock.of("%L as %T", expression, integralAbiDescriptor(type).kotlinTypeName)
 
-internal fun integralPlatformReadExpression(type: WinRtIntegralType, addressExpression: CodeBlock): CodeBlock {
+internal fun integralPlatformReadExpression(type: WinRTIntegralType, addressExpression: CodeBlock): CodeBlock {
     val descriptor = integralAbiDescriptor(type)
     val readExpression = CodeBlock.of("%T.%L(%L)", PLATFORM_ABI_CLASS_NAME, descriptor.platformReadFunctionName, addressExpression)
     return if (descriptor.carrierToKotlinConversionSuffix.isEmpty()) {
@@ -1166,7 +1166,7 @@ internal fun integralPlatformReadExpression(type: WinRtIntegralType, addressExpr
 }
 
 internal fun integralPlatformWriteCode(
-    type: WinRtIntegralType,
+    type: WinRTIntegralType,
     addressExpression: CodeBlock,
     valueExpression: CodeBlock,
 ): CodeBlock {
@@ -1179,7 +1179,7 @@ internal fun integralPlatformWriteCode(
     return CodeBlock.of("%T.%L(%L, %L)", PLATFORM_ABI_CLASS_NAME, descriptor.platformWriteFunctionName, addressExpression, abiValueExpression)
 }
 
-internal fun integralAbiCarrierExpression(type: WinRtIntegralType, expression: CodeBlock): CodeBlock {
+internal fun integralAbiCarrierExpression(type: WinRTIntegralType, expression: CodeBlock): CodeBlock {
     val descriptor = integralAbiDescriptor(type)
     val carrierExpression = CodeBlock.of("%L as %T", expression, descriptor.abiCarrierTypeName)
     return if (descriptor.carrierToKotlinConversionSuffix.isEmpty()) {
@@ -1189,7 +1189,7 @@ internal fun integralAbiCarrierExpression(type: WinRtIntegralType, expression: C
     }
 }
 
-internal fun integralResultSlotAllocation(type: WinRtIntegralType, scopeName: String): CodeBlock =
+internal fun integralResultSlotAllocation(type: WinRTIntegralType, scopeName: String): CodeBlock =
     when (integralAbiDescriptor(type).abiSizeBytes) {
         1 -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
         2 -> CodeBlock.of("%T.allocateBytes(%L, 2)", PLATFORM_ABI_CLASS_NAME, scopeName)
@@ -1202,11 +1202,11 @@ data class KotlinProjectionAbiTypeBinding(
     val kind: KotlinProjectionAbiValueKind,
     val typeName: String,
     val resolvedTypeName: String = typeName,
-    val sourceTypeKind: WinRtTypeKind? = null,
+    val sourceTypeKind: WinRTTypeKind? = null,
     val abiSize: Int? = null,
     val abiAlignment: Int? = null,
     val interfaceId: Guid? = null,
-    val enumUnderlyingType: WinRtIntegralType? = null,
+    val enumUnderlyingType: WinRTIntegralType? = null,
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val typeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
     val structFieldBindings: List<KotlinProjectionAbiTypeBinding> = emptyList(),
@@ -1215,7 +1215,7 @@ data class KotlinProjectionAbiTypeBinding(
 data class KotlinProjectionAbiParameterBinding(
     val name: String,
     val typeBinding: KotlinProjectionAbiTypeBinding,
-    val category: WinRtMetadataParameterCategory = WinRtMetadataParameterCategory.In,
+    val category: WinRTMetadataParameterCategory = WinRTMetadataParameterCategory.In,
 )
 
 data class KotlinProjectionDelegateInvokeShape(
@@ -1243,7 +1243,7 @@ internal data class KotlinProjectionAbiMarshalerPlan(
 internal data class KotlinProjectionAbiCallPlan(
     val parameterMarshalers: List<KotlinProjectionAbiMarshalerPlan>,
     val returnMarshaler: KotlinProjectionAbiMarshalerPlan? = null,
-    val descriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+    val descriptor: WinRTAbiMarshalerPlanDescriptor? = null,
     val suppressHResultCheck: Boolean = false,
 )
 
@@ -1280,7 +1280,7 @@ data class KotlinProjectionWriteSummary(
     val deletedStaleFiles: Int,
 )
 
-internal fun String.isProjectedWinRtInterfaceReferenceName(): Boolean {
+internal fun String.isProjectedWinRTInterfaceReferenceName(): Boolean {
     val simpleName = substringAfterLast('.')
     return '.' in this &&
         simpleName.startsWith('I') &&
@@ -1288,14 +1288,14 @@ internal fun String.isProjectedWinRtInterfaceReferenceName(): Boolean {
 }
 
 class KotlinProjectionContractValidator {
-    fun validate(model: WinRtMetadataModel): WinRtMetadataModel =
+    fun validate(model: WinRTMetadataModel): WinRTMetadataModel =
         model.requireValidForProjection(GENERATOR_VALIDATION_OPTIONS)
 
-    fun validateType(type: WinRtTypeDefinition) =
-        WinRtMetadataModel(listOf(WinRtNamespace(type.namespace, listOf(type)))).requireValidForProjection(GENERATOR_VALIDATION_OPTIONS)
+    fun validateType(type: WinRTTypeDefinition) =
+        WinRTMetadataModel(listOf(WinRTNamespace(type.namespace, listOf(type)))).requireValidForProjection(GENERATOR_VALIDATION_OPTIONS)
 
     companion object {
-        private val GENERATOR_VALIDATION_OPTIONS = WinRtMetadataValidationOptions(
+        private val GENERATOR_VALIDATION_OPTIONS = WinRTMetadataValidationOptions(
             validateTypeReferences = false,
             validateActivationFactoryReferences = false,
             validateRuntimeClassDefaultInterface = false,

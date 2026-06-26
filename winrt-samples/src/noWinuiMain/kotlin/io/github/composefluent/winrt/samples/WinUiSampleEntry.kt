@@ -1,5 +1,5 @@
 package io.github.composefluent.winrt.samples
 
 internal actual fun runWinUiSample() {
-    error("WinUI sample sources are disabled; set kotlinWinRt.samples.windowsAppSdkVersion to enable them.")
+    error("WinUI sample sources are disabled; set kotlinWinRT.samples.windowsAppSdkVersion to enable them.")
 }

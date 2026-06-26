@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 class AgileReferenceTyped<T : Any>(
-    private val typeHandle: WinRtTypeHandle,
+    private val typeHandle: WinRTTypeHandle,
     instance: ComObjectReference?,
 ) : AutoCloseable {
     private val reference = AgileReference(instance)

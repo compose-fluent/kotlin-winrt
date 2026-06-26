@@ -11,12 +11,12 @@ typealias EventHandlerCallback<TArgs> = (Any?, TArgs) -> Unit
  */
 class EventHandlerEventSource<TArgs> : EventSource<EventHandlerCallback<TArgs>> {
     private val interfaceId: Guid
-    private val argsKind: WinRtDelegateValueKind
+    private val argsKind: WinRTDelegateValueKind
 
     constructor(
         objectReference: ComObjectReference,
         interfaceId: Guid,
-        argsKind: WinRtDelegateValueKind,
+        argsKind: WinRTDelegateValueKind,
         vtableIndexForAddHandler: Int,
     ) : super(objectReference, vtableIndexForAddHandler) {
         this.interfaceId = interfaceId
@@ -26,7 +26,7 @@ class EventHandlerEventSource<TArgs> : EventSource<EventHandlerCallback<TArgs>> 
     constructor(
         objectReference: ComObjectReference,
         interfaceId: Guid,
-        argsKind: WinRtDelegateValueKind,
+        argsKind: WinRTDelegateValueKind,
         addHandler: (ComObjectReference, ComObjectReference) -> EventRegistrationToken,
         removeHandler: (ComObjectReference, EventRegistrationToken) -> Unit,
         index: Int = 0,
@@ -35,10 +35,10 @@ class EventHandlerEventSource<TArgs> : EventSource<EventHandlerCallback<TArgs>> 
         this.argsKind = argsKind
     }
 
-    override fun createMarshaler(handler: EventHandlerCallback<TArgs>): WinRtDelegateHandle =
-        WinRtDelegateBridge.createUnitDelegate(
+    override fun createMarshaler(handler: EventHandlerCallback<TArgs>): WinRTDelegateHandle =
+        WinRTDelegateBridge.createUnitDelegate(
             iid = interfaceId,
-            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, argsKind),
+            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, argsKind),
         ) { args ->
             @Suppress("UNCHECKED_CAST")
             handler(args[0], args[1] as TArgs)

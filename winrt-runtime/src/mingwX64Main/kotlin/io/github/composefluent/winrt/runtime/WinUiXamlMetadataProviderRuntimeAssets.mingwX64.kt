@@ -8,7 +8,7 @@ internal actual object WinUiXamlMetadataProviderRuntimeAssets {
 }
 
 private fun loadRuntimeClassNames(fileName: String): List<String> {
-    val manifest = Path(WinRtPlatformApi.resolveModulePathRaw(fileName))
+    val manifest = Path(WinRTPlatformApi.resolveModulePathRaw(fileName))
     if (!manifest.isRegularFile()) {
         return emptyList()
     }

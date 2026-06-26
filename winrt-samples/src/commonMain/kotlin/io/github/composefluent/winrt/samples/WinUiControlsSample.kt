@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.samples
 
 import io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
-import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
@@ -40,7 +40,7 @@ object WinUiControlsSample {
     }
 
     fun launchForSmoke(): WinUiControlsSampleResult =
-        WinRtWindowsAppSdkBootstrap.initializeApplicationHost().use {
+        WinRTWindowsAppSdkBootstrap.initializeApplicationHost().use {
             WinUiControlsApp().use { app ->
                 app.launchWithResources()
             }
@@ -64,7 +64,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
     private var deferredMenuFlyoutToken: EventRegistrationToken? = null
 
     fun launchWithResources(): WinUiControlsSampleResult {
-        if (!winRtSampleOption("kotlin.winrt.samples.skipXamlResources")) {
+        if (!winRTSampleOption("kotlin.winrt.samples.skipXamlResources")) {
             installXamlResources()
         }
         return launchCore()
@@ -96,13 +96,13 @@ class WinUiControlsApp : Application(), AutoCloseable {
         println("winui-controls: launchCore")
         val window = Window()
         window.title = "Kotlin WinRT WinUI Controls"
-        if (!winRtSampleOption("kotlin.winrt.samples.skipMica")) {
+        if (!winRTSampleOption("kotlin.winrt.samples.skipMica")) {
             window.systemBackdrop = MicaBackdrop()
             window.systemBackdrop = null
             window.systemBackdrop = MicaBackdrop()
         }
         println("winui-controls: creating controls surface")
-        if (!winRtSampleOption("kotlin.winrt.samples.noWinUiContent")) {
+        if (!winRTSampleOption("kotlin.winrt.samples.noWinUiContent")) {
             window.content = createControlsSurface()
         }
         println("winui-controls: controls surface assigned")
@@ -144,11 +144,11 @@ class WinUiControlsApp : Application(), AutoCloseable {
     }
 
     private fun createControlsSurface(): UIElement {
-        val skipObjectContent = winRtSampleOption("kotlin.winrt.samples.skipObjectContent")
-        val skipSettingsCard = winRtSampleOption("kotlin.winrt.samples.skipSettingsCard")
-        val skipShimmer = winRtSampleOption("kotlin.winrt.samples.skipShimmer")
-        val enableShimmerLoading = winRtSampleOption("kotlin.winrt.samples.enableShimmerLoading")
-        val skipShimmerSizing = winRtSampleOption("kotlin.winrt.samples.skipShimmerSizing")
+        val skipObjectContent = winRTSampleOption("kotlin.winrt.samples.skipObjectContent")
+        val skipSettingsCard = winRTSampleOption("kotlin.winrt.samples.skipSettingsCard")
+        val skipShimmer = winRTSampleOption("kotlin.winrt.samples.skipShimmer")
+        val enableShimmerLoading = winRTSampleOption("kotlin.winrt.samples.enableShimmerLoading")
+        val skipShimmerSizing = winRTSampleOption("kotlin.winrt.samples.skipShimmerSizing")
         deferredLoadingShimmers.clear()
         deferredMenuFlyoutToken = null
         deferredMenuFlyoutButton = null
@@ -158,7 +158,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
         root.padding = Thickness(32.0, 32.0, 32.0, 32.0)
         println("winui-controls: set StackPanel spacing")
         root.spacing = 16.0
-        if (winRtSampleOption("kotlin.winrt.samples.minimalWinUiSurface")) {
+        if (winRTSampleOption("kotlin.winrt.samples.minimalWinUiSurface")) {
             return root
         }
         val rootChildren = checkNotNull(root.children) { "Expected StackPanel children collection." }
@@ -277,7 +277,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
     }
 
     private fun scheduleAutoMenuFlyoutShow(menuFlyout: MenuFlyout, button: Button) {
-        if (!winRtSampleOption("kotlin.winrt.samples.autoShowMenuFlyout")) {
+        if (!winRTSampleOption("kotlin.winrt.samples.autoShowMenuFlyout")) {
             return
         }
         println("winui-controls: auto MenuFlyout.ShowAt requested")
@@ -330,7 +330,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
 
     private fun exitAfterDeferredShimmerLoadingIfReady() {
         if (deferredLoadingShimmerTokens.isEmpty() && deferredMenuFlyoutToken == null &&
-            winRtSampleOption("kotlin.winrt.samples.autoExitWinUi")
+            winRTSampleOption("kotlin.winrt.samples.autoExitWinUi")
         ) {
             checkNotNull(Application.current) { "Expected current WinUI application after deferred Shimmer loading." }.exit()
         }
@@ -338,14 +338,14 @@ class WinUiControlsApp : Application(), AutoCloseable {
 
     private fun exitAfterDeferredMenuFlyoutIfReady() {
         if (deferredLoadingShimmerTokens.isEmpty() && deferredMenuFlyoutToken == null &&
-            winRtSampleOption("kotlin.winrt.samples.autoExitWinUi")
+            winRTSampleOption("kotlin.winrt.samples.autoExitWinUi")
         ) {
             checkNotNull(Application.current) { "Expected current WinUI application after deferred MenuFlyout.ShowAt." }.exit()
         }
     }
 
     private fun exitIfDeferredWinUiWorkIsReady(pendingDeferredLoading: Boolean) {
-        if (winRtSampleOption("kotlin.winrt.samples.autoExitWinUi") &&
+        if (winRTSampleOption("kotlin.winrt.samples.autoExitWinUi") &&
             !pendingDeferredLoading &&
             deferredMenuFlyoutToken == null
         ) {

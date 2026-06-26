@@ -13,7 +13,7 @@ class JsonObjectInteropTest {
         }
 
         RuntimeScope.initializeMultithreaded().use {
-            val statics = WinRtRuntime.getActivationFactory(
+            val statics = WinRTRuntime.getActivationFactory(
                 runtimeClassName = "Windows.Data.Json.JsonObject",
                 interfaceId = iidIJsonObjectStatics,
             ).getOrThrow()

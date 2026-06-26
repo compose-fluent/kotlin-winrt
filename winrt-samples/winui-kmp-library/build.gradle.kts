@@ -1,17 +1,17 @@
-import io.github.composefluent.winrt.gradle.GenerateWinRtProjectionsTask
+import io.github.composefluent.winrt.gradle.GenerateWinRTProjectionsTask
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("io.github.composefluent.winrt")
 }
 
-tasks.named<GenerateWinRtProjectionsTask>("generateWinRtProjections") {
+tasks.named<GenerateWinRTProjectionsTask>("generateWinRTProjections") {
     sourceRoots.setFrom(project.file("src/commonMain/kotlin"))
 }
 
-val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.1.3")
-val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
+val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 
 kotlin {
@@ -40,7 +40,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {

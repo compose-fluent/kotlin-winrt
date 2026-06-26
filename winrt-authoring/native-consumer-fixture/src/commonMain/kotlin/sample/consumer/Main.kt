@@ -6,9 +6,9 @@ import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinRtAsyncInterfaceIds
-import io.github.composefluent.winrt.runtime.WinRtAsyncProjectionInterop
-import io.github.composefluent.winrt.runtime.WinRtTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTAsyncInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop
+import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.IWinRTObject
 import io.github.composefluent.winrt.runtime.join
 import sample.NativeJsonValueThing
@@ -103,15 +103,15 @@ fun main() {
                         "Expected authored IDataReader.LoadAsync result to be completed."
                     }
                     val asyncOperationInterfaceId = ParameterizedInterfaceId.createFromSignature(
-                        WinRtTypeSignature.parameterizedInterface(
-                            WinRtAsyncInterfaceIds.IAsyncOperationGeneric,
-                            WinRtTypeSignature.uint32(),
+                        WinRTTypeSignature.parameterizedInterface(
+                            WinRTAsyncInterfaceIds.IAsyncOperationGeneric,
+                            WinRTTypeSignature.uint32(),
                         ),
                     )
                     loadOperation.nativeObject.queryInterface(asyncOperationInterfaceId).getOrThrow().use { asyncReference ->
-                        WinRtAsyncProjectionInterop.operation(
+                        WinRTAsyncProjectionInterop.operation(
                             pointer = PlatformAbi.fromRawComPtr(asyncReference.getRefPointer()),
-                            resultSignature = WinRtTypeSignature.uint32(),
+                            resultSignature = WinRTTypeSignature.uint32(),
                             resultOut = PlatformAbi::allocateInt32Slot,
                             resultReader = { resultOut -> PlatformAbi.readInt32(resultOut).toUInt() },
                         ).use { asyncOperation ->

@@ -9,23 +9,23 @@ interface IWinRTObject {
      * When a wrapper already represents a specific projected interface type, later runtime projection code
      * must be able to retrieve that object reference directly instead of redundantly issuing `QueryInterface`.
      */
-    val primaryTypeHandle: WinRtTypeHandle?
+    val primaryTypeHandle: WinRTTypeHandle?
         get() = null
 
     val hasUnwrappableNativeObject: Boolean
         get() = true
 
-    val queryInterfaceCache: ConcurrentCacheMap<WinRtTypeHandle, ComObjectReference>
-        get() = winRtObjectSupport.queryInterfaceCache(this)
+    val queryInterfaceCache: ConcurrentCacheMap<WinRTTypeHandle, ComObjectReference>
+        get() = winRTObjectSupport.queryInterfaceCache(this)
 
-    val additionalTypeData: ConcurrentCacheMap<WinRtTypeHandle, Any>
-        get() = winRtObjectSupport.additionalTypeData(this)
+    val additionalTypeData: ConcurrentCacheMap<WinRTTypeHandle, Any>
+        get() = winRTObjectSupport.additionalTypeData(this)
 
     fun isInterfaceImplemented(
-        interfaceType: WinRtTypeHandle,
+        interfaceType: WinRTTypeHandle,
         throwIfNotImplemented: Boolean = false,
     ): Boolean =
-        winRtObjectSupport.isInterfaceImplemented(
+        winRTObjectSupport.isInterfaceImplemented(
             instance = this,
             primaryTypeHandle = primaryTypeHandle,
             interfaceType = interfaceType,
@@ -35,8 +35,8 @@ interface IWinRTObject {
             missingInterfaceError = ::missingInterfaceError,
         )
 
-    fun getObjectReferenceForType(interfaceType: WinRtTypeHandle): ComObjectReference =
-        winRtObjectSupport.getObjectReferenceForType(
+    fun getObjectReferenceForType(interfaceType: WinRTTypeHandle): ComObjectReference =
+        winRTObjectSupport.getObjectReferenceForType(
             instance = this,
             primaryTypeHandle = primaryTypeHandle,
             interfaceType = interfaceType,
@@ -46,23 +46,23 @@ interface IWinRTObject {
         )
 
     fun <T : Any> getOrAddAdditionalTypeData(
-        type: WinRtTypeHandle,
+        type: WinRTTypeHandle,
         factory: () -> T,
     ): T =
-        winRtObjectSupport.getOrAddAdditionalTypeData(
+        winRTObjectSupport.getOrAddAdditionalTypeData(
             instance = this,
             type = type,
             factory = factory,
         )
 }
 
-private val winRtObjectSupport =
-    WinRtObjectSupport<IWinRTObject, ComObjectReference> { reference ->
+private val winRTObjectSupport =
+    WinRTObjectSupport<IWinRTObject, ComObjectReference> { reference ->
         reference.close()
     }
 
-private fun missingInterfaceError(interfaceType: WinRtTypeHandle): Throwable =
-    WinRtUnsupportedOperationException(
+private fun missingInterfaceError(interfaceType: WinRTTypeHandle): Throwable =
+    WinRTUnsupportedOperationException(
         "Interface '${interfaceType.projectedTypeName}' is not implemented.",
         KnownHResults.E_NOINTERFACE,
     )

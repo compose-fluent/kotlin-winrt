@@ -127,7 +127,7 @@ expect object PlatformAbi {
     fun zeroBytes(pointer: RawAddress, sizeBytes: Long)
 }
 
-expect object WinRtPlatformApi {
+expect object WinRTPlatformApi {
     fun roGetActivationFactoryRaw(runtimeClassId: RawAddress, interfaceId: Guid): NativePointerResult
 
     fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult

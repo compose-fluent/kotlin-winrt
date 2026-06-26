@@ -9,7 +9,7 @@ internal actual object WinUiXamlMetadataProviderRuntimeAssets {
 }
 
 private fun loadRuntimeClassNames(fileName: String): List<String> {
-    val manifest = WinRtRuntimeAssets.resolveAssetPath(fileName) ?: return emptyList()
+    val manifest = WinRTRuntimeAssets.resolveAssetPath(fileName) ?: return emptyList()
     return Files.readAllLines(manifest)
         .asSequence()
         .map(String::trim)

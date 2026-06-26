@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
 
 internal fun mappedCollectionMemberNames(plan: KotlinTypeProjectionPlan): Set<String> =
     if (!plan.hasMappedCollectionOrIteratorRuntimeProjection) {
@@ -10,7 +10,7 @@ internal fun mappedCollectionMemberNames(plan: KotlinTypeProjectionPlan): Set<St
         mappedCollectionRuntimeMemberNames
     }
 
-internal fun WinRtMethodDefinition.isMappedCollectionRuntimeMethod(
+internal fun WinRTMethodDefinition.isMappedCollectionRuntimeMethod(
     plan: KotlinTypeProjectionPlan,
     mappedCollectionMemberNames: Set<String>,
 ): Boolean {
@@ -29,7 +29,7 @@ internal fun WinRtMethodDefinition.isMappedCollectionRuntimeMethod(
     return plan.hasMappedCollectionOrIteratorRuntimeProjection
 }
 
-internal fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(
+internal fun WinRTPropertyDefinition.isMappedCollectionRuntimeProperty(
     plan: KotlinTypeProjectionPlan,
     mappedCollectionMemberNames: Set<String>,
 ): Boolean {

@@ -19,10 +19,10 @@ internal object RawActivationFactoryLookup {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
 
-        WinRtModule.ensureInitialized()
+        WinRTModule.ensureInitialized()
         HString.create(runtimeClassName).use { classId ->
             val activationResult =
-                WinRtPlatformApi.roGetActivationFactoryRaw(classId.handle, interfaceId).toActivationResult()
+                WinRTPlatformApi.roGetActivationFactoryRaw(classId.handle, interfaceId).toActivationResult()
             if (activationResult.isSuccess || !isActivationClassUnavailable(activationResult.hResult)) {
                 return activationResult
             }
@@ -55,7 +55,7 @@ internal object CachedActivationFactoryPointers {
     fun get(runtimeClassName: String, interfaceId: Guid): ActivationResult {
         val key = CacheKey(runtimeClassName, interfaceId)
         cache[key]?.let { cached ->
-            WinRtPlatformApi.addRefRaw(cached)
+            WinRTPlatformApi.addRefRaw(cached)
             return ActivationResult(KnownHResults.S_OK, cached)
         }
 
@@ -69,12 +69,12 @@ internal object CachedActivationFactoryPointers {
 
         val existing = cache.putIfAbsent(key, created.pointer)
         if (existing != null) {
-            WinRtPlatformApi.releaseRaw(created.pointer)
-            WinRtPlatformApi.addRefRaw(existing)
+            WinRTPlatformApi.releaseRaw(created.pointer)
+            WinRTPlatformApi.addRefRaw(existing)
             return ActivationResult(KnownHResults.S_OK, existing)
         }
 
-        WinRtPlatformApi.addRefRaw(created.pointer)
+        WinRTPlatformApi.addRefRaw(created.pointer)
         return ActivationResult(KnownHResults.S_OK, created.pointer)
     }
 
@@ -83,7 +83,7 @@ internal object CachedActivationFactoryPointers {
     fun clearRuntimeCache() {
         cache.values.forEach { pointer ->
             if (!PlatformAbi.isNull(pointer)) {
-                WinRtPlatformApi.releaseRaw(pointer)
+                WinRTPlatformApi.releaseRaw(pointer)
             }
         }
         cache.clear()

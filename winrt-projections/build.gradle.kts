@@ -4,23 +4,23 @@ plugins {
     id("io.github.composefluent.winrt")
 }
 
-val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.1.3")
-val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsSdkVersion")
+val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
-val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRt.projections.includeWinAppSdk")
+val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRT.projections.includeWinAppSdk")
     .map(String::toBooleanStrict)
     .orElse(false)
-val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRt.projections.includeFullWindowsSdk")
+val projectionIncludeFullWindowsSdk = providers.gradleProperty("kotlinWinRT.projections.includeFullWindowsSdk")
     .map(String::toBooleanStrict)
     .orElse(false)
 val fullWindowsSdkProjectionGateRequested = providers.provider {
     val fullWindowsSdkGateTasks = setOf(
-        "validateWinRtFullWindowsSdkProjectionGate",
-        "validateWinRtMingwParity",
-        "validateWinRtProjectionCompile",
-        "validateWinRtSampleSmoke",
-        "validateWinRtQueue16",
+        "validateWinRTFullWindowsSdkProjectionGate",
+        "validateWinRTMingwParity",
+        "validateWinRTProjectionCompile",
+        "validateWinRTSampleSmoke",
+        "validateWinRTQueue16",
     )
     gradle.startParameter.taskNames.any { taskName ->
         val unqualifiedTaskName = taskName.substringAfterLast(":")
@@ -37,16 +37,16 @@ kotlin {
     mingwX64()
 }
 
-val generatedWinRtProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
+val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
 
-val auditGeneratedWinRtProjectionOutput by tasks.registering(
-    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRtProjectionOutputTask::class,
+val auditGeneratedWinRTProjectionOutput by tasks.registering(
+    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRTProjectionOutputTask::class,
 ) {
     group = "verification"
     description = "Fails if generated projection source leaks fallback invocation or JVM-only reflection paths."
-    dependsOn("generateWinRtProjections")
+    dependsOn("generateWinRTProjections")
     dependsOn("compileKotlinJvm")
-    generatedSourcesDirectory.set(generatedWinRtProjectionSources)
+    generatedSourcesDirectory.set(generatedWinRTProjectionSources)
     compiledClassesDirectories.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
     maxTotalClassBytes.set(
         projectionUseFullWindowsSdk.map { useFullWindowsSdk ->
@@ -56,10 +56,10 @@ val auditGeneratedWinRtProjectionOutput by tasks.registering(
 }
 
 tasks.named("check") {
-    dependsOn(auditGeneratedWinRtProjectionOutput)
+    dependsOn(auditGeneratedWinRTProjectionOutput)
 }
 
-winRt {
+winRT {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
@@ -100,7 +100,7 @@ winRt {
     }
     namespace("SimpleMathComponent")
     winmd(
-        providers.gradleProperty("kotlinWinRt.samples.simpleMathWinmd")
+        providers.gradleProperty("kotlinWinRT.samples.simpleMathWinmd")
             .getOrElse(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.winmd").asFile.absolutePath),
     )
     runtimeAsset(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.dll").asFile.absolutePath)

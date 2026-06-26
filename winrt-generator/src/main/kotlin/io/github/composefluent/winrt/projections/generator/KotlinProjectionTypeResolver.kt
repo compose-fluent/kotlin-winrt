@@ -1,42 +1,42 @@
 package io.github.composefluent.winrt.projections.generator
 
-import io.github.composefluent.winrt.metadata.WinRtMetadataModel
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
-import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
-import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
-import io.github.composefluent.winrt.metadata.WinRtEventDefinition
-import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
-import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
-import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
-import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
-import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
-import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
-import io.github.composefluent.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
-import io.github.composefluent.winrt.metadata.WinRtIntegralType
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
-import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
-import io.github.composefluent.winrt.metadata.WinRtMetadataParameterCategory
-import io.github.composefluent.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtNamespace
-import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
-import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
-import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeRef
-import io.github.composefluent.winrt.metadata.WinRtTypeKind
-import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
-import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
+import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
+import io.github.composefluent.winrt.metadata.WinRTCustomMappedMemberOutputDescriptor
+import io.github.composefluent.winrt.metadata.WinRTEventDefinition
+import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
+import io.github.composefluent.winrt.metadata.isWinRTGuidTypeName
+import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
+import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
+import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
+import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
+import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
+import io.github.composefluent.winrt.metadata.WinRTIntegralType
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventory
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventoryBuilder
+import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTObjectReferenceSurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRTRequiredInterfaceAugmentationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTSignatureWriterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDeclarationDescriptor
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeRef
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
+import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
+import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ActivationFactory
@@ -55,34 +55,34 @@ import io.github.composefluent.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.composefluent.winrt.runtime.NativeScalarFieldSpec
 import io.github.composefluent.winrt.runtime.NativeStructLayout
 import io.github.composefluent.winrt.runtime.NativeStructScalarKind
-import io.github.composefluent.winrt.runtime.WinRtBindableIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorProjection
-import io.github.composefluent.winrt.runtime.WinRtBindableVectorViewProjection
-import io.github.composefluent.winrt.runtime.WinRtCollectionInterfaceIds
-import io.github.composefluent.winrt.runtime.WinRtDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtIterableProjection
-import io.github.composefluent.winrt.runtime.WinRtListProjection
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncActionWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressReference
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtAsyncOperationVftblSlots
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection
-import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
-import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtTypeSignature
-import io.github.composefluent.winrt.runtime.WinRtTypeHandle
-import io.github.composefluent.winrt.runtime.WinRtUri
-import io.github.composefluent.winrt.runtime.WinRtDelegateBridge
-import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
-import io.github.composefluent.winrt.runtime.WinRtDelegateReference
-import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
-import io.github.composefluent.winrt.runtime.WinRtEvent
+import io.github.composefluent.winrt.runtime.WinRTBindableIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorProjection
+import io.github.composefluent.winrt.runtime.WinRTBindableVectorViewProjection
+import io.github.composefluent.winrt.runtime.WinRTCollectionInterfaceIds
+import io.github.composefluent.winrt.runtime.WinRTDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTListProjection
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncOperationVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyDictionaryProjection
+import io.github.composefluent.winrt.runtime.WinRTReadOnlyListProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceArrayProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceProjection
+import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTUri
+import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
+import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
+import io.github.composefluent.winrt.runtime.WinRTDelegateReference
+import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
+import io.github.composefluent.winrt.runtime.WinRTEvent
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -136,16 +136,16 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         return TypeVariableName(effectiveTypeName).withOuterNullability(nullable)
     }
 
-    if (isWinRtVoidTypeName(effectiveTypeName)) {
+    if (isWinRTVoidTypeName(effectiveTypeName)) {
         return UNIT
     }
-    if (isWinRtGuidTypeName(effectiveTypeName)) {
+    if (isWinRTGuidTypeName(effectiveTypeName)) {
         return GUID_CLASS_NAME
     }
-    winRtFundamentalTypeForName(effectiveTypeName)?.let { fundamentalType ->
+    winRTFundamentalTypeForName(effectiveTypeName)?.let { fundamentalType ->
         return fundamentalType.toProjectionTypeName().withOuterNullability(nullable)
     }
-    if (isWinRtObjectTypeName(effectiveTypeName)) {
+    if (isWinRTObjectTypeName(effectiveTypeName)) {
         return ANY.copy(nullable = true)
     }
 
@@ -190,7 +190,7 @@ internal fun redirectedWinAppSdkAbiTypeExpression(typeName: String, useWinAppSdk
 internal fun redirectedWinAppSdkAbiTypeExpression(
     typeName: String,
     useWinAppSdkTypeRedirects: Boolean,
-    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    typesByQualifiedName: Map<String, WinRTTypeDefinition>,
 ): String {
     val trimmed = typeName.trim()
     val nullableSuffix = if (trimmed.endsWith("?")) "?" else ""
@@ -223,12 +223,12 @@ internal fun redirectedWinAppSdkAbiTypeExpression(
     return resolved + nullableSuffix
 }
 
-fun redirectedWinAppSdkProjectionSurfaceTypeReferences(type: WinRtTypeRef): List<WinRtTypeRef> {
+fun redirectedWinAppSdkProjectionSurfaceTypeReferences(type: WinRTTypeRef): List<WinRTTypeRef> {
     val redirected = redirectedWinAppSdkAbiTypeExpression(type.typeName, useWinAppSdkTypeRedirects = true)
     return if (redirected == type.typeName) {
         emptyList()
     } else {
-        listOf(WinRtTypeRef.fromDisplayName(redirected))
+        listOf(WinRTTypeRef.fromDisplayName(redirected))
     }
 }
 
@@ -246,7 +246,7 @@ internal fun KotlinProjectionRenderer.resolveStructFieldTypeName(
 }
 
 internal fun KotlinTypeProjectionPlan.requiresKotlinDurationAlias(): Boolean =
-    type.kind == WinRtTypeKind.Struct &&
+    type.kind == WinRTTypeKind.Struct &&
         type.fields.any { field ->
                 !field.isStatic &&
                 !field.isLiteral &&
@@ -256,10 +256,10 @@ internal fun KotlinTypeProjectionPlan.requiresKotlinDurationAlias(): Boolean =
 private fun TypeName.withOuterNullability(nullable: Boolean): TypeName =
     if (nullable) copy(nullable = true) else this
 
-internal fun KotlinProjectionRenderer.resolveIntegralTypeName(type: WinRtIntegralType): TypeName =
+internal fun KotlinProjectionRenderer.resolveIntegralTypeName(type: WinRTIntegralType): TypeName =
     integralAbiDescriptor(type).kotlinTypeName
 
-internal fun KotlinProjectionRenderer.integralLiteral(valueBits: ULong, type: WinRtIntegralType): CodeBlock =
+internal fun KotlinProjectionRenderer.integralLiteral(valueBits: ULong, type: WinRTIntegralType): CodeBlock =
     integralAbiDescriptor(type).literalRenderer(valueBits)
 
 internal fun KotlinProjectionRenderer.splitGenericArguments(arguments: String): List<String> {

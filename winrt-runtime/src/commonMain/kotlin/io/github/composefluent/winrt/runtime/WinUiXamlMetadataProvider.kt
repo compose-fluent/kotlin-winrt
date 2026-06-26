@@ -74,7 +74,7 @@ object WinUiXamlMetadataProvider {
                             statics.pointer,
                             WinUiXamlControlsXamlMetadataProviderStaticsSlots.Initialize,
                         )
-                    WinRtPlatformApi.checkSucceededRaw(hr)
+                    WinRTPlatformApi.checkSucceededRaw(hr)
                 }
             initialized = true
         }

@@ -13,7 +13,7 @@ class ReadableMemoryProbeTest {
         PlatformAbi.confinedScope().use { scope ->
             val memory = PlatformAbi.allocateBytes(scope, 16)
 
-            assertTrue(WinRtPlatformApi.isReadableMemoryRaw(memory, 16))
+            assertTrue(WinRTPlatformApi.isReadableMemoryRaw(memory, 16))
         }
     }
 
@@ -25,8 +25,8 @@ class ReadableMemoryProbeTest {
         PlatformAbi.confinedScope().use { scope ->
             val memory = PlatformAbi.allocateBytes(scope, 16)
 
-            assertFalse(WinRtPlatformApi.isReadableMemoryRaw(PlatformAbi.nullPointer, 1))
-            assertFalse(WinRtPlatformApi.isReadableMemoryRaw(memory, 0))
+            assertFalse(WinRTPlatformApi.isReadableMemoryRaw(PlatformAbi.nullPointer, 1))
+            assertFalse(WinRTPlatformApi.isReadableMemoryRaw(memory, 0))
         }
     }
 }

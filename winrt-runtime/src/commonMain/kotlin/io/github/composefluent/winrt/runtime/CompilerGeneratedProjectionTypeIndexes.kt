@@ -9,17 +9,29 @@ public fun registerGeneratedProjectionTypeIndex(
     kind: String,
     baseTypeName: String,
 ) {
+    registerGeneratedProjectionTypeIndex(kClass, projectedTypeName, kind, baseTypeName, interfaceIid = "")
+}
+
+@Suppress("UNCHECKED_CAST")
+public fun registerGeneratedProjectionTypeIndex(
+    kClass: KClass<*>,
+    projectedTypeName: String,
+    kind: String,
+    baseTypeName: String,
+    interfaceIid: String,
+) {
     if (projectedTypeName.isBlank()) {
         return
     }
     val typedClass = kClass as KClass<Any>
     val isRuntimeClass = kind == "RuntimeClass"
-    WinRtTypeRegistry.update(typedClass) { existing ->
-        WinRtTypeId(
+    val iid = interfaceIid.takeIf(String::isNotBlank)?.let(::Guid)
+    WinRTTypeRegistry.update(typedClass) { existing ->
+        WinRTTypeId(
             kClass = typedClass,
             projectedTypeName = projectedTypeName,
             guid = existing?.guid,
-            iid = existing?.iid,
+            iid = iid ?: existing?.iid,
             signature = existing?.signature,
             enumAbiValue = existing?.enumAbiValue,
             enumEntries = existing?.enumEntries,
@@ -53,6 +65,16 @@ internal fun registerCompilerGeneratedProjectionTypeIndex(
     registerGeneratedProjectionTypeIndex(kClass, projectedTypeName, kind, baseTypeName)
 }
 
+internal fun registerCompilerGeneratedProjectionTypeIndex(
+    kClass: KClass<*>,
+    projectedTypeName: String,
+    kind: String,
+    baseTypeName: String,
+    interfaceIid: String,
+) {
+    registerGeneratedProjectionTypeIndex(kClass, projectedTypeName, kind, baseTypeName, interfaceIid)
+}
+
 private fun String.isMeaningfulProjectionBaseTypeName(): Boolean =
-    isNotBlank() && !WinRtTypeClassifier.isObjectRuntimeName(this)
+    isNotBlank() && !WinRTTypeClassifier.isObjectRuntimeName(this)
 

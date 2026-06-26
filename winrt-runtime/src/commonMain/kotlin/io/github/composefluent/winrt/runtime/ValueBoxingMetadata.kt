@@ -9,7 +9,7 @@ import kotlin.time.Instant
 private const val IREFERENCE_GENERIC_INTERFACE = "61C17706-2D65-11E0-9AE8-D48564015472"
 private val enumSignaturePattern = Regex("^enum\\((.+);(i4|u4)\\)$")
 
-internal data class WinRtValueTypeMetadata(
+internal data class WinRTValueTypeMetadata(
     val projectedClass: KClass<*>,
     val nullableInterfaceId: Guid?,
     val referenceArrayInterfaceId: Guid?,
@@ -20,10 +20,10 @@ internal data class WinRtValueTypeMetadata(
 
 private data class ManagedArrayMetadata(
     val elements: Array<*>,
-    val metadata: WinRtValueTypeMetadata,
+    val metadata: WinRTValueTypeMetadata,
 )
 
-internal data class WinRtEnumBoxingMetadata(
+internal data class WinRTEnumBoxingMetadata(
     val projectedTypeName: String,
     val propertyType: PropertyType,
     val nullableInterfaceId: Guid,
@@ -33,7 +33,7 @@ internal data class WinRtEnumBoxingMetadata(
 
 internal object ValueBoxingMetadata {
     private val objectMetadata =
-        WinRtValueTypeMetadata(
+        WinRTValueTypeMetadata(
             projectedClass = Any::class,
             nullableInterfaceId = IID.NullableObject,
             referenceArrayInterfaceId = IID.IReferenceArrayOfObject,
@@ -42,7 +42,7 @@ internal object ValueBoxingMetadata {
         )
 
     private val exceptionMetadata =
-        WinRtValueTypeMetadata(
+        WinRTValueTypeMetadata(
             projectedClass = Exception::class,
             nullableInterfaceId = IID.NullableException,
             referenceArrayInterfaceId = IID.IReferenceArrayOfException,
@@ -50,42 +50,42 @@ internal object ValueBoxingMetadata {
             propertyTypeArray = null,
         )
 
-    private val dynamicDescriptorsByClass = ConcurrentCacheMap<KClass<*>, WinRtValueTypeMetadata>()
+    private val dynamicDescriptorsByClass = ConcurrentCacheMap<KClass<*>, WinRTValueTypeMetadata>()
 
     private val builtInDescriptors =
         listOf(
-            WinRtValueTypeMetadata(Byte::class, IID.NullableSByte, IID.IReferenceArrayOfSByte, null, null),
-            WinRtValueTypeMetadata(UByte::class, IID.NullableByte, IID.IReferenceArrayOfByte, PropertyType.UInt8, PropertyType.UInt8Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(Short::class, IID.NullableShort, IID.IReferenceArrayOfInt16, PropertyType.Int16, PropertyType.Int16Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(UShort::class, IID.NullableUShort, IID.IReferenceArrayOfUInt16, PropertyType.UInt16, PropertyType.UInt16Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(Int::class, IID.NullableInt, IID.IReferenceArrayOfInt32, PropertyType.Int32, PropertyType.Int32Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(UInt::class, IID.NullableUInt, IID.IReferenceArrayOfUInt32, PropertyType.UInt32, PropertyType.UInt32Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(Long::class, IID.NullableLong, IID.IReferenceArrayOfInt64, PropertyType.Int64, PropertyType.Int64Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(ULong::class, IID.NullableULong, IID.IReferenceArrayOfUInt64, PropertyType.UInt64, PropertyType.UInt64Array, isNumericScalar = true),
-            WinRtValueTypeMetadata(Float::class, IID.NullableFloat, IID.IReferenceArrayOfSingle, PropertyType.Single, PropertyType.SingleArray, isNumericScalar = true),
-            WinRtValueTypeMetadata(Double::class, IID.NullableDouble, IID.IReferenceArrayOfDouble, PropertyType.Double, PropertyType.DoubleArray, isNumericScalar = true),
-            WinRtValueTypeMetadata(Char::class, IID.NullableChar, IID.IReferenceArrayOfChar, PropertyType.Char16, PropertyType.Char16Array),
-            WinRtValueTypeMetadata(Boolean::class, IID.NullableBool, IID.IReferenceArrayOfBoolean, PropertyType.Boolean, PropertyType.BooleanArray),
-            WinRtValueTypeMetadata(String::class, IID.NullableString, IID.IReferenceArrayOfString, PropertyType.String, PropertyType.StringArray),
-            WinRtValueTypeMetadata(Guid::class, IID.NullableGuid, IID.IReferenceArrayOfGuid, PropertyType.Guid, PropertyType.GuidArray),
-            WinRtValueTypeMetadata(Instant::class, IID.NullableDateTimeOffset, IID.IReferenceArrayOfDateTimeOffset, PropertyType.DateTime, PropertyType.DateTimeArray),
-            WinRtValueTypeMetadata(Duration::class, IID.NullableTimeSpan, IID.IReferenceArrayOfTimeSpan, PropertyType.TimeSpan, PropertyType.TimeSpanArray),
-            WinRtValueTypeMetadata(KClass::class, IID.NullableType, IID.IReferenceArrayOfType, null, null),
+            WinRTValueTypeMetadata(Byte::class, IID.NullableSByte, IID.IReferenceArrayOfSByte, null, null),
+            WinRTValueTypeMetadata(UByte::class, IID.NullableByte, IID.IReferenceArrayOfByte, PropertyType.UInt8, PropertyType.UInt8Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(Short::class, IID.NullableShort, IID.IReferenceArrayOfInt16, PropertyType.Int16, PropertyType.Int16Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(UShort::class, IID.NullableUShort, IID.IReferenceArrayOfUInt16, PropertyType.UInt16, PropertyType.UInt16Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(Int::class, IID.NullableInt, IID.IReferenceArrayOfInt32, PropertyType.Int32, PropertyType.Int32Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(UInt::class, IID.NullableUInt, IID.IReferenceArrayOfUInt32, PropertyType.UInt32, PropertyType.UInt32Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(Long::class, IID.NullableLong, IID.IReferenceArrayOfInt64, PropertyType.Int64, PropertyType.Int64Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(ULong::class, IID.NullableULong, IID.IReferenceArrayOfUInt64, PropertyType.UInt64, PropertyType.UInt64Array, isNumericScalar = true),
+            WinRTValueTypeMetadata(Float::class, IID.NullableFloat, IID.IReferenceArrayOfSingle, PropertyType.Single, PropertyType.SingleArray, isNumericScalar = true),
+            WinRTValueTypeMetadata(Double::class, IID.NullableDouble, IID.IReferenceArrayOfDouble, PropertyType.Double, PropertyType.DoubleArray, isNumericScalar = true),
+            WinRTValueTypeMetadata(Char::class, IID.NullableChar, IID.IReferenceArrayOfChar, PropertyType.Char16, PropertyType.Char16Array),
+            WinRTValueTypeMetadata(Boolean::class, IID.NullableBool, IID.IReferenceArrayOfBoolean, PropertyType.Boolean, PropertyType.BooleanArray),
+            WinRTValueTypeMetadata(String::class, IID.NullableString, IID.IReferenceArrayOfString, PropertyType.String, PropertyType.StringArray),
+            WinRTValueTypeMetadata(Guid::class, IID.NullableGuid, IID.IReferenceArrayOfGuid, PropertyType.Guid, PropertyType.GuidArray),
+            WinRTValueTypeMetadata(Instant::class, IID.NullableDateTimeOffset, IID.IReferenceArrayOfDateTimeOffset, PropertyType.DateTime, PropertyType.DateTimeArray),
+            WinRTValueTypeMetadata(Duration::class, IID.NullableTimeSpan, IID.IReferenceArrayOfTimeSpan, PropertyType.TimeSpan, PropertyType.TimeSpanArray),
+            WinRTValueTypeMetadata(KClass::class, IID.NullableType, IID.IReferenceArrayOfType, null, null),
             exceptionMetadata,
             objectMetadata,
         )
 
-    private val builtInDescriptorsByClass = builtInDescriptors.associateBy(WinRtValueTypeMetadata::projectedClass)
+    private val builtInDescriptorsByClass = builtInDescriptors.associateBy(WinRTValueTypeMetadata::projectedClass)
 
-    fun registerDescriptor(descriptor: WinRtValueTypeMetadata) {
+    fun registerDescriptor(descriptor: WinRTValueTypeMetadata) {
         dynamicDescriptorsByClass[descriptor.projectedClass] = descriptor
     }
 
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? {
         enumMetadataForClass(type)?.let { descriptor ->
-            return WinRtReferenceTypeNames.boxedReference(descriptor.projectedTypeName)
+            return WinRTReferenceTypeNames.boxedReference(descriptor.projectedTypeName)
         }
-        WinRtTypeClassifier.primitiveArrayElementType(type)?.let { elementType ->
+        WinRTTypeClassifier.primitiveArrayElementType(type)?.let { elementType ->
             val descriptor = descriptorForClass(elementType) ?: return null
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return null
             return boxedReferenceArrayRuntimeClassName(interfaceId, descriptor)
@@ -130,33 +130,33 @@ internal object ValueBoxingMetadata {
     fun normalizedManagedArrayElements(value: Any): Array<*>? =
         normalizeManagedArray(value)?.elements
 
-    fun descriptorForPropertyType(propertyType: PropertyType): WinRtValueTypeMetadata? =
+    fun descriptorForPropertyType(propertyType: PropertyType): WinRTValueTypeMetadata? =
         dynamicDescriptorsByClass.values.firstOrNull { it.propertyType == propertyType }
             ?: builtInDescriptors.firstOrNull { it.propertyType == propertyType }
 
-    fun descriptorForPropertyTypeArray(propertyType: PropertyType): WinRtValueTypeMetadata? =
+    fun descriptorForPropertyTypeArray(propertyType: PropertyType): WinRTValueTypeMetadata? =
         dynamicDescriptorsByClass.values.firstOrNull { it.propertyTypeArray == propertyType }
             ?: builtInDescriptors.firstOrNull { it.propertyTypeArray == propertyType }
 
-    fun inspectableArrayMetadata(): WinRtValueTypeMetadata = objectMetadata
+    fun inspectableArrayMetadata(): WinRTValueTypeMetadata = objectMetadata
 
-    fun descriptorForClass(type: KClass<*>): WinRtValueTypeMetadata? =
+    fun descriptorForClass(type: KClass<*>): WinRTValueTypeMetadata? =
         dynamicDescriptorsByClass[type]
             ?: builtInDescriptorsByClass[type]
             ?: if (isAssignableFrom(Exception::class, type)) exceptionMetadata else null
 
-    fun referenceTypeDescriptors(): List<WinRtValueTypeMetadata> =
+    fun referenceTypeDescriptors(): List<WinRTValueTypeMetadata> =
         builtInDescriptors + dynamicDescriptorsByClass.values
 
     fun clearDynamicDescriptorsForTests() {
         dynamicDescriptorsByClass.clear()
     }
 
-    fun enumMetadataForClass(type: KClass<*>): WinRtEnumBoxingMetadata? {
+    fun enumMetadataForClass(type: KClass<*>): WinRTEnumBoxingMetadata? {
         if (!isEnumType(type)) {
             return null
         }
-        val registeredType = type.registeredWinRtType() ?: return null
+        val registeredType = type.registeredWinRTType() ?: return null
         val signature = runCatching { GuidGenerator.getSignature(type) }.getOrNull() ?: return null
         val match = enumSignaturePattern.matchEntire(signature) ?: return null
         val projectedTypeName = match.groupValues[1]
@@ -168,14 +168,14 @@ internal object ValueBoxingMetadata {
 
         return when (underlyingSignature) {
             "i4" ->
-                WinRtEnumBoxingMetadata(
+                WinRTEnumBoxingMetadata(
                     projectedTypeName = projectedTypeName,
                     propertyType = PropertyType.Int32,
                     nullableInterfaceId = ParameterizedInterfaceId.createFromSignature("pinterface({${IREFERENCE_GENERIC_INTERFACE.lowercase()}};$signature)"),
                     toAbiBits = ::readBits,
                     fromAbiBits = { abiValue ->
                         constants.firstOrNull { readBits(it) == abiValue }
-                            ?: throw WinRtInvalidCastException(
+                            ?: throw WinRTInvalidCastException(
                                 "Unknown enum value $abiValue for ${type.typeDisplayName()}.",
                                 HResult(TYPE_E_TYPEMISMATCH),
                             )
@@ -183,14 +183,14 @@ internal object ValueBoxingMetadata {
                 )
 
             "u4" ->
-                WinRtEnumBoxingMetadata(
+                WinRTEnumBoxingMetadata(
                     projectedTypeName = projectedTypeName,
                     propertyType = PropertyType.UInt32,
                     nullableInterfaceId = ParameterizedInterfaceId.createFromSignature("pinterface({${IREFERENCE_GENERIC_INTERFACE.lowercase()}};$signature)"),
                     toAbiBits = ::readBits,
                     fromAbiBits = { abiValue ->
                         constants.firstOrNull { readBits(it) == abiValue }
-                            ?: throw WinRtInvalidCastException(
+                            ?: throw WinRTInvalidCastException(
                                 "Unknown enum value ${abiValue.toUInt()} for ${type.typeDisplayName()}.",
                                 HResult(TYPE_E_TYPEMISMATCH),
                             )
@@ -201,20 +201,20 @@ internal object ValueBoxingMetadata {
         }
     }
 
-    private fun descriptorForValue(value: Any): WinRtValueTypeMetadata? =
+    private fun descriptorForValue(value: Any): WinRTValueTypeMetadata? =
         if (value is Exception) {
             exceptionMetadata
         } else {
             descriptorForClass(value::class)
         }
 
-    private fun classifyPropertyValue(value: Any): WinRtValueTypeMetadata? =
+    private fun classifyPropertyValue(value: Any): WinRTValueTypeMetadata? =
         descriptorForValue(value)?.takeIf { it.propertyType != null }
 
     private fun classifyPropertyValueDescriptor(
         sampleElement: Any?,
-        defaultDescriptor: WinRtValueTypeMetadata,
-    ): WinRtValueTypeMetadata =
+        defaultDescriptor: WinRTValueTypeMetadata,
+    ): WinRTValueTypeMetadata =
         when {
             sampleElement == null -> defaultDescriptor
             defaultDescriptor == objectMetadata -> objectMetadata
@@ -239,26 +239,26 @@ internal object ValueBoxingMetadata {
     private fun isSupportedArrayValue(value: Any): Boolean = isArrayKClass(value::class)
 
     private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayMetadata? {
-        val elementType = WinRtTypeClassifier.primitiveArrayElementType(value::class) ?: return null
+        val elementType = WinRTTypeClassifier.primitiveArrayElementType(value::class) ?: return null
         val descriptor = descriptorForClass(elementType) ?: return null
-        val boxedElements = WinRtTypeClassifier.boxPrimitiveArray(value) ?: return null
+        val boxedElements = WinRTTypeClassifier.boxPrimitiveArray(value) ?: return null
         return ManagedArrayMetadata(boxedElements, descriptor)
     }
 
     private fun boxedReferenceRuntimeClassName(
         interfaceId: Guid,
-        descriptor: WinRtValueTypeMetadata,
+        descriptor: WinRTValueTypeMetadata,
     ): String {
         check(descriptor.nullableInterfaceId == interfaceId)
-        return WinRtReferenceTypeNames.boxedReference(TypeNameSupport.getNameForType(descriptor.projectedClass))
+        return WinRTReferenceTypeNames.boxedReference(TypeNameSupport.getNameForType(descriptor.projectedClass))
     }
 
     private fun boxedReferenceArrayRuntimeClassName(
         interfaceId: Guid,
-        descriptor: WinRtValueTypeMetadata,
+        descriptor: WinRTValueTypeMetadata,
     ): String {
         check(descriptor.referenceArrayInterfaceId == interfaceId)
-        return WinRtReferenceTypeNames.boxedReferenceArray(TypeNameSupport.getNameForType(descriptor.projectedClass))
+        return WinRTReferenceTypeNames.boxedReferenceArray(TypeNameSupport.getNameForType(descriptor.projectedClass))
     }
 
     private fun isArrayKClass(type: KClass<*>): Boolean = arrayElementType(type) != null

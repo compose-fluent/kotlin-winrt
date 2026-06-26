@@ -9,7 +9,7 @@ class RuntimeScopeTest {
     fun multithreaded_scope_initializes_runtime() {
         RuntimeScope.initializeMultithreaded().use { scope ->
             assertTrue(scope.comInitialized)
-            assertTrue(scope.winRtInitialized || !PlatformRuntime.isWindows)
+            assertTrue(scope.winRTInitialized || !PlatformRuntime.isWindows)
         }
     }
 
@@ -20,6 +20,6 @@ class RuntimeScopeTest {
         }
 
         assertEquals(KnownHResults.S_OK, ComRuntime.initializeMultithreaded())
-        assertEquals(KnownHResults.S_OK, WinRtRuntime.initializeMultithreaded())
+        assertEquals(KnownHResults.S_OK, WinRTRuntime.initializeMultithreaded())
     }
 }

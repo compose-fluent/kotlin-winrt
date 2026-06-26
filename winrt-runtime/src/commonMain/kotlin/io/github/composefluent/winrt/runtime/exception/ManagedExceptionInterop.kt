@@ -2,14 +2,14 @@ package io.github.composefluent.winrt.runtime.exception
 
 import io.github.composefluent.winrt.runtime.HResult
 import io.github.composefluent.winrt.runtime.PlatformRuntime
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtRestrictedErrorInfo
-import io.github.composefluent.winrt.runtime.WinRtRuntimeException
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTRestrictedErrorInfo
+import io.github.composefluent.winrt.runtime.WinRTRuntimeException
 import io.github.composefluent.winrt.runtime.asRawAddress
 
 internal object ManagedExceptionInterop {
     private var retainedRestrictedErrorInfo: AutoCloseable? = null
-    private var retainedRestrictedErrorInfoDetails: Pair<HResult, WinRtRestrictedErrorInfo>? = null
+    private var retainedRestrictedErrorInfoDetails: Pair<HResult, WinRTRestrictedErrorInfo>? = null
 
     fun setErrorInfo(error: Throwable) {
         if (!PlatformRuntime.isWindows) {
@@ -20,17 +20,17 @@ internal object ManagedExceptionInterop {
             return
         }
         ManagedErrorInfoComObject(error).detachReference().use { errorInfo ->
-            HResult(WinRtPlatformApi.setErrorInfoRaw(errorInfo.pointer.asRawAddress())).requireSuccess("SetErrorInfo")
+            HResult(WinRTPlatformApi.setErrorInfoRaw(errorInfo.pointer.asRawAddress())).requireSuccess("SetErrorInfo")
         }
     }
 
     private fun setRestrictedErrorInfo(error: Throwable) {
-        val runtimeException = error as? WinRtRuntimeException ?: return
+        val runtimeException = error as? WinRTRuntimeException ?: return
         val hResult = runtimeException.hResult ?: return
         val restrictedErrorInfo = runtimeException.restrictedErrorInfo ?: return
         retainedRestrictedErrorInfoDetails = hResult to restrictedErrorInfo
         val errorInfo = ManagedRestrictedErrorInfoComObject(hResult, restrictedErrorInfo).detachReference()
-        val result = WinRtPlatformApi.setRestrictedErrorInfoRaw(errorInfo.pointer.asRawAddress())
+        val result = WinRTPlatformApi.setRestrictedErrorInfoRaw(errorInfo.pointer.asRawAddress())
         if (result == null) {
             errorInfo.close()
             return
@@ -40,7 +40,7 @@ internal object ManagedExceptionInterop {
         retainedRestrictedErrorInfo = errorInfo
     }
 
-    fun retainedRestrictedErrorInfo(expectedHResult: HResult): WinRtRestrictedErrorInfo? {
+    fun retainedRestrictedErrorInfo(expectedHResult: HResult): WinRTRestrictedErrorInfo? {
         val (hResult, errorInfo) = retainedRestrictedErrorInfoDetails ?: return null
         return errorInfo.takeIf { hResult == expectedHResult }
     }

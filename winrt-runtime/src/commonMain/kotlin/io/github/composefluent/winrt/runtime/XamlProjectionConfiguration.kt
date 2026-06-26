@@ -12,8 +12,8 @@ internal object XamlProjectionConfiguration {
         wuxValue: T,
     ): T = if (useWindowsUiXamlProjections) wuxValue else muxValue
 
-    fun winUiOnlyTypeError(typeName: String): WinRtUnsupportedOperationException =
-        WinRtUnsupportedOperationException(
+    fun winUiOnlyTypeError(typeName: String): WinRTUnsupportedOperationException =
+        WinRTUnsupportedOperationException(
             message =
                 "The '$typeName' type is only supported for WinUI, and not when using System XAML projections " +
                     "(make sure the '${FeatureSwitches.UseWindowsUIXamlProjectionsPropertyName}' system property is not set to 'true').",

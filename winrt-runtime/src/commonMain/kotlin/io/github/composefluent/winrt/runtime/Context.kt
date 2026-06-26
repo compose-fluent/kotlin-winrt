@@ -56,7 +56,7 @@ internal object Context {
         if (!PlatformRuntime.isWindows) {
             return PlatformAbi.nullPointer
         }
-        val result = WinRtPlatformApi.coGetContextTokenRaw()
+        val result = WinRTPlatformApi.coGetContextTokenRaw()
         HResult(result.hResultValue).requireSuccess("CoGetContextToken")
         return result.pointer
     }
@@ -65,7 +65,7 @@ internal object Context {
         if (!PlatformRuntime.isWindows) {
             return null
         }
-        val result = WinRtPlatformApi.coGetObjectContextRaw(IID.IContextCallback)
+        val result = WinRTPlatformApi.coGetObjectContextRaw(IID.IContextCallback)
         HResult(result.hResultValue).requireSuccess("CoGetObjectContext")
         return if (PlatformAbi.isNull(result.pointer)) {
             null

@@ -20,9 +20,9 @@ class ParameterizedInterfaceIdTest {
         assertEquals(
             Guid("B9D890EA-0397-53EA-A1AC-96653135C3D4"),
             ParameterizedInterfaceId.createFromSignature(
-                WinRtTypeSignature.runtimeClass(
+                WinRTTypeSignature.runtimeClass(
                     "Microsoft.UI.Xaml.Controls.UIElementCollection",
-                    WinRtTypeSignature.guid("23050cb1-db88-54ed-9083-5ecfb12512fd"),
+                    WinRTTypeSignature.guid("23050cb1-db88-54ed-9083-5ecfb12512fd"),
                 ),
             ),
         )
@@ -31,14 +31,14 @@ class ParameterizedInterfaceIdTest {
     @Test
     fun renders_parameterized_runtime_class_signature() {
         val argsSignature =
-            WinRtTypeSignature.runtimeClass(
+            WinRTTypeSignature.runtimeClass(
                 "Microsoft.UI.Xaml.ResourceManagerRequestedEventArgs",
-                WinRtTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
+                WinRTTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
             )
         val signature =
-            WinRtTypeSignature.parameterizedInterface(
+            WinRTTypeSignature.parameterizedInterface(
                 "9de1c534-6ae1-11e0-84e1-18a905bcc53f",
-                WinRtTypeSignature.object_(),
+                WinRTTypeSignature.object_(),
                 argsSignature,
             )
 
@@ -51,12 +51,12 @@ class ParameterizedInterfaceIdTest {
     @Test
     fun parameterized_interface_id_is_deterministic() {
         val signature =
-            WinRtTypeSignature.parameterizedInterface(
+            WinRTTypeSignature.parameterizedInterface(
                 "9de1c534-6ae1-11e0-84e1-18a905bcc53f",
-                WinRtTypeSignature.object_(),
-                WinRtTypeSignature.runtimeClass(
+                WinRTTypeSignature.object_(),
+                WinRTTypeSignature.runtimeClass(
                     "Microsoft.UI.Xaml.ResourceManagerRequestedEventArgs",
-                    WinRtTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
+                    WinRTTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
                 ),
             )
 
@@ -70,18 +70,18 @@ class ParameterizedInterfaceIdTest {
     fun parameterized_interface_id_changes_when_signature_changes() {
         val left =
             ParameterizedInterfaceId.createFromSignature(
-                WinRtTypeSignature.parameterizedInterface(
+                WinRTTypeSignature.parameterizedInterface(
                     "9de1c534-6ae1-11e0-84e1-18a905bcc53f",
-                    WinRtTypeSignature.object_(),
-                    WinRtTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
+                    WinRTTypeSignature.object_(),
+                    WinRTTypeSignature.guid("c35f4cf1-fcd6-5c6b-9be2-4cfaefb68b2a"),
                 ),
             )
         val right =
             ParameterizedInterfaceId.createFromSignature(
-                WinRtTypeSignature.parameterizedInterface(
+                WinRTTypeSignature.parameterizedInterface(
                     "9de1c534-6ae1-11e0-84e1-18a905bcc53f",
-                    WinRtTypeSignature.object_(),
-                    WinRtTypeSignature.guid("469e6d36-2e11-5b06-9e0a-c5eef0cf8f12"),
+                    WinRTTypeSignature.object_(),
+                    WinRTTypeSignature.guid("469e6d36-2e11-5b06-9e0a-c5eef0cf8f12"),
                 ),
             )
 
@@ -92,8 +92,8 @@ class ParameterizedInterfaceIdTest {
     fun convenience_parameterized_interface_helper_matches_signature_path() {
         val fromConvenience =
             ParameterizedInterfaceId.createFromParameterizedInterface(
-                WinRtCollectionInterfaceIds.iVector,
-                WinRtTypeSignature.string(),
+                WinRTCollectionInterfaceIds.iVector,
+                WinRTTypeSignature.string(),
             )
         val fromSignature =
             ParameterizedInterfaceId.createFromSignature(

@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-internal object WinRtValueBoxing {
+internal object WinRTValueBoxing {
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
         ValueBoxingMetadata.boxedRuntimeClassNameForType(type)
 
@@ -15,12 +15,12 @@ internal object WinRtValueBoxing {
     fun isNumericScalar(value: Any): Boolean =
         ValueBoxingMetadata.isNumericScalar(value)
 
-    fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+    fun createReferenceInterfaceDefinition(value: Any): WinRTInspectableInterfaceDefinition? =
         ValueBoxingMetadata.referenceInterfaceIdForValue(value)?.let { interfaceId ->
             ValueBoxingInterop.createReferenceInterfaceDefinition(interfaceId, value)
         }
 
-    fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+    fun createReferenceArrayInterfaceDefinition(value: Any): WinRTInspectableInterfaceDefinition? =
         ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
             ValueBoxingInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
         }
@@ -43,7 +43,7 @@ internal object WinRtValueBoxing {
         ValueBoxingMetadata.enumMetadataForClass(projectedType)?.let { descriptor ->
             return queryInspectableReference(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
                 readEnumReferenceValue(
-                    WinRtReferenceReference(
+                    WinRTReferenceReference(
                         reference.pointer.asRawAddress(),
                         descriptor.nullableInterfaceId,
                         preventReleaseOnDispose = true,
@@ -53,8 +53,8 @@ internal object WinRtValueBoxing {
             }
         }
 
-        if (isArrayKClass(projectedType) || WinRtTypeClassifier.primitiveArrayElementType(projectedType) != null) {
-            val elementType = WinRtTypeClassifier.primitiveArrayElementType(projectedType) ?: arrayElementType(projectedType) ?: return null
+        if (isArrayKClass(projectedType) || WinRTTypeClassifier.primitiveArrayElementType(projectedType) != null) {
+            val elementType = WinRTTypeClassifier.primitiveArrayElementType(projectedType) ?: arrayElementType(projectedType) ?: return null
             val descriptor = ValueBoxingMetadata.descriptorForClass(elementType) ?: return null
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return null
             return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
@@ -91,14 +91,14 @@ internal object WinRtValueBoxing {
     ): ComObjectReference? = runCatching { inspectable.queryInterface(interfaceId).getOrThrow() }.getOrNull()
 
     private fun readEnumReferenceValue(
-        reference: WinRtReferenceReference,
-        descriptor: WinRtEnumBoxingMetadata,
+        reference: WinRTReferenceReference,
+        descriptor: WinRTEnumBoxingMetadata,
     ): Any =
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt32Slot(scope)
             reference.comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(reference.comPtr.raw, 6, resultOut)
-            WinRtPlatformApi.checkSucceededRaw(hr)
+            WinRTPlatformApi.checkSucceededRaw(hr)
             descriptor.fromAbiBits(PlatformAbi.readInt32(resultOut))
         }
 }

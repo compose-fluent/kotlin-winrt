@@ -19,7 +19,7 @@ kotlin {
     }
 }
 
-winRt {
+winRT {
     windowsSdk(generateProjection = true)
     nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
         generateProjection = true
@@ -40,15 +40,15 @@ winRt {
 }
 
 tasks.named("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRtRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssets")
 }
 
 val verifyNativeAuthoringConsumerFixture by tasks.registering(
-    io.github.composefluent.winrt.gradle.VerifyWinRtNativeAuthoringConsumerFixtureTask::class,
+    io.github.composefluent.winrt.gradle.VerifyWinRTNativeAuthoringConsumerFixtureTask::class,
 ) {
     group = "verification"
     description = "Validates staging and runtime activation of native authored dependency artifacts."
-    dependsOn("stageWinRtRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssets")
     dependsOn("runReleaseExecutableMingwX64")
     runtimeAssetsRoot.set(layout.buildDirectory.dir("kotlin-winrt/runtime-assets"))
     expectedDllName.set("native_component_fixture.dll")

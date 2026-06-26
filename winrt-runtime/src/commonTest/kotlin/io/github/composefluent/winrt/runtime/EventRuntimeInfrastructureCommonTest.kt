@@ -11,10 +11,10 @@ class EventRuntimeInfrastructureCommonTest {
     fun event_source_registers_once_and_dispatches_current_handlers() {
         EventSourceCache.clearForTests()
 
-        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        val owner = WinRTInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
         var registrations = 0
         var removals = 0
-        var activeDelegate: WinRtDelegateReference? = null
+        var activeDelegate: WinRTDelegateReference? = null
         val token = EventRegistrationToken(0x11223344_00000001)
         val received = mutableListOf<String>()
         val source =
@@ -23,7 +23,7 @@ class EventRuntimeInfrastructureCommonTest {
                 addHandler = { _, handler ->
                     registrations += 1
                     activeDelegate?.close()
-                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
                     token
                 },
                 removeHandler = { _, removedToken ->
@@ -64,10 +64,10 @@ class EventRuntimeInfrastructureCommonTest {
     fun event_source_reregisters_when_cached_delegate_loses_native_references() {
         EventSourceCache.clearForTests()
 
-        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        val owner = WinRTInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
         var registrations = 0
         var removals = 0
-        var activeDelegate: WinRtDelegateReference? = null
+        var activeDelegate: WinRTDelegateReference? = null
         val received = mutableListOf<String>()
         val source =
             TestIntEventSource(
@@ -75,7 +75,7 @@ class EventRuntimeInfrastructureCommonTest {
                 addHandler = { _, handler ->
                     registrations += 1
                     activeDelegate?.close()
-                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
                     EventRegistrationToken(registrations.toLong())
                 },
                 removeHandler = { _, _ ->
@@ -115,16 +115,16 @@ class EventRuntimeInfrastructureCommonTest {
         EventSourceCache.clearForTests()
         EventSourceShutdownRegistry.clearForTests()
 
-        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        val owner = WinRTInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
         var removals = 0
-        var activeDelegate: WinRtDelegateReference? = null
+        var activeDelegate: WinRTDelegateReference? = null
         val token = EventRegistrationToken(0x33445566_00000001)
         val source =
             TestIntEventSource(
                 owner = owner,
                 addHandler = { _, handler ->
                     activeDelegate?.close()
-                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
                     token
                 },
                 removeHandler = { _, removedToken ->
@@ -157,15 +157,15 @@ class EventRuntimeInfrastructureCommonTest {
         EventSourceCache.clearForTests()
         EventSourceShutdownRegistry.clearForTests()
 
-        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
-        var activeDelegate: WinRtDelegateReference? = null
+        val owner = WinRTInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        var activeDelegate: WinRTDelegateReference? = null
         val received = mutableListOf<Int>()
         val source =
             TestIntEventSource(
                 owner = owner,
                 addHandler = { _, handler ->
                     activeDelegate?.close()
-                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
                     EventRegistrationToken(0x77889900_00000001)
                 },
                 removeHandler = { _, _ ->
@@ -191,7 +191,7 @@ class EventRuntimeInfrastructureCommonTest {
 
     @Test
     fun dispatcher_queue_handler_uses_standard_delegate_failure_hresult_in_runtime() {
-        val handle = WinRtDelegateBridge.createUnitDelegate(
+        val handle = WinRTDelegateBridge.createUnitDelegate(
             iid = IID.DispatcherQueueHandler,
             parameterKinds = emptyList(),
         ) {
@@ -207,7 +207,7 @@ class EventRuntimeInfrastructureCommonTest {
 
     @Test
     fun non_dispatcher_delegate_failures_return_error_hresult() {
-        val handle = WinRtDelegateBridge.createUnitDelegate(
+        val handle = WinRTDelegateBridge.createUnitDelegate(
             iid = testEventInterfaceId,
             parameterKinds = emptyList(),
         ) {
@@ -225,7 +225,7 @@ class EventRuntimeInfrastructureCommonTest {
     fun standard_delegates_round_trip_event_token_through_vtable_slots() {
         TestEventHost().use { host ->
             host.createReference().use { owner ->
-                val handle = WinRtDelegateBridge.createUnitDelegate(testEventInterfaceId, listOf(WinRtDelegateValueKind.INT32)) { }
+                val handle = WinRTDelegateBridge.createUnitDelegate(testEventInterfaceId, listOf(WinRTDelegateValueKind.INT32)) { }
                 handle.use {
                     it.createReference().use { handler ->
                         val token =
@@ -253,7 +253,7 @@ class EventRuntimeInfrastructureCommonTest {
 
     @Test
     fun generic_delegate_helper_caches_delegate_per_reference_and_slot() {
-        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        val owner = WinRTInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
         try {
             val first = GenericDelegateHelper.createDelegate(owner, 6) { Any() }
             val second = GenericDelegateHelper.createDelegate(owner, 6) { Any() }
@@ -268,9 +268,9 @@ class EventRuntimeInfrastructureCommonTest {
 
     @Test
     fun event_source_state_treats_reference_tracker_refs_as_native_refs() {
-        val handle = WinRtDelegateBridge.createUnitDelegate(
+        val handle = WinRTDelegateBridge.createUnitDelegate(
             iid = testEventInterfaceId,
-            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
         ) { }
         val state =
             object : EventSourceState<(Any?, Int) -> Unit>(PlatformAbi.nullPointer, 61) {
@@ -303,7 +303,7 @@ class EventRuntimeInfrastructureCommonTest {
         EventSourceCache.clearForTests()
 
         RuntimeScope.initializeMultithreaded().use {
-            WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
+            WinRTRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
                 val sentinel = Any()
                 val state = WeakReference<Any>(sentinel)
 
@@ -326,10 +326,10 @@ class EventRuntimeInfrastructureCommonTest {
             removeHandler = removeHandler,
             index = 41,
         ) {
-        override fun createMarshaler(handler: (Any?, Int) -> Unit): WinRtDelegateHandle =
-            WinRtDelegateBridge.createUnitDelegate(
+        override fun createMarshaler(handler: (Any?, Int) -> Unit): WinRTDelegateHandle =
+            WinRTDelegateBridge.createUnitDelegate(
                 iid = testEventInterfaceId,
-                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+                parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
             ) { args ->
                 handler(args[0], args[1] as Int)
             }
@@ -349,19 +349,19 @@ class EventRuntimeInfrastructureCommonTest {
         var lastRemovedToken: EventRegistrationToken? = null
 
         private val host =
-            WinRtInspectableComObject(
+            WinRTInspectableComObject(
                 interfaceDefinitions =
                     listOf(
-                        WinRtInspectableInterfaceDefinition(
+                        WinRTInspectableInterfaceDefinition(
                             interfaceId = testEventOwnerInterfaceId,
                             methods =
                                 listOf(
-                                    WinRtInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { args ->
+                                    WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { args ->
                                         lastAddedHandlerPointerKey = PlatformAbi.pointerKey(args[0] as RawAddress)
                                         EventRegistrationToken.copyTo(token, args[1] as RawAddress)
                                         KnownHResults.S_OK.value
                                     },
-                                    WinRtInspectableMethodDefinition(ComMethodSignatures.HResult_Int64) { args ->
+                                    WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Int64) { args ->
                                         lastRemovedToken = EventRegistrationToken(args[0] as Long)
                                         KnownHResults.S_OK.value
                                     },
@@ -382,9 +382,9 @@ class EventRuntimeInfrastructureCommonTest {
         private val testEventInterfaceId = Guid("0f0f0f0f-1111-2222-3333-444444444444")
         private val testEventOwnerInterfaceId = Guid("10101010-1111-2222-3333-555555555555")
         private val testIntEventDescriptor =
-            WinRtDelegateDescriptor(
+            WinRTDelegateDescriptor(
                 interfaceId = testEventInterfaceId,
-                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+                parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
             )
     }
 }

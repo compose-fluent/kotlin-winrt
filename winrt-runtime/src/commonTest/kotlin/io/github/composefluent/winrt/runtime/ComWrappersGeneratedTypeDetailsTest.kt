@@ -36,11 +36,11 @@ private object WinRT_GeneratedDetailsComponent_TypeDetails {
         )
     }
 
-    fun createCcwDefinition(value: Any): WinRtCcwDefinition {
+    fun createCcwDefinition(value: Any): WinRTCcwDefinition {
         require(value is GeneratedDetailsComponent)
-        return WinRtCcwDefinition(
+        return WinRTCcwDefinition(
             interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
+                WinRTInspectableInterfaceDefinition(
                     interfaceId = GENERATED_DETAILS_INTERFACE_ID,
                     methods = emptyList(),
                 ),

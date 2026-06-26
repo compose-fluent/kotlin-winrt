@@ -41,12 +41,12 @@ object TypeExtensions {
     fun findVftblType(
         helperType: KClass<*>,
     ): KClass<*>? = vftblTypeCache.computeIfAbsent(helperType) { candidate ->
-        candidate.registeredWinRtType()?.vftblType
+        candidate.registeredWinRTType()?.vftblType
     }
 
     fun isDelegate(
         type: KClass<*>,
-    ): Boolean = type.registeredWinRtType()?.isDelegate == true
+    ): Boolean = type.registeredWinRTType()?.isDelegate == true
 
     internal fun clearRegistriesForTests() {
         helperTypeCache.clear()

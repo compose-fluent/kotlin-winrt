@@ -76,7 +76,7 @@ internal fun ComObjectReference.invokeAbi(
 
 internal fun ComWrappersSupport.createRcwForComObject(
     pointer: RawComPtr,
-    staticallyDeterminedType: WinRtTypeHandle? = null,
+    staticallyDeterminedType: WinRTTypeHandle? = null,
 ): Any? = createRcwForComObject(pointer.asRawAddress(), staticallyDeterminedType)
 
 internal fun <T : Any> ComWrappersSupport.findObject(
@@ -84,19 +84,19 @@ internal fun <T : Any> ComWrappersSupport.findObject(
     expectedType: kotlin.reflect.KClass<T>,
 ): T? = findObject(pointer.asRawAddress(), expectedType)
 
-internal fun ComWrappersSupport.getInspectableInfo(pointer: RawComPtr): WinRtInspectableInfo? =
+internal fun ComWrappersSupport.getInspectableInfo(pointer: RawComPtr): WinRTInspectableInfo? =
     getInspectableInfo(pointer.asRawAddress())
 
-internal fun WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer: RawComPtr): Any? =
+internal fun WinRTBindableObjectMarshaller.fromBorrowedAbi(pointer: RawComPtr): Any? =
     fromBorrowedAbi(pointer.asRawAddress())
 
-internal fun WinRtBindableObjectMarshaller.fromOwnedAbi(pointer: RawComPtr): Any? =
+internal fun WinRTBindableObjectMarshaller.fromOwnedAbi(pointer: RawComPtr): Any? =
     fromOwnedAbi(pointer.asRawAddress())
 
-internal fun <T> WinRtIterableProjection.fromAbi(
+internal fun <T> WinRTIterableProjection.fromAbi(
     pointer: RawComPtr,
-    adapter: WinRtReferenceValueAdapter<T>,
-): WinRtIterableProjection.FromAbiHelper<T>? =
+    adapter: WinRTReferenceValueAdapter<T>,
+): WinRTIterableProjection.FromAbiHelper<T>? =
     fromAbi(pointer.asRawAddress(), adapter)
 
 internal object NativeLayoutsJvmCompat {

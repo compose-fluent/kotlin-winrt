@@ -16,8 +16,8 @@ import io.github.composefluent.winrt.runtime.ManagedReferenceHostSupport
 import io.github.composefluent.winrt.runtime.NativeCallbackHandle
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RawAddress
-import io.github.composefluent.winrt.runtime.WinRtPlatformApi
-import io.github.composefluent.winrt.runtime.WinRtUnsupportedOperationException
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException
 import io.github.composefluent.winrt.runtime.asRawComPtr
 import io.github.composefluent.winrt.runtime.guidOf
 import io.github.composefluent.winrt.runtime.platformHResultFromThrowable
@@ -74,7 +74,7 @@ internal class ManagedErrorInfoComObject(
 
     private fun interfacePointer(interfaceId: Guid): RawAddress =
         interfaceEntries[interfaceId]?.objectMemory
-            ?: throw WinRtUnsupportedOperationException(
+            ?: throw WinRTUnsupportedOperationException(
                 "Managed error info object does not implement '$interfaceId'.",
                 KnownHResults.E_NOINTERFACE,
             )
@@ -140,7 +140,7 @@ internal class ManagedErrorInfoComObject(
     ): Int {
         PlatformAbi.writePointer(resultPointer, PlatformAbi.nullPointer)
         return runCatching {
-            PlatformAbi.writePointer(resultPointer, WinRtPlatformApi.sysAllocStringRaw(value))
+            PlatformAbi.writePointer(resultPointer, WinRTPlatformApi.sysAllocStringRaw(value))
             KnownHResults.S_OK.value
         }.getOrElse { failure ->
             platformHResultFromThrowable(failure).value

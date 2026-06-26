@@ -38,13 +38,13 @@ jobs:
         run: |
           $current = (Select-String `
               -Path "gradle.properties" `
-              -Pattern '^kotlinWinRt\.projections\.windowsAppSdkVersion=(.+)$').Matches[0].Groups[1].Value.Trim()
+              -Pattern '^kotlinWinRT\.projections\.windowsAppSdkVersion=(.+)$').Matches[0].Groups[1].Value.Trim()
           $windowsSdkVersion = (Select-String `
               -Path "gradle.properties" `
-              -Pattern '^kotlinWinRt\.projections\.windowsSdkVersion=(.+)$').Matches[0].Groups[1].Value.Trim()
+              -Pattern '^kotlinWinRT\.projections\.windowsSdkVersion=(.+)$').Matches[0].Groups[1].Value.Trim()
           $windowsSdkVersions = (Select-String `
               -Path "gradle.properties" `
-              -Pattern '^kotlinWinRt\.projections\.windowsSdkVersions=(.+)$').Matches[0].Groups[1].Value.Trim()
+              -Pattern '^kotlinWinRT\.projections\.windowsSdkVersions=(.+)$').Matches[0].Groups[1].Value.Trim()
 
           $forced = "${{ inputs.forceWindowsAppSdkVersion }}".Trim()
           if ($forced) {

@@ -1,27 +1,27 @@
 package io.github.composefluent.winrt.projections.generator
 
 import com.squareup.kotlinpoet.CodeBlock
-import io.github.composefluent.winrt.metadata.WinRtMetadataParameterCategory
-import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
-import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
-import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
+import io.github.composefluent.winrt.metadata.WinRTParameterDefinition
+import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 
 internal fun authoredCcwBindingIsSupported(
     typeRenderer: KotlinProjectionRenderer,
-    interfaceType: WinRtTypeDefinition,
+    interfaceType: WinRTTypeDefinition,
     binding: KotlinProjectionInstanceMemberBinding,
 ): Boolean =
     authoredCcwBindingUnsupportedReason(typeRenderer, interfaceType, binding) == null
 
 internal fun authoredCcwBindingUnsupportedReason(
     typeRenderer: KotlinProjectionRenderer,
-    interfaceType: WinRtTypeDefinition,
+    interfaceType: WinRTTypeDefinition,
     binding: KotlinProjectionInstanceMemberBinding,
 ): String? {
     val receiveArrayParameterName = authoredCcwReceiveArrayReturnParameter(interfaceType, binding)?.name
     binding.parameterBindings
         .firstOrNull { parameter ->
-            parameter.category == WinRtMetadataParameterCategory.ReceiveArray &&
+            parameter.category == WinRTMetadataParameterCategory.ReceiveArray &&
                 parameter.name != receiveArrayParameterName
         }
         ?.let { parameter ->
@@ -39,11 +39,11 @@ internal fun authoredCcwBindingUnsupportedReason(
 }
 
 internal fun authoredCcwReceiveArrayReturnParameter(
-    interfaceType: WinRtTypeDefinition,
+    interfaceType: WinRTTypeDefinition,
     binding: KotlinProjectionInstanceMemberBinding,
-): WinRtParameterDefinition? =
+): WinRTParameterDefinition? =
     interfaceType.methods
-        .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+        .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
         .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
         ?.receiveArrayResultParameter()
 
