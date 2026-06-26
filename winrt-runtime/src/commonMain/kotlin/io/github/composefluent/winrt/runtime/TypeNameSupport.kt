@@ -130,7 +130,6 @@ object TypeNameSupport {
             return ""
         }
         ensureProjectionMappingsRegistered()
-        platformTryInitializeGeneratedWinRtMetadata(type)
 
         referenceArrayRuntimeClassName(type)?.let { return it }
         if (type.isUnsupportedErasedArrayType()) {

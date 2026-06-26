@@ -5903,6 +5903,24 @@ fun writeProjectionSupportInitializerClass(
     ).visitEnd()
     classWriter.addDefaultConstructor()
     val chunks = entries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
+    val classInitializer = classWriter.visitMethod(
+        Opcodes.ACC_STATIC,
+        "<clinit>",
+        "()V",
+        null,
+        null,
+    )
+    classInitializer.visitCode()
+    classInitializer.visitMethodInsn(
+        Opcodes.INVOKESTATIC,
+        internalName,
+        "initialize",
+        "()V",
+        false,
+    )
+    classInitializer.visitInsn(Opcodes.RETURN)
+    classInitializer.visitMaxs(0, 0)
+    classInitializer.visitEnd()
     val initialize = classWriter.visitMethod(
         Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
         "initialize",
