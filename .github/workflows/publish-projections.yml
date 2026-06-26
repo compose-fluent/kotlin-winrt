@@ -169,6 +169,13 @@ jobs:
               $releaseArgs `
               --no-configuration-cache
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            .\gradlew.bat `
+              :winrt-projections:windows-ui-xaml:compileKotlinJvm `
+              :winrt-projections:windows-ui-xaml:compileKotlinMingwX64 `
+              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
+              $releaseArgs `
+              --no-configuration-cache
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           .\gradlew.bat `
             :winrt-projections:windows-app-sdk:compileKotlinJvm `
@@ -192,6 +199,12 @@ jobs:
           foreach ($sdkVersion in $sdkVersions) {
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishToMavenLocal `
+              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
+              $releaseArgs `
+              --no-configuration-cache
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            .\gradlew.bat `
+              :winrt-projections:windows-ui-xaml:publishToMavenLocal `
               "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
               $releaseArgs `
               --no-configuration-cache
@@ -246,6 +259,12 @@ jobs:
           foreach ($sdkVersion in $sdkVersions) {
             .\gradlew.bat `
               :winrt-projections:windows-sdk:publishAllPublicationsToMavenCentralRepository `
+              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
+              $releaseArgs `
+              --no-configuration-cache
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            .\gradlew.bat `
+              :winrt-projections:windows-ui-xaml:publishAllPublicationsToMavenCentralRepository `
               "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
               $releaseArgs `
               --no-configuration-cache
