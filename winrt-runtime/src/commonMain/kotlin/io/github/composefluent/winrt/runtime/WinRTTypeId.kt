@@ -24,17 +24,37 @@ data class WinRTTypeId<T : Any>(
     val aliases: Set<String> = emptySet(),
 )
 
+data class WinRTRuntimeClassInfo(
+    val runtimeClassName: String,
+    val defaultInterfaceName: String? = null,
+    val defaultInterfaceSignature: String? = null,
+    val isProjectedRuntimeClass: Boolean = false,
+)
+
 object WinRTTypeRegistry {
     private val byClass = mutableMapOf<KClass<*>, WinRTTypeId<*>>()
     private val byName = mutableMapOf<String, WinRTTypeId<*>>()
+    private val byHelperClass = mutableMapOf<KClass<*>, WinRTTypeId<*>>()
+    private val runtimeClassInfoByName = mutableMapOf<String, WinRTRuntimeClassInfo>()
 
     fun register(typeId: WinRTTypeId<*>) {
+        byClass[typeId.kClass]?.let(::removeIndexes)
         byClass[typeId.kClass] = typeId
         index(typeId.projectedTypeName, typeId)
         index(typeId.runtimeClassName, typeId)
         index(typeId.boxedName, typeId)
+        typeId.helperType?.let { helper -> byHelperClass[helper] = typeId }
         typeId.aliases.forEach { alias ->
             index(alias, typeId)
+        }
+        val runtimeClassName =
+            typeId.runtimeClassName
+                ?: typeId.projectedTypeName.takeIf { typeId.isRuntimeClass }
+        if (!runtimeClassName.isNullOrBlank()) {
+            registerRuntimeClassInfo(
+                runtimeClassName = runtimeClassName,
+                isProjectedRuntimeClass = typeId.isRuntimeClass,
+            )
         }
     }
 
@@ -44,6 +64,32 @@ object WinRTTypeRegistry {
     fun findByName(name: String): WinRTTypeId<*>? = byName[name]
 
     fun findByProjectedName(projectedTypeName: String): WinRTTypeId<*>? = findByName(projectedTypeName)
+
+    fun findByHelperClass(helperType: KClass<*>): WinRTTypeId<*>? = byHelperClass[helperType]
+
+    fun registerRuntimeClassInfo(
+        runtimeClassName: String,
+        defaultInterfaceName: String? = null,
+        defaultInterfaceSignature: String? = null,
+        isProjectedRuntimeClass: Boolean = false,
+    ) {
+        require(runtimeClassName.isNotBlank()) { "Runtime class name must not be blank." }
+        val existing = runtimeClassInfoByName[runtimeClassName]
+        runtimeClassInfoByName[runtimeClassName] =
+            WinRTRuntimeClassInfo(
+                runtimeClassName = runtimeClassName,
+                defaultInterfaceName = defaultInterfaceName ?: existing?.defaultInterfaceName,
+                defaultInterfaceSignature = defaultInterfaceSignature ?: existing?.defaultInterfaceSignature,
+                isProjectedRuntimeClass = isProjectedRuntimeClass || existing?.isProjectedRuntimeClass == true,
+            )
+    }
+
+    fun findRuntimeClassInfo(runtimeClassName: String): WinRTRuntimeClassInfo? =
+        runtimeClassInfoByName[runtimeClassName]
+
+    fun isProjectedRuntimeClassName(runtimeClassName: String): Boolean =
+        runtimeClassInfoByName[runtimeClassName]?.isProjectedRuntimeClass == true ||
+            byName[runtimeClassName]?.isRuntimeClass == true
 
     fun registerAlias(
         type: KClass<*>,
@@ -111,6 +157,19 @@ object WinRTTypeRegistry {
     internal fun clearForTests() {
         byClass.clear()
         byName.clear()
+        byHelperClass.clear()
+        runtimeClassInfoByName.clear()
+        clearProjectionMappingsForTests()
+    }
+
+    private fun removeIndexes(typeId: WinRTTypeId<*>) {
+        removeIndex(typeId.projectedTypeName, typeId)
+        removeIndex(typeId.runtimeClassName, typeId)
+        removeIndex(typeId.boxedName, typeId)
+        typeId.helperType
+            ?.takeIf { byHelperClass[it] == typeId }
+            ?.let(byHelperClass::remove)
+        typeId.aliases.forEach { alias -> removeIndex(alias, typeId) }
     }
 
     private fun index(
@@ -119,6 +178,15 @@ object WinRTTypeRegistry {
     ) {
         if (!name.isNullOrBlank()) {
             byName[name] = typeId
+        }
+    }
+
+    private fun removeIndex(
+        name: String?,
+        typeId: WinRTTypeId<*>,
+    ) {
+        if (!name.isNullOrBlank() && byName[name] == typeId) {
+            byName.remove(name)
         }
     }
 }

@@ -146,8 +146,6 @@ object TypeNameSupport {
             ?.takeIf { type.registeredWinRTType()?.isWindowsRuntimeType == true || type.registeredWinRTType()?.isRuntimeClass == true }
             ?.let { return it }
 
-        Projections.findCustomAbiTypeNameForType(type)?.let { return it }
-
         inferRuntimeClassName(type)?.let { return it }
 
         if (flags.contains(TypeNameGenerationFlag.ForGetRuntimeClassName)) {
@@ -161,7 +159,6 @@ object TypeNameSupport {
         type: KClass<*>,
     ): String? =
         type.registeredWinRTType()?.runtimeClassName
-            ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
             ?: type.registeredWinRTType()?.takeIf { it.isRuntimeClass }?.projectedTypeName
 
     internal fun clearRegistriesForTests() {
@@ -185,14 +182,12 @@ object TypeNameSupport {
             return resolveTypeByName(elementTypeName)?.let(::arrayClassForElementType)
         }
 
-        Projections.findCustomKClassForAbiTypeName(runtimeClassName)?.let { return it }
         WinRTTypeRegistry.findByName(runtimeClassName)?.let { return it.kClass }
         registeredProjectionTypes[runtimeClassName]?.let { return it }
         WinRTTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeType }
 
         val genericBaseName = runtimeClassName.substringBefore('<')
         if (genericBaseName != runtimeClassName) {
-            Projections.findCustomKClassForAbiTypeName(genericBaseName)?.let { return it }
             WinRTTypeRegistry.findByName(genericBaseName)?.let { return it.kClass }
             registeredProjectionTypes[genericBaseName]?.let { return it }
             WinRTTypeClassifier.resolve(genericBaseName)?.let { return it.representativeType }
