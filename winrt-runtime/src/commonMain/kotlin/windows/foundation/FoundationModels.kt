@@ -1,7 +1,5 @@
 package windows.foundation
 
-import io.github.composefluent.winrt.runtime.Guid
-import io.github.composefluent.winrt.runtime.IInspectableReference
 import io.github.composefluent.winrt.runtime.NativeScalarFieldSpec
 import io.github.composefluent.winrt.runtime.NativeStructAdapter
 import io.github.composefluent.winrt.runtime.NativeStructLayout
@@ -16,19 +14,6 @@ typealias TypedEventHandler<TSender, TResult> = (TSender, TResult) -> Unit
 
 interface IStringable {
     override fun toString(): String
-}
-
-data class Uri(
-    val raw: String,
-) {
-    override fun toString(): String = raw
-
-    object Metadata {
-        val DEFAULT_INTERFACE_IID: Guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC")
-
-        fun wrap(instance: IInspectableReference): Uri =
-            UriAbiProjection.fromInspectable(instance)
-    }
 }
 
 @WindowsRuntimeType("struct(Windows.Foundation.EventRegistrationToken;i8)")

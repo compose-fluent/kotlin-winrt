@@ -684,7 +684,6 @@ class KotlinProjectionGeneratorTest {
             "Windows.Foundation.EventRegistrationToken",
             "Windows.Foundation.HResult",
             "Windows.Foundation.IClosable",
-            "Windows.Foundation.Uri",
             "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
             "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
         )
@@ -704,7 +703,6 @@ class KotlinProjectionGeneratorTest {
             "HWND",
             "DateTime",
             "TimeSpan",
-            "Uri",
             "EventHandler",
             "EventRegistrationToken",
             "HResult",
@@ -773,14 +771,6 @@ class KotlinProjectionGeneratorTest {
                 simpleLookup = true,
                 customStructFromAbi = "typeNameFromAbi",
                 customStructCopyTo = "copyTypeNameTo",
-            ),
-            MappedTypeExpectation(
-                "Windows.Foundation.Uri",
-                KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-                runtimeOwned = true,
-                simpleLookup = true,
-                customObjectFromAbi = "uriFromAbi",
-                customObjectTypeHandle = "windows.foundation.Uri",
             ),
             MappedTypeExpectation(
                 "Windows.Foundation.IReference",
@@ -5341,13 +5331,13 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("11111111-2222-3333-4444-555555555579"),
                             methods = listOf(
                                 WinRTMethodDefinition(
-                                    name = "NormalizeUri",
-                                    returnTypeName = "Windows.Foundation.Uri",
+                                    name = "NormalizeCommand",
+                                    returnTypeName = "Microsoft.UI.Xaml.Input.ICommand",
                                     methodRowId = 8,
                                     parameters = listOf(
                                         WinRTParameterDefinition(
                                             name = "value",
-                                            typeName = "Windows.Foundation.Uri",
+                                            typeName = "Microsoft.UI.Xaml.Input.ICommand",
                                         ),
                                     ),
                                 ),
@@ -5380,16 +5370,15 @@ class KotlinProjectionGeneratorTest {
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
 
-        assertFalse(filesByName.containsKey("Uri.kt"))
         assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
-        assertTrue(ccwFactories, ccwFactories.contains("WinRTSystemProjectionMarshalers.uriFromAbi(rawArgs[0] as RawAddress)"))
-        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeNormalizeUri(__arg0)"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRTSystemProjectionMarshalers.objectFromAbi(rawArgs[0] as RawAddress"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeNormalizeCommand(__arg0)"))
         assertTrue(ccwFactories, ccwFactories.contains("createObjectReference(__result"))
-        assertTrue(ccwFactories, ccwFactories.contains("9E365E57-48B2-4160-956F-C7385120BBFC"))
+        assertTrue(ccwFactories, ccwFactories.contains("E5AF3542-CA67-4081-995B-709DD13792DF"))
         assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
-        assertFalse(ccwFactories, ccwFactories.contains("Uri.Metadata.wrap"))
+        assertFalse(ccwFactories, ccwFactories.contains("ICommand.Metadata.wrap"))
         assertFalse(ccwFactories, ccwFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
-        assertFalse(ccwFactories, ccwFactories.contains("Uri uses unsupported authored ABI shape"))
+        assertFalse(ccwFactories, ccwFactories.contains("ICommand uses unsupported authored ABI shape"))
         assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI argument"))
         assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI return"))
         assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
@@ -12898,6 +12887,29 @@ class KotlinProjectionGeneratorTest {
         val model = WinRTMetadataModel(
             namespaces = listOf(
                 WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IUriRuntimeClass",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Uri",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.IUriRuntimeClass",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.IUriRuntimeClass",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
                         WinRTTypeDefinition(
@@ -12946,7 +12958,8 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val file = KotlinProjectionGenerator().generate(model).single()
+        val file = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("IWidgetCollection.kt") }
 
         assertFalse(file.contents, file.contents.contains("import java.net.URI"))
         assertFalse(file.contents, file.contents.contains("import java.util.NoSuchElementException"))
@@ -14065,17 +14078,6 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("11111111-2222-3333-4444-555555555554"),
                             methods = listOf(
                                 WinRTMethodDefinition(
-                                    name = "sourceUri",
-                                    returnTypeName = "Windows.Foundation.Uri",
-                                    methodRowId = 6,
-                                ),
-                                WinRTMethodDefinition(
-                                    name = "setSourceUri",
-                                    returnTypeName = "Unit",
-                                    parameters = listOf(WinRTParameterDefinition("sourceUri", "Windows.Foundation.Uri")),
-                                    methodRowId = 7,
-                                ),
-                                WinRTMethodDefinition(
                                     name = "command",
                                     returnTypeName = "Microsoft.UI.Xaml.Input.ICommand",
                                     methodRowId = 8,
@@ -14099,17 +14101,6 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRTTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.UI.IUriCommandHost",
                             methods = listOf(
-                                WinRTMethodDefinition(
-                                    name = "sourceUri",
-                                    returnTypeName = "Windows.Foundation.Uri",
-                                    methodRowId = 6,
-                                ),
-                                WinRTMethodDefinition(
-                                    name = "setSourceUri",
-                                    returnTypeName = "Unit",
-                                    parameters = listOf(WinRTParameterDefinition("sourceUri", "Windows.Foundation.Uri")),
-                                    methodRowId = 7,
-                                ),
                                 WinRTMethodDefinition(
                                     name = "command",
                                     returnTypeName = "Microsoft.UI.Xaml.Input.ICommand",
@@ -14143,25 +14134,18 @@ class KotlinProjectionGeneratorTest {
         val interfaceContents = filesByName.getValue("IUriCommandHost.kt").contents
         val classContents = filesByName.getValue("UriCommandHost.kt").contents
 
-        assertTrue(interfaceContents, interfaceContents.contains("fun sourceUri(): Uri"))
         assertTrue(interfaceContents, interfaceContents.contains("fun command(): ICommand"))
         assertTrue(interfaceContents, interfaceContents.contains("fun tryCommand(): ICommand"))
         if (classContents.contains("_iUriCommandHostProjection")) {
-            assertTrue(classContents, classContents.contains("_iUriCommandHostProjection.sourceUri()"))
             assertTrue(classContents, classContents.contains("_iUriCommandHostProjection.tryCommand()"))
         } else {
-            assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.uriFromAbi(__resultPointer)"))
-            assertTrue(classContents, classContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
             assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.objectFromAbi(__resultPointer,"))
             assertTrue(classContents, classContents.contains("if (PlatformAbi.isNull(__resultPointer)) return null"))
             assertTrue(classContents, classContents.contains("WinRTTypeHandle(\"microsoft.ui.xaml.input.ICommand\""))
             assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), ICommand::class)"))
-            assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.createObjectReference(sourceUri,"))
-            assertTrue(classContents, classContents.contains("Guid(\"9E365E57-48B2-4160-956F-C7385120BBFC\")).use { __sourceUriAbi ->"))
             assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.createObjectReference(command,"))
             assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")).use { __commandAbi ->"))
         }
-        assertFalse(classContents, classContents.contains("sourceUri as IWinRTObject"))
         assertFalse(classContents, classContents.contains("command as IWinRTObject"))
     }
 

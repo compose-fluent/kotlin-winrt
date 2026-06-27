@@ -323,7 +323,6 @@ internal val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
 internal val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableList")
 internal val ABSTRACT_MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableMap")
 internal val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableSet")
-internal val WINDOWS_FOUNDATION_URI_CLASS_NAME = ClassName("windows.foundation", "Uri")
 internal val KOTLIN_INSTANT_CLASS_NAME = ClassName("kotlin.time", "Instant")
 internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
 internal val KOTLIN_DURATION_ALIAS_CLASS_NAME = ClassName("", "TimeDuration")
@@ -697,18 +696,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         ),
         simpleAbiLookup = true,
         descriptionName = "TimeSpan",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Uri",
-        { WINDOWS_FOUNDATION_URI_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-        customObjectAbi = KotlinProjectionCustomObjectAbi(
-            interfaceId = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
-            typeHandleName = "windows.foundation.Uri",
-            fromAbiFunctionName = "uriFromAbi",
-        ),
-        simpleAbiLookup = true,
-        descriptionName = "Uri",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.EventHandler",

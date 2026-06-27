@@ -276,7 +276,6 @@ private val MAPPED_TYPES: Map<String, WinRTMappedTypeDescriptor> = listOf(
     mapped("Windows.Foundation.IReference", "System", "Nullable", requiresMarshaling = true),
     mapped("Windows.Foundation.IReferenceArray", "Windows.Foundation", "IReferenceArray", requiresMarshaling = true),
     mapped("Windows.Foundation.TimeSpan", "System", "TimeSpan", requiresMarshaling = true),
-    mapped("Windows.Foundation.Uri", "System", "Uri", requiresMarshaling = true),
     mapped("Windows.Foundation.Collections.IIterable", "System.Collections.Generic", "IEnumerable`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IIterator", "System.Collections.Generic", "IEnumerator`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IKeyValuePair", "System.Collections.Generic", "KeyValuePair`2", requiresMarshaling = true),
