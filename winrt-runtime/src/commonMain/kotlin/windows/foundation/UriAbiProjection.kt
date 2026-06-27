@@ -1,14 +1,25 @@
-package io.github.composefluent.winrt.runtime
+package windows.foundation
 
-import windows.foundation.Uri
+import io.github.composefluent.winrt.runtime.ActivationFactory
+import io.github.composefluent.winrt.runtime.ComObjectReference
+import io.github.composefluent.winrt.runtime.ComVtableInvoker
+import io.github.composefluent.winrt.runtime.Guid
+import io.github.composefluent.winrt.runtime.HString
+import io.github.composefluent.winrt.runtime.IID
+import io.github.composefluent.winrt.runtime.IInspectableReference
+import io.github.composefluent.winrt.runtime.IUnknownReference
+import io.github.composefluent.winrt.runtime.PlatformAbi
+import io.github.composefluent.winrt.runtime.RawAddress
+import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WindowsRuntimeType
 
 @WindowsRuntimeType("rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})")
-object UriProjection {
+internal object UriAbiProjection {
     fun fromAbi(pointer: RawAddress): Uri? {
         if (PlatformAbi.isNull(pointer)) {
             return null
         }
-        val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
+        val borrowed = IUnknownReference(PlatformAbi.toRawComPtr(pointer), IID.IInspectable, preventReleaseOnDispose = true)
         return try {
             borrowed.asInspectable().use(::fromInspectable)
         } finally {
@@ -39,7 +50,7 @@ object UriProjection {
                                 resultOut,
                             )
                         WinRTPlatformApi.checkSucceededRaw(hr)
-                        IInspectableReference(PlatformAbi.readPointer(resultOut).asRawComPtr(), IID.IInspectable)
+                        IInspectableReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(resultOut)), IID.IInspectable)
                     }
                 }
             }

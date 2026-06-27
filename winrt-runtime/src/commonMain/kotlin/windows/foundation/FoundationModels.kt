@@ -8,7 +8,6 @@ import io.github.composefluent.winrt.runtime.NativeStructLayout
 import io.github.composefluent.winrt.runtime.NativeStructScalarKind
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RawAddress
-import io.github.composefluent.winrt.runtime.UriProjection
 import io.github.composefluent.winrt.runtime.WindowsRuntimeType
 
 typealias EventHandler<TArgs> = (Any?, TArgs) -> Unit
@@ -28,7 +27,7 @@ data class Uri(
         val DEFAULT_INTERFACE_IID: Guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC")
 
         fun wrap(instance: IInspectableReference): Uri =
-            UriProjection.fromInspectable(instance)
+            UriAbiProjection.fromInspectable(instance)
     }
 }
 
