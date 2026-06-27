@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.samples.kmp.library
 
-import io.github.composefluent.winrt.runtime.EventRegistrationToken
+import windows.foundation.EventRegistrationToken
 import io.github.composefluent.winrt.samples.kmp.base.WinUiKmpBaseLibrarySample
 import microsoft.ui.dispatching.DispatcherQueue
 import microsoft.ui.dispatching.DispatcherQueueHandler

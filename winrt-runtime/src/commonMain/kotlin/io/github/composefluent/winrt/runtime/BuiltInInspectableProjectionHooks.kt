@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.Uri
+
 private val uriTypeHandle = WinRTTypeHandle("Windows.Foundation.Uri", Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
 private val closableTypeHandle = WinRTTypeHandle("Windows.Foundation.IClosable", IID.IDisposable)
 
@@ -25,7 +27,7 @@ internal object WinRTBuiltInProjectionRuntimeHooks {
         interfaceId: Guid?,
     ): ComObjectReference? =
         when (value) {
-            is WinRTUri -> UriProjection.createReference(value, interfaceId ?: IID.IInspectable)
+            is Uri -> UriProjection.createReference(value, interfaceId ?: IID.IInspectable)
             else -> null
         }
 

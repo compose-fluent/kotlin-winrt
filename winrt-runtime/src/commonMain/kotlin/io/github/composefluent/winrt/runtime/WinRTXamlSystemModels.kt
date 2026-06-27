@@ -1,117 +1,12 @@
 package io.github.composefluent.winrt.runtime
 
+import microsoft.ui.xaml.data.ICustomProperty
 import kotlin.reflect.KClass
 
-enum class WinRTNotifyCollectionChangedAction(val abiValue: Int) {
-    Add(0),
-    Remove(1),
-    Replace(2),
-    Move(3),
-    Reset(4),
-    ;
-
-    companion object Metadata {
-        fun fromAbi(value: Int): WinRTNotifyCollectionChangedAction =
-            entries.firstOrNull { it.abiValue == value }
-                ?: error("Unknown NotifyCollectionChangedAction ABI value: $value")
-
-        fun toAbi(value: WinRTNotifyCollectionChangedAction): Int = value.abiValue
-    }
-}
-
-data class WinRTPropertyChangedEventArgs(
-    val propertyName: String?,
-)
-
-data class WinRTDataErrorsChangedEventArgs(
-    val propertyName: String?,
-)
-
-data class WinRTNotifyCollectionChangedEventArgs(
-    val action: WinRTNotifyCollectionChangedAction,
-    val newItems: List<Any?>? = null,
-    val oldItems: List<Any?>? = null,
-    val newStartingIndex: Int = -1,
-    val oldStartingIndex: Int = -1,
-)
-
-typealias WinRTCanExecuteChangedHandler = EventHandlerCallback<Any?>
-typealias WinRTPropertyChangedHandler = EventHandlerCallback<WinRTPropertyChangedEventArgs?>
-typealias WinRTCollectionChangedHandler = EventHandlerCallback<WinRTNotifyCollectionChangedEventArgs?>
-typealias WinRTDataErrorsChangedHandler = EventHandlerCallback<WinRTDataErrorsChangedEventArgs?>
-
-interface WinRTCommand {
-    fun canExecute(parameter: Any?): Boolean
-
-    fun execute(parameter: Any?)
-
-    fun addCanExecuteChanged(handler: WinRTCanExecuteChangedHandler)
-
-    fun removeCanExecuteChanged(handler: WinRTCanExecuteChangedHandler)
-}
-
-interface WinRTPropertyChangedNotifier {
-    fun addPropertyChanged(handler: WinRTPropertyChangedHandler)
-
-    fun removePropertyChanged(handler: WinRTPropertyChangedHandler)
-}
-
-interface WinRTCollectionChangedNotifier {
-    fun addCollectionChanged(handler: WinRTCollectionChangedHandler)
-
-    fun removeCollectionChanged(handler: WinRTCollectionChangedHandler)
-}
-
-interface WinRTDataErrorInfo {
-    val hasErrors: Boolean
-
-    fun getErrors(propertyName: String?): Iterable<Any?>?
-
-    fun addErrorsChanged(handler: WinRTDataErrorsChangedHandler)
-
-    fun removeErrorsChanged(handler: WinRTDataErrorsChangedHandler)
-}
-
-interface WinRTServiceProvider {
-    fun getService(type: KClass<*>?): Any?
-}
-
-interface WinRTStringable {
-    override fun toString(): String
-}
-
-interface WinRTCustomProperty {
-    val canRead: Boolean
-    val canWrite: Boolean
-    val name: String
-    val type: KClass<*>?
-
-    fun getValue(target: Any?): Any?
-
-    fun setValue(target: Any?, value: Any?)
-
-    fun getIndexedValue(target: Any?, index: Any?): Any?
-
-    fun setIndexedValue(target: Any?, value: Any?, index: Any?)
-}
-
-interface WinRTCustomPropertyProvider {
-    fun getCustomProperty(name: String): WinRTCustomProperty?
-
-    fun getIndexedProperty(
-        name: String,
-        indexParameterType: KClass<*>?,
-    ): WinRTCustomProperty?
-
-    fun getStringRepresentation(): String
-
-    val type: KClass<*>
-}
-
 interface WinRTBindableCustomPropertyImplementation {
-    fun getCustomProperty(name: String): WinRTCustomProperty?
+    fun getCustomProperty(name: String): ICustomProperty?
 
-    fun getIndexedProperty(indexParameterType: KClass<*>?): WinRTCustomProperty?
+    fun getIndexedProperty(indexParameterType: KClass<*>?): ICustomProperty?
 }
 
 /**
@@ -130,7 +25,7 @@ class WinRTBindableCustomProperty(
     private val setValueCallback: ((Any?, Any?) -> Unit)? = null,
     private val getIndexedValueCallback: ((Any?, Any?) -> Any?)? = null,
     private val setIndexedValueCallback: ((Any?, Any?, Any?) -> Unit)? = null,
-) : WinRTCustomProperty {
+) : ICustomProperty {
     override fun getValue(target: Any?): Any? =
         getValueCallback?.invoke(target)
             ?: throw WinRTUnsupportedOperationException(

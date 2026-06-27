@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.EventRegistrationToken
+
 /**
  * Kotlin event-state owner corresponding to `.cswinrt/src/WinRT.Runtime/Interop/EventSourceState{TDelegate}.cs`.
  *

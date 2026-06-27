@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.EventRegistrationToken
+
 class WinRTEvent<T : Any>(
     private val subscribe: (T) -> EventRegistrationToken,
     private val unsubscribe: (EventRegistrationToken) -> Unit,

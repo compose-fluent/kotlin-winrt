@@ -1,8 +1,10 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.Uri
+
 @WindowsRuntimeType("rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})")
-internal object UriProjection {
-    fun fromAbi(pointer: RawAddress): WinRTUri? {
+object UriProjection {
+    fun fromAbi(pointer: RawAddress): Uri? {
         if (PlatformAbi.isNull(pointer)) {
             return null
         }
@@ -14,13 +16,13 @@ internal object UriProjection {
         }
     }
 
-    fun fromInspectable(inspectable: IInspectableReference): WinRTUri {
+    fun fromInspectable(inspectable: IInspectableReference): Uri {
         val raw = getStringProperty(inspectable, slot = 16)
-        return WinRTUri(raw)
+        return Uri(raw)
     }
 
     fun createReference(
-        value: WinRTUri,
+        value: Uri,
         interfaceId: Guid = IID.IInspectable,
     ): ComObjectReference {
         val inspectable =

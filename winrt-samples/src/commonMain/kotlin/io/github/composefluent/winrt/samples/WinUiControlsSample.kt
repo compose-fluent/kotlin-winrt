@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.samples
 
 import io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources
-import io.github.composefluent.winrt.runtime.EventRegistrationToken
+import windows.foundation.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs

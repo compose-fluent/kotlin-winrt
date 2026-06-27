@@ -1,5 +1,23 @@
 package io.github.composefluent.winrt.runtime
 
+import microsoft.ui.xaml.IXamlServiceProvider
+import microsoft.ui.xaml.data.DataErrorsChangedEventArgs
+import microsoft.ui.xaml.data.DataErrorsChangedEventHandler
+import microsoft.ui.xaml.data.ICustomProperty
+import microsoft.ui.xaml.data.ICustomPropertyProvider
+import microsoft.ui.xaml.data.INotifyDataErrorInfo
+import microsoft.ui.xaml.data.INotifyPropertyChanged
+import microsoft.ui.xaml.data.PropertyChangedEventArgs
+import microsoft.ui.xaml.data.PropertyChangedEventHandler
+import microsoft.ui.xaml.input.CanExecuteChangedEventHandler
+import microsoft.ui.xaml.input.ICommand
+import microsoft.ui.xaml.interop.INotifyCollectionChanged
+import microsoft.ui.xaml.interop.NotifyCollectionChangedAction
+import microsoft.ui.xaml.interop.NotifyCollectionChangedEventArgs
+import microsoft.ui.xaml.interop.NotifyCollectionChangedEventHandler
+import windows.foundation.EventRegistrationToken
+import windows.foundation.IStringable
+
 import kotlin.reflect.KClass
 
 private const val muxCommandRuntimeTypeName = "Microsoft.UI.Xaml.Input.ICommand"
@@ -322,27 +340,27 @@ internal object XamlSystemProjectionRuntimeHooks {
     }
 
     private fun registerCcwFactories() {
-        ComWrappersSupport.registerCcwFactory(WinRTCommand::class) { value ->
-            createCommandDefinition(value as WinRTCommand)
+        ComWrappersSupport.registerCcwFactory(ICommand::class) { value ->
+            createCommandDefinition(value as ICommand)
         }
-        ComWrappersSupport.registerCcwFactory(WinRTPropertyChangedNotifier::class) { value ->
-            createPropertyChangedNotifierDefinition(value as WinRTPropertyChangedNotifier)
+        ComWrappersSupport.registerCcwFactory(INotifyPropertyChanged::class) { value ->
+            createPropertyChangedNotifierDefinition(value as INotifyPropertyChanged)
         }
-        ComWrappersSupport.registerCcwFactory(WinRTCollectionChangedNotifier::class) { value ->
-            createCollectionChangedNotifierDefinition(value as WinRTCollectionChangedNotifier)
+        ComWrappersSupport.registerCcwFactory(INotifyCollectionChanged::class) { value ->
+            createCollectionChangedNotifierDefinition(value as INotifyCollectionChanged)
         }
         if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
-            ComWrappersSupport.registerCcwFactory(WinRTDataErrorInfo::class) { value ->
-                createDataErrorInfoDefinition(value as WinRTDataErrorInfo)
+            ComWrappersSupport.registerCcwFactory(INotifyDataErrorInfo::class) { value ->
+                createDataErrorInfoDefinition(value as INotifyDataErrorInfo)
             }
-            ComWrappersSupport.registerCcwFactory(WinRTServiceProvider::class) { value ->
-                createServiceProviderDefinition(value as WinRTServiceProvider)
+            ComWrappersSupport.registerCcwFactory(IXamlServiceProvider::class) { value ->
+                createServiceProviderDefinition(value as IXamlServiceProvider)
             }
         }
-        ComWrappersSupport.registerCcwFactory(WinRTCustomProperty::class) { value ->
-            createCustomPropertyDefinition(value as WinRTCustomProperty)
+        ComWrappersSupport.registerCcwFactory(ICustomProperty::class) { value ->
+            createCustomPropertyDefinition(value as ICustomProperty)
         }
-        ComWrappersSupport.registerCcwFactory(WinRTCustomPropertyProvider::class) { value ->
+        ComWrappersSupport.registerCcwFactory(ICustomPropertyProvider::class) { value ->
             createCustomPropertyProviderDefinition(value)
         }
         if (FeatureSwitches.enableICustomPropertyProviderSupport) {
@@ -350,15 +368,15 @@ internal object XamlSystemProjectionRuntimeHooks {
                 createCustomPropertyProviderDefinition(value)
             }
         }
-        ComWrappersSupport.registerCcwFactory(WinRTPropertyChangedEventArgs::class) { value ->
-            createPropertyChangedEventArgsDefinition(value as WinRTPropertyChangedEventArgs)
+        ComWrappersSupport.registerCcwFactory(PropertyChangedEventArgs::class) { value ->
+            createPropertyChangedEventArgsDefinition(value as PropertyChangedEventArgs)
         }
-        ComWrappersSupport.registerCcwFactory(WinRTNotifyCollectionChangedEventArgs::class) { value ->
-            createNotifyCollectionChangedEventArgsDefinition(value as WinRTNotifyCollectionChangedEventArgs)
+        ComWrappersSupport.registerCcwFactory(NotifyCollectionChangedEventArgs::class) { value ->
+            createNotifyCollectionChangedEventArgsDefinition(value as NotifyCollectionChangedEventArgs)
         }
         if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
-            ComWrappersSupport.registerCcwFactory(WinRTDataErrorsChangedEventArgs::class) { value ->
-                createDataErrorsChangedEventArgsDefinition(value as WinRTDataErrorsChangedEventArgs)
+            ComWrappersSupport.registerCcwFactory(DataErrorsChangedEventArgs::class) { value ->
+                createDataErrorsChangedEventArgsDefinition(value as DataErrorsChangedEventArgs)
             }
         }
     }
@@ -372,15 +390,15 @@ internal object XamlSystemProjectionMappings {
     }
 
     private fun registerEnumMetadata() {
-        WinRTTypeRegistry.update(WinRTNotifyCollectionChangedAction::class) { existing ->
+        WinRTTypeRegistry.update(NotifyCollectionChangedAction::class) { existing ->
             WinRTTypeId(
-                kClass = WinRTNotifyCollectionChangedAction::class,
+                kClass = NotifyCollectionChangedAction::class,
                 projectedTypeName = collectionChangedActionTypeName(),
                 guid = existing?.guid,
                 iid = existing?.iid,
                 signature = "enum(${collectionChangedActionTypeName()};i4)",
                 enumAbiValue = { value -> value.ordinal },
-                enumEntries = WinRTNotifyCollectionChangedAction.entries.toTypedArray(),
+                enumEntries = NotifyCollectionChangedAction.entries.toTypedArray(),
                 helperType = existing?.helperType,
                 defaultInterface = existing?.defaultInterface,
                 boxedName = existing?.boxedName,
@@ -400,8 +418,8 @@ internal object XamlSystemProjectionMappings {
 
     private fun registerInterfaceMetadata() {
         registerInterface(
-            type = WinRTCommand::class,
-            helperType = WinRTCommandProjection::class,
+            type = ICommand::class,
+            helperType = ICommandProjection::class,
             canonicalAbiTypeName = commandRuntimeTypeName(),
             iid = IID.ICommand,
             aliases = setOf(
@@ -412,50 +430,50 @@ internal object XamlSystemProjectionMappings {
             ) - commandRuntimeTypeName(),
         )
         registerInterface(
-            type = WinRTPropertyChangedNotifier::class,
-            helperType = WinRTPropertyChangedNotifierProjection::class,
+            type = INotifyPropertyChanged::class,
+            helperType = INotifyPropertyChangedProjection::class,
             canonicalAbiTypeName = propertyChangedNotifierTypeName(),
             iid = propertyChangedNotifierInterfaceId(),
             aliases = setOf(muxPropertyChangedNotifierTypeName, wuxPropertyChangedNotifierTypeName) - propertyChangedNotifierTypeName(),
         )
         registerInterface(
-            type = WinRTCollectionChangedNotifier::class,
-            helperType = WinRTCollectionChangedNotifierProjection::class,
+            type = INotifyCollectionChanged::class,
+            helperType = INotifyCollectionChangedProjection::class,
             canonicalAbiTypeName = collectionChangedNotifierTypeName(),
             iid = collectionChangedNotifierInterfaceId(),
             aliases = setOf(muxCollectionChangedNotifierTypeName, wuxCollectionChangedNotifierTypeName) - collectionChangedNotifierTypeName(),
         )
         if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
             registerInterface(
-                type = WinRTDataErrorInfo::class,
-                helperType = WinRTDataErrorInfoProjection::class,
+                type = INotifyDataErrorInfo::class,
+                helperType = INotifyDataErrorInfoProjection::class,
                 canonicalAbiTypeName = muxDataErrorInfoTypeName,
                 iid = IID.INotifyDataErrorInfo,
             )
             registerInterface(
-                type = WinRTServiceProvider::class,
-                helperType = WinRTServiceProviderProjection::class,
+                type = IXamlServiceProvider::class,
+                helperType = IXamlServiceProviderProjection::class,
                 canonicalAbiTypeName = muxServiceProviderTypeName,
                 iid = IID.IServiceProvider,
             )
         }
         registerInterface(
-            type = WinRTCustomProperty::class,
-            helperType = WinRTCustomPropertyProjection::class,
+            type = ICustomProperty::class,
+            helperType = ICustomPropertyProjection::class,
             canonicalAbiTypeName = customPropertyTypeName(),
             iid = IID.ICustomProperty,
             aliases = setOf(muxCustomPropertyTypeName, wuxCustomPropertyTypeName) - customPropertyTypeName(),
         )
         registerInterface(
-            type = WinRTCustomPropertyProvider::class,
-            helperType = WinRTCustomPropertyProviderProjection::class,
+            type = ICustomPropertyProvider::class,
+            helperType = ICustomPropertyProviderProjection::class,
             canonicalAbiTypeName = customPropertyProviderTypeName(),
             iid = IID.ICustomPropertyProvider,
             aliases = setOf(muxCustomPropertyProviderTypeName, wuxCustomPropertyProviderTypeName) - customPropertyProviderTypeName(),
         )
         registerInterface(
-            type = WinRTStringable::class,
-            helperType = WinRTStringableProjection::class,
+            type = IStringable::class,
+            helperType = IStringableProjection::class,
             canonicalAbiTypeName = stringableTypeName,
             iid = IID.IStringable,
         )
@@ -463,29 +481,29 @@ internal object XamlSystemProjectionMappings {
 
     private fun registerRuntimeClassMetadata() {
         registerRuntimeClass(
-            type = WinRTPropertyChangedEventArgs::class,
-            helperType = WinRTPropertyChangedEventArgsProjection::class,
+            type = PropertyChangedEventArgs::class,
+            helperType = PropertyChangedEventArgsProjection::class,
             runtimeClassName = propertyChangedEventArgsTypeName(),
-            defaultInterfaceType = WinRTPropertyChangedEventArgsProjection::class,
+            defaultInterfaceType = PropertyChangedEventArgsProjection::class,
             defaultInterfaceIid = propertyChangedEventArgsInterfaceId(),
             signature = "rc(${propertyChangedEventArgsTypeName()};{${propertyChangedEventArgsInterfaceId().toString().lowercase()}})",
             aliases = setOf(muxPropertyChangedEventArgsTypeName, wuxPropertyChangedEventArgsTypeName) - propertyChangedEventArgsTypeName(),
         )
         registerRuntimeClass(
-            type = WinRTNotifyCollectionChangedEventArgs::class,
-            helperType = WinRTNotifyCollectionChangedEventArgsProjection::class,
+            type = NotifyCollectionChangedEventArgs::class,
+            helperType = NotifyCollectionChangedEventArgsProjection::class,
             runtimeClassName = notifyCollectionChangedEventArgsTypeName(),
-            defaultInterfaceType = WinRTNotifyCollectionChangedEventArgsProjection::class,
+            defaultInterfaceType = NotifyCollectionChangedEventArgsProjection::class,
             defaultInterfaceIid = notifyCollectionChangedEventArgsInterfaceId(),
             signature = "rc(${notifyCollectionChangedEventArgsTypeName()};{${notifyCollectionChangedEventArgsInterfaceId().toString().lowercase()}})",
             aliases = setOf(muxNotifyCollectionChangedEventArgsTypeName, wuxNotifyCollectionChangedEventArgsTypeName) - notifyCollectionChangedEventArgsTypeName(),
         )
         if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
             registerRuntimeClass(
-                type = WinRTDataErrorsChangedEventArgs::class,
-                helperType = WinRTDataErrorsChangedEventArgsProjection::class,
+                type = DataErrorsChangedEventArgs::class,
+                helperType = DataErrorsChangedEventArgsProjection::class,
                 runtimeClassName = muxDataErrorsChangedEventArgsTypeName,
-                defaultInterfaceType = WinRTDataErrorsChangedEventArgsProjection::class,
+                defaultInterfaceType = DataErrorsChangedEventArgsProjection::class,
                 defaultInterfaceIid = dataErrorsChangedEventArgsInterfaceId,
                 signature = "rc($muxDataErrorsChangedEventArgsTypeName;{${dataErrorsChangedEventArgsInterfaceId.toString().lowercase()}})",
             )
@@ -567,46 +585,46 @@ internal object XamlSystemProjectionMappings {
     }
 }
 
-internal object WinRTCommandProjection
-object WinRTPropertyChangedNotifierProjection {
-    fun fromAbi(reference: IUnknownReference): WinRTPropertyChangedNotifier =
+internal object ICommandProjection
+object INotifyPropertyChangedProjection {
+    fun fromAbi(reference: IUnknownReference): INotifyPropertyChanged =
         createPropertyChangedNotifierObject(reference.asInspectable())
 
-    fun fromAbi(reference: IInspectableReference): WinRTPropertyChangedNotifier =
+    fun fromAbi(reference: IInspectableReference): INotifyPropertyChanged =
         createPropertyChangedNotifierObject(reference)
 
-    fun fromAbi(pointer: RawAddress): WinRTPropertyChangedNotifier? =
+    fun fromAbi(pointer: RawAddress): INotifyPropertyChanged? =
         if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             createPropertyChangedNotifierObject(IInspectableReference(pointer.asRawComPtr(), IID.IInspectable))
         }
 }
-internal object WinRTCollectionChangedNotifierProjection
-object WinRTDataErrorInfoProjection {
-    fun fromAbi(reference: IUnknownReference): WinRTDataErrorInfo =
+internal object INotifyCollectionChangedProjection
+object INotifyDataErrorInfoProjection {
+    fun fromAbi(reference: IUnknownReference): INotifyDataErrorInfo =
         createDataErrorInfoObject(reference.asInspectable())
 
-    fun fromAbi(pointer: RawAddress): WinRTDataErrorInfo? =
+    fun fromAbi(pointer: RawAddress): INotifyDataErrorInfo? =
         if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             createDataErrorInfoObject(IInspectableReference(pointer.asRawComPtr(), IID.IInspectable))
         }
 }
-internal object WinRTServiceProviderProjection
-internal object WinRTCustomPropertyProjection
-internal object WinRTCustomPropertyProviderProjection
-internal object WinRTStringableProjection
-internal object WinRTPropertyChangedEventArgsProjection
-internal object WinRTNotifyCollectionChangedEventArgsProjection
-internal object WinRTDataErrorsChangedEventArgsProjection
+internal object IXamlServiceProviderProjection
+internal object ICustomPropertyProjection
+internal object ICustomPropertyProviderProjection
+internal object IStringableProjection
+internal object PropertyChangedEventArgsProjection
+internal object NotifyCollectionChangedEventArgsProjection
+internal object DataErrorsChangedEventArgsProjection
 
-private fun createCommandObject(inspectable: IInspectableReference): WinRTCommandObject =
-    WinRTCommandObject(resolveProjectedReference(inspectable, IID.ICommand, "ICommand"))
+private fun createCommandObject(inspectable: IInspectableReference): ICommandObject =
+    ICommandObject(resolveProjectedReference(inspectable, IID.ICommand, "ICommand"))
 
-private fun createPropertyChangedNotifierObject(inspectable: IInspectableReference): WinRTPropertyChangedNotifierObject =
-    WinRTPropertyChangedNotifierObject(
+private fun createPropertyChangedNotifierObject(inspectable: IInspectableReference): INotifyPropertyChangedObject =
+    INotifyPropertyChangedObject(
         resolveProjectedReference(
             inspectable,
             listOf(IID.MUX_INotifyPropertyChanged, IID.WUX_INotifyPropertyChanged),
@@ -614,8 +632,8 @@ private fun createPropertyChangedNotifierObject(inspectable: IInspectableReferen
         ),
     )
 
-private fun createCollectionChangedNotifierObject(inspectable: IInspectableReference): WinRTCollectionChangedNotifierObject =
-    WinRTCollectionChangedNotifierObject(
+private fun createCollectionChangedNotifierObject(inspectable: IInspectableReference): INotifyCollectionChangedObject =
+    INotifyCollectionChangedObject(
         resolveProjectedReference(
             inspectable,
             listOf(IID.MUX_INotifyCollectionChanged, IID.WUX_INotifyCollectionChanged),
@@ -623,24 +641,24 @@ private fun createCollectionChangedNotifierObject(inspectable: IInspectableRefer
         ),
     )
 
-private fun createDataErrorInfoObject(inspectable: IInspectableReference): WinRTDataErrorInfoObject =
-    WinRTDataErrorInfoObject(resolveProjectedReference(inspectable, IID.INotifyDataErrorInfo, "INotifyDataErrorInfo"))
+private fun createDataErrorInfoObject(inspectable: IInspectableReference): INotifyDataErrorInfoObject =
+    INotifyDataErrorInfoObject(resolveProjectedReference(inspectable, IID.INotifyDataErrorInfo, "INotifyDataErrorInfo"))
 
-private fun createServiceProviderObject(inspectable: IInspectableReference): WinRTServiceProviderObject =
-    WinRTServiceProviderObject(resolveProjectedReference(inspectable, IID.IServiceProvider, "IServiceProvider"))
+private fun createServiceProviderObject(inspectable: IInspectableReference): IXamlServiceProviderObject =
+    IXamlServiceProviderObject(resolveProjectedReference(inspectable, IID.IServiceProvider, "IServiceProvider"))
 
-private fun createCustomPropertyObject(inspectable: IInspectableReference): WinRTCustomPropertyObject =
-    WinRTCustomPropertyObject(resolveProjectedReference(inspectable, IID.ICustomProperty, "ICustomProperty"))
+private fun createCustomPropertyObject(inspectable: IInspectableReference): ICustomPropertyObject =
+    ICustomPropertyObject(resolveProjectedReference(inspectable, IID.ICustomProperty, "ICustomProperty"))
 
-private fun createCustomPropertyProviderObject(inspectable: IInspectableReference): WinRTCustomPropertyProviderObject =
-    WinRTCustomPropertyProviderObject(
+private fun createCustomPropertyProviderObject(inspectable: IInspectableReference): ICustomPropertyProviderObject =
+    ICustomPropertyProviderObject(
         resolveProjectedReference(inspectable, IID.ICustomPropertyProvider, "ICustomPropertyProvider"),
     )
 
-private fun createStringableObject(inspectable: IInspectableReference): WinRTStringableObject =
-    WinRTStringableObject(resolveProjectedReference(inspectable, IID.IStringable, "IStringable"))
+private fun createStringableObject(inspectable: IInspectableReference): IStringableObject =
+    IStringableObject(resolveProjectedReference(inspectable, IID.IStringable, "IStringable"))
 
-private fun createPropertyChangedEventArgs(inspectable: IInspectableReference): WinRTPropertyChangedEventArgs =
+private fun createPropertyChangedEventArgs(inspectable: IInspectableReference): PropertyChangedEventArgs =
     inspectable.queryInterface(muxPropertyChangedEventArgsInterfaceId).getOrNull()?.use(::readPropertyChangedEventArgs)
         ?: inspectable.queryInterface(wuxPropertyChangedEventArgsInterfaceId).getOrNull()?.use(::readPropertyChangedEventArgs)
         ?: throw WinRTUnsupportedOperationException(
@@ -648,7 +666,7 @@ private fun createPropertyChangedEventArgs(inspectable: IInspectableReference): 
             KnownHResults.E_NOINTERFACE,
         )
 
-private fun createNotifyCollectionChangedEventArgs(inspectable: IInspectableReference): WinRTNotifyCollectionChangedEventArgs =
+private fun createNotifyCollectionChangedEventArgs(inspectable: IInspectableReference): NotifyCollectionChangedEventArgs =
     inspectable.queryInterface(IID.MUX_INotifyCollectionChangedEventArgs).getOrNull()?.use(::readNotifyCollectionChangedEventArgs)
         ?: inspectable.queryInterface(IID.WUX_INotifyCollectionChangedEventArgs).getOrNull()?.use(::readNotifyCollectionChangedEventArgs)
         ?: throw WinRTUnsupportedOperationException(
@@ -656,16 +674,16 @@ private fun createNotifyCollectionChangedEventArgs(inspectable: IInspectableRefe
             KnownHResults.E_NOINTERFACE,
         )
 
-private fun createDataErrorsChangedEventArgs(inspectable: IInspectableReference): WinRTDataErrorsChangedEventArgs =
+private fun createDataErrorsChangedEventArgs(inspectable: IInspectableReference): DataErrorsChangedEventArgs =
     inspectable.queryInterface(dataErrorsChangedEventArgsInterfaceId).getOrNull()?.use(::readDataErrorsChangedEventArgs)
         ?: throw WinRTUnsupportedOperationException(
             "Inspectable value does not implement DataErrorsChangedEventArgs.",
             KnownHResults.E_NOINTERFACE,
         )
 
-private class WinRTCommandObject(
+private class ICommandObject(
     override val nativeObject: ComObjectReference,
-) : WinRTCommand, IWinRTObject {
+) : ICommand, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = commandTypeHandle()
 
@@ -679,18 +697,18 @@ private class WinRTCommandObject(
         invokeExecute(nativeObject, parameter)
     }
 
-    override fun addCanExecuteChanged(handler: WinRTCanExecuteChangedHandler) {
+    override fun addCanExecuteChanged(handler: CanExecuteChangedEventHandler) {
         canExecuteChangedSource.subscribe(handler)
     }
 
-    override fun removeCanExecuteChanged(handler: WinRTCanExecuteChangedHandler) {
+    override fun removeCanExecuteChanged(handler: CanExecuteChangedEventHandler) {
         canExecuteChangedSource.unsubscribe(handler)
     }
 }
 
-private class WinRTPropertyChangedNotifierObject(
+private class INotifyPropertyChangedObject(
     override val nativeObject: ComObjectReference,
-) : WinRTPropertyChangedNotifier, IWinRTObject {
+) : INotifyPropertyChanged, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = propertyChangedNotifierTypeHandle()
 
@@ -698,18 +716,18 @@ private class WinRTPropertyChangedNotifierObject(
         PropertyChangedEventSource(nativeObject)
     }
 
-    override fun addPropertyChanged(handler: WinRTPropertyChangedHandler) {
+    override fun addPropertyChanged(handler: PropertyChangedEventHandler) {
         propertyChangedSource.subscribe(handler)
     }
 
-    override fun removePropertyChanged(handler: WinRTPropertyChangedHandler) {
+    override fun removePropertyChanged(handler: PropertyChangedEventHandler) {
         propertyChangedSource.unsubscribe(handler)
     }
 }
 
-private class WinRTCollectionChangedNotifierObject(
+private class INotifyCollectionChangedObject(
     override val nativeObject: ComObjectReference,
-) : WinRTCollectionChangedNotifier, IWinRTObject {
+) : INotifyCollectionChanged, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = collectionChangedNotifierTypeHandle()
 
@@ -717,18 +735,18 @@ private class WinRTCollectionChangedNotifierObject(
         CollectionChangedEventSource(nativeObject)
     }
 
-    override fun addCollectionChanged(handler: WinRTCollectionChangedHandler) {
+    override fun addCollectionChanged(handler: NotifyCollectionChangedEventHandler) {
         collectionChangedSource.subscribe(handler)
     }
 
-    override fun removeCollectionChanged(handler: WinRTCollectionChangedHandler) {
+    override fun removeCollectionChanged(handler: NotifyCollectionChangedEventHandler) {
         collectionChangedSource.unsubscribe(handler)
     }
 }
 
-private class WinRTDataErrorInfoObject(
+private class INotifyDataErrorInfoObject(
     override val nativeObject: ComObjectReference,
-) : WinRTDataErrorInfo, IWinRTObject {
+) : INotifyDataErrorInfo, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = dataErrorInfoTypeHandle()
 
@@ -757,18 +775,18 @@ private class WinRTDataErrorInfoObject(
         return WinRTBindableIterableProjection.fromAbi(resultPointer)
     }
 
-    override fun addErrorsChanged(handler: WinRTDataErrorsChangedHandler) {
+    override fun addErrorsChanged(handler: DataErrorsChangedEventHandler) {
         errorsChangedSource.subscribe(handler)
     }
 
-    override fun removeErrorsChanged(handler: WinRTDataErrorsChangedHandler) {
+    override fun removeErrorsChanged(handler: DataErrorsChangedEventHandler) {
         errorsChangedSource.unsubscribe(handler)
     }
 }
 
-private class WinRTServiceProviderObject(
+private class IXamlServiceProviderObject(
     override val nativeObject: ComObjectReference,
-) : WinRTServiceProvider, IWinRTObject {
+) : IXamlServiceProvider, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = serviceProviderTypeHandle()
 
@@ -788,9 +806,9 @@ private class WinRTServiceProviderObject(
         }
 }
 
-private class WinRTCustomPropertyObject(
+private class ICustomPropertyObject(
     override val nativeObject: ComObjectReference,
-) : WinRTCustomProperty, IWinRTObject {
+) : ICustomProperty, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = customPropertyTypeHandle()
 
@@ -873,13 +891,13 @@ private class WinRTCustomPropertyObject(
     }
 }
 
-private class WinRTCustomPropertyProviderObject(
+private class ICustomPropertyProviderObject(
     override val nativeObject: ComObjectReference,
-) : WinRTCustomPropertyProvider, IWinRTObject {
+) : ICustomPropertyProvider, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = customPropertyProviderTypeHandle()
 
-    override fun getCustomProperty(name: String): WinRTCustomProperty? =
+    override fun getCustomProperty(name: String): ICustomProperty? =
         withOptionalHString(name) { nameHandle ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
@@ -899,7 +917,7 @@ private class WinRTCustomPropertyProviderObject(
     override fun getIndexedProperty(
         name: String,
         indexParameterType: KClass<*>?,
-    ): WinRTCustomProperty? =
+    ): ICustomProperty? =
         withOptionalHString(name) { nameHandle ->
             withTypeNameArgument(indexParameterType) { typePointer ->
                 RawObjectAbiSupport.nullableObjectResult(
@@ -930,9 +948,9 @@ private class WinRTCustomPropertyProviderObject(
             )
 }
 
-private class WinRTStringableObject(
+private class IStringableObject(
     override val nativeObject: ComObjectReference,
-) : WinRTStringable, IWinRTObject {
+) : IStringable, IWinRTObject {
     override val primaryTypeHandle: WinRTTypeHandle
         get() = stringableTypeHandle()
 
@@ -942,8 +960,8 @@ private class WinRTStringableObject(
 
 private class CommandCanExecuteChangedEventSource(
     objectReference: ComObjectReference,
-) : EventSource<WinRTCanExecuteChangedHandler>(objectReference, vtableIndexForAddHandler = 6) {
-    override fun createMarshaler(handler: WinRTCanExecuteChangedHandler): WinRTDelegateHandle =
+) : EventSource<CanExecuteChangedEventHandler>(objectReference, vtableIndexForAddHandler = 6) {
+    override fun createMarshaler(handler: CanExecuteChangedEventHandler): WinRTDelegateHandle =
         WinRTDelegateBridge.createUnitDelegate(
             iid = commandEventHandlerIid,
             parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.OBJECT),
@@ -954,9 +972,9 @@ private class CommandCanExecuteChangedEventSource(
             )
         }
 
-    override fun createEventSourceState(): EventSourceState<WinRTCanExecuteChangedHandler> =
-        object : EventSourceState<WinRTCanExecuteChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
-            override fun createEventInvoke(): WinRTCanExecuteChangedHandler =
+    override fun createEventSourceState(): EventSourceState<CanExecuteChangedEventHandler> =
+        object : EventSourceState<CanExecuteChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
+            override fun createEventInvoke(): CanExecuteChangedEventHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
                 }
@@ -965,7 +983,7 @@ private class CommandCanExecuteChangedEventSource(
 
 private class PropertyChangedEventSource(
     objectReference: ComObjectReference,
-) : EventSource<WinRTPropertyChangedHandler>(objectReference, vtableIndexForAddHandler = 6) {
+) : EventSource<PropertyChangedEventHandler>(objectReference, vtableIndexForAddHandler = 6) {
     private val delegateIid =
         if (objectReference.interfaceId == IID.WUX_INotifyPropertyChanged) {
             IID.WUX_PropertyChangedEventHandler
@@ -973,7 +991,7 @@ private class PropertyChangedEventSource(
             IID.MUX_PropertyChangedEventHandler
         }
 
-    override fun createMarshaler(handler: WinRTPropertyChangedHandler): WinRTDelegateHandle =
+    override fun createMarshaler(handler: PropertyChangedEventHandler): WinRTDelegateHandle =
         WinRTDelegateBridge.createUnitDelegate(
             iid = delegateIid,
             parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.OBJECT),
@@ -984,9 +1002,9 @@ private class PropertyChangedEventSource(
             )
         }
 
-    override fun createEventSourceState(): EventSourceState<WinRTPropertyChangedHandler> =
-        object : EventSourceState<WinRTPropertyChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
-            override fun createEventInvoke(): WinRTPropertyChangedHandler =
+    override fun createEventSourceState(): EventSourceState<PropertyChangedEventHandler> =
+        object : EventSourceState<PropertyChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
+            override fun createEventInvoke(): PropertyChangedEventHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
                 }
@@ -995,7 +1013,7 @@ private class PropertyChangedEventSource(
 
 private class CollectionChangedEventSource(
     objectReference: ComObjectReference,
-) : EventSource<WinRTCollectionChangedHandler>(objectReference, vtableIndexForAddHandler = 6) {
+) : EventSource<NotifyCollectionChangedEventHandler>(objectReference, vtableIndexForAddHandler = 6) {
     private val delegateIid =
         if (objectReference.interfaceId == IID.WUX_INotifyCollectionChanged) {
             IID.WUX_NotifyCollectionChangedEventHandler
@@ -1003,7 +1021,7 @@ private class CollectionChangedEventSource(
             IID.MUX_NotifyCollectionChangedEventHandler
         }
 
-    override fun createMarshaler(handler: WinRTCollectionChangedHandler): WinRTDelegateHandle =
+    override fun createMarshaler(handler: NotifyCollectionChangedEventHandler): WinRTDelegateHandle =
         WinRTDelegateBridge.createUnitDelegate(
             iid = delegateIid,
             parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.OBJECT),
@@ -1014,9 +1032,9 @@ private class CollectionChangedEventSource(
             )
         }
 
-    override fun createEventSourceState(): EventSourceState<WinRTCollectionChangedHandler> =
-        object : EventSourceState<WinRTCollectionChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
-            override fun createEventInvoke(): WinRTCollectionChangedHandler =
+    override fun createEventSourceState(): EventSourceState<NotifyCollectionChangedEventHandler> =
+        object : EventSourceState<NotifyCollectionChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
+            override fun createEventInvoke(): NotifyCollectionChangedEventHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
                 }
@@ -1025,8 +1043,8 @@ private class CollectionChangedEventSource(
 
 private class DataErrorsChangedEventSource(
     objectReference: ComObjectReference,
-) : EventSource<WinRTDataErrorsChangedHandler>(objectReference, vtableIndexForAddHandler = 7) {
-    override fun createMarshaler(handler: WinRTDataErrorsChangedHandler): WinRTDelegateHandle =
+) : EventSource<DataErrorsChangedEventHandler>(objectReference, vtableIndexForAddHandler = 7) {
+    override fun createMarshaler(handler: DataErrorsChangedEventHandler): WinRTDelegateHandle =
         WinRTDelegateBridge.createUnitDelegate(
             iid = dataErrorsChangedHandlerIid(),
             parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.OBJECT),
@@ -1037,17 +1055,17 @@ private class DataErrorsChangedEventSource(
             )
         }
 
-    override fun createEventSourceState(): EventSourceState<WinRTDataErrorsChangedHandler> =
-        object : EventSourceState<WinRTDataErrorsChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
-            override fun createEventInvoke(): WinRTDataErrorsChangedHandler =
+    override fun createEventSourceState(): EventSourceState<DataErrorsChangedEventHandler> =
+        object : EventSourceState<DataErrorsChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
+            override fun createEventInvoke(): DataErrorsChangedEventHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
                 }
         }
 }
 
-private fun createCommandDefinition(command: WinRTCommand): WinRTCcwDefinition {
-    val tokenTable = EventRegistrationTokenTable.create<WinRTCanExecuteChangedHandler>("WinRTCanExecuteChangedHandler")
+private fun createCommandDefinition(command: ICommand): WinRTCcwDefinition {
+    val tokenTable = EventRegistrationTokenTable.create<CanExecuteChangedEventHandler>("CanExecuteChangedEventHandler")
     return WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
@@ -1094,8 +1112,8 @@ private fun createCommandDefinition(command: WinRTCommand): WinRTCcwDefinition {
     )
 }
 
-private fun createPropertyChangedNotifierDefinition(notifier: WinRTPropertyChangedNotifier): WinRTCcwDefinition {
-    val tokenTable = EventRegistrationTokenTable.create<WinRTPropertyChangedHandler>("WinRTPropertyChangedHandler")
+private fun createPropertyChangedNotifierDefinition(notifier: INotifyPropertyChanged): WinRTCcwDefinition {
+    val tokenTable = EventRegistrationTokenTable.create<PropertyChangedEventHandler>("PropertyChangedEventHandler")
     return WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
@@ -1117,8 +1135,8 @@ private fun createPropertyChangedNotifierDefinition(notifier: WinRTPropertyChang
     )
 }
 
-private fun createCollectionChangedNotifierDefinition(notifier: WinRTCollectionChangedNotifier): WinRTCcwDefinition {
-    val tokenTable = EventRegistrationTokenTable.create<WinRTCollectionChangedHandler>("WinRTCollectionChangedHandler")
+private fun createCollectionChangedNotifierDefinition(notifier: INotifyCollectionChanged): WinRTCcwDefinition {
+    val tokenTable = EventRegistrationTokenTable.create<NotifyCollectionChangedEventHandler>("NotifyCollectionChangedEventHandler")
     return WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
@@ -1140,8 +1158,8 @@ private fun createCollectionChangedNotifierDefinition(notifier: WinRTCollectionC
     )
 }
 
-private fun createDataErrorInfoDefinition(dataErrorInfo: WinRTDataErrorInfo): WinRTCcwDefinition {
-    val tokenTable = EventRegistrationTokenTable.create<WinRTDataErrorsChangedHandler>("WinRTDataErrorsChangedHandler")
+private fun createDataErrorInfoDefinition(dataErrorInfo: INotifyDataErrorInfo): WinRTCcwDefinition {
+    val tokenTable = EventRegistrationTokenTable.create<DataErrorsChangedEventHandler>("DataErrorsChangedEventHandler")
     return WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
@@ -1172,7 +1190,7 @@ private fun createDataErrorInfoDefinition(dataErrorInfo: WinRTDataErrorInfo): Wi
     )
 }
 
-private fun createServiceProviderDefinition(serviceProvider: WinRTServiceProvider): WinRTCcwDefinition =
+private fun createServiceProviderDefinition(serviceProvider: IXamlServiceProvider): WinRTCcwDefinition =
     WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
@@ -1192,7 +1210,7 @@ private fun createServiceProviderDefinition(serviceProvider: WinRTServiceProvide
         defaultInterfaceId = IID.IServiceProvider,
     )
 
-private fun createCustomPropertyDefinition(customProperty: WinRTCustomProperty): WinRTCcwDefinition =
+private fun createCustomPropertyDefinition(customProperty: ICustomProperty): WinRTCcwDefinition =
     WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
@@ -1311,7 +1329,7 @@ private fun createCustomPropertyProviderDefinition(source: Any): WinRTCcwDefinit
     )
 }
 
-private fun createPropertyChangedEventArgsDefinition(value: WinRTPropertyChangedEventArgs): WinRTCcwDefinition =
+private fun createPropertyChangedEventArgsDefinition(value: PropertyChangedEventArgs): WinRTCcwDefinition =
     createSinglePropertyRuntimeClassDefinition(
         interfaceIds = listOf(muxPropertyChangedEventArgsInterfaceId, wuxPropertyChangedEventArgsInterfaceId),
         runtimeClassName = propertyChangedEventArgsTypeName(),
@@ -1319,7 +1337,7 @@ private fun createPropertyChangedEventArgsDefinition(value: WinRTPropertyChanged
         propertyName = value.propertyName,
     )
 
-private fun createDataErrorsChangedEventArgsDefinition(value: WinRTDataErrorsChangedEventArgs): WinRTCcwDefinition =
+private fun createDataErrorsChangedEventArgsDefinition(value: DataErrorsChangedEventArgs): WinRTCcwDefinition =
     createSinglePropertyRuntimeClassDefinition(
         interfaceIds = listOf(dataErrorsChangedEventArgsInterfaceId),
         runtimeClassName = muxDataErrorsChangedEventArgsTypeName,
@@ -1351,7 +1369,7 @@ private fun createSinglePropertyRuntimeClassDefinition(
         runtimeClassName = runtimeClassName,
     )
 
-private fun createNotifyCollectionChangedEventArgsDefinition(value: WinRTNotifyCollectionChangedEventArgs): WinRTCcwDefinition =
+private fun createNotifyCollectionChangedEventArgsDefinition(value: NotifyCollectionChangedEventArgs): WinRTCcwDefinition =
     WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             createNotifyCollectionChangedEventArgsInterfaceDefinition(IID.MUX_INotifyCollectionChangedEventArgs, value),
@@ -1363,7 +1381,7 @@ private fun createNotifyCollectionChangedEventArgsDefinition(value: WinRTNotifyC
 
 private fun createNotifyCollectionChangedEventArgsInterfaceDefinition(
     interfaceId: Guid,
-    value: WinRTNotifyCollectionChangedEventArgs,
+    value: NotifyCollectionChangedEventArgs,
 ): WinRTInspectableInterfaceDefinition =
     WinRTInspectableInterfaceDefinition(
         interfaceId = interfaceId,
@@ -1470,7 +1488,7 @@ private class NativeCommandChangedHandler(
 private class NativePropertyChangedHandler(
     handlerPointer: RawAddress,
     useWuxDelegate: Boolean = false,
-) : NativeAbiEventHandler<WinRTPropertyChangedEventArgs?>(
+) : NativeAbiEventHandler<PropertyChangedEventArgs?>(
         handlerPointer,
         WinRTDelegateDescriptor(
             interfaceId = if (useWuxDelegate) IID.WUX_PropertyChangedEventHandler else IID.MUX_PropertyChangedEventHandler,
@@ -1486,7 +1504,7 @@ private class NativePropertyChangedHandler(
 
     override fun invoke(
         sender: Any?,
-        args: WinRTPropertyChangedEventArgs?,
+        args: PropertyChangedEventArgs?,
     ) {
         withPropertyChangedEventArgsArgument(args, eventArgsInterfaceId) { argsPointer ->
             invokeWithAbi(sender, argsPointer)
@@ -1497,7 +1515,7 @@ private class NativePropertyChangedHandler(
 private class NativeCollectionChangedHandler(
     handlerPointer: RawAddress,
     useWuxDelegate: Boolean = false,
-) : NativeAbiEventHandler<WinRTNotifyCollectionChangedEventArgs?>(
+) : NativeAbiEventHandler<NotifyCollectionChangedEventArgs?>(
         handlerPointer,
         WinRTDelegateDescriptor(
             interfaceId = if (useWuxDelegate) IID.WUX_NotifyCollectionChangedEventHandler else IID.MUX_NotifyCollectionChangedEventHandler,
@@ -1513,7 +1531,7 @@ private class NativeCollectionChangedHandler(
 
     override fun invoke(
         sender: Any?,
-        args: WinRTNotifyCollectionChangedEventArgs?,
+        args: NotifyCollectionChangedEventArgs?,
     ) {
         withNotifyCollectionChangedEventArgsArgument(args, eventArgsInterfaceId) { argsPointer ->
             invokeWithAbi(sender, argsPointer)
@@ -1523,7 +1541,7 @@ private class NativeCollectionChangedHandler(
 
 private class NativeDataErrorsChangedHandler(
     handlerPointer: RawAddress,
-) : NativeAbiEventHandler<WinRTDataErrorsChangedEventArgs?>(
+) : NativeAbiEventHandler<DataErrorsChangedEventArgs?>(
         handlerPointer,
         WinRTDelegateDescriptor(
             interfaceId = dataErrorsChangedHandlerIid(),
@@ -1532,7 +1550,7 @@ private class NativeDataErrorsChangedHandler(
     ) {
     override fun invoke(
         sender: Any?,
-        args: WinRTDataErrorsChangedEventArgs?,
+        args: DataErrorsChangedEventArgs?,
     ) {
         withDataErrorsChangedEventArgsArgument(args) { argsPointer ->
             invokeWithAbi(sender, argsPointer)
@@ -1541,8 +1559,8 @@ private class NativeDataErrorsChangedHandler(
 }
 
 private fun createPropertyChangedAddMethod(
-    tokenTable: EventRegistrationTokenTable<WinRTPropertyChangedHandler>,
-    notifier: WinRTPropertyChangedNotifier,
+    tokenTable: EventRegistrationTokenTable<PropertyChangedEventHandler>,
+    notifier: INotifyPropertyChanged,
     useWuxDelegate: Boolean,
 ): WinRTInspectableMethodDefinition =
     WinRTInspectableMethodDefinition(
@@ -1556,8 +1574,8 @@ private fun createPropertyChangedAddMethod(
     }
 
 private fun createPropertyChangedRemoveMethod(
-    tokenTable: EventRegistrationTokenTable<WinRTPropertyChangedHandler>,
-    notifier: WinRTPropertyChangedNotifier,
+    tokenTable: EventRegistrationTokenTable<PropertyChangedEventHandler>,
+    notifier: INotifyPropertyChanged,
 ): WinRTInspectableMethodDefinition =
     WinRTInspectableMethodDefinition(
         signature = ComMethodSignature.of(ComAbiValueKind.Int64),
@@ -1573,8 +1591,8 @@ private fun createPropertyChangedRemoveMethod(
     }
 
 private fun createCollectionChangedAddMethod(
-    tokenTable: EventRegistrationTokenTable<WinRTCollectionChangedHandler>,
-    notifier: WinRTCollectionChangedNotifier,
+    tokenTable: EventRegistrationTokenTable<NotifyCollectionChangedEventHandler>,
+    notifier: INotifyCollectionChanged,
     useWuxDelegate: Boolean,
 ): WinRTInspectableMethodDefinition =
     WinRTInspectableMethodDefinition(
@@ -1588,8 +1606,8 @@ private fun createCollectionChangedAddMethod(
     }
 
 private fun createCollectionChangedRemoveMethod(
-    tokenTable: EventRegistrationTokenTable<WinRTCollectionChangedHandler>,
-    notifier: WinRTCollectionChangedNotifier,
+    tokenTable: EventRegistrationTokenTable<NotifyCollectionChangedEventHandler>,
+    notifier: INotifyCollectionChanged,
 ): WinRTInspectableMethodDefinition =
     WinRTInspectableMethodDefinition(
         signature = ComMethodSignature.of(ComAbiValueKind.Int64),
@@ -1605,8 +1623,8 @@ private fun createCollectionChangedRemoveMethod(
     }
 
 private fun createDataErrorsChangedAddMethod(
-    tokenTable: EventRegistrationTokenTable<WinRTDataErrorsChangedHandler>,
-    dataErrorInfo: WinRTDataErrorInfo,
+    tokenTable: EventRegistrationTokenTable<DataErrorsChangedEventHandler>,
+    dataErrorInfo: INotifyDataErrorInfo,
 ): WinRTInspectableMethodDefinition =
     WinRTInspectableMethodDefinition(
         signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
@@ -1619,8 +1637,8 @@ private fun createDataErrorsChangedAddMethod(
     }
 
 private fun createDataErrorsChangedRemoveMethod(
-    tokenTable: EventRegistrationTokenTable<WinRTDataErrorsChangedHandler>,
-    dataErrorInfo: WinRTDataErrorInfo,
+    tokenTable: EventRegistrationTokenTable<DataErrorsChangedEventHandler>,
+    dataErrorInfo: INotifyDataErrorInfo,
 ): WinRTInspectableMethodDefinition =
     WinRTInspectableMethodDefinition(
         signature = ComMethodSignature.of(ComAbiValueKind.Int64),
@@ -1635,23 +1653,23 @@ private fun createDataErrorsChangedRemoveMethod(
         KnownHResults.S_OK.value
     }
 
-private fun propertyPointer(property: WinRTCustomProperty?): RawAddress =
+private fun propertyPointer(property: ICustomProperty?): RawAddress =
     property?.let { ComWrappersSupport.createCCWForObject(it, IID.ICustomProperty).useAndGetRef() }
         ?: PlatformAbi.nullPointer
 
-private fun explicitOrBindableCustomPropertyProvider(source: Any): WinRTCustomPropertyProvider? =
+private fun explicitOrBindableCustomPropertyProvider(source: Any): ICustomPropertyProvider? =
     when (source) {
-        is WinRTCustomPropertyProvider -> source
+        is ICustomPropertyProvider -> source
         is WinRTBindableCustomPropertyImplementation ->
             if (FeatureSwitches.enableICustomPropertyProviderSupport) {
-                object : WinRTCustomPropertyProvider {
-                    override fun getCustomProperty(name: String): WinRTCustomProperty? =
+                object : ICustomPropertyProvider {
+                    override fun getCustomProperty(name: String): ICustomProperty? =
                         source.getCustomProperty(name)
 
                     override fun getIndexedProperty(
                         name: String,
                         indexParameterType: KClass<*>?,
-                    ): WinRTCustomProperty? = source.getIndexedProperty(indexParameterType)
+                    ): ICustomProperty? = source.getIndexedProperty(indexParameterType)
 
                     override fun getStringRepresentation(): String = source.toString()
 
@@ -1713,18 +1731,18 @@ private fun invokeInt32Getter(
         ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
     }
 
-private fun readPropertyChangedEventArgs(reference: ComObjectReference): WinRTPropertyChangedEventArgs =
-    WinRTPropertyChangedEventArgs(
+private fun readPropertyChangedEventArgs(reference: ComObjectReference): PropertyChangedEventArgs =
+    PropertyChangedEventArgs(
         propertyName = invokeHStringGetter(reference, slot = 6),
     )
 
-private fun readDataErrorsChangedEventArgs(reference: ComObjectReference): WinRTDataErrorsChangedEventArgs =
-    WinRTDataErrorsChangedEventArgs(
+private fun readDataErrorsChangedEventArgs(reference: ComObjectReference): DataErrorsChangedEventArgs =
+    DataErrorsChangedEventArgs(
         propertyName = invokeHStringGetter(reference, slot = 6),
     )
 
-private fun readNotifyCollectionChangedEventArgs(reference: ComObjectReference): WinRTNotifyCollectionChangedEventArgs {
-    val action = WinRTNotifyCollectionChangedAction.entries[invokeInt32Getter(reference, slot = 6)]
+private fun readNotifyCollectionChangedEventArgs(reference: ComObjectReference): NotifyCollectionChangedEventArgs {
+    val action = NotifyCollectionChangedAction.entries[invokeInt32Getter(reference, slot = 6)]
     val newItems =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
@@ -1745,7 +1763,7 @@ private fun readNotifyCollectionChangedEventArgs(reference: ComObjectReference):
         }
     val newStartingIndex = invokeInt32Getter(reference, slot = 9)
     val oldStartingIndex = invokeInt32Getter(reference, slot = 10)
-    return WinRTNotifyCollectionChangedEventArgs(
+    return NotifyCollectionChangedEventArgs(
         action = action,
         newItems = newItems,
         oldItems = oldItems,
@@ -1762,14 +1780,14 @@ private fun decodeDelegateObject(argument: Any?): Any? =
         else -> argument
     }
 
-fun winRTPropertyChangedEventArgsFromAbi(argument: Any?): WinRTPropertyChangedEventArgs =
+fun PropertyChangedEventArgsFromAbi(argument: Any?): PropertyChangedEventArgs =
     decodePropertyChangedEventArgsArgument(argument)
         ?: error("PropertyChangedEventArgs ABI value is null")
 
-private fun decodePropertyChangedEventArgsArgument(argument: Any?): WinRTPropertyChangedEventArgs? =
+private fun decodePropertyChangedEventArgsArgument(argument: Any?): PropertyChangedEventArgs? =
     when (argument) {
         null -> null
-        is WinRTPropertyChangedEventArgs -> argument
+        is PropertyChangedEventArgs -> argument
         is IUnknownReference ->
             argument.use { reference ->
                 reference.queryInterface(muxPropertyChangedEventArgsInterfaceId).getOrNull()?.use(::readPropertyChangedEventArgs)
@@ -1785,10 +1803,10 @@ private fun decodePropertyChangedEventArgsArgument(argument: Any?): WinRTPropert
         else -> error("Unsupported PropertyChangedEventArgs ABI value: ${argument::class.typeDisplayName()}")
     }
 
-private fun decodeNotifyCollectionChangedEventArgsArgument(argument: Any?): WinRTNotifyCollectionChangedEventArgs? =
+private fun decodeNotifyCollectionChangedEventArgsArgument(argument: Any?): NotifyCollectionChangedEventArgs? =
     when (argument) {
         null -> null
-        is WinRTNotifyCollectionChangedEventArgs -> argument
+        is NotifyCollectionChangedEventArgs -> argument
         is IUnknownReference ->
             argument.use { reference ->
                 reference.queryInterface(IID.MUX_INotifyCollectionChangedEventArgs).getOrNull()?.use(::readNotifyCollectionChangedEventArgs)
@@ -1804,10 +1822,10 @@ private fun decodeNotifyCollectionChangedEventArgsArgument(argument: Any?): WinR
         else -> error("Unsupported NotifyCollectionChangedEventArgs ABI value: ${argument::class.typeDisplayName()}")
     }
 
-private fun decodeDataErrorsChangedEventArgsArgument(argument: Any?): WinRTDataErrorsChangedEventArgs? =
+private fun decodeDataErrorsChangedEventArgsArgument(argument: Any?): DataErrorsChangedEventArgs? =
     when (argument) {
         null -> null
-        is WinRTDataErrorsChangedEventArgs -> argument
+        is DataErrorsChangedEventArgs -> argument
         is IUnknownReference ->
             argument.use { reference ->
                 reference.queryInterface(dataErrorsChangedEventArgsInterfaceId).getOrNull()?.use(::readDataErrorsChangedEventArgs)
@@ -1922,7 +1940,7 @@ private inline fun <T> withThreeObjectArguments(
     }
 
 private inline fun <T> withPropertyChangedEventArgsArgument(
-    value: WinRTPropertyChangedEventArgs?,
+    value: PropertyChangedEventArgs?,
     interfaceId: Guid = propertyChangedEventArgsInterfaceId(),
     block: (RawAddress) -> T,
 ): T =
@@ -1931,7 +1949,7 @@ private inline fun <T> withPropertyChangedEventArgsArgument(
     } ?: block(PlatformAbi.nullPointer)
 
 private inline fun <T> withNotifyCollectionChangedEventArgsArgument(
-    value: WinRTNotifyCollectionChangedEventArgs?,
+    value: NotifyCollectionChangedEventArgs?,
     interfaceId: Guid = notifyCollectionChangedEventArgsInterfaceId(),
     block: (RawAddress) -> T,
 ): T =
@@ -1940,7 +1958,7 @@ private inline fun <T> withNotifyCollectionChangedEventArgsArgument(
     } ?: block(PlatformAbi.nullPointer)
 
 private inline fun <T> withDataErrorsChangedEventArgsArgument(
-    value: WinRTDataErrorsChangedEventArgs?,
+    value: DataErrorsChangedEventArgs?,
     block: (RawAddress) -> T,
 ): T =
     value?.let {

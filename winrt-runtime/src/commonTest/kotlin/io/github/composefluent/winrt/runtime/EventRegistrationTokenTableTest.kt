@@ -6,6 +6,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import windows.foundation.EventRegistrationToken
 
 class EventRegistrationTokenTableTest {
     @Test

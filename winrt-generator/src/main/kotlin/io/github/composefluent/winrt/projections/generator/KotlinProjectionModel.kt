@@ -45,7 +45,6 @@ import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComWrappersSupport
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
 import io.github.composefluent.winrt.runtime.DerivedComposed
-import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.ExceptionHelpers
 import io.github.composefluent.winrt.runtime.EventSource
 import io.github.composefluent.winrt.runtime.Guid
@@ -102,7 +101,6 @@ import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
-import io.github.composefluent.winrt.runtime.WinRTUri
 import io.github.composefluent.winrt.runtime.WinRTValueBoxingRegistration
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
@@ -326,7 +324,7 @@ internal val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
 internal val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableList")
 internal val ABSTRACT_MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableMap")
 internal val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableSet")
-internal val WINRT_URI_CLASS_NAME = WinRTUri::class.asClassName()
+internal val WINDOWS_FOUNDATION_URI_CLASS_NAME = ClassName("windows.foundation", "Uri")
 internal val KOTLIN_INSTANT_CLASS_NAME = ClassName("kotlin.time", "Instant")
 internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
 internal val KOTLIN_DURATION_ALIAS_CLASS_NAME = ClassName("", "TimeDuration")
@@ -349,24 +347,38 @@ internal val NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME = NativeScalarFieldSpec::class.
 internal val NATIVE_STRUCT_ADAPTER_CLASS_NAME = NativeStructAdapter::class.asClassName()
 internal val NATIVE_STRUCT_LAYOUT_CLASS_NAME = NativeStructLayout::class.asClassName()
 internal val NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME = NativeStructScalarKind::class.asClassName()
-internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = EventRegistrationToken::class.asClassName()
+internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = ClassName("windows.foundation", "EventRegistrationToken")
 internal val EXCEPTION_HELPERS_CLASS_NAME = ExceptionHelpers::class.asClassName()
 internal val EXCEPTION_CLASS_NAME = ClassName("kotlin", "Exception")
-internal val EVENT_HANDLER_CALLBACK_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "EventHandlerCallback")
-internal val WINRT_COMMAND_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTCommand")
-internal val WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedNotifier")
+internal val WINDOWS_FOUNDATION_EVENT_HANDLER_CLASS_NAME = ClassName("windows.foundation", "EventHandler")
+internal val MUX_COMMAND_CLASS_NAME = ClassName("microsoft.ui.xaml.input", "ICommand")
+internal val MUX_INTEROP_COMMAND_CLASS_NAME = ClassName("microsoft.ui.xaml.interop", "ICommand")
+internal val WUX_COMMAND_CLASS_NAME = ClassName("windows.ui.xaml.input", "ICommand")
+internal val WUX_INTEROP_COMMAND_CLASS_NAME = ClassName("windows.ui.xaml.interop", "ICommand")
+internal val MUX_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME = ClassName("microsoft.ui.xaml.data", "INotifyPropertyChanged")
+internal val WUX_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME = ClassName("windows.ui.xaml.data", "INotifyPropertyChanged")
 internal val WINRT_PROPERTY_CHANGED_NOTIFIER_PROJECTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedNotifierProjection")
-internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedEventArgs")
-internal val WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTPropertyChangedHandler")
-internal val WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTCollectionChangedNotifier")
-internal val WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTNotifyCollectionChangedAction")
-internal val WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTNotifyCollectionChangedEventArgs")
-internal val WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTCollectionChangedHandler")
-internal val WINRT_DATA_ERROR_INFO_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorInfo")
+internal val MUX_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("microsoft.ui.xaml.data", "PropertyChangedEventArgs")
+internal val WUX_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("windows.ui.xaml.data", "PropertyChangedEventArgs")
+internal val MUX_PROPERTY_CHANGED_HANDLER_CLASS_NAME = ClassName("microsoft.ui.xaml.data", "PropertyChangedEventHandler")
+internal val WUX_PROPERTY_CHANGED_HANDLER_CLASS_NAME = ClassName("windows.ui.xaml.data", "PropertyChangedEventHandler")
+internal val MUX_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME = ClassName("microsoft.ui.xaml.interop", "INotifyCollectionChanged")
+internal val WUX_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME = ClassName("windows.ui.xaml.interop", "INotifyCollectionChanged")
+internal val MUX_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME = ClassName("microsoft.ui.xaml.interop", "NotifyCollectionChangedAction")
+internal val WUX_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME = ClassName("windows.ui.xaml.interop", "NotifyCollectionChangedAction")
+internal val MUX_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("microsoft.ui.xaml.interop", "NotifyCollectionChangedEventArgs")
+internal val WUX_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("windows.ui.xaml.interop", "NotifyCollectionChangedEventArgs")
+internal val MUX_COLLECTION_CHANGED_HANDLER_CLASS_NAME = ClassName("microsoft.ui.xaml.interop", "NotifyCollectionChangedEventHandler")
+internal val WUX_COLLECTION_CHANGED_HANDLER_CLASS_NAME = ClassName("windows.ui.xaml.interop", "NotifyCollectionChangedEventHandler")
+internal val MUX_DATA_ERROR_INFO_CLASS_NAME = ClassName("microsoft.ui.xaml.data", "INotifyDataErrorInfo")
+internal val WUX_DATA_ERROR_INFO_CLASS_NAME = ClassName("windows.ui.xaml.data", "INotifyDataErrorInfo")
 internal val WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorInfoProjection")
-internal val WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorsChangedEventArgs")
-internal val WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTDataErrorsChangedHandler")
-internal val WINRT_SERVICE_PROVIDER_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "WinRTServiceProvider")
+internal val MUX_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("microsoft.ui.xaml.data", "DataErrorsChangedEventArgs")
+internal val WUX_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("windows.ui.xaml.data", "DataErrorsChangedEventArgs")
+internal val MUX_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("microsoft.ui.xaml.data", "DataErrorsChangedEventHandler")
+internal val WUX_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("windows.ui.xaml.data", "DataErrorsChangedEventHandler")
+internal val MUX_SERVICE_PROVIDER_CLASS_NAME = ClassName("microsoft.ui.xaml", "IXamlServiceProvider")
+internal val WUX_SERVICE_PROVIDER_CLASS_NAME = ClassName("windows.ui.xaml", "IXamlServiceProvider")
 internal val WINRT_ATTRIBUTE_USAGE_CLASS_NAME = WinRTAttributeUsage::class.asClassName()
 internal val WINRT_CONTRACT_VERSION_CLASS_NAME = WinRTContractVersion::class.asClassName()
 internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRTDefaultOverload::class.asClassName()
@@ -689,11 +701,11 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.Uri",
-        { WINRT_URI_CLASS_NAME },
+        { WINDOWS_FOUNDATION_URI_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         customObjectAbi = KotlinProjectionCustomObjectAbi(
             interfaceId = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
-            typeHandleName = "io.github.composefluent.winrt.runtime.WinRTUri",
+            typeHandleName = "windows.foundation.Uri",
             fromAbiFunctionName = "uriFromAbi",
         ),
         simpleAbiLookup = true,
@@ -701,7 +713,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.EventHandler",
-        { arguments -> EVENT_HANDLER_CALLBACK_CLASS_NAME.parameterizedBy(arguments.singleOrNull() ?: ANY.copy(nullable = true)) },
+        { arguments -> WINDOWS_FOUNDATION_EVENT_HANDLER_CLASS_NAME.parameterizedBy(arguments.singleOrNull() ?: ANY.copy(nullable = true)) },
         simpleAbiLookup = true,
         descriptionName = "EventHandler",
     ),
@@ -850,14 +862,14 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
         descriptionName = "IAsyncOperationWithProgress",
     ),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRTServiceProvider"), descriptionName = "IXamlServiceProvider"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs", { WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "io.github.composefluent.winrt.runtime.WinRTDataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo", { WINRT_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "io.github.composefluent.winrt.runtime.WinRTDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyPropertyChanged", { WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("90B17601-B065-586E-83D9-9ADC3A695284"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedNotifier"), descriptionName = "INotifyPropertyChanged"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventArgs", { WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("63D0C952-396B-54F4-AF8C-BA8724A427BF"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler", { WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "PropertyChangedEventHandler"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Input.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.IXamlServiceProvider", { MUX_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "microsoft.ui.xaml.IXamlServiceProvider"), descriptionName = "IXamlServiceProvider"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs", { MUX_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "microsoft.ui.xaml.data.DataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo", { MUX_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "microsoft.ui.xaml.data.INotifyDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.INotifyPropertyChanged", { MUX_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("90B17601-B065-586E-83D9-9ADC3A695284"), "microsoft.ui.xaml.data.INotifyPropertyChanged"), descriptionName = "INotifyPropertyChanged"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventArgs", { MUX_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("63D0C952-396B-54F4-AF8C-BA8724A427BF"), "microsoft.ui.xaml.data.PropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler", { MUX_PROPERTY_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "PropertyChangedEventHandler"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Input.ICommand", { MUX_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "microsoft.ui.xaml.input.ICommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.ICommand", { MUX_INTEROP_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "microsoft.ui.xaml.interop.ICommand"), descriptionName = "ICommand"),
     KotlinProjectionMappedType(
         "Microsoft.UI.Xaml.Interop.IBindableIterable",
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
@@ -882,23 +894,23 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("530155E1-28A5-5693-87CE-30724D95A06D"), "io.github.composefluent.winrt.runtime.WinRTCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", { MUX_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("530155E1-28A5-5693-87CE-30724D95A06D"), "microsoft.ui.xaml.interop.INotifyCollectionChanged"), descriptionName = "INotifyCollectionChanged"),
     KotlinProjectionMappedType(
         "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
-        { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
+        { MUX_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
         runtimeOwnedProjection = true,
         descriptionName = "NotifyCollectionChangedAction",
     ),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("DA049FF2-D2E0-5FE8-8C7B-F87F26060B6F"), "io.github.composefluent.winrt.runtime.WinRTNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRTServiceProvider"), descriptionName = "IXamlServiceProvider"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.DataErrorsChangedEventArgs", { WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "io.github.composefluent.winrt.runtime.WinRTDataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyDataErrorInfo", { WINRT_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "io.github.composefluent.winrt.runtime.WinRTDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyPropertyChanged", { WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("CF75D69C-F2F4-486B-B302-BB4C09BAEBFA"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedNotifier"), descriptionName = "INotifyPropertyChanged"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventArgs", { WINRT_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4F33A9A0-5CF4-47A4-B16F-D7FAAF17457E"), "io.github.composefluent.winrt.runtime.WinRTPropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventHandler", { WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "PropertyChangedEventHandler"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Input.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.ICommand", { WINRT_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "io.github.composefluent.winrt.runtime.WinRTCommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { MUX_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("DA049FF2-D2E0-5FE8-8C7B-F87F26060B6F"), "microsoft.ui.xaml.interop.NotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
+    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { MUX_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.IXamlServiceProvider", { WUX_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "windows.ui.xaml.IXamlServiceProvider"), descriptionName = "IXamlServiceProvider"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.DataErrorsChangedEventArgs", { WUX_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("D026DD64-5F26-5F15-A86A-0DEC8A431796"), "windows.ui.xaml.data.DataErrorsChangedEventArgs"), descriptionName = "DataErrorsChangedEventArgs"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyDataErrorInfo", { WUX_DATA_ERROR_INFO_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("0EE6C2CC-273E-567D-BC0A-1DD87EE51EBA"), "windows.ui.xaml.data.INotifyDataErrorInfo"), descriptionName = "INotifyDataErrorInfo"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.INotifyPropertyChanged", { WUX_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("CF75D69C-F2F4-486B-B302-BB4C09BAEBFA"), "windows.ui.xaml.data.INotifyPropertyChanged"), descriptionName = "INotifyPropertyChanged"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventArgs", { WUX_PROPERTY_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4F33A9A0-5CF4-47A4-B16F-D7FAAF17457E"), "windows.ui.xaml.data.PropertyChangedEventArgs"), descriptionName = "PropertyChangedEventArgs"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Data.PropertyChangedEventHandler", { WUX_PROPERTY_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "PropertyChangedEventHandler"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Input.ICommand", { WUX_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "windows.ui.xaml.input.ICommand"), descriptionName = "ICommand"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.ICommand", { WUX_INTEROP_COMMAND_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("E5AF3542-CA67-4081-995B-709DD13792DF"), "windows.ui.xaml.interop.ICommand"), descriptionName = "ICommand"),
     KotlinProjectionMappedType(
         "Windows.UI.Xaml.Interop.IBindableIterable",
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
@@ -923,15 +935,15 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("28B167D5-1A31-465B-9B25-D5C3AE686C40"), "io.github.composefluent.winrt.runtime.WinRTCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.INotifyCollectionChanged", { WUX_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("28B167D5-1A31-465B-9B25-D5C3AE686C40"), "windows.ui.xaml.interop.INotifyCollectionChanged"), descriptionName = "INotifyCollectionChanged"),
     KotlinProjectionMappedType(
         "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
-        { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
+        { WUX_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
         runtimeOwnedProjection = true,
         descriptionName = "NotifyCollectionChangedAction",
     ),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4CF68D33-E3F2-4964-B85E-945B4F7E2F21"), "io.github.composefluent.winrt.runtime.WinRTNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WUX_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4CF68D33-E3F2-4964-B85E-945B4F7E2F21"), "windows.ui.xaml.interop.NotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
+    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WUX_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
 )
 
 internal val MAPPED_TYPES_BY_ABI_NAME: Map<String, KotlinProjectionMappedType> =

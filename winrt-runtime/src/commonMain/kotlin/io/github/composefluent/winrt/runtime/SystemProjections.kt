@@ -5,6 +5,8 @@ import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.Instant
 import kotlin.time.toDuration
+import windows.foundation.EventRegistrationToken
+import windows.foundation.Uri
 
 @WindowsRuntimeType("struct(Windows.Foundation.TimeSpan;i8)")
 internal object TimeSpanProjection {
@@ -122,7 +124,7 @@ object WinRTSystemProjectionMarshalers {
         TypeProjection.disposeAbi(source)
     }
 
-    fun uriFromAbi(pointer: RawAddress): WinRTUri? =
+    fun uriFromAbi(pointer: RawAddress): Uri? =
         UriProjection.fromAbi(pointer)
 
     fun <T : Any> objectFromAbi(

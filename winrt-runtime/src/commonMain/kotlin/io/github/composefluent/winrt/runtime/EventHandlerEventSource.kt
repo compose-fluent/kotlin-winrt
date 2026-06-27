@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.EventRegistrationToken
+
 typealias EventHandlerCallback<TArgs> = (Any?, TArgs) -> Unit
 
 /**

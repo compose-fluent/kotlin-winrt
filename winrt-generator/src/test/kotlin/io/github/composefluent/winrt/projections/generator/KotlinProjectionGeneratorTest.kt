@@ -780,7 +780,7 @@ class KotlinProjectionGeneratorTest {
                 runtimeOwned = true,
                 simpleLookup = true,
                 customObjectFromAbi = "uriFromAbi",
-                customObjectTypeHandle = "io.github.composefluent.winrt.runtime.WinRTUri",
+                customObjectTypeHandle = "windows.foundation.Uri",
             ),
             MappedTypeExpectation(
                 "Windows.Foundation.IReference",
@@ -814,7 +814,7 @@ class KotlinProjectionGeneratorTest {
                 KotlinProjectionAbiValueKind.ProjectedInterface,
                 runtimeOwned = true,
                 customObjectFromAbi = "objectFromAbi",
-                customObjectTypeHandle = "io.github.composefluent.winrt.runtime.WinRTPropertyChangedNotifier",
+                customObjectTypeHandle = "microsoft.ui.xaml.data.INotifyPropertyChanged",
             ),
             MappedTypeExpectation(
                 "Windows.UI.Xaml.Interop.IBindableVectorView",
@@ -827,7 +827,7 @@ class KotlinProjectionGeneratorTest {
                 KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
                 runtimeOwned = true,
                 customObjectFromAbi = "objectFromAbi",
-                customObjectTypeHandle = "io.github.composefluent.winrt.runtime.WinRTNotifyCollectionChangedEventArgs",
+                customObjectTypeHandle = "windows.ui.xaml.interop.NotifyCollectionChangedEventArgs",
             ),
         ).forEach { expected ->
             val mappedType = mappedTypeByAbiName(expected.abiName)
@@ -7207,7 +7207,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(widgetContents.contains("val staticToken: DependencyProperty?"))
         assertTrue(widgetContents.contains("STATIC_STATICTOKEN_GETTER_SLOT"))
         assertTrue(widgetContents.contains("staticToken"))
-        assertTrue(widgetContents.contains("val changed: WinRTEvent<EventHandlerCallback<Int>> by"))
+        assertTrue(widgetContents.contains("val changed: WinRTEvent<EventHandler<Int>> by"))
         assertTrue(widgetContents.contains("lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("WinRTEventProjectionHelper_"))
         assertTrue(widgetContents.contains(".createEventSource_"))
@@ -12948,7 +12948,7 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(file.contents, file.contents.contains("import java.net.URI"))
         assertFalse(file.contents, file.contents.contains("import java.util.NoSuchElementException"))
-        assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTUri"))
+        assertTrue(file.contents, file.contents.contains("import windows.foundation.Uri"))
         assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference"))
         assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference"))
         assertTrue(file.contents, file.contents.contains("public interface IWidgetCollection : Iterable<String>"))
@@ -12956,7 +12956,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents, file.contents.contains("fun asMap(): MutableMap<String, Int>"))
         assertTrue(file.contents, file.contents.contains("fun refreshAsync(): WinRTAsyncActionReference"))
         assertTrue(file.contents, file.contents.contains("fun fetchAsync(): WinRTAsyncOperationReference<String>"))
-        assertTrue(file.contents, file.contents.contains("val sourceUri: WinRTUri"))
+        assertTrue(file.contents, file.contents.contains("val sourceUri: Uri"))
         assertTrue(file.contents, file.contents.contains("val selection: Int?"))
     }
 
@@ -13335,18 +13335,18 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model)
             .single { it.relativePath.endsWith("ISystemMappedSurface.kt") }
 
-        assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.EventHandlerCallback"))
-        assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTCommand"))
-        assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTCollectionChangedNotifier"))
-        assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTNotifyCollectionChangedEventArgs"))
-        assertTrue(file.contents, file.contents.contains("import io.github.composefluent.winrt.runtime.WinRTPropertyChangedNotifier"))
+        assertTrue(file.contents, file.contents.contains("import microsoft.ui.xaml.input.ICommand"))
+        assertTrue(file.contents, file.contents.contains("import windows.ui.xaml.interop.INotifyCollectionChanged"))
+        assertTrue(file.contents, file.contents.contains("import microsoft.ui.xaml.interop.NotifyCollectionChangedEventArgs"))
+        assertTrue(file.contents, file.contents.contains("import microsoft.ui.xaml.`data`.INotifyPropertyChanged"))
+        assertTrue(file.contents, file.contents.contains("import windows.foundation.EventHandler"))
         assertFalse(file.contents, file.contents.contains("import java.time"))
         assertTrue(file.contents, file.contents.contains("fun lastFailure(): Exception"))
-        assertTrue(file.contents, file.contents.contains("fun command(): WinRTCommand"))
-        assertTrue(file.contents, file.contents.contains("val propertyChanged: WinRTPropertyChangedNotifier"))
-        assertTrue(file.contents, file.contents.contains("val collectionChanged: WinRTCollectionChangedNotifier"))
-        assertTrue(file.contents, file.contents.contains("val collectionChangedArgs: WinRTNotifyCollectionChangedEventArgs"))
-        assertTrue(file.contents, file.contents.contains("fun addChanged(handler: EventHandlerCallback<Int>): EventRegistrationToken"))
+        assertTrue(file.contents, file.contents.contains("fun command(): ICommand"))
+        assertTrue(file.contents, file.contents.contains("val propertyChanged: INotifyPropertyChanged"))
+        assertTrue(file.contents, file.contents.contains("val collectionChanged: INotifyCollectionChanged"))
+        assertTrue(file.contents, file.contents.contains("val collectionChangedArgs: NotifyCollectionChangedEventArgs"))
+        assertTrue(file.contents, file.contents.contains("fun addChanged(handler: EventHandler<Int>): EventRegistrationToken"))
     }
 
     @Test
@@ -14103,9 +14103,9 @@ class KotlinProjectionGeneratorTest {
         val interfaceContents = filesByName.getValue("IUriCommandHost.kt").contents
         val classContents = filesByName.getValue("UriCommandHost.kt").contents
 
-        assertTrue(interfaceContents, interfaceContents.contains("fun sourceUri(): WinRTUri"))
-        assertTrue(interfaceContents, interfaceContents.contains("fun command(): WinRTCommand"))
-        assertTrue(interfaceContents, interfaceContents.contains("fun tryCommand(): WinRTCommand"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun sourceUri(): Uri"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun command(): ICommand"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun tryCommand(): ICommand"))
         if (classContents.contains("_iUriCommandHostProjection")) {
             assertTrue(classContents, classContents.contains("_iUriCommandHostProjection.sourceUri()"))
             assertTrue(classContents, classContents.contains("_iUriCommandHostProjection.tryCommand()"))
@@ -14114,8 +14114,8 @@ class KotlinProjectionGeneratorTest {
             assertTrue(classContents, classContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
             assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.objectFromAbi(__resultPointer,"))
             assertTrue(classContents, classContents.contains("if (PlatformAbi.isNull(__resultPointer)) return null"))
-            assertTrue(classContents, classContents.contains("WinRTTypeHandle(\"io.github.composefluent.winrt.runtime.WinRTCommand\""))
-            assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), WinRTCommand::class)"))
+            assertTrue(classContents, classContents.contains("WinRTTypeHandle(\"microsoft.ui.xaml.input.ICommand\""))
+            assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), ICommand::class)"))
             assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.createObjectReference(sourceUri,"))
             assertTrue(classContents, classContents.contains("Guid(\"9E365E57-48B2-4160-956F-C7385120BBFC\")).use { __sourceUriAbi ->"))
             assertTrue(classContents, classContents.contains("WinRTSystemProjectionMarshalers.createObjectReference(command,"))
@@ -14210,10 +14210,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents.contains("if (PlatformAbi.isNull(__operationResultPointer))"))
         assertTrue(interfaceContents.contains("error(\"WINRT_E_NULL_ABI_RETURN\")"))
         assertTrue(interfaceContents.contains("IStream.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(__operationResultPointer)))"))
-        assertTrue(interfaceContents.contains("fun fetchCommandAsync(): WinRTAsyncOperationReference<WinRTCommand>"))
+        assertTrue(interfaceContents.contains("fun fetchCommandAsync(): WinRTAsyncOperationReference<ICommand>"))
         assertTrue(interfaceContents.contains("WinRTSystemProjectionMarshalers.objectFromAbi(__operationResultPointer,"))
-        assertTrue(interfaceContents.contains("WinRTTypeHandle(\"io.github.composefluent.winrt.runtime.WinRTCommand\""))
-        assertFalse(interfaceContents.contains("WinRTCommand.Metadata.wrap"))
+        assertTrue(interfaceContents.contains("WinRTTypeHandle(\"microsoft.ui.xaml.input.ICommand\""))
+        assertFalse(interfaceContents.contains("ICommand.Metadata.wrap"))
         assertTrue(interfaceContents.contains("fun refreshWithProgressAsync(): WinRTAsyncActionWithProgressReference<Int>"))
         assertTrue(interfaceContents.contains("WinRTAsyncProjectionInterop.actionWithProgress<"))
         assertTrue(interfaceContents.contains("progressSignature = WinRTTypeSignature.int32()"))
@@ -19594,16 +19594,16 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val contents = files.getValue("ValidatedObject.kt").contents
 
-        assertTrue(contents, contents.contains("WinRTDataErrorInfo,"))
+        assertTrue(contents, contents.contains("INotifyDataErrorInfo,"))
         assertTrue(contents, contents.contains("WinRTDataErrorInfoProjection.fromAbi(_inner)"))
         assertTrue(contents, contents.contains("override val hasErrors: Boolean"))
         assertTrue(contents, contents.contains("override fun getErrors(propertyName: String?): Iterable<Any?>?"))
-        assertTrue(contents, contents.contains("override fun addErrorsChanged(handler: WinRTDataErrorsChangedHandler)"))
-        assertTrue(contents, contents.contains("override fun removeErrorsChanged(handler: WinRTDataErrorsChangedHandler)"))
+        assertTrue(contents, contents.contains("override fun addErrorsChanged(handler: DataErrorsChangedEventHandler)"))
+        assertTrue(contents, contents.contains("override fun removeErrorsChanged(handler: DataErrorsChangedEventHandler)"))
         assertFalse(contents, contents.contains("INotifyDataErrorInfo.Metadata.IID"))
 
         val directContents = files.getValue("DirectValidatedObject.kt").contents
-        assertTrue(directContents, directContents.contains("WinRTDataErrorInfo,"))
+        assertTrue(directContents, directContents.contains("INotifyDataErrorInfo,"))
         assertTrue(directContents, directContents.contains("override val hasErrors: Boolean"))
         assertFalse(directContents, directContents.contains("INotifyDataErrorInfo.Metadata.IID"))
 
@@ -19661,10 +19661,10 @@ class KotlinProjectionGeneratorTest {
             .getValue("NotifyWidget.kt")
             .contents
 
-        assertTrue(contents, contents.contains("WinRTPropertyChangedNotifier,"))
+        assertTrue(contents, contents.contains("INotifyPropertyChanged,"))
         assertTrue(contents, contents.contains("WinRTPropertyChangedNotifierProjection.fromAbi(_inner)"))
-        assertTrue(contents, contents.contains("override fun addPropertyChanged(handler: WinRTPropertyChangedHandler)"))
-        assertTrue(contents, contents.contains("override fun removePropertyChanged(handler: WinRTPropertyChangedHandler)"))
+        assertTrue(contents, contents.contains("override fun addPropertyChanged(handler: PropertyChangedEventHandler)"))
+        assertTrue(contents, contents.contains("override fun removePropertyChanged(handler: PropertyChangedEventHandler)"))
         assertFalse(contents, contents.contains("INotifyPropertyChanged.Metadata.IID"))
     }
 

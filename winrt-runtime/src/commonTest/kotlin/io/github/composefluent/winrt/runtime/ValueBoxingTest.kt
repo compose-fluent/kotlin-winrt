@@ -7,6 +7,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import windows.foundation.Uri
 
 class ValueBoxingTest {
     private val boxedReferenceGenericInterface = "61C17706-2D65-11E0-9AE8-D48564015472"
@@ -257,7 +258,7 @@ class ValueBoxingTest {
         }
         ComWrappersSupport.clearRegistriesForTests()
 
-        val uri = WinRTUri("https://example.com/runtime-117?value=1")
+        val uri = Uri("https://example.com/runtime-117?value=1")
         val uriPointer = ComWrappersSupport.createCCWForObject(uri, IID.IInspectable).useAndGetRef()
         try {
             assertEquals(uri, ComWrappersSupport.createRcwForComObject(uriPointer))

@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.EventRegistrationToken
+
 /**
  * Common standard-delegate ABI helpers corresponding to the event add/remove delegates
  * in `.cswinrt/src/WinRT.Runtime/Interop/StandardDelegates.cs`.
