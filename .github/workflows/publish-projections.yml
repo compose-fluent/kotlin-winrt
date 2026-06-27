@@ -157,33 +157,33 @@ jobs:
           if ("${{ inputs.publicationKind }}" -eq "release") {
             $releaseArgs += "-Pwinrt.releaseTag=${{ inputs.releaseTag }}"
           }
+          function Invoke-ProjectionCompile([string] $task, [string[]] $gradleArgs) {
+            .\gradlew.bat `
+              $task `
+              $gradleArgs `
+              --no-configuration-cache `
+              --max-workers=1
+            $exitCode = $LASTEXITCODE
+            .\gradlew.bat --stop
+            if ($exitCode -ne 0) { exit $exitCode }
+          }
           $sdkVersions = @("${{ inputs.windowsSdkVersions }}".Split(",") + "${{ inputs.windowsAppSdkWindowsSdkVersion }}")
             | ForEach-Object { $_.Trim() }
             | Where-Object { $_ }
             | Select-Object -Unique
           foreach ($sdkVersion in $sdkVersions) {
-            .\gradlew.bat `
-              :winrt-projections:windows-sdk:compileKotlinJvm `
-              :winrt-projections:windows-sdk:compileKotlinMingwX64 `
-              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
-              $releaseArgs `
-              --no-configuration-cache
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            .\gradlew.bat `
-              :winrt-projections:windows-ui-xaml:compileKotlinJvm `
-              :winrt-projections:windows-ui-xaml:compileKotlinMingwX64 `
-              "-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion" `
-              $releaseArgs `
-              --no-configuration-cache
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $sdkArgs = @("-PkotlinWinRT.projections.windowsSdkVersion=$sdkVersion") + $releaseArgs
+            Invoke-ProjectionCompile ":winrt-projections:windows-sdk:compileKotlinJvm" $sdkArgs
+            Invoke-ProjectionCompile ":winrt-projections:windows-sdk:compileKotlinMingwX64" $sdkArgs
+            Invoke-ProjectionCompile ":winrt-projections:windows-ui-xaml:compileKotlinJvm" $sdkArgs
+            Invoke-ProjectionCompile ":winrt-projections:windows-ui-xaml:compileKotlinMingwX64" $sdkArgs
           }
-          .\gradlew.bat `
-            :winrt-projections:windows-app-sdk:compileKotlinJvm `
-            :winrt-projections:windows-app-sdk:compileKotlinMingwX64 `
-            "-PkotlinWinRT.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}" `
-            "-PkotlinWinRT.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}" `
-            $releaseArgs `
-            --no-configuration-cache
+          $windowsAppSdkArgs = @(
+            "-PkotlinWinRT.projections.windowsSdkVersion=${{ inputs.windowsAppSdkWindowsSdkVersion }}"
+            "-PkotlinWinRT.projections.windowsAppSdkVersion=${{ inputs.windowsAppSdkVersion }}"
+          ) + $releaseArgs
+          Invoke-ProjectionCompile ":winrt-projections:windows-app-sdk:compileKotlinJvm" $windowsAppSdkArgs
+          Invoke-ProjectionCompile ":winrt-projections:windows-app-sdk:compileKotlinMingwX64" $windowsAppSdkArgs
 
       - name: Verify Projection Publications Locally
         shell: pwsh
