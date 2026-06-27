@@ -11,6 +11,8 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Instant
+import windows.foundation.IClosableProjection
+import windows.foundation.IUriRuntimeClassProjection
 import windows.foundation.Uri
 
 class ProjectionRegistryTest {
