@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import windows.foundation.EventRegistrationToken
+
 /**
  * Common event-source owner corresponding to `.cswinrt/src/WinRT.Runtime/Interop/EventSource{TDelegate}.cs`.
  *

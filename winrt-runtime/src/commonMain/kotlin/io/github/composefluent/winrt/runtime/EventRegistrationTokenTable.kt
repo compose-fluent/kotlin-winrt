@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.random.Random
 import kotlin.reflect.KClass
+import windows.foundation.EventRegistrationToken
 
 /**
  * Stores handler -> token mappings for CCW-sourced WinRT events.

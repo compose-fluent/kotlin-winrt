@@ -11,6 +11,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Instant
+import windows.foundation.Uri
 
 class ProjectionRegistryTest {
     @Test
@@ -257,7 +258,7 @@ class ProjectionRegistryTest {
 
         assertEquals(DateTimeProjection::class, TypeExtensions.findHelperType(Instant::class))
         assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
-        assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRTUri::class))
+        assertEquals(UriProjection::class, TypeExtensions.findHelperType(Uri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
         assertEquals(
             "Windows.Foundation.IUriRuntimeClass",
@@ -277,7 +278,7 @@ class ProjectionRegistryTest {
         assertEquals(WinRTTypeKind.Metadata.ordinal, TypeProjection.fromManaged(KClass::class).kind)
         assertEquals(
             "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
-            GuidGenerator.getSignature(WinRTUri::class),
+            GuidGenerator.getSignature(Uri::class),
         )
         assertEquals(
             "Windows.Foundation.IReference`1<Int32>",

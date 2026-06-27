@@ -6,6 +6,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import microsoft.ui.xaml.input.ICommand
+import microsoft.ui.xaml.interop.NotifyCollectionChangedAction
+import microsoft.ui.xaml.IXamlServiceProvider
+import microsoft.ui.xaml.data.INotifyPropertyChanged
+import microsoft.ui.xaml.data.PropertyChangedEventArgs
+import windows.foundation.Uri
 
 class RuntimeConfigurationTest {
     @Test
@@ -48,35 +54,35 @@ class RuntimeConfigurationTest {
             assertEquals("mux", XamlProjectionConfiguration.select("mux", "wux"))
             assertEquals(
                 "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
-                TypeNameSupport.getNameForType(WinRTPropertyChangedNotifier::class),
+                TypeNameSupport.getNameForType(INotifyPropertyChanged::class),
             )
             assertEquals(
                 "Microsoft.UI.Xaml.Input.ICommand",
-                TypeNameSupport.getNameForType(WinRTCommand::class),
+                TypeNameSupport.getNameForType(ICommand::class),
             )
-            assertEquals(WinRTCommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Interop.ICommand"))
-            assertEquals(WinRTCommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Input.ICommand"))
-            assertEquals(WinRTCommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Interop.ICommand"))
+            assertEquals(ICommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Interop.ICommand"))
+            assertEquals(ICommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Input.ICommand"))
+            assertEquals(ICommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Interop.ICommand"))
             assertEquals(
                 "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
-                TypeNameSupport.getNameForType(WinRTNotifyCollectionChangedAction::class),
+                TypeNameSupport.getNameForType(NotifyCollectionChangedAction::class),
             )
             assertEquals(
                 "Microsoft.UI.Xaml.Data.PropertyChangedEventArgs",
-                TypeNameSupport.getNameForType(WinRTPropertyChangedEventArgs::class),
+                TypeNameSupport.getNameForType(PropertyChangedEventArgs::class),
             )
             assertEquals(
                 Guid("90B17601-B065-586E-83D9-9ADC3A695284"),
-                GuidGenerator.getIID(WinRTPropertyChangedNotifierProjection::class),
+                GuidGenerator.getIID(INotifyPropertyChangedProjection::class),
             )
             assertEquals(
                 "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
-                WinRTTypeRegistry.findByClass(WinRTPropertyChangedNotifierProjection::class)?.projectedTypeName,
+                WinRTTypeRegistry.findByClass(INotifyPropertyChangedProjection::class)?.projectedTypeName,
             )
-            assertNull(TypeNameSupport.findKClassByNameCached(WinRTPropertyChangedNotifierProjection::class.typeDisplayName()))
+            assertNull(TypeNameSupport.findKClassByNameCached(INotifyPropertyChangedProjection::class.typeDisplayName()))
             assertEquals(
                 "Microsoft.UI.Xaml.IXamlServiceProvider",
-                TypeNameSupport.getNameForType(WinRTServiceProvider::class),
+                TypeNameSupport.getNameForType(IXamlServiceProvider::class),
             )
         }
 
@@ -87,32 +93,32 @@ class RuntimeConfigurationTest {
             assertEquals("wux", XamlProjectionConfiguration.select("mux", "wux"))
             assertEquals(
                 "Windows.UI.Xaml.Data.INotifyPropertyChanged",
-                TypeNameSupport.getNameForType(WinRTPropertyChangedNotifier::class),
+                TypeNameSupport.getNameForType(INotifyPropertyChanged::class),
             )
             assertEquals(
                 "Windows.UI.Xaml.Input.ICommand",
-                TypeNameSupport.getNameForType(WinRTCommand::class),
+                TypeNameSupport.getNameForType(ICommand::class),
             )
-            assertEquals(WinRTCommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Input.ICommand"))
-            assertEquals(WinRTCommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Interop.ICommand"))
-            assertEquals(WinRTCommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Interop.ICommand"))
+            assertEquals(ICommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Input.ICommand"))
+            assertEquals(ICommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Interop.ICommand"))
+            assertEquals(ICommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Interop.ICommand"))
             assertEquals(
                 "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
-                TypeNameSupport.getNameForType(WinRTNotifyCollectionChangedAction::class),
+                TypeNameSupport.getNameForType(NotifyCollectionChangedAction::class),
             )
             assertEquals(
                 "Windows.UI.Xaml.Data.PropertyChangedEventArgs",
-                TypeNameSupport.getNameForType(WinRTPropertyChangedEventArgs::class),
+                TypeNameSupport.getNameForType(PropertyChangedEventArgs::class),
             )
             assertEquals(
                 Guid("CF75D69C-F2F4-486B-B302-BB4C09BAEBFA"),
-                GuidGenerator.getIID(WinRTPropertyChangedNotifierProjection::class),
+                GuidGenerator.getIID(INotifyPropertyChangedProjection::class),
             )
             assertEquals(
                 "Windows.UI.Xaml.Data.INotifyPropertyChanged",
-                WinRTTypeRegistry.findByClass(WinRTPropertyChangedNotifierProjection::class)?.projectedTypeName,
+                WinRTTypeRegistry.findByClass(INotifyPropertyChangedProjection::class)?.projectedTypeName,
             )
-            assertNull(TypeNameSupport.findKClassByNameCached(WinRTPropertyChangedNotifierProjection::class.typeDisplayName()))
+            assertNull(TypeNameSupport.findKClassByNameCached(INotifyPropertyChangedProjection::class.typeDisplayName()))
             assertNull(TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.IXamlServiceProvider"))
         }
     }
@@ -124,10 +130,10 @@ class RuntimeConfigurationTest {
 
             assertEquals("Windows.UI.Xaml.Interop.TypeName", TypeNameSupport.getNameForType(KClass::class))
             assertEquals(
-                "io.github.composefluent.winrt.runtime.WinRTUri",
-                TypeNameSupport.getNameForType(WinRTUri::class),
+                "windows.foundation.Uri",
+                TypeNameSupport.getNameForType(Uri::class),
             )
-            assertNull(Projections.findCustomAbiTypeNameForType(WinRTUri::class))
+            assertNull(Projections.findCustomAbiTypeNameForType(Uri::class))
             assertNull(TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Data.INotifyPropertyChanged"))
         }
     }

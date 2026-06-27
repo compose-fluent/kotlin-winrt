@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
+import windows.foundation.Uri
 
 internal enum class WinRTTypeKind {
     Primitive,
@@ -111,13 +112,13 @@ internal object WinRTBuiltInProjectionMappings {
 
     private fun registerUriProjection() {
         Projections.registerCustomAbiTypeMapping(
-            publicType = WinRTUri::class,
+            publicType = Uri::class,
             helperType = UriProjection::class,
             abiTypeName = "Windows.Foundation.Uri",
             isRuntimeClass = true,
         )
         CommonWinRTBuiltInProjectionMappings.registerMetadata(
-            type = WinRTUri::class,
+            type = Uri::class,
             projectedTypeName = "Windows.Foundation.Uri",
             helperType = UriProjection::class,
             signature = "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
@@ -127,7 +128,7 @@ internal object WinRTBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
         Projections.registerDefaultInterfaceType(
-            runtimeClass = WinRTUri::class,
+            runtimeClass = Uri::class,
             defaultInterface = IUriRuntimeClassProjection::class,
         )
         CommonWinRTBuiltInProjectionMappings.registerMetadata(

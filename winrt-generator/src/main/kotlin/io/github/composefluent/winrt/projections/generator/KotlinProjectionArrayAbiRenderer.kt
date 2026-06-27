@@ -73,7 +73,6 @@ import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
-import io.github.composefluent.winrt.runtime.WinRTUri
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference

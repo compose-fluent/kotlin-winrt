@@ -13,7 +13,7 @@ import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Page
 import microsoft.ui.xaml.input.TappedEventHandler
 import microsoft.ui.xaml.input.TappedRoutedEventArgs
-import io.github.composefluent.winrt.runtime.EventRegistrationToken
+import windows.foundation.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
 
 data class WinUiDesktopSampleResult(

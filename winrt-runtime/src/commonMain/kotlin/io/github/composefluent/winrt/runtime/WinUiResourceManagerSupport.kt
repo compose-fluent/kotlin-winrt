@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlinx.io.files.Path
+import windows.foundation.EventRegistrationToken
 
 object WinUiResourceManagerSupport {
     private val iidIApplication2: Guid = guidOf("469e6d36-2e11-5b06-9e0a-c5eef0cf8f12")

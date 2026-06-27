@@ -82,7 +82,6 @@ import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
-import io.github.composefluent.winrt.runtime.WinRTUri
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference
@@ -1387,14 +1386,14 @@ class KotlinProjectionRenderer(
             addReadOnlyCollectionForwardMembers(builder, binding)
         }
         if (plan.usesMappedDataErrorInfoAugmentation) {
-            builder.addSuperinterface(WINRT_DATA_ERROR_INFO_CLASS_NAME)
+            builder.addSuperinterface(plan.dataErrorInfoClassName)
         }
         if (plan.usesMappedDataErrorInfoAugmentation) {
             addMappedDataErrorInfoForwardMembers(builder, plan)
         }
         if (plan.usesMappedPropertyChangedAugmentation) {
-            builder.addSuperinterface(WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME)
-            addMappedPropertyChangedForwardMembers(builder)
+            builder.addSuperinterface(plan.propertyChangedNotifierClassName)
+            addMappedPropertyChangedForwardMembers(builder, plan)
         }
         if (plan.usesMappedDisposableAugmentation) {
             builder.addSuperinterface(AUTO_CLOSEABLE_CLASS_NAME)
@@ -2102,12 +2101,27 @@ class KotlinProjectionRenderer(
     private val KotlinTypeProjectionPlan.usesMappedPropertyChangedAugmentation: Boolean
         get() = requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyPropertyChanged")
 
+    private val KotlinTypeProjectionPlan.usesWindowsUiXamlNamespace: Boolean
+        get() = type.qualifiedName.startsWith("Windows.UI.Xaml.")
+
+    private val KotlinTypeProjectionPlan.dataErrorInfoClassName: ClassName
+        get() = if (usesWindowsUiXamlNamespace) WUX_DATA_ERROR_INFO_CLASS_NAME else MUX_DATA_ERROR_INFO_CLASS_NAME
+
+    private val KotlinTypeProjectionPlan.dataErrorsChangedHandlerClassName: ClassName
+        get() = if (usesWindowsUiXamlNamespace) WUX_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME else MUX_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME
+
+    private val KotlinTypeProjectionPlan.propertyChangedNotifierClassName: ClassName
+        get() = if (usesWindowsUiXamlNamespace) WUX_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME else MUX_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME
+
+    private val KotlinTypeProjectionPlan.propertyChangedHandlerClassName: ClassName
+        get() = if (usesWindowsUiXamlNamespace) WUX_PROPERTY_CHANGED_HANDLER_CLASS_NAME else MUX_PROPERTY_CHANGED_HANDLER_CLASS_NAME
+
     private fun addMappedDataErrorInfoForwardMembers(
         builder: TypeSpec.Builder,
         plan: KotlinTypeProjectionPlan,
     ) {
         builder.addProperty(
-            PropertySpec.builder("__dataErrorInfo", WINRT_DATA_ERROR_INFO_CLASS_NAME)
+            PropertySpec.builder("__dataErrorInfo", plan.dataErrorInfoClassName)
                 .addModifiers(KModifier.PRIVATE)
                 .delegate(
                     CodeBlock.of(
@@ -2136,22 +2150,25 @@ class KotlinProjectionRenderer(
         builder.addFunction(
             FunSpec.builder("addErrorsChanged")
                 .addModifiers(KModifier.OVERRIDE)
-                .addParameter("handler", WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME)
+                .addParameter("handler", plan.dataErrorsChangedHandlerClassName)
                 .addCode("__dataErrorInfo.addErrorsChanged(handler)\n")
                 .build(),
         )
         builder.addFunction(
             FunSpec.builder("removeErrorsChanged")
                 .addModifiers(KModifier.OVERRIDE)
-                .addParameter("handler", WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME)
+                .addParameter("handler", plan.dataErrorsChangedHandlerClassName)
                 .addCode("__dataErrorInfo.removeErrorsChanged(handler)\n")
                 .build(),
         )
     }
 
-    private fun addMappedPropertyChangedForwardMembers(builder: TypeSpec.Builder) {
+    private fun addMappedPropertyChangedForwardMembers(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
         builder.addProperty(
-            PropertySpec.builder("__propertyChangedNotifier", WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME)
+            PropertySpec.builder("__propertyChangedNotifier", plan.propertyChangedNotifierClassName)
                 .addModifiers(KModifier.PRIVATE)
                 .delegate(
                     CodeBlock.of(
@@ -2166,14 +2183,14 @@ class KotlinProjectionRenderer(
         builder.addFunction(
             FunSpec.builder("addPropertyChanged")
                 .addModifiers(KModifier.OVERRIDE)
-                .addParameter("handler", WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME)
+                .addParameter("handler", plan.propertyChangedHandlerClassName)
                 .addCode("__propertyChangedNotifier.addPropertyChanged(handler)\n")
                 .build(),
         )
         builder.addFunction(
             FunSpec.builder("removePropertyChanged")
                 .addModifiers(KModifier.OVERRIDE)
-                .addParameter("handler", WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME)
+                .addParameter("handler", plan.propertyChangedHandlerClassName)
                 .addCode("__propertyChangedNotifier.removePropertyChanged(handler)\n")
                 .build(),
         )
