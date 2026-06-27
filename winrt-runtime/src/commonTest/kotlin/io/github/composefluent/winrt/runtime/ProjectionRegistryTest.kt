@@ -11,6 +11,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Instant
+import windows.foundation.EventRegistrationToken
 import windows.foundation.IClosableProjection
 import windows.foundation.IUriRuntimeClassProjection
 import windows.foundation.Uri
@@ -252,6 +253,21 @@ class ProjectionRegistryTest {
         assertEquals("i1", GuidGenerator.getSignature(Byte::class))
         assertEquals("u1", GuidGenerator.getSignature(UByte::class))
         assertEquals("cinterface(IInspectable)", GuidGenerator.getSignature(Any::class))
+    }
+
+    @Test
+    fun intrinsic_type_classifier_excludes_projection_owned_mappings() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertNull(WinRTTypeClassifier.classify(Uri::class))
+        assertNull(WinRTTypeClassifier.classify(EventRegistrationToken::class))
+        assertNull(WinRTTypeClassifier.classify(AutoCloseable::class))
+        assertNull(WinRTTypeClassifier.classify(KClass::class))
+
+        assertEquals("Windows.Foundation.Uri", TypeNameSupport.getNameForType(Uri::class))
+        assertEquals("Windows.Foundation.EventRegistrationToken", TypeNameSupport.getNameForType(EventRegistrationToken::class))
+        assertEquals("Windows.Foundation.IClosable", TypeNameSupport.getNameForType(AutoCloseable::class))
+        assertEquals("Windows.UI.Xaml.Interop.TypeName", TypeNameSupport.getNameForType(KClass::class))
     }
 
     @Test

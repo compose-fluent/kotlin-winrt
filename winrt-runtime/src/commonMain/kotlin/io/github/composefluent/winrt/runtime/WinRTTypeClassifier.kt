@@ -4,7 +4,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-internal data class WinRTKnownType(
+internal data class WinRTIntrinsicType(
     val representativeType: KClass<*>,
     val canonicalRuntimeName: String,
     val signature: WinRTTypeSignature,
@@ -20,9 +20,9 @@ internal data class WinRTKnownType(
  * `Projections.cs`, and `GuidGenerator.cs`.
  */
 internal object WinRTTypeClassifier {
-    private val knownTypes =
+    private val intrinsicTypes =
         listOf(
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Byte::class,
                 canonicalRuntimeName = "Int8",
                 signature = WinRTTypeSignature.int8(),
@@ -31,7 +31,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = ByteArray::class,
                 boxPrimitiveArray = { (it as ByteArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = UByte::class,
                 canonicalRuntimeName = "UInt8",
                 signature = WinRTTypeSignature.uint8(),
@@ -39,7 +39,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = UByteArray::class,
                 boxPrimitiveArray = { (it as UByteArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Short::class,
                 canonicalRuntimeName = "Int16",
                 signature = WinRTTypeSignature.int16(),
@@ -48,7 +48,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = ShortArray::class,
                 boxPrimitiveArray = { (it as ShortArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = UShort::class,
                 canonicalRuntimeName = "UInt16",
                 signature = WinRTTypeSignature.uint16(),
@@ -56,7 +56,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = UShortArray::class,
                 boxPrimitiveArray = { (it as UShortArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Int::class,
                 canonicalRuntimeName = "Int32",
                 signature = WinRTTypeSignature.int32(),
@@ -65,7 +65,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = IntArray::class,
                 boxPrimitiveArray = { (it as IntArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = UInt::class,
                 canonicalRuntimeName = "UInt32",
                 signature = WinRTTypeSignature.uint32(),
@@ -73,7 +73,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = UIntArray::class,
                 boxPrimitiveArray = { (it as UIntArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Long::class,
                 canonicalRuntimeName = "Int64",
                 signature = WinRTTypeSignature.int64(),
@@ -82,7 +82,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = LongArray::class,
                 boxPrimitiveArray = { (it as LongArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = ULong::class,
                 canonicalRuntimeName = "UInt64",
                 signature = WinRTTypeSignature.uint64(),
@@ -90,7 +90,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = ULongArray::class,
                 boxPrimitiveArray = { (it as ULongArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Boolean::class,
                 canonicalRuntimeName = "Boolean",
                 signature = WinRTTypeSignature.boolean(),
@@ -98,7 +98,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = BooleanArray::class,
                 boxPrimitiveArray = { (it as BooleanArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Char::class,
                 canonicalRuntimeName = "Char16",
                 signature = WinRTTypeSignature.char16(),
@@ -107,7 +107,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = CharArray::class,
                 boxPrimitiveArray = { (it as CharArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Float::class,
                 canonicalRuntimeName = "Single",
                 signature = WinRTTypeSignature.float32(),
@@ -115,7 +115,7 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = FloatArray::class,
                 boxPrimitiveArray = { (it as FloatArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Double::class,
                 canonicalRuntimeName = "Double",
                 signature = WinRTTypeSignature.float64(),
@@ -123,19 +123,19 @@ internal object WinRTTypeClassifier {
                 primitiveArrayType = DoubleArray::class,
                 boxPrimitiveArray = { (it as DoubleArray).toTypedArray() },
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = String::class,
                 canonicalRuntimeName = "String",
                 signature = WinRTTypeSignature.string(),
                 typeAliases = setOf(String::class),
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Guid::class,
                 canonicalRuntimeName = "Guid",
                 signature = WinRTTypeSignature.guidValue(),
                 typeAliases = setOf(Guid::class),
             ),
-            WinRTKnownType(
+            WinRTIntrinsicType(
                 representativeType = Any::class,
                 canonicalRuntimeName = "Object",
                 signature = WinRTTypeSignature.object_(),
@@ -144,39 +144,39 @@ internal object WinRTTypeClassifier {
             ),
         )
 
-    private val knownTypesByType: Map<KClass<*>, WinRTKnownType> =
+    private val intrinsicTypesByType: Map<KClass<*>, WinRTIntrinsicType> =
         buildMap {
-            knownTypes.forEach { knownType ->
+            intrinsicTypes.forEach { knownType ->
                 knownType.typeAliases.forEach { alias ->
                     put(alias, knownType)
                 }
             }
         }
 
-    private val knownTypesByRuntimeName: Map<String, WinRTKnownType> =
+    private val intrinsicTypesByRuntimeName: Map<String, WinRTIntrinsicType> =
         buildMap {
-            knownTypes.forEach { knownType ->
+            intrinsicTypes.forEach { knownType ->
                 knownType.runtimeNameAliases.forEach { alias ->
                     put(alias, knownType)
                 }
             }
         }
 
-    private val knownTypesByPrimitiveArrayType: Map<KClass<*>, WinRTKnownType> =
+    private val intrinsicTypesByPrimitiveArrayType: Map<KClass<*>, WinRTIntrinsicType> =
         buildMap {
-            knownTypes.forEach { knownType ->
+            intrinsicTypes.forEach { knownType ->
                 knownType.primitiveArrayType?.let { arrayType ->
                     put(arrayType, knownType)
                 }
             }
         }
 
-    fun classify(type: KClass<*>): WinRTKnownType? = knownTypesByType[type]
+    fun classify(type: KClass<*>): WinRTIntrinsicType? = intrinsicTypesByType[type]
 
-    fun resolve(runtimeName: String): WinRTKnownType? = knownTypesByRuntimeName[runtimeName]
+    fun resolve(runtimeName: String): WinRTIntrinsicType? = intrinsicTypesByRuntimeName[runtimeName]
 
     fun primitiveArrayElementType(arrayType: KClass<*>): KClass<*>? =
-        knownTypesByPrimitiveArrayType[arrayType]?.representativeType
+        intrinsicTypesByPrimitiveArrayType[arrayType]?.representativeType
 
     fun primitiveArrayTypeForElementType(elementType: KClass<*>): KClass<*>? =
         classify(elementType)?.primitiveArrayType
@@ -185,7 +185,7 @@ internal object WinRTTypeClassifier {
         resolve(runtimeName)?.representativeType == Any::class
 
     fun boxPrimitiveArray(value: Any): Array<*>? =
-        knownTypesByPrimitiveArrayType[value::class]?.boxPrimitiveArray?.invoke(value)
+        intrinsicTypesByPrimitiveArrayType[value::class]?.boxPrimitiveArray?.invoke(value)
 
-    fun isIntrinsicWindowsRuntimeType(type: KClass<*>): Boolean = classify(type) != null
+    fun isIntrinsicScalarOrObjectType(type: KClass<*>): Boolean = classify(type) != null
 }

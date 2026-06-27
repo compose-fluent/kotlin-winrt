@@ -208,7 +208,7 @@ object Projections {
 
     private fun isTypeWindowsRuntimeTypeNoArray(type: KClass<*>): Boolean {
         val candidate = arrayElementType(type) ?: type
-        if (WinRTTypeClassifier.isIntrinsicWindowsRuntimeType(candidate)) {
+        if (WinRTTypeClassifier.isIntrinsicScalarOrObjectType(candidate)) {
             return true
         }
 
