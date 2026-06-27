@@ -109,7 +109,6 @@ import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRTEvent
 import io.github.composefluent.winrt.runtime.WinRTObjectMarshaller
 import io.github.composefluent.winrt.runtime.WinRTProjectedDelegate
-import io.github.composefluent.winrt.runtime.WinRTClosableObject
 import io.github.composefluent.winrt.runtime.WinRTComposableObject
 import io.github.composefluent.winrt.runtime.WinRTComposableObjectReference
 import io.github.composefluent.winrt.runtime.WinRTAttributeUsage
@@ -314,7 +313,7 @@ internal val WINRT_PROJECTED_DELEGATE_CLASS_NAME = WinRTProjectedDelegate::class
 internal val WINRT_EVENT_SOURCE_CLASS_NAME = EventSource::class.asClassName()
 internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTEventProjectionHelpers")
-internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRTClosableObject::class.asClassName()
+internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = ClassName("windows.foundation", "WinRTClosableObject")
 internal val WINRT_COMPOSABLE_OBJECT_CLASS_NAME = WinRTComposableObject::class.asClassName()
 internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRTComposableObjectReference::class.asClassName()
 internal val WINRT_ACTIVATION_FACTORY_CLASS_NAME = WinRTActivationFactory::class.asClassName()

@@ -165,31 +165,6 @@ object WinRTSystemProjectionMarshalers {
         }
 }
 
-@WinRTGuid("9E365E57-48B2-4160-956F-C7385120BBFC")
-internal interface IUriRuntimeClassProjection
-
-@WinRTGuid("30D5A829-7FA4-4026-83BB-D75BAE4EA99E")
-internal interface IClosableProjection
-
-class WinRTClosableObject(
-    private val inspectable: IInspectableReference,
-) : AutoCloseable, IWinRTObject {
-    override val nativeObject: ComObjectReference
-        get() = inspectable
-
-    override fun close() {
-        inspectable.tryQueryInterface(IID.IDisposable)?.use { closable ->
-            val hr = ComVtableInvoker.invoke(closable.pointer, slot = 6)
-            WinRTPlatformApi.checkSucceededRaw(hr)
-            return
-        }
-        throw WinRTUnsupportedOperationException(
-            "Object does not implement Windows.Foundation.IClosable.",
-            KnownHResults.E_NOINTERFACE,
-        )
-    }
-}
-
 internal object CommonWinRTBuiltInProjectionMappings {
     fun register() {
         Projections.registerCustomAbiTypeMapping(
@@ -230,29 +205,6 @@ internal object CommonWinRTBuiltInProjectionMappings {
             signature = "struct(Windows.Foundation.HResult;i4)",
             isWindowsRuntimeType = true,
         )
-
-        Projections.registerCustomAbiTypeMapping(
-            publicType = AutoCloseable::class,
-            helperType = IClosableProjection::class,
-            abiTypeName = "Windows.Foundation.IClosable",
-        )
-        registerMetadata(
-            type = AutoCloseable::class,
-            projectedTypeName = "Windows.Foundation.IClosable",
-            helperType = IClosableProjection::class,
-            guid = IID.IDisposable,
-            iid = IID.IDisposable,
-            isWindowsRuntimeType = true,
-        )
-        registerMetadata(
-            type = IClosableProjection::class,
-            projectedTypeName = "Windows.Foundation.IClosable",
-            guid = IID.IDisposable,
-            iid = IID.IDisposable,
-            isWindowsRuntimeType = true,
-        )
-
-        registerStruct(EventRegistrationToken::class)
 
         registerReferenceArrayType(String::class, emptyArray<String>()::class)
         registerReferenceArrayType(Guid::class, emptyArray<Guid>()::class)

@@ -1,8 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
-import windows.foundation.Uri
-import windows.foundation.UriAbiProjection
+import windows.foundation.FoundationBuiltInProjectionMappings
 
 internal enum class WinRTTypeKind {
     Primitive,
@@ -87,8 +86,8 @@ internal object WinRTBuiltInProjectionMappings {
         }
 
         CommonWinRTBuiltInProjectionMappings.register()
+        FoundationBuiltInProjectionMappings.register()
         XamlSystemProjectionMappings.register()
-        registerUriProjection()
     }
 
     private fun registerAlwaysOnMappings() {
@@ -111,33 +110,4 @@ internal object WinRTBuiltInProjectionMappings {
         )
     }
 
-    private fun registerUriProjection() {
-        Projections.registerCustomAbiTypeMapping(
-            publicType = Uri::class,
-            helperType = UriAbiProjection::class,
-            abiTypeName = "Windows.Foundation.Uri",
-            isRuntimeClass = true,
-        )
-        CommonWinRTBuiltInProjectionMappings.registerMetadata(
-            type = Uri::class,
-            projectedTypeName = "Windows.Foundation.Uri",
-            helperType = UriAbiProjection::class,
-            signature = "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
-            runtimeClassName = "Windows.Foundation.Uri",
-            defaultInterface = IUriRuntimeClassProjection::class,
-            isRuntimeClass = true,
-            isWindowsRuntimeType = true,
-        )
-        Projections.registerDefaultInterfaceType(
-            runtimeClass = Uri::class,
-            defaultInterface = IUriRuntimeClassProjection::class,
-        )
-        CommonWinRTBuiltInProjectionMappings.registerMetadata(
-            type = IUriRuntimeClassProjection::class,
-            projectedTypeName = "Windows.Foundation.IUriRuntimeClass",
-            guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
-            iid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
-            isWindowsRuntimeType = true,
-        )
-    }
 }

@@ -1,10 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
-import windows.foundation.Uri
-import windows.foundation.UriAbiProjection
-
-private val uriTypeHandle = WinRTTypeHandle("Windows.Foundation.Uri", Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
-private val closableTypeHandle = WinRTTypeHandle("Windows.Foundation.IClosable", IID.IDisposable)
+import windows.foundation.FoundationBuiltInProjectionRuntimeHooks
 
 internal object WinRTBuiltInProjectionRuntimeHooks {
     fun ensureRegistered() {
@@ -12,25 +8,14 @@ internal object WinRTBuiltInProjectionRuntimeHooks {
             return
         }
         XamlSystemProjectionRuntimeHooks.ensureRegistered()
-        ComWrappersSupport.registerRuntimeClassFactory("Windows.Foundation.Uri") { inspectable ->
-            inspectable.use(UriAbiProjection::fromInspectable)
-        }
-        ComWrappersSupport.registerTypedRcwFactory(uriTypeHandle) { inspectable ->
-            inspectable.use(UriAbiProjection::fromInspectable)
-        }
-        ComWrappersSupport.registerTypedRcwFactory(closableTypeHandle) { inspectable ->
-            WinRTClosableObject(inspectable)
-        }
+        FoundationBuiltInProjectionRuntimeHooks.ensureRegistered()
     }
 
     fun tryCreateProjectedReference(
         value: Any,
         interfaceId: Guid?,
     ): ComObjectReference? =
-        when (value) {
-            is Uri -> UriAbiProjection.createReference(value, interfaceId ?: IID.IInspectable)
-            else -> null
-        }
+        FoundationBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
 
     fun createSyntheticCcwDefinition(value: Any): WinRTCcwDefinition? =
         platformCreateSyntheticCcwDefinition(value)
