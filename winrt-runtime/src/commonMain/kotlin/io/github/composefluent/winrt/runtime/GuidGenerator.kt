@@ -39,7 +39,9 @@ object GuidGenerator {
 
         Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(type)?.let { defaultInterface ->
             val runtimeClassName = type.registeredWinRTType()?.runtimeClassName
-                ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
+                ?: type.registeredWinRTType()
+                    ?.projectedTypeName
+                    ?.takeIf(WinRTTypeRegistry::isProjectedRuntimeClassName)
                 ?: throw IllegalStateException("Runtime class '${type.typeDisplayName()}' is missing a registered runtime class name.")
             return WinRTTypeSignature.runtimeClass(
                 runtimeClassName = runtimeClassName,
@@ -48,7 +50,9 @@ object GuidGenerator {
         }
 
         val runtimeClassName = type.registeredWinRTType()?.runtimeClassName
-            ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
+            ?: type.registeredWinRTType()
+                ?.projectedTypeName
+                ?.takeIf(WinRTTypeRegistry::isProjectedRuntimeClassName)
         runtimeClassName
             ?.let(Projections::tryGetDefaultInterfaceSignatureForRuntimeClassName)
             ?.let { defaultInterfaceSignature ->

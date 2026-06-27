@@ -7,14 +7,7 @@ import kotlin.reflect.KClass
  */
 object Projections {
     private val customTypeToHelperTypeMappings = ConcurrentCacheMap<KClass<*>, KClass<*>>()
-    private val customAbiTypeToTypeMappings = ConcurrentCacheMap<KClass<*>, KClass<*>>()
-    private val customAbiTypeNameToTypeMappings = ConcurrentCacheMap<String, KClass<*>>()
-    private val customTypeToAbiTypeNameMappings = ConcurrentCacheMap<KClass<*>, String>()
-    private val projectedRuntimeClassNames = ConcurrentCacheSet<String>()
-    private val projectedCustomTypeRuntimeClasses = ConcurrentCacheSet<KClass<*>>()
     private val runtimeClassToDefaultInterfaceMappings = ConcurrentCacheMap<KClass<*>, KClass<*>>()
-    private val runtimeClassNameToDefaultInterfaceNameMappings = ConcurrentCacheMap<String, String>()
-    private val runtimeClassNameToDefaultInterfaceSignatureMappings = ConcurrentCacheMap<String, String>()
     private val isTypeWindowsRuntimeTypeCache = ConcurrentCacheMap<KClass<*>, Boolean>()
 
     init {
@@ -34,7 +27,7 @@ object Projections {
                 helperType = helperType,
                 runtimeClassName = publicType.registeredWinRTType()?.runtimeClassName,
                 defaultInterface = tryGetDefaultInterfaceTypeForRuntimeClassType(publicType),
-                isRuntimeClass = projectedCustomTypeRuntimeClasses.contains(publicType),
+                isRuntimeClass = publicType.registeredWinRTType()?.isRuntimeClass == true,
                 isWindowsRuntimeType = true,
             )
         }
@@ -50,13 +43,7 @@ object Projections {
         ensureProjectionMappingsRegistered()
         clearDerivedCaches()
         val helperAdded = customTypeToHelperTypeMappings.putIfAbsent(publicType, helperType) == null
-        val publicAdded = customAbiTypeToTypeMappings.putIfAbsent(helperType, publicType) == null
-        val abiNameAdded = customAbiTypeNameToTypeMappings.putIfAbsent(abiTypeName, publicType) == null
-        val typeNameAdded = customTypeToAbiTypeNameMappings.putIfAbsent(publicType, abiTypeName) == null
-        if (isRuntimeClass) {
-            projectedRuntimeClassNames.add(abiTypeName)
-            projectedCustomTypeRuntimeClasses.add(publicType)
-        }
+        val existing = publicType.registeredWinRTType()
         registerTypeDescriptor(
             type = publicType,
             projectedTypeName = abiTypeName,
@@ -66,7 +53,7 @@ object Projections {
             isRuntimeClass = isRuntimeClass,
             isWindowsRuntimeType = true,
         )
-        return helperAdded && publicAdded && abiNameAdded && typeNameAdded
+        return helperAdded || existing == null || existing.projectedTypeName != abiTypeName || existing.helperType != helperType
     }
 
     fun registerAuthoredRuntimeClassType(
@@ -76,10 +63,7 @@ object Projections {
         require(runtimeClassName.isNotBlank()) { "Runtime class name must not be blank." }
         ensureProjectionMappingsRegistered()
         clearDerivedCaches()
-        val abiNameAdded = customAbiTypeNameToTypeMappings.putIfAbsent(runtimeClassName, publicType) == null
-        val typeNameAdded = customTypeToAbiTypeNameMappings.putIfAbsent(publicType, runtimeClassName) == null
-        projectedRuntimeClassNames.add(runtimeClassName)
-        projectedCustomTypeRuntimeClasses.add(publicType)
+        val existing = publicType.registeredWinRTType()
         registerTypeDescriptor(
             type = publicType,
             projectedTypeName = runtimeClassName,
@@ -89,7 +73,7 @@ object Projections {
             isRuntimeClass = true,
             isWindowsRuntimeType = true,
         )
-        return abiNameAdded || typeNameAdded
+        return existing == null || existing.runtimeClassName != runtimeClassName || !existing.isRuntimeClass
     }
 
     fun registerDefaultInterfaceType(
@@ -104,7 +88,7 @@ object Projections {
                 helperType = findCustomHelperTypeMapping(runtimeClass),
                 runtimeClassName = inferRuntimeClassName(runtimeClass) ?: runtimeClass.registeredWinRTType()?.runtimeClassName,
                 defaultInterface = defaultInterface,
-                isRuntimeClass = projectedCustomTypeRuntimeClasses.contains(runtimeClass),
+                isRuntimeClass = runtimeClass.registeredWinRTType()?.isRuntimeClass == true,
                 isWindowsRuntimeType = true,
             )
         }
@@ -119,13 +103,17 @@ object Projections {
         require(runtimeClassName.isNotBlank()) { "Runtime class name must not be blank." }
         require(defaultInterfaceName.isNotBlank()) { "Default interface name must not be blank." }
         ensureProjectionMappingsRegistered()
-        val nameAdded = runtimeClassNameToDefaultInterfaceNameMappings.putIfAbsent(runtimeClassName, defaultInterfaceName) == null
-        val signatureAdded = defaultInterfaceSignature
-            ?.takeIf(String::isNotBlank)
-            ?.let { signature -> runtimeClassNameToDefaultInterfaceSignatureMappings.putIfAbsent(runtimeClassName, signature) == null }
-            ?: false
-        projectedRuntimeClassNames.add(runtimeClassName)
-        return nameAdded || signatureAdded
+        val existing = WinRTTypeRegistry.findRuntimeClassInfo(runtimeClassName)
+        val normalizedSignature = defaultInterfaceSignature?.takeIf(String::isNotBlank)
+        WinRTTypeRegistry.registerRuntimeClassInfo(
+            runtimeClassName = runtimeClassName,
+            defaultInterfaceName = defaultInterfaceName,
+            defaultInterfaceSignature = normalizedSignature,
+            isProjectedRuntimeClass = true,
+        )
+        return existing == null ||
+            existing.defaultInterfaceName != defaultInterfaceName ||
+            (normalizedSignature != null && existing.defaultInterfaceSignature != normalizedSignature)
     }
 
     fun findCustomHelperTypeMapping(
@@ -133,11 +121,12 @@ object Projections {
         filterToRuntimeClass: Boolean = false,
     ): KClass<*>? {
         ensureProjectionMappingsRegistered()
-        if (filterToRuntimeClass && !projectedCustomTypeRuntimeClasses.contains(publicType)) {
+        val registered = publicType.registeredWinRTType()
+        if (filterToRuntimeClass && registered?.isRuntimeClass != true) {
             return null
         }
 
-        publicType.registeredWinRTType()?.helperType?.let { return it }
+        registered?.helperType?.let { return it }
         customTypeToHelperTypeMappings[publicType]?.let { return it }
         return null
     }
@@ -146,21 +135,25 @@ object Projections {
         abiType: KClass<*>,
     ): KClass<*>? {
         ensureProjectionMappingsRegistered()
-        return customAbiTypeToTypeMappings[abiType]
+        return WinRTTypeRegistry.findByHelperClass(abiType)?.kClass
     }
 
     internal fun findCustomKClassForAbiTypeName(
         abiTypeName: String,
     ): KClass<*>? {
         ensureProjectionMappingsRegistered()
-        return customAbiTypeNameToTypeMappings[abiTypeName]
+        return WinRTTypeRegistry.findByName(abiTypeName)?.kClass
     }
 
     fun findCustomAbiTypeNameForType(
         type: KClass<*>,
     ): String? {
         ensureProjectionMappingsRegistered()
-        return customTypeToAbiTypeNameMappings[type]
+        val registered = type.registeredWinRTType() ?: return null
+        if (registered.isWindowsRuntimeType || registered.isRuntimeClass) {
+            return registered.projectedTypeName
+        }
+        return null
     }
 
     fun isTypeWindowsRuntimeType(
@@ -185,33 +178,26 @@ object Projections {
         runtimeClassName: String,
     ): String? {
         ensureProjectionMappingsRegistered()
-        return runtimeClassNameToDefaultInterfaceNameMappings[runtimeClassName]
+        return WinRTTypeRegistry.findRuntimeClassInfo(runtimeClassName)?.defaultInterfaceName
     }
 
     fun tryGetDefaultInterfaceSignatureForRuntimeClassName(
         runtimeClassName: String,
     ): String? {
         ensureProjectionMappingsRegistered()
-        return runtimeClassNameToDefaultInterfaceSignatureMappings[runtimeClassName]
+        return WinRTTypeRegistry.findRuntimeClassInfo(runtimeClassName)?.defaultInterfaceSignature
     }
 
     internal fun isProjectedRuntimeClassName(
         runtimeClassName: String,
     ): Boolean {
         ensureProjectionMappingsRegistered()
-        return projectedRuntimeClassNames.contains(runtimeClassName)
+        return WinRTTypeRegistry.isProjectedRuntimeClassName(runtimeClassName)
     }
 
     internal fun clearRegistriesForTests() {
         customTypeToHelperTypeMappings.clear()
-        customAbiTypeToTypeMappings.clear()
-        customAbiTypeNameToTypeMappings.clear()
-        customTypeToAbiTypeNameMappings.clear()
-        projectedRuntimeClassNames.clear()
-        projectedCustomTypeRuntimeClasses.clear()
         runtimeClassToDefaultInterfaceMappings.clear()
-        runtimeClassNameToDefaultInterfaceNameMappings.clear()
-        runtimeClassNameToDefaultInterfaceSignatureMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()
         WinRTTypeRegistry.clearForTests()
         ValueBoxingMetadata.clearDynamicDescriptorsForTests()
@@ -226,8 +212,7 @@ object Projections {
             return true
         }
 
-        return customTypeToAbiTypeNameMappings.containsKey(candidate) ||
-            candidate.registeredWinRTType()?.isWindowsRuntimeType == true ||
+        return candidate.registeredWinRTType()?.isWindowsRuntimeType == true ||
             candidate.registeredWinRTType()?.isRuntimeClass == true
     }
 
@@ -236,7 +221,7 @@ object Projections {
     }
 
     private fun explicitProjectedTypeName(type: KClass<*>): String? =
-        customTypeToAbiTypeNameMappings[type] ?: type.registeredWinRTType()?.projectedTypeName
+        type.registeredWinRTType()?.projectedTypeName
 
     @Suppress("UNCHECKED_CAST")
     private fun registerTypeDescriptor(
