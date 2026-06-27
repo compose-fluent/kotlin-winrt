@@ -19,56 +19,38 @@ class SingleInterfaceOptimizedObject(
 }
 
 object ComWrappersSupport {
-    private val typedRcwFactories = ConcurrentCacheMap<WinRTTypeHandle, (IInspectableReference) -> Any>()
-    private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
-    private val interfaceProjectionFactoriesByHandle = ConcurrentCacheMap<WinRTTypeHandle, (IUnknownReference) -> Any>()
-    private val interfaceProjectionFactoriesByTypeName = ConcurrentCacheMap<String, (IUnknownReference) -> Any>()
-    private val authoringActivationFactories = ConcurrentCacheMap<String, () -> ComObjectReference>()
-    private val authoringActivationFactoryFallbacks = SnapshotList<(String, Guid) -> ActivationResult>()
-    private val helperTypeRegistry = ConcurrentCacheMap<WinRTTypeHandle, WinRTTypeHandle>()
-    private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRTCcwDefinition>()
     private val ccwHostCache = WeakKeyStateMap<Any, CachedCcwHost>()
     private val rcwCache = WeakValueCache<Long, Any>()
-    private val runtimeClassNameLookups = SnapshotList<(KClass<*>) -> String?>()
-    private val authoringMetadataTypeLookups = SnapshotList<(String) -> String?>()
 
     init {
-        registerBuiltInCcwFactories()
         platformEnsureInspectableProjectionInteropRegistered()
     }
 
     fun registerTypedRcwFactory(
         typeHandle: WinRTTypeHandle,
         factory: (IInspectableReference) -> Any,
-    ): Boolean = typedRcwFactories.putIfAbsent(typeHandle, factory) == null
+    ): Boolean = RcwProjectionFactoryRegistry.registerTypedRcwFactory(typeHandle, factory)
 
     fun registerRuntimeClassFactory(
         runtimeClassName: String,
         factory: (IInspectableReference) -> Any,
-    ): Boolean = runtimeClassFactories.putIfAbsent(runtimeClassName, factory) == null
+    ): Boolean = RcwProjectionFactoryRegistry.registerRuntimeClassFactory(runtimeClassName, factory)
 
     fun registerInterfaceProjectionFactory(
         typeHandle: WinRTTypeHandle,
         factory: (IUnknownReference) -> Any,
-    ): Boolean {
-        require(typeHandle.projectedTypeName.isNotBlank()) { "Projected interface type name must not be blank." }
-        interfaceProjectionFactoriesByTypeName.putIfAbsent(typeHandle.projectedTypeName, factory)
-        return interfaceProjectionFactoriesByHandle.putIfAbsent(typeHandle, factory) == null
-    }
+    ): Boolean = RcwProjectionFactoryRegistry.registerInterfaceProjectionFactory(typeHandle, factory)
 
     fun registerInterfaceProjectionFactory(
         projectedTypeName: String,
         factory: (IUnknownReference) -> Any,
-    ): Boolean {
-        require(projectedTypeName.isNotBlank()) { "Projected interface type name must not be blank." }
-        return interfaceProjectionFactoriesByTypeName.putIfAbsent(projectedTypeName, factory) == null
-    }
+    ): Boolean = RcwProjectionFactoryRegistry.registerInterfaceProjectionFactory(projectedTypeName, factory)
 
     fun wrapGeneratedInterfaceProjection(
         typeHandle: WinRTTypeHandle,
         instance: IUnknownReference,
     ): Any =
-        resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
+        RcwProjectionFactoryRegistry.resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
             ?.invoke(instance)
             ?: throw WinRTUnsupportedOperationException(
                 "Generated interface projection factory for '${typeHandle.projectedTypeName}' is not registered.",
@@ -79,7 +61,7 @@ object ComWrappersSupport {
         projectedTypeName: String,
         instance: IUnknownReference,
     ): Any =
-        resolveInterfaceProjectionFactory(null, projectedTypeName)
+        RcwProjectionFactoryRegistry.resolveInterfaceProjectionFactory(null, projectedTypeName)
             ?.invoke(instance)
             ?: throw WinRTUnsupportedOperationException(
                 "Generated interface projection factory for '$projectedTypeName' is not registered.",
@@ -89,62 +71,37 @@ object ComWrappersSupport {
     fun registerAuthoringActivationFactory(
         runtimeClassName: String,
         factory: () -> ComObjectReference,
-    ): Boolean {
-        require(runtimeClassName.isNotBlank()) { "Authored runtime class name must not be blank." }
-        return authoringActivationFactories.putIfAbsent(runtimeClassName, factory) == null
-    }
+    ): Boolean = AuthoringActivationFactoryRegistry.registerFactory(runtimeClassName, factory)
 
     fun tryGetAuthoringActivationFactory(
         runtimeClassName: String,
         interfaceId: Guid,
-    ): ActivationResult {
-        val createFactory = authoringActivationFactories[runtimeClassName]
-            ?: return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
-        val factory = createFactory()
-        val requestedFactoryPointer = try {
-            if (factory.interfaceId == interfaceId || interfaceId == IID.IUnknown) {
-                factory.getRefPointer()
-            } else {
-                factory.queryInterface(interfaceId).getOrThrow().use { reference ->
-                    reference.getRefPointer()
-                }
-            }
-        } finally {
-            factory.close()
-        }
-        return ActivationResult(KnownHResults.S_OK, PlatformAbi.fromRawComPtr(requestedFactoryPointer))
-    }
+    ): ActivationResult = AuthoringActivationFactoryRegistry.tryGetFactory(runtimeClassName, interfaceId)
 
     fun registerAuthoringActivationFactoryFallback(
         lookup: (runtimeClassName: String, interfaceId: Guid) -> ActivationResult,
     ) {
-        authoringActivationFactoryFallbacks.add(lookup)
+        AuthoringActivationFactoryRegistry.registerFallback(lookup)
     }
 
     fun tryGetAuthoringActivationFactoryFallback(
         runtimeClassName: String,
         interfaceId: Guid,
-    ): ActivationResult =
-        authoringActivationFactoryFallbacks.firstNotNullOfOrNull { fallback ->
-            fallback(runtimeClassName, interfaceId).takeIf { it.hResult != KnownHResults.REGDB_E_CLASSNOTREG }
-        } ?: ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
+    ): ActivationResult = AuthoringActivationFactoryRegistry.tryGetFallback(runtimeClassName, interfaceId)
 
     fun clearAuthoringActivationFactoryFallbacksForTests() {
-        authoringActivationFactoryFallbacks.clear()
+        AuthoringActivationFactoryRegistry.clearFallbacksForTests()
     }
 
     fun registerHelperType(
         projectedType: WinRTTypeHandle,
         helperType: WinRTTypeHandle,
-    ): Boolean = helperTypeRegistry.putIfAbsent(projectedType, helperType) == null
+    ): Boolean = RcwProjectionFactoryRegistry.registerHelperType(projectedType, helperType)
 
     fun registerCcwFactory(
         implementationType: KClass<*>,
         factory: (Any) -> WinRTCcwDefinition,
-    ): Boolean {
-        traceCcw("register CCW factory type=${implementationType.qualifiedName}")
-        return ccwFactories.putIfAbsent(implementationType, factory) == null
-    }
+    ): Boolean = CcwFactoryRegistry.registerFactory(implementationType, factory)
 
     fun registerAuthoringTypeDetailsFactory(
         implementationType: KClass<*>,
@@ -173,29 +130,23 @@ object ComWrappersSupport {
     fun registerTypeRuntimeClassNameLookup(
         lookup: (KClass<*>) -> String?,
     ) {
-        runtimeClassNameLookups.add(lookup)
+        RuntimeTypeLookupRegistry.registerRuntimeClassNameLookup(lookup)
     }
 
     fun registerAuthoringMetadataTypeLookup(
         lookup: (String) -> String?,
     ) {
-        authoringMetadataTypeLookups.add(lookup)
+        RuntimeTypeLookupRegistry.registerAuthoringMetadataTypeLookup(lookup)
     }
 
     fun registerAuthoringMetadataTypeMappings(
         mappings: Map<String, String>,
     ) {
-        if (mappings.isEmpty()) {
-            return
-        }
-        val stableMappings = mappings.toMap()
-        registerAuthoringMetadataTypeLookup { typeName -> stableMappings[typeName] }
+        RuntimeTypeLookupRegistry.registerAuthoringMetadataTypeMappings(mappings)
     }
 
     fun getAuthoringMetadataTypeName(projectedTypeName: String): String? =
-        authoringMetadataTypeLookups.firstNotNullOfOrNull { lookup ->
-            lookup(projectedTypeName)?.takeIf { it.isNotBlank() }
-        }
+        RuntimeTypeLookupRegistry.getAuthoringMetadataTypeName(projectedTypeName)
 
     fun getInspectableInfo(pointer: RawAddress): WinRTInspectableInfo? =
         WinRTInspectableComObject.findInspectableInfo(pointer)?.let {
@@ -592,38 +543,14 @@ object ComWrappersSupport {
     }
 
     fun clearRegistriesForTests() {
-        typedRcwFactories.clear()
-        runtimeClassFactories.clear()
-        interfaceProjectionFactoriesByHandle.clear()
-        interfaceProjectionFactoriesByTypeName.clear()
-        authoringActivationFactories.clear()
-        helperTypeRegistry.clear()
-        ccwFactories.clear()
         ccwHostCache.clear()
         rcwCache.clear()
-        ProjectedDelegateCcwCache.clearForTests()
-        ProjectedDelegateObjectRoots.clearForTests()
-        runtimeClassNameLookups.clear()
-        authoringMetadataTypeLookups.clear()
-        FreeThreadedMarshalerSupport.clearForTests()
-        Projections.clearRegistriesForTests()
-        TypeNameSupport.clearRegistriesForTests()
-        TypeExtensions.clearRegistriesForTests()
-        registerBuiltInCcwFactories()
-        platformEnsureInspectableProjectionInteropRegistered()
-    }
-
-    private fun registerBuiltInCcwFactories() {
-        ccwFactories[WinRTActivationFactory::class] = { value ->
-            WinRTActivationFactorySupport.createCcwDefinition(value as WinRTActivationFactory)
-        }
+        RuntimeRegistryResetSupport.clearForTests()
     }
 
     internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
         type: KClass<*>,
-    ): String? = runtimeClassNameLookups.firstNotNullOfOrNull { lookup ->
-        lookup(type)?.takeIf { it.isNotBlank() }
-    }
+    ): String? = RuntimeTypeLookupRegistry.getRuntimeClassNameForNonWinRTType(type)
 
     private fun createRcwCore(
         pointer: RawAddress,
@@ -632,7 +559,7 @@ object ComWrappersSupport {
         val inspectable = wrapInspectable(pointer)
         if (inspectable != null) {
             val runtimeClassName = inspectable.tryGetRuntimeClassName()
-            resolveFactory(staticallyDeterminedType, runtimeClassName)?.let { factory ->
+            RcwProjectionFactoryRegistry.resolveRuntimeClassFactory(staticallyDeterminedType, runtimeClassName)?.let { factory ->
                 return factory(inspectable)
             }
             if (staticallyDeterminedType == null) {
@@ -650,7 +577,10 @@ object ComWrappersSupport {
             } finally {
                 inspectable.close()
             }
-            resolveInterfaceProjectionFactory(staticallyDeterminedType, staticallyDeterminedType.projectedTypeName)?.let { factory ->
+            RcwProjectionFactoryRegistry.resolveInterfaceProjectionFactory(
+                staticallyDeterminedType,
+                staticallyDeterminedType.projectedTypeName,
+            )?.let { factory ->
                 return factory(typedReference.asUnknownReference(staticallyDeterminedType.interfaceId))
             }
             return SingleInterfaceOptimizedObject(
@@ -662,7 +592,10 @@ object ComWrappersSupport {
         if (staticallyDeterminedType != null) {
             val typedReference =
                 IUnknownReference(ComPtr.create(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId))
-            resolveInterfaceProjectionFactory(staticallyDeterminedType, staticallyDeterminedType.projectedTypeName)?.let { factory ->
+            RcwProjectionFactoryRegistry.resolveInterfaceProjectionFactory(
+                staticallyDeterminedType,
+                staticallyDeterminedType.projectedTypeName,
+            )?.let { factory ->
                 return factory(typedReference)
             }
             return SingleInterfaceOptimizedObject(
@@ -672,35 +605,6 @@ object ComWrappersSupport {
         }
 
         return inspectable
-    }
-
-    private fun resolveFactory(
-        staticallyDeterminedType: WinRTTypeHandle?,
-        runtimeClassName: String?,
-    ): ((IInspectableReference) -> Any)? {
-        if (staticallyDeterminedType != null) {
-            typedRcwFactories[staticallyDeterminedType]?.let { return it }
-            helperTypeRegistry[staticallyDeterminedType]?.let { helper ->
-                typedRcwFactories[helper]?.let { return it }
-            }
-        }
-        if (!runtimeClassName.isNullOrBlank()) {
-            runtimeClassFactories[runtimeClassName]?.let { return it }
-        }
-        return null
-    }
-
-    private fun resolveInterfaceProjectionFactory(
-        staticallyDeterminedType: WinRTTypeHandle?,
-        projectedTypeName: String?,
-    ): ((IUnknownReference) -> Any)? {
-        if (staticallyDeterminedType != null) {
-            interfaceProjectionFactoriesByHandle[staticallyDeterminedType]?.let { return it }
-        }
-        if (!projectedTypeName.isNullOrBlank()) {
-            interfaceProjectionFactoriesByTypeName[projectedTypeName]?.let { return it }
-        }
-        return null
     }
 
     private fun ComObjectReference.asUnknownReference(interfaceId: Guid): IUnknownReference =
@@ -797,7 +701,7 @@ object ComWrappersSupport {
     }
 
     private fun createCcwDefinition(value: Any): WinRTCcwDefinition {
-        findCcwFactory(value)?.let { factory ->
+        CcwFactoryRegistry.findFactory(value)?.let { factory ->
             traceCcw("create CCW definition value=${value::class.qualifiedName} source=registered-factory")
             return InteropRuntimeHooks.augmentInspectableDefinition(
                 value,
@@ -828,11 +732,6 @@ object ComWrappersSupport {
                 ),
             ),
         )
-    }
-
-    private fun findCcwFactory(value: Any): ((Any) -> WinRTCcwDefinition)? {
-        ccwFactories[value::class]?.let { return it }
-        return ccwFactories.entries.firstOrNull { (type, _) -> type.isInstance(value) }?.value
     }
 
     private fun ownedReference(
@@ -889,9 +788,10 @@ object ComWrappersSupport {
         }
     }
 
-    private fun traceCcw(message: String) {
-        if (FeatureSwitches.traceCcw) {
-            println("winrt-ccw: $message")
-        }
+}
+
+internal fun traceCcw(message: String) {
+    if (FeatureSwitches.traceCcw) {
+        println("winrt-ccw: $message")
     }
 }
