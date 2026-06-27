@@ -28,6 +28,18 @@ class XamlSystemProjectionRuntimeTest {
     }
 
     @Test
+    fun object_marshaler_roots_are_owned_by_xaml_runtime_cache() {
+        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
+        assertEquals(0, XamlSystemProjectionRuntimeHooks.retainedProjectedObjectReferenceCountForTests())
+
+        WinRTObjectMarshaller.createMarshaler(PlainBindableTarget("rooted")).close()
+
+        assertEquals(1, XamlSystemProjectionRuntimeHooks.retainedProjectedObjectReferenceCountForTests())
+        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
+        assertEquals(0, XamlSystemProjectionRuntimeHooks.retainedProjectedObjectReferenceCountForTests())
+    }
+
+    @Test
     fun command_projection_round_trips_methods_and_event_handlers() {
         val command = TestCommand()
 
