@@ -258,7 +258,7 @@ class ProjectionRegistryTest {
 
         assertEquals(DateTimeProjection::class, TypeExtensions.findHelperType(Instant::class))
         assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
-        assertEquals(UriProjection::class, TypeExtensions.findHelperType(Uri::class))
+        assertEquals("Windows.Foundation.Uri", Projections.findCustomAbiTypeNameForType(Uri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
         assertEquals(
             "Windows.Foundation.IUriRuntimeClass",
