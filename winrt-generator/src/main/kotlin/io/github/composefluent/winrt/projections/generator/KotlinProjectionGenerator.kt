@@ -147,7 +147,10 @@ class KotlinProjectionGenerator(
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
-        val renderedPlans = plans.filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
+        val renderedPlans = plans.filterNot { plan ->
+            plan.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) ||
+                plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
+        }
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(renderedPlans)
         val projectionRenderer = projectionFileRenderer(modulePlatformAbiCalls = modulePlatformAbiCalls)
         val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
@@ -167,7 +170,10 @@ class KotlinProjectionGenerator(
         } else {
             plans
         }
-        val projectionPlans = renderedPlans.filterNot { it.type.qualifiedName in authoredTypeNames }
+        val projectionPlans = renderedPlans.filterNot { plan ->
+            plan.type.qualifiedName in authoredTypeNames ||
+                plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
+        }
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(projectionPlans, renderedPlans)
         val projectionRenderer = projectionFileRenderer(renderedPlans, modulePlatformAbiCalls)
         var rendered = 0
@@ -1648,6 +1654,10 @@ class KotlinProjectionGenerator(
             instanceMemberBindings.isNotEmpty() ||
             implementedInterfaceBindings.any { it.qualifiedName == defaultInterfaceName }
     }
+
+    private fun KotlinTypeProjectionPlan.shouldSkipRuntimeOwnedMappedProjectionOutput(): Boolean =
+        type.kind == WinRTTypeKind.Delegate &&
+            mappedTypeByAbiName(type.qualifiedName)?.runtimeOwnedProjection == true
 
     private fun KotlinTypeProjectionPlan.hasInstanceProjectionSurface(): Boolean =
         type.methods.any { !it.isStatic } ||
