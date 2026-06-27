@@ -816,6 +816,8 @@ class KotlinProjectionGeneratorTest {
                 customObjectFromAbi = "objectFromAbi",
                 customObjectTypeHandle = "microsoft.ui.xaml.data.INotifyPropertyChanged",
             ),
+            MappedTypeExpectation("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler", null, runtimeOwned = true),
+            MappedTypeExpectation("Microsoft.UI.Xaml.Data.DataErrorsChangedEventHandler", null, runtimeOwned = true),
             MappedTypeExpectation(
                 "Windows.UI.Xaml.Interop.IBindableVectorView",
                 KotlinProjectionAbiValueKind.MappedBindableVectorView,
@@ -13250,6 +13252,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_skips_runtime_owned_xaml_delegate_mapped_declarations() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Microsoft.UI.Xaml.Data",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "PropertyChangedEventArgs",
+                            kind = WinRTTypeKind.RuntimeClass,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "PropertyChangedEventHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("e3de52f6-1e32-5da6-bb2d-b5b6096c962d"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "System.Void",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("sender", "System.Object"),
+                                        WinRTParameterDefinition("e", "Microsoft.UI.Xaml.Data.PropertyChangedEventArgs"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertFalse(filesByName.containsKey("PropertyChangedEventHandler.kt"))
+    }
+
+    @Test
     fun generator_uses_runtime_backed_reference_system_mapped_type_names() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
@@ -19595,7 +19635,7 @@ class KotlinProjectionGeneratorTest {
         val contents = files.getValue("ValidatedObject.kt").contents
 
         assertTrue(contents, contents.contains("INotifyDataErrorInfo,"))
-        assertTrue(contents, contents.contains("WinRTDataErrorInfoProjection.fromAbi(_inner)"))
+        assertTrue(contents, contents.contains("INotifyDataErrorInfoProjection.fromAbi(_inner)"))
         assertTrue(contents, contents.contains("override val hasErrors: Boolean"))
         assertTrue(contents, contents.contains("override fun getErrors(propertyName: String?): Iterable<Any?>?"))
         assertTrue(contents, contents.contains("override fun addErrorsChanged(handler: DataErrorsChangedEventHandler)"))
@@ -19662,7 +19702,7 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("INotifyPropertyChanged,"))
-        assertTrue(contents, contents.contains("WinRTPropertyChangedNotifierProjection.fromAbi(_inner)"))
+        assertTrue(contents, contents.contains("INotifyPropertyChangedProjection.fromAbi(_inner)"))
         assertTrue(contents, contents.contains("override fun addPropertyChanged(handler: PropertyChangedEventHandler)"))
         assertTrue(contents, contents.contains("override fun removePropertyChanged(handler: PropertyChangedEventHandler)"))
         assertFalse(contents, contents.contains("INotifyPropertyChanged.Metadata.IID"))
