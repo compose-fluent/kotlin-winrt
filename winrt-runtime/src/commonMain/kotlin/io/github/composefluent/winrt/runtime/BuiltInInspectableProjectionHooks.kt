@@ -17,6 +17,10 @@ internal object WinRTBuiltInProjectionRuntimeHooks {
     ): ComObjectReference? =
         FoundationBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
 
+    fun retainProjectedObjectReferenceForMarshaling(reference: ComObjectReference) {
+        XamlSystemProjectionRuntimeHooks.retainProjectedObjectReferenceForMarshaling(reference)
+    }
+
     fun createSyntheticCcwDefinition(value: Any): WinRTCcwDefinition? =
         platformCreateSyntheticCcwDefinition(value)
 

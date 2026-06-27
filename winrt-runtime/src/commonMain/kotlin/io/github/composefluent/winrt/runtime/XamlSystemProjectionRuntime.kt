@@ -133,7 +133,15 @@ internal object XamlSystemProjectionRuntimeHooks {
 
     fun closeRuntimeCaches() {
         WinUiXamlMetadataProviderCache.close()
+        XamlProjectedObjectValueRoots.close()
     }
+
+    internal fun retainProjectedObjectReferenceForMarshaling(reference: ComObjectReference) {
+        XamlProjectedObjectValueRoots.retain(reference)
+    }
+
+    internal fun retainedProjectedObjectReferenceCountForTests(): Int =
+        XamlProjectedObjectValueRoots.size
 
     internal fun augmentInspectableDefinition(
         value: Any,
@@ -379,6 +387,24 @@ internal object XamlSystemProjectionRuntimeHooks {
                 createDataErrorsChangedEventArgsDefinition(value as DataErrorsChangedEventArgs)
             }
         }
+    }
+}
+
+private object XamlProjectedObjectValueRoots {
+    private val roots = SnapshotList<ComObjectReference>()
+
+    val size: Int
+        get() = roots.toList().size
+
+    fun retain(reference: ComObjectReference) {
+        // XAML dependency properties can return the same object pointer after the setter call returns.
+        roots.add(reference)
+    }
+
+    fun close() {
+        val retained = roots.toList()
+        roots.clear()
+        retained.forEach { reference -> reference.close() }
     }
 }
 
