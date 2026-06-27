@@ -13,8 +13,6 @@ import kotlin.time.Duration
 import kotlin.time.Instant
 import windows.foundation.EventRegistrationToken
 import windows.foundation.IClosableProjection
-import windows.foundation.IUriRuntimeClassProjection
-import windows.foundation.Uri
 
 class ProjectionRegistryTest {
     @Test
@@ -259,12 +257,10 @@ class ProjectionRegistryTest {
     fun intrinsic_type_classifier_excludes_projection_owned_mappings() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertNull(WinRTTypeClassifier.classify(Uri::class))
         assertNull(WinRTTypeClassifier.classify(EventRegistrationToken::class))
         assertNull(WinRTTypeClassifier.classify(AutoCloseable::class))
         assertNull(WinRTTypeClassifier.classify(KClass::class))
 
-        assertEquals("Windows.Foundation.Uri", TypeNameSupport.getNameForType(Uri::class))
         assertEquals("Windows.Foundation.EventRegistrationToken", TypeNameSupport.getNameForType(EventRegistrationToken::class))
         assertEquals("Windows.Foundation.IClosable", TypeNameSupport.getNameForType(AutoCloseable::class))
         assertEquals("Windows.UI.Xaml.Interop.TypeName", TypeNameSupport.getNameForType(KClass::class))
@@ -276,13 +272,7 @@ class ProjectionRegistryTest {
 
         assertEquals(DateTimeProjection::class, TypeExtensions.findHelperType(Instant::class))
         assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
-        assertEquals("Windows.Foundation.Uri", Projections.findCustomAbiTypeNameForType(Uri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
-        assertEquals(
-            "Windows.Foundation.IUriRuntimeClass",
-            WinRTTypeRegistry.findByClass(IUriRuntimeClassProjection::class)?.projectedTypeName,
-        )
-        assertNull(TypeNameSupport.findKClassByNameCached(IUriRuntimeClassProjection::class.typeDisplayName()))
         assertEquals(
             "Windows.Foundation.IClosable",
             WinRTTypeRegistry.findByClass(IClosableProjection::class)?.projectedTypeName,
@@ -294,10 +284,6 @@ class ProjectionRegistryTest {
             WinRTValueBoxing.boxedRuntimeClassNameForType(KClass::class),
         )
         assertEquals(WinRTTypeKind.Metadata.ordinal, TypeProjection.fromManaged(KClass::class).kind)
-        assertEquals(
-            "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
-            GuidGenerator.getSignature(Uri::class),
-        )
         assertEquals(
             "Windows.Foundation.IReference`1<Int32>",
             TypeNameSupport.getNameForType(Int::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),

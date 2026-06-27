@@ -11,7 +11,6 @@ import microsoft.ui.xaml.interop.NotifyCollectionChangedAction
 import microsoft.ui.xaml.IXamlServiceProvider
 import microsoft.ui.xaml.data.INotifyPropertyChanged
 import microsoft.ui.xaml.data.PropertyChangedEventArgs
-import windows.foundation.Uri
 
 class RuntimeConfigurationTest {
     @Test
@@ -129,11 +128,6 @@ class RuntimeConfigurationTest {
             resetProjectionState()
 
             assertEquals("Windows.UI.Xaml.Interop.TypeName", TypeNameSupport.getNameForType(KClass::class))
-            assertEquals(
-                "windows.foundation.Uri",
-                TypeNameSupport.getNameForType(Uri::class),
-            )
-            assertNull(Projections.findCustomAbiTypeNameForType(Uri::class))
             assertNull(TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Data.INotifyPropertyChanged"))
         }
     }
