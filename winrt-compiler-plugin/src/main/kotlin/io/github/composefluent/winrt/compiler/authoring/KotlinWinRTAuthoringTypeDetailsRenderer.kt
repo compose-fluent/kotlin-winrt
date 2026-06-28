@@ -45,7 +45,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
     private val iWinRTObjectType = ClassName("io.github.composefluent.winrt.runtime", "IWinRTObject")
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
     private val exceptionHelpersType = ClassName("io.github.composefluent.winrt.runtime", "ExceptionHelpers")
-    private val eventRegistrationTokenType = ClassName("io.github.composefluent.winrt.runtime", "EventRegistrationToken")
+    private val eventRegistrationTokenType = ClassName("windows.foundation", "EventRegistrationToken")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
     private val marshalDelegateType = ClassName("io.github.composefluent.winrt.runtime", "MarshalDelegate")
     private val parameterizedInterfaceIdType = ClassName("io.github.composefluent.winrt.runtime", "ParameterizedInterfaceId")

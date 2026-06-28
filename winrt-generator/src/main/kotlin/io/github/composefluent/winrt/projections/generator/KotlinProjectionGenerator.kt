@@ -645,6 +645,7 @@ class KotlinProjectionGenerator(
             return
         }
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
+        val supportPlansByQualifiedName = supportPlansByQualifiedName(model, plans)
         plans
             .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
             .forEach { authoredPlan ->
@@ -652,7 +653,7 @@ class KotlinProjectionGenerator(
                     .map { implementation -> implementation.interfaceName.substringBefore('<') }
                     .distinct()
                     .forEach { interfaceName ->
-                        val interfacePlan = plansByQualifiedName[interfaceName]
+                        val interfacePlan = plansByQualifiedName[interfaceName] ?: supportPlansByQualifiedName[interfaceName]
                         require(interfacePlan != null) {
                             "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW interface $interfaceName to have a projection plan before support rendering."
                         }
@@ -1657,7 +1658,7 @@ class KotlinProjectionGenerator(
 
     private fun KotlinTypeProjectionPlan.shouldSkipRuntimeOwnedMappedProjectionOutput(): Boolean =
         type.kind == WinRTTypeKind.Delegate &&
-            mappedTypeByAbiName(type.qualifiedName)?.runtimeOwnedProjection == true
+            mappedTypeByAbiName(type.qualifiedName)?.runtimeOwnedPublicDeclaration == true
 
     private fun KotlinTypeProjectionPlan.hasInstanceProjectionSurface(): Boolean =
         type.methods.any { !it.isStatic } ||
@@ -1730,9 +1731,10 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     ): List<KotlinProjectionFile> {
+        val supportPlans = plans + supportPlansByQualifiedName(model, plans).values
         val supportRendererFiles = supportRenderer.render(
             model,
-            plans,
+            supportPlans.distinctBy { it.type.qualifiedName },
             projectionContext,
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
             excludedProjectionTypeNames = authoredProjectedTypeNames(model),
@@ -1758,6 +1760,27 @@ class KotlinProjectionGenerator(
             }
         }
         return files + modulePlatformAbiCalls.orEmptyFiles()
+    }
+
+    private fun supportPlansByQualifiedName(
+        model: WinRTMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): Map<String, KotlinTypeProjectionPlan> {
+        val plannedTypeNames = plans.mapTo(mutableSetOf()) { it.type.qualifiedName }
+        val semanticHelpers = model.semanticHelpers()
+        val typesByQualifiedName = model.namespaces
+            .flatMap(WinRTNamespace::types)
+            .associateBy(WinRTTypeDefinition::qualifiedName)
+        return model.namespaces
+            .flatMap(WinRTNamespace::types)
+            .asSequence()
+            .filter { type -> type.qualifiedName !in plannedTypeNames }
+            .filter { type ->
+                type.kind in setOf(WinRTTypeKind.Interface, WinRTTypeKind.Delegate) &&
+                    isRuntimeOwnedPublicDeclarationTypeName(type.qualifiedName)
+            }
+            .mapNotNull { type -> planner.planSupportType(type, typesByQualifiedName, semanticHelpers) }
+            .associateBy { it.type.qualifiedName }
     }
 
     private fun modulePlatformAbiCallSupport(

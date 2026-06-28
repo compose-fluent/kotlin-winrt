@@ -301,7 +301,10 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         val authoringAbiClasses = filesByName.getValue("WinRTAuthoringAbiClasses.kt").contents
+        val generatedContents = filesByName.values.joinToString("\n") { it.contents }
 
+        assertFalse(filesByName.containsKey("IStringable.kt"))
+        assertFalse(generatedContents, generatedContents.contains("IStringable.Metadata.IID"))
         assertTrue(ccwFactories, ccwFactories.contains("defaultInterfaceId = IID.IStringable"))
         assertFalse(ccwFactories, ccwFactories.contains("IStringable.Metadata.IID"))
         assertFalse(ccwFactories, ccwFactories.contains("interfaceId = IID.IStringable"))
@@ -729,6 +732,7 @@ class KotlinProjectionGeneratorTest {
             val abiName: String,
             val abiKind: KotlinProjectionAbiValueKind?,
             val runtimeOwned: Boolean = false,
+            val runtimeOwnedPublicDeclaration: Boolean = false,
             val simpleLookup: Boolean = false,
             val customStructFromAbi: String? = null,
             val customStructCopyTo: String? = null,
@@ -778,6 +782,27 @@ class KotlinProjectionGeneratorTest {
                 simpleLookup = true,
             ),
             MappedTypeExpectation(
+                "Windows.Foundation.EventHandler",
+                null,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+                simpleLookup = true,
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.TypedEventHandler",
+                null,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+                simpleLookup = true,
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.IStringable",
+                null,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+                simpleLookup = true,
+            ),
+            MappedTypeExpectation(
                 "Windows.Foundation.IPropertyValue",
                 KotlinProjectionAbiValueKind.PropertyValue,
                 runtimeOwned = true,
@@ -803,11 +828,46 @@ class KotlinProjectionGeneratorTest {
                 "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
                 KotlinProjectionAbiValueKind.ProjectedInterface,
                 runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
                 customObjectFromAbi = "objectFromAbi",
                 customObjectTypeHandle = "microsoft.ui.xaml.data.INotifyPropertyChanged",
             ),
-            MappedTypeExpectation("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler", null, runtimeOwned = true),
-            MappedTypeExpectation("Microsoft.UI.Xaml.Data.DataErrorsChangedEventHandler", null, runtimeOwned = true),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.IXamlServiceProvider",
+                KotlinProjectionAbiValueKind.ProjectedInterface,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+                customObjectFromAbi = "objectFromAbi",
+                customObjectTypeHandle = "microsoft.ui.xaml.IXamlServiceProvider",
+            ),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.Data.PropertyChangedEventArgs",
+                KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+                customObjectFromAbi = "objectFromAbi",
+                customObjectTypeHandle = "microsoft.ui.xaml.data.PropertyChangedEventArgs",
+            ),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.Data.PropertyChangedEventHandler",
+                null,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+            ),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.Data.DataErrorsChangedEventHandler",
+                null,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+            ),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.Input.ICommand",
+                KotlinProjectionAbiValueKind.ProjectedInterface,
+                runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
+                customObjectFromAbi = "objectFromAbi",
+                customObjectTypeHandle = "microsoft.ui.xaml.input.ICommand",
+            ),
             MappedTypeExpectation(
                 "Windows.UI.Xaml.Interop.IBindableVectorView",
                 KotlinProjectionAbiValueKind.MappedBindableVectorView,
@@ -818,8 +878,14 @@ class KotlinProjectionGeneratorTest {
                 "Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs",
                 KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
                 runtimeOwned = true,
+                runtimeOwnedPublicDeclaration = true,
                 customObjectFromAbi = "objectFromAbi",
                 customObjectTypeHandle = "windows.ui.xaml.interop.NotifyCollectionChangedEventArgs",
+            ),
+            MappedTypeExpectation(
+                "Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler",
+                null,
+                runtimeOwnedPublicDeclaration = true,
             ),
         ).forEach { expected ->
             val mappedType = mappedTypeByAbiName(expected.abiName)
@@ -827,6 +893,7 @@ class KotlinProjectionGeneratorTest {
             assertNotNull(expected.abiName, mappedType)
             assertEquals(expected.abiName, expected.abiKind, mappedType!!.abiValueKind)
             assertEquals(expected.abiName, expected.runtimeOwned, mappedType.isRuntimeOwnedProjection())
+            assertEquals(expected.abiName, expected.runtimeOwnedPublicDeclaration, mappedType.runtimeOwnedPublicDeclaration)
             assertEquals(expected.abiName, expected.simpleLookup, mappedType.simpleAbiLookup)
             assertEquals(expected.abiName, expected.customStructFromAbi, mappedType.customStructAbi?.fromAbiFunctionName)
             assertEquals(expected.abiName, expected.customStructCopyTo, mappedType.customStructAbi?.copyToFunctionName)
@@ -13292,14 +13359,216 @@ class KotlinProjectionGeneratorTest {
                                 ),
                             ),
                         ),
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "INotifyPropertyChanged",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("90b17601-b065-586e-83d9-9adc3a695284"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "add_PropertyChanged",
+                                    returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("handler", "Microsoft.UI.Xaml.Data.PropertyChangedEventHandler"),
+                                    ),
+                                    isSpecialName = true,
+                                    methodRowId = 6,
+                                ),
+                                WinRTMethodDefinition(
+                                    name = "remove_PropertyChanged",
+                                    returnTypeName = "System.Void",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("token", "Windows.Foundation.EventRegistrationToken"),
+                                    ),
+                                    isSpecialName = true,
+                                    methodRowId = 7,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRTEventDefinition(
+                                    name = "PropertyChanged",
+                                    delegateTypeName = "Microsoft.UI.Xaml.Data.PropertyChangedEventHandler",
+                                    addMethodName = "add_PropertyChanged",
+                                    removeMethodName = "remove_PropertyChanged",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "Widget",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyPropertyChanged", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
+        ).generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val eventProjectionHelpers = filesByName
+            .filterKeys { it.startsWith("WinRTEventProjectionHelper_") || it.startsWith("_EventSource_") }
+            .values
+            .joinToString("\n") { it.contents }
+
+        assertFalse(filesByName.containsKey("PropertyChangedEventHandler.kt"))
+        assertTrue(eventProjectionHelpers, eventProjectionHelpers.contains("EventHandlerEventSource<PropertyChangedEventArgs>"))
+        assertTrue(eventProjectionHelpers, eventProjectionHelpers.contains("interfaceId = Guid(\"E3DE52F6-1E32-5DA6-BB2D-B5B6096C962D\")"))
+        assertFalse(eventProjectionHelpers, eventProjectionHelpers.contains("_EventSource_"))
+    }
+
+    @Test
+    fun generator_skips_runtime_owned_windows_foundation_event_handler_declaration() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "System.Void",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("sender", "System.Object"),
+                                        WinRTParameterDefinition("args", "T0"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            events = listOf(
+                                WinRTEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),
         )
 
         val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = filesByName.getValue("IWidget.kt").contents
 
-        assertFalse(filesByName.containsKey("PropertyChangedEventHandler.kt"))
+        assertFalse(filesByName.containsKey("EventHandler.kt"))
+        assertTrue(widgetContents, widgetContents.contains("import windows.foundation.EventHandler"))
+        assertTrue(widgetContents, widgetContents.contains("fun addChanged(handler: EventHandler<Int>): EventRegistrationToken"))
+    }
+
+    @Test
+    fun generator_skips_runtime_owned_windows_foundation_typed_event_handler_declaration() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "TypedEventHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("9de1c535-6ae1-11e0-84e1-18a905bcc53f"),
+                            genericParameterCount = 2,
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "System.Void",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("sender", "T0"),
+                                        WinRTParameterDefinition("args", "T1"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "add_Changed",
+                                    returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("handler", "Windows.Foundation.TypedEventHandler<Sample.Foundation.IWidget, System.Object>"),
+                                    ),
+                                    isSpecialName = true,
+                                    methodRowId = 6,
+                                ),
+                                WinRTMethodDefinition(
+                                    name = "remove_Changed",
+                                    returnTypeName = "System.Void",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("token", "Windows.Foundation.EventRegistrationToken"),
+                                    ),
+                                    isSpecialName = true,
+                                    methodRowId = 7,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRTEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.TypedEventHandler<Sample.Foundation.IWidget, System.Object>",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
+        ).generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = filesByName.getValue("IWidget.kt").contents
+        val eventProjectionHelpers = filesByName
+            .filterKeys { it.startsWith("WinRTEventProjectionHelper_") || it.startsWith("_EventSource_") }
+            .values
+            .joinToString("\n") { it.contents }
+
+        assertFalse(filesByName.containsKey("TypedEventHandler.kt"))
+        assertTrue(widgetContents, widgetContents.contains("import windows.foundation.TypedEventHandler"))
+        assertTrue(widgetContents, widgetContents.contains("fun addChanged(handler: TypedEventHandler<IWidget, Any?>): EventRegistrationToken"))
+        assertTrue(eventProjectionHelpers, eventProjectionHelpers.contains("internal class _EventSource_"))
     }
 
     @Test

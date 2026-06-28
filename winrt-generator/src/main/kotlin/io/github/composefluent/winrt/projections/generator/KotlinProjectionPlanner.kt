@@ -187,6 +187,25 @@ class KotlinProjectionPlanner(
             }
         }
 
+    internal fun planSupportType(
+        type: WinRTTypeDefinition,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): KotlinTypeProjectionPlan? =
+        planType(
+            type = type,
+            interfaceIidsByName = typesByQualifiedName
+                .asSequence()
+                .mapNotNull { (qualifiedName, definition) -> definition.iid?.let { qualifiedName to it } }
+                .toMap(),
+            typesByQualifiedName = typesByQualifiedName,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList()),
+            semanticHelpers = semanticHelpers,
+            abiSlotBindingCache = mutableMapOf(),
+            abiMemberCountCache = mutableMapOf(),
+            skipMappedProjectionOutput = false,
+        )
+
     private fun planType(
         type: WinRTTypeDefinition,
         interfaceIidsByName: Map<String, Guid?>,
@@ -195,12 +214,13 @@ class KotlinProjectionPlanner(
         semanticHelpers: WinRTMetadataSemanticHelpers,
         abiSlotBindingCache: MutableMap<String, List<KotlinProjectionAbiSlotBinding>>,
         abiMemberCountCache: MutableMap<String, Int>,
+        skipMappedProjectionOutput: Boolean = true,
     ): KotlinTypeProjectionPlan? {
         val typeDeclarationDescriptor = semanticHelpers.typeDeclarationDescriptor(type)
         if (!typeDeclarationDescriptor.writesProjectedDeclaration) {
             return null
         }
-        if (shouldSkipMappedProjection(type, semanticHelpers)) {
+        if (skipMappedProjectionOutput && shouldSkipMappedProjection(type, semanticHelpers)) {
             return null
         }
         fun interfaceIidFor(interfaceName: String): Guid? =
@@ -352,8 +372,11 @@ class KotlinProjectionPlanner(
     ): Boolean {
         val metadataMappedType = semanticHelpers.getMappedType(type.namespace, type.name)
         val generatorMappedType = mappedTypeByAbiName(type.qualifiedName)
+        if (generatorMappedType?.runtimeOwnedPublicDeclaration == true) {
+            return true
+        }
         if (metadataMappedType == null) {
-            return generatorMappedType?.isRuntimeOwnedProjection() == true
+            return false
         }
         if (metadataMappedType.requiresKotlinMappedSupportDeclaration(type)) {
             return false

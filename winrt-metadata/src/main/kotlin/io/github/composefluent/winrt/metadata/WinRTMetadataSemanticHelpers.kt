@@ -1559,8 +1559,9 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             val eventHandlerDescriptor =
                 typeClassifier.classify(eventType, type.namespace).specialType as? WinRTEventHandlerTypeDescriptor
             val usesSharedEventHandlerSource =
-                eventHandlerDescriptor?.kind == WinRTEventHandlerKind.EventHandler &&
-                    eventHandlerDescriptor.typeArguments.size == 1
+                eventHandlerDescriptor != null &&
+                    eventHandlerDescriptor.kind in SHARED_EVENT_HANDLER_SOURCE_KINDS &&
+                    event.supportsSharedEventHandlerSource(type.namespace, eventHandlerDescriptor)
             WinRTEventHelperSubclassDescriptor(
                 eventTypeName = eventType.typeName,
                 projectedEventTypeName = eventType.typeName,
@@ -1576,6 +1577,17 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
                 interfaceId = eventDelegateInterfaceId(eventType, type.namespace),
             )
         }.distinctBy { it.eventTypeName to it.ownerTypeName }
+
+    private fun WinRTEventDefinition.supportsSharedEventHandlerSource(
+        currentNamespace: String,
+        descriptor: WinRTEventHandlerTypeDescriptor,
+    ): Boolean =
+        descriptor.typeArguments.size == 1 ||
+            resolveType(delegateType, currentNamespace)
+                ?.methods
+                ?.firstOrNull { method -> method.name == "Invoke" }
+                ?.parameters
+                ?.size == 2
 
     fun platformGuardDescriptor(
         ownerName: String,
@@ -2845,6 +2857,12 @@ fun metadataParameterCategoryFor(parameter: WinRTParameterDefinition): WinRTMeta
 
 private fun escapeTypeNameForIdentifier(typeName: String): String =
     typeName.replace(Regex("""[\s:<>,.]"""), "_")
+
+private val SHARED_EVENT_HANDLER_SOURCE_KINDS = setOf(
+    WinRTEventHandlerKind.EventHandler,
+    WinRTEventHandlerKind.PropertyChangedEventHandler,
+    WinRTEventHandlerKind.NotifyCollectionChangedEventHandler,
+)
 
 private fun WinRTTypeRef.matchesFundamentalType(expectedType: WinRTFundamentalType): Boolean =
     isWinRTFundamentalTypeName(normalized().typeName, expectedType)

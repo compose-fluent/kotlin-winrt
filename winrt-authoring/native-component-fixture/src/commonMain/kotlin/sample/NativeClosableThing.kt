@@ -2,7 +2,6 @@ package sample
 
 import io.github.composefluent.winrt.runtime.WinRTAuthoredRuntimeClass
 import io.github.composefluent.winrt.runtime.AsyncInfo
-import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.EventRegistrationTokenTable
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
@@ -12,6 +11,7 @@ import windows.data.json.JsonArray
 import windows.data.json.JsonObject
 import windows.data.json.JsonValue
 import windows.data.json.JsonValueType
+import windows.foundation.EventRegistrationToken
 import windows.foundation.collections.MapChangedEventHandler
 import windows.storage.streams.ByteOrder
 import windows.storage.streams.IBuffer

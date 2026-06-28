@@ -589,6 +589,18 @@ class KotlinWinRTIrGenerationExtension(
         val hasDirectCallBackend: Boolean
             get() = jvmFfmSymbols != null || nativeCInteropSymbols != null
 
+        private fun selectedAbiSymbols(): SelectedProjectionIntrinsicAbiSymbols =
+            selectProjectionIntrinsicAbiSymbols(
+                hasJvmFfmSymbols = jvmFfmSymbols != null,
+                hasNativeCInteropSymbols = nativeCInteropSymbols != null,
+            )
+
+        private fun SelectedProjectionIntrinsicAbiSymbols.jvmSymbols(): JvmFfmSymbols? =
+            if (useJvmFfm) jvmFfmSymbols else null
+
+        private fun SelectedProjectionIntrinsicAbiSymbols.nativeSymbols(): NativeCInteropSymbols? =
+            if (useNativeCInterop) nativeCInteropSymbols else null
+
         fun lower(
             intrinsicName: String,
             call: IrCall,
@@ -691,8 +703,9 @@ class KotlinWinRTIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             kind: ProjectedObjectGetterKind,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -877,8 +890,9 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1052,8 +1066,9 @@ class KotlinWinRTIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             kind: ProjectedObjectGetterKind,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             if (
                 jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object)) != true &&
                 nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object)) != true
@@ -1166,8 +1181,9 @@ class KotlinWinRTIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             includeProjectedObjectArgument: Boolean,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1270,8 +1286,9 @@ class KotlinWinRTIrGenerationExtension(
             kind: ProjectedObjectGetterKind,
             nullable: Boolean,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             if (
                 jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
                 nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
@@ -1418,8 +1435,9 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             if (
                 jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)) != true &&
                 nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)) != true
@@ -1593,8 +1611,9 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             if (
                 jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
                 nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
@@ -1674,8 +1693,9 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             if (
                 jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
                 nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
@@ -1758,8 +1778,9 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
@@ -1930,8 +1951,9 @@ class KotlinWinRTIrGenerationExtension(
             returnKind: NoArgumentGetterReturnKind,
             checkHResult: Boolean = true,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             if (
                 jvmSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true &&
                 nativeSymbols?.canLower(listOf(UnitCallAbiArgumentKind.Object)) != true
@@ -2247,8 +2269,9 @@ class KotlinWinRTIrGenerationExtension(
             abiShapeIndex: Int = 3,
             varargIndex: Int = 4,
         ): IrExpression? {
-            val jvmSymbols = jvmFfmSymbols
-            val nativeSymbols = if (jvmSymbols == null) nativeCInteropSymbols else null
+            val selectedSymbols = selectedAbiSymbols()
+            val jvmSymbols = selectedSymbols.jvmSymbols()
+            val nativeSymbols = selectedSymbols.nativeSymbols()
             val scope = builderScope ?: return null
             if ((returnKind == NoArgumentGetterReturnKind.UInt8 && ubyteConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt16 && ushortConstructor == null) ||
@@ -6405,3 +6428,18 @@ private fun ClassWriter.addDefaultConstructor() {
     method.visitMaxs(1, 1)
     method.visitEnd()
 }
+
+internal data class SelectedProjectionIntrinsicAbiSymbols(
+    val useJvmFfm: Boolean,
+    val useNativeCInterop: Boolean,
+)
+
+internal fun selectProjectionIntrinsicAbiSymbols(
+    hasJvmFfmSymbols: Boolean,
+    hasNativeCInteropSymbols: Boolean,
+): SelectedProjectionIntrinsicAbiSymbols =
+    if (hasNativeCInteropSymbols) {
+        SelectedProjectionIntrinsicAbiSymbols(useJvmFfm = false, useNativeCInterop = true)
+    } else {
+        SelectedProjectionIntrinsicAbiSymbols(useJvmFfm = hasJvmFfmSymbols, useNativeCInterop = false)
+    }
