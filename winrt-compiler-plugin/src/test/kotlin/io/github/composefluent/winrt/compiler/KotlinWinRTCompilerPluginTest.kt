@@ -32,6 +32,31 @@ import java.net.URLClassLoader
 @OptIn(ExperimentalCompilerApi::class, CompilerConfiguration.Internals::class)
 class KotlinWinRTCompilerPluginTest {
     @Test
+    fun projection_intrinsic_abi_selector_prefers_native_cinterop_over_jvm_ffm() {
+        assertEquals(
+            SelectedProjectionIntrinsicAbiSymbols(useJvmFfm = false, useNativeCInterop = true),
+            selectProjectionIntrinsicAbiSymbols(
+                hasJvmFfmSymbols = true,
+                hasNativeCInteropSymbols = true,
+            ),
+        )
+        assertEquals(
+            SelectedProjectionIntrinsicAbiSymbols(useJvmFfm = true, useNativeCInterop = false),
+            selectProjectionIntrinsicAbiSymbols(
+                hasJvmFfmSymbols = true,
+                hasNativeCInteropSymbols = false,
+            ),
+        )
+        assertEquals(
+            SelectedProjectionIntrinsicAbiSymbols(useJvmFfm = false, useNativeCInterop = true),
+            selectProjectionIntrinsicAbiSymbols(
+                hasJvmFfmSymbols = false,
+                hasNativeCInteropSymbols = true,
+            ),
+        )
+    }
+
+    @Test
     fun command_line_processor_stores_metadata_index_option() {
         val configuration = CompilerConfiguration()
         val processor = KotlinWinRTCommandLineProcessor()

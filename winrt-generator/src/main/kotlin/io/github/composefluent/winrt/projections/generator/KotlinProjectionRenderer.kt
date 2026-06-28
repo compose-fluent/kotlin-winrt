@@ -3344,6 +3344,7 @@ class KotlinProjectionRenderer(
     ): CodeBlock {
         val rawInterfaceName = redirectedAbiTypeName(interfaceName.substringBefore('<').removeSuffix("?"))
         if ('<' !in interfaceName) {
+            runtimeOwnedPublicInterfaceIdCode(rawInterfaceName)?.let { return it }
             mappedTypeByAbiName(rawInterfaceName)?.customObjectAbi?.let { customObjectAbi ->
                 return CodeBlock.of("%T(%S)", GUID_CLASS_NAME, customObjectAbi.interfaceId.toString())
             }
@@ -3360,6 +3361,12 @@ class KotlinProjectionRenderer(
         )
         return CodeBlock.of("%T.createFromSignature(%L)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, signature)
     }
+
+    private fun runtimeOwnedPublicInterfaceIdCode(rawInterfaceName: String): CodeBlock? =
+        when (rawInterfaceName) {
+            "Windows.Foundation.IStringable" -> CodeBlock.of("%T.IStringable", IID_CLASS_NAME)
+            else -> null
+        }
 
     private fun runtimeClassMappedIteratorInterfaceIdCode(
         interfaceName: String,

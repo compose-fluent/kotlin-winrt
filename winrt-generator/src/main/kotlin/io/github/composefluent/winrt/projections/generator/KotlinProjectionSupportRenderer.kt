@@ -4033,7 +4033,9 @@ class KotlinProjectionSupportRenderer {
             typesByQualifiedName = typesByQualifiedName,
         )
         val invokeShape = typeBinding.delegateInvokeShape ?: return null
-        val argumentBinding = typeBinding.typeArguments.singleOrNull() ?: return null
+        val argumentBinding = typeBinding.typeArguments.singleOrNull()
+            ?: invokeShape.parameterBindings.getOrNull(1)?.typeBinding
+            ?: return null
         val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return null
         val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
         val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
