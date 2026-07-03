@@ -7837,6 +7837,124 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_struct_property_setters_through_descriptor_unit_intrinsic() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Range",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(
+                                WinRTFieldDefinition("Start", "Int", rowId = 1, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRTFieldDefinition("End", "Int", rowId = 2, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                            ),
+                            layout = WinRTTypeLayout(WinRTTypeLayoutKind.Sequential, packingSize = 4, classSize = 8),
+                            isBlittable = true,
+                            abiSize = 8,
+                            abiAlignment = 4,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Rect",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(
+                                WinRTFieldDefinition("X", "Float", rowId = 3, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRTFieldDefinition("Y", "Float", rowId = 4, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRTFieldDefinition("Width", "Float", rowId = 5, offset = 8, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRTFieldDefinition("Height", "Float", rowId = 6, offset = 12, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                            ),
+                            layout = WinRTTypeLayout(WinRTTypeLayoutKind.Sequential, packingSize = 4, classSize = 16),
+                            isBlittable = true,
+                            abiSize = 16,
+                            abiAlignment = 4,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ISelectionRequest",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111114"),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "Selection",
+                                    typeName = "Sample.Foundation.Range",
+                                    getterMethodName = "get_Selection",
+                                    getterMethodRowId = 10,
+                                    setterMethodName = "put_Selection",
+                                    setterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ILayoutBounds",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111115"),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "TextBounds",
+                                    typeName = "Sample.Foundation.Rect",
+                                    setterMethodName = "put_TextBounds",
+                                    setterMethodRowId = 12,
+                                ),
+                                WinRTPropertyDefinition(
+                                    name = "ControlBounds",
+                                    typeName = "Sample.Foundation.Rect",
+                                    setterMethodName = "put_ControlBounds",
+                                    setterMethodRowId = 13,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "SelectionRequest",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ISelectionRequest",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.ISelectionRequest", isDefault = true),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "LayoutBounds",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ILayoutBounds",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.ILayoutBounds", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val requestContents = filesByName.getValue("SelectionRequest.kt").contents
+
+        assertTrue(requestContents.contains("var selection: Range"))
+        assertTrue(requestContents.contains("WinRTProjectionIntrinsic.callUnit("))
+        assertTrue(requestContents.contains("\"Struct8_4\""))
+        assertTrue(requestContents.contains("value,"))
+        assertTrue(requestContents.contains("Range.Metadata,"))
+        assertFalse(requestContents.contains("setStruct("))
+        assertFalse(requestContents.contains("\"Object\""))
+
+        val boundsContents = filesByName.getValue("LayoutBounds.kt").contents
+
+        assertTrue(boundsContents.contains("var textBounds: Rect"))
+        assertTrue(boundsContents.contains("var controlBounds: Rect"))
+        assertTrue(boundsContents.contains("WinRTProjectionIntrinsic.callUnit("))
+        assertTrue(boundsContents.contains("\"Struct16_4\""))
+        assertTrue(boundsContents.contains("Rect.Metadata,"))
+        assertFalse(boundsContents.contains("setStruct("))
+        assertFalse(boundsContents.contains("\"Object\""))
+    }
+
+    @Test
     fun generator_routes_instance_descriptor_boolean_methods_through_projection_intrinsic() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
@@ -11984,6 +12102,8 @@ class KotlinProjectionGeneratorTest {
                                     kind = KotlinProjectionAbiValueKind.Struct,
                                     typeName = "Sample.Foundation.Point",
                                     sourceTypeKind = WinRTTypeKind.Struct,
+                                    abiSize = 8,
+                                    abiAlignment = 4,
                                 ),
                             ),
                         ),
@@ -11999,7 +12119,11 @@ class KotlinProjectionGeneratorTest {
         ).toString()
 
         assertTrue(property, property.contains("WinRTProjectionIntrinsic.getStruct("))
-        assertTrue(property, property.contains("WinRTProjectionIntrinsic.setStruct("))
+        assertTrue(property, property.contains("WinRTProjectionIntrinsic.callUnit("))
+        assertTrue(property, property.contains("\"Struct8_4\""))
+        assertTrue(property, property.contains("value,"))
+        assertTrue(property, property.contains("Point.Metadata,"))
+        assertFalse(property.contains("WinRTProjectionIntrinsic.setStruct("))
         assertFalse(property.contains("WinRTInstanceProjectionInterop"))
         assertFalse(property.contains("ComVtableInvoker.invokeGenericArgs"))
     }
