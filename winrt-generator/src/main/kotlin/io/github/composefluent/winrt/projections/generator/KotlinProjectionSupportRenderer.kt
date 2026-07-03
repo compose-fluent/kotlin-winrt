@@ -3809,11 +3809,11 @@ class KotlinProjectionSupportRenderer {
         """
         package winrt.interop
 
-        import io.github.composefluent.winrt.runtime.ComVtableInvoker
         import io.github.composefluent.winrt.runtime.Guid
+        import io.github.composefluent.winrt.runtime.IUnknownReference
         import io.github.composefluent.winrt.runtime.PlatformAbi
         import io.github.composefluent.winrt.runtime.RawAddress
-        import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+        import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
         import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler
 
         public object WindowNative {
@@ -3821,15 +3821,17 @@ class KotlinProjectionSupportRenderer {
 
             public fun getWindowHandle(target: Any): RawAddress =
                 winRTProjectionMarshaler(target, "WinRT.Interop.IWindowNative", I_WINDOW_NATIVE_IID).use { marshaler ->
-                    PlatformAbi.confinedScope().use { scope ->
-                        val resultOut = PlatformAbi.allocatePointerSlot(scope)
-                        val hResult = ComVtableInvoker.invokeArgs(
-                            PlatformAbi.toRawComPtr(marshaler.abi),
+                    IUnknownReference(
+                        pointer = PlatformAbi.toRawComPtr(marshaler.abi),
+                        interfaceId = I_WINDOW_NATIVE_IID,
+                        preventReleaseOnDispose = true,
+                    ).use { reference ->
+                        WinRTProjectionIntrinsic.callScalar<RawAddress>(
+                            reference,
                             3,
-                            resultOut,
+                            "RawAddress",
+                            "",
                         )
-                        WinRTPlatformApi.checkSucceededRaw(hResult)
-                        PlatformAbi.readPointer(resultOut)
                     }
                 }
         }
@@ -3839,11 +3841,11 @@ class KotlinProjectionSupportRenderer {
         """
         package winrt.interop
 
-        import io.github.composefluent.winrt.runtime.ComVtableInvoker
         import io.github.composefluent.winrt.runtime.Guid
+        import io.github.composefluent.winrt.runtime.IUnknownReference
         import io.github.composefluent.winrt.runtime.PlatformAbi
         import io.github.composefluent.winrt.runtime.RawAddress
-        import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+        import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
         import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler
 
         public object InitializeWithWindow {
@@ -3851,12 +3853,18 @@ class KotlinProjectionSupportRenderer {
 
             public fun initialize(target: Any, hwnd: RawAddress) {
                 winRTProjectionMarshaler(target, "WinRT.Interop.IInitializeWithWindow", I_INITIALIZE_WITH_WINDOW_IID).use { marshaler ->
-                    val hResult = ComVtableInvoker.invokeArgs(
-                        PlatformAbi.toRawComPtr(marshaler.abi),
-                        3,
-                        hwnd,
-                    )
-                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    IUnknownReference(
+                        pointer = PlatformAbi.toRawComPtr(marshaler.abi),
+                        interfaceId = I_INITIALIZE_WITH_WINDOW_IID,
+                        preventReleaseOnDispose = true,
+                    ).use { reference ->
+                        WinRTProjectionIntrinsic.callUnit(
+                            reference,
+                            3,
+                            "RawAddress",
+                            hwnd,
+                        )
+                    }
                 }
             }
         }
