@@ -40,6 +40,8 @@ data class WinRTNamespaceAddition(
     val namespace: String,
     val kind: WinRTNamespaceAdditionKind = WinRTNamespaceAdditionKind.SourceAddition,
     val sourceFiles: List<String> = defaultNamespaceAdditionSourceFiles(namespace, kind),
+    val generatedTypeNames: List<String> = defaultNamespaceAdditionGeneratedTypeNames(namespace, kind),
+    val triggerNamespaces: List<String> = emptyList(),
 )
 
 enum class WinRTNamespaceAdditionKind {
@@ -49,6 +51,12 @@ enum class WinRTNamespaceAdditionKind {
 
 object WinRTNamespaceAdditions {
     val all: List<WinRTNamespaceAddition> = listOf(
+        WinRTNamespaceAddition(
+            namespace = "Microsoft.UI",
+            sourceFiles = listOf("strings/additions/Microsoft.UI/Win32Interop.kt"),
+            generatedTypeNames = listOf("microsoft.ui.Win32Interop"),
+            triggerNamespaces = listOf("Microsoft.UI.Windowing"),
+        ),
         WinRTNamespaceAddition("Microsoft.UI.Xaml"),
         WinRTNamespaceAddition("Microsoft.UI.Xaml.Controls.Primitives"),
         WinRTNamespaceAddition("Microsoft.UI.Xaml.Media"),
@@ -63,7 +71,15 @@ object WinRTNamespaceAdditions {
         WinRTNamespaceAddition("Windows.UI.Xaml.Media"),
         WinRTNamespaceAddition("Windows.UI.Xaml.Media.Animation"),
         WinRTNamespaceAddition("Windows.UI.Xaml.Media.Media3D"),
-        WinRTNamespaceAddition("WinRT.Interop", WinRTNamespaceAdditionKind.ComInteropAdapter),
+        WinRTNamespaceAddition(
+            namespace = "WinRT.Interop",
+            kind = WinRTNamespaceAdditionKind.ComInteropAdapter,
+            generatedTypeNames = listOf(
+                "winrt.interop.InitializeWithWindow",
+                "winrt.interop.WindowNative",
+            ),
+            triggerNamespaces = listOf("Windows"),
+        ),
         WinRTNamespaceAddition("Windows.ApplicationModel.DataTransfer", WinRTNamespaceAdditionKind.ComInteropAdapter),
         WinRTNamespaceAddition("Windows.ApplicationModel.DataTransfer.DragDrop.Core", WinRTNamespaceAdditionKind.ComInteropAdapter),
         WinRTNamespaceAddition("Windows.Graphics.Display", WinRTNamespaceAdditionKind.ComInteropAdapter),
@@ -82,7 +98,25 @@ object WinRTNamespaceAdditions {
     fun forNamespaces(namespaces: Iterable<String>, filter: WinRTMetadataFilter): List<WinRTNamespaceAddition> {
         val namespaceSet = namespaces.toSet()
         return all.filter { addition ->
-            addition.namespace in namespaceSet && filter.includes(addition.namespace)
+            val exactNamespaceOwner = addition.namespace in namespaceSet
+            val triggered = exactNamespaceOwner || addition.triggerNamespaces.any { triggerNamespace ->
+                namespaceSet.any { namespace ->
+                    namespace == triggerNamespace || namespace.startsWith("$triggerNamespace.")
+                }
+            }
+            val included = filter.include.isEmpty() || filter.include.any { includedName ->
+                addition.namespace == includedName ||
+                    addition.namespace.startsWith("$includedName.") ||
+                    addition.triggerNamespaces.any { triggerNamespace ->
+                        includedName == triggerNamespace ||
+                            includedName.startsWith("$triggerNamespace.") ||
+                            triggerNamespace.startsWith("$includedName.")
+                    }
+            }
+            val excluded = filter.exclude.any { excludedNamespace ->
+                addition.namespace == excludedNamespace || addition.namespace.startsWith("$excludedNamespace.")
+            }
+            triggered && included && !excluded
         }
     }
 }
@@ -95,6 +129,11 @@ private fun defaultNamespaceAdditionSourceFiles(
         WinRTNamespaceAdditionKind.SourceAddition -> namespaceSourceAdditionFiles(namespace)
         WinRTNamespaceAdditionKind.ComInteropAdapter -> listOf("interop/$namespace.kt")
     }
+
+private fun defaultNamespaceAdditionGeneratedTypeNames(
+    namespace: String,
+    kind: WinRTNamespaceAdditionKind,
+): List<String> = emptyList()
 
 private fun namespaceSourceAdditionFiles(namespace: String): List<String> {
     val base = "strings/additions/$namespace"

@@ -122,6 +122,7 @@ class KotlinProjectionGenerator(
     private val emitSupportFiles: Boolean = false,
     private val projectionContext: WinRTMetadataProjectionContext = WinRTMetadataProjectionContext(sources = emptyList()),
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
+    private val suppressedSourceAdditionTypeNames: Set<String> = emptySet(),
     private val authoredRuntimeClassNames: Set<String> = emptySet(),
     private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
     private val groupProjectionFilesByPackageOnWrite: Boolean = false,
@@ -1748,6 +1749,7 @@ class KotlinProjectionGenerator(
             eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             namespaceAdditionsClassName = namespaceAdditionsClassName,
             supportOwnerIdentity = supportOwnerIdentity,
+            excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
         )
         val files = when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> supportRendererFiles

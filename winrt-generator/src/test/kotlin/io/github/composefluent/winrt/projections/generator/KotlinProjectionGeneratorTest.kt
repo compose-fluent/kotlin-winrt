@@ -17472,7 +17472,96 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("SourceAddition"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("fun installNamespaceAdditions"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("sourceFiles"))
+        assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("generatedTypeNames"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("strings/additions/Windows.Foundation/AsyncInfo.kt"))
+    }
+
+    @Test
+    fun generator_emits_owner_scoped_winrt_and_wasdk_interop_source_additions() {
+        val filesByPath = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(interopSourceAdditionModel())
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        val windowNative = filesByPath.getValue("winrt/interop/WindowNative.kt").contents
+        assertTrue(windowNative.contains("package winrt.interop"))
+        assertTrue(windowNative.contains("public object WindowNative"))
+        assertTrue(windowNative.contains("Guid(\"EECDBF0E-BAE9-4CB6-A68E-9598E1CB57BB\")"))
+        assertTrue(windowNative.contains("ComVtableInvoker.invokeArgs("))
+        assertTrue(windowNative.contains("3,"))
+
+        val initializeWithWindow = filesByPath.getValue("winrt/interop/InitializeWithWindow.kt").contents
+        assertTrue(initializeWithWindow.contains("public object InitializeWithWindow"))
+        assertTrue(initializeWithWindow.contains("Guid(\"3E68D4BD-7135-4D10-8018-9FB6D9F33FA1\")"))
+        assertTrue(initializeWithWindow.contains("public fun initialize(target: Any, hwnd: RawAddress)"))
+
+        val win32Interop = filesByPath.getValue("microsoft/ui/Win32Interop.kt").contents
+        assertTrue(win32Interop.contains("package microsoft.ui"))
+        assertTrue(win32Interop.contains("public object Win32Interop"))
+        assertTrue(win32Interop.contains("Windowing_GetWindowIdFromWindow"))
+        assertTrue(win32Interop.contains("Windowing_GetIconFromIconId"))
+        assertTrue(win32Interop.contains("Microsoft.Internal.FrameworkUdk.dll"))
+        assertTrue(win32Interop.contains("WinRTNativeExportInvoker.invokeHResultAddressAddress"))
+        assertTrue(win32Interop.contains("WinRTNativeExportInvoker.invokeHResultStruct8Address"))
+
+        val namespaceAdditions = filesByPath.getValue("io/github/composefluent/winrt/projections/support/WinRTNamespaceAdditions.kt").contents
+        assertTrue(namespaceAdditions.contains("microsoft.ui.Win32Interop"))
+        assertTrue(namespaceAdditions.contains("winrt.interop.WindowNative"))
+        assertTrue(namespaceAdditions.contains("winrt.interop.InitializeWithWindow"))
+
+        val sourceAdditions = filesByPath.getValue("kotlin-winrt-support/source-additions.tsv").contents
+        assertEquals(
+            "generatedTypeName\n" +
+                "microsoft.ui.Win32Interop\n" +
+                "winrt.interop.InitializeWithWindow\n" +
+                "winrt.interop.WindowNative\n",
+            sourceAdditions,
+        )
+    }
+
+    @Test
+    fun generator_suppresses_dependency_owned_interop_source_additions() {
+        val filesByPath = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            suppressedSourceAdditionTypeNames = setOf(
+                "microsoft.ui.Win32Interop",
+                "winrt.interop.InitializeWithWindow",
+                "winrt.interop.WindowNative",
+            ),
+        ).generate(interopSourceAdditionModel()).associateBy(KotlinProjectionFile::relativePath)
+
+        assertFalse("microsoft/ui/Win32Interop.kt" in filesByPath)
+        assertFalse("winrt/interop/InitializeWithWindow.kt" in filesByPath)
+        assertFalse("winrt/interop/WindowNative.kt" in filesByPath)
+        assertFalse("kotlin-winrt-support/source-additions.tsv" in filesByPath)
+        assertFalse("io/github/composefluent/winrt/projections/support/WinRTNamespaceAdditions.kt" in filesByPath)
+    }
+
+    @Test
+    fun generator_emits_winrt_interop_source_additions_for_windows_projection_owner() {
+        val filesByPath = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(
+                WinRTMetadataModel(
+                    namespaces = listOf(
+                        WinRTNamespace(
+                            name = "Windows.Foundation",
+                            types = listOf(
+                                WinRTTypeDefinition(
+                                    namespace = "Windows.Foundation",
+                                    name = "IStringable",
+                                    kind = WinRTTypeKind.Interface,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue("winrt/interop/WindowNative.kt" in filesByPath)
+        assertTrue("winrt/interop/InitializeWithWindow.kt" in filesByPath)
+        assertTrue(
+            filesByPath.getValue("kotlin-winrt-support/source-additions.tsv").contents.contains("winrt.interop.WindowNative"),
+        )
     }
 
     @Test
@@ -17502,6 +17591,52 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(files.any { file -> file.relativePath.endsWith("DispatcherQueueCoroutineDispatcher.kt") })
     }
+
+    private fun interopSourceAdditionModel(): WinRTMetadataModel =
+        WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Microsoft.UI",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI",
+                            name = "WindowId",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(WinRTFieldDefinition("Value", "UInt64")),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI",
+                            name = "DisplayId",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(WinRTFieldDefinition("Value", "UInt64")),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI",
+                            name = "IconId",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(WinRTFieldDefinition("Value", "UInt64")),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "WinRT.Interop",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "WinRT.Interop",
+                            name = "IWindowNative",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("EECDBF0E-BAE9-4CB6-A68E-9598E1CB57BB"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "WinRT.Interop",
+                            name = "IInitializeWithWindow",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("3E68D4BD-7135-4D10-8018-9FB6D9F33FA1"),
+                        ),
+                    ),
+                ),
+            ),
+        )
 
     private fun dispatcherQueueHandlerOnlyModel(): WinRTMetadataModel =
         WinRTMetadataModel(

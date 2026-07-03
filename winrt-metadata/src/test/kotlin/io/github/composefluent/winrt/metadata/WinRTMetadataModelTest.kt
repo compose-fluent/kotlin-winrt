@@ -2827,6 +2827,18 @@ class WinRTMetadataModelTest {
                     ),
                 ),
                 WinRTNamespace(
+                    name = "WinRT.Interop",
+                    types = listOf(
+                        WinRTTypeDefinition(namespace = "WinRT.Interop", name = "IWindowNative", kind = WinRTTypeKind.Interface),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "Microsoft.UI",
+                    types = listOf(
+                        WinRTTypeDefinition(namespace = "Microsoft.UI", name = "WindowId", kind = WinRTTypeKind.Struct),
+                    ),
+                ),
+                WinRTNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
                         WinRTTypeDefinition(namespace = "Sample.Foundation", name = "Widget", kind = WinRTTypeKind.RuntimeClass),
@@ -2840,6 +2852,8 @@ class WinRTMetadataModelTest {
                 sources = emptyList(),
                 include = setOf(
                     "Windows.Foundation",
+                    "WinRT.Interop",
+                    "Microsoft.UI",
                     "Microsoft.UI.Xaml",
                     "Windows.ApplicationModel.DataTransfer",
                     "Windows.UI.Xaml.Controls.Primitives",
@@ -2850,14 +2864,22 @@ class WinRTMetadataModelTest {
 
         assertEquals(
             listOf(
+                "Microsoft.UI",
+                "WinRT.Interop",
                 "Windows.ApplicationModel.DataTransfer",
                 "Windows.Foundation",
                 "Windows.UI.Xaml.Controls.Primitives",
             ),
             inventory.namespaceAdditions.map { it.namespace },
         )
-        assertEquals(WinRTNamespaceAdditionKind.ComInteropAdapter, inventory.namespaceAdditions.first().kind)
-        assertEquals(listOf("interop/Windows.ApplicationModel.DataTransfer.kt"), inventory.namespaceAdditions.first().sourceFiles)
+        assertEquals(
+            WinRTNamespaceAdditionKind.ComInteropAdapter,
+            inventory.namespaceAdditions.single { it.namespace == "Windows.ApplicationModel.DataTransfer" }.kind,
+        )
+        assertEquals(
+            listOf("interop/Windows.ApplicationModel.DataTransfer.kt"),
+            inventory.namespaceAdditions.single { it.namespace == "Windows.ApplicationModel.DataTransfer" }.sourceFiles,
+        )
         assertEquals(
             listOf(
                 "strings/additions/Windows.Foundation/AsyncInfo.kt",
@@ -2878,8 +2900,42 @@ class WinRTMetadataModelTest {
             listOf("strings/additions/Windows.UI.Xaml.Controls/Windows.UI.Xaml.Controls.Primitives.kt"),
             inventory.namespaceAdditions.single { it.namespace == "Windows.UI.Xaml.Controls.Primitives" }.sourceFiles,
         )
+        assertEquals(
+            listOf("microsoft.ui.Win32Interop"),
+            inventory.namespaceAdditions.single { it.namespace == "Microsoft.UI" }.generatedTypeNames,
+        )
+        assertEquals(
+            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
+            inventory.namespaceAdditions.single { it.namespace == "WinRT.Interop" }.generatedTypeNames,
+        )
         assertEquals(true, inventory.helperOutputs.namespaceAdditionsRequired)
         assertTrue("WinRTNamespaceAdditions.kt" in inventory.helperOutputs.requiredHelperFileNames)
+    }
+
+    @Test
+    fun windows_projection_namespace_triggers_winrt_interop_source_additions() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(namespace = "Windows.Foundation", name = "IStringable", kind = WinRTTypeKind.Interface),
+                    ),
+                ),
+            ),
+        )
+
+        val inventory = model.projectionInventory(
+            WinRTMetadataProjectionContext(
+                sources = emptyList(),
+                include = setOf("Windows.Foundation"),
+            ),
+        )
+
+        assertEquals(
+            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
+            inventory.namespaceAdditions.single { it.namespace == "WinRT.Interop" }.generatedTypeNames,
+        )
     }
 
     @Test
