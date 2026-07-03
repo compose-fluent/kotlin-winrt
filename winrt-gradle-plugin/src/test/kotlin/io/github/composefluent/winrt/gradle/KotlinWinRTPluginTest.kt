@@ -8521,6 +8521,9 @@ class KotlinWinRTPluginTest {
                         fun scalarWithStruct(reference: ComObjectReference, value: Point): Int =
                             WinRTProjectionIntrinsic.callScalar(reference, 8, "Int32", "Struct8_4", value, Point.Metadata)
 
+                        fun rawAddressScalar(reference: ComObjectReference): RawAddress =
+                            WinRTProjectionIntrinsic.callScalar(reference, 11, "RawAddress", "")
+
                         fun booleanWithStruct(reference: ComObjectReference, value: Point): Boolean =
                             WinRTProjectionIntrinsic.callBoolean(reference, 9, "Struct8_4", value, Point.Metadata)
 

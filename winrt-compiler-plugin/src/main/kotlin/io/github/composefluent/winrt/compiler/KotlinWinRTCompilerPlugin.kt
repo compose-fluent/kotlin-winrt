@@ -2031,6 +2031,7 @@ class KotlinWinRTIrGenerationExtension(
                     NoArgumentGetterReturnKind.UInt64 -> platformAbiAllocateInt64Slot
                     NoArgumentGetterReturnKind.Float -> platformAbiAllocateBytes
                     NoArgumentGetterReturnKind.Double -> platformAbiAllocateDoubleSlot
+                    NoArgumentGetterReturnKind.RawAddress -> platformAbiAllocatePointerSlot
                 },
             ).apply {
                 arguments[0] = builder.irGetObject(platformAbi)
@@ -2104,6 +2105,10 @@ class KotlinWinRTIrGenerationExtension(
                     arguments[1] = resultOut
                 }
                 NoArgumentGetterReturnKind.Double -> builder.irCall(platformAbiReadDouble).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.RawAddress -> builder.irCall(platformAbiReadPointer).apply {
                     arguments[0] = builder.irGetObject(platformAbi)
                     arguments[1] = resultOut
                 }
@@ -2249,6 +2254,7 @@ class KotlinWinRTIrGenerationExtension(
                 "UInt64" -> NoArgumentGetterReturnKind.UInt64
                 "Float" -> NoArgumentGetterReturnKind.Float
                 "Double" -> NoArgumentGetterReturnKind.Double
+                "RawAddress" -> NoArgumentGetterReturnKind.RawAddress
                 else -> return null
             }
             return lowerDescriptorCallScalar(
@@ -3174,6 +3180,7 @@ class KotlinWinRTIrGenerationExtension(
             UInt64,
             Float,
             Double,
+            RawAddress,
         }
 
         private enum class ProjectedObjectGetterKind {

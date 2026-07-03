@@ -17486,13 +17486,20 @@ class KotlinProjectionGeneratorTest {
         assertTrue(windowNative.contains("package winrt.interop"))
         assertTrue(windowNative.contains("public object WindowNative"))
         assertTrue(windowNative.contains("Guid(\"EECDBF0E-BAE9-4CB6-A68E-9598E1CB57BB\")"))
-        assertTrue(windowNative.contains("ComVtableInvoker.invokeArgs("))
+        assertTrue(windowNative.contains("WinRTProjectionIntrinsic.callScalar<RawAddress>"))
+        assertTrue(windowNative.contains("\"RawAddress\""))
+        assertTrue(windowNative.contains("preventReleaseOnDispose = true"))
         assertTrue(windowNative.contains("3,"))
+        assertFalse(windowNative.contains("ComVtableInvoker"))
 
         val initializeWithWindow = filesByPath.getValue("winrt/interop/InitializeWithWindow.kt").contents
         assertTrue(initializeWithWindow.contains("public object InitializeWithWindow"))
         assertTrue(initializeWithWindow.contains("Guid(\"3E68D4BD-7135-4D10-8018-9FB6D9F33FA1\")"))
         assertTrue(initializeWithWindow.contains("public fun initialize(target: Any, hwnd: RawAddress)"))
+        assertTrue(initializeWithWindow.contains("WinRTProjectionIntrinsic.callUnit("))
+        assertTrue(initializeWithWindow.contains("\"RawAddress\""))
+        assertTrue(initializeWithWindow.contains("preventReleaseOnDispose = true"))
+        assertFalse(initializeWithWindow.contains("ComVtableInvoker"))
 
         val win32Interop = filesByPath.getValue("microsoft/ui/Win32Interop.kt").contents
         assertTrue(win32Interop.contains("package microsoft.ui"))
