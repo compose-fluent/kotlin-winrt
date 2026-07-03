@@ -155,6 +155,7 @@ class KotlinWinRTPluginTest {
         val identity = projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile().readText()
         assertTrue(identity.contains("\"includeTypes\": []"))
         assertTrue(identity.contains("\"projectedTypes\": []"))
+        assertTrue(identity.contains("\"sourceAdditions\": []"))
         assertTrue(identity.contains("\"projectionShapeVersion\": 1"))
     }
 
@@ -7418,6 +7419,104 @@ class KotlinWinRTPluginTest {
             ),
             dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
         )
+    }
+
+    @Test
+    fun source_addition_identity_follows_owner_namespaces() {
+        assertEquals(
+            listOf("microsoft.ui.Win32Interop", "winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
+            sourceAdditionTypeNames(listOf("Microsoft.UI", "WinRT.Interop"), emptyList()),
+        )
+        assertEquals(
+            listOf("microsoft.ui.Win32Interop"),
+            sourceAdditionTypeNames(listOf("Microsoft.UI.Windowing"), emptyList()),
+        )
+        assertEquals(
+            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
+            sourceAdditionTypeNames(listOf("Windows.Foundation"), emptyList()),
+        )
+        assertEquals(
+            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
+            sourceAdditionTypeNames(listOf("Microsoft.UI", "WinRT.Interop"), listOf("Microsoft.UI")),
+        )
+    }
+
+    @Test
+    fun source_addition_identity_reads_generated_manifest() {
+        val project = ProjectBuilder.builder().build()
+        val manifest = project.layout.buildDirectory.file("generated-source-additions/source-additions.tsv").get().asFile
+        Files.createDirectories(manifest.toPath().parent)
+        Files.writeString(
+            manifest.toPath(),
+            """
+            generatedTypeName
+            winrt.interop.WindowNative
+            microsoft.ui.Win32Interop
+            winrt.interop.InitializeWithWindow
+            microsoft.ui.Win32Interop
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            listOf("microsoft.ui.Win32Interop", "winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
+            readGeneratedSourceAdditionTypeNames(listOf(manifest)),
+        )
+    }
+
+    @Test
+    fun dependency_identity_source_additions_suppress_downstream_generation() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency-source-additions/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": ["Microsoft.UI"],
+              "includeTypes": [],
+              "projectionShapeVersion": 1,
+              "projectedTypes": [],
+              "sourceAdditions": ["microsoft.ui.Win32Interop"],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            setOf("microsoft.ui.Win32Interop"),
+            dependencySourceAdditionTypeNames(listOf(dependencyIdentity)),
+        )
+        assertEquals(
+            listOf("microsoft.ui.Win32Interop"),
+            readProjectionSurfaceIdentity(dependencyIdentity).sourceAdditions,
+        )
+    }
+
+    @Test
+    fun duplicate_dependency_source_addition_owners_fail_closed() {
+        val project = ProjectBuilder.builder().build()
+        val first = project.layout.buildDirectory.file("dependency-source-additions-a/kotlin-winrt.json").get().asFile
+        val second = project.layout.buildDirectory.file("dependency-source-additions-b/kotlin-winrt.json").get().asFile
+        listOf(first, second).forEach { identity ->
+            Files.createDirectories(identity.toPath().parent)
+            Files.writeString(
+                identity.toPath(),
+                """
+                {
+                  "sourceAdditions": ["microsoft.ui.Win32Interop"]
+                }
+                """.trimIndent(),
+            )
+        }
+
+        try {
+            dependencySourceAdditionTypeNames(listOf(first, second))
+            throw AssertionError("Expected duplicate source addition ownership to fail.")
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("microsoft.ui.Win32Interop"))
+            assertTrue(error.message.orEmpty().contains("multiple WinRT projection dependencies"))
+        }
     }
 
     @Test

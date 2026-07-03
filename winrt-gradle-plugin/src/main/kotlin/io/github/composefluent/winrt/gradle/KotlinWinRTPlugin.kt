@@ -132,6 +132,14 @@ private fun configureWinRTLibraryModel(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
                 ),
             )
+            task.sourceAdditionManifestFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/source-additions.tsv",
+                ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/source-additions.tsv",
+                ),
+            )
             task.excludeNamespaces.set(extension.excludeNamespaces)
             task.excludeTypes.set(extension.excludeTypes)
             task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)

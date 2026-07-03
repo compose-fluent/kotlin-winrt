@@ -2,6 +2,8 @@ package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.renderAuthoringMetadataIndexRow
+import io.github.composefluent.winrt.metadata.WinRTMetadataFilter
+import io.github.composefluent.winrt.metadata.WinRTNamespaceAdditions
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -44,6 +46,11 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val typeShapeDescriptorFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceAdditionManifestFiles: ConfigurableFileCollection
 
     @get:Input
     abstract val excludeNamespaces: ListProperty<String>
@@ -112,6 +119,7 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
                 appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files, typeShapeDescriptorFiles.files).toJsonArray()},")
+                appendLine("  \"sourceAdditions\": ${readGeneratedSourceAdditionTypeNames(sourceAdditionManifestFiles.files).toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
                 appendLine("  \"additionExcludeNamespaces\": ${additionExcludeNamespaces.get().toJsonArray()},")
@@ -146,6 +154,52 @@ internal fun readProjectedTypeNames(
         )
             .distinct()
             .sorted()
+
+internal fun readGeneratedSourceAdditionTypeNames(
+    sourceAdditionManifestFiles: Iterable<File>,
+): List<String> =
+    sourceAdditionManifestFiles
+        .filter(File::isFile)
+        .flatMap(::readSourceAdditionManifestTypeNames)
+        .distinct()
+        .sorted()
+
+private fun readSourceAdditionManifestTypeNames(file: File): List<String> {
+    val lines = file.readLines().filter(String::isNotBlank)
+    if (lines.isEmpty()) {
+        return emptyList()
+    }
+    if (lines.first() != "generatedTypeName") {
+        throw GradleException(
+            "Malformed source-additions manifest '${file.absolutePath}': expected header generatedTypeName.",
+        )
+    }
+    return lines.drop(1).map { line ->
+        if ('\t' in line) {
+            throw GradleException(
+                "Malformed source-additions manifest '${file.absolutePath}': expected one generated type name per row.",
+            )
+        }
+        line
+    }
+}
+
+internal fun sourceAdditionTypeNames(
+    includeNamespaces: Iterable<String>,
+    additionExcludeNamespaces: Iterable<String>,
+): List<String> {
+    val includes = includeNamespaces.toSet()
+    return WinRTNamespaceAdditions.forNamespaces(
+        includes,
+        WinRTMetadataFilter(
+            include = includes,
+            exclude = additionExcludeNamespaces.toSet(),
+        ).normalized(),
+    )
+        .flatMap { addition -> addition.generatedTypeNames }
+        .distinct()
+        .sorted()
+}
 
 private val projectionRegistrarHeader = listOf(
     "kotlinClassName",

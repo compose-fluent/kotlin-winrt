@@ -25,6 +25,7 @@ import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringD
 import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTNamespaceAddition
 import io.github.composefluent.winrt.metadata.WinRTObjectReferenceSurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRTRequiredInterfaceAugmentationDescriptor
@@ -152,8 +153,11 @@ class KotlinProjectionSupportRenderer {
         eventProjectionHelperFilePrefix: String = "WinRTEventProjectionHelper",
         namespaceAdditionsClassName: ClassName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME,
         supportOwnerIdentity: String? = null,
+        excludedSourceAdditionTypeNames: Set<String> = emptySet(),
     ): List<KotlinProjectionFile> {
-        val inventory = WinRTMetadataProjectionInventoryBuilder.create(model, context).build()
+        val inventory = WinRTMetadataProjectionInventoryBuilder.create(model, context)
+            .build()
+            .withoutSourceAdditions(excludedSourceAdditionTypeNames)
         validateAuthoringMetadataProjectionPlans(inventory, plans)
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
@@ -204,7 +208,9 @@ class KotlinProjectionSupportRenderer {
                 ),
                 renderAuthoringCcwFactories(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
+                renderSourceAdditionCompilerInput(inventory),
             ).forEach(::add)
+            addAll(renderSourceAdditionFiles(inventory))
             if (emitProjectionRegistrar) {
                 addAll(renderProjectionSupportAnchors(supportOwnerIdentity))
             }
@@ -1595,6 +1601,7 @@ class KotlinProjectionSupportRenderer {
                         "namespace" to stringTypeName(),
                         "kind" to stringTypeName(),
                         "sourceFiles" to stringListTypeName(),
+                        "generatedTypeNames" to stringListTypeName(),
                     ),
                 ),
             )
@@ -1631,6 +1638,52 @@ class KotlinProjectionSupportRenderer {
             .build()
         return supportFile("${namespaceAdditionsClassName.simpleName}.kt", fileSpec)
     }
+
+    private fun renderSourceAdditionFiles(inventory: WinRTMetadataProjectionInventory): List<KotlinProjectionFile> =
+        inventory.namespaceAdditions
+            .flatMap(WinRTNamespaceAddition::generatedTypeNames)
+            .distinct()
+            .sorted()
+            .mapNotNull(::renderSourceAdditionFile)
+
+    private fun renderSourceAdditionCompilerInput(inventory: WinRTMetadataProjectionInventory): KotlinProjectionFile? {
+        val generatedTypeNames = inventory.namespaceAdditions
+            .flatMap(WinRTNamespaceAddition::generatedTypeNames)
+            .distinct()
+            .sorted()
+        if (generatedTypeNames.isEmpty()) {
+            return null
+        }
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/source-additions.tsv",
+            packageName = "",
+            contents = generatedTypeNames.joinToString(
+                separator = "\n",
+                prefix = "generatedTypeName\n",
+                postfix = "\n",
+            ),
+        )
+    }
+
+    private fun renderSourceAdditionFile(typeName: String): KotlinProjectionFile? =
+        when (typeName) {
+            "winrt.interop.WindowNative" -> KotlinProjectionFile(
+                relativePath = "winrt/interop/WindowNative.kt",
+                packageName = "winrt.interop",
+                contents = winRTInteropWindowNativeSource(),
+            )
+            "winrt.interop.InitializeWithWindow" -> KotlinProjectionFile(
+                relativePath = "winrt/interop/InitializeWithWindow.kt",
+                packageName = "winrt.interop",
+                contents = winRTInteropInitializeWithWindowSource(),
+            )
+            "microsoft.ui.Win32Interop" -> KotlinProjectionFile(
+                relativePath = "microsoft/ui/Win32Interop.kt",
+                packageName = "microsoft.ui",
+                contents = microsoftUiWin32InteropSource(),
+            )
+            else -> null
+        }
 
     private fun renderAuthoringModuleActivationFactoryPlan(
         inventory: WinRTMetadataProjectionInventory,
@@ -3752,6 +3805,199 @@ class KotlinProjectionSupportRenderer {
             else -> "null"
         }
 
+    private fun winRTInteropWindowNativeSource(): String =
+        """
+        package winrt.interop
+
+        import io.github.composefluent.winrt.runtime.ComVtableInvoker
+        import io.github.composefluent.winrt.runtime.Guid
+        import io.github.composefluent.winrt.runtime.PlatformAbi
+        import io.github.composefluent.winrt.runtime.RawAddress
+        import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+        import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler
+
+        public object WindowNative {
+            private val I_WINDOW_NATIVE_IID: Guid = Guid("EECDBF0E-BAE9-4CB6-A68E-9598E1CB57BB")
+
+            public fun getWindowHandle(target: Any): RawAddress =
+                winRTProjectionMarshaler(target, "WinRT.Interop.IWindowNative", I_WINDOW_NATIVE_IID).use { marshaler ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                        val hResult = ComVtableInvoker.invokeArgs(
+                            PlatformAbi.toRawComPtr(marshaler.abi),
+                            3,
+                            resultOut,
+                        )
+                        WinRTPlatformApi.checkSucceededRaw(hResult)
+                        PlatformAbi.readPointer(resultOut)
+                    }
+                }
+        }
+        """.trimIndent() + "\n"
+
+    private fun winRTInteropInitializeWithWindowSource(): String =
+        """
+        package winrt.interop
+
+        import io.github.composefluent.winrt.runtime.ComVtableInvoker
+        import io.github.composefluent.winrt.runtime.Guid
+        import io.github.composefluent.winrt.runtime.PlatformAbi
+        import io.github.composefluent.winrt.runtime.RawAddress
+        import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+        import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler
+
+        public object InitializeWithWindow {
+            private val I_INITIALIZE_WITH_WINDOW_IID: Guid = Guid("3E68D4BD-7135-4D10-8018-9FB6D9F33FA1")
+
+            public fun initialize(target: Any, hwnd: RawAddress) {
+                winRTProjectionMarshaler(target, "WinRT.Interop.IInitializeWithWindow", I_INITIALIZE_WITH_WINDOW_IID).use { marshaler ->
+                    val hResult = ComVtableInvoker.invokeArgs(
+                        PlatformAbi.toRawComPtr(marshaler.abi),
+                        3,
+                        hwnd,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                }
+            }
+        }
+        """.trimIndent() + "\n"
+
+    private fun microsoftUiWin32InteropSource(): String =
+        """
+        package microsoft.ui
+
+        import io.github.composefluent.winrt.runtime.PlatformAbi
+        import io.github.composefluent.winrt.runtime.RawAddress
+        import io.github.composefluent.winrt.runtime.WinRTNativeExportInvoker
+        import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+
+        public object Win32Interop {
+            public fun getWindowIdFromWindow(hwnd: RawAddress): WindowId =
+                PlatformAbi.confinedScope().use { scope ->
+                    requireStruct8("WindowId", WindowId.Metadata.layout.sizeBytes)
+                    val resultOut = PlatformAbi.allocateBytes(scope, WindowId.Metadata.layout.sizeBytes)
+                    val hResult = WinRTNativeExportInvoker.invokeHResultAddressAddress(
+                        frameworkUdkProcedure("Windowing_GetWindowIdFromWindow"),
+                        hwnd,
+                        resultOut,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    WindowId.Metadata.fromAbi(resultOut)
+                }
+
+            public fun getWindowFromWindowId(windowId: WindowId): RawAddress =
+                PlatformAbi.confinedScope().use { scope ->
+                    requireStruct8("WindowId", WindowId.Metadata.layout.sizeBytes)
+                    val windowIdAbi = PlatformAbi.allocateBytes(scope, WindowId.Metadata.layout.sizeBytes)
+                    val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                    WindowId.Metadata.copyTo(windowId, windowIdAbi)
+                    val hResult = WinRTNativeExportInvoker.invokeHResultStruct8Address(
+                        frameworkUdkProcedure("Windowing_GetWindowFromWindowId"),
+                        windowIdAbi,
+                        resultOut,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    PlatformAbi.readPointer(resultOut)
+                }
+
+            public fun getDisplayIdFromMonitor(hmonitor: RawAddress): DisplayId =
+                PlatformAbi.confinedScope().use { scope ->
+                    requireStruct8("DisplayId", DisplayId.Metadata.layout.sizeBytes)
+                    val resultOut = PlatformAbi.allocateBytes(scope, DisplayId.Metadata.layout.sizeBytes)
+                    val hResult = WinRTNativeExportInvoker.invokeHResultAddressAddress(
+                        frameworkUdkProcedure("Windowing_GetDisplayIdFromMonitor"),
+                        hmonitor,
+                        resultOut,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    DisplayId.Metadata.fromAbi(resultOut)
+                }
+
+            public fun getMonitorFromDisplayId(displayId: DisplayId): RawAddress =
+                PlatformAbi.confinedScope().use { scope ->
+                    requireStruct8("DisplayId", DisplayId.Metadata.layout.sizeBytes)
+                    val displayIdAbi = PlatformAbi.allocateBytes(scope, DisplayId.Metadata.layout.sizeBytes)
+                    val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                    DisplayId.Metadata.copyTo(displayId, displayIdAbi)
+                    val hResult = WinRTNativeExportInvoker.invokeHResultStruct8Address(
+                        frameworkUdkProcedure("Windowing_GetMonitorFromDisplayId"),
+                        displayIdAbi,
+                        resultOut,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    PlatformAbi.readPointer(resultOut)
+                }
+
+            public fun getIconIdFromIcon(hicon: RawAddress): IconId =
+                PlatformAbi.confinedScope().use { scope ->
+                    requireStruct8("IconId", IconId.Metadata.layout.sizeBytes)
+                    val resultOut = PlatformAbi.allocateBytes(scope, IconId.Metadata.layout.sizeBytes)
+                    val hResult = WinRTNativeExportInvoker.invokeHResultAddressAddress(
+                        frameworkUdkProcedure("Windowing_GetIconIdFromIcon"),
+                        hicon,
+                        resultOut,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    IconId.Metadata.fromAbi(resultOut)
+                }
+
+            public fun getIconFromIconId(iconId: IconId): RawAddress =
+                PlatformAbi.confinedScope().use { scope ->
+                    requireStruct8("IconId", IconId.Metadata.layout.sizeBytes)
+                    val iconIdAbi = PlatformAbi.allocateBytes(scope, IconId.Metadata.layout.sizeBytes)
+                    val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                    IconId.Metadata.copyTo(iconId, iconIdAbi)
+                    val hResult = WinRTNativeExportInvoker.invokeHResultStruct8Address(
+                        frameworkUdkProcedure("Windowing_GetIconFromIconId"),
+                        iconIdAbi,
+                        resultOut,
+                    )
+                    WinRTPlatformApi.checkSucceededRaw(hResult)
+                    PlatformAbi.readPointer(resultOut)
+                }
+
+            private fun frameworkUdkProcedure(name: String): RawAddress =
+                FRAMEWORK_UDK_PROCEDURES.getValue(name)
+
+            private fun requireStruct8(typeName: String, sizeBytes: Long) {
+                require(sizeBytes == 8L) {
+                    "Microsoft.UI.Win32Interop expected ${'$'}typeName to remain an 8-byte ABI value, got ${'$'}sizeBytes bytes."
+                }
+            }
+
+            private val FRAMEWORK_UDK_PROCEDURES: Map<String, RawAddress> by lazy {
+                val module = loadFrameworkUdk()
+                val resolved = FRAMEWORK_UDK_EXPORTS.associateWith { exportName ->
+                    WinRTPlatformApi.tryGetProcAddressRaw(module, exportName)
+                }
+                val missing = resolved.filterValues(PlatformAbi::isNull).keys
+                if (missing.isNotEmpty()) {
+                    WinRTPlatformApi.checkSucceededRaw(WinRTPlatformApi.lastErrorAsHResultRaw())
+                    error("Missing Microsoft.Internal.FrameworkUdk.dll exports: ${'$'}{missing.joinToString()}")
+                }
+                resolved
+            }
+
+            private fun loadFrameworkUdk(): RawAddress {
+                val module = WinRTPlatformApi.tryLoadLibraryExWRaw("Microsoft.Internal.FrameworkUdk.dll", 0)
+                if (!PlatformAbi.isNull(module)) {
+                    return module
+                }
+                WinRTPlatformApi.checkSucceededRaw(WinRTPlatformApi.lastErrorAsHResultRaw())
+                error("Microsoft.Internal.FrameworkUdk.dll could not be loaded.")
+            }
+
+            private val FRAMEWORK_UDK_EXPORTS: List<String> = listOf(
+                "Windowing_GetWindowIdFromWindow",
+                "Windowing_GetWindowFromWindowId",
+                "Windowing_GetDisplayIdFromMonitor",
+                "Windowing_GetMonitorFromDisplayId",
+                "Windowing_GetIconIdFromIcon",
+                "Windowing_GetIconFromIconId",
+            )
+        }
+        """.trimIndent() + "\n"
+
     private fun supportFile(fileName: String, contents: String): KotlinProjectionFile =
         KotlinProjectionFile(
             relativePath = "io/github/composefluent/winrt/projections/support/$fileName",
@@ -4331,12 +4577,31 @@ class KotlinProjectionSupportRenderer {
             code.add("namespace = %S,\n", addition.namespace)
             code.add("kind = %S,\n", addition.kind.name)
             code.add("sourceFiles = %L,\n", stringListCode(addition.sourceFiles))
+            code.add("generatedTypeNames = %L,\n", stringListCode(addition.generatedTypeNames))
             code.unindent()
             code.add("),\n")
         }
         code.unindent()
         code.add(")")
         return code.build()
+    }
+
+    private fun WinRTMetadataProjectionInventory.withoutSourceAdditions(
+        excludedTypeNames: Set<String>,
+    ): WinRTMetadataProjectionInventory {
+        if (excludedTypeNames.isEmpty()) {
+            return this
+        }
+        return copy(
+            namespaceAdditions = namespaceAdditions.mapNotNull { addition ->
+                if (addition.generatedTypeNames.isEmpty()) {
+                    addition
+                } else {
+                    val generatedTypeNames = addition.generatedTypeNames.filterNot(excludedTypeNames::contains)
+                    generatedTypeNames.takeIf { it.isNotEmpty() }?.let { addition.copy(generatedTypeNames = it) }
+                }
+            },
+        )
     }
 
     private fun authoringWrapperEntriesCode(

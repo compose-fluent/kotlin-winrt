@@ -24,6 +24,7 @@ import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.logging.Logging
@@ -324,6 +325,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             authoringCandidates,
         )
         val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files)
+        val dependencySourceAdditionTypeNames = dependencySourceAdditionTypeNames(parameters.dependencyIdentityFiles.files)
         val exportedAuthoringCandidates = authoringCandidates.filter(KotlinWinRTAuthoredTypeCandidate::isPublic)
         val model = KotlinWinRTAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
         val authoringCandidateMetadataRoots = authoringCandidateMetadataRootNames(authoringCandidates)
@@ -374,6 +376,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             groupProjectionFilesByPackageOnWrite = true,
             projectionContext = projectionContext,
             suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
+            suppressedSourceAdditionTypeNames = dependencySourceAdditionTypeNames,
             authoredRuntimeClassNames = authoredRuntimeClassNames,
             supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
             emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
@@ -716,6 +719,26 @@ internal fun dependencyProjectionSurfaceTypeNames(
         .distinct()
         .sorted()
 
+internal fun dependencySourceAdditionTypeNames(
+    identityFiles: Iterable<java.io.File>,
+): Set<String> {
+    val ownersByAddition = linkedMapOf<String, java.io.File>()
+    identityFiles
+        .filter(java.io.File::isFile)
+        .forEach { identityFile ->
+            readProjectionSurfaceIdentity(identityFile).sourceAdditions.distinct().forEach { sourceAddition ->
+                val previous = ownersByAddition.putIfAbsent(sourceAddition, identityFile)
+                if (previous != null && previous.absolutePath != identityFile.absolutePath) {
+                    throw GradleException(
+                        "Source addition '$sourceAddition' is claimed by multiple WinRT projection dependencies: " +
+                            "'${previous.absolutePath}' and '${identityFile.absolutePath}'.",
+                    )
+                }
+            }
+        }
+    return ownersByAddition.keys.toSortedSet()
+}
+
 internal fun mergedAuthoringMetadataIndexTypes(
     model: WinRTMetadataModel,
     identityFiles: Iterable<java.io.File>,
@@ -913,6 +936,7 @@ internal data class ProjectionSurfaceIdentity(
     val includeTypes: List<String>,
     val projectionShapeVersion: Int?,
     val projectedTypes: List<String>?,
+    val sourceAdditions: List<String>,
     val excludeNamespaces: List<String>,
     val excludeTypes: List<String>,
 )
@@ -929,6 +953,7 @@ internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): Projecti
         includeTypes = readIdentityStringArray(content, "includeTypes"),
         projectionShapeVersion = readOptionalIdentityInt(content, "projectionShapeVersion"),
         projectedTypes = readOptionalIdentityStringArray(content, "projectedTypes"),
+        sourceAdditions = readIdentityStringArray(content, "sourceAdditions"),
         excludeNamespaces = readIdentityStringArray(content, "excludeNamespaces"),
         excludeTypes = readIdentityStringArray(content, "excludeTypes"),
     )
