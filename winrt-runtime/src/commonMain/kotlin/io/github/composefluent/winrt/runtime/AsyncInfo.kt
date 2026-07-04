@@ -484,10 +484,10 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
                         KnownHResults.E_ILLEGAL_METHOD_CALL,
                     )
                 } else {
-                    throw WinRTCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED)
+                    throw winRTAsyncCancellationException("operation")
                 }
             WinRTAsyncStatus.Error ->
-                throw errorValue ?: ExceptionHelpers.exceptionFor(errorCode(), "WinRT async operation")
+                throw errorValue ?: winRTAsyncErrorException(errorCode(), "operation")
             WinRTAsyncStatus.Completed ->
                 @Suppress("UNCHECKED_CAST")
                 resultValue as T

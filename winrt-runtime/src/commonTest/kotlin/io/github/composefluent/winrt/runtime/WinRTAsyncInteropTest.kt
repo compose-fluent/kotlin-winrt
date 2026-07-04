@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -121,6 +122,28 @@ class WinRTAsyncInteropTest {
 
             assertTrue(action.resultsCalled)
             assertTrue(action.completedHandlerClosed())
+        }
+    }
+
+    @Test
+    fun async_action_await_maps_error_cancelled_to_coroutine_cancellation() {
+        PlatformAbi.confinedScope().use { scope ->
+            runBlocking {
+                val action = FakeAsyncActionReference(
+                    scope = scope,
+                    statusState = WinRTAsyncStatus.Error,
+                    errorCode = KnownHResults.ERROR_CANCELLED,
+                )
+
+                try {
+                    action.await()
+                } catch (error: CancellationException) {
+                    assertEquals("WinRT async action was canceled.", error.message)
+                    return@runBlocking
+                }
+
+                throw AssertionError("Expected CancellationException from canceled WinRT async action.")
+            }
         }
     }
 
@@ -501,6 +524,28 @@ class WinRTAsyncInteropTest {
     }
 
     @Test
+    fun async_action_with_progress_await_maps_error_cancelled_to_coroutine_cancellation() {
+        PlatformAbi.confinedScope().use { scope ->
+            runBlocking {
+                val action = FakeAsyncActionWithProgressReference(
+                    scope = scope,
+                    statusState = WinRTAsyncStatus.Error,
+                    errorCode = KnownHResults.ERROR_CANCELLED,
+                )
+
+                try {
+                    action.await()
+                } catch (error: CancellationException) {
+                    assertEquals("WinRT async action was canceled.", error.message)
+                    return@runBlocking
+                }
+
+                throw AssertionError("Expected CancellationException from canceled WinRT async action.")
+            }
+        }
+    }
+
+    @Test
     fun async_operation_with_progress_await_faults_and_closes_completed_handler_when_get_results_fails() {
         PlatformAbi.confinedScope().use { scope ->
             val failure = WinRTIllegalStateException("get results failed", KnownHResults.E_FAIL)
@@ -527,6 +572,29 @@ class WinRTAsyncInteropTest {
 
             assertTrue(operation.resultsCalled)
             assertTrue(operation.completedHandlerClosed())
+        }
+    }
+
+    @Test
+    fun async_operation_with_progress_await_maps_error_cancelled_to_coroutine_cancellation() {
+        PlatformAbi.confinedScope().use { scope ->
+            runBlocking {
+                val operation = FakeAsyncOperationWithProgressReference(
+                    scope = scope,
+                    statusState = WinRTAsyncStatus.Error,
+                    result = "unused",
+                    errorCode = KnownHResults.ERROR_CANCELLED,
+                )
+
+                try {
+                    operation.await()
+                } catch (error: CancellationException) {
+                    assertEquals("WinRT async operation was canceled.", error.message)
+                    return@runBlocking
+                }
+
+                throw AssertionError("Expected CancellationException from canceled WinRT async operation.")
+            }
         }
     }
 
@@ -562,6 +630,29 @@ class WinRTAsyncInteropTest {
                 }
 
                 throw AssertionError("Expected WinRTAccessDeniedException from await().")
+            }
+        }
+    }
+
+    @Test
+    fun async_operation_await_maps_error_cancelled_to_coroutine_cancellation() {
+        PlatformAbi.confinedScope().use { scope ->
+            runBlocking {
+                val operation = FakeAsyncOperationReference(
+                    scope = scope,
+                    statusState = WinRTAsyncStatus.Error,
+                    result = "unused",
+                    errorCode = KnownHResults.ERROR_CANCELLED,
+                )
+
+                try {
+                    operation.await()
+                } catch (error: CancellationException) {
+                    assertEquals("WinRT async operation was canceled.", error.message)
+                    return@runBlocking
+                }
+
+                throw AssertionError("Expected CancellationException from canceled WinRT async operation.")
             }
         }
     }
