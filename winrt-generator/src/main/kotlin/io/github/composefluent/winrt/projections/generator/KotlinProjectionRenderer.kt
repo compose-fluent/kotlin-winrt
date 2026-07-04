@@ -2598,66 +2598,71 @@ class KotlinProjectionRenderer(
         if (plan.type.customAttributes.any { it.typeName == "System.FlagsAttribute" }) {
             renderFlagsEnumShell(plan)
         } else {
-            renderClosedEnumShell(plan)
+            renderOpenEnumShell(plan)
         }
 
-    private fun renderClosedEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec =
-        TypeSpec.enumBuilder(plan.type.name)
+    private fun renderOpenEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val underlyingType = plan.type.enumUnderlyingType
+        if (plan.type.kind != WinRTTypeKind.Enum || underlyingType == null) {
+            return TypeSpec.classBuilder(plan.type.name)
+                .apply {
+                    applyCommonTypeShape(this, plan)
+                    if (KotlinProjectionSpecializationKind.ApiContract in plan.specializationKinds) {
+                        addKdoc("api contract WinRT declaration shell\n")
+                    }
+                }
+                .build()
+        }
+        val enumTypeName = resolveTypeName(plan.type.qualifiedName)
+        val abiTypeName = resolveIntegralTypeName(underlyingType)
+        return TypeSpec.classBuilder(plan.type.name)
+            .addAnnotation(JVM_INLINE_CLASS_NAME)
+            .addModifiers(KModifier.VALUE)
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("abiValue", abiTypeName)
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("abiValue", abiTypeName)
+                    .initializer("abiValue")
+                    .build(),
+            )
             .apply {
                 applyCommonTypeShape(this, plan)
                 if (KotlinProjectionSpecializationKind.ApiContract in plan.specializationKinds) {
                     addKdoc("api contract WinRT declaration shell\n")
                 }
-                val underlyingType = plan.type.enumUnderlyingType
-                if (plan.type.kind == WinRTTypeKind.Enum && underlyingType != null && plan.type.enumMembers.isNotEmpty()) {
-                    primaryConstructor(
-                        FunSpec.constructorBuilder()
-                            .addParameter("abiValue", resolveIntegralTypeName(underlyingType))
-                            .build(),
-                    )
-                    addProperty(
-                        PropertySpec.builder("abiValue", resolveIntegralTypeName(underlyingType))
-                            .initializer("abiValue")
-                            .build(),
-                    )
-                    plan.type.enumMembers.forEach { member ->
-                        addEnumConstant(
-                            enumConstantName(member.name),
-                            TypeSpec.anonymousClassBuilder()
-                                .addSuperclassConstructorParameter("%L", integralLiteral(member.valueBits, underlyingType))
+                addType(
+                    TypeSpec.companionObjectBuilder("Metadata")
+                        .apply {
+                            plan.type.enumMembers.forEach { member ->
+                                addProperty(
+                                    PropertySpec.builder(enumConstantName(member.name), enumTypeName)
+                                        .initializer("%T(%L)", enumTypeName, integralLiteral(member.valueBits, underlyingType))
+                                        .build(),
+                                )
+                            }
+                        }
+                        .addFunction(
+                            FunSpec.builder("fromAbi")
+                                .addParameter("abiValue", abiTypeName)
+                                .returns(enumTypeName)
+                                .addCode("return %T(abiValue)\n", enumTypeName)
                                 .build(),
                         )
-                    }
-                    addType(
-                        TypeSpec.companionObjectBuilder("Metadata")
-                            .addFunction(
-                                FunSpec.builder("fromAbi")
-                                    .addParameter("value", resolveIntegralTypeName(underlyingType))
-                                    .returns(resolveTypeName(plan.type.qualifiedName))
-                                    .addCode(
-                                        CodeBlock.builder()
-                                            .beginControlFlow("%T.entries.forEach { entry ->", resolveTypeName(plan.type.qualifiedName))
-                                            .beginControlFlow("if (entry.abiValue == value)")
-                                            .addStatement("return entry")
-                                            .endControlFlow()
-                                            .endControlFlow()
-                                            .addStatement("error(%S)", "Unknown ${plan.type.qualifiedName} ABI value: \$value")
-                                            .build(),
-                                    )
-                                    .build(),
-                            )
-                            .addFunction(
-                                FunSpec.builder("toAbi")
-                                    .addParameter("value", resolveTypeName(plan.type.qualifiedName))
-                                    .returns(resolveIntegralTypeName(underlyingType))
-                                    .addCode("return value.abiValue\n")
-                                    .build(),
-                            )
-                            .build(),
-                    )
-                }
+                        .addFunction(
+                            FunSpec.builder("toAbi")
+                                .addParameter("value", enumTypeName)
+                                .returns(abiTypeName)
+                                .addCode("return value.abiValue\n")
+                                .build(),
+                        )
+                        .build(),
+                )
             }
             .build()
+    }
 
     private fun renderFlagsEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec =
         TypeSpec.classBuilder(plan.type.name)
