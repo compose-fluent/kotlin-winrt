@@ -4649,7 +4649,7 @@ class KotlinProjectionGeneratorTest {
 
         val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
 
-        assertTrue(filesByName.getValue("Status.kt").contents.contains("enum class Status"))
+        assertTrue(filesByName.getValue("Status.kt").contents.contains("class Status"))
         assertTrue(filesByName.getValue("Point.kt").contents.contains("class Point"))
         assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("fun interface WidgetHandler"))
         assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("public operator fun invoke(title: String, count: Int): Boolean"))
@@ -4696,6 +4696,43 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("public infix fun or(other: VirtualKeyModifiers): VirtualKeyModifiers"))
         assertFalse(contents, contents.contains("enum class VirtualKeyModifiers"))
         assertFalse(contents, contents.contains("Unknown Windows.System.VirtualKeyModifiers ABI value"))
+    }
+
+    @Test
+    fun generator_projects_ordinary_enums_as_open_abi_value_types() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Windows.System",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.System",
+                            name = "VirtualKey",
+                            kind = WinRTTypeKind.Enum,
+                            enumUnderlyingType = WinRTIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRTEnumMemberDefinition("None", 0u),
+                                WinRTEnumMemberDefinition("LeftButton", 1u),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("VirtualKey.kt") }
+            .contents
+
+        assertTrue(contents, contents.contains("@JvmInline"))
+        assertTrue(contents, contents.contains("public value class VirtualKey("))
+        assertTrue(contents, contents.contains("public val abiValue: Int"))
+        assertTrue(contents, contents.contains("public val LeftButton: VirtualKey = VirtualKey(1)"))
+        assertTrue(contents, contents.contains("public fun fromAbi(abiValue: Int): VirtualKey"))
+        assertTrue(contents, contents.contains("VirtualKey(abiValue)"))
+        assertFalse(contents, contents.contains("enum class VirtualKey"))
+        assertFalse(contents, contents.contains("entries.forEach"))
+        assertFalse(contents, contents.contains("Unknown Windows.System.VirtualKey ABI value"))
     }
 
     @Test
@@ -5851,7 +5888,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("public class WidgetStatics"))
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("static WinRT class shell"))
-        assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("public enum class WidgetContract"))
+        assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("public class WidgetContract"))
         assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("api contract WinRT declaration shell"))
     }
 
@@ -9676,7 +9713,7 @@ class KotlinProjectionGeneratorTest {
         val mode = filesByName.getValue("WidgetMode.kt").contents
         val state = filesByName.getValue("WidgetState.kt").contents
 
-        assertTrue(mode, mode.contains("public enum class WidgetMode"))
+        assertTrue(mode, mode.contains("public value class WidgetMode"))
         assertTrue(mode, mode.contains("public val abiValue: UShort"))
         assertTrue(mode, mode.contains("public fun fromAbi("))
         assertTrue(mode, mode.contains("UShort): WidgetMode"))
