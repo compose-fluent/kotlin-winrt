@@ -3,6 +3,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
@@ -110,7 +111,7 @@ open class WinRTAsyncActionReference internal constructor(
             WinRTAsyncStatus.Canceled ->
                 onCancelled()
             WinRTAsyncStatus.Error ->
-                onError(ExceptionHelpers.exceptionFor(errorCode(), "WinRT async action"))
+                onError(winRTAsyncErrorException(errorCode(), "action"))
         }
     }
 }
@@ -175,7 +176,7 @@ open class WinRTAsyncOperationReference<T> internal constructor(
             WinRTAsyncStatus.Canceled ->
                 onCancelled()
             WinRTAsyncStatus.Error ->
-                onError(ExceptionHelpers.exceptionFor(errorCode(), "WinRT async operation"))
+                onError(winRTAsyncErrorException(errorCode(), "operation"))
         }
     }
 
@@ -399,6 +400,19 @@ private class WinRTAsyncAwaitState<T>(
     }
 }
 
+internal fun winRTAsyncCancellationException(kind: String): CancellationException =
+    CancellationException("WinRT async $kind was canceled.")
+
+internal fun winRTAsyncErrorException(
+    hResult: HResult,
+    kind: String,
+): Throwable =
+    if (hResult == KnownHResults.ERROR_CANCELLED) {
+        winRTAsyncCancellationException(kind)
+    } else {
+        ExceptionHelpers.exceptionFor(hResult, "WinRT async $kind")
+    }
+
 open class WinRTAsyncOperationWithProgressReference<T, TProgress> internal constructor(
     comPtr: ComPtr,
     private val progressHandlerInterfaceId: Guid,
@@ -492,7 +506,7 @@ suspend fun WinRTAsyncActionReference.await() {
                 onCompleted = { awaitState.resume(Unit) },
                 onCancelled = {
                     awaitState.resumeWithException(
-                        WinRTCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED),
+                        winRTAsyncCancellationException("action"),
                     )
                 },
                 onError = awaitState::resumeWithException,
@@ -531,10 +545,10 @@ suspend fun <TProgress> WinRTAsyncActionWithProgressReference<TProgress>.await()
                 }
                 WinRTAsyncStatus.Canceled ->
                     awaitState.resumeWithException(
-                        WinRTCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED),
+                        winRTAsyncCancellationException("action"),
                     )
                 WinRTAsyncStatus.Error ->
-                    awaitState.resumeWithException(ExceptionHelpers.exceptionFor(errorCode(), "WinRT async action"))
+                    awaitState.resumeWithException(winRTAsyncErrorException(errorCode(), "action"))
             }
         }
 
@@ -560,7 +574,7 @@ suspend fun <T> WinRTAsyncOperationReference<T>.await(): T =
                 onCompleted = awaitState::resume,
                 onCancelled = {
                     awaitState.resumeWithException(
-                        WinRTCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),
+                        winRTAsyncCancellationException("operation"),
                     )
                 },
                 onError = awaitState::resumeWithException,
@@ -596,10 +610,10 @@ suspend fun <T, TProgress> WinRTAsyncOperationWithProgressReference<T, TProgress
                     }
                 WinRTAsyncStatus.Canceled ->
                     awaitState.resumeWithException(
-                        WinRTCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),
+                        winRTAsyncCancellationException("operation"),
                     )
                 WinRTAsyncStatus.Error ->
-                    awaitState.resumeWithException(ExceptionHelpers.exceptionFor(errorCode(), "WinRT async operation"))
+                    awaitState.resumeWithException(winRTAsyncErrorException(errorCode(), "operation"))
             }
         }
 
@@ -618,8 +632,8 @@ fun WinRTAsyncActionReference.ensureCompleted(status: WinRTAsyncStatus = this.st
     when (status) {
         WinRTAsyncStatus.Started -> throw IllegalStateException("Async action is still running.")
         WinRTAsyncStatus.Completed -> getResults()
-        WinRTAsyncStatus.Canceled -> throw WinRTCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED)
-        WinRTAsyncStatus.Error -> throw ExceptionHelpers.exceptionFor(errorCode(), "WinRT async action")
+        WinRTAsyncStatus.Canceled -> throw winRTAsyncCancellationException("action")
+        WinRTAsyncStatus.Error -> throw winRTAsyncErrorException(errorCode(), "action")
     }
 }
 
@@ -628,6 +642,6 @@ fun <T> WinRTAsyncOperationReference<T>.completeOperation(status: WinRTAsyncStat
         WinRTAsyncStatus.Started -> throw IllegalStateException("Async operation is still running.")
         WinRTAsyncStatus.Completed -> getResults()
         WinRTAsyncStatus.Canceled ->
-            throw WinRTCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED)
-        WinRTAsyncStatus.Error -> throw ExceptionHelpers.exceptionFor(errorCode(), "WinRT async operation")
+            throw winRTAsyncCancellationException("operation")
+        WinRTAsyncStatus.Error -> throw winRTAsyncErrorException(errorCode(), "operation")
     }
