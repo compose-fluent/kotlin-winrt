@@ -1840,15 +1840,21 @@ private fun configureKotlinWinRTCompilerPluginOptions(
         task.compilerOptions.jvmTarget.set(JvmTarget.JVM_25)
         task.compilerOptions.freeCompilerArgs.add("-Xjdk-release=25")
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
+        val outputs = compilerAuthoringOutputs(
+            outputDirectory = project.layout.dir(project.provider {
+                task.destinationDirectory.get().asFile
+            }),
+            projectName = project.name,
+        )
+        task.outputs.file(outputs.typeIndex)
+        task.outputs.file(outputs.authoredCandidates)
+        task.outputs.file(outputs.authoredMetadata)
+        task.outputs.file(outputs.authoredWinmd)
+        task.outputs.file(outputs.authoredHostManifest)
         addWinRTCompilerPluginOptions(
             freeCompilerArgs = freeCompilerArgs,
             metadataIndex = metadataIndex,
-            outputs = compilerAuthoringOutputs(
-                outputDirectory = project.layout.dir(project.provider {
-                    task.destinationDirectory.get().asFile
-                }),
-                projectName = project.name,
-            ),
+            outputs = outputs,
             authoringAssemblyName = authoringAssemblyName,
             authoringTargetArtifactName = authoringTargetArtifactName,
             compilerSupportManifest = compilerSupportManifest,
