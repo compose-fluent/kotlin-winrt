@@ -579,6 +579,33 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun jvm_compilation_declares_compiler_authored_handoff_outputs() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+
+        val compileTask = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java).get()
+        val outputPaths = compileTask.outputs.files.files
+            .map { file -> file.toPath().toString().replace("\\", "/") }
+            .toSet()
+
+        listOf(
+            "build/classes/kotlin/main/kotlin-winrt/type-index.tsv",
+            "build/classes/kotlin/main/kotlin-winrt/authored-candidates.tsv",
+            "build/classes/kotlin/main/kotlin-winrt-authoring/authored-metadata.tsv",
+            "build/classes/kotlin/main/kotlin-winrt-authoring/test.winmd",
+            "build/classes/kotlin/main/kotlin-winrt-authoring/test.host.json",
+        ).forEach { expectedSuffix ->
+            assertTrue(
+                "compileKotlin must declare JVM compiler-authored handoff output $expectedSuffix in:\n" +
+                    outputPaths.sorted().joinToString("\n"),
+                outputPaths.any { path -> path.endsWith(expectedSuffix) },
+            )
+        }
+    }
+
+    @Test
     fun plugin_injects_compiler_plugin_options_into_multiplatform_native_compilation() {
         val project = ProjectBuilder.builder().build()
 
@@ -7582,6 +7609,27 @@ class KotlinWinRTPluginTest {
                     if (!scannerCandidates.text.isEmpty()) {
                         throw new GradleException("Expected no authored candidates in scanner artifact: " + scannerCandidates.text)
                     }
+                    def scannerAuthoredOutputRoot = layout.buildDirectory.dir(
+                        "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring",
+                    ).get().asFile
+                    def compilerAuthoredOutputRoot = layout.buildDirectory.dir(
+                        "classes/kotlin/main/kotlin-winrt-authoring",
+                    ).get().asFile
+                    ["authored-metadata.tsv", "${'$'}{project.name}.winmd", "${'$'}{project.name}.host.json"].each { name ->
+                        def scannerArtifact = new File(scannerAuthoredOutputRoot, name)
+                        def compilerArtifact = new File(compilerAuthoredOutputRoot, name)
+                        if (!scannerArtifact.isFile()) {
+                            throw new GradleException("Expected scanner-authored support artifact: " + scannerArtifact)
+                        }
+                        if (!compilerArtifact.isFile()) {
+                            throw new GradleException("Expected compiler-authored support artifact: " + compilerArtifact)
+                        }
+                        if (scannerArtifact.bytes != compilerArtifact.bytes) {
+                            throw new GradleException(
+                                "Expected scanner and compiler authored support artifacts to match for " + name,
+                            )
+                        }
+                    }
                 }
             }
             """.trimIndent(),
@@ -7606,6 +7654,34 @@ class KotlinWinRTPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRTAuthoredCandidates")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":verifyAuthoredCandidateArtifacts")?.outcome)
+
+        val compilerAuthoredOutputRoot = projectDir.resolve("build/classes/kotlin/main/kotlin-winrt-authoring")
+        listOf(
+            "authored-metadata.tsv",
+            "kotlin-winrt-authored-candidate-validation-test.winmd",
+            "kotlin-winrt-authored-candidate-validation-test.host.json",
+        ).forEach { name ->
+            Files.deleteIfExists(compilerAuthoredOutputRoot.resolve(name))
+        }
+
+        val rerunResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("validateCompileKotlinWinRTAuthoredCandidates", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, rerunResult.task(":compileKotlin")?.outcome)
+        listOf(
+            "authored-metadata.tsv",
+            "kotlin-winrt-authored-candidate-validation-test.winmd",
+            "kotlin-winrt-authored-candidate-validation-test.host.json",
+        ).forEach { name ->
+            assertTrue(
+                "Expected compiler-authored support artifact to be restored: $name",
+                Files.isRegularFile(compilerAuthoredOutputRoot.resolve(name)),
+            )
+        }
     }
 
     @Test
