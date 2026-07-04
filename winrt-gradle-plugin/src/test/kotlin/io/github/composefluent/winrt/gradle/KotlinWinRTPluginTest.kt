@@ -7227,6 +7227,10 @@ class KotlinWinRTPluginTest {
                 }
             }
 
+            tasks.named("winuiJvmJar") {
+                archiveFileName = "ui-winuijvm-9999.0.0-SNAPSHOT.jar"
+            }
+
             winRT {
                 windowsSdk(null, false, true)
                 type "Windows.Foundation.IStringable"
@@ -7355,8 +7359,12 @@ class KotlinWinRTPluginTest {
                     if (!authoredHostManifestText.contains("sample.PublicStringableThing")) {
                         throw new GradleException("Expected public compiler-authored host manifest entry in: " + authoredHostManifestText)
                     }
-                    if (!authoredHostManifestText.contains("WinRTAuthoringHostExports_kotlin_winrt_kmp_plugin_test_jar")) {
+                    if (!authoredHostManifestText.contains("WinRTAuthoringHostExports_ui_winuijvm_9999_0_0_SNAPSHOT_jar")) {
                         throw new GradleException("Expected artifact-scoped host exports class in compiler-authored host manifest: " +
+                            authoredHostManifestText)
+                    }
+                    if (!authoredHostManifestText.contains('"targetArtifact": "ui-winuijvm-9999.0.0-SNAPSHOT.jar"')) {
+                        throw new GradleException("Expected compiler-authored host manifest to target the WinUI JVM jar: " +
                             authoredHostManifestText)
                     }
                     if (authoredHostManifestText.contains("sample.InternalStringableThing")) {
@@ -7395,10 +7403,95 @@ class KotlinWinRTPluginTest {
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredHostManifestOutput="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringAssemblyName=kotlin-winrt-kmp-plugin-test"))
-        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=kotlin-winrt-kmp-plugin-test.jar"))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=ui-winuijvm-9999.0.0-SNAPSHOT.jar"))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
         assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/commonMain/kotlin"))
+    }
+
+    @Test
+    fun multiplatform_jvm_authoring_identity_uses_target_jar_archive_file_name() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-identity-artifact-test-")
+        val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-identity-artifact-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "io.github.composefluent.winrt"
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation files("$runtimeJar")
+                        }
+                    }
+                }
+            }
+
+            tasks.named("winuiJvmJar") {
+                archiveFileName = "ui-winuijvm-9999.0.0-SNAPSHOT.jar"
+            }
+
+            winRT {
+                windowsSdk(null, false, true)
+                type "Windows.Foundation.IStringable"
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/commonMain/kotlin/sample/PublicStringableThing.kt"),
+            """
+            package sample
+
+            import io.github.composefluent.winrt.runtime.WinRTAuthoredRuntimeClass
+
+            @WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+            class PublicStringableThing
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRTIdentity", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTIdentity")?.outcome)
+        val identity = projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile().readText()
+        assertTrue(identity, identity.contains("\"targetArtifact\":\"ui-winuijvm-9999.0.0-SNAPSHOT.jar\""))
+        assertTrue(identity, identity.contains("\"fileName\":\"ui-winuijvm-9999.0.0-SNAPSHOT.jar\""))
     }
 
     @Test
@@ -7632,6 +7725,7 @@ class KotlinWinRTPluginTest {
                     }
                 }
             }
+
             """.trimIndent(),
         )
         writeGradleFile(

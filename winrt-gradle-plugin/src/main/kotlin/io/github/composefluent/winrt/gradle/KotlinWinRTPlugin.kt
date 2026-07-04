@@ -1242,6 +1242,11 @@ private fun registerWinRTAuthoredCandidateValidation(
     }.configureEach { task ->
         task.authoredMetadataFiles.from(outputs.authoredWinmd)
         task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
+        if (artifactPublication == WinRTAuthoredArtifactPublication.Jvm) {
+            kotlinWinRTJvmTargetJarArchiveFile(project, compileTaskName)?.let { archiveFile ->
+                task.authoredTargetArtifactFiles.from(archiveFile)
+            }
+        }
     }
     if (artifactPublication == WinRTAuthoredArtifactPublication.Jvm) {
         project.tasks.matching { task -> task.name == "processResources" }.configureEach(Action<Task> { task ->
@@ -1800,9 +1805,62 @@ private fun KotlinNativeCompile.isMingwX64CompileTask(): Boolean =
         name.contains("mingw", ignoreCase = true)
 
 private fun kotlinWinRTAuthoringTargetArtifactName(project: Project): Provider<String> =
-    runCatching {
-        project.tasks.named("jar", Jar::class.java).flatMap { task -> task.archiveFileName }
-    }.getOrNull() ?: project.provider { "${project.name}.jar" }
+    kotlinWinRTAuthoringTargetArtifactName(project, compileTaskName = null)
+
+private fun kotlinWinRTAuthoringTargetArtifactName(
+    project: Project,
+    compileTaskName: String?,
+): Provider<String> =
+    project.provider {
+        kotlinWinRTJvmTargetJarArchiveFileName(project, compileTaskName)
+            ?: kotlinWinRTJavaJarArchiveFileName(project)
+            ?: "${project.name}.jar"
+    }
+
+private fun kotlinWinRTJvmTargetJarArchiveFileName(
+    project: Project,
+    compileTaskName: String?,
+): String? =
+    kotlinWinRTJvmTargetJarTaskNames(project, compileTaskName)
+        .asSequence()
+        .mapNotNull { taskName -> project.tasks.findByName(taskName) as? Jar }
+        .firstOrNull()
+        ?.archiveFileName
+        ?.get()
+
+private fun kotlinWinRTJavaJarArchiveFileName(project: Project): String? =
+    (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get()
+
+private fun kotlinWinRTJvmTargetJarArchiveFile(
+    project: Project,
+    compileTaskName: String,
+): Provider<RegularFile>? =
+    kotlinWinRTJvmTargetJarTaskNames(project, compileTaskName)
+        .firstNotNullOfOrNull { taskName ->
+            runCatching {
+                project.tasks.named(taskName, Jar::class.java).flatMap { task -> task.archiveFile }
+            }.getOrNull()
+        }
+
+private fun kotlinWinRTJvmTargetJarTaskNames(
+    project: Project,
+    compileTaskName: String?,
+): List<String> {
+    val compileTargetName = compileTaskName
+        ?.takeIf { taskName -> taskName.startsWith("compileKotlin") && taskName != "compileKotlin" }
+        ?.removePrefix("compileKotlin")
+        ?.replaceFirstChar(Char::lowercaseChar)
+    if (!compileTargetName.isNullOrBlank()) {
+        return listOf("${compileTargetName}Jar")
+    }
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return emptyList()
+    val jvmTargets = kotlinExtension.targets.withType(KotlinJvmTarget::class.java).map { target -> target.name }
+    return if (jvmTargets.size == 1) {
+        listOf("${jvmTargets.single()}Jar")
+    } else {
+        emptyList()
+    }
+}
 
 private fun kotlinWinRTNativeAuthoringTargetArtifactName(project: Project): Provider<String> =
     project.provider { "${kotlinNativeSharedLibraryFileStem(project.name)}.dll" }
@@ -1856,7 +1914,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
             metadataIndex = metadataIndex,
             outputs = outputs,
             authoringAssemblyName = authoringAssemblyName,
-            authoringTargetArtifactName = authoringTargetArtifactName,
+            authoringTargetArtifactName = kotlinWinRTAuthoringTargetArtifactName(project, task.name),
             compilerSupportManifest = compilerSupportManifest,
         )
     })
