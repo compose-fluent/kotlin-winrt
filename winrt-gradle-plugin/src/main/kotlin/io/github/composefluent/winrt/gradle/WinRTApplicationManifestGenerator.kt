@@ -8,7 +8,7 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
 internal object WinRTApplicationManifestGenerator {
-    fun writeApplicationManifest(outputRoot: Path, executableBaseName: String) {
+    fun writeApplicationManifest(outputRoot: Path, executableBaseName: String, processorArchitecture: String) {
         val fragmentXmls = Files.walk(outputRoot).use { stream ->
             stream.asSequence()
                 .filter { path -> path.isRegularFile() && path.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
@@ -26,7 +26,12 @@ internal object WinRTApplicationManifestGenerator {
         }
         Files.writeString(
             outputRoot.resolve("$executableBaseName.exe.manifest"),
-            buildApplicationManifest(fragmentXmls, readAuthoredHostManifestRegistrations(outputRoot), dllFileNames),
+            buildApplicationManifest(
+                fragmentXmls,
+                readAuthoredHostManifestRegistrations(outputRoot),
+                dllFileNames,
+                processorArchitecture,
+            ),
         )
     }
 
@@ -34,9 +39,11 @@ internal object WinRTApplicationManifestGenerator {
         fragmentXmls: List<String>,
         authoredHostRegistrations: List<LiftedRegistrationEntry>,
         frameworkFileNames: List<String>,
+        processorArchitecture: String,
     ): String {
         val entriesByFileName = linkedMapOf<String, LiftedRegistrationEntryBuilder>()
         val remainingFileNames = linkedMapOf<String, String>()
+        val seenActivatableClasses = linkedSetOf<String>()
         frameworkFileNames.forEach { fileName -> remainingFileNames.putIfAbsent(fileName.lowercase(), fileName) }
         (fragmentXmls.flatMap(::parseLiftedRegistrationEntries) + authoredHostRegistrations)
             .forEach { entry ->
@@ -44,6 +51,7 @@ internal object WinRTApplicationManifestGenerator {
                 val builder = entriesByFileName.getOrPut(key) { LiftedRegistrationEntryBuilder(entry.path) }
                 entry.activatableClasses
                     .filter(String::isNotBlank)
+                    .filter { className -> seenActivatableClasses.add(className) }
                     .forEach(builder.activatableClasses::add)
                 if (builder.activatableClasses.isNotEmpty()) {
                     remainingFileNames.remove(key)
@@ -55,7 +63,7 @@ internal object WinRTApplicationManifestGenerator {
             appendLine("    xmlns:asmv3='urn:schemas-microsoft-com:asm.v3'")
             appendLine("    xmlns:winrtv1='urn:schemas-microsoft-com:winrt.v1'")
             appendLine("    xmlns='urn:schemas-microsoft-com:asm.v1'>")
-            appendLine("    <assemblyIdentity type='win32' name='$executableAssemblyName' version='1.0.0.0' processorArchitecture='*'/>")
+            appendLine("    <assemblyIdentity type='win32' name='$executableAssemblyName' version='1.0.0.0' processorArchitecture='${escapeXml(processorArchitecture)}'/>")
             appendLine("    <compatibility xmlns='urn:schemas-microsoft-com:compatibility.v1'>")
             appendLine("        <application>")
             appendLine("            <maxversiontested Id='10.0.18362.0'/>")

@@ -3479,6 +3479,233 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_stages_msbuild_reference_copy_local_paths() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.webview/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.createDirectories(packageRoot.resolve("runtimes/win-x64/native_uap"))
+        Files.writeString(
+            packageRoot.resolve("Sample.WebView.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.WebView</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("runtimes/win-x64/native_uap/Sample.WebView.Core.dll"), "webview")
+        Files.writeString(
+            packageRoot.resolve("build/native/Sample.WebView.targets"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <EffectivePlatform>$(Platform)</EffectivePlatform>
+                <EffectivePlatform Condition="'$(EffectivePlatform)' == 'Win32'">x86</EffectivePlatform>
+              </PropertyGroup>
+              <ItemGroup>
+                <ReferenceCopyLocalPaths Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EffectivePlatform)\native_uap\Sample.WebView.Core.dll" />
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-webview.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.WebView@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageMsBuildReferenceCopyLocalPaths",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-webview"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Sample.WebView.Core.dll")))
+    }
+
+    @Test
+    fun runtime_assets_task_preserves_msbuild_copy_local_resource_target_paths() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.resources/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.createDirectories(packageRoot.resolve("runtimes/win-x64/native/Assets/en-US"))
+        Files.writeString(
+            packageRoot.resolve("Sample.Resources.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Resources</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("runtimes/win-x64/native/Assets/en-US/icon.png"), "png")
+        Files.writeString(
+            packageRoot.resolve("build/native/Sample.Resources.targets"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <_SampleAssetsRoot>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(Platform)\native\Assets\</_SampleAssetsRoot>
+              </PropertyGroup>
+              <ItemGroup>
+                <ReferenceCopyLocalPaths Include="$(_SampleAssetsRoot)**\*.*" DestinationSubDirectory="Microsoft.UI.Xaml\Assets\%(RecursiveDir)" />
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-resources.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.Resources@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageMsBuildResourceCopyLocalPaths",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-resources"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml/Assets/en-US/icon.png")))
+    }
+
+    @Test
+    fun runtime_assets_task_writes_concrete_application_manifest_processor_architecture() {
+        val project = ProjectBuilder.builder().build()
+        val task = project.tasks.register(
+            "stageArchitectureManifest",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-architecture"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.executableBaseName.set("sample-app")
+        }.get()
+
+        task.stage()
+
+        val manifest = Files.readString(task.outputDirectory.get().asFile.toPath().resolve("sample-app.exe.manifest"))
+        assertTrue(manifest.contains("processorArchitecture='amd64'"))
+        assertFalse(manifest.contains("processorArchitecture='*'"))
+    }
+
+    @Test
+    fun runtime_assets_task_deduplicates_lifted_activatable_classes_in_application_manifest() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.duplicate/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native/first"))
+        Files.createDirectories(packageRoot.resolve("build/native/second"))
+        Files.writeString(
+            packageRoot.resolve("Sample.Duplicate.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Duplicate</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("First.dll"), "first")
+        Files.writeString(packageRoot.resolve("Second.dll"), "second")
+        Files.writeString(
+            packageRoot.resolve("build/native/first/LiftedWinRTClassRegistrations.xml"),
+            """
+            <Registrations xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Extension Category="windows.activatableClass.inProcessServer">
+                <InProcessServer>
+                  <Path>First.dll</Path>
+                  <ActivatableClass ActivatableClassId="Sample.Duplicate.Widget" ThreadingModel="both" />
+                </InProcessServer>
+              </Extension>
+            </Registrations>
+            """.trimIndent(),
+        )
+        Files.writeString(
+            packageRoot.resolve("build/native/second/LiftedWinRTClassRegistrations.xml"),
+            """
+            <Registrations xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Extension Category="windows.activatableClass.inProcessServer">
+                <InProcessServer>
+                  <Path>Second.dll</Path>
+                  <ActivatableClass ActivatableClassId="Sample.Duplicate.Widget" ThreadingModel="both" />
+                </InProcessServer>
+              </Extension>
+            </Registrations>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-duplicate.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.Duplicate@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageDuplicateLiftedRegistrations",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-duplicate"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.executableBaseName.set("sample-app")
+        }.get()
+
+        task.stage()
+
+        val manifest = Files.readString(task.outputDirectory.get().asFile.toPath().resolve("sample-app.exe.manifest"))
+        assertEquals(1, Regex("""<winrtv1:activatableClass name='Sample\.Duplicate\.Widget'""").findAll(manifest).count())
+    }
+
+    @Test
     fun runtime_assets_task_stages_lib_native_release_assets_for_cpp_winrt_packages() {
         val project = ProjectBuilder.builder().build()
         val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()

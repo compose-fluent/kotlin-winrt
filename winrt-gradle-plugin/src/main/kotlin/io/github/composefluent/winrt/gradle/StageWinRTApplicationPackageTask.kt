@@ -168,7 +168,11 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
         stageRootPackagePayloads(outputRoot)
-        WinRTApplicationManifestGenerator.writeApplicationManifest(outputRoot, executableBaseName.get())
+        WinRTApplicationManifestGenerator.writeApplicationManifest(
+            outputRoot,
+            executableBaseName.get(),
+            winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+        )
         generateProjectPri(outputRoot)
         validateStagedManifestPayload(outputRoot)
     }

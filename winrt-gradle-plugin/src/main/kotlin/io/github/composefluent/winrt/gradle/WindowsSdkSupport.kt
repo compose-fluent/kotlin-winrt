@@ -51,6 +51,15 @@ internal fun windowsSdkArchitecture(runtimeIdentifier: String): String {
     }
 }
 
+internal fun winRTManifestProcessorArchitecture(runtimeIdentifier: String): String {
+    val rid = runtimeIdentifier.lowercase()
+    return when {
+        rid.endsWith("-arm64") -> "arm64"
+        rid.endsWith("-x86") -> "x86"
+        else -> "amd64"
+    }
+}
+
 private fun windowsSdkRoot(): Path? {
     System.getenv("KOTLIN_WINRT_WINDOWS_SDK_ROOT")
         ?.takeIf(String::isNotBlank)

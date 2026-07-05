@@ -273,10 +273,15 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
                 resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
                 outputRoot,
             )
+            stageMsBuildCopyLocalPayloads(resolved.packageRoot, rid, outputRoot)
         }
         stageGeneratedComponentRegistrations(outputRoot)
         stageXamlMetadataProviderManifest(outputRoot)
-        WinRTApplicationManifestGenerator.writeApplicationManifest(outputRoot, executableBaseName.get())
+        WinRTApplicationManifestGenerator.writeApplicationManifest(
+            outputRoot,
+            executableBaseName.get(),
+            winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+        )
         generateProjectPri(outputRoot)
     }
 
@@ -391,6 +396,13 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
                 .filter { it.isRegularFile() }
                 .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
         }
+    }
+
+    private fun stageMsBuildCopyLocalPayloads(packageRoot: Path, runtimeIdentifier: String, outputRoot: Path) {
+        WinRTNuGetMsBuildPayloadResolver.resolveCopyLocalPayloads(packageRoot, runtimeIdentifier)
+            .forEach { payload ->
+                GradleFileOperations.copyFile(payload.source, outputRoot.resolve(payload.targetRelativePath))
+            }
     }
 
     private fun stageWindowsAppSdkVersionInfo(packageRoot: Path, outputRoot: Path) {
