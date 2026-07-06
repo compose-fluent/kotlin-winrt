@@ -20878,6 +20878,89 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_factory_convenience_constructor_for_runtime_class_with_default_and_factory_activatable_metadata() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "DependencyProperty",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Xaml.IDependencyProperty",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Xaml.IDependencyProperty", isDefault = true),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "IDependencyProperty",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("33333333-2222-3333-4444-555555555555"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "ISetterFactory",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Xaml.Setter",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("property", "Sample.Xaml.DependencyProperty"),
+                                        WinRTParameterDefinition("value", "System.Object"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "ISetter",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "Setter",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Xaml.ISetter",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Xaml.ISetter", isDefault = true),
+                            ),
+                            activation = WinRTActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Xaml.ISetterFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val setterContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Setter.kt")
+            .contents
+
+        assertTrue(setterContents.contains("public constructor() :"))
+        assertTrue(setterContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
+        assertTrue(
+            setterContents,
+            setterContents.contains(
+                "public constructor(`property`: DependencyProperty, `value`: Any?) :",
+            ),
+        )
+        assertTrue(setterContents.contains("this(ActivationFactory.createInstance(property, value), kotlin.Unit)"))
+        assertTrue(setterContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Xaml.ISetterFactory\""))
+        assertTrue(setterContents.contains("internal fun createInstance(`property`: DependencyProperty, `value`: Any?):"))
+        assertTrue(setterContents.contains("IInspectableReference"))
+    }
+
+    @Test
     fun generator_rejects_activatable_runtime_surface_without_factory_interface_definition() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
