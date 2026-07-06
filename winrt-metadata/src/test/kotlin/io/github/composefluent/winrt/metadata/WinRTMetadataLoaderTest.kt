@@ -51,6 +51,7 @@ class WinRTMetadataLoaderTest {
                 "IWidgetBase",
                 "IWidgetFactory",
                 "IWidgetOverrides",
+                "IWidgetProtectedFactory",
                 "IWidgetStatics",
                 "Point",
                 "Priority",
@@ -67,6 +68,7 @@ class WinRTMetadataLoaderTest {
                 WinRTTypeKind.Enum,
                 WinRTTypeKind.RuntimeClass,
                 WinRTTypeKind.Enum,
+                WinRTTypeKind.Interface,
                 WinRTTypeKind.Interface,
                 WinRTTypeKind.Interface,
                 WinRTTypeKind.Interface,
@@ -103,6 +105,12 @@ class WinRTMetadataLoaderTest {
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.activatableFactoryInterfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), widget.activation.staticInterfaceNames)
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.composableFactoryInterfaceName)
+        assertEquals(
+            listOf("Sample.Foundation.IWidgetFactory", "Sample.Foundation.IWidgetProtectedFactory"),
+            widget.activation.factories
+                .filter { it.kind == WinRTAttributedFactoryKind.Composable }
+                .map { it.interfaceName },
+        )
         assertEquals("Windows.Foundation.UniversalApiContract", widget.availability.contractVersion?.contractName)
         assertEquals(0x00030000L, widget.availability.contractVersion?.version)
         assertEquals(3, widget.availability.contractVersion?.majorVersion)
@@ -1263,6 +1271,8 @@ class WinRTMetadataLoaderTest {
 
                 public interface IWidgetFactory {}
 
+                public interface IWidgetProtectedFactory {}
+
                 public interface IWidgetStatics {}
 
                 public interface IBox<T> {}
@@ -1322,6 +1332,7 @@ class WinRTMetadataLoaderTest {
                 [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
                 [Windows.Foundation.Metadata.Static("Sample.Foundation.IWidgetStatics")]
                 [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetFactory")]
+                [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetProtectedFactory")]
                 [Windows.Foundation.Metadata.ContractVersion("Windows.Foundation.UniversalApiContract", 0x00030000)]
                 [Windows.Foundation.Metadata.Version(0x00020000)]
                 [Windows.Foundation.Metadata.PreviousContractVersion("Windows.Foundation.UniversalApiContract", 0x00010000)]

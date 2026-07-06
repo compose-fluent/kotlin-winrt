@@ -1576,7 +1576,6 @@ private class MetadataTables private constructor(
     private fun extractActivationShape(attributes: List<DecodedCustomAttribute>): WinRTActivationShape {
         val activatableAttributes = attributes.filter { it.typeName == WINDOWS_FOUNDATION_METADATA_ACTIVATABLE }
         val staticAttributes = attributes.filter { it.typeName == WINDOWS_FOUNDATION_METADATA_STATIC }
-        val composable = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_COMPOSABLE }
         val factories = attributes.mapNotNull { attribute ->
             val kind = when (attribute.typeName) {
                 WINDOWS_FOUNDATION_METADATA_ACTIVATABLE -> WinRTAttributedFactoryKind.Activatable
@@ -1599,7 +1598,9 @@ private class MetadataTables private constructor(
             isActivatable = activatableAttributes.isNotEmpty(),
             activatableFactoryInterfaceName = activatableAttributes.firstNotNullOfOrNull { it.factoryInterfaceTypeName() },
             staticInterfaceNames = staticAttributes.mapNotNull { it.factoryInterfaceTypeName() },
-            composableFactoryInterfaceName = composable?.factoryInterfaceTypeName(),
+            composableFactoryInterfaceName = factories
+                .firstOrNull { it.kind == WinRTAttributedFactoryKind.Composable }
+                ?.interfaceName,
             factories = factories,
         )
     }

@@ -44,6 +44,13 @@ import java.nio.file.Files
 import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    private fun composableFactory(interfaceName: String, isVisible: Boolean = true): WinRTAttributedFactoryShape =
+        WinRTAttributedFactoryShape(
+            interfaceName = interfaceName,
+            kind = WinRTAttributedFactoryKind.Composable,
+            isVisible = isVisible,
+        )
+
     @Test
     fun generator_requires_support_files_for_projection_context_callers() {
         val error = runCatching {
@@ -4224,7 +4231,13 @@ class KotlinProjectionGeneratorTest {
                             activation = WinRTActivationShape(
                                 isActivatable = true,
                                 staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
-                                composableFactoryInterfaceName = "Sample.Foundation.IComposableWidgetFactory",
+                                factories = listOf(
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IComposableWidgetFactory",
+                                        kind = WinRTAttributedFactoryKind.Composable,
+                                        isVisible = true,
+                                    ),
+                                ),
                             ),
                             methods = listOf(
                                 WinRTMethodDefinition(name = "create", returnTypeName = "Widget", isStatic = true),
@@ -4253,8 +4266,16 @@ class KotlinProjectionGeneratorTest {
             classPlan.staticInterfaceBindings,
         )
         assertTrue(classPlan.implementedInterfaceBindings.isEmpty())
-        assertEquals("Sample.Foundation.IComposableWidgetFactory", classPlan.composableFactoryInterfaceName)
-        assertEquals(Guid("aaaaaaaa-7777-8888-9999-000000000000"), classPlan.composableFactoryInterfaceIid)
+        assertEquals(
+            listOf(
+                KotlinProjectionComposableFactoryBinding(
+                    qualifiedName = "Sample.Foundation.IComposableWidgetFactory",
+                    iid = Guid("aaaaaaaa-7777-8888-9999-000000000000"),
+                    isVisible = true,
+                ),
+            ),
+            classPlan.composableFactoryBindings,
+        )
         assertEquals(
             listOf(KotlinProjectionCompanionKind.Metadata),
             interfacePlan.companionKinds,
@@ -5695,7 +5716,17 @@ class KotlinProjectionGeneratorTest {
                                 isActivatable = true,
                                 activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                                 staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
-                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                factories = listOf(
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IWidgetFactory",
+                                        kind = WinRTAttributedFactoryKind.Activatable,
+                                    ),
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IWidgetFactory",
+                                        kind = WinRTAttributedFactoryKind.Composable,
+                                        isVisible = true,
+                                    ),
+                                ),
                             ),
                             methods = listOf(
                                 WinRTMethodDefinition(
@@ -5873,8 +5904,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public object ComposableFactory"))
         assertTrue(widgetContents.contains("public const val DEFAULT_INTERFACE: String = \"Sample.Foundation.IWidget\""))
         assertTrue(widgetContents.contains("val DEFAULT_INTERFACE_IID: Guid = Guid(\"22222222-2222-3333-4444-555555555555\")"))
-        assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
-        assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
+        val composableFactoryContents = widgetContents.substringAfter("public object ComposableFactory")
+        assertFalse(composableFactoryContents.contains("public const val FACTORY_INTERFACE"))
+        assertFalse(composableFactoryContents.contains("FACTORY_INTERFACE_IID"))
+        assertFalse(composableFactoryContents.contains("fun acquire(): IUnknownReference"))
+        assertTrue(composableFactoryContents.contains("val IWIDGETFACTORY_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("fun createInstance(): IInspectableReference"))
         assertTrue(widgetContents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
         assertTrue(widgetContents.contains("initializeComposableReference(it,"))
@@ -9171,7 +9205,7 @@ class KotlinProjectionGeneratorTest {
                                 ),
                             ),
                             activation = WinRTActivationShape(
-                                composableFactoryInterfaceName = "Microsoft.UI.Xaml.IApplicationFactory",
+                                factories = listOf(composableFactory("Microsoft.UI.Xaml.IApplicationFactory")),
                                 staticInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationStatics"),
                             ),
                         ),
@@ -11411,7 +11445,13 @@ class KotlinProjectionGeneratorTest {
                                 isActivatable = true,
                                 activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                                 staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
-                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                factories = listOf(
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IWidgetFactory",
+                                        kind = WinRTAttributedFactoryKind.Activatable,
+                                    ),
+                                    composableFactory("Sample.Foundation.IWidgetFactory"),
+                                ),
                             ),
                             properties = listOf(
                                 WinRTPropertyDefinition(name = "Title", typeName = "String", getterMethodName = "get_Title", setterMethodName = "set_Title", getterMethodRowId = 10, setterMethodRowId = 11),
@@ -15418,7 +15458,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.UI.IWidgetFactory")),
                             ),
                         ),
                     ),
@@ -15511,7 +15551,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.UI.IWidgetFactory")),
                             ),
                         ),
                     ),
@@ -15530,6 +15570,99 @@ class KotlinProjectionGeneratorTest {
         assertFalse(contents.contains("ComposableFactory.createOther"))
         assertFalse(contents.contains("internal fun createOther()"))
         assertFalse(contents.contains("public constructor() : this(ComposableFactory.createOther(), kotlin.Unit)"))
+    }
+
+    @Test
+    fun generator_emits_composable_constructors_from_all_attributed_factory_interfaces() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("baseInterface", "System.Object"),
+                                        WinRTParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                    methodRowId = 27,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetNamedFactory",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555587"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "CreateWithName",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("name", "String"),
+                                        WinRTParameterDefinition("baseInterface", "System.Object"),
+                                        WinRTParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                    methodRowId = 28,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.UI.IWidget", isDefault = true),
+                            ),
+                            activation = WinRTActivationShape(
+                                factories = listOf(
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.UI.IWidgetFactory",
+                                        kind = WinRTAttributedFactoryKind.Composable,
+                                        isVisible = true,
+                                    ),
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.UI.IWidgetNamedFactory",
+                                        kind = WinRTAttributedFactoryKind.Composable,
+                                        isVisible = true,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(contents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
+        assertTrue(contents.contains("public constructor(name: String) : this(ComposableFactory.createWithName(name), kotlin.Unit)"))
+        assertTrue(contents.contains("internal fun createInstance()"))
+        assertTrue(contents.contains("internal fun createWithName(name: String)"))
+        assertTrue(contents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
+        assertTrue(contents.contains("IWidgetNamedFactory.Metadata.CREATEWITHNAME_SLOT"))
+        assertTrue(contents.contains("val __factory = acquire(IWIDGETFACTORY_IID)"))
+        assertTrue(contents.contains("val __factory = acquire(IWIDGETNAMEDFACTORY_IID)"))
     }
 
     @Test
@@ -15576,7 +15709,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.UI.IWidgetFactory")),
                             ),
                         ),
                     ),
@@ -15667,7 +15800,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.UI.IWidgetFactory")),
                             ),
                         ),
                     ),
@@ -16756,7 +16889,13 @@ class KotlinProjectionGeneratorTest {
                                 isActivatable = true,
                                 activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                                 staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
-                                composableFactoryInterfaceName = "Sample.Foundation.IComposableWidgetFactory",
+                                factories = listOf(
+                                    WinRTAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IWidgetFactory",
+                                        kind = WinRTAttributedFactoryKind.Activatable,
+                                    ),
+                                    composableFactory("Sample.Foundation.IComposableWidgetFactory"),
+                                ),
                             ),
                             implementedInterfaces = listOf(
                                 io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition(
@@ -23892,7 +24031,7 @@ class KotlinProjectionGeneratorTest {
                             defaultInterfaceName = "Sample.Foundation.IWidget",
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.Foundation.IWidgetFactory")),
                             ),
                         ),
                     ),
@@ -23932,7 +24071,7 @@ class KotlinProjectionGeneratorTest {
                             defaultInterfaceName = "Sample.Foundation.IWidget",
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.Foundation.IWidgetFactory")),
                             ),
                         ),
                         WinRTTypeDefinition(
@@ -24063,7 +24202,7 @@ class KotlinProjectionGeneratorTest {
                             defaultInterfaceName = "Sample.Foundation.IWidget",
                             activation = WinRTActivationShape(
                                 isActivatable = true,
-                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                factories = listOf(composableFactory("Sample.Foundation.IWidgetFactory")),
                             ),
                         ),
                         WinRTTypeDefinition(
