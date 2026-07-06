@@ -16,17 +16,6 @@ kotlin {
     jvmToolchain(25)
     jvm("winuiJvm")
     mingwX64()
-    sourceSets {
-        val winuiMain by creating {
-            dependsOn(commonMain.get())
-        }
-        named("winuiJvmMain") {
-            dependsOn(winuiMain)
-        }
-        named("mingwX64Main") {
-            dependsOn(winuiMain)
-        }
-    }
 }
 
 winRT {

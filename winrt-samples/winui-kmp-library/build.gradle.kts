@@ -28,15 +28,6 @@ kotlin {
                 api(project(":winrt-samples:winui-kmp-base-library"))
             }
         }
-        val winuiMain by creating {
-            dependsOn(commonMain.get())
-        }
-        named("winuiJvmMain") {
-            dependsOn(winuiMain)
-        }
-        named("mingwX64Main") {
-            dependsOn(winuiMain)
-        }
     }
 }
 

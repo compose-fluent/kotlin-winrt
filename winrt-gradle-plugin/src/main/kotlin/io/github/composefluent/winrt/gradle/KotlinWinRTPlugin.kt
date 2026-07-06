@@ -36,6 +36,7 @@ import java.io.File
 import java.util.Properties
 import java.nio.file.Path
 import org.gradle.jvm.tasks.Jar
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 
@@ -121,6 +122,9 @@ private fun configureWinRTLibraryModel(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/projection-registrar.tsv",
                 ),
                 project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support/projection-registrar.tsv",
+                ),
+                project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/projection-registrar.tsv",
                 ),
             )
@@ -129,12 +133,18 @@ private fun configureWinRTLibraryModel(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
                 ),
                 project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
+                ),
+                project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/type-shape-descriptors.tsv",
                 ),
             )
             task.sourceAdditionManifestFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/source-additions.tsv",
+                ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support/source-additions.tsv",
                 ),
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/source-additions.tsv",
@@ -157,12 +167,18 @@ private fun configureWinRTLibraryModel(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
                 ),
                 project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
+                ),
+                project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
                 ),
             )
             task.compilerSupportManifestFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
+                ),
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
                 ),
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
@@ -846,9 +862,12 @@ private fun configureWinRTGeneration(
     extension: BaseWinRTExtension,
 ) {
     val generatedJvmSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/jvmMain/kotlin")
+    val generatedKmpWinuiSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
     val generatedKmpCommonSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
     val generatedLegacyMainSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
     val generatedJvmAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/jvmMain/kotlin")
+    val generatedKmpWinuiAuthoringSources =
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/winuiMain/kotlin")
     val generatedKmpCommonAuthoringSources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
     val generatedLegacyMainAuthoringSources =
@@ -1004,28 +1023,31 @@ private fun configureWinRTGeneration(
     }
 
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
-        val generatedSources = generatedKmpCommonSources
-        val generatedAuthoringSources = generatedKmpCommonAuthoringSources
+        val generatedSources = generatedKmpWinuiSources
+        val generatedAuthoringSources = generatedKmpWinuiAuthoringSources
         configureKotlinWinRTCompilerPluginClasspath(project)
+        configureKotlinWinRTMultiplatformWinuiHierarchy(project)
         generateTask.configure { task ->
             task.outputDirectory.set(generatedSources)
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
             task.legacyOutputDirectories.from(
                 generatedJvmSources,
+                generatedKmpCommonSources,
                 generatedLegacyMainSources,
                 generatedJvmAuthoringSources,
+                generatedKmpCommonAuthoringSources,
                 generatedLegacyMainAuthoringSources,
                 project.layout.buildDirectory.dir("generated/kotlin-winrt-native-authoring-host"),
             )
             task.emitJvmAuthoringHostExports.set(false)
             task.authoringTargetArtifactName.set(kotlinWinRTNativeAuthoringTargetArtifactName(project))
         }
-        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
-        addGeneratedSourcesToKotlinMultiplatformCommonMain(
+        addGeneratedSourcesToKotlinMultiplatformWinuiMain(project, generatedSources)
+        addGeneratedSourcesToKotlinMultiplatformWinuiMain(
             project,
             mergeCompilerSupportTask.flatMap { it.outputDirectory },
         )
-        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedAuthoringSources)
+        addGeneratedSourcesToKotlinMultiplatformWinuiMain(project, generatedAuthoringSources)
         configureKotlinWinRTCompilerPluginOptions(
             project = project,
             metadataIndex = generatedSources.map { directory ->
@@ -1761,22 +1783,37 @@ private fun kotlinWinRTIdentityFiles(
         )
     }.files
 
-private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
+@OptIn(ExperimentalKotlinGradlePluginApi::class)
+private fun configureKotlinWinRTMultiplatformWinuiHierarchy(project: Project) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    project.afterEvaluate {
+        kotlinExtension.applyHierarchyTemplate {
+            common {
+                group("winui") {
+                    withJvm()
+                    withMingw()
+                }
+            }
+        }
+    }
+}
+
+private fun addGeneratedSourcesToKotlinMultiplatformWinuiMain(
     project: Project,
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
+    kotlinExtension.sourceSets.matching { sourceSet -> sourceSet.name == "winuiMain" }.configureEach { sourceSet ->
         sourceSet.kotlin.srcDir(generatedSources)
     }
 }
 
-private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
+private fun addGeneratedSourcesToKotlinMultiplatformWinuiMain(
     project: Project,
     generatedSourcesTask: TaskProvider<out Task>,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
+    kotlinExtension.sourceSets.matching { sourceSet -> sourceSet.name == "winuiMain" }.configureEach { sourceSet ->
         sourceSet.kotlin.srcDir(generatedSourcesTask)
     }
 }
