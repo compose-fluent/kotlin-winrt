@@ -123,7 +123,25 @@ internal object WinRTNuGetMsBuildPayloadResolver {
                 return
             }
             val projectPath = expandProperties(element.getAttribute("Project")).takeIf(String::isNotBlank) ?: return
-            evaluateFile(Path.of(projectPath).toAbsolutePath().normalize())
+            if (hasUnresolvedMsBuildExpression(projectPath)) {
+                return
+            }
+            val rootedProjectPath = rootedImportPath(projectPath)
+            if (rootedProjectPath.contains('*')) {
+                expandInclude(rootedProjectPath).forEach(::evaluateFile)
+            } else {
+                evaluateFile(Path.of(rootedProjectPath).toAbsolutePath().normalize())
+            }
+        }
+
+        private fun rootedImportPath(projectPath: String): String {
+            val normalizedProjectPath = projectPath.replace('/', '\\')
+            if (normalizedProjectPath.startsWith("\\\\") ||
+                Regex("""^[A-Za-z]:[\\/].*""").matches(normalizedProjectPath)
+            ) {
+                return normalizedProjectPath
+            }
+            return properties["MSBuildThisFileDirectory"].orEmpty() + normalizedProjectPath
         }
 
         private fun processPropertyGroup(element: Element) {
@@ -142,11 +160,12 @@ internal object WinRTNuGetMsBuildPayloadResolver {
                 return
             }
             element.childElements().forEach { item ->
-                if (!conditionPasses(item.getAttribute("Condition"))) {
-                    return@forEach
-                }
                 when (item.localTagName()) {
-                    "ReferenceCopyLocalPaths", "Content", "None" -> addCopyLocalItem(item)
+                    "ReferenceCopyLocalPaths", "Content", "None" -> {
+                        if (conditionPasses(item.getAttribute("Condition"))) {
+                            addCopyLocalItem(item)
+                        }
+                    }
                 }
             }
         }
@@ -184,6 +203,9 @@ internal object WinRTNuGetMsBuildPayloadResolver {
 
         private fun expandInclude(include: String): List<Path> {
             val normalizedInclude = include.replace('/', '\\')
+            if (hasUnresolvedMsBuildExpression(normalizedInclude)) {
+                return emptyList()
+            }
             if (!normalizedInclude.contains('*')) {
                 return Path.of(normalizedInclude)
                     .toAbsolutePath()
@@ -302,7 +324,8 @@ internal object WinRTNuGetMsBuildPayloadResolver {
             val trimmed = condition.trim()
             val exists = Regex("""^Exists\('([^']+)'\)$""").find(trimmed)
             if (exists != null) {
-                return Files.exists(Path.of(exists.groupValues[1]))
+                val path = exists.groupValues[1]
+                return !hasUnresolvedMsBuildExpression(path) && Files.exists(Path.of(path))
             }
             val comparison = Regex("""^'([^']*)'\s*(==|!=)\s*'([^']*)'$""").find(trimmed)
             if (comparison != null) {
@@ -327,6 +350,9 @@ internal object WinRTNuGetMsBuildPayloadResolver {
             }
             return current
         }
+
+        private fun hasUnresolvedMsBuildExpression(value: String): Boolean =
+            value.contains("\$(")
 
         private fun Element.metadata(name: String): String? {
             getAttribute(name).takeIf(String::isNotBlank)?.let { return it }
