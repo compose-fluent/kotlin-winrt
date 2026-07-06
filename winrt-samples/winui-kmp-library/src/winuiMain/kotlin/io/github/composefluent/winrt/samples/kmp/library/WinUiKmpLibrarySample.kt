@@ -362,12 +362,13 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         timer.interval = 16.milliseconds
         timer.isRepeating = false
         println("winui-kmp-library: timer interval=${timer.interval} repeating=${timer.isRepeating} runningBefore=${timer.isRunning}")
-        activeTimerToken = timer.tick.add(TypedEventHandler { _, _ ->
+        val tickHandler: TypedEventHandler<DispatcherQueueTimer, Any?> = { _, _ ->
             timerSmokeCompleted = true
             println("winui-kmp-library: timer tick callback running=${timer.isRunning}")
             timer.stop()
             exit()
-        })
+        }
+        activeTimerToken = timer.tick.add(tickHandler)
         println("winui-kmp-library: timer token=$activeTimerToken")
         timer.start()
         println("winui-kmp-library: timer started runningAfter=${timer.isRunning}")

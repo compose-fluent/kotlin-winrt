@@ -9,6 +9,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import java.io.FileOutputStream
@@ -39,7 +40,7 @@ abstract class RunWinRTApplicationHostTask @Inject constructor(
     abstract val environmentVariables: MapProperty<String, String>
 
     @get:Optional
-    @get:Internal
+    @get:OutputFile
     abstract val outputLog: RegularFileProperty
 
     @TaskAction
