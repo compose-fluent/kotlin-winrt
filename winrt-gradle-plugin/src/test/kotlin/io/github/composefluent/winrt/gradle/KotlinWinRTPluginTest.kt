@@ -7340,7 +7340,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun plugin_adds_kmp_generated_sources_to_common_main_when_authored_roots_are_shared() {
+    fun plugin_adds_kmp_generated_sources_to_winui_main_when_non_winui_targets_exist() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-generated-common-test-")
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
         writeGradleFile(
@@ -7382,17 +7382,12 @@ class KotlinWinRTPluginTest {
             kotlin {
                 jvm("winuiJvm")
                 mingwX64()
+                linuxX64()
                 sourceSets {
                     commonMain {
                         dependencies {
                             implementation files("$runtimeJar")
                         }
-                    }
-                    winuiMain {
-                        dependsOn commonMain
-                    }
-                    winuiJvmMain {
-                        dependsOn winuiMain
                     }
                 }
             }
@@ -7419,14 +7414,14 @@ class KotlinWinRTPluginTest {
                     }
 
                     def buildRoot = layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-                    def generatedProjection = buildRoot.resolve("generated/kotlin-winrt/src/commonMain/kotlin")
+                    def generatedProjection = buildRoot.resolve("generated/kotlin-winrt/src/winuiMain/kotlin")
                         .toString()
                         .replace("\\", "/")
                     def legacyGeneratedProjection = buildRoot.resolve("generated/kotlin-winrt/src/main/kotlin")
                     def generatedCompilerSupport = buildRoot.resolve("generated/kotlin-winrt/compiler-support/merged")
                         .toString()
                         .replace("\\", "/")
-                    def generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
+                    def generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/winuiMain/kotlin")
                         .toString()
                         .replace("\\", "/")
                     def legacyGeneratedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
@@ -7437,22 +7432,25 @@ class KotlinWinRTPluginTest {
                     def legacyGeneratedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
                     def commonSources = normalizedSourcePaths("commonMain")
                     def winuiSources = normalizedSourcePaths("winuiMain")
+                    def winuiJvmMain = kotlin.sourceSets.named("winuiJvmMain").get()
+                    def mingwX64Main = kotlin.sourceSets.named("mingwX64Main").get()
+                    def linuxX64Main = kotlin.sourceSets.named("linuxX64Main").get()
                     def mingwSources = normalizedSourcePaths("mingwX64Main")
                     println("COMMON_MAIN_SOURCES=" + commonSources)
                     println("WINUI_MAIN_SOURCES=" + winuiSources)
                     println("MINGW_X64_MAIN_SOURCES=" + mingwSources)
-                    if (!commonSources.contains(generatedProjection)) {
-                        throw new GradleException("Generated projection source must be owned by commonMain: " + commonSources)
+                    if (commonSources.contains(generatedProjection)) {
+                        throw new GradleException("Generated projection source must not be owned by commonMain: " + commonSources)
                     }
                     if (legacyGeneratedProjection.toFile().exists()) {
                         throw new GradleException("KMP generated projection source must not remain under src/main/kotlin: " +
                             legacyGeneratedProjection.toString().replace("\\", "/"))
                     }
-                    if (!commonSources.contains(generatedCompilerSupport)) {
-                        throw new GradleException("Generated compiler support source must be owned by commonMain: " + commonSources)
+                    if (commonSources.contains(generatedCompilerSupport)) {
+                        throw new GradleException("Generated compiler support source must not be owned by commonMain: " + commonSources)
                     }
-                    if (!commonSources.contains(generatedAuthoring)) {
-                        throw new GradleException("Generated authoring support source must be owned by commonMain: " + commonSources)
+                    if (commonSources.contains(generatedAuthoring)) {
+                        throw new GradleException("Generated authoring support source must not be owned by commonMain: " + commonSources)
                     }
                     if (legacyGeneratedAuthoring.toFile().exists()) {
                         throw new GradleException("KMP generated authoring support source must not remain under src/main/kotlin: " +
@@ -7465,14 +7463,23 @@ class KotlinWinRTPluginTest {
                         throw new GradleException("KMP generated application entry source must not remain under src/commonMain/kotlin: " +
                             legacyGeneratedApplicationEntry.toString().replace("\\", "/"))
                     }
-                    if (winuiSources.contains(generatedProjection)) {
-                        throw new GradleException("Generated projection source must not be scoped to winuiMain: " + winuiSources)
+                    if (!winuiSources.contains(generatedProjection)) {
+                        throw new GradleException("Generated projection source must be scoped to winuiMain: " + winuiSources)
                     }
-                    if (winuiSources.contains(generatedCompilerSupport)) {
-                        throw new GradleException("Generated compiler support source must not be scoped to winuiMain: " + winuiSources)
+                    if (!winuiSources.contains(generatedCompilerSupport)) {
+                        throw new GradleException("Generated compiler support source must be scoped to winuiMain: " + winuiSources)
                     }
-                    if (winuiSources.contains(generatedAuthoring)) {
-                        throw new GradleException("Generated authoring support source must not be scoped to winuiMain: " + winuiSources)
+                    if (!winuiSources.contains(generatedAuthoring)) {
+                        throw new GradleException("Generated authoring support source must be scoped to winuiMain: " + winuiSources)
+                    }
+                    if (!winuiJvmMain.dependsOn.contains(kotlin.sourceSets.named("winuiMain").get())) {
+                        throw new GradleException("winuiJvmMain must depend on winuiMain through the WinUI hierarchy group.")
+                    }
+                    if (!mingwX64Main.dependsOn.contains(kotlin.sourceSets.named("winuiMain").get())) {
+                        throw new GradleException("mingwX64Main must depend on winuiMain through the WinUI hierarchy group.")
+                    }
+                    if (linuxX64Main.dependsOn.contains(kotlin.sourceSets.named("winuiMain").get())) {
+                        throw new GradleException("linuxX64Main must not depend on winuiMain.")
                     }
                     if (generatedHostExports.toFile().exists()) {
                         throw new GradleException("Native authoring host exports must not be generated as target-local Kotlin source: " +
@@ -7721,7 +7728,7 @@ class KotlinWinRTPluginTest {
                         throw new GradleException("Expected compiler-generated projection support initializer under: " + supportRoot)
                     }
                     def generatedCompilerSupportRoot = layout.buildDirectory.dir(
-                        "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support",
+                        "generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support",
                     ).get().asFile
                     def generatedCompilerSupportManifest = new File(generatedCompilerSupportRoot, "compiler-support.tsv")
                     if (!generatedCompilerSupportManifest.text.contains(
@@ -7826,7 +7833,7 @@ class KotlinWinRTPluginTest {
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=ui-winuijvm-9999.0.0-SNAPSHOT.jar"))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
-        assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/commonMain/kotlin"))
+        assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/winuiMain/kotlin"))
     }
 
     @Test
@@ -9088,7 +9095,7 @@ class KotlinWinRTPluginTest {
 
             def writeIntrinsicProbe = tasks.register("writeIntrinsicProbe") {
                 dependsOn("generateWinRTProjections")
-                def outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/sample/IntrinsicProbe.kt")
+                def outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/winuiMain/kotlin/sample/IntrinsicProbe.kt")
                 outputs.file(outputFile)
                 doLast {
                     def target = outputFile.get().asFile
@@ -9298,7 +9305,7 @@ class KotlinWinRTPluginTest {
 
             tasks.named("generateWinRTProjections") {
                 doLast {
-                    def supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-support").get().asFile
+                    def supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support").get().asFile
                     new File(supportRoot, "xaml-component-resources.tsv").text = "runtimeClassName\nWinUI3Package.Shimmer_Resource\n"
                     new File(supportRoot, "compiler-support.tsv").append(
                         "xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUiXamlComponentResources\txaml-component-resources.tsv\t1\n"
@@ -9347,7 +9354,7 @@ class KotlinWinRTPluginTest {
 
             def writeTransitiveSupportProbe = tasks.register("writeTransitiveSupportProbe") {
                 dependsOn("generateWinRTProjections")
-                def outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/app/TransitiveSupportProbe.kt")
+                def outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/winuiMain/kotlin/app/TransitiveSupportProbe.kt")
                 outputs.file(outputFile)
                 doLast {
                     def target = outputFile.get().asFile
@@ -9501,17 +9508,17 @@ class KotlinWinRTPluginTest {
         assertTrue(result.output.contains("winrt-library"))
         val baseWindowsFoundationProjection = Files.readString(
             projectDir.resolve(
-                "winrt-base-library/build/generated/kotlin-winrt/src/commonMain/kotlin/windows/foundation/windows_foundation.kt",
+                "winrt-base-library/build/generated/kotlin-winrt/src/winuiMain/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
         val libraryWindowsFoundationProjection = Files.readString(
             projectDir.resolve(
-                "winrt-library/build/generated/kotlin-winrt/src/commonMain/kotlin/windows/foundation/windows_foundation.kt",
+                "winrt-library/build/generated/kotlin-winrt/src/winuiMain/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
         val appWindowsFoundationProjection = Files.readString(
             projectDir.resolve(
-                "winrt-app/build/generated/kotlin-winrt/src/commonMain/kotlin/windows/foundation/windows_foundation.kt",
+                "winrt-app/build/generated/kotlin-winrt/src/winuiMain/kotlin/windows/foundation/windows_foundation.kt",
             ),
         )
         assertTrue(baseWindowsFoundationProjection.contains("IClosable"))

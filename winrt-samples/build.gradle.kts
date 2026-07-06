@@ -28,16 +28,16 @@ kotlin {
                 implementation(projects.winrtProjections)
             }
         }
-        val selectedSampleMain = create(
-            if (sampleWindowsAppSdkVersion.orNull != null) "winuiMain" else "noWinuiMain",
-        ).apply {
-            dependsOn(commonMain.get())
-        }
-        named("winuiJvmMain") {
-            dependsOn(selectedSampleMain)
-        }
-        named("mingwX64Main") {
-            dependsOn(selectedSampleMain)
+        if (sampleWindowsAppSdkVersion.orNull == null) {
+            val noWinuiMain by creating {
+                dependsOn(commonMain.get())
+            }
+            named("winuiJvmMain") {
+                dependsOn(noWinuiMain)
+            }
+            named("mingwX64Main") {
+                dependsOn(noWinuiMain)
+            }
         }
         named("winuiJvmTest") {
             dependencies {

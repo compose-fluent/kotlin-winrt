@@ -37,7 +37,7 @@ kotlin {
     mingwX64()
 }
 
-val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin")
+val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
 
 val auditGeneratedWinRTProjectionOutput by tasks.registering(
     io.github.composefluent.winrt.gradle.ValidateGeneratedWinRTProjectionOutputTask::class,
