@@ -35,7 +35,6 @@ import java.io.File
 import java.util.Properties
 import java.nio.file.Path
 import org.gradle.jvm.tasks.Jar
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 
@@ -1062,7 +1061,7 @@ private fun configureWinRTGeneration(
         val generatedSources = generatedKmpWinuiSources
         val generatedAuthoringSources = generatedKmpWinuiAuthoringSources
         configureKotlinWinRTCompilerPluginClasspath(project)
-        configureKotlinWinRTMultiplatformWinuiHierarchy(project)
+        configureKotlinWinRTMultiplatformWinuiSourceSet(project)
         generateTask.configure { task ->
             task.outputDirectory.set(generatedSources)
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
@@ -1819,18 +1818,29 @@ private fun kotlinWinRTIdentityFiles(
         )
     }.files
 
-@OptIn(ExperimentalKotlinGradlePluginApi::class)
-private fun configureKotlinWinRTMultiplatformWinuiHierarchy(project: Project) {
+private fun configureKotlinWinRTMultiplatformWinuiSourceSet(project: Project) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    project.afterEvaluate {
-        kotlinExtension.applyHierarchyTemplate {
-            common {
-                group("winui") {
-                    withJvm()
-                    withMingw()
-                }
-            }
+    val winuiMain = kotlinExtension.sourceSets.maybeCreate("winuiMain")
+    val commonMain = kotlinExtension.sourceSets.maybeCreate("commonMain")
+    winuiMain.dependsOnIfAbsent(commonMain)
+    kotlinExtension.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+        target.compilations.named("main").configure { compilation ->
+            compilation.defaultSourceSet.dependsOnIfAbsent(winuiMain)
         }
+    }
+    kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+        if (!target.isMingwX64Target()) {
+            return@configureEach
+        }
+        target.compilations.named("main").configure { compilation ->
+            compilation.defaultSourceSet.dependsOnIfAbsent(winuiMain)
+        }
+    }
+}
+
+private fun KotlinSourceSet.dependsOnIfAbsent(sourceSet: KotlinSourceSet) {
+    if (!dependsOn.contains(sourceSet)) {
+        dependsOn(sourceSet)
     }
 }
 
