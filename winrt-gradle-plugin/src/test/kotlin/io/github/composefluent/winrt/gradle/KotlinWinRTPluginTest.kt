@@ -3540,6 +3540,199 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_expands_msbuild_wildcard_imports() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.wildcard.import/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native/ImportBefore"))
+        Files.createDirectories(packageRoot.resolve("runtimes/win-x64/native_uap"))
+        Files.writeString(
+            packageRoot.resolve("Sample.Wildcard.Import.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Wildcard.Import</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("runtimes/win-x64/native_uap/Sample.Wildcard.Import.dll"), "wildcard")
+        Files.writeString(
+            packageRoot.resolve("build/native/ImportBefore/00-platform.props"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <EffectivePlatform>$(Platform)</EffectivePlatform>
+              </PropertyGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        Files.writeString(
+            packageRoot.resolve("build/native/Sample.Wildcard.Import.targets"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <Import Project="ImportBefore\*" />
+              <ItemGroup>
+                <ReferenceCopyLocalPaths Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EffectivePlatform)\native_uap\Sample.Wildcard.Import.dll" />
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-wildcard-import.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.Wildcard.Import@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageMsBuildWildcardImport",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-wildcard-import"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Sample.Wildcard.Import.dll")))
+    }
+
+    @Test
+    fun runtime_assets_task_ignores_unresolved_msbuild_functions_for_unhandled_items() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.msbuild.function/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.createDirectories(packageRoot.resolve("runtimes/win-x64/native_uap"))
+        Files.writeString(
+            packageRoot.resolve("Sample.MsBuild.Function.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.MsBuild.Function</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("runtimes/win-x64/native_uap/Sample.MsBuild.Function.dll"), "function")
+        Files.writeString(
+            packageRoot.resolve("build/native/Sample.MsBuild.Function.targets"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <WindowsSdkPath>$([Microsoft.Build.Utilities.ToolLocationHelper]::GetPlatformSdkLocation("Windows", "10.0"))</WindowsSdkPath>
+                <FacadeWinmdPath>$(WindowsSdkPath)UnionMetadata\facade\Windows.winmd</FacadeWinmdPath>
+              </PropertyGroup>
+              <ItemGroup>
+                <ReferencePath Include="$(FacadeWinmdPath)" Condition="Exists('$(FacadeWinmdPath)')" />
+                <ReferenceCopyLocalPaths Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-$(Platform)\native_uap\Sample.MsBuild.Function.dll" />
+                <ReferenceCopyLocalPaths Include="$(FacadeWinmdPath)" />
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-msbuild-function.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.MsBuild.Function@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageMsBuildFunction",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-msbuild-function"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Sample.MsBuild.Function.dll")))
+        assertFalse(Files.exists(outputRoot.resolve("Windows.winmd")))
+    }
+
+    @Test
+    fun runtime_assets_task_ignores_unresolved_msbuild_function_imports() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.msbuild.import.function/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.createDirectories(packageRoot.resolve("runtimes/win-x64/native_uap"))
+        Files.writeString(
+            packageRoot.resolve("Sample.MsBuild.Import.Function.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.MsBuild.Import.Function</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(
+            packageRoot.resolve("runtimes/win-x64/native_uap/Sample.MsBuild.Import.Function.dll"),
+            "import-function",
+        )
+        Files.writeString(
+            packageRoot.resolve("build/native/Sample.MsBuild.Import.Function.targets"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)..\'))" />
+              <ItemGroup>
+                <ReferenceCopyLocalPaths Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-$(Platform)\native_uap\Sample.MsBuild.Import.Function.dll" />
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-msbuild-import-function.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.MsBuild.Import.Function@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageMsBuildImportFunction",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-msbuild-import-function"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Sample.MsBuild.Import.Function.dll")))
+    }
+
+    @Test
     fun runtime_assets_task_preserves_msbuild_copy_local_resource_target_paths() {
         val project = ProjectBuilder.builder().build()
         val packageRoot = project.layout.buildDirectory.dir("nuget/sample.resources/1.0.0").get().asFile.toPath()
