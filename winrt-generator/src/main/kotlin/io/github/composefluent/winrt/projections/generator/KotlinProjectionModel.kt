@@ -457,8 +457,7 @@ data class KotlinTypeProjectionPlan(
     val implementedInterfaceBindings: List<KotlinProjectionInterfaceBinding> = emptyList(),
     val activatableFactoryInterfaceName: String? = null,
     val activatableFactoryInterfaceIid: Guid? = null,
-    val composableFactoryInterfaceName: String? = null,
-    val composableFactoryInterfaceIid: Guid? = null,
+    val composableFactoryBindings: List<KotlinProjectionComposableFactoryBinding> = emptyList(),
     val abiSlotBindings: List<KotlinProjectionAbiSlotBinding> = emptyList(),
     val instanceMemberBindings: List<KotlinProjectionInstanceMemberBinding> = emptyList(),
     val staticMemberBindings: List<KotlinProjectionStaticMemberBinding> = emptyList(),
@@ -484,6 +483,12 @@ data class KotlinTypeProjectionPlan(
 data class KotlinProjectionInterfaceBinding(
     val qualifiedName: String,
     val iid: Guid? = null,
+)
+
+data class KotlinProjectionComposableFactoryBinding(
+    val qualifiedName: String,
+    val iid: Guid? = null,
+    val isVisible: Boolean = false,
 )
 
 data class KotlinProjectionAbiSlotBinding(

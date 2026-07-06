@@ -66,7 +66,7 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.type.events.any(WinRTEventDefinition::isStatic) ||
             plan.staticInterfaceNames.isNotEmpty() ||
             plan.activatableFactoryInterfaceName != null ||
-            plan.composableFactoryInterfaceName != null ||
+            plan.composableFactoryBindings.isNotEmpty() ||
             KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds ||
             KotlinProjectionCompanionKind.StaticInterfaces in plan.companionKinds ||
             KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds ||

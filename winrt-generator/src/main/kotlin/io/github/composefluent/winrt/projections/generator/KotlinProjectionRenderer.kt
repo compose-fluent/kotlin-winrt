@@ -1290,7 +1290,7 @@ class KotlinProjectionRenderer(
             .forEach { binding ->
                 val objectReferencePlan = objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]
                 val acquireExpression =
-                    if (plan.composableFactoryInterfaceName != null && plan.isOverridableRuntimeClassInterface(binding.qualifiedName)) {
+                    if (plan.composableFactoryBindings.isNotEmpty() && plan.isOverridableRuntimeClassInterface(binding.qualifiedName)) {
                         "Metadata.acquireInterface(winRTComposableObjectReference?.inner ?: _inner, %T.Metadata.IID)"
                     } else {
                         "Metadata.acquireInterface(_inner, %T.Metadata.IID)"
@@ -2466,7 +2466,7 @@ class KotlinProjectionRenderer(
         }
         instanceMemberOwnerCacheBindings.forEach { binding ->
             val acquisitionTarget =
-                if (plan.composableFactoryInterfaceName != null && plan.isOverridableRuntimeClassInterface(binding.slotInterfaceName)) {
+                if (plan.composableFactoryBindings.isNotEmpty() && plan.isOverridableRuntimeClassInterface(binding.slotInterfaceName)) {
                     CodeBlock.of("winRTComposableObjectReference?.inner ?: _inner")
                 } else {
                     CodeBlock.of("_inner")

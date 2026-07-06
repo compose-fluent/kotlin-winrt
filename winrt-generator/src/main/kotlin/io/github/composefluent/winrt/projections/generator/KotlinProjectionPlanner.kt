@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.projections.generator
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
+import io.github.composefluent.winrt.metadata.WinRTAttributedFactoryKind
 import io.github.composefluent.winrt.metadata.WinRTCustomMappedMemberOutputDescriptor
 import io.github.composefluent.winrt.metadata.WinRTCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRTEventDefinition
@@ -254,6 +255,15 @@ class KotlinProjectionPlanner(
         }
         val packageName = (ROOT_PACKAGE_SEGMENTS + namespaceSegments(type.namespace)).joinToString(".")
         val relativePath = packageName.replace('.', '/') + "/${type.name}.kt"
+        val composableFactoryBindings = semanticHelpers.getAttributedTypes(type)
+            .filter { factory -> factory.composable }
+            .map { factory ->
+                KotlinProjectionComposableFactoryBinding(
+                    qualifiedName = factory.interfaceName,
+                    iid = interfaceIidFor(factory.interfaceType),
+                    isVisible = if (type.activation.factories.isNotEmpty()) factory.visible else true,
+                )
+            }
         return KotlinTypeProjectionPlan(
             type = type,
             typesByQualifiedName = typesByQualifiedName,
@@ -280,11 +290,10 @@ class KotlinProjectionPlanner(
                         qualifiedName = implemented.interfaceName,
                         iid = interfaceIidFor(implemented.interfaceName),
                     )
-                },
+            },
             activatableFactoryInterfaceName = type.activation.activatableFactoryInterfaceName,
             activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(::interfaceIidFor),
-            composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
-            composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(::interfaceIidFor),
+            composableFactoryBindings = composableFactoryBindings,
             abiSlotBindings = cachedAbiSlotBindings(type, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache),
             instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache),
             staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName, semanticHelpers, abiSlotBindingCache, abiMemberCountCache),
@@ -1882,7 +1891,10 @@ class KotlinProjectionPlanner(
         if (type.kind == WinRTTypeKind.RuntimeClass && type.activation.staticInterfaceNames.isNotEmpty()) {
             add(KotlinProjectionCompanionKind.StaticInterfaces)
         }
-        if (type.kind == WinRTTypeKind.RuntimeClass && type.activation.composableFactoryInterfaceName != null) {
+        if (
+            type.kind == WinRTTypeKind.RuntimeClass &&
+            type.activation.factories.any { it.kind == WinRTAttributedFactoryKind.Composable }
+        ) {
             add(KotlinProjectionCompanionKind.ComposableFactory)
         }
     }

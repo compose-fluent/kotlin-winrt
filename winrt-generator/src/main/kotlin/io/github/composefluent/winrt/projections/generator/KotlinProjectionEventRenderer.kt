@@ -972,32 +972,28 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                             .build(),
                     )
                 }
-                plan.composableFactoryInterfaceName?.let { interfaceName ->
-                    addProperty(
-                        PropertySpec.builder("FACTORY_INTERFACE", String::class)
-                            .addModifiers(KModifier.CONST)
-                            .initializer("%S", interfaceName)
-                            .build(),
-                    )
-                }
-                plan.composableFactoryInterfaceIid?.let { iid ->
-                    addProperty(
-                        PropertySpec.builder("FACTORY_INTERFACE_IID", GUID_CLASS_NAME)
-                            .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
-                            .build(),
-                    )
+                plan.composableFactoryBindings.forEach { factory ->
+                    factory.iid?.let { iid ->
+                        addProperty(
+                            PropertySpec.builder(composableFactoryIidConstantName(factory), GUID_CLASS_NAME)
+                                .addModifiers(KModifier.INTERNAL)
+                                .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                                .build(),
+                        )
+                    }
                 }
                 renderComposableFactoryCreateFunctions(plan).forEach(::addFunction)
                 renderDerivedComposableFactoryCreateFunctions(plan).forEach(::addFunction)
             }
             .addFunction(
                 FunSpec.builder("acquire")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("factoryInterfaceIid", GUID_CLASS_NAME)
                     .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
                     .addCode(
                         CodeBlock.of(
-                            "return %T.get(Metadata.TYPE_NAME%L)\n",
+                            "return %T.get(Metadata.TYPE_NAME, factoryInterfaceIid)\n",
                             ACTIVATION_FACTORY_CLASS_NAME,
-                            if (plan.composableFactoryInterfaceIid != null) ", FACTORY_INTERFACE_IID" else "",
                         ),
                     )
                     .build(),
@@ -1025,14 +1021,24 @@ internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinType
 }
 
 internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
-    val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
-    return factoryType.methods
-        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
-        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
-        .mapNotNull(::composableUserParameters)
-        .map { (method, userParameters) ->
+    return plan.composableFactoryBindings
+        .flatMap { factory ->
+            val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@flatMap emptyList()
+            factoryType.methods
+                .filter(WinRTMethodDefinition::isProjectedCallableMethod)
+                .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+                .mapNotNull(::composableUserParameters)
+                .map { (method, userParameters) -> factory to method to userParameters }
+        }
+        .map { (factoryAndMethod, userParameters) ->
+            val (factory, method) = factoryAndMethod
             val constructor = FunSpec.constructorBuilder()
                 .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .apply {
+                    if (!factory.isVisible) {
+                        addModifiers(KModifier.PROTECTED)
+                    }
+                }
             if (plan.supportsDerivedComposableConstruction()) {
                 val projectedClassName = ClassName(plan.packageName, plan.type.name)
                 run {
@@ -1153,20 +1159,26 @@ private fun KotlinProjectionRenderer.renderActivationFactoryCreateIntrinsicInvoc
 }
 
 internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
-    val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
-    val factoryClassName = resolveTypeName(factoryType.qualifiedName)
-    return factoryType.methods
-        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
-        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
-        .mapNotNull(::composableUserParameters)
-        .map { (method, userParameters) ->
+    return plan.composableFactoryBindings
+        .flatMap { factory ->
+            val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@flatMap emptyList()
+            val factoryClassName = resolveTypeName(factoryType.qualifiedName)
+            factoryType.methods
+                .filter(WinRTMethodDefinition::isProjectedCallableMethod)
+                .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+                .mapNotNull(::composableUserParameters)
+                .map { (method, userParameters) -> Triple(factory, factoryType to factoryClassName, method to userParameters) }
+        }
+        .map { (factory, factoryTypeAndClassName, methodAndUserParameters) ->
+            val (factoryType, factoryClassName) = factoryTypeAndClassName
+            val (method, userParameters) = methodAndUserParameters
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
                 .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
                 .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",
-                    renderComposableFactoryInvocation(plan, factoryType, factoryClassName, method, userParameters),
+                    renderComposableFactoryInvocation(plan, factory, factoryType, factoryClassName, method, userParameters),
                 )
                 .build()
         }
@@ -1176,13 +1188,19 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
     if (!plan.supportsDerivedComposableConstruction()) {
         return emptyList()
     }
-    val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
-    val factoryClassName = resolveTypeName(factoryType.qualifiedName)
-    return factoryType.methods
-        .filter(WinRTMethodDefinition::isProjectedCallableMethod)
-        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
-        .mapNotNull(::composableUserParameters)
-        .map { (method, userParameters) ->
+    return plan.composableFactoryBindings
+        .flatMap { factory ->
+            val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@flatMap emptyList()
+            val factoryClassName = resolveTypeName(factoryType.qualifiedName)
+            factoryType.methods
+                .filter(WinRTMethodDefinition::isProjectedCallableMethod)
+                .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+                .mapNotNull(::composableUserParameters)
+                .map { (method, userParameters) -> Triple(factory, factoryType to factoryClassName, method to userParameters) }
+        }
+        .map { (factory, factoryTypeAndClassName, methodAndUserParameters) ->
+            val (factoryType, factoryClassName) = factoryTypeAndClassName
+            val (method, userParameters) = methodAndUserParameters
             FunSpec.builder("${factoryCreateFunctionName(method)}ForSubclass")
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("value", ANY)
@@ -1191,7 +1209,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
                 .returns(WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",
-                    renderDerivedComposableFactoryInvocation(plan, factoryType, factoryClassName, method, userParameters),
+                    renderDerivedComposableFactoryInvocation(plan, factory, factoryType, factoryClassName, method, userParameters),
                 )
                 .build()
         }
@@ -1199,6 +1217,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
 
 private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
+    factory: KotlinProjectionComposableFactoryBinding,
     factoryType: WinRTTypeDefinition,
     factoryClassName: TypeName,
     method: WinRTMethodDefinition,
@@ -1223,7 +1242,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
         code.add("%L\n", opener)
         code.indent()
     }
-    code.add("val __factory = acquire()\n")
+    code.add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
     code.add(
         "return %T.createComposableCCWForObject(value, outerInterfaceId, DEFAULT_INTERFACE_IID) { __baseInterface, __innerOut, __resultOut ->\n",
         COM_WRAPPERS_SUPPORT_CLASS_NAME,
@@ -1296,6 +1315,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
 
 private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
+    factory: KotlinProjectionComposableFactoryBinding,
     factoryType: WinRTTypeDefinition,
     factoryClassName: TypeName,
     method: WinRTMethodDefinition,
@@ -1320,7 +1340,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         code.add("%L\n", opener)
         code.indent()
     }
-    code.add("val __factory = acquire()\n")
+    code.add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
     code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
     code.indent()
     code.add("val __innerOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
@@ -1457,6 +1477,13 @@ private fun composableUserParameters(method: WinRTMethodDefinition): Pair<WinRTM
 
 private fun factoryCreateFunctionName(method: WinRTMethodDefinition): String =
     method.name.replaceFirstChar(Char::lowercase)
+
+private fun composableFactoryIidConstantName(factory: KotlinProjectionComposableFactoryBinding): String =
+    generatedLocalIdentifier(
+        prefix = "",
+        identifier = factory.qualifiedName.substringAfterLast('.').substringBefore('<').uppercase(),
+        suffix = "_IID",
+    )
 
 internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     builder: TypeSpec.Builder,

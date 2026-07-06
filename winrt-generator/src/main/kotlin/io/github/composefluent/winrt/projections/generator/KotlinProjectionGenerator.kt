@@ -430,16 +430,11 @@ class KotlinProjectionGenerator(
             validateStaticPropertyBindingContracts(plan)
             validateProjectedAttributeContracts(plan)
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
-                val factoryName = plan.composableFactoryInterfaceName
-                    ?: throw IllegalArgumentException(
+                val composableFactories = plan.composableFactoryBindings
+                if (composableFactories.isEmpty()) {
+                    throw IllegalArgumentException(
                         "Generator requires runtime class ${plan.type.qualifiedName} to carry composable factory interface metadata before projection rendering.",
                     )
-                val factoryType = plan.typesByQualifiedName[factoryName]
-                require(factoryType?.kind == WinRTTypeKind.Interface) {
-                    "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface $factoryName to be present in the metadata model."
-                }
-                require(plan.composableFactoryInterfaceIid != null) {
-                    "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface $factoryName to carry metadata IID before projection rendering."
                 }
                 val defaultInterfaceName = plan.defaultInterfaceName
                     ?: throw IllegalArgumentException(
@@ -453,7 +448,16 @@ class KotlinProjectionGenerator(
                 require(plan.defaultInterfaceIid != null) {
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID for composable projection."
                 }
-                validateComposableFactoryCreateBindingContracts(plan, factoryType)
+                composableFactories.forEach { factory ->
+                    val factoryType = plan.typesByQualifiedName[factory.qualifiedName]
+                    require(factoryType?.kind == WinRTTypeKind.Interface) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface ${factory.qualifiedName} to be present in the metadata model."
+                    }
+                    require(factory.iid != null) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface ${factory.qualifiedName} to carry metadata IID before projection rendering."
+                    }
+                    validateComposableFactoryCreateBindingContracts(plan, factoryType)
+                }
             }
         }
     }
