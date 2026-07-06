@@ -1933,6 +1933,26 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun plugin_configures_authoring_scanner_classpath_without_application_boilerplate() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application {}
+
+        val scannerConfiguration = project.configurations.getByName(KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION)
+        val task = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
+        val scannerClasspathNames = task.authoringScannerClasspath.files.map { it.name }.toSet()
+
+        assertTrue(scannerConfiguration.dependencies.isNotEmpty())
+        assertTrue(
+            scannerClasspathNames.joinToString("\n"),
+            scannerClasspathNames.any { it.contains("kotlin-compiler", ignoreCase = true) },
+        )
+    }
+
+    @Test
     fun resolvable_identity_configuration_does_not_mutate_after_resolution() {
         val root = ProjectBuilder.builder().withName("root").build()
         val application = ProjectBuilder.builder().withName("app").withParent(root).build()
@@ -1989,6 +2009,113 @@ class KotlinWinRTPluginTest {
         val task = project.tasks.named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java).get()
 
         assertTrue(task.console.get())
+    }
+
+    @Test
+    fun application_host_infers_kmp_jvm_target_runtime_classpath_and_jar() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            mingwX64("winuiMingw") {
+                binaries {
+                    executable()
+                }
+            }
+        }
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val hostTask = project.tasks.named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java).get()
+        val hostDependencies = taskDependencyNames(hostTask)
+        val stagePackageTask = project.tasks.named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java).get()
+        val stagePackageDependencies = taskDependencyNames(stagePackageTask)
+
+        assertTrue(project.configurations.getByName("winuiJvmRuntimeClasspath").isCanBeResolved)
+        assertTrue("buildWinRTApplicationHost dependencies: $hostDependencies", "winuiJvmJar" in hostDependencies)
+        assertTrue(
+            "mingw release executable must remain staged through the native package path: $stagePackageDependencies",
+            "linkReleaseExecutableWinuiMingw" in stagePackageDependencies,
+        )
+        assertFalse("buildWinRTApplicationHost must not depend on mingw native link tasks: $hostDependencies", "linkReleaseExecutableWinuiMingw" in hostDependencies)
+    }
+
+    @Test
+    fun application_host_task_graph_includes_generation_support_staging_and_host_prerequisites() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val hostTask = project.tasks.named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java).get()
+        val runTask = project.tasks.named("runWinRTApplicationHost").get()
+        val hostDependencies = taskDependencyNames(hostTask)
+        val runDependencies = taskDependencyNames(runTask)
+
+        listOf(
+            "generateWinRTProjections",
+            "mergeWinRTCompilerSupport",
+            "stageWinRTApplicationPackage",
+            "stageWinRTRuntimeAssets",
+            "buildWinRTAuthoringHost",
+            "winuiJvmJar",
+        ).forEach { expected ->
+            assertTrue("buildWinRTApplicationHost dependencies: $hostDependencies", expected in hostDependencies)
+        }
+        assertTrue("runWinRTApplicationHost dependencies: $runDependencies", "buildWinRTApplicationHost" in runDependencies)
+    }
+
+    @Test
+    fun run_host_is_first_class_typed_task() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val runTask = project.tasks.named("runWinRTApplicationHost").get()
+
+        val runTaskType = runCatching {
+            Class.forName("io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask")
+        }.getOrNull()
+        assertTrue("RunWinRTApplicationHostTask must be a public Gradle task type.", runTaskType != null)
+        assertTrue(runTaskType!!.isInstance(runTask))
+        listOf("getArgs", "getJvmArgs", "getEnvironmentVariables", "getWorkingDirectory", "getOutputLog").forEach { methodName ->
+            assertTrue(
+                "RunWinRTApplicationHostTask must expose $methodName.",
+                runTaskType.methods.any { method -> method.name == methodName },
+            )
+        }
+    }
+
+    @Test
+    fun run_host_and_java_exec_own_runtime_assets_and_pri_lifecycle() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val javaRunTask = project.tasks.register("runSample", JavaExec::class.java).get()
+        project.extensions.getByType(WinRTExtension::class.java).application {}
+
+        val runHostTask = project.tasks.named("runWinRTApplicationHost").get()
+        val runHostDependencies = taskDependencyNames(runHostTask)
+        val javaRunDependencies = taskDependencyNames(javaRunTask)
+
+        assertTrue("runWinRTApplicationHost dependencies: $runHostDependencies", "buildWinRTApplicationHost" in runHostDependencies)
+        assertTrue("runSample dependencies: $javaRunDependencies", "stageWinRTApplicationPackage" in javaRunDependencies)
+        assertTrue(
+            javaRunTask.jvmArgumentProviders
+                .any { provider -> provider.javaClass.name.contains("RuntimeAssetsRootJvmArgumentProvider") },
+        )
     }
 
     @Test
@@ -9781,6 +9908,9 @@ private fun repositoryRoot(): Path =
                 Files.isDirectory(path.resolve("winrt-projections"))
         }
         ?: error("Unable to locate kotlin-winrt repository root from ${Path.of("").toAbsolutePath().normalize()}.")
+
+private fun taskDependencyNames(task: org.gradle.api.Task): Set<String> =
+    task.taskDependencies.getDependencies(task).map { it.name }.toSet()
 
 private fun commandExists(name: String): Boolean =
     runCatching {

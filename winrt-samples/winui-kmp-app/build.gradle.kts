@@ -1,6 +1,5 @@
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
-import org.gradle.jvm.tasks.Jar
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -108,20 +107,6 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     }
 }
 
-tasks.named<io.github.composefluent.winrt.gradle.BuildWinRTApplicationHostTask>("buildWinRTApplicationHost") {
-    val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
-    val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
-    dependsOn(winuiJvmJar)
-    runtimeClasspath.from(winuiJvmJar.flatMap { it.archiveFile })
-    runtimeClasspath.from(
-        providers.provider {
-            configurations.named("winuiJvmRuntimeClasspath").get().filter { file ->
-                file.name != defaultJarName.get()
-            }
-        },
-    )
-}
-
 private val winuiKmpOptionProperties = listOf(
     "kotlin.winrt.samples.autoExitWinUi",
     "kotlin.winrt.samples.timerSmoke",
@@ -131,12 +116,15 @@ private val winuiKmpOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<Exec>("runWinRTApplicationHost") {
-    val hostJvmOptions = winuiKmpOptionProperties.joinToString(";") { name ->
-        val defaultValue = if (name == "kotlin.winrt.samples.autoExitWinUi") "true" else ""
-        "-D$name=${providers.systemProperty(name).orElse(defaultValue).get()}"
-    }
-    environment("KOTLIN_WINRT_JVM_OPTIONS", hostJvmOptions)
+tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+    jvmArgs.addAll(
+        providers.provider {
+            winuiKmpOptionProperties.map { name ->
+                val defaultValue = if (name == "kotlin.winrt.samples.autoExitWinUi") "true" else ""
+                "-D$name=${providers.systemProperty(name).orElse(defaultValue).get()}"
+            }
+        },
+    )
 }
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
