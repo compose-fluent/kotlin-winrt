@@ -7600,10 +7600,10 @@ class KotlinWinRTPluginTest {
                         throw new GradleException("Generated authoring support source must be scoped to winuiMain: " + winuiSources)
                     }
                     if (!winuiJvmMain.dependsOn.contains(kotlin.sourceSets.named("winuiMain").get())) {
-                        throw new GradleException("winuiJvmMain must depend on winuiMain through the WinUI hierarchy group.")
+                        throw new GradleException("winuiJvmMain must depend on winuiMain through the plugin WinUI source-set edge.")
                     }
                     if (!mingwX64Main.dependsOn.contains(kotlin.sourceSets.named("winuiMain").get())) {
-                        throw new GradleException("mingwX64Main must depend on winuiMain through the WinUI hierarchy group.")
+                        throw new GradleException("mingwX64Main must depend on winuiMain through the plugin WinUI source-set edge.")
                     }
                     if (linuxX64Main.dependsOn.contains(kotlin.sourceSets.named("winuiMain").get())) {
                         throw new GradleException("linuxX64Main must not depend on winuiMain.")
@@ -7632,6 +7632,177 @@ class KotlinWinRTPluginTest {
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":verifyGeneratedSourceSetOwnership")?.outcome)
+    }
+
+    @Test
+    fun plugin_exposes_winui_main_kotlin_dsl_source_set_accessor() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-winui-source-set-accessor-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-winui-source-set-accessor-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                kotlin("multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                mingwX64()
+                linuxX64()
+                sourceSets {
+                    winuiMain {
+                        kotlin.srcDir("src/winuiMain/kotlin")
+                    }
+                }
+            }
+
+            tasks.register("verifyWinuiMainKotlinDslAccessor") {
+                doLast {
+                    val sourceSet = kotlin.sourceSets.named("winuiMain").get()
+                    check(sourceSet.kotlin.srcDirs.any { it.path.replace("\\", "/").endsWith("src/winuiMain/kotlin") }) {
+                        "Expected the Kotlin DSL winuiMain accessor to configure src/winuiMain/kotlin: ${'$'}{sourceSet.kotlin.srcDirs}"
+                    }
+                    check(kotlin.sourceSets.named("winuiJvmMain").get().dependsOn.contains(sourceSet)) {
+                        "winuiJvmMain must depend on winuiMain through the plugin WinUI source-set edge."
+                    }
+                    check(kotlin.sourceSets.named("mingwX64Main").get().dependsOn.contains(sourceSet)) {
+                        "mingwX64Main must depend on winuiMain through the plugin WinUI source-set edge."
+                    }
+                    check(!kotlin.sourceSets.named("linuxX64Main").get().dependsOn.contains(sourceSet)) {
+                        "linuxX64Main must not depend on winuiMain."
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyWinuiMainKotlinDslAccessor", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyWinuiMainKotlinDslAccessor")?.outcome)
+    }
+
+    @Test
+    fun plugin_preserves_user_hierarchy_when_exposing_winui_main_accessor() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-user-hierarchy-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-user-hierarchy-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            @file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
+
+            plugins {
+                kotlin("multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                mingwX64()
+                linuxX64()
+                applyHierarchyTemplate {
+                    common {
+                        group("posix") {
+                            withLinux()
+                        }
+                    }
+                }
+                sourceSets {
+                    winuiMain {
+                        kotlin.srcDir("src/winuiMain/kotlin")
+                    }
+                }
+            }
+
+            tasks.register("verifyUserHierarchy") {
+                doLast {
+                    val winuiMain = kotlin.sourceSets.named("winuiMain").get()
+                    val posixMain = kotlin.sourceSets.named("posixMain").get()
+                    val winuiJvmMain = kotlin.sourceSets.named("winuiJvmMain").get()
+                    val mingwX64Main = kotlin.sourceSets.named("mingwX64Main").get()
+                    val linuxX64Main = kotlin.sourceSets.named("linuxX64Main").get()
+                    check(winuiJvmMain.dependsOn.contains(winuiMain)) {
+                        "winuiJvmMain must keep the plugin WinUI source-set edge."
+                    }
+                    check(mingwX64Main.dependsOn.contains(winuiMain)) {
+                        "mingwX64Main must keep the plugin WinUI source-set edge."
+                    }
+                    check(linuxX64Main.dependsOn.contains(posixMain)) {
+                        "linuxX64Main must keep the user-defined hierarchy source-set edge."
+                    }
+                    check(!linuxX64Main.dependsOn.contains(winuiMain)) {
+                        "linuxX64Main must not inherit the plugin WinUI source set."
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyUserHierarchy", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyUserHierarchy")?.outcome)
     }
 
     @Test
