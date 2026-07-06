@@ -1130,6 +1130,7 @@ class WinRTMetadataLoaderTest {
                 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
                 public sealed class ActivatableAttribute : Attribute
                 {
+                    public ActivatableAttribute() {}
                     public ActivatableAttribute(string factoryInterfaceName) {}
                 }
 
@@ -1317,6 +1318,7 @@ class WinRTMetadataLoaderTest {
                 }
 
                 [Windows.Foundation.Metadata.Guid("33333333-3333-3333-3333-333333333333")]
+                [Windows.Foundation.Metadata.Activatable]
                 [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
                 [Windows.Foundation.Metadata.Static("Sample.Foundation.IWidgetStatics")]
                 [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetFactory")]
