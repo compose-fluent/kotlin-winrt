@@ -7806,6 +7806,86 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun winui_hierarchy_template_extension_groups_jvm_and_mingw_targets() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-winui-hierarchy-extension-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-winui-hierarchy-extension-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            @file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
+
+            import io.github.composefluent.winrt.gradle.winui
+
+            plugins {
+                kotlin("multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                mingwX64()
+                linuxX64()
+                applyHierarchyTemplate {
+                    common {
+                        winui()
+                    }
+                }
+            }
+
+            tasks.register("verifyWinuiHierarchyExtension") {
+                doLast {
+                    val winuiMain = kotlin.sourceSets.named("winuiMain").get()
+                    check(kotlin.sourceSets.named("winuiJvmMain").get().dependsOn.contains(winuiMain)) {
+                        "winuiJvmMain must inherit the winuiMain hierarchy group."
+                    }
+                    check(kotlin.sourceSets.named("mingwX64Main").get().dependsOn.contains(winuiMain)) {
+                        "mingwX64Main must inherit the winuiMain hierarchy group."
+                    }
+                    check(!kotlin.sourceSets.named("linuxX64Main").get().dependsOn.contains(winuiMain)) {
+                        "linuxX64Main must not inherit the winuiMain hierarchy group."
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyWinuiHierarchyExtension", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyWinuiHierarchyExtension")?.outcome)
+    }
+
+    @Test
     fun mingw_application_entry_can_call_main_from_custom_intermediate_source_set() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-application-entry-source-set-test-")
         writeGradleFile(
