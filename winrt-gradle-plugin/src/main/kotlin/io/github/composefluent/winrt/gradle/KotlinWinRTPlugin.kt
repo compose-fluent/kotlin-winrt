@@ -18,7 +18,6 @@ import org.gradle.api.plugins.JavaApplication
 import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
-import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.JavaExec
@@ -620,6 +619,9 @@ private fun configureWinRTApplicationTasks(
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
+            task.dependsOn("generateWinRTProjections")
+            task.dependsOn("mergeWinRTCompilerSupport")
+            task.dependsOn(stageRuntimeAssetsTask)
             task.dependsOn(stageApplicationPackageTask)
             task.dependsOn(buildAuthoringHostTask)
         },
@@ -629,19 +631,15 @@ private fun configureWinRTApplicationTasks(
     }
     val runApplicationHostTask = project.tasks.register(
         "runWinRTApplicationHost",
-        Exec::class.java,
-        Action<Exec> { task ->
+        RunWinRTApplicationHostTask::class.java,
+        Action<RunWinRTApplicationHostTask> { task ->
             task.group = "application"
             task.description = "Runs the native Kotlin/WinRT JVM application host."
+            task.hostExecutable.set(applicationHostExecutable)
+            task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
             task.dependsOn(applicationHostTask)
             task.onlyIf {
                 System.getProperty("os.name").contains("Windows", ignoreCase = true)
-            }
-            task.doFirst {
-                val hostExecutable = applicationHostExecutable.get().asFile
-                val hostDirectory = hostExecutable.parentFile
-                task.executable = hostExecutable.absolutePath
-                task.workingDir = hostDirectory
             }
         },
     )
@@ -778,6 +776,7 @@ private fun configureWinRTApplicationTasks(
             }
         })
     }
+    configureKmpJvmApplicationHostClasspath(project, applicationHostTask)
     project.plugins.withId("application") {
         project.extensions.configure(JavaApplication::class.java, Action<JavaApplication> { application ->
             applicationHostTask.configure { task ->
@@ -819,6 +818,43 @@ private class RuntimeAssetsRootJvmArgumentProvider(
 ) : CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> =
         listOf("-Dkotlin.winrt.runtimeAssetsRoot=${runtimeAssetsRoot.get()}")
+}
+
+private fun configureKmpJvmApplicationHostClasspath(
+    project: Project,
+    applicationHostTask: TaskProvider<BuildWinRTApplicationHostTask>,
+) {
+    project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        val kotlinExtension = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        var configuredTargetName: String? = null
+
+        fun configureTarget(targetName: String) {
+            if (configuredTargetName != null) {
+                return
+            }
+            configuredTargetName = targetName
+            val runtimeClasspath = project.configurations.named("${targetName}RuntimeClasspath")
+            val jar = project.tasks.named("${targetName}Jar", Jar::class.java)
+            applicationHostTask.configure { task ->
+                task.runtimeClasspath.from(runtimeClasspath)
+                task.runtimeClasspath.from(jar.flatMap { it.archiveFile })
+                task.dependsOn(jar)
+            }
+        }
+
+        kotlinExtension.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+            if (target.name == "winuiJvm") {
+                configureTarget(target.name)
+            }
+        }
+        project.afterEvaluate {
+            if (configuredTargetName == null) {
+                kotlinExtension.targets.withType(KotlinJvmTarget::class.java).singleOrNull()?.let { target ->
+                    configureTarget(target.name)
+                }
+            }
+        }
+    }
 }
 
 private fun configureMingwApplicationEntry(

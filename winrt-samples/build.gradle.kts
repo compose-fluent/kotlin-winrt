@@ -1,6 +1,5 @@
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
-import org.gradle.jvm.tasks.Jar
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -140,25 +139,14 @@ val standardSampleSmokeDefaults = mapOf(
     "kotlin.winrt.samples.autoExitWinUi" to "true",
 )
 
-tasks.named<io.github.composefluent.winrt.gradle.BuildWinRTApplicationHostTask>("buildWinRTApplicationHost") {
-    val winuiJvmJar = tasks.named<Jar>("winuiJvmJar")
-    val defaultJarName = providers.provider { "${project.name}-${project.version}.jar" }
-    dependsOn(winuiJvmJar)
-    runtimeClasspath.from(winuiJvmJar.flatMap { it.archiveFile })
-    runtimeClasspath.from(
+tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+    jvmArgs.addAll(
         providers.provider {
-            configurations.named("winuiJvmRuntimeClasspath").get().filter { file ->
-                file.name != defaultJarName.get()
+            sampleJvmOptionProperties.map { name ->
+                "-D$name=${providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "false").get()}"
             }
         },
     )
-}
-
-tasks.named<Exec>("runWinRTApplicationHost") {
-    val hostJvmOptions = sampleJvmOptionProperties.joinToString(";") { name ->
-        "-D$name=${providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "false").get()}"
-    }
-    environment("KOTLIN_WINRT_JVM_OPTIONS", hostJvmOptions)
 }
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
