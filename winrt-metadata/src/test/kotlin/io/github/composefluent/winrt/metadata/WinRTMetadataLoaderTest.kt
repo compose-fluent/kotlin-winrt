@@ -507,6 +507,7 @@ class WinRTMetadataLoaderTest {
                 "IWidgetBase",
                 "IWidgetFactory",
                 "IWidgetOverrides",
+                "IWidgetProtectedFactory",
                 "IWidgetStatics",
                 "Point",
                 "Priority",
