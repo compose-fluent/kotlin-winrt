@@ -88,8 +88,10 @@ private fun configureWinRTRuntimeDependency(project: Project) {
             }
         }
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
-        addAuthoringDependency("commonMainImplementation")
         project.extensions.configure(KotlinMultiplatformExtension::class.java) { kotlin ->
+            kotlin.sourceSets.matching { sourceSet -> sourceSet.name == "winuiMain" }.configureEach { sourceSet ->
+                addAuthoringDependency(sourceSet.implementationConfigurationName)
+            }
             kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
                 val sourceSet = target.compilations.getByName("main").defaultSourceSet
                 addAuthoringDependency(sourceSet.implementationConfigurationName)
@@ -1570,30 +1572,29 @@ private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
 }
 
 private fun kotlinWinRTRuntimeDependency(project: Project): Any {
-    val localRuntimeProject = project.rootProject.findProject(":winrt-runtime")
-    if (localRuntimeProject != null) {
-        return project.dependencies.project(mapOf("path" to localRuntimeProject.path))
-    }
-    return kotlinWinRTPluginMetadataArtifact(project, "winrt-runtime")
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")
-        ?.let(project::files)
-        ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
+    val version = kotlinWinRTPluginVersion()
+    return kotlinWinRTProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version)
 }
 
 private fun kotlinWinRTAuthoringDependency(project: Project): Any {
+    val version = kotlinWinRTPluginVersion()
+    return kotlinWinRTProjectOrModuleDependency(project, ":winrt-authoring", "winrt-authoring", version)
+}
+
+private fun kotlinWinRTAuthoringRuntimeClasspathDependency(project: Project): Any {
     val localAuthoringProject = project.rootProject.findProject(":winrt-authoring")
     if (localAuthoringProject != null) {
         return project.dependencies.project(mapOf("path" to localAuthoringProject.path))
     }
     return kotlinWinRTPluginMetadataArtifact(project, "winrt-authoring")
-        ?: kotlinWinRTCodeSourceFile(io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports::class.java)
+        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports")
             ?.let(project::files)
         ?: "io.github.compose-fluent:winrt-authoring:${kotlinWinRTPluginVersion()}"
 }
 
 private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List<Any> {
     val runtimeDependencies = mutableListOf<Any>()
-    runtimeDependencies += kotlinWinRTAuthoringDependency(project)
+    runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
     val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
     if (localMetadataProject != null) {
         runtimeDependencies += project.dependencies.project(mapOf("path" to localMetadataProject.path))

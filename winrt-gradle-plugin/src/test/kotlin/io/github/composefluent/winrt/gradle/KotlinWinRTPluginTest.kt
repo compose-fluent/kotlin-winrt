@@ -20,7 +20,6 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.Dependency
-import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.BasePluginExtension
@@ -565,6 +564,17 @@ class KotlinWinRTPluginTest {
         val implementationDependencies = project.configurations.getByName("commonMainImplementation").dependencies
         assertHasKotlinWinRTRuntimeDependency(implementationDependencies)
         assertDoesNotHaveKotlinWinRTAuthoringDependency(implementationDependencies)
+    }
+
+    @Test
+    fun plugin_adds_authoring_dependency_to_kmp_winui_main() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+
+        val implementationDependencies = project.configurations.getByName("winuiMainImplementation").dependencies
+        assertHasKotlinWinRTAuthoringDependency(implementationDependencies)
     }
 
     @Test
@@ -10655,27 +10665,25 @@ private fun writeManifestPayloadReferences(root: Path) {
 }
 
 private fun assertHasKotlinWinRTRuntimeDependency(dependencies: Iterable<Dependency>) {
-    assertTrue(
-        dependencies.joinToString(separator = "\n") { dependency ->
-            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
-        },
-        dependencies.any { dependency ->
-            dependency.name == "winrt-runtime" ||
-                dependency is ProjectDependency && dependency.path == ":winrt-runtime" ||
-                dependency is FileCollectionDependency
-        },
-    )
+    assertHasKotlinWinRTModuleDependency(dependencies, "winrt-runtime")
 }
 
 private fun assertHasKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
+    assertHasKotlinWinRTModuleDependency(dependencies, "winrt-authoring")
+}
+
+private fun assertHasKotlinWinRTModuleDependency(
+    dependencies: Iterable<Dependency>,
+    moduleName: String,
+) {
     assertTrue(
         dependencies.joinToString(separator = "\n") { dependency ->
             "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
         },
         dependencies.any { dependency ->
-            dependency.name == "winrt-authoring" ||
-                dependency is ProjectDependency && dependency.path == ":winrt-authoring" ||
-                dependency is FileCollectionDependency
+            dependency.group == "io.github.compose-fluent" &&
+                dependency.name == moduleName &&
+                dependency.version == "0.1.0-SNAPSHOT"
         },
     )
 }
