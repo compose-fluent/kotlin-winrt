@@ -1576,6 +1576,17 @@ private fun kotlinWinRTRuntimeDependency(project: Project): Any {
     return kotlinWinRTProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version)
 }
 
+private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {
+    val localRuntimeProject = project.rootProject.findProject(":winrt-runtime")
+    if (localRuntimeProject != null) {
+        return project.dependencies.project(mapOf("path" to localRuntimeProject.path))
+    }
+    return kotlinWinRTPluginMetadataArtifact(project, "winrt-runtime")
+        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")
+            ?.let(project::files)
+        ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
+}
+
 private fun kotlinWinRTAuthoringDependency(project: Project): Any {
     val version = kotlinWinRTPluginVersion()
     return kotlinWinRTProjectOrModuleDependency(project, ":winrt-authoring", "winrt-authoring", version)
@@ -1594,6 +1605,7 @@ private fun kotlinWinRTAuthoringRuntimeClasspathDependency(project: Project): An
 
 private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List<Any> {
     val runtimeDependencies = mutableListOf<Any>()
+    runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
     val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
     if (localMetadataProject != null) {
