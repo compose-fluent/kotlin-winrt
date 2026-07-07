@@ -20,7 +20,7 @@ kotlin {
         }
     }
     sourceSets {
-        commonMain {
+        winuiMain {
             dependencies {
                 implementation(project(":winrt-samples:winui-kmp-library"))
             }
