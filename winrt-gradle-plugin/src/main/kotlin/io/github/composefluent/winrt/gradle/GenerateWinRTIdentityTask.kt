@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataInd
 import io.github.composefluent.winrt.compiler.authoring.renderAuthoringMetadataIndexRow
 import io.github.composefluent.winrt.metadata.WinRTMetadataFilter
 import io.github.composefluent.winrt.metadata.WinRTNamespaceAdditions
+import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -234,6 +235,57 @@ private fun readProjectionRegistrarProjectedTypeNames(file: File): List<String> 
         }
         parts[1]
     }
+}
+
+internal fun readProjectionRegistrarInterfaceIids(files: Iterable<File>): Map<String, Guid> {
+    val result = linkedMapOf<String, Guid>()
+    files
+        .filter(File::isFile)
+        .forEach { file ->
+            readProjectionRegistrarInterfaceIids(file).forEach { (typeName, iid) ->
+                val previous = result.putIfAbsent(typeName, iid)
+                if (previous != null && previous != iid) {
+                    throw GradleException(
+                        "Projection registrar interface '$typeName' has conflicting IIDs: $previous and $iid.",
+                    )
+                }
+            }
+        }
+    return result
+}
+
+private fun readProjectionRegistrarInterfaceIids(file: File): Map<String, Guid> {
+    val lines = file.readLines()
+    val header = lines.firstOrNull()?.split('\t')
+        ?: throw GradleException("Projection registrar '${file.absolutePath}' is missing a header.")
+    if (header != projectionRegistrarHeader && header != legacyProjectionRegistrarHeader) {
+        throw GradleException(
+            "Projection registrar '${file.absolutePath}' has malformed header '${lines.first()}'.",
+        )
+    }
+    if (header == legacyProjectionRegistrarHeader) {
+        return emptyMap()
+    }
+    return lines.drop(1).mapIndexedNotNull { index, line ->
+        if (line.isBlank()) {
+            return@mapIndexedNotNull null
+        }
+        val rowNumber = index + 2
+        val parts = splitProjectionRegistrarRow(line)
+        if (parts.size != header.size || parts.take(3).any(String::isBlank)) {
+            throw GradleException(
+                "Projection registrar '${file.absolutePath}' has malformed row $rowNumber.",
+            )
+        }
+        if (parts[2] != "Interface" || parts[5].isBlank()) {
+            return@mapIndexedNotNull null
+        }
+        val iid = runCatching { Guid(parts[5]) }.getOrNull()
+            ?: throw GradleException(
+                "Projection registrar '${file.absolutePath}' has malformed interface IID on row $rowNumber.",
+            )
+        parts[1] to iid
+    }.toMap()
 }
 
 private val typeShapeDescriptorHeader = listOf(

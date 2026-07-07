@@ -1023,6 +1023,11 @@ private fun configureWinRTGeneration(
             task.dependsOn(generateTask)
         },
     )
+    project.tasks.withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java).configureEach { task ->
+        task.projectionRegistrarFiles.from(
+            mergeCompilerSupportTask.flatMap { it.outputDirectory.file("projection-registrar.tsv") },
+        )
+    }
 
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
         val generatedSources = generatedJvmSources
@@ -1260,6 +1265,11 @@ private fun registerWinRTAuthoredCandidateValidation(
             task.metadataInputFiles.from(
                 project.provider {
                     explicitMetadataInputFiles(extension.metadataInputs.get())
+                },
+            )
+            task.projectionRegistrarFiles.from(
+                generatedSources.map { directory ->
+                    directory.file("kotlin-winrt-support/projection-registrar.tsv")
                 },
             )
             task.includeNamespaces.set(extension.includeNamespaces)

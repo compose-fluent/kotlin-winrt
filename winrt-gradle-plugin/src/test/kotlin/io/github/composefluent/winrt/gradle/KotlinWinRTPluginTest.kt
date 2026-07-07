@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeCandidate
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringCandidateFile
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
@@ -8783,6 +8784,62 @@ class KotlinWinRTPluginTest {
             .resolve("sample/WinRT_AuthoredWidget_TypeDetails.kt")
         assertTrue(Files.isRegularFile(details))
         assertTrue(Files.readString(details).contains("22222222-3333-4444-5555-666666666666"))
+    }
+
+    @Test
+    fun compiler_authored_type_details_uses_projection_registrar_interface_iid() {
+        val root = Files.createTempDirectory("kotlin-winrt-compiler-authored-details-registrar-iid-")
+        val registrar = root.resolve("projection-registrar.tsv")
+        Files.writeString(
+            registrar,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid
+            sample.IWidget	Sample.IWidget	Interface			33333333-4444-5555-6666-777777777777
+            """.trimIndent() + "\n",
+        )
+        val candidate = KotlinWinRTAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "AuthoredWidget",
+            sourceTypeName = "sample.AuthoredWidget",
+            winRTBaseClassName = null,
+            winRTInterfaceNames = listOf("Sample.IWidget"),
+            overridableInterfaceNames = emptyList(),
+            isPublic = true,
+        )
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "GetName",
+                                    returnTypeName = "String",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ).withProjectionRegistrarInterfaceIids(
+            readProjectionRegistrarInterfaceIids(listOf(registrar.toFile())),
+        )
+        val output = root.resolve("details")
+
+        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = model,
+            outputDirectory = output,
+            assemblyName = "Sample",
+        )
+
+        val details = output.resolve("sample/WinRT_AuthoredWidget_TypeDetails.kt")
+        assertTrue(Files.isRegularFile(details))
+        assertTrue(Files.readString(details).contains("33333333-4444-5555-6666-777777777777"))
     }
 
     @Test
