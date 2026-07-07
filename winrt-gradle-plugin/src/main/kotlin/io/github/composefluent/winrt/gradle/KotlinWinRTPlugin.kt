@@ -1823,9 +1823,15 @@ private fun configureKotlinWinRTMultiplatformWinuiSourceSet(project: Project) {
     val winuiMain = kotlinExtension.sourceSets.maybeCreate("winuiMain")
     val commonMain = kotlinExtension.sourceSets.maybeCreate("commonMain")
     winuiMain.dependsOnIfAbsent(commonMain)
+    val winuiTest = kotlinExtension.sourceSets.maybeCreate("winuiTest")
+    val commonTest = kotlinExtension.sourceSets.maybeCreate("commonTest")
+    winuiTest.dependsOnIfAbsent(commonTest)
     kotlinExtension.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
         target.compilations.named("main").configure { compilation ->
             compilation.defaultSourceSet.dependsOnIfAbsent(winuiMain)
+        }
+        target.compilations.matching { compilation -> compilation.name == "test" }.configureEach { compilation ->
+            compilation.defaultSourceSet.dependsOnIfAbsent(winuiTest)
         }
     }
     kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
@@ -1834,6 +1840,9 @@ private fun configureKotlinWinRTMultiplatformWinuiSourceSet(project: Project) {
         }
         target.compilations.named("main").configure { compilation ->
             compilation.defaultSourceSet.dependsOnIfAbsent(winuiMain)
+        }
+        target.compilations.matching { compilation -> compilation.name == "test" }.configureEach { compilation ->
+            compilation.defaultSourceSet.dependsOnIfAbsent(winuiTest)
         }
     }
 }
