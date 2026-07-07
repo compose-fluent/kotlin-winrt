@@ -7714,6 +7714,85 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun plugin_exposes_winui_test_kotlin_dsl_source_set_accessor() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-winui-test-source-set-accessor-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-winui-test-source-set-accessor-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                kotlin("multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                mingwX64()
+                linuxX64()
+                sourceSets {
+                    winuiTest {
+                        kotlin.srcDir("src/winuiTest/kotlin")
+                    }
+                }
+            }
+
+            tasks.register("verifyWinuiTestKotlinDslAccessor") {
+                doLast {
+                    val sourceSet = kotlin.sourceSets.named("winuiTest").get()
+                    check(sourceSet.kotlin.srcDirs.any { it.path.replace("\\", "/").endsWith("src/winuiTest/kotlin") }) {
+                        "Expected the Kotlin DSL winuiTest accessor to configure src/winuiTest/kotlin: ${'$'}{sourceSet.kotlin.srcDirs}"
+                    }
+                    check(kotlin.sourceSets.named("winuiJvmTest").get().dependsOn.contains(sourceSet)) {
+                        "winuiJvmTest must depend on winuiTest through the plugin WinUI source-set edge."
+                    }
+                    check(kotlin.sourceSets.named("mingwX64Test").get().dependsOn.contains(sourceSet)) {
+                        "mingwX64Test must depend on winuiTest through the plugin WinUI source-set edge."
+                    }
+                    check(!kotlin.sourceSets.named("linuxX64Test").get().dependsOn.contains(sourceSet)) {
+                        "linuxX64Test must not depend on winuiTest."
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyWinuiTestKotlinDslAccessor", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyWinuiTestKotlinDslAccessor")?.outcome)
+    }
+
+    @Test
     fun plugin_preserves_user_hierarchy_when_exposing_winui_main_accessor() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-user-hierarchy-test-")
         writeGradleFile(
@@ -7775,9 +7854,14 @@ class KotlinWinRTPluginTest {
                 doLast {
                     val winuiMain = kotlin.sourceSets.named("winuiMain").get()
                     val posixMain = kotlin.sourceSets.named("posixMain").get()
+                    val winuiTest = kotlin.sourceSets.named("winuiTest").get()
+                    val posixTest = kotlin.sourceSets.named("posixTest").get()
                     val winuiJvmMain = kotlin.sourceSets.named("winuiJvmMain").get()
                     val mingwX64Main = kotlin.sourceSets.named("mingwX64Main").get()
                     val linuxX64Main = kotlin.sourceSets.named("linuxX64Main").get()
+                    val winuiJvmTest = kotlin.sourceSets.named("winuiJvmTest").get()
+                    val mingwX64Test = kotlin.sourceSets.named("mingwX64Test").get()
+                    val linuxX64Test = kotlin.sourceSets.named("linuxX64Test").get()
                     check(winuiJvmMain.dependsOn.contains(winuiMain)) {
                         "winuiJvmMain must keep the plugin WinUI source-set edge."
                     }
@@ -7789,6 +7873,18 @@ class KotlinWinRTPluginTest {
                     }
                     check(!linuxX64Main.dependsOn.contains(winuiMain)) {
                         "linuxX64Main must not inherit the plugin WinUI source set."
+                    }
+                    check(winuiJvmTest.dependsOn.contains(winuiTest)) {
+                        "winuiJvmTest must keep the plugin WinUI test source-set edge."
+                    }
+                    check(mingwX64Test.dependsOn.contains(winuiTest)) {
+                        "mingwX64Test must keep the plugin WinUI test source-set edge."
+                    }
+                    check(linuxX64Test.dependsOn.contains(posixTest)) {
+                        "linuxX64Test must keep the user-defined test hierarchy source-set edge."
+                    }
+                    check(!linuxX64Test.dependsOn.contains(winuiTest)) {
+                        "linuxX64Test must not inherit the plugin WinUI test source set."
                     }
                 }
             }
@@ -7861,6 +7957,7 @@ class KotlinWinRTPluginTest {
             tasks.register("verifyWinuiHierarchyExtension") {
                 doLast {
                     val winuiMain = kotlin.sourceSets.named("winuiMain").get()
+                    val winuiTest = kotlin.sourceSets.named("winuiTest").get()
                     check(kotlin.sourceSets.named("winuiJvmMain").get().dependsOn.contains(winuiMain)) {
                         "winuiJvmMain must inherit the winuiMain hierarchy group."
                     }
@@ -7869,6 +7966,15 @@ class KotlinWinRTPluginTest {
                     }
                     check(!kotlin.sourceSets.named("linuxX64Main").get().dependsOn.contains(winuiMain)) {
                         "linuxX64Main must not inherit the winuiMain hierarchy group."
+                    }
+                    check(kotlin.sourceSets.named("winuiJvmTest").get().dependsOn.contains(winuiTest)) {
+                        "winuiJvmTest must inherit the winuiTest hierarchy group."
+                    }
+                    check(kotlin.sourceSets.named("mingwX64Test").get().dependsOn.contains(winuiTest)) {
+                        "mingwX64Test must inherit the winuiTest hierarchy group."
+                    }
+                    check(!kotlin.sourceSets.named("linuxX64Test").get().dependsOn.contains(winuiTest)) {
+                        "linuxX64Test must not inherit the winuiTest hierarchy group."
                     }
                 }
             }
