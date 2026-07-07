@@ -25,6 +25,7 @@ import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -2107,6 +2108,43 @@ class KotlinWinRTPluginTest {
                 runTaskType.methods.any { method -> method.name == methodName },
             )
         }
+    }
+
+    @Test
+    fun run_host_launch_configuration_participates_in_gradle_task_state() {
+        val runTaskType = RunWinRTApplicationHostTask::class.java
+
+        listOf("getArgs", "getJvmArgs", "getEnvironmentVariables").forEach { methodName ->
+            val method = runTaskType.methods.single { method -> method.name == methodName }
+            assertTrue(
+                "$methodName must be a Gradle input so different launch modes are not treated as the same run.",
+                method.isAnnotationPresent(org.gradle.api.tasks.Input::class.java),
+            )
+        }
+        assertTrue(
+            "getHostExecutable must be a Gradle input file.",
+            runTaskType.methods.single { method -> method.name == "getHostExecutable" }
+                .isAnnotationPresent(org.gradle.api.tasks.InputFile::class.java),
+        )
+        val workingDirectory = runTaskType.methods.single { method -> method.name == "getWorkingDirectory" }
+        assertTrue(
+            "getWorkingDirectory must be a Gradle input directory because the host resolves runtime assets relative to it.",
+            workingDirectory.isAnnotationPresent(org.gradle.api.tasks.InputDirectory::class.java),
+        )
+        assertEquals(
+            PathSensitivity.RELATIVE,
+            workingDirectory.getAnnotation(org.gradle.api.tasks.PathSensitive::class.java).value,
+        )
+        assertTrue(
+            "getOutputLog must be a Gradle output file so each smoke task can own its validation log.",
+            runTaskType.methods.single { method -> method.name == "getOutputLog" }
+                .isAnnotationPresent(org.gradle.api.tasks.OutputFile::class.java),
+        )
+        assertTrue(
+            "getOutputLog must remain optional for interactive/manual application runs.",
+            runTaskType.methods.single { method -> method.name == "getOutputLog" }
+                .isAnnotationPresent(org.gradle.api.tasks.Optional::class.java),
+        )
     }
 
     @Test
