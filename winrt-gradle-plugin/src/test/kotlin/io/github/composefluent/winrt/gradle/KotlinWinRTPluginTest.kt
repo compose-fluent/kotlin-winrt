@@ -20,6 +20,7 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.BasePluginExtension
@@ -2408,6 +2409,8 @@ class KotlinWinRTPluginTest {
         val targetConfiguration = project.configurations.create("kotlinCompilerPluginClasspathWinuiJvm")
 
         assertTrue(targetConfiguration.dependencies.isNotEmpty())
+        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime")
+        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-authoring")
     }
 
     @Test
@@ -10670,6 +10673,29 @@ private fun assertHasKotlinWinRTRuntimeDependency(dependencies: Iterable<Depende
 
 private fun assertHasKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
     assertHasKotlinWinRTModuleDependency(dependencies, "winrt-authoring")
+}
+
+private fun assertHasKotlinWinRTClasspathDependency(
+    dependencies: Iterable<Dependency>,
+    moduleName: String,
+) {
+    assertTrue(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            val files = (dependency as? FileCollectionDependency)
+                ?.files
+                ?.files
+                ?.joinToString(prefix = "[", postfix = "]") { file -> file.name }
+                .orEmpty()
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}:$files"
+        },
+        dependencies.any { dependency ->
+            dependency.name == moduleName ||
+                dependency is ProjectDependency && dependency.path == ":$moduleName" ||
+                dependency is FileCollectionDependency && dependency.files.files.any { file ->
+                    file.name.startsWith(moduleName) && file.name.endsWith(".jar")
+                }
+        },
+    )
 }
 
 private fun assertHasKotlinWinRTModuleDependency(
