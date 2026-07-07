@@ -98,7 +98,7 @@ class KotlinWinRTAuthoringScannerCliTest {
     @Test
     fun rejects_authoring_metadata_index_rows_with_extra_columns() {
         val metadataIndex = Files.createTempFile("kotlin-winrt-extra-column-metadata-index-", ".tsv")
-        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\t\t\textra\n")
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\t\t\t11111111-1111-1111-1111-111111111111\textra\n")
 
         val error = runCatching { readAuthoringMetadataIndex(metadataIndex) }.exceptionOrNull()
 
@@ -108,6 +108,16 @@ class KotlinWinRTAuthoringScannerCliTest {
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("authoring metadata index row 1"),
         )
+    }
+
+    @Test
+    fun reads_authoring_metadata_index_interface_iid_column() {
+        val metadataIndex = Files.createTempFile("kotlin-winrt-iid-metadata-index-", ".tsv")
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\t\t\t96369F54-8EB6-48F0-ABCE-C1B211E627C3\n")
+
+        val type = readAuthoringMetadataIndex(metadataIndex).getValue("Windows.Foundation.IStringable")
+
+        assertEquals("96369F54-8EB6-48F0-ABCE-C1B211E627C3", type.iid.toString())
     }
 
     @Test

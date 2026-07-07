@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.compiler.authoring
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
+import io.github.composefluent.winrt.runtime.Guid
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -12,6 +13,7 @@ data class IndexedWinRTType(
     val kind: String,
     val overridableInterfaces: List<String>,
     val baseTypeName: String,
+    val iid: Guid? = null,
 )
 
 data class KotlinWinRTAuthoredTypeCandidate(
@@ -184,6 +186,7 @@ fun writeAuthoringMetadataIndex(
                         .distinct()
                         .sorted(),
                     baseTypeName = type.baseTypeName.orEmpty(),
+                    iid = type.iid,
                 )
             },
         output,
@@ -207,11 +210,12 @@ fun renderAuthoringMetadataIndexRow(type: IndexedWinRTType): String =
         type.kind,
         type.overridableInterfaces.distinct().sorted().joinToString(";"),
         type.baseTypeName,
+        type.iid?.toString().orEmpty(),
     ).joinToString("\t")
 
 private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRTType? {
     val parts = line.split('\t')
-    if (parts.size !in 2..4 || parts[0].isBlank() || parts[1].isBlank()) {
+    if (parts.size !in 2..5 || parts[0].isBlank() || parts[1].isBlank()) {
         return null
     }
     if (parts[1] !in authoringMetadataIndexKinds) {
@@ -223,6 +227,9 @@ private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRTType? {
         overridableInterfaces = parseAuthoringMetadataIndexListField(parts.getOrElse(2) { "" })
             ?: return null,
         baseTypeName = parts.getOrElse(3) { "" },
+        iid = parts.getOrNull(4)
+            ?.takeIf(String::isNotBlank)
+            ?.let { value -> runCatching { Guid(value) }.getOrNull() ?: return null },
     )
 }
 

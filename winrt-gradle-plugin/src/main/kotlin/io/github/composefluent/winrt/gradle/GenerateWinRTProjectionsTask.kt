@@ -755,6 +755,7 @@ internal fun mergedAuthoringMetadataIndexTypes(
                     .distinct()
                     .sorted(),
                 baseTypeName = type.baseTypeName.orEmpty(),
+                iid = type.iid,
             )
         } +
         identityFiles

@@ -3,12 +3,16 @@ package io.github.composefluent.winrt.gradle
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringCandidateFile
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringMetadataModel
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
+import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageIdentity
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -55,6 +59,11 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectionRegistrarFiles: ConfigurableFileCollection
 
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
@@ -137,16 +146,32 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
             excludedTypes = excludeTypes.get().toSet(),
             additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
         )
+        val projectionRegistrarInputFiles = projectionRegistrarFiles.files
+        val projectionRegistrarInterfaceIids = readProjectionRegistrarInterfaceIids(projectionRegistrarInputFiles)
         val model = KotlinWinRTAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             baseModel,
             exportedCandidates,
+        ).withProjectionRegistrarInterfaceIids(
+            projectionRegistrarInterfaceIids,
         )
-        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(
-            candidates = candidates,
-            metadataModel = model,
-            outputDirectory = outputRoot,
-            assemblyName = authoringAssemblyName.get(),
-        )
+        try {
+            KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(
+                candidates = candidates,
+                metadataModel = model,
+                outputDirectory = outputRoot,
+                assemblyName = authoringAssemblyName.get(),
+            )
+        } catch (error: IllegalArgumentException) {
+            if (error.message.orEmpty().contains("without metadata IID")) {
+                throw IllegalArgumentException(
+                    error.message.orEmpty() +
+                        " Projection registrar IID inputs: files=${projectionRegistrarInputFiles.joinToString { it.absolutePath }}, " +
+                        "interfaceIidCount=${projectionRegistrarInterfaceIids.size}.",
+                    error,
+                )
+            }
+            throw error
+        }
     }
 
     private fun metadataSources(): List<WinRTMetadataSource> {
@@ -304,5 +329,32 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
         cliCacheDirectory = nugetCliCacheDirectory.get().asFile.toPath(),
         scratchDirectory = temporaryDir.toPath().resolve("nuget-scratch"),
         logger = logger,
+    )
+}
+
+internal fun WinRTMetadataModel.withProjectionRegistrarInterfaceIids(
+    interfaceIids: Map<String, Guid>,
+): WinRTMetadataModel {
+    if (interfaceIids.isEmpty()) {
+        return this
+    }
+    return WinRTMetadataModel(
+        namespaces = namespaces.map { namespace ->
+            WinRTNamespace(
+                name = namespace.name,
+                types = namespace.types.map { type ->
+                    val registrarIid = interfaceIids[type.qualifiedName]
+                    when {
+                        registrarIid == null -> type
+                        type.kind != WinRTTypeKind.Interface -> type
+                        type.iid == null -> type.copy(iid = registrarIid)
+                        type.iid == registrarIid -> type
+                        else -> throw IllegalArgumentException(
+                            "WinRT interface '${type.qualifiedName}' metadata IID ${type.iid} conflicts with projection registrar IID $registrarIid.",
+                        )
+                    }
+                },
+            )
+        },
     )
 }
