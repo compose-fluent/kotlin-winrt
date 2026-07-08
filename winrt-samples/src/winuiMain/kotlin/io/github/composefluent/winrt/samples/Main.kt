@@ -35,5 +35,3 @@ private fun hasExplicitSmokeSelection(): Boolean =
     winRTSampleOptionConfigured("kotlin.winrt.samples.runNativeSmoke") ||
         winRTSampleOptionConfigured("kotlin.winrt.samples.runComponentSmoke") ||
         winRTSampleOptionConfigured("kotlin.winrt.samples.runWinUiSmoke")
-
-internal expect fun runWinUiSample()
