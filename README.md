@@ -53,7 +53,10 @@ pluginManagement {
     }
     resolutionStrategy {
         eachPlugin {
-            if (requested.id.id == "io.github.composefluent.winrt") {
+            if (
+                requested.id.id == "io.github.composefluent.winrt" ||
+                requested.id.id == "io.github.composefluent.winrt.runtime"
+            ) {
                 useModule("io.github.compose-fluent:winrt-gradle-plugin:${requested.version}")
             }
         }
