@@ -1826,9 +1826,19 @@ private fun configureWinRTIdentityProjectDependencies(
         if (!canRegisterIdentityDependency()) {
             return
         }
-        val key = listOf(dependency.group, dependency.name, dependency.version).joinToString(":")
-        if (registeredExternalModules.add(key)) {
-            identityDependencies.dependencies.add(dependency.copy())
+        kotlinWinRTIdentityExternalModuleNames(dependency.name).forEachIndexed { index, moduleName ->
+            val key = listOf(dependency.group, moduleName, dependency.version).joinToString(":")
+            if (!registeredExternalModules.add(key)) {
+                return@forEachIndexed
+            }
+            val identityDependency = if (index == 0) {
+                dependency.copy()
+            } else {
+                val group = dependency.group
+                val version = dependency.version
+                project.dependencies.create("$group:$moduleName:$version")
+            }
+            identityDependencies.dependencies.add(identityDependency)
         }
     }
     fun scanConfiguration(configurationName: String) {
@@ -1868,6 +1878,42 @@ private fun String.isWinRTIdentityDependencySourceConfiguration(): Boolean =
                 endsWith("ApiMetadata") ||
                 endsWith("ImplementationMetadata")
             ))
+
+internal fun kotlinWinRTIdentityExternalModuleNames(moduleName: String): List<String> {
+    val rootModuleName = kotlinTargetModuleSuffixes.firstNotNullOfOrNull { suffix ->
+        moduleName.removeSuffix("-$suffix").takeIf { candidate ->
+            candidate != moduleName && candidate.isNotBlank()
+        }
+    }
+    return if (rootModuleName == null) listOf(moduleName) else listOf(moduleName, rootModuleName)
+}
+
+private val kotlinTargetModuleSuffixes = listOf(
+    "androidnativearm32",
+    "androidnativearm64",
+    "androidnativex64",
+    "androidnativex86",
+    "iossimulatorarm64",
+    "watchossimulatorarm64",
+    "tvossimulatorarm64",
+    "linuxarm64",
+    "linuxx64",
+    "macosarm64",
+    "macosx64",
+    "mingwx64",
+    "wasmwasi",
+    "wasmjs",
+    "iosarm64",
+    "iosx64",
+    "tvosarm64",
+    "tvosx64",
+    "watchosarm32",
+    "watchosarm64",
+    "watchosx64",
+    "mingw",
+    "jvm",
+    "js",
+)
 
 private fun KotlinSourceSet.kotlinWinRTIdentitySourceConfigurationNames(): List<String> =
     buildList {
