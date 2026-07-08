@@ -966,6 +966,13 @@ class KotlinWinRTPluginTest {
                 jvmToolchain(25)
             }
 
+            tasks.named("compileKotlin") {
+                enabled = false
+            }
+            tasks.matching { it.name == "validateCompileKotlinWinRTAuthoredCandidates" }.configureEach {
+                enabled = false
+            }
+
             winRT {
                 runtimeAsset "UpstreamComponent.dll"
             }
@@ -1004,6 +1011,36 @@ class KotlinWinRTPluginTest {
         assertTrue(producerIdentity.contains("\"runtimeAssetRecords\""))
         assertTrue(producerIdentity.contains("\"fileName\":\"UpstreamComponent.dll\""))
         assertFalse(producerIdentity.contains("\"runtimeAssets\""))
+        val targetModule = repository.resolve("test/winrt/producer-mingw/1.0")
+        Files.createDirectories(targetModule)
+        Files.writeString(
+            targetModule.resolve("producer-mingw-1.0.pom"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>test.winrt</groupId>
+              <artifactId>producer-mingw</artifactId>
+              <version>1.0</version>
+              <packaging>klib</packaging>
+            </project>
+            """.trimIndent(),
+        )
+        Files.writeString(
+            targetModule.resolve("producer-mingw-1.0.module"),
+            """
+            {
+              "formatVersion": "1.1",
+              "component": {
+                "url": "../../producer/1.0/producer-1.0.module",
+                "group": "test.winrt",
+                "module": "producer",
+                "version": "1.0",
+                "attributes": { "org.gradle.status": "release" }
+              },
+              "variants": []
+            }
+            """.trimIndent(),
+        )
 
         writeGradleFile(
             consumer.resolve("settings.gradle.kts"),
@@ -1048,7 +1085,7 @@ class KotlinWinRTPluginTest {
             }
 
             dependencies {
-                implementation "test.winrt:producer:1.0"
+                implementation "test.winrt:producer-mingw:1.0"
             }
 
             winRT {
@@ -1070,6 +1107,22 @@ class KotlinWinRTPluginTest {
         )
         assertTrue(applicationIdentity.contains("producer-1.0.json"))
         assertTrue(applicationIdentity.contains("dependencyIdentityFiles"))
+    }
+
+    @Test
+    fun external_kmp_target_module_identity_resolution_also_checks_root_module() {
+        assertEquals(
+            listOf("skiko-winui-mingw", "skiko-winui"),
+            kotlinWinRTIdentityExternalModuleNames("skiko-winui-mingw"),
+        )
+        assertEquals(
+            listOf("projection-owner-mingwx64", "projection-owner"),
+            kotlinWinRTIdentityExternalModuleNames("projection-owner-mingwx64"),
+        )
+        assertEquals(
+            listOf("plain-library"),
+            kotlinWinRTIdentityExternalModuleNames("plain-library"),
+        )
     }
 
     @Test
