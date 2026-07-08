@@ -48,6 +48,12 @@ class KotlinWinRTPlugin : Plugin<Project> {
     }
 }
 
+class KotlinWinRTRuntimePlugin : Plugin<Project> {
+    override fun apply(project: Project) {
+        configureWinRTRuntimeDependency(project, includeAuthoring = false)
+    }
+}
+
 const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRTIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRTIdentityElements"
 const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRTCompilerPlugin"
@@ -57,7 +63,23 @@ const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
 private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRTLibraryDependencyIdentity"
 
-private fun configureWinRTRuntimeDependency(project: Project) {
+fun Project.registerWinRTApplicationHostRunTask(
+    name: String,
+): TaskProvider<RunWinRTApplicationHostTask> =
+    registerWinRTApplicationHostRunTask(name, Action {})
+
+fun Project.registerWinRTApplicationHostRunTask(
+    name: String,
+    configure: Action<in RunWinRTApplicationHostTask>,
+): TaskProvider<RunWinRTApplicationHostTask> {
+    val applicationHostTask = tasks.named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java)
+    return registerWinRTApplicationHostRunTask(name, applicationHostTask, configure)
+}
+
+private fun configureWinRTRuntimeDependency(
+    project: Project,
+    includeAuthoring: Boolean = true,
+) {
     val configuredRuntimeConfigurations = mutableSetOf<String>()
     val configuredAuthoringConfigurations = mutableSetOf<String>()
     fun addRuntimeDependency(configurationName: String) {
@@ -83,18 +105,24 @@ private fun configureWinRTRuntimeDependency(project: Project) {
         }
         .configureEach { configuration ->
             addRuntimeDependency(configuration.name)
-            if (configuration.name == "implementation") {
+            if (includeAuthoring && configuration.name == "implementation") {
                 addAuthoringDependency(configuration.name)
             }
         }
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
         project.extensions.configure(KotlinMultiplatformExtension::class.java) { kotlin ->
             kotlin.sourceSets.matching { sourceSet -> sourceSet.name == "winuiMain" }.configureEach { sourceSet ->
-                addAuthoringDependency(sourceSet.implementationConfigurationName)
+                if (includeAuthoring) {
+                    addAuthoringDependency(sourceSet.implementationConfigurationName)
+                } else {
+                    addRuntimeDependency(sourceSet.implementationConfigurationName)
+                }
             }
             kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
                 val sourceSet = target.compilations.getByName("main").defaultSourceSet
-                addAuthoringDependency(sourceSet.implementationConfigurationName)
+                if (includeAuthoring) {
+                    addAuthoringDependency(sourceSet.implementationConfigurationName)
+                }
             }
         }
     }
@@ -259,6 +287,31 @@ private fun configureWinRTApplicationModel(
     extension.whenApplicationConfigured {
         configureWinRTApplicationTasks(project, extension)
     }
+}
+
+private fun Project.registerWinRTApplicationHostRunTask(
+    name: String,
+    applicationHostTask: TaskProvider<BuildWinRTApplicationHostTask>,
+    configure: Action<in RunWinRTApplicationHostTask>,
+): TaskProvider<RunWinRTApplicationHostTask> {
+    val applicationHostExecutable = applicationHostTask.flatMap { task ->
+        task.outputDirectory.file(task.executableBaseName.map { executableBaseName -> "$executableBaseName.exe" })
+    }
+    return tasks.register(
+        name,
+        RunWinRTApplicationHostTask::class.java,
+        Action<RunWinRTApplicationHostTask> { task ->
+            task.group = "application"
+            task.description = "Runs the native Kotlin/WinRT JVM application host."
+            task.hostExecutable.set(applicationHostExecutable)
+            task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
+            task.dependsOn(applicationHostTask)
+            task.onlyIf {
+                System.getProperty("os.name").contains("Windows", ignoreCase = true)
+            }
+            configure.execute(task)
+        },
+    )
 }
 
 private fun configureWinRTApplicationTasks(
@@ -627,23 +680,18 @@ private fun configureWinRTApplicationTasks(
             task.dependsOn(buildAuthoringHostTask)
         },
     )
-    val applicationHostExecutable = applicationHostTask.flatMap { task ->
-        task.outputDirectory.file(task.executableBaseName.map { executableBaseName -> "$executableBaseName.exe" })
-    }
-    val runApplicationHostTask = project.tasks.register(
+    val runApplicationHostTask = project.registerWinRTApplicationHostRunTask(
         "runWinRTApplicationHost",
-        RunWinRTApplicationHostTask::class.java,
-        Action<RunWinRTApplicationHostTask> { task ->
-            task.group = "application"
-            task.description = "Runs the native Kotlin/WinRT JVM application host."
-            task.hostExecutable.set(applicationHostExecutable)
-            task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
-            task.dependsOn(applicationHostTask)
-            task.onlyIf {
-                System.getProperty("os.name").contains("Windows", ignoreCase = true)
-            }
-        },
+        applicationHostTask,
+        Action {},
     )
+    extension.application.runTaskRegistrations.forEach { registration ->
+        project.registerWinRTApplicationHostRunTask(
+            registration.name,
+            applicationHostTask,
+            registration.action,
+        )
+    }
     val packageApplicationTask = project.tasks.register(
         "packageWinRTApplication",
         PackageWinRTApplicationTask::class.java,

@@ -569,6 +569,34 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun runtime_consumer_plugin_adds_runtime_dependency_without_generation_tasks() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            sourceSets.create("winuiMain")
+        }
+        project.pluginManager.apply(KotlinWinRTRuntimePlugin::class.java)
+
+        assertHasKotlinWinRTRuntimeDependency(
+            project.configurations.getByName("commonMainImplementation").dependencies,
+        )
+        assertHasKotlinWinRTRuntimeDependency(
+            project.configurations.getByName("winuiMainImplementation").dependencies,
+        )
+        assertDoesNotHaveKotlinWinRTAuthoringDependency(
+            project.configurations.getByName("commonMainImplementation").dependencies,
+        )
+        assertDoesNotHaveKotlinWinRTAuthoringDependency(
+            project.configurations.getByName("winuiMainImplementation").dependencies,
+        )
+        assertTrue(project.tasks.findByName("generateWinRTIdentity") == null)
+        assertTrue(project.tasks.findByName("generateWinRTProjections") == null)
+        assertTrue(project.extensions.findByName("winRT") == null)
+    }
+
+    @Test
     fun plugin_adds_authoring_dependency_to_kmp_winui_main() {
         val project = ProjectBuilder.builder().build()
 
@@ -2108,6 +2136,40 @@ class KotlinWinRTPluginTest {
                 runTaskType.methods.any { method -> method.name == methodName },
             )
         }
+    }
+
+    @Test
+    fun application_dsl_registers_additional_typed_run_host_tasks() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+            application.runTask("runWinUISmoke") { task ->
+                task.args.add("--smoke")
+                task.jvmArgs.add("-Xmx256m")
+                task.environmentVariables.put("SMOKE_MODE", "skiko")
+                task.outputLog.set(project.layout.buildDirectory.file("reports/winui-smoke.log"))
+            }
+        }
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.runTask("runWinUIReplay") { task ->
+                task.args.add("--replay")
+            }
+        }
+
+        val smokeTask = project.tasks.named("runWinUISmoke", RunWinRTApplicationHostTask::class.java).get()
+        val replayTask = project.tasks.named("runWinUIReplay", RunWinRTApplicationHostTask::class.java).get()
+        val smokeDependencies = taskDependencyNames(smokeTask)
+
+        assertEquals(listOf("--smoke"), smokeTask.args.get())
+        assertEquals(listOf("-Xmx256m"), smokeTask.jvmArgs.get())
+        assertEquals(mapOf("SMOKE_MODE" to "skiko"), smokeTask.environmentVariables.get())
+        assertEquals("winui-smoke.log", smokeTask.outputLog.get().asFile.name)
+        assertTrue("runWinUISmoke dependencies: $smokeDependencies", "buildWinRTApplicationHost" in smokeDependencies)
+        assertEquals(listOf("--replay"), replayTask.args.get())
+        assertTrue(project.tasks.named("runWinRTApplicationHost").get() is RunWinRTApplicationHostTask)
     }
 
     @Test
