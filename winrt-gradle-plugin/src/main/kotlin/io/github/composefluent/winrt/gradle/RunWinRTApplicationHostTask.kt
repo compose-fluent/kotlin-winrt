@@ -67,10 +67,13 @@ abstract class RunWinRTApplicationHostTask @Inject constructor(
             spec.executable = hostExecutable.get().asFile.absolutePath
             spec.workingDir = workingDirectory.get().asFile
             spec.args(args.get())
-            spec.environment(environmentVariables.get())
+            val configuredEnvironment = environmentVariables.get()
+            spec.environment(configuredEnvironment)
             val configuredJvmArgs = jvmArgs.get()
             if (configuredJvmArgs.isNotEmpty()) {
                 spec.environment("KOTLIN_WINRT_JVM_OPTIONS", configuredJvmArgs.joinToString(";"))
+            } else if (!configuredEnvironment.containsKey("KOTLIN_WINRT_JVM_OPTIONS")) {
+                spec.environment.remove("KOTLIN_WINRT_JVM_OPTIONS")
             }
             spec.configureOutput()
         }

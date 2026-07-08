@@ -182,6 +182,8 @@ abstract class WinRTApplicationOptions @Inject constructor(
     objects: ObjectFactory,
     private val project: Project,
 ) {
+    internal val runTaskRegistrations = mutableListOf<WinRTApplicationRunTaskRegistration>()
+
     val packageMode: Property<WinRTApplicationPackageMode> =
         objects.property(WinRTApplicationPackageMode::class.java).convention(WinRTApplicationPackageMode.Unpackaged)
     val mainClass: Property<String> = objects.property(String::class.java)
@@ -231,6 +233,18 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     fun unpackaged() {
         packageMode.set(WinRTApplicationPackageMode.Unpackaged)
+    }
+
+    fun runTask(name: String) {
+        runTask(name, Action {})
+    }
+
+    fun runTask(name: String, action: Action<in RunWinRTApplicationHostTask>) {
+        if (project.tasks.findByName("buildWinRTApplicationHost") != null) {
+            project.registerWinRTApplicationHostRunTask(name, action)
+        } else {
+            runTaskRegistrations += WinRTApplicationRunTaskRegistration(name, action)
+        }
     }
 
     fun projectPriResource(input: Any) {
@@ -304,6 +318,11 @@ abstract class WinRTApplicationOptions @Inject constructor(
         projectPriDefaultQualifiers.add(qualifier)
     }
 }
+
+internal data class WinRTApplicationRunTaskRegistration(
+    val name: String,
+    val action: Action<in RunWinRTApplicationHostTask>,
+)
 
 enum class WinRTApplicationPackageMode {
     Unpackaged,

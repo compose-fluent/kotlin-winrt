@@ -56,6 +56,10 @@ gradlePlugin {
             id = "io.github.composefluent.winrt"
             implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRTPlugin"
         }
+        create("kotlinWinRTRuntime") {
+            id = "io.github.composefluent.winrt.runtime"
+            implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRTRuntimePlugin"
+        }
     }
 }
 
