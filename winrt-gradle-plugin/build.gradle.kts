@@ -64,7 +64,7 @@ gradlePlugin {
 }
 
 tasks.matching { task ->
-    task.name.startsWith("publishKotlinWinRTPluginMarkerMavenPublicationTo")
+    task.name.startsWith("publish") && task.name.contains("PluginMarkerMavenPublicationTo")
 }.configureEach {
     enabled = false
 }
