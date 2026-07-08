@@ -99,23 +99,19 @@ private fun configureWinRTRuntimeDependency(
         }
     }
     project.configurations
-        .matching { configuration ->
-            configuration.name == "implementation" ||
-                configuration.name == "commonMainImplementation"
-        }
+        .matching { configuration -> configuration.name == "implementation" }
         .configureEach { configuration ->
             addRuntimeDependency(configuration.name)
-            if (includeAuthoring && configuration.name == "implementation") {
+            if (includeAuthoring) {
                 addAuthoringDependency(configuration.name)
             }
         }
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
         project.extensions.configure(KotlinMultiplatformExtension::class.java) { kotlin ->
             kotlin.sourceSets.matching { sourceSet -> sourceSet.name == "winuiMain" }.configureEach { sourceSet ->
+                addRuntimeDependency(sourceSet.implementationConfigurationName)
                 if (includeAuthoring) {
                     addAuthoringDependency(sourceSet.implementationConfigurationName)
-                } else {
-                    addRuntimeDependency(sourceSet.implementationConfigurationName)
                 }
             }
             kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
