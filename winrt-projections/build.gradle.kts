@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
-    id("io.github.composefluent.winrt")
+    id("io.github.compose-fluent.winrt")
 }
 
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")

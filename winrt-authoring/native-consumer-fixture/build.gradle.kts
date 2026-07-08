@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("io.github.composefluent.winrt")
+    id("io.github.compose-fluent.winrt")
 }
 
 description = "Kotlin/WinRT native authoring dependency staging validation fixture"

@@ -53,18 +53,12 @@ tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
 gradlePlugin {
     plugins {
         create("kotlinWinRT") {
-            id = "io.github.composefluent.winrt"
+            id = "io.github.compose-fluent.winrt"
             implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRTPlugin"
         }
         create("kotlinWinRTRuntime") {
-            id = "io.github.composefluent.winrt.runtime"
+            id = "io.github.compose-fluent.winrt.runtime"
             implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRTRuntimePlugin"
         }
     }
-}
-
-tasks.matching { task ->
-    task.name.startsWith("publish") && task.name.contains("PluginMarkerMavenPublicationTo")
-}.configureEach {
-    enabled = false
 }

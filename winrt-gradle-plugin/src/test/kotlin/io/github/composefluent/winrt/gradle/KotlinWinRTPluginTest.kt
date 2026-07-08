@@ -137,7 +137,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
             """.trimIndent(),
         )
@@ -268,7 +268,7 @@ class KotlinWinRTPluginTest {
             }
 
             plugins {
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             winRT {
@@ -962,7 +962,7 @@ class KotlinWinRTPluginTest {
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
                 id "maven-publish"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             group = "test.winrt"
@@ -1083,7 +1083,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -2362,7 +2362,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "java"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             winRT {
@@ -2456,7 +2456,7 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             winRT {
@@ -7560,7 +7560,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -7676,7 +7676,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -7842,7 +7842,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
+                id("io.github.compose-fluent.winrt")
             }
 
             kotlin {
@@ -7921,7 +7921,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
+                id("io.github.compose-fluent.winrt")
             }
 
             kotlin {
@@ -8002,7 +8002,7 @@ class KotlinWinRTPluginTest {
 
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
+                id("io.github.compose-fluent.winrt")
             }
 
             kotlin {
@@ -8113,7 +8113,7 @@ class KotlinWinRTPluginTest {
 
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
+                id("io.github.compose-fluent.winrt")
             }
 
             kotlin {
@@ -8199,7 +8199,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -8297,7 +8297,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -8529,7 +8529,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -8759,7 +8759,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             dependencies {
@@ -9092,7 +9092,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             dependencies {
@@ -9186,7 +9186,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
             """.trimIndent(),
         )
@@ -9600,7 +9600,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -9696,7 +9696,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {
@@ -9786,7 +9786,7 @@ class KotlinWinRTPluginTest {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
             }
 
-            apply plugin: "io.github.composefluent.winrt"
+            apply plugin: "io.github.compose-fluent.winrt"
 
             kotlin {
                 jvm("winuiJvm")
@@ -9922,7 +9922,7 @@ class KotlinWinRTPluginTest {
         )
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
         val generatorWorkerSetup = """
-            apply plugin: "io.github.composefluent.winrt"
+            apply plugin: "io.github.compose-fluent.winrt"
         """.trimIndent()
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
@@ -10323,7 +10323,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "application"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             application {
@@ -10400,7 +10400,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.composefluent.winrt"
+                id "io.github.compose-fluent.winrt"
             }
 
             kotlin {

@@ -3,7 +3,7 @@ import org.gradle.api.tasks.JavaExec
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("io.github.composefluent.winrt")
+    id("io.github.compose-fluent.winrt")
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")

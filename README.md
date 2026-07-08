@@ -51,16 +51,6 @@ pluginManagement {
             }
         }
     }
-    resolutionStrategy {
-        eachPlugin {
-            if (
-                requested.id.id == "io.github.composefluent.winrt" ||
-                requested.id.id == "io.github.composefluent.winrt.runtime"
-            ) {
-                useModule("io.github.compose-fluent:winrt-gradle-plugin:${requested.version}")
-            }
-        }
-    }
 }
 
 dependencyResolutionManagement {
@@ -98,7 +88,7 @@ Apply the Gradle plugin in a JVM or KMP module:
 ```kotlin
 plugins {
     kotlin("multiplatform")
-    id("io.github.composefluent.winrt") version "0.1.0-SNAPSHOT"
+    id("io.github.compose-fluent.winrt") version "0.1.0-SNAPSHOT"
 }
 ```
 
@@ -132,7 +122,7 @@ For a JVM-only project:
 ```kotlin
 plugins {
     kotlin("jvm")
-    id("io.github.composefluent.winrt") version "0.1.0-SNAPSHOT"
+    id("io.github.compose-fluent.winrt") version "0.1.0-SNAPSHOT"
 }
 
 winRT {
@@ -146,7 +136,7 @@ For a JVM + `mingwX64` project:
 ```kotlin
 plugins {
     kotlin("multiplatform")
-    id("io.github.composefluent.winrt") version "0.1.0-SNAPSHOT"
+    id("io.github.compose-fluent.winrt") version "0.1.0-SNAPSHOT"
 }
 
 kotlin {
@@ -228,7 +218,7 @@ Enable the application model only in the final executable app module:
 ```kotlin
 plugins {
     kotlin("multiplatform")
-    id("io.github.composefluent.winrt") version "0.1.0-SNAPSHOT"
+    id("io.github.compose-fluent.winrt") version "0.1.0-SNAPSHOT"
 }
 
 kotlin {

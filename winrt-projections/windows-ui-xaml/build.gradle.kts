@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("winrt.publish")
-    id("io.github.composefluent.winrt")
+    id("io.github.compose-fluent.winrt")
 }
 
 description = "Prebuilt Kotlin/WinRT projection for the Windows.UI.Xaml metadata surface."
