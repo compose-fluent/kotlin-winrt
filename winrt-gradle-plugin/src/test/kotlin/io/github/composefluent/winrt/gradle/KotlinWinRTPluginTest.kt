@@ -557,15 +557,21 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun plugin_adds_runtime_dependency_to_kmp_common_main() {
+    fun plugin_adds_runtime_dependency_to_kmp_winui_main_not_common_main() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
 
-        val implementationDependencies = project.configurations.getByName("commonMainImplementation").dependencies
-        assertHasKotlinWinRTRuntimeDependency(implementationDependencies)
-        assertDoesNotHaveKotlinWinRTAuthoringDependency(implementationDependencies)
+        assertDoesNotHaveKotlinWinRTRuntimeDependency(
+            project.configurations.getByName("commonMainImplementation").dependencies,
+        )
+        assertHasKotlinWinRTRuntimeDependency(
+            project.configurations.getByName("winuiMainImplementation").dependencies,
+        )
+        assertHasKotlinWinRTAuthoringDependency(
+            project.configurations.getByName("winuiMainImplementation").dependencies,
+        )
     }
 
     @Test
@@ -579,7 +585,7 @@ class KotlinWinRTPluginTest {
         }
         project.pluginManager.apply(KotlinWinRTRuntimePlugin::class.java)
 
-        assertHasKotlinWinRTRuntimeDependency(
+        assertDoesNotHaveKotlinWinRTRuntimeDependency(
             project.configurations.getByName("commonMainImplementation").dependencies,
         )
         assertHasKotlinWinRTRuntimeDependency(
@@ -10824,6 +10830,10 @@ private fun assertHasKotlinWinRTRuntimeDependency(dependencies: Iterable<Depende
     assertHasKotlinWinRTModuleDependency(dependencies, "winrt-runtime")
 }
 
+private fun assertDoesNotHaveKotlinWinRTRuntimeDependency(dependencies: Iterable<Dependency>) {
+    assertDoesNotHaveKotlinWinRTModuleDependency(dependencies, "winrt-runtime")
+}
+
 private fun assertHasKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
     assertHasKotlinWinRTModuleDependency(dependencies, "winrt-authoring")
 }
@@ -10868,13 +10878,20 @@ private fun assertHasKotlinWinRTModuleDependency(
 }
 
 private fun assertDoesNotHaveKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
+    assertDoesNotHaveKotlinWinRTModuleDependency(dependencies, "winrt-authoring")
+}
+
+private fun assertDoesNotHaveKotlinWinRTModuleDependency(
+    dependencies: Iterable<Dependency>,
+    moduleName: String,
+) {
     assertFalse(
         dependencies.joinToString(separator = "\n") { dependency ->
             "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
         },
         dependencies.any { dependency ->
-            dependency.name == "winrt-authoring" ||
-                dependency is ProjectDependency && dependency.path == ":winrt-authoring"
+            dependency.name == moduleName ||
+                dependency is ProjectDependency && dependency.path == ":$moduleName"
         },
     )
 }
