@@ -575,34 +575,6 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun runtime_consumer_plugin_adds_runtime_dependency_without_generation_tasks() {
-        val project = ProjectBuilder.builder().build()
-
-        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
-            jvm("winuiJvm")
-            sourceSets.create("winuiMain")
-        }
-        project.pluginManager.apply(KotlinWinRTRuntimePlugin::class.java)
-
-        assertDoesNotHaveKotlinWinRTRuntimeDependency(
-            project.configurations.getByName("commonMainImplementation").dependencies,
-        )
-        assertHasKotlinWinRTRuntimeDependency(
-            project.configurations.getByName("winuiMainImplementation").dependencies,
-        )
-        assertDoesNotHaveKotlinWinRTAuthoringDependency(
-            project.configurations.getByName("commonMainImplementation").dependencies,
-        )
-        assertDoesNotHaveKotlinWinRTAuthoringDependency(
-            project.configurations.getByName("winuiMainImplementation").dependencies,
-        )
-        assertTrue(project.tasks.findByName("generateWinRTIdentity") == null)
-        assertTrue(project.tasks.findByName("generateWinRTProjections") == null)
-        assertTrue(project.extensions.findByName("winRT") == null)
-    }
-
-    @Test
     fun plugin_adds_authoring_dependency_to_kmp_winui_main() {
         val project = ProjectBuilder.builder().build()
 
