@@ -48,12 +48,6 @@ class KotlinWinRTPlugin : Plugin<Project> {
     }
 }
 
-class KotlinWinRTRuntimePlugin : Plugin<Project> {
-    override fun apply(project: Project) {
-        configureWinRTRuntimeDependency(project, includeAuthoring = false)
-    }
-}
-
 const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRTIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRTIdentityElements"
 const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRTCompilerPlugin"
