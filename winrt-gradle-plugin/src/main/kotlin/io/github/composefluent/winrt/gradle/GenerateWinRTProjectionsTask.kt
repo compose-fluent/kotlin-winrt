@@ -23,6 +23,7 @@ import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.projections.generator.winRTAuthoringHostExportsClassName
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -55,6 +56,10 @@ import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class GenerateWinRTProjectionsTask : DefaultTask() {
+    init {
+        additionalAuthoringTargetArtifactNames.convention(emptyList())
+    }
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -145,6 +150,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Input
     abstract val authoringTargetArtifactName: Property<String>
 
+    @get:Input
+    abstract val additionalAuthoringTargetArtifactNames: ListProperty<String>
+
     @get:Classpath
     abstract val authoringScannerClasspath: ConfigurableFileCollection
 
@@ -191,6 +199,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.projectModel.set(projectModel)
             parameters.authoringAssemblyName.set(authoringAssemblyName)
             parameters.authoringTargetArtifactName.set(authoringTargetArtifactName)
+            parameters.additionalAuthoringTargetArtifactNames.set(additionalAuthoringTargetArtifactNames)
             parameters.emitJvmAuthoringHostExports.set(emitJvmAuthoringHostExports)
             parameters.authoringScannerClasspath.from(authoringScannerClasspath)
             parameters.authoringScannerJvmArgs.set(authoringScannerJvmArgs)
@@ -226,6 +235,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val projectModel: Property<String>
     val authoringAssemblyName: Property<String>
     val authoringTargetArtifactName: Property<String>
+    val additionalAuthoringTargetArtifactNames: ListProperty<String>
     val authoringScannerClasspath: ConfigurableFileCollection
     val authoringScannerJvmArgs: ListProperty<String>
     val workDirectory: DirectoryProperty
@@ -352,10 +362,25 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         KotlinWinRTAuthoringMetadataModel.writeHostManifest(
             assemblyName = parameters.authoringAssemblyName.get(),
             targetArtifactName = parameters.authoringTargetArtifactName.get(),
-            hostExportsClassName = winRTAuthoringHostExportsClassName(parameters.authoringTargetArtifactName.get()),
+            hostExportsClassName = winRTAuthoringHostExportsClassName(parameters.authoringTargetArtifactName.get()).canonicalName,
             candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
+        parameters.additionalAuthoringTargetArtifactNames.get()
+            .filter(String::isNotBlank)
+            .filterNot { targetArtifactName -> targetArtifactName == parameters.authoringTargetArtifactName.get() }
+            .distinct()
+            .forEach { targetArtifactName ->
+                KotlinWinRTAuthoringMetadataModel.writeHostManifest(
+                    assemblyName = parameters.authoringAssemblyName.get(),
+                    targetArtifactName = targetArtifactName,
+                    hostExportsClassName = winRTAuthoringHostExportsClassName(targetArtifactName).canonicalName,
+                    candidates = exportedAuthoringCandidates,
+                    outputFile = generatedRoot.resolve(
+                        "kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}-${targetArtifactName.toKotlinSupportIdentifierSuffix()}.host.json",
+                    ),
+                )
+            }
         val projectionModel = if (parameters.projectModel.get() == "application") baseModel else model
         val authoredRuntimeClassNames = authoringCandidates
             .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
@@ -433,15 +458,6 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         }
         Files.walk(path).use { stream ->
             stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
-        }
-    }
-
-    private fun winRTAuthoringHostExportsClassName(ownerIdentity: String): String {
-        val suffix = ownerIdentity.toKotlinSupportIdentifierSuffix()
-        return if (suffix.isBlank()) {
-            "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports"
-        } else {
-            "io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_$suffix"
         }
     }
 

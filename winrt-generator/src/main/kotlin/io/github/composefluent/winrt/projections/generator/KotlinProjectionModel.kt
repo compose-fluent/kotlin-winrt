@@ -185,7 +185,7 @@ internal fun winRTGenericTypeInstantiationsClassName(ownerIdentity: String?): Cl
     )
 }
 
-internal fun winRTAuthoringHostExportsClassName(ownerIdentity: String?): ClassName =
+fun winRTAuthoringHostExportsClassName(ownerIdentity: String?): ClassName =
     winRTSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME)
 
 internal fun winRTAuthoringServerActivationFactoriesClassName(ownerIdentity: String?): ClassName =
