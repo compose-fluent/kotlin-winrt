@@ -191,6 +191,25 @@ private fun configureWinRTLibraryModel(
                     "generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring/metadata-index.tsv",
                 ),
             )
+            task.authoredMetadataFiles.from(
+                project.layout.buildDirectory.file("generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/${project.name}.winmd"),
+                project.layout.buildDirectory.file("generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-authoring/${project.name}.winmd"),
+                project.layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring/${project.name}.winmd"),
+            )
+            task.authoredHostManifestFiles.from(
+                project.layout.buildDirectory.file("generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring/${project.name}.host.json"),
+                project.layout.buildDirectory.file("generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-authoring/${project.name}.host.json"),
+                project.layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring/${project.name}.host.json"),
+                project.fileTree(project.layout.buildDirectory.dir("generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-authoring")) { spec ->
+                    spec.include("*.host.json")
+                },
+                project.fileTree(project.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-authoring")) { spec ->
+                    spec.include("*.host.json")
+                },
+                project.fileTree(project.layout.buildDirectory.dir("generated/kotlin-winrt/src/commonMain/kotlin/kotlin-winrt-authoring")) { spec ->
+                    spec.include("*.host.json")
+                },
+            )
             task.compilerSupportManifestFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/compiler-support.tsv",
@@ -259,11 +278,6 @@ private fun configureWinRTLibraryModel(
         identityElements.isCanBeConsumed = false
     }
     project.plugins.withId("java") {
-        identityTask.configure { task ->
-            task.authoredTargetArtifactFiles.from(
-                project.tasks.named("jar", Jar::class.java).flatMap { it.archiveFile },
-            )
-        }
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             task.dependsOn("generateWinRTProjections")
         })
@@ -1121,6 +1135,7 @@ private fun configureWinRTGeneration(
             )
             task.emitJvmAuthoringHostExports.set(false)
             task.authoringTargetArtifactName.set(kotlinWinRTNativeAuthoringTargetArtifactName(project))
+            task.additionalAuthoringTargetArtifactNames.set(authoringTargetArtifactName.map(::listOf))
         }
         addGeneratedSourcesToKotlinMultiplatformWinuiMain(project, generatedSources)
         addGeneratedSourcesToKotlinMultiplatformWinuiMain(
@@ -1344,14 +1359,15 @@ private fun registerWinRTAuthoredCandidateValidation(
         task.dependsOn(compilerTypeDetailsTask)
     }
     val compilerAuthoredHostManifestFiles = localAuthoredHostManifestFiles(project, outputs.authoredHostManifest)
-    project.tasks.withType(GenerateWinRTIdentityTask::class.java).matching { task ->
-        task.name == "generateWinRTIdentity"
-    }.configureEach { task ->
-        task.authoredMetadataFiles.from(outputs.authoredWinmd)
-        task.authoredHostManifestFiles.from(compilerAuthoredHostManifestFiles)
-        if (artifactPublication == WinRTAuthoredArtifactPublication.Jvm) {
-            kotlinWinRTJvmTargetJarArchiveFile(project, compileTaskName)?.let { archiveFile ->
-                task.authoredTargetArtifactFiles.from(archiveFile)
+    if (artifactPublication == WinRTAuthoredArtifactPublication.Jvm) {
+        project.tasks.withType(GenerateWinRTIdentityTask::class.java).matching { task ->
+            task.name == "generateWinRTIdentity"
+        }.configureEach { task ->
+            task.authoredTargetArtifactFiles.from(
+                kotlinWinRTJvmTargetJarArchiveFilePathCollection(project, compileTaskName),
+            )
+            kotlinWinRTJvmTargetJarTask(project, compileTaskName)?.let { jarTask ->
+                task.mustRunAfter(jarTask)
             }
         }
     }
@@ -1388,8 +1404,7 @@ private fun registerWinRTAuthoredCandidateValidation(
         task.dependsOn(validationTask)
     })
     project.tasks.matching { task ->
-        task.name == "generateWinRTIdentity" ||
-            task.name == "classes" ||
+        task.name == "classes" ||
             task.name == "jar" ||
             task.name == "assemble" ||
             task.name == "processResources" ||
@@ -1610,35 +1625,51 @@ private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
 }
 
 private fun kotlinWinRTRuntimeDependency(project: Project): Any {
-    val version = kotlinWinRTPluginVersion()
-    return kotlinWinRTProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version)
+    return kotlinWinRTLocalOrPluginUnderTestDependency(
+        project = project,
+        projectPath = ":winrt-runtime",
+        moduleName = "winrt-runtime",
+    ) ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
 }
 
 private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {
-    val localRuntimeProject = project.rootProject.findProject(":winrt-runtime")
-    if (localRuntimeProject != null) {
-        return project.dependencies.project(mapOf("path" to localRuntimeProject.path))
-    }
-    return kotlinWinRTPluginMetadataArtifact(project, "winrt-runtime")
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")
-            ?.let(project::files)
+    return kotlinWinRTLocalOrPluginUnderTestDependency(
+        project = project,
+        projectPath = ":winrt-runtime",
+        moduleName = "winrt-runtime",
+    )
+        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")?.let(project::files)
         ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
 }
 
 private fun kotlinWinRTAuthoringDependency(project: Project): Any {
-    val version = kotlinWinRTPluginVersion()
-    return kotlinWinRTProjectOrModuleDependency(project, ":winrt-authoring", "winrt-authoring", version)
+    return kotlinWinRTLocalOrPluginUnderTestDependency(
+        project = project,
+        projectPath = ":winrt-authoring",
+        moduleName = "winrt-authoring",
+    ) ?: "io.github.compose-fluent:winrt-authoring:${kotlinWinRTPluginVersion()}"
 }
 
 private fun kotlinWinRTAuthoringRuntimeClasspathDependency(project: Project): Any {
-    val localAuthoringProject = project.rootProject.findProject(":winrt-authoring")
-    if (localAuthoringProject != null) {
-        return project.dependencies.project(mapOf("path" to localAuthoringProject.path))
-    }
-    return kotlinWinRTPluginMetadataArtifact(project, "winrt-authoring")
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports")
-            ?.let(project::files)
+    return kotlinWinRTLocalOrPluginUnderTestDependency(
+        project = project,
+        projectPath = ":winrt-authoring",
+        moduleName = "winrt-authoring",
+    )
+        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports")?.let(project::files)
         ?: "io.github.compose-fluent:winrt-authoring:${kotlinWinRTPluginVersion()}"
+}
+
+private fun kotlinWinRTLocalOrPluginUnderTestDependency(
+    project: Project,
+    projectPath: String,
+    moduleName: String,
+): Any? {
+    val localProject = project.rootProject.findProject(projectPath)
+    if (localProject != null) {
+        return project.dependencies.project(mapOf("path" to localProject.path))
+    }
+    return kotlinWinRTPluginMetadataArtifact(project, moduleName)
 }
 
 private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List<Any> {
@@ -2030,16 +2061,30 @@ private fun kotlinWinRTJvmTargetJarArchiveFileName(
 private fun kotlinWinRTJavaJarArchiveFileName(project: Project): String? =
     (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get()
 
-private fun kotlinWinRTJvmTargetJarArchiveFile(
+private fun kotlinWinRTJvmTargetJarTask(
     project: Project,
     compileTaskName: String,
-): Provider<RegularFile>? =
+): TaskProvider<Jar>? =
     kotlinWinRTJvmTargetJarTaskNames(project, compileTaskName)
         .firstNotNullOfOrNull { taskName ->
-            runCatching {
-                project.tasks.named(taskName, Jar::class.java).flatMap { task -> task.archiveFile }
-            }.getOrNull()
+            runCatching { project.tasks.named(taskName, Jar::class.java) }.getOrNull()
         }
+
+private fun kotlinWinRTJvmTargetJarArchiveFilePathCollection(
+    project: Project,
+    compileTaskName: String,
+): org.gradle.api.file.FileCollection =
+    project.files(
+        project.provider {
+            kotlinWinRTJvmTargetJarTaskNames(project, compileTaskName)
+                .asSequence()
+                .mapNotNull { taskName -> project.tasks.findByName(taskName) as? Jar }
+                .map { task -> task.archiveFile.get().asFile }
+                .firstOrNull()
+                ?.let(::listOf)
+                .orEmpty()
+        },
+    )
 
 private fun kotlinWinRTJvmTargetJarTaskNames(
     project: Project,

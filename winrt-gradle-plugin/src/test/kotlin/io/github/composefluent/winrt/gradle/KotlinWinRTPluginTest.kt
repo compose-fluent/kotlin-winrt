@@ -20,6 +20,7 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
@@ -406,6 +407,16 @@ class KotlinWinRTPluginTest {
         }
     }
 
+    private fun authoringJarPath(): Path {
+        val authoringLibs = Path.of("../winrt-authoring/build/libs").toAbsolutePath().normalize()
+        return Files.list(authoringLibs).use { stream ->
+            stream.filter { path ->
+                val name = path.fileName.toString()
+                name.startsWith("winrt-authoring-jvm-") && name.endsWith(".jar")
+            }.findFirst().orElseThrow { NoSuchElementException("Missing winrt-authoring JVM jar under $authoringLibs") }
+        }
+    }
+
     @Test
     fun generator_worker_prefers_local_project_dependencies_when_available() {
         val root = ProjectBuilder.builder().withName("root").build()
@@ -575,6 +586,20 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun plugin_under_test_runtime_dependencies_use_local_artifacts_for_winui_main() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+
+        val implementationDependencies = project.configurations.getByName("winuiMainImplementation").dependencies
+        assertHasKotlinWinRTRuntimeDependency(implementationDependencies)
+        assertHasKotlinWinRTAuthoringDependency(implementationDependencies)
+        assertDoesNotHaveExternalKotlinWinRTModuleDependency(implementationDependencies, "winrt-runtime")
+        assertDoesNotHaveExternalKotlinWinRTModuleDependency(implementationDependencies, "winrt-authoring")
+    }
+
+    @Test
     fun plugin_adds_authoring_dependency_to_kmp_winui_main() {
         val project = ProjectBuilder.builder().build()
 
@@ -712,7 +737,6 @@ class KotlinWinRTPluginTest {
             exportValidationTaskName in checkDependencies,
         )
         val lifecycleTaskNames = listOf(
-            "generateWinRTIdentity",
             "classes",
             "jar",
             "assemble",
@@ -734,6 +758,12 @@ class KotlinWinRTPluginTest {
                     exportValidationTaskName in dependencies,
                 )
             }
+        val identityTask = project.tasks.named("generateWinRTIdentity").get()
+        val identityDependencies = identityTask.taskDependencies.getDependencies(identityTask).map { it.name }
+        assertFalse(
+            "generateWinRTIdentity must not depend on authored validation; identity remains a forwarding surface",
+            validationTaskName in identityDependencies,
+        )
         val processResources = project.tasks.findByName("processResources")
         if (processResources != null) {
             val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
@@ -890,6 +920,50 @@ class KotlinWinRTPluginTest {
             .map { it.path }
 
         assertEquals(listOf(":liba"), dependencyProjectPaths)
+    }
+
+    @Test
+    fun forwarding_library_identity_forwards_dependencies_without_authored_validation_cycle() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val producer = ProjectBuilder.builder().withName("producer").withParent(root).build()
+        val forwardingLibrary = ProjectBuilder.builder().withName("forwarding").withParent(root).build()
+
+        producer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        forwardingLibrary.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        forwardingLibrary.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        forwardingLibrary.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        forwardingLibrary.dependencies.add(
+            "winuiMainImplementation",
+            forwardingLibrary.dependencies.project(mapOf("path" to ":producer")),
+        )
+
+        val identityElements = forwardingLibrary.configurations.getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
+        val dependencyProjectPaths = identityElements.dependencies
+            .filterIsInstance<ProjectDependency>()
+            .map { it.path }
+        val compileTask = forwardingLibrary.tasks.named("compileKotlinWinuiJvm", KotlinJvmCompile::class.java).get()
+        val compileDependencies = declaredTaskDependencyNames(compileTask)
+        val identityTask = forwardingLibrary.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+        val identityDependencies = declaredTaskDependencyNames(identityTask)
+
+        assertTrue(identityElements.isCanBeConsumed)
+        assertEquals(listOf(":producer"), dependencyProjectPaths)
+        assertTrue(
+            "WinRT compile keeps generated metadata/compiler support available for possible local subclass authoring: $compileDependencies",
+            "generateWinRTProjections" in compileDependencies,
+        )
+        assertTrue(
+            "WinRT identity keeps source-scanned authoring metadata available for possible local subclass authoring: $identityDependencies",
+            "generateWinRTProjections" in identityDependencies,
+        )
+        assertFalse(
+            "forwarding library identity dependencies: $identityDependencies",
+            identityDependencies.any { it.startsWith("validateCompileKotlin") && it.endsWith("WinRTAuthoredCandidates") },
+        )
+        assertFalse(
+            "forwarding library identity must not build the target jar or it can cycle through validation/compile: $identityDependencies",
+            "winuiJvmJar" in identityDependencies,
+        )
     }
 
     @Test
@@ -7583,7 +7657,7 @@ class KotlinWinRTPluginTest {
         JarFile(projectDir.resolve("build/libs/kotlin-winrt-plugin-test.jar").toFile()).use { jar ->
             assertTrue(
                 jar.getEntry(
-                    "windows/foundation/IStringable.class",
+                    "windows/foundation/FoundationContract.class",
                 ) != null,
             )
             assertTrue(
@@ -8469,6 +8543,7 @@ class KotlinWinRTPluginTest {
     fun multiplatform_jvm_authoring_identity_uses_target_jar_archive_file_name() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-identity-artifact-test-")
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
+        val authoringJar = authoringJarPath().toString().replace("\\", "/")
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
@@ -8504,12 +8579,30 @@ class KotlinWinRTPluginTest {
                 id "io.github.compose-fluent.winrt"
             }
 
+            configurations.configureEach {
+                exclude group: "io.github.compose-fluent", module: "winrt-runtime"
+                exclude group: "io.github.compose-fluent", module: "winrt-authoring"
+            }
+
             kotlin {
                 jvm("winuiJvm")
                 sourceSets {
+                    winuiMain {
+                        dependencies {
+                            implementation files("$runtimeJar")
+                            implementation files("$authoringJar")
+                        }
+                    }
                     commonMain {
                         dependencies {
                             implementation files("$runtimeJar")
+                            implementation files("$authoringJar")
+                        }
+                    }
+                    winuiJvmMain {
+                        dependencies {
+                            implementation files("$runtimeJar")
+                            implementation files("$authoringJar")
                         }
                     }
                 }
@@ -8536,6 +8629,9 @@ class KotlinWinRTPluginTest {
             class PublicStringableThing
             """.trimIndent(),
         )
+        val targetJar = projectDir.resolve("build/libs/ui-winuijvm-9999.0.0-SNAPSHOT.jar")
+        Files.createDirectories(targetJar.parent)
+        Files.writeString(targetJar, "jar")
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
@@ -8835,7 +8931,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun authored_candidate_validation_gates_jvm_artifact_lifecycle_tasks() {
+    fun authored_candidate_validation_gates_jvm_artifact_lifecycle_tasks_without_identity_cycle() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
@@ -8843,7 +8939,6 @@ class KotlinWinRTPluginTest {
 
         val validationTaskName = "validateCompileKotlinWinRTAuthoredCandidates"
         listOf(
-            "generateWinRTIdentity",
             "classes",
             "jar",
             "assemble",
@@ -8857,6 +8952,12 @@ class KotlinWinRTPluginTest {
                 validationTaskName in dependencies,
             )
         }
+        val identityTask = project.tasks.named("generateWinRTIdentity").get()
+        val identityDependencies = declaredTaskDependencyNames(identityTask)
+        assertFalse(
+            "generateWinRTIdentity must not depend on authored validation or it can create library forwarding cycles: $identityDependencies",
+            validationTaskName in identityDependencies,
+        )
     }
 
     @Test
@@ -9113,14 +9214,13 @@ class KotlinWinRTPluginTest {
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("generateWinRTIdentity", "--stacktrace")
+            .withArguments("validateCompileKotlinWinRTAuthoredCandidates", "--stacktrace")
             .forwardOutput()
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRTAuthoredCandidates")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTIdentity")?.outcome)
     }
 
     @Test
@@ -10470,6 +10570,16 @@ private fun repositoryRoot(): Path =
 private fun taskDependencyNames(task: org.gradle.api.Task): Set<String> =
     task.taskDependencies.getDependencies(task).map { it.name }.toSet()
 
+private fun declaredTaskDependencyNames(task: org.gradle.api.Task): Set<String> =
+    task.dependsOn.mapNotNull { dependency ->
+        when (dependency) {
+            is String -> dependency
+            is org.gradle.api.Task -> dependency.name
+            is org.gradle.api.tasks.TaskProvider<*> -> dependency.name
+            else -> null
+        }
+    }.toSet()
+
 private fun commandExists(name: String): Boolean =
     runCatching {
         ProcessBuilder("cmd.exe", "/c", "where", name)
@@ -10799,15 +10909,15 @@ private fun writeManifestPayloadReferences(root: Path) {
 }
 
 private fun assertHasKotlinWinRTRuntimeDependency(dependencies: Iterable<Dependency>) {
-    assertHasKotlinWinRTModuleDependency(dependencies, "winrt-runtime")
+    assertHasKotlinWinRTClasspathDependency(dependencies, "winrt-runtime")
 }
 
 private fun assertDoesNotHaveKotlinWinRTRuntimeDependency(dependencies: Iterable<Dependency>) {
-    assertDoesNotHaveKotlinWinRTModuleDependency(dependencies, "winrt-runtime")
+    assertDoesNotHaveKotlinWinRTClasspathDependency(dependencies, "winrt-runtime")
 }
 
 private fun assertHasKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
-    assertHasKotlinWinRTModuleDependency(dependencies, "winrt-authoring")
+    assertHasKotlinWinRTClasspathDependency(dependencies, "winrt-authoring")
 }
 
 private fun assertHasKotlinWinRTClasspathDependency(
@@ -10849,11 +10959,27 @@ private fun assertHasKotlinWinRTModuleDependency(
     )
 }
 
-private fun assertDoesNotHaveKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
-    assertDoesNotHaveKotlinWinRTModuleDependency(dependencies, "winrt-authoring")
+private fun assertDoesNotHaveExternalKotlinWinRTModuleDependency(
+    dependencies: Iterable<Dependency>,
+    moduleName: String,
+) {
+    assertFalse(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
+        },
+        dependencies.any { dependency ->
+            dependency is ExternalModuleDependency &&
+                dependency.group == "io.github.compose-fluent" &&
+                dependency.name == moduleName
+        },
+    )
 }
 
-private fun assertDoesNotHaveKotlinWinRTModuleDependency(
+private fun assertDoesNotHaveKotlinWinRTAuthoringDependency(dependencies: Iterable<Dependency>) {
+    assertDoesNotHaveKotlinWinRTClasspathDependency(dependencies, "winrt-authoring")
+}
+
+private fun assertDoesNotHaveKotlinWinRTClasspathDependency(
     dependencies: Iterable<Dependency>,
     moduleName: String,
 ) {
@@ -10863,7 +10989,10 @@ private fun assertDoesNotHaveKotlinWinRTModuleDependency(
         },
         dependencies.any { dependency ->
             dependency.name == moduleName ||
-                dependency is ProjectDependency && dependency.path == ":$moduleName"
+                dependency is ProjectDependency && dependency.path == ":$moduleName" ||
+                dependency is FileCollectionDependency && dependency.files.files.any { file ->
+                    file.name.startsWith(moduleName) && file.name.endsWith(".jar")
+                }
         },
     )
 }
