@@ -5,6 +5,20 @@ import kotlin.test.assertEquals
 
 class NativeStructInteropTest {
     @Test
+    fun guid_uses_windows_abi_alignment_in_sequential_layouts() {
+        val layout = NativeStructLayout.sequential(
+            NativeScalarFieldSpec("tag", NativeStructScalarKind.INT8),
+            NativeScalarFieldSpec("id", NativeStructScalarKind.GUID),
+        )
+
+        assertEquals(4L, NativeAbiLayout.GUID.byteAlignment)
+        assertEquals(4L, NativeStructScalarKind.GUID.alignmentBytes)
+        assertEquals(4L, layout.field("id").offsetBytes)
+        assertEquals(20L, layout.sizeBytes)
+        assertEquals(4L, layout.alignmentBytes)
+    }
+
+    @Test
     fun sequential_layout_aligns_fields_and_struct_size_like_native_abi() {
         val layout = NativeStructLayout.sequential(
             NativeScalarFieldSpec("name", NativeStructScalarKind.ADDRESS),

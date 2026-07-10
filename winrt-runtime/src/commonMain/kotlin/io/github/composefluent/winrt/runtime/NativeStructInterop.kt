@@ -24,8 +24,8 @@ data class NativeAbiLayout(
         /** UTF-16 char (little-endian, unaligned). */
         val CHAR16: NativeAbiLayout = NativeAbiLayout(byteSize = 2, byteAlignment = 1)
 
-        /** 16-byte GUID stored as raw bytes (alignment = 1). */
-        val GUID: NativeAbiLayout = NativeAbiLayout(byteSize = Guid.BYTE_SIZE.toLong(), byteAlignment = 1)
+        /** 16-byte GUID aligned to its Windows ABI boundary. */
+        val GUID: NativeAbiLayout = NativeAbiLayout(byteSize = Guid.BYTE_SIZE.toLong(), byteAlignment = 4)
 
         /**
          * Windows `TypeName` struct: HSTRING name (ADDRESS) + INT32 kind.
@@ -55,7 +55,7 @@ enum class NativeStructScalarKind(
     DOUBLE(8),
     FLOAT32(4),
     CHAR16(2),
-    GUID(Guid.BYTE_SIZE.toLong(), 1),
+    GUID(Guid.BYTE_SIZE.toLong(), 4),
 }
 
 // ---------------------------------------------------------------------------
