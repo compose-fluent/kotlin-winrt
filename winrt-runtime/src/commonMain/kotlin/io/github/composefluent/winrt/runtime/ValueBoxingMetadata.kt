@@ -32,8 +32,6 @@ internal data class WinRTEnumBoxingMetadata(
 )
 
 internal object ValueBoxingMetadata {
-    private val objectArrayClass = arrayOf<Any?>(null)::class
-
     private val objectMetadata =
         WinRTValueTypeMetadata(
             projectedClass = Any::class,
@@ -226,9 +224,7 @@ internal object ValueBoxingMetadata {
     private fun normalizeManagedArray(value: Any): ManagedArrayMetadata? =
         when (value) {
             is Array<*> -> {
-                val componentType =
-                    arrayElementType(value::class)
-                        ?: Any::class.takeIf { value::class == objectArrayClass }
+                val componentType = arrayElementType(value::class)
                 val descriptor =
                     when (componentType) {
                         Any::class -> objectMetadata

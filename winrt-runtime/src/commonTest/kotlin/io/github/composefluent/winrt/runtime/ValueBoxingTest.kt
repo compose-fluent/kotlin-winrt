@@ -51,6 +51,15 @@ class ValueBoxingTest {
 
         // Mirrors .cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs:
         // IReferenceArray<T> is selected from the declared array element type, not its values.
+        val objectArrayClass = emptyArray<Any?>()::class
+        assertEquals(Any::class, arrayElementType(objectArrayClass))
+        assertEquals(
+            "Windows.Foundation.IReferenceArray`1<Object>",
+            WinRTValueBoxing.boxedRuntimeClassNameForType(objectArrayClass),
+        )
+        assertTrue(Projections.isTypeWindowsRuntimeType(objectArrayClass))
+        assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(arrayOf<Any?>(1, "text")))
+
         assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, "text"), IID.IReferenceArrayOfInt32)
         assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(null, "text"), IID.IReferenceArrayOfString)
         assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, 2), IID.IReferenceArrayOfInt32)
