@@ -736,6 +736,12 @@ data class WinRTTypeDefinition(
 
         val left = normalized()
         val right = other.normalized()
+        val mergedIid = when {
+            left.iid == null -> right.iid
+            right.iid == null -> left.iid
+            left.iid == right.iid -> left.iid
+            else -> error("Conflicting WinRT IIDs for ${left.qualifiedName}: ${left.iid} vs ${right.iid}")
+        }
         val mergedEnumUnderlyingType = when {
             left.enumUnderlyingType == null -> right.enumUnderlyingType
             right.enumUnderlyingType == null -> left.enumUnderlyingType
@@ -750,7 +756,7 @@ data class WinRTTypeDefinition(
             namespace = left.namespace,
             name = left.name,
             kind = mergeKind(left.kind, right.kind),
-            iid = left.iid ?: right.iid,
+            iid = mergedIid,
             baseTypeName = left.baseTypeName ?: right.baseTypeName,
             enumUnderlyingType = mergedEnumUnderlyingType,
             enumMembers = mergedEnumMembers.values.toList(),

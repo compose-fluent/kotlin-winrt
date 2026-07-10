@@ -207,6 +207,38 @@ class WinRTMetadataModelTest {
     }
 
     @Test
+    fun normalization_rejects_conflicting_non_null_type_iids() {
+        val leftIid = Guid("11111111-2222-3333-4444-555555555555")
+        val rightIid = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val model = metadataModelWithDuplicateInterfaceIids(leftIid, rightIid)
+
+        val failure = runCatching { model.normalized() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty().contains("Sample.Foundation.IWidget"))
+        assertTrue(failure?.message.orEmpty().contains(leftIid.toString()))
+        assertTrue(failure?.message.orEmpty().contains(rightIid.toString()))
+    }
+
+    @Test
+    fun normalization_enriches_a_missing_type_iid() {
+        val expectedIid = Guid("11111111-2222-3333-4444-555555555555")
+
+        val normalized = metadataModelWithDuplicateInterfaceIids(null, expectedIid).normalized()
+
+        assertEquals(expectedIid, normalized.namespaces.single().types.single().iid)
+    }
+
+    @Test
+    fun normalization_accepts_matching_non_null_type_iids() {
+        val expectedIid = Guid("11111111-2222-3333-4444-555555555555")
+
+        val normalized = metadataModelWithDuplicateInterfaceIids(expectedIid, expectedIid).normalized()
+
+        assertEquals(expectedIid, normalized.namespaces.single().types.single().iid)
+    }
+
+    @Test
     fun normalization_merges_duplicate_namespaces_types_and_methods_deterministically() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
@@ -2546,6 +2578,32 @@ class WinRTMetadataModelTest {
             filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRTTypeDefinition::qualifiedName) },
         )
     }
+
+    private fun metadataModelWithDuplicateInterfaceIids(
+        leftIid: Guid?,
+        rightIid: Guid?,
+    ): WinRTMetadataModel =
+        WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = leftIid,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = rightIid,
+                        ),
+                    ),
+                ),
+            ),
+        )
 
     @Test
     fun projection_surface_filter_keeps_required_interface_augmentation_closure() {
