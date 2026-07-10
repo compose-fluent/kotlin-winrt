@@ -183,7 +183,7 @@ class WinRTAuthoringMetadataTest {
     }
 
     @Test
-    fun authored_dependency_winmd_does_not_override_real_external_interface_metadata() {
+    fun authored_dependency_winmd_with_conflicting_external_interface_identity_is_rejected() {
         val dependencyOutput = Files.createTempFile("kotlin-winrt-authored-dependency-old-shape-", ".winmd")
         val baseOutput = Files.createTempFile("kotlin-winrt-base-winui-", ".winmd")
 
@@ -223,17 +223,18 @@ class WinRTAuthoringMetadataTest {
             outputFile = baseOutput,
         )
 
-        val model = WinRTMetadataLoader.loadSources(
-            listOf(
-                WinRTMetadataSource.path(baseOutput),
-                WinRTMetadataSource.path(dependencyOutput),
-            ),
-        )
+        val failure = runCatching {
+            WinRTMetadataLoader.loadSources(
+                listOf(
+                    WinRTMetadataSource.path(baseOutput),
+                    WinRTMetadataSource.path(dependencyOutput),
+                ),
+            )
+        }.exceptionOrNull()
 
-        val overrideInterface = model.namespaces
-            .single { namespace -> namespace.name == "Microsoft.UI.Xaml" }
-            .types
-            .single { type -> type.name == "IFrameworkElementOverrides" }
-        assertEquals("ffc6fd98-f38c-5904-9ce4-97a3427cf4ba", overrideInterface.iid.toString().lowercase())
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty().contains("Microsoft.UI.Xaml.IFrameworkElementOverrides"))
+        assertTrue(failure?.message.orEmpty().contains("FFC6FD98-F38C-5904-9CE4-97A3427CF4BA"))
+        assertTrue(failure?.message.orEmpty().contains("11111111-2222-3333-4444-555555555555"))
     }
 }

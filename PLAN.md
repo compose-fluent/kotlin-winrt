@@ -20,8 +20,8 @@
 ## Current Focus Queue
 
 - [x] Review-Fix-01: hardened `winrt-runtime` against `.cswinrt/src/WinRT.Runtime` by correcting GUID ABI alignment, keeping JVM-declared `object[]` as `InspectableArray`, and giving native weak-reference handles deterministic/finalized release on JVM and `mingwX64`. Kotlin/Native erases reference-array component types, so implicit homogeneous arrays use all-element inference while exact generated/authoring object-array paths pass `IID.IReferenceArrayOfObject` explicitly.
-- [ ] Review-Fix-02 正在做: make `winrt-metadata` reject conflicting non-null IIDs for duplicate qualified type definitions before model merge or generator planning.
-- [ ] Review-Fix-03: repair generator/authoring ABI ownership by returning authored arrays from `CoTaskMemAlloc`, rejecting duplicate generated output paths, and clearing `DllGetActivationFactory` output pointers before fallible work.
+- [x] Review-Fix-02: `winrt-metadata` rejects conflicting non-null IIDs for duplicate qualified type definitions before model merge or generator planning, while preserving equal identities and null enrichment.
+- [ ] Review-Fix-03 正在做: repair generator/authoring ABI ownership by returning authored arrays from `CoTaskMemAlloc`, rejecting duplicate generated output paths, and clearing `DllGetActivationFactory` output pointers before fallible work.
 - [ ] Review-Fix-04: restore prebuilt projection artifact ownership by eliminating cross-artifact duplicate FQNs, exposing Windows SDK dependencies through public variants, and validating published JVM/`mingwX64` consumer topology.
 - [ ] Review-Fix-05: split Gradle local-projection generation gating from compiler-plugin authoring discovery/validation so authoring-only libraries still emit candidates, WinMD, host manifests, and lifecycle validation while preserving dependency-owned projection suppression.
 - [ ] Review-Fix-06: make the non-WinUI sample mode reachable and add final cross-module gates for runtime, metadata, generator, authoring, Gradle plugin, split projection publication, and representative samples.
