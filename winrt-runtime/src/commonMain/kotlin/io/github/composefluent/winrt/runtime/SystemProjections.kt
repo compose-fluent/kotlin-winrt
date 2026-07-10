@@ -206,6 +206,7 @@ internal object CommonWinRTBuiltInProjectionMappings {
         registerReferenceArrayType(Instant::class, emptyArray<Instant>()::class)
         registerReferenceArrayType(Duration::class, emptyArray<Duration>()::class)
         registerReferenceArrayType(Exception::class, emptyArray<Exception>()::class)
+        registerReferenceArrayType(Any::class, emptyArray<Any?>()::class)
     }
 
     internal fun <T : Any> registerMetadata(

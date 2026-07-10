@@ -219,8 +219,8 @@ internal object RuntimeRegistryResetSupport {
         ProjectedDelegateObjectRoots.clearForTests()
         RuntimeTypeLookupRegistry.clearForTests()
         FreeThreadedMarshalerSupport.clearForTests()
-        Projections.clearRegistriesForTests()
         TypeNameSupport.clearRegistriesForTests()
+        Projections.clearRegistriesForTests()
         TypeExtensions.clearRegistriesForTests()
         platformEnsureInspectableProjectionInteropRegistered()
     }

@@ -50,6 +50,9 @@ internal actual class PlatformLock actual constructor() {
 internal actual class NativeWeakReferenceHandle internal constructor(
     val reference: WeakReferenceReference,
 ) : AutoCloseable {
+    @Suppress("unused")
+    private val cleaner = createCleaner(reference) { it.close() }
+
     actual override fun close() {
         reference.close()
     }
