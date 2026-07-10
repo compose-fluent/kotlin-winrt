@@ -67,6 +67,37 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_duplicate_normalized_output_paths() {
+        val outputRoot = Files.createTempDirectory("kotlin-winrt-duplicate-output-")
+        val files = listOf(
+            KotlinProjectionFile("generated/../Sample.kt", "sample", "first"),
+            KotlinProjectionFile("sample.kt", "sample", "second"),
+        )
+
+        val failure = runCatching { KotlinProjectionGenerator().writeFiles(files, outputRoot) }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertTrue(failure!!.message.orEmpty().contains("generated/../Sample.kt"))
+        assertTrue(failure.message.orEmpty().contains("sample.kt"))
+        assertEquals("first", outputRoot.resolve("Sample.kt").toFile().readText())
+    }
+
+    @Test
+    fun generator_retains_existing_output_when_only_path_casing_changes() {
+        val outputRoot = Files.createTempDirectory("kotlin-winrt-case-renamed-output-")
+        val existingOutput = outputRoot.resolve("Sample.kt")
+        existingOutput.toFile().writeText("old")
+
+        val summary = KotlinProjectionGenerator().writeFiles(
+            listOf(KotlinProjectionFile("sample.kt", "sample", "current")),
+            outputRoot,
+        )
+
+        assertEquals(0, summary.deletedStaleFiles)
+        assertEquals("current", existingOutput.toFile().readText())
+    }
+
+    @Test
     fun generator_rejects_authoring_activation_factory_plan_with_missing_factory_interface() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
@@ -24338,6 +24369,41 @@ class KotlinProjectionGeneratorTest {
                 "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.REFRESH_SLOT to carry ABI slot metadata before support rendering.",
             ),
         )
+    }
+
+    @Test
+    fun generator_emits_authored_blittable_receive_array_return_with_cotaskmem_ownership() {
+        val model = authoredReceiveArrayCcwModel(
+            WinRTMethodDefinition(
+                name = "ReceiveValues",
+                returnTypeName = "Unit",
+                parameters = listOf(
+                    WinRTParameterDefinition(
+                        "values",
+                        "Array<Int>",
+                        typeIsByRef = true,
+                        isOutParameter = true,
+                    ),
+                ),
+                methodRowId = 6,
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .single { file -> file.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories.contains("WinRTPlatformApi.coTaskMemAllocRaw"))
+        assertTrue(ccwFactories.contains("if (__result.isEmpty()) PlatformAbi.nullPointer"))
+        assertTrue(ccwFactories.contains("if (__result.isNotEmpty())"))
+        assertTrue(ccwFactories.contains("check(!PlatformAbi.isNull(__returnArrayData))"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(PlatformAbi.slice(__returnArrayData"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, __returnArrayData)"))
+        assertFalse(ccwFactories.contains("PlatformAbi.allocateBytesOwned"))
     }
 
     @Test

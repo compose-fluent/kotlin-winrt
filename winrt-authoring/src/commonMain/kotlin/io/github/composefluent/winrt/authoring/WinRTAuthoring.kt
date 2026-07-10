@@ -270,11 +270,12 @@ object WinRTAuthoringHostBridge {
             return KnownHResults.E_INVALIDARG.value
         }
 
+        PlatformAbi.writePointer(factoryOut, PlatformAbi.nullPointer)
+
         return try {
             val runtimeClassName = NativeStringMarshaller.fromAbi(activatableClassId)
             val factory = WinRTAuthoring.getActivationFactory(runtimeClassName)
             if (PlatformAbi.isNull(factory)) {
-                PlatformAbi.writePointer(factoryOut, PlatformAbi.nullPointer)
                 CLASS_E_CLASSNOTAVAILABLE.value
             } else {
                 PlatformAbi.writePointer(factoryOut, factory)

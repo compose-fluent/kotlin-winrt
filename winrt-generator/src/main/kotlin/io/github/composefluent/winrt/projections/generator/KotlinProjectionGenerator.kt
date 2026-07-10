@@ -177,16 +177,6 @@ class KotlinProjectionGenerator(
         }
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(projectionPlans, renderedPlans)
         val projectionRenderer = projectionFileRenderer(renderedPlans, modulePlatformAbiCalls)
-        var rendered = 0
-        var written = 0
-        val expectedPaths = mutableSetOf<String>()
-        fun write(file: KotlinProjectionFile) {
-            rendered += 1
-            expectedPaths += outputRoot.resolve(file.relativePath).toAbsolutePath().normalize().toString()
-            if (file.writeToIfChanged(outputRoot)) {
-                written += 1
-            }
-        }
         val projectionFiles = projectionPlans
             .flatMap(projectionRenderer::render)
             .let { files ->
@@ -196,9 +186,30 @@ class KotlinProjectionGenerator(
                     files
                 }
             }
-        projectionFiles.forEach(::write)
-        if (emitSupportFiles) {
-            supportFiles(normalizedModel, plans, modulePlatformAbiCalls).forEach(::write)
+        val files = projectionFiles + if (emitSupportFiles) supportFiles(normalizedModel, plans, modulePlatformAbiCalls) else emptyList()
+        return writeFiles(files, outputRoot)
+    }
+
+    internal fun writeFiles(
+        files: List<KotlinProjectionFile>,
+        outputRoot: Path,
+    ): KotlinProjectionWriteSummary {
+        var rendered = 0
+        var written = 0
+        val expectedPaths = mutableSetOf<String>()
+        val relativePathsByCollisionKey = mutableMapOf<String, String>()
+        files.forEach { file ->
+            rendered += 1
+            val outputPath = outputRoot.resolve(file.relativePath).toAbsolutePath().normalize().toString()
+            val collisionKey = outputPath.lowercase()
+            val previousRelativePath = relativePathsByCollisionKey.putIfAbsent(collisionKey, file.relativePath)
+            require(previousRelativePath == null) {
+                "Duplicate generated output paths '$previousRelativePath' and '${file.relativePath}' resolve to '$outputPath'."
+            }
+            expectedPaths += collisionKey
+            if (file.writeToIfChanged(outputRoot)) {
+                written += 1
+            }
         }
         val deleted = deleteStaleGeneratedFiles(outputRoot, expectedPaths)
         return KotlinProjectionWriteSummary(
@@ -1819,7 +1830,7 @@ class KotlinProjectionGenerator(
         Files.walk(outputRoot).use { stream ->
             stream
                 .filter { Files.isRegularFile(it) && it.isStaleGeneratedProjectionCandidate(outputRoot) }
-                .filter { it.toAbsolutePath().normalize().toString() !in expectedPaths }
+                .filter { it.toAbsolutePath().normalize().toString().lowercase() !in expectedPaths }
                 .forEach { staleFile ->
                     Files.deleteIfExists(staleFile)
                     deleted += 1

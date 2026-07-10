@@ -335,6 +335,32 @@ class WinRTAuthoringCommonTest {
     }
 
     @Test
+    fun authoredHostBridgeClearsFactoryOutWhenActivationFactoryFallbackFails() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinRTAuthoring.clearActivationFactoryFallbacksForTests()
+        try {
+            WinRTAuthoring.registerActivationFactoryFallback { _, _ ->
+                throw RuntimeException("Activation factory fallback failed.")
+            }
+
+            PlatformAbi.confinedScope().use { scope ->
+                val factoryOut = PlatformAbi.allocatePointerSlot(scope)
+                PlatformAbi.writePointer(factoryOut, factoryOut)
+
+                HString.createReference("Sample.Authoring.FailingFallbackComponent").use { runtimeClass ->
+                    assertEquals(
+                        KnownHResults.E_FAIL.value,
+                        WinRTAuthoringHostBridge.dllGetActivationFactory(runtimeClass.handle, factoryOut),
+                    )
+                }
+                assertTrue(PlatformAbi.isNull(PlatformAbi.readPointer(factoryOut)))
+            }
+        } finally {
+            WinRTAuthoring.clearActivationFactoryFallbacksForTests()
+        }
+    }
+
+    @Test
     fun hostExportRegistryStoresEntriesWithoutReplacingExistingRegistrations() {
         WinRTAuthoringHostExportRegistry.clearRegisteredHostExportsForTests()
         try {

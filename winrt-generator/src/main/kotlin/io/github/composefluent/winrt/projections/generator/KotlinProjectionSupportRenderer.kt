@@ -3708,11 +3708,15 @@ class KotlinProjectionSupportRenderer {
             valueExpression = CodeBlock.of("__element"),
         ) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array return ${binding.describeAbiKind()}")
         return CodeBlock.of(
-            "run {\n·val __returnArrayMemory = %T.allocateBytesOwned(%L.size.toLong() * %L, %L)\n·val __returnArrayData = __returnArrayMemory.pointer\n·%L.forEachIndexed { __index, __element -> %L }\n·%T.writeInt32(%L, %L.size)\n·%T.writePointer(%L, __returnArrayData)\n}",
+            "run {\n·val __returnArrayData = if (%L.isEmpty()) %T.nullPointer else %T.coTaskMemAllocRaw(%L.size.toLong() * %L)\n·if (%L.isNotEmpty()) {\n··check(!%T.isNull(__returnArrayData)) { %S }\n··%L.forEachIndexed { __index, __element -> %L }\n·}\n·%T.writeInt32(%L, %L.size)\n·%T.writePointer(%L, __returnArrayData)\n}",
+            valueExpression,
             PLATFORM_ABI_CLASS_NAME,
+            WINRT_PLATFORM_API_CLASS_NAME,
             valueExpression,
             elementSize,
-            elementSize,
+            valueExpression,
+            PLATFORM_ABI_CLASS_NAME,
+            "CoTaskMemAlloc returned null for a non-empty authored array.",
             valueExpression,
             elementWrite,
             PLATFORM_ABI_CLASS_NAME,
