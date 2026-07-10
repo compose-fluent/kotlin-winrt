@@ -46,6 +46,17 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun declared_object_arrays_round_trip_as_inspectable_arrays() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        // Mirrors .cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs:
+        // IReferenceArray<T> is selected from the declared array element type, not its values.
+        assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, "text"), IID.IReferenceArrayOfInt32)
+        assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(null, "text"), IID.IReferenceArrayOfString)
+        assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, 2), IID.IReferenceArrayOfInt32)
+    }
+
+    @Test
     fun reference_and_reference_array_projections_round_trip_supported_values() {
         ComWrappersSupport.clearRegistriesForTests()
         registerProjectedPointBoxing()
@@ -363,6 +374,25 @@ class ValueBoxingTest {
         try {
             @Suppress("UNCHECKED_CAST")
             assertRoundTrip(value, marshaler.fromAbi(abi) as T)
+        } finally {
+            marshaler.disposeAbi(abi)
+        }
+    }
+
+    private fun assertInspectableObjectArrayRoundTrip(
+        expected: Array<Any?>,
+        unexpectedReferenceArrayInterfaceId: Guid,
+    ) {
+        val marshaler = Marshaler.inspectableAny()
+        val abi = marshaler.fromManaged(expected) as RawAddress
+        try {
+            IInspectableReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->
+                inspectable.queryInterface(IID.IReferenceArrayOfObject).getOrThrow().close()
+                assertTrue(inspectable.queryInterface(unexpectedReferenceArrayInterfaceId).isFailure)
+            }
+
+            val actual = marshaler.fromAbi(abi) as Array<*>
+            assertEquals(expected.toList(), actual.toList())
         } finally {
             marshaler.disposeAbi(abi)
         }
