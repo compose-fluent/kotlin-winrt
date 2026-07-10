@@ -55,6 +55,7 @@ class PlatformCacheSeamsTest {
         val cleaned = mutableListOf<String>()
         val closeable = FinalizationHook().register(Any()) { cleaned += "done" }
         closeable.close()
+        closeable.close()
 
         assertEquals(listOf("done"), cleaned)
     }

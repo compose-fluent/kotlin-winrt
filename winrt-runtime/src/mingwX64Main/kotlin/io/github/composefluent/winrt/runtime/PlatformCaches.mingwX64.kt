@@ -3,6 +3,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlin.native.ref.WeakReference as NativeWeakReference
+import kotlin.native.ref.createCleaner
 
 actual class ConcurrentCacheMap<K, V> actual constructor() {
     private val lock = PlatformLock()
@@ -237,8 +238,37 @@ actual class FinalizationHook actual constructor() {
     actual fun register(
         target: Any,
         cleanup: () -> Unit,
-    ): AutoCloseable =
-        AutoCloseable {
-            cleanup()
+    ): AutoCloseable = NativeFinalizationRegistration(cleanup)
+}
+
+private class NativeFinalizationRegistration(
+    cleanup: () -> Unit,
+) : AutoCloseable {
+    private val state = NativeFinalizationState(cleanup)
+
+    @Suppress("unused")
+    private val cleaner = createCleaner(state) { it.runOnce() }
+
+    override fun close() {
+        state.runOnce()
+    }
+}
+
+private class NativeFinalizationState(
+    private val cleanup: () -> Unit,
+) {
+    private val lock = PlatformLock()
+    private var cleaned = false
+
+    fun runOnce() {
+        val action = lock.withLock {
+            if (cleaned) {
+                null
+            } else {
+                cleaned = true
+                cleanup
+            }
         }
+        action?.invoke()
+    }
 }
