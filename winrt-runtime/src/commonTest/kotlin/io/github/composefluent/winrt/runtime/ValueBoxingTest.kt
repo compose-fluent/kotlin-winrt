@@ -46,23 +46,42 @@ class ValueBoxingTest {
     }
 
     @Test
-    fun declared_object_arrays_round_trip_as_inspectable_arrays() {
+    fun heterogeneous_reference_arrays_use_inspectable_metadata_regardless_of_order() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        // Mirrors .cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs:
-        // IReferenceArray<T> is selected from the declared array element type, not its values.
-        val objectArrayClass = emptyArray<Any?>()::class
-        assertEquals(Any::class, arrayElementType(objectArrayClass))
-        assertEquals(
-            "Windows.Foundation.IReferenceArray`1<Object>",
-            WinRTValueBoxing.boxedRuntimeClassNameForType(objectArrayClass),
-        )
-        assertTrue(Projections.isTypeWindowsRuntimeType(objectArrayClass))
-        assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(arrayOf<Any?>(1, "text")))
+        listOf(
+            arrayOf<Any?>(1, "text"),
+            arrayOf<Any?>("text", 1),
+        ).forEach { value ->
+            assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(value))
+            assertEquals(IID.IReferenceArrayOfObject, ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value))
+        }
+    }
 
-        assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, "text"), IID.IReferenceArrayOfInt32)
-        assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(null, "text"), IID.IReferenceArrayOfString)
-        assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, 2), IID.IReferenceArrayOfInt32)
+    @Test
+    fun explicit_object_reference_array_iid_is_authoritative() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val expected = arrayOf("one", "two")
+        val pointer = WinRTReferenceArrayProjection.fromManaged(expected, IID.IReferenceArrayOfObject)
+        try {
+            IInspectableReference(pointer.asRawComPtr(), IID.IReferenceArrayOfObject, preventReleaseOnDispose = true).use { inspectable ->
+                assertEquals("Windows.Foundation.IReferenceArray`1<Object>", inspectable.getRuntimeClassName())
+                inspectable.queryInterface(IID.IReferenceArrayOfObject).getOrThrow().close()
+                assertTrue(inspectable.queryInterface(IID.IReferenceArrayOfString).isFailure)
+                inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
+                    val projected = WinRTPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
+                    assertEquals(PropertyType.InspectableArray, projected.type())
+                    assertEquals(expected.toList(), (projected.getValue() as Array<*>).toList())
+                }
+            }
+
+            val actual = WinRTReferenceArrayProjection.fromAbi(pointer, IID.IReferenceArrayOfObject)
+                ?: error("Projected object array should not be null.")
+            assertEquals(expected.toList(), actual.toList())
+        } finally {
+            IUnknownReference(pointer.asRawComPtr(), IID.IReferenceArrayOfObject).close()
+        }
     }
 
     @Test
@@ -383,25 +402,6 @@ class ValueBoxingTest {
         try {
             @Suppress("UNCHECKED_CAST")
             assertRoundTrip(value, marshaler.fromAbi(abi) as T)
-        } finally {
-            marshaler.disposeAbi(abi)
-        }
-    }
-
-    private fun assertInspectableObjectArrayRoundTrip(
-        expected: Array<Any?>,
-        unexpectedReferenceArrayInterfaceId: Guid,
-    ) {
-        val marshaler = Marshaler.inspectableAny()
-        val abi = marshaler.fromManaged(expected) as RawAddress
-        try {
-            IInspectableReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->
-                inspectable.queryInterface(IID.IReferenceArrayOfObject).getOrThrow().close()
-                assertTrue(inspectable.queryInterface(unexpectedReferenceArrayInterfaceId).isFailure)
-            }
-
-            val actual = marshaler.fromAbi(abi) as Array<*>
-            assertEquals(expected.toList(), actual.toList())
         } finally {
             marshaler.disposeAbi(abi)
         }

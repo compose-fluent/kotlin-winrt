@@ -100,14 +100,25 @@ internal object ValueBoxingMetadata {
         return boxedReferenceRuntimeClassName(interfaceId, descriptor)
     }
 
+    fun boxedRuntimeClassNameForValue(value: Any): String? =
+        normalizeManagedArray(value)?.metadata?.let { descriptor ->
+            descriptor.referenceArrayInterfaceId?.let { interfaceId ->
+                boxedReferenceArrayRuntimeClassName(interfaceId, descriptor)
+            }
+        } ?: boxedRuntimeClassNameForType(value::class)
+
+    fun boxedRuntimeClassNameForReferenceArrayInterface(interfaceId: Guid): String? =
+        descriptorForReferenceArrayInterface(interfaceId)?.let { descriptor ->
+            boxedReferenceArrayRuntimeClassName(interfaceId, descriptor)
+        }
+
     fun isPropertyValueCompatible(value: Any): Boolean =
         propertyTypeOf(value).let { it != PropertyType.OtherType && it != PropertyType.OtherTypeArray }
 
     fun propertyTypeOf(value: Any): PropertyType {
         val managedArray = normalizeManagedArray(value)
         if (managedArray != null) {
-            val descriptor = classifyPropertyValueDescriptor(managedArray.elements.firstOrNull(), managedArray.metadata)
-            return descriptor.propertyTypeArray
+            return managedArray.metadata.propertyTypeArray
                 ?: if (managedArray.metadata == objectMetadata) PropertyType.InspectableArray else PropertyType.OtherTypeArray
         }
         if (isSupportedArrayValue(value)) {
@@ -137,6 +148,9 @@ internal object ValueBoxingMetadata {
     fun descriptorForPropertyTypeArray(propertyType: PropertyType): WinRTValueTypeMetadata? =
         dynamicDescriptorsByClass.values.firstOrNull { it.propertyTypeArray == propertyType }
             ?: builtInDescriptors.firstOrNull { it.propertyTypeArray == propertyType }
+
+    fun propertyTypeForReferenceArrayInterface(interfaceId: Guid): PropertyType? =
+        descriptorForReferenceArrayInterface(interfaceId)?.propertyTypeArray
 
     fun inspectableArrayMetadata(): WinRTValueTypeMetadata = objectMetadata
 
@@ -211,30 +225,37 @@ internal object ValueBoxingMetadata {
     private fun classifyPropertyValue(value: Any): WinRTValueTypeMetadata? =
         descriptorForValue(value)?.takeIf { it.propertyType != null }
 
-    private fun classifyPropertyValueDescriptor(
-        sampleElement: Any?,
-        defaultDescriptor: WinRTValueTypeMetadata,
-    ): WinRTValueTypeMetadata =
-        when {
-            sampleElement == null -> defaultDescriptor
-            defaultDescriptor == objectMetadata -> objectMetadata
-            else -> descriptorForValue(sampleElement) ?: defaultDescriptor
-        }
-
     private fun normalizeManagedArray(value: Any): ManagedArrayMetadata? =
         when (value) {
-            is Array<*> -> {
-                val componentType = arrayElementType(value::class)
-                val descriptor =
-                    when (componentType) {
-                        Any::class -> objectMetadata
-                        null -> value.firstOrNull { it != null }?.let(::descriptorForValue) ?: objectMetadata
-                        else -> descriptorForClass(componentType)
-                    }
-                descriptor?.let { ManagedArrayMetadata(value, it) }
-            }
+            is Array<*> -> ManagedArrayMetadata(value, classifyReferenceArray(value))
             else -> normalizePrimitiveManagedArray(value)
         }
+
+    private fun classifyReferenceArray(value: Array<*>): WinRTValueTypeMetadata {
+        WinRTTypeClassifier.referenceArrayComponentType(value)?.let { componentType ->
+            return descriptorForClass(componentType) ?: objectMetadata
+        }
+
+        // Native has no declared Array<T> metadata, so inspect every non-null value. This keeps
+        // homogeneous arrays typed, while empty, heterogeneous, and unknown arrays become object
+        // arrays. A homogeneous declared Array<Any?> is indistinguishable from Array<T> here.
+        var inferredDescriptor: WinRTValueTypeMetadata? = null
+        value.forEach { element ->
+            if (element == null) {
+                return@forEach
+            }
+            val descriptor = descriptorForValue(element) ?: return objectMetadata
+            if (inferredDescriptor != null && inferredDescriptor != descriptor) {
+                return objectMetadata
+            }
+            inferredDescriptor = descriptor
+        }
+        return inferredDescriptor ?: objectMetadata
+    }
+
+    private fun descriptorForReferenceArrayInterface(interfaceId: Guid): WinRTValueTypeMetadata? =
+        dynamicDescriptorsByClass.values.firstOrNull { it.referenceArrayInterfaceId == interfaceId }
+            ?: builtInDescriptors.firstOrNull { it.referenceArrayInterfaceId == interfaceId }
 
     private fun isSupportedArrayValue(value: Any): Boolean = isArrayKClass(value::class)
 
