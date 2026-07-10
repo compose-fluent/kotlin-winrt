@@ -178,6 +178,12 @@ internal object WinRTTypeClassifier {
     fun primitiveArrayElementType(arrayType: KClass<*>): KClass<*>? =
         intrinsicTypesByPrimitiveArrayType[arrayType]?.representativeType
 
+    fun arrayElementType(arrayType: KClass<*>): KClass<*>? =
+        primitiveArrayElementType(arrayType) ?: platformReferenceArrayComponentType(arrayType)
+
+    fun referenceArrayComponentType(value: Array<*>): KClass<*>? =
+        platformReferenceArrayComponentType(value)
+
     fun primitiveArrayTypeForElementType(elementType: KClass<*>): KClass<*>? =
         classify(elementType)?.primitiveArrayType
 

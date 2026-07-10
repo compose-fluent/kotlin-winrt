@@ -6,6 +6,12 @@ internal object WinRTValueBoxing {
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
         ValueBoxingMetadata.boxedRuntimeClassNameForType(type)
 
+    fun boxedRuntimeClassNameForValue(value: Any): String? =
+        ValueBoxingMetadata.boxedRuntimeClassNameForValue(value)
+
+    fun boxedRuntimeClassNameForReferenceArrayInterface(interfaceId: Guid): String? =
+        ValueBoxingMetadata.boxedRuntimeClassNameForReferenceArrayInterface(interfaceId)
+
     fun isPropertyValueCompatible(value: Any): Boolean =
         ValueBoxingMetadata.isPropertyValueCompatible(value)
 
@@ -24,6 +30,15 @@ internal object WinRTValueBoxing {
         ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
             ValueBoxingInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
         }
+
+    fun createReferenceArrayInterfaceDefinition(
+        value: Any,
+        interfaceId: Guid,
+    ): WinRTInspectableInterfaceDefinition =
+        ValueBoxingInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
+
+    fun propertyTypeForReferenceArrayInterface(interfaceId: Guid): PropertyType? =
+        ValueBoxingMetadata.propertyTypeForReferenceArrayInterface(interfaceId)
 
     fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
         ValueBoxingInterop.readReferenceValue(interfaceId, pointer)

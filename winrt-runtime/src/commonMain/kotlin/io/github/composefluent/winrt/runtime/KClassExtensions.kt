@@ -33,10 +33,9 @@ internal fun enumConstants(type: KClass<*>): Array<Any>? =
 internal fun isExceptionType(type: KClass<*>): Boolean =
     type.registeredWinRTType()?.isExceptionType == true
 
-/** Returns the array element KClass if [type] is a typed array registered in the registry, else null. */
+/** Returns the platform-declared array element type when the target preserves that metadata. */
 internal fun arrayElementType(type: KClass<*>): KClass<*>? =
-    WinRTTypeClassifier.primitiveArrayElementType(type)
-        ?: TypeNameSupport.registeredArrayElementType(type)
+    WinRTTypeClassifier.arrayElementType(type)
 
 /** Cross-platform assignability: target is a supertype of candidate if candidate is registered
  *  as an exception and target is the generic Exception marker, or falls back to identity. */

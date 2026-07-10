@@ -21,32 +21,35 @@ internal fun createReferenceHost(
 internal fun createReferenceArrayHost(
     interfaceId: Guid,
     value: Any,
-): ManagedReferenceHost =
-    createBoxedValueHost(
+): ManagedReferenceHost {
+    val propertyType = WinRTValueBoxing.propertyTypeForReferenceArrayInterface(interfaceId)
+    return createBoxedValueHost(
         value = value,
         defaultInterfaceId = interfaceId,
+        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForReferenceArrayInterface(interfaceId),
         interfaceDefinitions = buildList {
-            if (WinRTValueBoxing.isPropertyValueCompatible(value)) {
-                add(createPropertyValueInterfaceDefinition(value))
+            if (propertyType != null) {
+                add(createPropertyValueInterfaceDefinition(value, propertyType))
             }
             add(
-                WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value)
-                    ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
+                WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value, interfaceId),
             )
         },
     )
+}
 
 private fun createBoxedValueHost(
     value: Any,
     defaultInterfaceId: Guid,
     interfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
+    runtimeClassName: String? = WinRTValueBoxing.boxedRuntimeClassNameForValue(value),
 ): WinRTInspectableComObject {
     val definition = InteropRuntimeHooks.augmentInspectableDefinition(
         value = value,
         definition = WinRTCcwDefinition(
             interfaceDefinitions = interfaceDefinitions,
             defaultInterfaceId = defaultInterfaceId,
-            runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForType(value::class),
+            runtimeClassName = runtimeClassName,
         ),
     )
     return WinRTInspectableComObject(

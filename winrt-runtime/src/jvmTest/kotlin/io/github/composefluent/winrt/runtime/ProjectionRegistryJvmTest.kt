@@ -5,8 +5,10 @@ import org.junit.Test
 
 class ProjectionRegistryJvmTest {
     @Test
-    fun generic_array_class_literal_keeps_jvm_type_name_support_behavior() {
-        assertEquals("", TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)))
+    fun generic_array_class_literal_uses_jvm_component_metadata() {
+        assertEquals(
+            "Windows.Foundation.IReferenceArray`1<String>",
+            TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
+        )
     }
-
 }

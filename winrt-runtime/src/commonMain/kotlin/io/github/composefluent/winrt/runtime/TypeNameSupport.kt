@@ -19,8 +19,6 @@ object TypeNameSupport {
 
     private val registeredProjectionTypes = ConcurrentCacheMap<String, KClass<*>>()
     private val registeredReferenceArrayTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
-    /** Reverse mapping: arrayType → elementType, populated alongside [registeredReferenceArrayTypes]. */
-    private val registeredArrayElementTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
     private val projectionTypeNameToBaseTypeNameMappingsLock = PlatformLock()
     private val projectionTypeNameToBaseTypeNameMappings = mutableListOf<Map<String, String>>()
     private val typeNameCache = ConcurrentCacheMap<String, TypeLookupResult>()
@@ -83,12 +81,7 @@ object TypeNameSupport {
     ) {
         typeNameCache.clear()
         registeredReferenceArrayTypes[elementType] = arrayType
-        registeredArrayElementTypes[arrayType] = elementType
     }
-
-    /** Returns the element type if [arrayType] was registered via [registerReferenceArrayType], else null. */
-    fun registeredArrayElementType(arrayType: KClass<*>): KClass<*>? =
-        registeredArrayElementTypes[arrayType]
 
     internal fun findRcwKClassByNameCached(
         runtimeClassName: String,
@@ -164,7 +157,6 @@ object TypeNameSupport {
     internal fun clearRegistriesForTests() {
         registeredProjectionTypes.clear()
         registeredReferenceArrayTypes.clear()
-        registeredArrayElementTypes.clear()
         projectionTypeNameToBaseTypeNameMappingsLock.withLock {
             projectionTypeNameToBaseTypeNameMappings.clear()
         }
@@ -203,7 +195,7 @@ object TypeNameSupport {
             ?: registeredReferenceArrayTypes[elementType]
 
     private fun referenceArrayRuntimeClassName(type: KClass<*>): String? {
-        if (WinRTTypeClassifier.primitiveArrayElementType(type) == null && registeredArrayElementTypes[type] == null) {
+        if (arrayElementType(type) == null) {
             return null
         }
         return WinRTValueBoxing.boxedRuntimeClassNameForType(type)

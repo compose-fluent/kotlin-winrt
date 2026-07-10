@@ -21,7 +21,7 @@ internal fun createSyntheticValueCcwDefinition(value: Any): WinRTCcwDefinition? 
     return WinRTCcwDefinition(
         interfaceDefinitions = interfaceDefinitions,
         defaultInterfaceId = defaultInterfaceId,
-        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForType(value::class),
+        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForValue(value),
     )
 }
 
@@ -38,7 +38,7 @@ internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRTCcwDefini
 }
 
 internal fun defaultInspectableRuntimeClassNameFor(value: Any): String? {
-    WinRTValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
+    WinRTValueBoxing.boxedRuntimeClassNameForValue(value)?.let { return it }
     if (value is AutoCloseable) {
         return TypeNameSupport.getNameForType(AutoCloseable::class).takeIf(String::isNotBlank)
     }
