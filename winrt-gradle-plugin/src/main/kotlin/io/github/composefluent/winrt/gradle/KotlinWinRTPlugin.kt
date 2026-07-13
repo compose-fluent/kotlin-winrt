@@ -1409,10 +1409,12 @@ private fun registerWinRTAuthoredCandidateValidation(
         project.tasks.matching { task -> task.name == "processResources" }.configureEach(Action<Task> { task ->
             if (task is Copy) {
                 task.from(
-                    if ((extension as? WinRTExtension)?.applicationEnabled?.get() == true) {
-                        project.files()
-                    } else {
-                        project.files(outputs.authoredWinmd, outputs.authoredHostManifest)
+                    project.provider {
+                        if ((extension as? WinRTExtension)?.applicationEnabled?.get() == true) {
+                            project.files()
+                        } else {
+                            project.files(outputs.authoredWinmd, outputs.authoredHostManifest)
+                        }
                     },
                     Action<CopySpec> { spec ->
                         spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
@@ -2379,6 +2381,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
     project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
         addWinRTCompilerPluginOptions(
+            project = project,
             freeCompilerArgs = freeCompilerArgs,
             metadataIndex = metadataIndex,
             outputs = compilerAuthoringOutputs(
@@ -2406,6 +2409,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
         task.outputs.file(outputs.authoredWinmd)
         task.outputs.file(outputs.authoredHostManifest)
         addWinRTCompilerPluginOptions(
+            project = project,
             freeCompilerArgs = freeCompilerArgs,
             metadataIndex = metadataIndex,
             outputs = outputs,
@@ -2417,6 +2421,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
 }
 
 private fun addWinRTCompilerPluginOptions(
+    project: Project,
     freeCompilerArgs: org.gradle.api.provider.ListProperty<String>,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
     outputs: CompilerAuthoringOutputs,
@@ -2424,40 +2429,30 @@ private fun addWinRTCompilerPluginOptions(
     authoringTargetArtifactName: org.gradle.api.provider.Provider<String>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
-    fun addOption(value: Provider<String>) {
-        freeCompilerArgs.add("-P")
-        freeCompilerArgs.add(value)
-    }
-    addOption(metadataIndex.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:metadataIndex=${file.asFile.absolutePath}"
-    })
-    addOption(outputs.typeIndex.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:typeIndexOutput=${file.asFile.absolutePath}"
-    })
-    addOption(outputs.authoredCandidates.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredCandidatesOutput=${file.asFile.absolutePath}"
-    })
-    addOption(outputs.authoredMetadata.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredMetadataOutput=${file.asFile.absolutePath}"
-    })
-    addOption(outputs.authoredWinmd.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredWinmdOutput=${file.asFile.absolutePath}"
-    })
-    addOption(outputs.authoredHostManifest.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoredHostManifestOutput=${file.asFile.absolutePath}"
-    })
-    addOption(authoringAssemblyName.map { assemblyName ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringAssemblyName=$assemblyName"
-    })
-    addOption(authoringTargetArtifactName.map { targetArtifactName ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:authoringTargetArtifactName=$targetArtifactName"
-    })
-    addOption(compilerSupportManifest.map { file ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportManifest=${file.asFile.absolutePath}"
-    })
-    addOption(outputs.outputDirectory.map { directory ->
-        "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportClassOutputDirectory=${directory.asFile.absolutePath}"
-    })
+    freeCompilerArgs.addAll(
+        project.provider {
+            val authoringOptions = listOf(
+                "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
+                "typeIndexOutput=${outputs.typeIndex.get().asFile.absolutePath}",
+                "authoredCandidatesOutput=${outputs.authoredCandidates.get().asFile.absolutePath}",
+                "authoredMetadataOutput=${outputs.authoredMetadata.get().asFile.absolutePath}",
+                "authoredWinmdOutput=${outputs.authoredWinmd.get().asFile.absolutePath}",
+                "authoredHostManifestOutput=${outputs.authoredHostManifest.get().asFile.absolutePath}",
+                "authoringAssemblyName=${authoringAssemblyName.get()}",
+                "authoringTargetArtifactName=${authoringTargetArtifactName.get()}",
+            )
+            val projectionSupportOptions = if (kotlinWinRTLocalGenerationRequired(project).get()) {
+                listOf(
+                    "compilerSupportManifest=${compilerSupportManifest.get().asFile.absolutePath}",
+                    "compilerSupportClassOutputDirectory=${outputs.outputDirectory.get().asFile.absolutePath}",
+                )
+            } else {
+                emptyList()
+            }
+            (authoringOptions + projectionSupportOptions)
+                .flatMap { option -> listOf("-P", "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:$option") }
+        },
+    )
 }
 
 private fun kotlinMainSourceDirs(project: Project): List<File> {
