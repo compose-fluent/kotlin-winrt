@@ -7,8 +7,10 @@ import org.gradle.api.Task
 import org.gradle.api.XmlProvider
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.provider.Provider
 import org.w3c.dom.Element
 
 class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
@@ -26,6 +28,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         val identityConfiguration = project.configurations.named(IDENTITY_CONFIGURATION_NAME)
         val compileOnlyConfiguration = project.configurations.named(COMMON_MAIN_COMPILE_ONLY_CONFIGURATION)
         val apiConfiguration = project.configurations.named(COMMON_MAIN_API_CONFIGURATION)
+        val publishedArtifactName = project.extensions.getByType(BasePluginExtension::class.java).archivesName
 
         compileOnlyConfiguration.configure(Action<Configuration> {
             dependencies.withType(ProjectDependency::class.java).all(Action<ProjectDependency> {
@@ -40,11 +43,8 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             })
         })
 
-        fun directProjectionReferences(): List<Project> =
-            listOf(compileOnlyConfiguration.get(), apiConfiguration.get())
-                .flatMap { configuration -> configuration.dependencies.withType(ProjectDependency::class.java).toList() }
-                .mapNotNull { project.findProject(it.path) }
-                .distinctBy(Project::getPath)
+        val apiArtifactNames = linkedMapOf<String, Provider<String>>()
+        val compileOnlyArtifactNames = linkedMapOf<String, Provider<String>>()
 
         val audit = project.tasks.register(
             OUTPUT_AUDIT_TASK_NAME,
@@ -53,24 +53,17 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             group = "verification"
             description = "Audits generated prebuilt projection output and direct projection-reference class ownership."
             dependsOn("generateWinRTProjections", "compileKotlinJvm")
-            dependsOn(project.provider { directProjectionReferences().map { "${it.path}:compileKotlinJvm" } })
             generatedSourcesDirectory.set(
                 project.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin"),
             )
             compiledClassesDirectories.from(project.layout.buildDirectory.dir("classes/kotlin/jvm/main"))
-            crossArtifactClassOwners.set(project.provider {
-                listOf(project.name) + directProjectionReferences().map(Project::getName)
-            })
+            maxTotalClassBytes.set(PREBUILT_MAX_TOTAL_CLASS_BYTES)
+            crossArtifactClassOwners.add(project.name)
             crossArtifactClassDirectories.from(project.layout.buildDirectory.dir("classes/kotlin/jvm/main"))
-            crossArtifactClassDirectories.from(project.provider {
-                directProjectionReferences().map { reference ->
-                    reference.layout.buildDirectory.dir("classes/kotlin/jvm/main")
-                }
-            })
         })
         project.tasks.named("check").configure(Action<Task> { dependsOn(audit) })
 
-        project.tasks.register(
+        val publicationValidation = project.tasks.register(
             PUBLICATION_VALIDATION_TASK_NAME,
             ValidatePrebuiltProjectionPublicationTask::class.java,
             Action<ValidatePrebuiltProjectionPublicationTask> {
@@ -82,15 +75,12 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 "generatePomFileForKotlinMultiplatformPublication",
                 "generateMetadataFileForKotlinMultiplatformPublication",
             )
-            requiredApiDependencies.set(project.provider {
-                mapOf(
-                    project.name to apiConfiguration.get().dependencies
-                        .withType(ProjectDependency::class.java)
-                        .joinToString(",") { dependency ->
-                            project.findProject(dependency.path)?.name ?: dependency.name
-                        },
-                )
-            })
+            requiredApiDependencies.set(
+                publishedArtifactName.map { artifactName -> mapOf(artifactName to "") },
+            )
+            forbiddenPublishedDependencies.set(
+                publishedArtifactName.map { artifactName -> mapOf(artifactName to "") },
+            )
             pomFiles.from(
                 project.layout.buildDirectory.file("publications/jvm/pom-default.xml"),
                 project.layout.buildDirectory.file("publications/mingwX64/pom-default.xml"),
@@ -101,26 +91,87 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             )
         })
 
-        project.extensions.configure(PublishingExtension::class.java, Action<PublishingExtension> {
-            publications.withType(MavenPublication::class.java)
-                .matching { publication -> publication.name == "kotlinMultiplatform" }
-                .configureEach(Action<MavenPublication> {
-                    pom.withXml(Action<XmlProvider> {
-                        val apiArtifactNames = apiConfiguration.get().dependencies
-                            .withType(ProjectDependency::class.java)
-                            .map { dependency -> project.findProject(dependency.path)?.name ?: dependency.name }
-                            .toSet()
-                        val dependencies = asElement().getElementsByTagName("dependency")
-                        (0 until dependencies.length)
-                            .map { dependencies.item(it) as Element }
-                            .filter { dependency ->
-                                dependency.getElementsByTagName("artifactId").item(0)?.textContent in apiArtifactNames
-                            }
-                            .forEach { dependency ->
-                                dependency.getElementsByTagName("scope").item(0)?.textContent = "compile"
-                            }
-                    })
+        val configuredReferencePaths = mutableSetOf<String>()
+        fun dependencyArtifactName(dependency: ProjectDependency): Provider<String> {
+            val artifactName = project.objects.property(String::class.java)
+            artifactName.convention(dependency.name)
+            val reference = project.findProject(dependency.path)
+            reference?.pluginManager?.withPlugin("base") {
+                artifactName.set(
+                    reference.extensions
+                        .getByType(BasePluginExtension::class.java)
+                        .archivesName,
+                )
+            }
+            return artifactName
+        }
+
+        fun configureProjectionReference(dependency: ProjectDependency) {
+            val reference = project.findProject(dependency.path) ?: return
+            if (!configuredReferencePaths.add(reference.path)) return
+            audit.configure(Action<ValidatePrebuiltProjectionOutputTask> {
+                dependsOn("${reference.path}:compileKotlinJvm")
+                crossArtifactClassOwners.add(reference.name)
+                crossArtifactClassDirectories.from(
+                    reference.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+                )
+            })
+        }
+        compileOnlyConfiguration.configure(Action<Configuration> {
+            dependencies.withType(ProjectDependency::class.java).all(Action<ProjectDependency> {
+                val dependency = this
+                compileOnlyArtifactNames[dependency.path] = dependencyArtifactName(dependency)
+                val artifactNames = compileOnlyArtifactNames.values.toList()
+                val forbiddenDependencies = project.providers.provider {
+                    artifactNames.map(Provider<String>::get).distinct().sorted().joinToString(",")
+                }
+                publicationValidation.configure(Action<ValidatePrebuiltProjectionPublicationTask> {
+                    forbiddenPublishedDependencies.set(
+                        publishedArtifactName.zip(forbiddenDependencies) { artifactName, dependencies ->
+                            mapOf(artifactName to dependencies)
+                        },
+                    )
                 })
+                configureProjectionReference(dependency)
+            })
+        })
+        apiConfiguration.configure(Action<Configuration> {
+            dependencies.withType(ProjectDependency::class.java).all(Action<ProjectDependency> {
+                val dependency = this
+                val dependencyArtifactName = dependencyArtifactName(dependency)
+                apiArtifactNames[dependency.path] = dependencyArtifactName
+                val artifactNames = apiArtifactNames.values.toList()
+                val requiredDependencies = project.providers.provider {
+                    artifactNames.map(Provider<String>::get).distinct().sorted().joinToString(",")
+                }
+                publicationValidation.configure(Action<ValidatePrebuiltProjectionPublicationTask> {
+                    requiredApiDependencies.set(
+                        publishedArtifactName.zip(requiredDependencies) { artifactName, dependencies ->
+                            mapOf(artifactName to dependencies)
+                        },
+                    )
+                })
+                project.extensions.configure(PublishingExtension::class.java, Action<PublishingExtension> {
+                    publications.withType(MavenPublication::class.java)
+                        .matching { publication -> publication.name == "kotlinMultiplatform" }
+                        .configureEach(Action<MavenPublication> {
+                            pom.withXml(Action<XmlProvider> {
+                                val apiArtifactName = dependencyArtifactName.get()
+                                val dependencies = asElement().getElementsByTagName("dependency")
+                                (0 until dependencies.length)
+                                    .map { dependencies.item(it) as Element }
+                                    .filter { pomDependency ->
+                                        pomDependency.getElementsByTagName("artifactId").item(0)?.textContent ==
+                                            apiArtifactName
+                                    }
+                                    .forEach { pomDependency ->
+                                        pomDependency.getElementsByTagName("scope").item(0)?.textContent = "compile"
+                                    }
+                            })
+                        })
+                })
+                configureProjectionReference(dependency)
+            })
         })
     }
 
@@ -132,5 +183,6 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         const val COMMON_MAIN_API_CONFIGURATION = "commonMainApi"
         const val OUTPUT_AUDIT_TASK_NAME = "auditGeneratedWinRTProjectionOutput"
         const val PUBLICATION_VALIDATION_TASK_NAME = "validatePrebuiltProjectionPublication"
+        const val PREBUILT_MAX_TOTAL_CLASS_BYTES = 150_000_000L
     }
 }

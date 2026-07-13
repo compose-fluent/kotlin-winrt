@@ -16,7 +16,8 @@ kotlin {
 }
 
 dependencies {
+    val windowsSdkCoordinate = providers.gradleProperty("kotlinWinRT.test.windowsSdkCoordinate").get()
     val projectionCoordinate = providers.gradleProperty("kotlinWinRT.test.coordinate").get()
+    commonMainImplementation(windowsSdkCoordinate)
     commonMainImplementation(projectionCoordinate)
-    add("kotlinWinRTLibraryDependencyIdentity", projectionCoordinate)
 }

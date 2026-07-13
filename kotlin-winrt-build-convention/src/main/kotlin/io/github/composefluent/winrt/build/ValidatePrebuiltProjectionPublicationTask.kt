@@ -20,6 +20,9 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
     @get:Input
     abstract val requiredApiDependencies: MapProperty<String, String>
 
+    @get:Input
+    abstract val forbiddenPublishedDependencies: MapProperty<String, String>
+
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val pomFiles: ConfigurableFileCollection
@@ -27,6 +30,10 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val moduleMetadataFiles: ConfigurableFileCollection
+
+    init {
+        forbiddenPublishedDependencies.convention(emptyMap())
+    }
 
     @TaskAction
     fun validate() {
@@ -60,6 +67,12 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
                 "${pom.absolutePath} publishes $expectedArtifactId as optional."
             }
         }
+        forbiddenDependenciesFor(publishedModule).forEach { forbiddenModule ->
+            val forbiddenArtifactId = forbiddenModule.toPublicationArtifactId(publicationName)
+            check(dependencies.none { it.childText("artifactId") == forbiddenArtifactId }) {
+                "${pom.absolutePath} publishes forbidden compile-only dependency $forbiddenArtifactId."
+            }
+        }
     }
 
     private fun validateModuleMetadata(moduleMetadata: File) {
@@ -78,6 +91,15 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
                 "${moduleMetadata.absolutePath} does not expose $expectedModule from $METADATA_API_VARIANT_NAME."
             }
         }
+        val variants = parsedRoot["variants"]
+            ?.let { it as? Iterable<*> }
+            ?.filterIsInstance<Map<*, *>>()
+            .orEmpty()
+        forbiddenDependenciesFor(publishedModule).forEach { forbiddenModule ->
+            check(variants.none { variant -> variant.dependencies().any { it["module"] == forbiddenModule } }) {
+                "${moduleMetadata.absolutePath} publishes forbidden compile-only dependency $forbiddenModule."
+            }
+        }
     }
 
     private fun requiredDependenciesFor(publishedModule: String, metadataFile: File): List<String> =
@@ -86,6 +108,13 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
             ?.map(String::trim)
             ?.filter(String::isNotEmpty)
             ?: error("No API dependency contract configured for $publishedModule: ${metadataFile.absolutePath}")
+
+    private fun forbiddenDependenciesFor(publishedModule: String): List<String> =
+        forbiddenPublishedDependencies.get()[publishedModule]
+            ?.split(',')
+            ?.map(String::trim)
+            ?.filter(String::isNotEmpty)
+            .orEmpty()
 
     private fun String.toRootModuleName(publicationName: String): String = when (publicationName) {
         "jvm" -> removeSuffix("-jvm")

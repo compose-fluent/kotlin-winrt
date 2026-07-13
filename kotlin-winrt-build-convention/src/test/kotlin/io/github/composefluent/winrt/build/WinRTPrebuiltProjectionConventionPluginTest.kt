@@ -19,24 +19,59 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
             .withArguments(
-                ":projection:verifyPrebuiltConvention",
                 ":projection:generatePomFileForKotlinMultiplatformPublication",
+                "--configuration-cache",
                 "--stacktrace",
                 "--max-workers=1",
             )
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:verifyPrebuiltConvention")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:generatePomFileForKotlinMultiplatformPublication")?.outcome)
         val pom = Files.readString(
             projectDir.resolve("projection/build/publications/kotlinMultiplatform/pom-default.xml"),
         )
-        assertFalse(pom, pom.contains("<artifactId>sdk</artifactId>"))
-        assertTrue(pom, pom.contains("<artifactId>api</artifactId>"))
+        assertFalse(pom, pom.contains("<artifactId>published-sdk</artifactId>"))
+        assertTrue(pom, pom.contains("<artifactId>published-api</artifactId>"))
         assertTrue(
             pom,
-            Regex("""<artifactId>api</artifactId>[\s\S]*?<scope>compile</scope>""").containsMatchIn(pom),
+            Regex("""<artifactId>published-api</artifactId>[\s\S]*?<scope>compile</scope>""").containsMatchIn(pom),
         )
+    }
+
+    @Test
+    fun publication_validation_uses_the_published_artifact_name_as_its_contract_key() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-prebuilt-publication-validation-")
+        writeFixture(projectDir)
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(
+                ":projection:validatePrebuiltProjectionPublication",
+                "--configuration-cache",
+                "--stacktrace",
+                "--max-workers=1",
+            )
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:validatePrebuiltProjectionPublication")?.outcome)
+
+        val cachedResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(
+                ":projection:validatePrebuiltProjectionPublication",
+                "--configuration-cache",
+                "--stacktrace",
+                "--max-workers=1",
+            )
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, cachedResult.task(":projection:validatePrebuiltProjectionPublication")?.outcome)
+        assertTrue(cachedResult.output, cachedResult.output.contains("Configuration cache entry reused."))
     }
 
     private fun writeFixture(projectDir: Path) {
@@ -116,10 +151,20 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                 plugins {
                     id("org.jetbrains.kotlin.multiplatform")
                     id("io.github.compose-fluent.winrt")
+                    id("winrt.publish")
                 }
 
                 kotlin {
                     jvm()
+                    mingwX64()
+                }
+
+                base {
+                    archivesName.set("published-$moduleName")
+                }
+
+                mavenPublishing {
+                    coordinates("test.winrt", "published-$moduleName", "1.0")
                 }
                 """.trimIndent(),
             )
@@ -128,6 +173,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             projectDir.resolve("projection/build.gradle.kts"),
             """
             import org.gradle.api.artifacts.ProjectDependency
+            import io.github.composefluent.winrt.build.ValidatePrebuiltProjectionOutputTask
 
             plugins {
                 id("org.jetbrains.kotlin.multiplatform")
@@ -137,6 +183,15 @@ class WinRTPrebuiltProjectionConventionPluginTest {
 
             kotlin {
                 jvm()
+                mingwX64()
+            }
+
+            base {
+                archivesName.set("published-projection")
+            }
+
+            mavenPublishing {
+                coordinates("test.winrt", "published-projection", "1.0")
             }
 
             dependencies {
@@ -144,22 +199,25 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                 commonMainApi(project(":api"))
             }
 
-            tasks.register("verifyPrebuiltConvention") {
-                doLast {
-                    val identityPaths = configurations
-                        .getByName("kotlinWinRTLibraryDependencyIdentity")
-                        .dependencies
-                        .withType(ProjectDependency::class.java)
-                        .map(ProjectDependency::getPath)
-                        .toSet()
-                    check(":sdk" in identityPaths) { "Expected compile-only SDK identity, found: ${'$'}identityPaths" }
-                    check(tasks.findByName("auditGeneratedWinRTProjectionOutput") != null)
-                    check(tasks.findByName("validatePrebuiltProjectionPublication") != null)
-                    val checkTask = tasks.named("check").get()
-                    val dependencyNames = checkTask.taskDependencies.getDependencies(checkTask).map { it.name }.toSet()
-                    check("auditGeneratedWinRTProjectionOutput" in dependencyNames) {
-                        "Expected check to depend on output audit, found: ${'$'}dependencyNames"
-                    }
+            run {
+                val identityPaths = configurations
+                    .getByName("kotlinWinRTLibraryDependencyIdentity")
+                    .dependencies
+                    .withType(ProjectDependency::class.java)
+                    .map(ProjectDependency::getPath)
+                    .toSet()
+                check(":sdk" in identityPaths) { "Expected compile-only SDK identity, found: ${'$'}identityPaths" }
+                val auditTask = tasks.named<ValidatePrebuiltProjectionOutputTask>(
+                    "auditGeneratedWinRTProjectionOutput",
+                ).get()
+                check(auditTask.maxTotalClassBytes.get() == 150_000_000L) {
+                    "Expected the full prebuilt projection class budget, found: ${'$'}{auditTask.maxTotalClassBytes.get()}"
+                }
+                check(tasks.findByName("validatePrebuiltProjectionPublication") != null)
+                val checkTask = tasks.named("check").get()
+                val dependencyNames = checkTask.taskDependencies.getDependencies(checkTask).map { it.name }.toSet()
+                check("auditGeneratedWinRTProjectionOutput" in dependencyNames) {
+                    "Expected check to depend on output audit, found: ${'$'}dependencyNames"
                 }
             }
             """.trimIndent(),
