@@ -1225,6 +1225,43 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_excludes_dependency_owned_types_from_type_shape_descriptors() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "DependencyOwnedWidget",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            iid = Guid("11111111-2222-3333-4444-555555555601"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "LocalWidget",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            iid = Guid("11111111-2222-3333-4444-555555555602"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val typeShapeDescriptors = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            suppressedProjectionTypeNames = setOf("Sample.Foundation.DependencyOwnedWidget"),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("type-shape-descriptors.tsv")
+            .contents
+
+        assertFalse(typeShapeDescriptors, typeShapeDescriptors.contains("Sample.Foundation.DependencyOwnedWidget"))
+        assertTrue(typeShapeDescriptors, typeShapeDescriptors.contains("Sample.Foundation.LocalWidget"))
+    }
+
+    @Test
     fun generator_records_large_projection_registrar_as_compiler_input() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
