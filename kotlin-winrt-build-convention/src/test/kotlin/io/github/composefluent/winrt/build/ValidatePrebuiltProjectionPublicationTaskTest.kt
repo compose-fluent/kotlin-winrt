@@ -156,4 +156,49 @@ class ValidatePrebuiltProjectionPublicationTaskTest {
         assertTrue(failure is IllegalStateException)
         assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains("metadataApiElements"))
     }
+
+    @Test
+    fun publication_validation_rejects_compile_only_dependency_leaking_into_pom_or_metadata() {
+        val project = ProjectBuilder.builder().build()
+        val publicationRoot = Files.createTempDirectory("kotlin-winrt-prebuilt-publication-forbidden-dependency-")
+        val pom = publicationRoot.resolve("publications/jvm/pom-default.xml")
+        Files.createDirectories(pom.parent)
+        Files.writeString(
+            pom,
+            """
+            <project><artifactId>projection-jvm</artifactId><dependencies><dependency>
+              <artifactId>windows-sdk-jvm</artifactId>
+              <scope>compile</scope>
+            </dependency></dependencies></project>
+            """.trimIndent(),
+        )
+        val moduleMetadata = publicationRoot.resolve("publications/kotlinMultiplatform/module.json")
+        Files.createDirectories(moduleMetadata.parent)
+        Files.writeString(
+            moduleMetadata,
+            """
+            {
+              "component": { "module": "projection" },
+              "variants": [{
+                "name": "metadataApiElements",
+                "attributes": { "org.gradle.usage": "kotlin-metadata" },
+                "dependencies": [{ "module": "windows-sdk" }]
+              }]
+            }
+            """.trimIndent(),
+        )
+        val task = project.tasks.create(
+            "validatePrebuiltPublicationForbiddenDependencyUnderTest",
+            ValidatePrebuiltProjectionPublicationTask::class.java,
+        )
+        task.pomFiles.from(pom.toFile())
+        task.moduleMetadataFiles.from(moduleMetadata.toFile())
+        task.requiredApiDependencies.set(mapOf("projection" to ""))
+        task.forbiddenPublishedDependencies.set(mapOf("projection" to "windows-sdk"))
+
+        val failure = runCatching { task.validate() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains("windows-sdk"))
+    }
 }

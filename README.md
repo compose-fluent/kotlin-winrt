@@ -173,13 +173,25 @@ fun readProfile(json: String): String =
 
 ## Prebuilt Projections
 
-For the default Windows SDK, Windows.UI.Xaml, and Windows App SDK / WinUI surfaces, prefer the prebuilt projection artifacts:
+For the default Windows SDK and one XAML family, prefer the prebuilt projection artifacts. Applications select the Windows SDK coordinate independently, then choose either the legacy `Windows.UI.Xaml` family or the Windows App SDK / WinUI family:
 
 ```kotlin
 dependencies {
     implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
-    implementation("io.github.compose-fluent:winrt-projections-windows-webview2:1.0.3719.77")
     implementation("io.github.compose-fluent:winrt-projections-windows-ui-xaml:10.0.26100.0")
+}
+
+winRT {
+    windowsSdk(includeExtensions = true)
+    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+        generateProjection = false
+    }
+}
+```
+
+```kotlin
+dependencies {
+    implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
     implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.1.3")
 }
 
@@ -188,6 +200,15 @@ winRT {
     nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
         generateProjection = false
     }
+}
+```
+
+Do not consume `winrt-projections-windows-ui-xaml` and `winrt-projections-windows-app-sdk` together. The App SDK artifact exposes WebView2 Core transitively; add `winrt-projections-windows-webview2` directly only when using the standalone WebView2 projection without the App SDK family.
+
+```kotlin
+dependencies {
+    implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
+    implementation("io.github.compose-fluent:winrt-projections-windows-webview2:1.0.3719.77")
 }
 ```
 

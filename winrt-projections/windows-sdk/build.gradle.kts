@@ -1,8 +1,8 @@
+import io.github.composefluent.winrt.build.projectionArtifactVersion
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("build-convention")
-    id("winrt.publish")
-    id("winrt.prebuilt-projection") apply false
+    id("winrt.prebuilt-projection")
     id("io.github.compose-fluent.winrt")
 }
 
@@ -45,13 +45,3 @@ winRT {
     type("Windows.UI.Text.UnderlineType")
     type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
 }
-
-fun projectionArtifactVersion(
-    metadataVersion: String,
-    kotlinWinRTVersion: String,
-): String =
-    if (kotlinWinRTVersion.endsWith("-SNAPSHOT")) {
-        "$metadataVersion-kotlin-winrt-$kotlinWinRTVersion"
-    } else {
-        metadataVersion
-    }

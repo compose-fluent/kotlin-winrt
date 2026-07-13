@@ -2069,7 +2069,7 @@ private fun configureWinRTIdentityProjectDependencies(
             return
         }
         val dependencyProject = project.findProject(dependency.path)
-        if (dependencyProject?.hasKotlinWinRTIdentityMetadata() == true &&
+        if ((includeExternalModules || dependencyProject?.hasKotlinWinRTIdentityMetadata() == true) &&
             registeredProjectPaths.add(dependency.path)
         ) {
             identityDependencies.dependencies.add(dependency.copy())
@@ -2094,32 +2094,18 @@ private fun configureWinRTIdentityProjectDependencies(
             identityDependencies.dependencies.add(identityDependency)
         }
     }
-    fun scanConfiguration(configurationName: String) {
-        project.configurations.findByName(configurationName)?.allDependencies?.forEach { dependency ->
+    fun observeConfiguration(configuration: org.gradle.api.artifacts.Configuration) {
+        if (!configuration.name.isWinRTIdentityDependencySourceConfiguration()) {
+            return
+        }
+        configuration.dependencies.all { dependency ->
             when (dependency) {
                 is ProjectDependency -> registerDependency(dependency)
                 is ExternalModuleDependency -> if (includeExternalModules) registerDependency(dependency)
             }
         }
     }
-    fun observeConfiguration(configuration: org.gradle.api.artifacts.Configuration) {
-        if (!configuration.name.isWinRTIdentityDependencySourceConfiguration()) {
-            return
-        }
-        configuration.allDependencies.all { dependency ->
-            if (dependency is ProjectDependency) {
-                registerDependency(dependency)
-            }
-        }
-    }
     project.configurations.configureEach(::observeConfiguration)
-    project.gradle.projectsEvaluated {
-        scanConfiguration("api")
-        scanConfiguration("implementation")
-        project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.sourceSets?.forEach { sourceSet ->
-            sourceSet.kotlinWinRTIdentitySourceConfigurationNames().forEach(::scanConfiguration)
-        }
-    }
 }
 
 private fun String.isWinRTIdentityDependencySourceConfiguration(): Boolean =
@@ -2167,14 +2153,6 @@ private val kotlinTargetModuleSuffixes = listOf(
     "jvm",
     "js",
 )
-
-private fun KotlinSourceSet.kotlinWinRTIdentitySourceConfigurationNames(): List<String> =
-    buildList {
-        add(apiConfigurationName)
-        add(implementationConfigurationName)
-        add("${apiConfigurationName}Metadata")
-        add("${implementationConfigurationName}Metadata")
-    }
 
 private fun kotlinWinRTIdentityFiles(
     project: Project,

@@ -872,6 +872,28 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun identity_resolution_tracks_project_dependency_before_producer_plugin_evaluation() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        ProjectBuilder.builder().withName("projectionOwner").withParent(root).build()
+        val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
+
+        consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.dependencies.add(
+            "commonMainApi",
+            consumer.dependencies.project(mapOf("path" to ":projectionOwner")),
+        )
+
+        val identityDependencies = consumer.configurations
+            .getByName("kotlinWinRTLibraryDependencyIdentity")
+            .dependencies
+            .filterIsInstance<ProjectDependency>()
+            .map { it.path }
+
+        assertEquals(listOf(":projectionOwner"), identityDependencies)
+    }
+
+    @Test
     fun forwarding_library_identity_forwards_dependencies_without_authored_validation_cycle() {
         val root = ProjectBuilder.builder().withName("root").build()
         val producer = ProjectBuilder.builder().withName("producer").withParent(root).build()
@@ -1149,6 +1171,76 @@ class KotlinWinRTPluginTest {
         )
         assertTrue(compilerArguments.any { argument -> argument.contains(":authoredCandidatesOutput=") })
         assertFalse(compilerArguments.any { argument -> argument.contains(":compilerSupportManifest=") })
+    }
+
+    @Test
+    fun multiplatform_common_main_external_dependencies_are_mirrored_before_identity_resolution() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-external-identity-test-")
+
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "consumer"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                kotlin("multiplatform") version "2.4.0"
+                id("io.github.compose-fluent.winrt")
+            }
+
+            kotlin {
+                jvm()
+            }
+
+            dependencies {
+                commonMainImplementation("test.winrt:windows-sdk:1.0")
+                commonMainImplementation("test.winrt:windows-ui-xaml:1.0")
+            }
+
+            tasks.register("printIdentityDependencies") {
+                doLast {
+                    val identityDependencies = configurations
+                        .getByName("kotlinWinRTLibraryDependencyIdentity")
+                        .dependencies
+                        .map { dependency -> "${'$'}{dependency.group}:${'$'}{dependency.name}:${'$'}{dependency.version}" }
+                        .sorted()
+                    println("identity-dependencies=${'$'}{identityDependencies.joinToString(",")}")
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("printIdentityDependencies", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertTrue(
+            result.output,
+            result.output.contains(
+                "identity-dependencies=test.winrt:windows-sdk:1.0,test.winrt:windows-ui-xaml:1.0",
+            ),
+        )
     }
 
     @Test
@@ -2832,7 +2924,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun application_plugin_collects_kmp_source_set_project_dependencies_with_identity_metadata() {
+    fun application_plugin_tracks_kmp_source_set_project_dependencies_before_identity_resolution() {
         val root = ProjectBuilder.builder().withName("root").build()
         val library = ProjectBuilder.builder().withName("library").withParent(root).build()
         val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
@@ -2857,7 +2949,7 @@ class KotlinWinRTPluginTest {
 
         val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
         assertEquals(
-            listOf(":library"),
+            listOf(":library", ":runtime"),
             identityConfiguration.dependencies.withType(ProjectDependency::class.java).map { dependency -> dependency.path },
         )
         val applicationIdentityTask = application.tasks.named(
