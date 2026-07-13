@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("winrt.publish")
+    id("winrt.prebuilt-projection") apply false
     id("io.github.compose-fluent.winrt")
 }
 

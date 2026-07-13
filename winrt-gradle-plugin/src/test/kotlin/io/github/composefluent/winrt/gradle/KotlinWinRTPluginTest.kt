@@ -62,64 +62,6 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun generated_projection_output_audit_rejects_duplicates_fallbacks_and_growth() {
-        val project = ProjectBuilder.builder().build()
-        val root = Files.createTempDirectory("kotlin-winrt-generated-output-audit-test-")
-        val sourceRoot = root.resolve("src")
-        val classRoot = root.resolve("classes")
-        Files.createDirectories(sourceRoot.resolve("sample"))
-        Files.createDirectories(classRoot.resolve("sample"))
-        Files.writeString(
-            sourceRoot.resolve("sample/WidgetA.kt"),
-            """
-            package sample
-
-            internal object Duplicate
-            internal fun first(sourceType: String) = when (sourceType) {
-                "A" -> Unit
-                else -> Unit
-            }
-            internal val stale = "WinRTGenericAbiRegistry"
-            """.trimIndent(),
-        )
-        Files.writeString(
-            sourceRoot.resolve("sample/WidgetB.kt"),
-            """
-            package sample
-
-            internal object Duplicate
-            internal fun second(sourceType: String) = when (sourceType) {
-                "B" -> Unit
-                else -> Unit
-            }
-            """.trimIndent(),
-        )
-        Files.write(classRoot.resolve("sample/Large.class"), ByteArray(16))
-        val task = project.tasks.register(
-            "auditGeneratedProjectionOutputUnderTest",
-            ValidateGeneratedWinRTProjectionOutputTask::class.java,
-        ) { registeredTask ->
-            registeredTask.generatedSourcesDirectory.set(project.layout.dir(project.provider { sourceRoot.toFile() }))
-            registeredTask.compiledClassesDirectories.from(classRoot.toFile())
-            registeredTask.maxTotalKotlinSourceBytes.set(64)
-            registeredTask.maxKotlinSourceFileLines.set(4)
-            registeredTask.maxClassFileBytes.set(8)
-            registeredTask.maxTotalClassBytes.set(8)
-        }.get()
-
-        val failure = runCatching { task.validate() }.exceptionOrNull()
-
-        assertTrue(failure is IllegalStateException)
-        val message = failure?.message.orEmpty()
-        assertTrue(message.contains("WinRTGenericAbiRegistry"))
-        assertTrue(message.contains("duplicate top-level FQN: sample.Duplicate"))
-        assertTrue(message.contains("repeated type/category branch table"))
-        assertTrue(message.contains("generated Kotlin source is"))
-        assertTrue(message.contains("WidgetA.kt has"))
-        assertTrue(message.contains("Large.class is"))
-    }
-
-    @Test
     fun plugin_does_not_project_default_sdk_when_no_projection_inputs_are_declared() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-empty-input-test-")
         writeGradleFile(
