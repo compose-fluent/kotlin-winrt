@@ -137,7 +137,7 @@ gradlePlugin {
 }
 ```
 
-The convention applies `build-convention`, `winrt.publish`, and `io.github.compose-fluent.winrt`. It lazily mirrors `commonMainCompileOnly` project dependencies into the existing identity configuration, registers both validation tasks, and wires the audit into `check`. It must not use `evaluationDependsOn`.
+The convention applies `build-convention` and `winrt.publish`. Prebuilt modules continue to apply `io.github.compose-fluent.winrt` explicitly; the convention uses `pluginManager.withPlugin("io.github.compose-fluent.winrt")` to lazily mirror `commonMainCompileOnly` project dependencies into the existing identity configuration, register both validation tasks, and wire the audit into `check`. The convention build must not depend on or include the public plugin build, and it must not use `evaluationDependsOn`.
 
 - [ ] **Step 4: Move publication/output validation**
 
