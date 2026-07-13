@@ -164,7 +164,9 @@ class KotlinProjectionSupportRenderer {
         val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
         return buildList {
             listOfNotNull(
-                renderTypeShapeDescriptorCompilerInput(plans),
+                renderTypeShapeDescriptorCompilerInput(
+                    plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
+                ),
                 renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
                 renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
                 renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
