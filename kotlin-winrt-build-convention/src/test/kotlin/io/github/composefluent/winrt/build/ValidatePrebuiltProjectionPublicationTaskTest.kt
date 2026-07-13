@@ -54,4 +54,106 @@ class ValidatePrebuiltProjectionPublicationTaskTest {
 
         assertTrue(failure?.message.orEmpty(), failure == null)
     }
+
+    @Test
+    fun publication_validation_rejects_runtime_scope_pom_dependency() {
+        val project = ProjectBuilder.builder().build()
+        val publicationRoot = Files.createTempDirectory("kotlin-winrt-prebuilt-publication-runtime-scope-")
+        val pom = publicationRoot.resolve("publications/jvm/pom-default.xml")
+        Files.createDirectories(pom.parent)
+        Files.writeString(
+            pom,
+            """
+            <project><artifactId>projection-jvm</artifactId><dependencies><dependency>
+              <artifactId>projection-api-jvm</artifactId>
+              <scope>runtime</scope>
+            </dependency></dependencies></project>
+            """.trimIndent(),
+        )
+        val task = project.tasks.create(
+            "validatePrebuiltPublicationRuntimeScopeUnderTest",
+            ValidatePrebuiltProjectionPublicationTask::class.java,
+        )
+        task.pomFiles.from(pom.toFile())
+        task.requiredApiDependencies.set(mapOf("projection" to "projection-api"))
+
+        val failure = runCatching { task.validate() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains("compile/API"))
+    }
+
+    @Test
+    fun publication_validation_rejects_missing_expected_api_dependency() {
+        val project = ProjectBuilder.builder().build()
+        val publicationRoot = Files.createTempDirectory("kotlin-winrt-prebuilt-publication-missing-api-")
+        val pom = publicationRoot.resolve("publications/kotlinMultiplatform/pom-default.xml")
+        Files.createDirectories(pom.parent)
+        Files.writeString(
+            pom,
+            """
+            <project><artifactId>projection</artifactId><dependencies><dependency>
+              <artifactId>projection-api</artifactId>
+              <scope>compile</scope>
+            </dependency></dependencies></project>
+            """.trimIndent(),
+        )
+        val task = project.tasks.create(
+            "validatePrebuiltPublicationMissingApiUnderTest",
+            ValidatePrebuiltProjectionPublicationTask::class.java,
+        )
+        task.pomFiles.from(pom.toFile())
+        task.requiredApiDependencies.set(
+            mapOf("projection" to "projection-api,projection-webview2"),
+        )
+
+        val failure = runCatching { task.validate() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains("projection-webview2"))
+    }
+
+    @Test
+    fun publication_validation_rejects_metadata_dependency_outside_api_usage() {
+        val project = ProjectBuilder.builder().build()
+        val publicationRoot = Files.createTempDirectory("kotlin-winrt-prebuilt-publication-metadata-api-")
+        val moduleMetadata = publicationRoot.resolve("publications/kotlinMultiplatform/module.json")
+        Files.createDirectories(moduleMetadata.parent)
+        Files.writeString(
+            moduleMetadata,
+            """
+            {
+              "component": { "module": "projection" },
+              "variants": [
+                {
+                  "name": "metadataApiElements",
+                  "attributes": { "org.gradle.usage": "kotlin-metadata" },
+                  "dependencies": []
+                },
+                {
+                  "name": "metadataRuntimeElements",
+                  "attributes": { "org.gradle.usage": "kotlin-runtime" },
+                  "dependencies": [{ "module": "projection-api" }]
+                },
+                {
+                  "name": "kotlinWinRTIdentityElements",
+                  "attributes": { "org.gradle.usage": "kotlin-winrt-identity" },
+                  "dependencies": [{ "module": "projection-api" }]
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+        val task = project.tasks.create(
+            "validatePrebuiltPublicationMetadataApiUnderTest",
+            ValidatePrebuiltProjectionPublicationTask::class.java,
+        )
+        task.moduleMetadataFiles.from(moduleMetadata.toFile())
+        task.requiredApiDependencies.set(mapOf("projection" to "projection-api"))
+
+        val failure = runCatching { task.validate() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains("metadataApiElements"))
+    }
 }
