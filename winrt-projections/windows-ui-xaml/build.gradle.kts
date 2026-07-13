@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("winrt.publish")
+    id("winrt.prebuilt-projection") apply false
     id("io.github.compose-fluent.winrt")
 }
 
@@ -61,7 +62,7 @@ val windowsSdkProjection = project(":winrt-projections:windows-sdk")
 val windowsAppSdkProjection = project(":winrt-projections:windows-app-sdk")
 val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
 val auditGeneratedWinRTProjectionOutput by tasks.registering(
-    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRTProjectionOutputTask::class,
+    io.github.composefluent.winrt.build.ValidatePrebuiltProjectionOutputTask::class,
 ) {
     group = "verification"
     description = "Audits Windows.UI.Xaml projection output and cross-artifact class ownership."

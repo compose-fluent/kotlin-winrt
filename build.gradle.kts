@@ -1,4 +1,4 @@
-import io.github.composefluent.winrt.gradle.ValidateSplitProjectionPublicationTask
+import io.github.composefluent.winrt.build.ValidatePrebuiltProjectionPublicationTask
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.Exec
@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.mavenPublish) apply false
     id("io.github.compose-fluent.winrt") apply false
+    id("winrt.prebuilt-projection") apply false
 }
 
 val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")
@@ -198,7 +199,7 @@ val validatePublishedWindowsAppSdkConsumer = registerPublishedProjectionConsumer
     },
 )
 
-val validateWinRTSplitProjectionPublication by tasks.registering(ValidateSplitProjectionPublicationTask::class) {
+val validateWinRTSplitProjectionPublication by tasks.registering(ValidatePrebuiltProjectionPublicationTask::class) {
     group = "verification"
     description = "Validates split projection API metadata and isolated JVM/mingwX64 consumer compilation."
     requiredApiDependencies.set(

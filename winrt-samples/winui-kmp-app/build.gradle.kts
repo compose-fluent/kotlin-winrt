@@ -3,6 +3,7 @@ import org.gradle.api.tasks.JavaExec
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    id("winrt.prebuilt-projection") apply false
     id("io.github.compose-fluent.winrt")
 }
 
@@ -62,7 +63,7 @@ val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
 }
 
 val auditGeneratedWinuiKmpProjectionOutput by tasks.registering(
-    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRTProjectionOutputTask::class,
+    io.github.composefluent.winrt.build.ValidatePrebuiltProjectionOutputTask::class,
 ) {
     group = "verification"
     description = "Fails if generated KMP WinUI projection source leaks fallback invocation or JVM-only reflection paths."
