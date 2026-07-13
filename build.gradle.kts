@@ -84,6 +84,152 @@ val validateWinRTPluginGraph by tasks.registering {
     dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
 }
 
+val splitProjectionModules = listOf(
+    ":winrt-projections:windows-webview2",
+    ":winrt-projections:windows-ui-xaml",
+    ":winrt-projections:windows-app-sdk",
+)
+
+val projectReviewRemediationRepository = layout.buildDirectory.dir("project-review-remediation-repository")
+val projectReviewPublicationModules = listOf(
+    ":winrt-runtime",
+    ":winrt-metadata",
+    ":winrt-authoring",
+    ":winrt-compiler-plugin",
+    ":winrt-projections:windows-sdk",
+    *splitProjectionModules.toTypedArray(),
+)
+val projectReviewPublicationTaskName = "publishAllPublicationsToProjectReviewRemediationRepository"
+val projectReviewPublicationTaskPaths = projectReviewPublicationModules.map { projectPath ->
+    "$projectPath:$projectReviewPublicationTaskName"
+}
+val cleanProjectReviewRemediationRepository by tasks.registering(Delete::class) {
+    delete(projectReviewRemediationRepository)
+}
+
+projectReviewPublicationModules.forEach { projectPath ->
+    project(projectPath).plugins.withId("maven-publish") {
+        project(projectPath).extensions.getByType(PublishingExtension::class.java).repositories.maven {
+            name = "projectReviewRemediation"
+            url = projectReviewRemediationRepository.get().asFile.toURI()
+        }
+        project(projectPath).tasks.matching { task -> task.name == projectReviewPublicationTaskName }.configureEach {
+            dependsOn(cleanProjectReviewRemediationRepository)
+        }
+    }
+}
+
+val publishProjectReviewRemediationArtifacts by tasks.registering {
+    dependsOn(cleanProjectReviewRemediationRepository)
+    dependsOn(projectReviewPublicationTaskPaths)
+}
+
+fun registerPublishedProjectionConsumer(
+    taskName: String,
+    fixtureDirectory: String,
+    coordinate: Provider<String>,
+) = tasks.register(taskName, Exec::class) {
+    group = "verification"
+    description = "Compiles an isolated JVM/mingwX64 consumer from the published $coordinate coordinate."
+    workingDir = file(fixtureDirectory)
+    val gradleExecutable = requireNotNull(gradle.gradleHomeDir).resolve("bin/gradle.bat")
+    val nugetRootInitScript = rootProject.file("gradle/nuget-root.init.gradle")
+    val nugetPackagesRoot = providers.environmentVariable("NUGET_PACKAGES")
+        .orElse(rootProject.layout.projectDirectory.dir(".gradle/nuget-packages").asFile.absolutePath)
+    commandLine(
+        "cmd",
+        "/c",
+        gradleExecutable.absolutePath,
+        "compileKotlinJvm",
+        "compileKotlinMingwX64",
+        "--no-daemon",
+        "--max-workers=1",
+        "--console=plain",
+        "-I",
+        nugetRootInitScript.absolutePath,
+        "-Pkotlin.compiler.execution.strategy=in-process",
+        "-PkotlinWinRT.test.repository=${projectReviewRemediationRepository.get().asFile.absolutePath}",
+        "-PkotlinWinRT.test.coordinate=${coordinate.get()}",
+    )
+    environment("GRADLE_USER_HOME", gradle.gradleUserHomeDir.absolutePath)
+    environment("KOTLIN_DAEMON_RUN_FILES_PATH", layout.buildDirectory.dir("kotlin-daemon").get().asFile.absolutePath)
+    environment("NUGET_PACKAGES", nugetPackagesRoot.get())
+    dependsOn(publishProjectReviewRemediationArtifacts)
+}
+
+val windowsSdkProjectionVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkArtifactVersion")
+    .orElse(
+        providers.gradleProperty("kotlinWinRT.projections.windowsSdkVersion")
+            .orElse("10.0.26100.0")
+            .map { metadataVersion -> projectionArtifactVersion(metadataVersion, winrtVersion) },
+    )
+val windowsAppSdkProjectionVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkArtifactVersion")
+    .orElse(
+        providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkVersion")
+            .orElse("2.1.3")
+            .map { metadataVersion -> projectionArtifactVersion(metadataVersion, winrtVersion) },
+    )
+val webView2ProjectionVersion = providers.gradleProperty("kotlinWinRT.projections.webView2ArtifactVersion")
+    .orElse(
+        providers.gradleProperty("kotlinWinRT.projections.webView2Version")
+            .orElse("1.0.3719.77")
+            .map { metadataVersion -> projectionArtifactVersion(metadataVersion, winrtVersion) },
+    )
+
+val validatePublishedWindowsUiXamlConsumer = registerPublishedProjectionConsumer(
+    taskName = "validatePublishedWindowsUiXamlConsumer",
+    fixtureDirectory = "winrt-projections/windows-ui-xaml-consumer-fixture",
+    coordinate = windowsSdkProjectionVersion.map { version ->
+        "io.github.compose-fluent:winrt-projections-windows-ui-xaml:$version"
+    },
+)
+val validatePublishedWindowsWebView2Consumer = registerPublishedProjectionConsumer(
+    taskName = "validatePublishedWindowsWebView2Consumer",
+    fixtureDirectory = "winrt-projections/windows-webview2-consumer-fixture",
+    coordinate = webView2ProjectionVersion.map { version ->
+        "io.github.compose-fluent:winrt-projections-windows-webview2:$version"
+    },
+)
+val validatePublishedWindowsAppSdkConsumer = registerPublishedProjectionConsumer(
+    taskName = "validatePublishedWindowsAppSdkConsumer",
+    fixtureDirectory = "winrt-projections/windows-app-sdk-consumer-fixture",
+    coordinate = windowsAppSdkProjectionVersion.map { version ->
+        "io.github.compose-fluent:winrt-projections-windows-app-sdk:$version"
+    },
+)
+
+val validateWinRTSplitProjectionPublication by tasks.registering(ValidateSplitProjectionPublicationTask::class) {
+    group = "verification"
+    description = "Validates split projection API metadata and isolated JVM/mingwX64 consumer compilation."
+    requiredApiDependencies.set(
+        mapOf(
+            "winrt-projections-windows-webview2" to "winrt-projections-windows-sdk",
+            "winrt-projections-windows-ui-xaml" to "winrt-projections-windows-sdk",
+            "winrt-projections-windows-app-sdk" to
+                "winrt-projections-windows-sdk,winrt-projections-windows-webview2",
+        ),
+    )
+    splitProjectionModules.forEach { projectPath ->
+        val projectionProject = project(projectPath)
+        dependsOn("$projectPath:generatePomFileForJvmPublication")
+        dependsOn("$projectPath:generatePomFileForMingwX64Publication")
+        dependsOn("$projectPath:generatePomFileForKotlinMultiplatformPublication")
+        dependsOn("$projectPath:generateMetadataFileForKotlinMultiplatformPublication")
+        dependsOn("$projectPath:auditGeneratedWinRTProjectionOutput")
+        pomFiles.from(
+            projectionProject.layout.buildDirectory.file("publications/jvm/pom-default.xml"),
+            projectionProject.layout.buildDirectory.file("publications/mingwX64/pom-default.xml"),
+            projectionProject.layout.buildDirectory.file("publications/kotlinMultiplatform/pom-default.xml"),
+        )
+        moduleMetadataFiles.from(
+            projectionProject.layout.buildDirectory.file("publications/kotlinMultiplatform/module.json"),
+        )
+    }
+    dependsOn(validatePublishedWindowsUiXamlConsumer)
+    dependsOn(validatePublishedWindowsWebView2Consumer)
+    dependsOn(validatePublishedWindowsAppSdkConsumer)
+}
+
 val validateWinRTProjectionCompile by tasks.registering {
     group = "verification"
     description = "Compiles plugin-generated projection output after generator and plugin validation."
@@ -94,10 +240,17 @@ val validateWinRTProjectionCompile by tasks.registering {
     dependsOn(":winrt-projections:compileKotlinMingwX64")
     dependsOn(":winrt-projections:windows-sdk:compileKotlinJvm")
     dependsOn(":winrt-projections:windows-sdk:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-webview2:compileKotlinJvm")
+    dependsOn(":winrt-projections:windows-webview2:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-webview2:auditGeneratedWinRTProjectionOutput")
     dependsOn(":winrt-projections:windows-ui-xaml:compileKotlinJvm")
     dependsOn(":winrt-projections:windows-ui-xaml:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-ui-xaml:auditGeneratedWinRTProjectionOutput")
+    dependsOn(":winrt-projections:windows-webview2:auditGeneratedWinRTProjectionOutput")
     dependsOn(":winrt-projections:windows-app-sdk:compileKotlinJvm")
     dependsOn(":winrt-projections:windows-app-sdk:compileKotlinMingwX64")
+    dependsOn(":winrt-projections:windows-app-sdk:auditGeneratedWinRTProjectionOutput")
+    dependsOn(validateWinRTSplitProjectionPublication)
 }
 
 val validateWinRTMingwProjectionGate by tasks.registering {
@@ -141,6 +294,64 @@ val validateWinRTSampleSmoke by tasks.registering {
     dependsOn(":winrt-samples:check")
     dependsOn(":winrt-samples:winui-kmp-app:check")
 }
+
+val validateWinRTNoWinUISampleMode by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Configures and compiles the real JVM/mingw sample with WinUI explicitly disabled."
+    workingDir = rootDir
+    val gradleExecutable = requireNotNull(gradle.gradleHomeDir).resolve("bin/gradle.bat")
+    val nugetRootInitScript = rootProject.file("gradle/nuget-root.init.gradle")
+    val nugetPackagesRoot = providers.environmentVariable("NUGET_PACKAGES")
+        .orElse(rootProject.layout.projectDirectory.dir(".gradle/nuget-packages").asFile.absolutePath)
+    commandLine(
+        "cmd",
+        "/c",
+        gradleExecutable.absolutePath,
+        ":winrt-samples:verifyWinRTSampleMode",
+        ":winrt-samples:compileKotlinWinuiJvm",
+        ":winrt-samples:compileKotlinMingwX64",
+        "--no-daemon",
+        "--max-workers=1",
+        "--console=plain",
+        "-I",
+        nugetRootInitScript.absolutePath,
+        "-Pkotlin.compiler.execution.strategy=in-process",
+        "-PkotlinWinRT.samples.enableWinUI=false",
+    )
+    environment("GRADLE_USER_HOME", gradle.gradleUserHomeDir.absolutePath)
+    environment("KOTLIN_DAEMON_RUN_FILES_PATH", layout.buildDirectory.dir("kotlin-daemon").get().asFile.absolutePath)
+    environment("NUGET_PACKAGES", nugetPackagesRoot.get())
+}
+
+tasks.register("validateProjectReviewRemediation") {
+    group = "verification"
+    description = "Runs the complete project-review remediation gate without machine-dependent packaging smoke tasks."
+    dependsOn(":winrt-runtime:jvmTest")
+    dependsOn(":winrt-runtime:mingwX64Test")
+    dependsOn(":winrt-metadata:test")
+    dependsOn(":winrt-generator:test")
+    dependsOn(":winrt-compiler-plugin:test")
+    dependsOn(":winrt-authoring:jvmTest")
+    dependsOn(":winrt-authoring:mingwX64Test")
+    dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
+    dependsOn(":winrt-projections:windows-ui-xaml:auditGeneratedWinRTProjectionOutput")
+    dependsOn(":winrt-projections:windows-app-sdk:auditGeneratedWinRTProjectionOutput")
+    dependsOn(validateWinRTSplitProjectionPublication)
+    dependsOn(":winrt-samples:verifyWinRTSampleMode")
+    dependsOn(":winrt-samples:compileKotlinWinuiJvm")
+    dependsOn(":winrt-samples:compileKotlinMingwX64")
+    dependsOn(validateWinRTNoWinUISampleMode)
+}
+
+fun projectionArtifactVersion(
+    metadataVersion: String,
+    kotlinWinRTVersion: String,
+): String =
+    if (kotlinWinRTVersion.endsWith("-SNAPSHOT")) {
+        "$metadataVersion-kotlin-winrt-$kotlinWinRTVersion"
+    } else {
+        metadataVersion
+    }
 
 tasks.register("validateWinRTQueue16") {
     group = "verification"

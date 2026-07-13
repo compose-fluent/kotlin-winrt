@@ -1,5 +1,61 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.TaskAction
+
+abstract class VerifyWinRTSampleModeTask : DefaultTask() {
+    @get:Input
+    abstract val winuiEnabled: Property<Boolean>
+
+    @get:Input
+    abstract val noWinuiMainPresent: Property<Boolean>
+
+    @get:Input
+    abstract val winuiJvmUsesNoWinui: Property<Boolean>
+
+    @get:Input
+    abstract val mingwUsesNoWinui: Property<Boolean>
+
+    @get:Input
+    abstract val winuiMainSourceDirectories: ListProperty<String>
+
+    @get:Input
+    abstract val configuredNuGetPackages: ListProperty<String>
+
+    @TaskAction
+    fun verify() {
+        val enabled = winuiEnabled.get()
+        val packages = configuredNuGetPackages.get().toSet()
+        val hasWinuiUserSources = winuiMainSourceDirectories.get()
+            .any { sourceDirectory -> sourceDirectory.endsWith("src/winuiMain/kotlin") }
+
+        if (enabled) {
+            check(!noWinuiMainPresent.get()) { "Default WinUI sample mode must not create noWinuiMain." }
+            check(hasWinuiUserSources) { "Default WinUI sample mode must retain src/winuiMain/kotlin." }
+            check("Microsoft.WindowsAppSDK" in packages) {
+                "WinUI sample mode must configure Microsoft.WindowsAppSDK."
+            }
+            check("WinUIEssential.WinUI3" in packages) {
+                "WinUI sample mode must configure WinUIEssential.WinUI3."
+            }
+        } else {
+            check(noWinuiMainPresent.get()) { "Disabled WinUI sample mode must create noWinuiMain." }
+            check(winuiJvmUsesNoWinui.get()) { "winuiJvmMain must depend on noWinuiMain." }
+            check(mingwUsesNoWinui.get()) { "mingwX64Main must depend on noWinuiMain." }
+            check(!hasWinuiUserSources) { "Disabled WinUI sample mode must exclude src/winuiMain/kotlin." }
+            check("Microsoft.WindowsAppSDK" !in packages) {
+                "Disabled WinUI sample mode must not configure Microsoft.WindowsAppSDK."
+            }
+            check("WinUIEssential.WinUI3" !in packages) {
+                "Disabled WinUI sample mode must not configure WinUIEssential.WinUI3."
+            }
+        }
+        println("KOTLIN_WINRT_SAMPLE_MODE=" + if (enabled) "winui" else "no-winui")
+    }
+}
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -7,6 +63,9 @@ plugins {
     id("io.github.compose-fluent.winrt")
 }
 
+val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWinUI")
+    .map(String::toBooleanStrict)
+    .orElse(true)
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.1.3")
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
@@ -27,7 +86,10 @@ kotlin {
                 implementation(projects.winrtProjections)
             }
         }
-        if (sampleWindowsAppSdkVersion.orNull == null) {
+        if (!sampleWinUIEnabled.get()) {
+            named("winuiMain") {
+                kotlin.setSrcDirs(emptyList<String>())
+            }
             val noWinuiMain by creating {
                 dependsOn(commonMain.get())
             }
@@ -47,13 +109,14 @@ kotlin {
 }
 
 winRT {
-    type("Windows.Foundation.IStringable")
-    type("Windows.Foundation.Point")
-    namespace("Windows.Data.Json")
     application {
         mainClass.set("io.github.composefluent.winrt.samples.MainKt")
     }
-    sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
+    if (sampleWinUIEnabled.get()) {
+        val windowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
+        type("Windows.Foundation.IStringable")
+        type("Windows.Foundation.Point")
+        namespace("Windows.Data.Json")
         sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
             nugetGlobalPackagesRoots.add(globalPackagesRoot)
             useNuGetCliGlobalPackages.set(false)
@@ -164,7 +227,7 @@ val verifyWinRTSampleIdentity by tasks.registering {
     group = "verification"
     description = "Verifies the sample application aggregates Kotlin WinRT identity metadata from projection dependencies."
     val identityFile = layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json")
-    val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.orNull
+    val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
     dependsOn(tasks.named("generateWinRTApplicationIdentity"))
     inputs.file(identityFile)
 
@@ -179,9 +242,9 @@ val verifyWinRTSampleIdentity by tasks.registering {
         check("winrt-runtime" !in identityJson) {
             "Runtime implementation dependencies must not be treated as Kotlin WinRT identity metadata."
         }
-        if (expectedWindowsAppSdkVersion == null) {
+        if (!sampleWinUIEnabled.get()) {
             check("Microsoft.WindowsAppSDK" !in identityJson) {
-                "WindowsAppSDK should only be declared when kotlinWinRT.samples.windowsAppSdkVersion is set."
+                "WindowsAppSDK must not be declared when kotlinWinRT.samples.enableWinUI=false."
             }
         } else {
             val expectedPackage = "Microsoft.WindowsAppSDK@$expectedWindowsAppSdkVersion"
@@ -190,6 +253,26 @@ val verifyWinRTSampleIdentity by tasks.registering {
             }
         }
     }
+}
+
+val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class) {
+    group = "verification"
+    description = "Verifies explicit WinUI/no-WinUI sample source-set and NuGet selection."
+    val noWinuiMain = kotlin.sourceSets.findByName("noWinuiMain")
+    val winuiMain = kotlin.sourceSets.getByName("winuiMain")
+    val winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
+    val mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
+    val packages = project.extensions
+        .getByType<io.github.composefluent.winrt.gradle.WinRTExtension>()
+        .nugetPackages
+        .map { pkg -> pkg.packageId }
+
+    winuiEnabled.set(sampleWinUIEnabled)
+    noWinuiMainPresent.set(noWinuiMain != null)
+    winuiJvmUsesNoWinui.set(noWinuiMain != null && noWinuiMain in winuiJvmMain.dependsOn)
+    mingwUsesNoWinui.set(noWinuiMain != null && noWinuiMain in mingwX64Main.dependsOn)
+    winuiMainSourceDirectories.set(winuiMain.kotlin.srcDirs.map { sourceDir -> sourceDir.invariantSeparatorsPath })
+    configuredNuGetPackages.set(packages)
 }
 
 val verifyWinRTSampleRuntimeAssets by tasks.registering {
@@ -219,6 +302,7 @@ val verifyWinRTSampleMingwRun by tasks.registering {
 }
 
 tasks.named("check") {
+    dependsOn(verifyWinRTSampleMode)
     dependsOn(verifyWinRTSampleIdentity)
     dependsOn(verifyWinRTSampleRuntimeAssets)
     dependsOn(verifyWinRTSampleRun)

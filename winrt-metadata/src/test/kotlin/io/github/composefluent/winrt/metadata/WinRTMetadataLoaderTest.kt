@@ -942,13 +942,156 @@ class WinRTMetadataLoaderTest {
 
         assertEquals(
             listOf(
-                dependencyPackage.resolve("lib/net8.0/Sample.Dependency.winmd").toRealPath().toString(),
-                rootPackage.resolve("lib/net8.0/Sample.WinRT.winmd").toRealPath().toString(),
+                dependencyPackage.resolve("lib/net8.0/Sample.Dependency.winmd").toCanonicalTestPath(),
+                rootPackage.resolve("lib/net8.0/Sample.WinRT.winmd").toCanonicalTestPath(),
             ).sorted(),
-            cache.files.map { it.toRealPath().toString() }.sorted(),
+            cache.files.map { it.toCanonicalTestPath() }.sorted(),
         )
-        assertTrue(cache.packageAssets.any { it.packagePath == dependencyPackage.toRealPath() && it.kind == WinRTPackageAssetKind.Native })
-        assertTrue(cache.packageAssets.any { it.packagePath == rootPackage.toRealPath() && it.kind == WinRTPackageAssetKind.Winmd })
+        assertTrue(cache.packageAssets.any {
+            it.packagePath.toCanonicalTestPath() == dependencyPackage.toCanonicalTestPath() &&
+                it.kind == WinRTPackageAssetKind.Native
+        })
+        assertTrue(cache.packageAssets.any {
+            it.packagePath.toCanonicalTestPath() == rootPackage.toCanonicalTestPath() &&
+                it.kind == WinRTPackageAssetKind.Winmd
+        })
+    }
+
+    @Test
+    fun resolves_nuget_dependency_minimums_and_bounded_ranges_from_installed_versions() {
+        val assembly = buildManagedMetadataSample()
+        val globalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-version-range")
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Root",
+            version = "1.0.0",
+            winmdSource = assembly,
+            dependencies = listOf(
+                "Sample.Minimum" to "2.0.3",
+                "Sample.Range" to "[2.1.1, 3.0.0)",
+            ),
+        )
+        val minimumPackage = createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Minimum",
+            version = "2.0.4",
+            winmdSource = assembly,
+        )
+        val rangedPackage = createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Range",
+            version = "2.1.1",
+            winmdSource = assembly,
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Range",
+            version = "3.0.0",
+            winmdSource = assembly,
+        )
+
+        val closure = WinRTNuGetPackageResolver.resolveClosure(
+            WinRTNuGetPackageIdentity("Sample.Root", "1.0.0"),
+            listOf(globalPackagesRoot),
+        )
+
+        assertTrue(closure.any { it.packageRoot.sameMetadataPathAs(minimumPackage) })
+        assertTrue(closure.any { it.packageRoot.sameMetadataPathAs(rangedPackage) })
+        assertTrue(closure.none { it.identity.normalizedVersion == "3.0.0" })
+    }
+
+    @Test
+    fun rejects_nuget_dependency_closure_that_selects_multiple_versions_of_one_package() {
+        val assembly = buildManagedMetadataSample()
+        val globalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-version-conflict")
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Root",
+            version = "1.0.0",
+            winmdSource = assembly,
+            dependencies = listOf("Sample.Left" to "1.0.0", "Sample.Right" to "1.0.0"),
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Left",
+            version = "1.0.0",
+            winmdSource = assembly,
+            dependencies = listOf("Sample.Shared" to "[1.0.0, 2.0.0)"),
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Right",
+            version = "1.0.0",
+            winmdSource = assembly,
+            dependencies = listOf("Sample.Shared" to "[2.0.0, 3.0.0)"),
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Shared",
+            version = "1.5.0",
+            winmdSource = assembly,
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Shared",
+            version = "2.5.0",
+            winmdSource = assembly,
+        )
+
+        val failure = runCatching {
+            WinRTNuGetPackageResolver.resolveClosure(
+                WinRTNuGetPackageIdentity("Sample.Root", "1.0.0"),
+                listOf(globalPackagesRoot),
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("Sample.Shared"))
+        assertTrue(failure?.message.orEmpty().contains("1.5.0"))
+        assertTrue(failure?.message.orEmpty().contains("2.5.0"))
+    }
+
+    @Test
+    fun reuses_nearest_nuget_dependency_version_when_later_constraint_is_satisfied() {
+        val assembly = buildManagedMetadataSample()
+        val globalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-nearest-version")
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Root",
+            version = "1.0.0",
+            winmdSource = assembly,
+            dependencies = listOf("Sample.Shared" to "2.0.4", "Sample.Indirect" to "1.0.0"),
+        )
+        val selectedSharedPackage = createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Shared",
+            version = "2.0.4",
+            winmdSource = assembly,
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Shared",
+            version = "2.0.3",
+            winmdSource = assembly,
+        )
+        createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Indirect",
+            version = "1.0.0",
+            winmdSource = assembly,
+            dependencies = listOf("Sample.Shared" to "2.0.3"),
+        )
+
+        val closure = WinRTNuGetPackageResolver.resolveClosure(
+            WinRTNuGetPackageIdentity("Sample.Root", "1.0.0"),
+            listOf(globalPackagesRoot),
+        )
+
+        val sharedPackages = closure.filter {
+            it.identity.normalizedPackageId.equals("Sample.Shared", ignoreCase = true)
+        }
+        assertEquals(1, sharedPackages.size)
+        assertTrue(sharedPackages.single().packageRoot.sameMetadataPathAs(selectedSharedPackage))
     }
 
     @Test
@@ -1695,10 +1838,14 @@ class WinRTMetadataLoaderTest {
 
     private fun runProcess(workingDirectory: Path, command: List<String>) {
         assumeTrue("dotnet CLI is required for Metadata 2.1 tests", command.isNotEmpty())
-        val process = ProcessBuilder(command)
+        val processBuilder = ProcessBuilder(command)
             .directory(workingDirectory.toFile())
             .redirectErrorStream(true)
-            .start()
+        if (isWindows()) {
+            processBuilder.environment()["APPDATA"] = workingDirectory.resolve(".appdata").createDirectories().toString()
+            processBuilder.environment()["DOTNET_CLI_HOME"] = workingDirectory.resolve(".dotnet-home").createDirectories().toString()
+        }
+        val process = processBuilder.start()
         val output = process.inputStream.bufferedReader().use { it.readText() }
         val exitCode = process.waitFor()
         check(exitCode == 0) {
