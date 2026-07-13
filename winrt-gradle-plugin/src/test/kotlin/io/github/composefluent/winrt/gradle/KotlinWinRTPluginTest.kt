@@ -9320,13 +9320,47 @@ class KotlinWinRTPluginTest {
             )
         }
 
-        try {
+        val failure = runCatching {
             dependencySourceAdditionTypeNames(listOf(first, second))
-            throw AssertionError("Expected duplicate source addition ownership to fail.")
-        } catch (error: GradleException) {
-            assertTrue(error.message.orEmpty().contains("microsoft.ui.Win32Interop"))
-            assertTrue(error.message.orEmpty().contains("multiple WinRT projection dependencies"))
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty().contains("microsoft.ui.Win32Interop"))
+        assertTrue(failure?.message.orEmpty().contains("multiple WinRT projection dependencies"))
+    }
+
+    @Test
+    fun dependency_projection_identity_rejects_conflicting_projected_type_owners() {
+        val project = ProjectBuilder.builder().build()
+        val firstIdentity = project.layout.buildDirectory.file("dependency-identities-a/kotlin-winrt.json").get().asFile
+        val secondIdentity = project.layout.buildDirectory.file("dependency-identities-b/kotlin-winrt.json").get().asFile
+        val disjointIdentity = project.layout.buildDirectory.file("dependency-identities-c/kotlin-winrt.json").get().asFile
+        listOf(
+            firstIdentity to "Windows.UI.Xaml.Data.BindableAttribute",
+            secondIdentity to "Windows.UI.Xaml.Data.BindableAttribute",
+            disjointIdentity to "Windows.UI.Xaml.Markup.ContentPropertyAttribute",
+        ).forEach { (identityFile, projectedType) ->
+            Files.createDirectories(identityFile.toPath().parent)
+            Files.writeString(
+                identityFile.toPath(),
+                """
+                {
+                  "projectionShapeVersion": 1,
+                  "projectedTypes": ["$projectedType"]
+                }
+                """.trimIndent(),
+            )
         }
+
+        val failure = runCatching {
+            validateDependencyProjectionIdentityOwnership(listOf(firstIdentity, secondIdentity))
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message.orEmpty().contains("Windows.UI.Xaml.Data.BindableAttribute"))
+        assertTrue(failure?.message.orEmpty().contains(firstIdentity.absolutePath))
+        assertTrue(failure?.message.orEmpty().contains(secondIdentity.absolutePath))
+        validateDependencyProjectionIdentityOwnership(listOf(firstIdentity, disjointIdentity))
     }
 
     @Test

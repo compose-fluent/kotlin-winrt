@@ -45,6 +45,7 @@ import org.gradle.process.ExecOperations
 import org.gradle.workers.WorkAction
 import org.gradle.workers.WorkParameters
 import org.gradle.workers.WorkerExecutor
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.CodeSource
@@ -280,6 +281,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         unfilteredModel = WinRTMetadataLoader.loadSources(sources)
         val effectiveIncludeTypes = parameters.includeTypes.get() +
             automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
+        validateDependencyProjectionIdentityOwnership(parameters.dependencyIdentityFiles.files)
         val dependencyProjectionSurfaceTypes = dependencyProjectionSurfaceTypeNames(parameters.dependencyIdentityFiles.files)
         val effectiveSources = sources.withWindowsSdkSourceForProjectionRoots(
             includeNames = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet() + dependencyProjectionSurfaceTypes.toSet(),
@@ -717,7 +719,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
 
 internal fun dependencyProjectedTypeNames(
     model: WinRTMetadataModel,
-    identityFiles: Iterable<java.io.File>,
+    identityFiles: Iterable<File>,
 ): Set<String> =
     identityFiles
         .flatMap { identityFile ->
@@ -733,7 +735,7 @@ internal fun dependencyProjectedTypeNames(
         .toSortedSet()
 
 internal fun dependencyProjectionSurfaceTypeNames(
-    identityFiles: Iterable<java.io.File>,
+    identityFiles: Iterable<File>,
 ): List<String> =
     identityFiles
         .flatMap { identityFile ->
@@ -744,23 +746,40 @@ internal fun dependencyProjectionSurfaceTypeNames(
         .sorted()
 
 internal fun dependencySourceAdditionTypeNames(
-    identityFiles: Iterable<java.io.File>,
-): Set<String> {
-    val ownersByAddition = linkedMapOf<String, java.io.File>()
-    identityFiles
-        .filter(java.io.File::isFile)
-        .forEach { identityFile ->
-            readProjectionSurfaceIdentity(identityFile).sourceAdditions.distinct().forEach { sourceAddition ->
-                val previous = ownersByAddition.putIfAbsent(sourceAddition, identityFile)
-                if (previous != null && previous.absolutePath != identityFile.absolutePath) {
-                    throw GradleException(
-                        "Source addition '$sourceAddition' is claimed by multiple WinRT projection dependencies: " +
-                            "'${previous.absolutePath}' and '${identityFile.absolutePath}'.",
-                    )
-                }
-            }
+    identityFiles: Iterable<File>,
+): Set<String> = identityFiles
+    .also(::validateDependencyProjectionIdentityOwnership)
+    .filter(File::isFile)
+    .flatMap { identityFile -> readProjectionSurfaceIdentity(identityFile).sourceAdditions }
+    .toSortedSet()
+
+internal fun validateDependencyProjectionIdentityOwnership(identityFiles: Iterable<File>) {
+    val projectedTypeOwners = linkedMapOf<String, File>()
+    val sourceAdditionOwners = linkedMapOf<String, File>()
+    identityFiles.sortedBy(File::getAbsolutePath).forEach { identityFile ->
+        val identity = readProjectionSurfaceIdentity(identityFile)
+        identity.currentShapeProjectedTypes().forEach { typeName ->
+            requireUniqueDependencyOwner("Projected type", typeName, identityFile, projectedTypeOwners)
         }
-    return ownersByAddition.keys.toSortedSet()
+        identity.sourceAdditions.forEach { typeName ->
+            requireUniqueDependencyOwner("Source addition", typeName, identityFile, sourceAdditionOwners)
+        }
+    }
+}
+
+private fun requireUniqueDependencyOwner(
+    ownershipKind: String,
+    typeName: String,
+    identityFile: File,
+    owners: MutableMap<String, File>,
+) {
+    val previous = owners.putIfAbsent(typeName, identityFile)
+    if (previous != null && previous.absolutePath != identityFile.absolutePath) {
+        throw IllegalStateException(
+            "$ownershipKind '$typeName' is claimed by multiple WinRT projection dependencies: " +
+                "'${previous.absolutePath}' and '${identityFile.absolutePath}'.",
+        )
+    }
 }
 
 internal fun mergedAuthoringMetadataIndexTypes(
