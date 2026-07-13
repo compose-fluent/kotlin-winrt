@@ -122,6 +122,7 @@ class KotlinProjectionRenderer(
     internal val useKotlinDurationAlias: Boolean = false,
     internal val genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
     internal val modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
+    internal val supportOwnerIdentity: String? = null,
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)

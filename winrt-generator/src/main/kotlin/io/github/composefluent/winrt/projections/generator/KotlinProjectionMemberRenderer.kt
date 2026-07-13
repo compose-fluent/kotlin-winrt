@@ -1097,20 +1097,34 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
     if (shape == "Object" && binding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
         val interfaceId = binding.interfaceId ?: return null
         val marshalerName = generatedLocalIdentifier("__", parameter.name, "ProjectionMarshaler")
+        val marshalerScope = if (parameter.name.length + binding.resolvedTypeName.length > 60) {
+            val resourceName = generatedLocalIdentifier("__", parameter.name, "ProjectionMarshalerResource")
+            CodeBlock.of(
+                "val %L = %M(%N, %S, %T(%S))\n%L.use { %L ->",
+                resourceName,
+                WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
+                kotlinPoetNameLiteral(parameter.name),
+                binding.resolvedTypeName,
+                GUID_CLASS_NAME,
+                interfaceId.toString(),
+                resourceName,
+                marshalerName,
+            )
+        } else {
+            CodeBlock.of(
+                "%M(%N, %S, %T(%S)).use { %L ->",
+                WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
+                kotlinPoetNameLiteral(parameter.name),
+                binding.resolvedTypeName,
+                GUID_CLASS_NAME,
+                interfaceId.toString(),
+                marshalerName,
+            )
+        }
         return DescriptorIntrinsicArgument(
             shape = "RawAddress",
             expressions = listOf(CodeBlock.of("%L.abi", marshalerName)),
-            scopeOpeners = listOf(
-                CodeBlock.of(
-                    "%M(%N, %S, %T(%S)).use { %L ->",
-                    WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
-                    kotlinPoetNameLiteral(parameter.name),
-                    binding.resolvedTypeName,
-                    GUID_CLASS_NAME,
-                    interfaceId.toString(),
-                    marshalerName,
-                ),
-            ),
+            scopeOpeners = listOf(marshalerScope),
         )
     }
     return when {

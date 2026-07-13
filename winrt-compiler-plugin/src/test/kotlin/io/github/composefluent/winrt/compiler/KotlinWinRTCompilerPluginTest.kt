@@ -21,6 +21,7 @@ import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -529,6 +530,10 @@ class KotlinWinRTCompilerPluginTest {
             "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_lib_jar",
             entries.single().className,
         )
+        assertEquals(
+            "io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry_sample_lib_jar",
+            genericTypeInstantiationEntryClassName(entries.single().className),
+        )
     }
 
     @Test
@@ -666,13 +671,14 @@ class KotlinWinRTCompilerPluginTest {
     @Test
     fun compiler_support_manifest_writes_class_artifact() {
         val outputDirectory = Files.createTempDirectory("kotlin-winrt-support-class-")
-        writeCompilerSupportManifestClass(
+        val internalName = writeCompilerSupportManifestClass(
             entries = listOf(
                 KotlinWinRTCompilerSupportManifestEntry(
                     kind = "projection-registrar",
                     className = "io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic",
                     sourceFile = "projection-registrar.tsv",
                     entries = 12,
+                    owner = "sample-owner",
                 ),
                 KotlinWinRTCompilerSupportManifestEntry(
                     kind = "generic-type-instantiation",
@@ -692,7 +698,7 @@ class KotlinWinRTCompilerPluginTest {
 
         URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), null).use { classLoader ->
             val klass = Class.forName(
-                "io.github.composefluent.winrt.projections.support.WinRTCompilerSupportManifest",
+                internalName!!.replace('/', '.'),
                 false,
                 classLoader,
             )
@@ -701,12 +707,53 @@ class KotlinWinRTCompilerPluginTest {
             assertEquals(5, klass.getField("GENERIC_TYPE_INSTANTIATION_ENTRIES").getInt(null))
             assertEquals(4, klass.getField("GENERIC_ABI_REGISTRY_ENTRIES").getInt(null))
         }
+        assertFalse(
+            Files.exists(
+                outputDirectory.resolve(
+                    "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest.class",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun compiler_support_manifest_class_is_owner_scoped() {
+        val sdkOutput = Files.createTempDirectory("kotlin-winrt-support-class-sdk-")
+        val appSdkOutput = Files.createTempDirectory("kotlin-winrt-support-class-app-sdk-")
+        val sdkName = writeCompilerSupportManifestClass(
+            listOf(
+                KotlinWinRTCompilerSupportManifestEntry(
+                    kind = "projection-registrar",
+                    className = "sample.Support",
+                    sourceFile = "projection-registrar.tsv",
+                    entries = 1,
+                    owner = "windows-sdk",
+                ),
+            ),
+            sdkOutput,
+        )
+        val appSdkName = writeCompilerSupportManifestClass(
+            listOf(
+                KotlinWinRTCompilerSupportManifestEntry(
+                    kind = "projection-registrar",
+                    className = "sample.Support",
+                    sourceFile = "projection-registrar.tsv",
+                    entries = 1,
+                    owner = "windows-app-sdk",
+                ),
+            ),
+            appSdkOutput,
+        )
+
+        assertNotEquals(sdkName, appSdkName)
+        assertTrue(Files.isRegularFile(sdkOutput.resolve("$sdkName.class")))
+        assertTrue(Files.isRegularFile(appSdkOutput.resolve("$appSdkName.class")))
     }
 
     @Test
     fun compiler_support_manifest_deletes_stale_class_artifact_when_entries_are_empty() {
         val outputDirectory = Files.createTempDirectory("kotlin-winrt-empty-support-class-")
-        writeCompilerSupportManifestClass(
+        val manifestInternalName = writeCompilerSupportManifestClass(
             entries = listOf(
                 KotlinWinRTCompilerSupportManifestEntry(
                     kind = "projection-registrar",
@@ -716,10 +763,8 @@ class KotlinWinRTCompilerPluginTest {
                 ),
             ),
             outputDirectory = outputDirectory,
-        )
-        val manifestClass = outputDirectory.resolve(
-            "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest.class",
-        )
+        )!!
+        val manifestClass = outputDirectory.resolve("$manifestInternalName.class")
         assertTrue(Files.isRegularFile(manifestClass))
 
         writeCompilerSupportManifestClass(emptyList(), outputDirectory)

@@ -245,6 +245,7 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
                                 eventType = eventSourceEventTypeName
                                     ?: eventInvokeDescriptor?.delegateTypeName
                                     ?: event.delegateTypeName,
+                                supportOwnerIdentity = supportOwnerIdentity,
                             ),
                         ),
                         eventSourceCreateFunctionName(
@@ -1896,8 +1897,14 @@ internal fun eventSourceCreateFunctionName(eventType: String, ownerType: String)
     return "createEventSource_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
 }
 
-internal fun eventSourceOwnerHelperName(ownerType: String, eventType: String): String {
+internal fun eventSourceOwnerHelperName(
+    ownerType: String,
+    eventType: String,
+    supportOwnerIdentity: String? = null,
+): String {
     val digest = MessageDigest.getInstance("SHA-256")
         .digest("$ownerType\t$eventType".toByteArray(StandardCharsets.UTF_8))
-    return "WinRTEventProjectionHelper_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
+    val baseName = "WinRTEventProjectionHelper_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
+    val suffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity) ?: return baseName
+    return "${baseName}_$suffix"
 }

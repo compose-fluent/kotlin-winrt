@@ -1,3 +1,6 @@
+import org.gradle.api.publish.maven.MavenPublication
+import org.w3c.dom.Element
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
@@ -32,8 +35,65 @@ kotlin {
     mingwX64()
 }
 
+evaluationDependsOn(":winrt-projections:windows-sdk")
+evaluationDependsOn(":winrt-projections:windows-webview2")
+
 dependencies {
-    commonMainImplementation(project(":winrt-projections:windows-sdk"))
+    commonMainApi(project(":winrt-projections:windows-sdk"))
+    commonMainApi(project(":winrt-projections:windows-webview2"))
+    add("kotlinWinRTLibraryDependencyIdentity", project(":winrt-projections:windows-sdk"))
+    add("kotlinWinRTLibraryDependencyIdentity", project(":winrt-projections:windows-webview2"))
+}
+
+publishing {
+    publications.withType(MavenPublication::class.java)
+        .matching { publication -> publication.name == "kotlinMultiplatform" }
+        .configureEach {
+            pom.withXml {
+                val dependencies = asElement().getElementsByTagName("dependency")
+                (0 until dependencies.length)
+                    .map { index -> dependencies.item(index) as Element }
+                    .filter { dependency ->
+                        dependency.getElementsByTagName("artifactId").item(0)?.textContent in setOf(
+                            "winrt-projections-windows-sdk",
+                            "winrt-projections-windows-webview2",
+                        )
+                    }
+                    .forEach { dependency ->
+                        dependency.getElementsByTagName("scope").item(0)?.textContent = "compile"
+                    }
+            }
+        }
+}
+
+val windowsSdkProjection = project(":winrt-projections:windows-sdk")
+val windowsWebView2Projection = project(":winrt-projections:windows-webview2")
+val windowsUiXamlProjection = project(":winrt-projections:windows-ui-xaml")
+val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
+val auditGeneratedWinRTProjectionOutput by tasks.registering(
+    io.github.composefluent.winrt.gradle.ValidateGeneratedWinRTProjectionOutputTask::class,
+) {
+    group = "verification"
+    description = "Audits Windows App SDK projection output and cross-artifact class ownership."
+    dependsOn("generateWinRTProjections", "compileKotlinJvm")
+    dependsOn(windowsSdkProjection.tasks.named("compileKotlinJvm"))
+    dependsOn(windowsWebView2Projection.tasks.named("compileKotlinJvm"))
+    dependsOn(":winrt-projections:windows-ui-xaml:compileKotlinJvm")
+    generatedSourcesDirectory.set(generatedWinRTProjectionSources)
+    compiledClassesDirectories.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+    crossArtifactClassOwners.set(
+        listOf(project.name, windowsSdkProjection.name, windowsWebView2Projection.name, windowsUiXamlProjection.name),
+    )
+    crossArtifactClassDirectories.from(
+        layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+        windowsSdkProjection.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+        windowsWebView2Projection.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+        windowsUiXamlProjection.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+    )
+}
+
+tasks.named("check") {
+    dependsOn(auditGeneratedWinRTProjectionOutput)
 }
 
 winRT {
@@ -47,6 +107,7 @@ winRT {
     excludeNamespace("Microsoft.Windows.Management.Deployment")
     excludeNamespace("Microsoft.Graphics.ImagingInternal")
     excludeNamespace("Microsoft.Graphics.Internal.Imaging")
+    excludeNamespace("Microsoft.Web.WebView2")
     excludeNamespace("Microsoft.UI.Composition.SystemBackdrops")
     namespace("Microsoft")
     type("Windows.UI.Xaml.Interop.Type")
@@ -60,14 +121,10 @@ winRT {
     type("Windows.UI.Xaml.Markup.MarkupExtensionReturnTypeAttribute")
     type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
     type("Windows.UI.Xaml.Media.Animation.IndependentlyAnimatableAttribute")
-    excludeType("Microsoft.UI.Xaml.Controls.WebView2")
-    excludeType("Microsoft.UI.Xaml.Controls.IWebView2")
-    excludeType("Microsoft.UI.Xaml.Controls.IWebView2Factory")
-    excludeType("Microsoft.UI.Xaml.Controls.IWebView2Statics")
+    // CsWinRT's standalone test projection consumes the official Microsoft.WinUI assembly for this
+    // control. Kotlin owns its WinUI projection, so emit the control while keeping WebView2 Core in
+    // the separately published windows-webview2 artifact.
     excludeType("Microsoft.UI.Xaml.Controls.IWebView")
-    excludeType("Microsoft.UI.Xaml.Automation.Peers.WebView2AutomationPeer")
-    excludeType("Microsoft.UI.Xaml.Automation.Peers.IWebView2AutomationPeer")
-    excludeType("Microsoft.UI.Xaml.Automation.Peers.IWebView2AutomationPeerFactory")
     excludeType("Microsoft.UI.Xaml.Automation.Peers.IWebView")
     excludeType("Microsoft.UI.Xaml.Automation.Peers.WebView")
     excludeAdditionNamespace("Windows.UI.Xaml.Media.Animation")

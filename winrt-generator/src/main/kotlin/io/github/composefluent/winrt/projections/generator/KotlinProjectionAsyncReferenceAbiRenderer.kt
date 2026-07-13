@@ -965,6 +965,7 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
             eventSourceOwnerHelperName(
                 ownerType = "Windows.Foundation.Collections.IObservableVector",
                 eventType = "Windows.Foundation.Collections.VectorChangedEventHandler<${elementBinding.resolvedTypeName}>",
+                supportOwnerIdentity = supportOwnerIdentity,
             ),
         ),
         eventSourceCreateFunctionName(

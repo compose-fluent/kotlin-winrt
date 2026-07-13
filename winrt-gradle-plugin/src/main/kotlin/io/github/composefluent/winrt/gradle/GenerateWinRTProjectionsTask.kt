@@ -58,6 +58,7 @@ import kotlin.streams.asSequence
 abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     init {
         additionalAuthoringTargetArtifactNames.convention(emptyList())
+        emitProjectionSources.convention(true)
     }
 
     @get:OutputDirectory
@@ -71,6 +72,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
 
     @get:Input
     abstract val emitJvmAuthoringHostExports: Property<Boolean>
+
+    @get:Input
+    abstract val emitProjectionSources: Property<Boolean>
 
     @get:Input
     abstract val metadataInputs: ListProperty<String>
@@ -201,6 +205,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.authoringTargetArtifactName.set(authoringTargetArtifactName)
             parameters.additionalAuthoringTargetArtifactNames.set(additionalAuthoringTargetArtifactNames)
             parameters.emitJvmAuthoringHostExports.set(emitJvmAuthoringHostExports)
+            parameters.emitProjectionSources.set(emitProjectionSources)
             parameters.authoringScannerClasspath.from(authoringScannerClasspath)
             parameters.authoringScannerJvmArgs.set(authoringScannerJvmArgs)
             parameters.workDirectory.set(temporaryDir)
@@ -213,6 +218,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
     val legacyOutputDirectories: ConfigurableFileCollection
     val emitJvmAuthoringHostExports: Property<Boolean>
+    val emitProjectionSources: Property<Boolean>
     val metadataInputs: ListProperty<String>
     val metadataInputFiles: ConfigurableFileCollection
     val sourceRoots: ConfigurableFileCollection
@@ -396,16 +402,18 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
             component = exportedAuthoringCandidates.isNotEmpty(),
         )
-        KotlinProjectionGenerator(
-            emitSupportFiles = true,
-            groupProjectionFilesByPackageOnWrite = true,
-            projectionContext = projectionContext,
-            suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
-            suppressedSourceAdditionTypeNames = dependencySourceAdditionTypeNames,
-            authoredRuntimeClassNames = authoredRuntimeClassNames,
-            supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
-            emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
-        ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
+        if (parameters.emitProjectionSources.get()) {
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                groupProjectionFilesByPackageOnWrite = true,
+                projectionContext = projectionContext,
+                suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
+                suppressedSourceAdditionTypeNames = dependencySourceAdditionTypeNames,
+                authoredRuntimeClassNames = authoredRuntimeClassNames,
+                supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
+                emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
+            ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
+        }
         writeAuthoringMetadataIndex(
             mergedAuthoringMetadataIndexTypes(authoringModel, parameters.dependencyIdentityFiles.files),
             authoringMetadataIndex,

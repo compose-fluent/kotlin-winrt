@@ -1,8 +1,13 @@
 package io.github.composefluent.winrt.gradle
 
+import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
+import io.github.composefluent.winrt.metadata.filterProjectionSurface
+import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
+import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -261,8 +266,11 @@ private fun configureWinRTLibraryModel(
     configureWinRTIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
     configureWinRTIdentityProjectDependencies(project, dependencyIdentities, includeExternalModules = true)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, dependencyIdentities)
+    val localGenerationRequired = kotlinWinRTLocalGenerationRequired(project, extension, dependencyIdentityFiles)
+    project.extensions.extraProperties["kotlinWinRTLocalGenerationRequired"] = localGenerationRequired
     project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        task.emitProjectionSources.set(localGenerationRequired)
     }
     project.tasks.named("mergeWinRTCompilerSupport", MergeWinRTCompilerSupportTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
@@ -1079,7 +1087,18 @@ private fun configureWinRTGeneration(
     )
     project.tasks.withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java).configureEach { task ->
         task.projectionRegistrarFiles.from(
-            mergeCompilerSupportTask.flatMap { it.outputDirectory.file("projection-registrar.tsv") },
+            project.provider {
+                if (kotlinWinRTLocalGenerationRequired(project).get()) {
+                    listOf(
+                        project.layout.buildDirectory
+                            .file("generated/kotlin-winrt/compiler-support/merged/projection-registrar.tsv")
+                            .get()
+                            .asFile,
+                    )
+                } else {
+                    emptyList()
+                }
+            },
         )
     }
 
@@ -1091,10 +1110,13 @@ private fun configureWinRTGeneration(
             task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
             task.emitJvmAuthoringHostExports.set(true)
         }
-        configureKotlinWinRTCompilerPluginClasspath(project)
-        addGeneratedSourcesToKotlinMain(project, generatedSources)
-        addGeneratedSourcesToKotlinMain(project, mergeCompilerSupportTask.flatMap { it.outputDirectory })
+        addGeneratedProjectionSourcesToKotlinMain(project, generatedSources)
+        addGeneratedProjectionSourcesToKotlinMain(
+            project,
+            project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"),
+        )
         addGeneratedSourcesToKotlinMain(project, generatedAuthoringSources)
+        configureKotlinWinRTCompilerPluginClasspath(project)
         configureKotlinWinRTCompilerPluginOptions(
             project = project,
             metadataIndex = generatedSources.map { directory ->
@@ -1107,11 +1129,11 @@ private fun configureWinRTGeneration(
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
-            task.dependsOn(mergeCompilerSupportTask)
+            task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
         })
         project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
             task.dependsOn(generateTask)
-            task.dependsOn(mergeCompilerSupportTask)
+            task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
         })
         configureWinRTAuthoredCandidateValidation(project, extension, generatedSources, generatedAuthoringSources)
     }
@@ -1119,7 +1141,6 @@ private fun configureWinRTGeneration(
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
         val generatedSources = generatedKmpWinuiSources
         val generatedAuthoringSources = generatedKmpWinuiAuthoringSources
-        configureKotlinWinRTCompilerPluginClasspath(project)
         configureKotlinWinRTMultiplatformWinuiSourceSet(project)
         generateTask.configure { task ->
             task.outputDirectory.set(generatedSources)
@@ -1137,12 +1158,13 @@ private fun configureWinRTGeneration(
             task.authoringTargetArtifactName.set(kotlinWinRTNativeAuthoringTargetArtifactName(project))
             task.additionalAuthoringTargetArtifactNames.set(authoringTargetArtifactName.map(::listOf))
         }
-        addGeneratedSourcesToKotlinMultiplatformWinuiMain(project, generatedSources)
-        addGeneratedSourcesToKotlinMultiplatformWinuiMain(
+        addGeneratedProjectionSourcesToKotlinMultiplatformWinuiMain(project, generatedSources)
+        addGeneratedProjectionSourcesToKotlinMultiplatformWinuiMain(
             project,
-            mergeCompilerSupportTask.flatMap { it.outputDirectory },
+            project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"),
         )
         addGeneratedSourcesToKotlinMultiplatformWinuiMain(project, generatedAuthoringSources)
+        configureKotlinWinRTCompilerPluginClasspath(project)
         configureKotlinWinRTCompilerPluginOptions(
             project = project,
             metadataIndex = generatedSources.map { directory ->
@@ -1155,18 +1177,30 @@ private fun configureWinRTGeneration(
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
-            task.dependsOn(mergeCompilerSupportTask)
+            task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
         })
         project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
             task.dependsOn(generateTask)
-            task.dependsOn(mergeCompilerSupportTask)
+            task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
         })
+        project.tasks.matching { task -> task.name == "compileWinuiMainKotlinMetadata" }.configureEach(Action<Task> { task ->
+            task.dependsOn(generateTask)
+            task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
+        })
+        project.tasks.withType(Jar::class.java)
+            .matching { task -> task.name.endsWith("SourcesJar") || task.name == "sourcesJar" }
+            .configureEach(Action<Jar> { task ->
+                task.dependsOn(generateTask)
+                task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
+            })
         configureWinRTAuthoredCandidateValidation(project, extension, generatedSources, generatedAuthoringSources)
     }
 
     project.plugins.withId("java") {
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> {
-            it.getByName("main").java.srcDir(generatedJvmSources)
+            it.getByName("main").java.srcDir(
+                conditionalGeneratedProjectionSourceDirectory(project, generatedJvmSources),
+            )
         })
         project.tasks.matching { task -> task.name == "compileJava" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
@@ -1812,6 +1846,202 @@ private fun projectionNuGetPackageSpecs(extension: BaseWinRTExtension): List<Str
         .filter { pkg -> pkg.generateProjection }
         .map { pkg -> "${pkg.packageId}@${pkg.version.get()}" }
 
+private fun kotlinWinRTLocalGenerationRequired(
+    project: Project,
+    extension: BaseWinRTExtension,
+    dependencyIdentityFiles: org.gradle.api.file.FileCollection,
+): Provider<Boolean> =
+    memoizedBooleanProvider(project) {
+        try {
+            kotlinWinRTCombinedProjectionHasLocalOutput(extension, dependencyIdentityFiles.files)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+@Suppress("UNCHECKED_CAST")
+private fun kotlinWinRTLocalGenerationRequired(project: Project): Provider<Boolean> =
+    project.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as? Provider<Boolean>
+        ?: project.provider { false }
+
+internal fun memoizedBooleanProvider(
+    project: Project,
+    compute: () -> Boolean,
+): Provider<Boolean> =
+    project.objects.property(Boolean::class.javaObjectType).apply {
+        set(project.provider(compute))
+        finalizeValueOnRead()
+    }
+
+private fun kotlinWinRTCombinedProjectionHasLocalOutput(
+    extension: BaseWinRTExtension,
+    dependencyIdentityFiles: Set<File>,
+): Boolean {
+    if (kotlinWinRTApplicationPackagingOnly(extension)) {
+        return false
+    }
+    if (kotlinWinRTExplicitTypeRequestsAreDependencyOwned(extension, dependencyIdentityFiles)) {
+        return false
+    }
+    if (!kotlinWinRTHasLocalProjectionRequest(extension)) {
+        return false
+    }
+    var sources = kotlinWinRTLocalGenerationMetadataSources(extension, dependencyIdentityFiles)
+    if (sources.isEmpty()) {
+        return false
+    }
+    sources = sources.withWindowsSdkSourceForProjectionRoots(
+        includeNames = extension.includeNamespaces.get().toSet() + extension.includeTypes.get().toSet(),
+        version = extension.windowsSdkVersion.orNull,
+        includeExtensions = extension.includeWindowsSdkExtensions.get(),
+    )
+    var unfilteredModel = WinRTMetadataLoader.loadSources(sources)
+    sources = sources.withWindowsSdkSourceForUnresolvedWindowsReferences(
+        model = unfilteredModel,
+        version = extension.windowsSdkVersion.orNull,
+        includeExtensions = extension.includeWindowsSdkExtensions.get(),
+    )
+    unfilteredModel = WinRTMetadataLoader.loadSources(sources)
+    val effectiveIncludeTypes = extension.includeTypes.get() +
+        automaticXamlComponentResourceDictionaryTypes(unfilteredModel, extension.includeTypes.get().toSet())
+    val dependencyProjectionSurfaceTypes = dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles)
+    val effectiveSources = sources.withWindowsSdkSourceForProjectionRoots(
+        includeNames = extension.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet() + dependencyProjectionSurfaceTypes.toSet(),
+        version = extension.windowsSdkVersion.orNull,
+        includeExtensions = extension.includeWindowsSdkExtensions.get(),
+    )
+    if (effectiveSources != sources) {
+        sources = effectiveSources
+        unfilteredModel = WinRTMetadataLoader.loadSources(sources)
+    }
+    val model = unfilteredModel.filterProjectionSurface(
+        namespaces = extension.includeNamespaces.get().toSet(),
+        types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes).toSet(),
+        excludedNamespaces = extension.excludeNamespaces.get().toSet(),
+        excludedTypes = extension.excludeTypes.get().toSet(),
+        additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
+    )
+    val projectionContext = WinRTMetadataProjectionContext(
+        sources = sources,
+        include = extension.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet() + dependencyProjectionSurfaceTypes.toSet(),
+        exclude = extension.excludeNamespaces.get().toSet() + extension.excludeTypes.get().toSet(),
+        excludedTypes = extension.excludeTypes.get().toSet(),
+        additionExclude = extension.additionExcludeNamespaces.get().toSet(),
+    )
+    val inventory = model.projectionInventory(projectionContext)
+    val dependencyProjectionTypeNames = dependencyProjectedTypeNames(model, dependencyIdentityFiles)
+    val hasLocalProjectedTypes = inventory.namespaces
+        .asSequence()
+        .flatMap { namespace -> namespace.projectedTypes.asSequence() }
+        .map { projected -> projected.type.qualifiedName }
+        .any { typeName -> typeName !in dependencyProjectionTypeNames }
+    if (hasLocalProjectedTypes) {
+        return true
+    }
+    val dependencySourceAdditions = dependencySourceAdditionTypeNames(dependencyIdentityFiles)
+    return inventory.namespaceAdditions
+        .asSequence()
+        .flatMap { addition -> addition.generatedTypeNames.asSequence() }
+        .any { typeName -> typeName !in dependencySourceAdditions }
+}
+
+private fun kotlinWinRTApplicationPackagingOnly(extension: BaseWinRTExtension): Boolean =
+    extension is WinRTExtension &&
+        extension.applicationEnabled.get() &&
+        extension.metadataInputs.get().isEmpty() &&
+        extension.includeNamespaces.get().isEmpty() &&
+        extension.includeTypes.get().isEmpty() &&
+        !extension.generateWindowsSdkProjection.get()
+
+private fun kotlinWinRTHasLocalProjectionRequest(extension: BaseWinRTExtension): Boolean =
+    extension.metadataInputs.get().isNotEmpty() ||
+        extension.includeNamespaces.get().isNotEmpty() ||
+        extension.includeTypes.get().isNotEmpty() ||
+        extension.generateWindowsSdkProjection.get() ||
+        extension.nugetPackages.any { pkg -> pkg.generateProjection }
+
+private fun kotlinWinRTExplicitTypeRequestsAreDependencyOwned(
+    extension: BaseWinRTExtension,
+    dependencyIdentityFiles: Set<File>,
+): Boolean {
+    if (
+        extension.metadataInputs.get().isNotEmpty() ||
+        extension.includeNamespaces.get().isNotEmpty() ||
+        extension.generateWindowsSdkProjection.get() ||
+        extension.nugetPackages.any { pkg -> pkg.generateProjection }
+    ) {
+        return false
+    }
+    val includeTypes = extension.includeTypes.get().toSet()
+    if (includeTypes.isEmpty()) {
+        return false
+    }
+    return dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles).containsAll(includeTypes)
+}
+
+private fun kotlinWinRTLocalGenerationMetadataSources(
+    extension: BaseWinRTExtension,
+    dependencyIdentityFiles: Set<File>,
+): List<WinRTMetadataSource> {
+    val explicitSources = extension.metadataInputs.get().map(WinRTMetadataSource::parse)
+    val hasProjectionFilter = extension.includeNamespaces.get().isNotEmpty() || extension.includeTypes.get().isNotEmpty()
+    val packageSpecs = (projectionNuGetPackageSpecs(extension) + dependencyIdentityFiles.flatMap(::readNuGetPackages))
+        .distinct()
+        .sorted()
+    val sdkSource = if (
+        extension.generateWindowsSdkProjection.get() ||
+        extension.windowsSdkVersion.isPresent ||
+        explicitSources.isNotEmpty() ||
+        hasProjectionFilter ||
+        packageSpecs.isNotEmpty() ||
+        extension.includeWindowsSdkExtensions.get()
+    ) {
+        listOf(
+            WinRTMetadataSource.windowsSdk(
+                version = extension.windowsSdkVersion.orNull,
+                includeExtensions = extension.includeWindowsSdkExtensions.get(),
+            ),
+        )
+    } else {
+        emptyList()
+    }
+    val nugetRoots = WinRTNuGetPackageResolver.globalPackagesRoots(
+        explicitRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of),
+    )
+    val nugetSources = packageSpecs
+        .map(::parseNuGetPackageIdentity)
+        .map { identity ->
+            WinRTMetadataSource.nugetPackage(
+                packageId = identity.normalizedPackageId,
+                version = identity.normalizedVersion,
+                globalPackagesRoots = nugetRoots,
+            )
+        }
+    return explicitSources + sdkSource + nugetSources
+}
+
+private fun kotlinWinRTLocalCompilerSupportDependencies(
+    project: Project,
+    mergeCompilerSupportTask: TaskProvider<MergeWinRTCompilerSupportTask>,
+): Provider<List<TaskProvider<MergeWinRTCompilerSupportTask>>> =
+    project.provider {
+        if (kotlinWinRTLocalGenerationRequired(project).get()) {
+            listOf(mergeCompilerSupportTask)
+        } else {
+            emptyList()
+        }
+    }
+
+private fun addGeneratedProjectionSourcesToKotlinMain(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return
+    kotlinExtension.sourceSets.named("main").configure { sourceSet ->
+        sourceSet.kotlin.srcDir(conditionalGeneratedProjectionSourceDirectory(project, generatedSources))
+    }
+}
+
 private fun addGeneratedSourcesToKotlinMain(
     project: Project,
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
@@ -1990,6 +2220,28 @@ private fun KotlinSourceSet.dependsOnIfAbsent(sourceSet: KotlinSourceSet) {
         dependsOn(sourceSet)
     }
 }
+
+private fun addGeneratedProjectionSourcesToKotlinMultiplatformWinuiMain(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    kotlinExtension.sourceSets.matching { sourceSet -> sourceSet.name == "winuiMain" }.configureEach { sourceSet ->
+        sourceSet.kotlin.srcDir(conditionalGeneratedProjectionSourceDirectory(project, generatedSources))
+    }
+}
+
+private fun conditionalGeneratedProjectionSourceDirectory(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+): org.gradle.api.provider.Provider<File> =
+    project.provider {
+        if (kotlinWinRTLocalGenerationRequired(project).get()) {
+            generatedSources.get().asFile
+        } else {
+            project.layout.buildDirectory.dir("generated/kotlin-winrt-disabled").get().asFile
+        }
+    }
 
 private fun addGeneratedSourcesToKotlinMultiplatformWinuiMain(
     project: Project,

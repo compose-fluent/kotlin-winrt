@@ -4652,11 +4652,12 @@ class KotlinWinRTIrGenerationExtension(
                 file,
             ),
         )
+        val entryClassFqName = genericTypeInstantiationEntryClassName(supportClassFqName)
         val entryClass = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
-            prerequisite = "class io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry",
+            prerequisite = "class $entryClassFqName",
             value = pluginContext.findClassSymbol(
-                ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry")),
+                ClassId.topLevel(FqName(entryClassFqName)),
                 file,
             ),
         )
@@ -4669,7 +4670,7 @@ class KotlinWinRTIrGenerationExtension(
             .let { symbol ->
                 requireCompilerSupportPrerequisite(
                     description = "generic type instantiation",
-                    prerequisite = "GenericTypeInstantiationEntry constructor with 9 regular parameters",
+                    prerequisite = "${entryClassFqName.substringAfterLast('.')} constructor with 9 regular parameters",
                     value = symbol,
                 )
             }
@@ -5744,8 +5745,8 @@ private data class CompilerSupportManifestExpectedEntry(
     val sourceFile: String,
 )
 
-private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
-    "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest"
+private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME_PREFIX: String =
+    "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest_"
 
 private const val PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX: String =
     "io/github/composefluent/winrt/projections/support/WinRTProjectionSupport_"
@@ -5763,16 +5764,18 @@ private const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR: String = "\u001F"
 fun writeCompilerSupportManifestClass(
     entries: List<KotlinWinRTCompilerSupportManifestEntry>,
     outputDirectory: Path,
-) {
+): String? {
     if (entries.isEmpty()) {
-        Files.deleteIfExists(outputDirectory.resolve("$COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME.class"))
-        return
+        deleteStaleCompilerSupportManifestClasses(outputDirectory, currentInternalName = null)
+        return null
     }
+    val internalName = compilerSupportManifestInternalName(entries)
+    deleteStaleCompilerSupportManifestClasses(outputDirectory, internalName)
     val classWriter = ClassWriter(0)
     classWriter.visit(
         Opcodes.V17,
         Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME,
+        internalName,
         null,
         "java/lang/Object",
         null,
@@ -5788,9 +5791,59 @@ fun writeCompilerSupportManifestClass(
     classWriter.addDefaultConstructor()
     classWriter.visitEnd()
 
-    val target = outputDirectory.resolve("$COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME.class")
+    val target = outputDirectory.resolve("$internalName.class")
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
+    return internalName
+}
+
+private fun compilerSupportManifestInternalName(
+    entries: List<KotlinWinRTCompilerSupportManifestEntry>,
+): String =
+    COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME_PREFIX +
+        MessageDigest.getInstance("SHA-256")
+            .digest(
+                entries
+                    .sortedWith(
+                        compareBy(
+                            KotlinWinRTCompilerSupportManifestEntry::owner,
+                            KotlinWinRTCompilerSupportManifestEntry::kind,
+                            KotlinWinRTCompilerSupportManifestEntry::className,
+                            KotlinWinRTCompilerSupportManifestEntry::sourceFile,
+                            KotlinWinRTCompilerSupportManifestEntry::entries,
+                        ),
+                    )
+                    .joinToString(separator = "\n") { entry ->
+                        listOf(
+                            entry.owner,
+                            entry.kind,
+                            entry.className,
+                            entry.sourceFile,
+                            entry.entries.toString(),
+                        ).joinToString("\t")
+                    }
+                    .toByteArray(StandardCharsets.UTF_8),
+            )
+            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+            .take(16)
+
+private fun deleteStaleCompilerSupportManifestClasses(
+    outputDirectory: Path,
+    currentInternalName: String?,
+) {
+    val supportDirectory = outputDirectory.resolve(COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME_PREFIX).parent ?: return
+    if (!Files.isDirectory(supportDirectory)) {
+        return
+    }
+    val currentFileName = currentInternalName?.substringAfterLast('/')?.let { "$it.class" }
+    Files.list(supportDirectory).use { stream ->
+        stream
+            .filter(Files::isRegularFile)
+            .filter { path -> path.fileName.toString().startsWith("WinRTCompilerSupportManifest") }
+            .filter { path -> path.fileName.toString().endsWith(".class") }
+            .filter { path -> currentFileName == null || path.fileName.toString() != currentFileName }
+            .forEach(Files::deleteIfExists)
+    }
 }
 
 data class KotlinWinRTProjectionRegistrarEntry(
@@ -5820,6 +5873,14 @@ fun <T : Any> resolveProjectionRegistrarClasses(
             }
             entry to projectedClass
         }
+
+internal fun genericTypeInstantiationEntryClassName(supportClassName: String): String {
+    val packageName = supportClassName.substringBeforeLast('.', missingDelimiterValue = "")
+    val supportSimpleName = supportClassName.substringAfterLast('.')
+    val ownerSuffix = supportSimpleName.removePrefix("WinRTGenericTypeInstantiations")
+    val entrySimpleName = "GenericTypeInstantiationEntry$ownerSuffix"
+    return if (packageName.isEmpty()) entrySimpleName else "$packageName.$entrySimpleName"
+}
 
 fun <T : Any> requireCompilerSupportPrerequisite(
     description: String,

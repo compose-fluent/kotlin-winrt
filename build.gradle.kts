@@ -1,9 +1,14 @@
+import io.github.composefluent.winrt.gradle.ValidateSplitProjectionPublicationTask
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.tasks.Delete
+import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.testing.Test
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.mavenPublish) apply false
+    id("io.github.compose-fluent.winrt") apply false
 }
 
 val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")

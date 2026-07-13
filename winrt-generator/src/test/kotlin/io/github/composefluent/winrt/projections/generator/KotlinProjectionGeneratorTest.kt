@@ -1488,6 +1488,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_does_not_emit_event_helpers_for_dependency_owned_types() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("99999999-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRTMethodDefinition(name = "Invoke", returnTypeName = "Unit"),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRTMethodDefinition("add_Changed", "Windows.Foundation.EventRegistrationToken", parameters = listOf(WinRTParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")), isSpecialName = true, methodRowId = 6),
+                                WinRTMethodDefinition("remove_Changed", "Unit", parameters = listOf(WinRTParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")), isSpecialName = true, methodRowId = 7),
+                            ),
+                            events = listOf(
+                                WinRTEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            suppressedProjectionTypeNames = setOf(
+                "Sample.Foundation.WidgetChangedHandler",
+                "Sample.Foundation.IWidget",
+            ),
+        ).generate(model)
+
+        assertFalse(files.any { file -> file.relativePath.contains("/WinRTEventProjectionHelper_") })
+        assertFalse(files.any { file -> file.contents.contains("internal class _EventSource_") })
+    }
+
+    @Test
     fun expect_actual_interface_slice_falls_back_for_missing_event_remove_accessor() {
         val namespace = WinRTNamespace(
             name = "Sample.Foundation",
@@ -15341,7 +15394,7 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents.contains("private class NativeProjection("))
-        assertTrue(contents, contents.contains("winRTObjectMarshaler(value).use { __valueMarshaler ->"))
+        assertTrue(contents, contents.contains("winRTObjectMarshaler(`value`).use { __valueMarshaler ->"))
         assertTrue(contents.contains("PlatformAbi.allocateBytes(__targetTypeStructScope, 16L)"))
         assertTrue(contents.contains("WinRTSystemProjectionMarshalers.copyTypeNameTo(targetType, __targetTypeAbi)"))
         assertTrue(contents.contains("winRTObjectMarshaler(parameter).use { __parameterMarshaler ->"))
@@ -15437,7 +15490,7 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents.contains("HString.createReference(title).use { __titleAbi ->"))
-        assertTrue(contents.contains("winRTObjectMarshaler(value).use { __valueMarshaler ->"))
+        assertTrue(contents.contains("winRTObjectMarshaler(`value`).use { __valueMarshaler ->"))
         assertTrue(contents.contains("Color.Metadata.copyTo(color, __colorAbi)"))
         assertTrue(contents.contains("WinRTDelegateBridge.createDelegateArgument("))
         assertTrue(contents.contains("WinRTProjectionIntrinsic.callProjectedInterface("))
@@ -17266,6 +17319,11 @@ class KotlinProjectionGeneratorTest {
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericTypeInstantiations.kt"))
         assertTrue(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_lib_jar.kt"))
         assertTrue(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_lib_jar_000.kt"))
+        assertTrue(
+            artifactScopedFilesByName.getValue("WinRTGenericAbiSupport_sample_lib_jar.kt").contents
+                .contains("data class GenericAbiDelegateEntry_sample_lib_jar"),
+        )
+        assertTrue(artifactScopedGenericSupport.contains("data class GenericTypeInstantiationEntry_sample_lib_jar"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTGenericAbiSupport.kt"))
         assertTrue(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor_sample_lib_jar.kt"))
         assertFalse(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor.kt"))
@@ -17291,6 +17349,19 @@ class KotlinProjectionGeneratorTest {
         assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_app_jar.kt"))
         assertTrue(secondArtifactScopedFilesByName.containsKey("WinRTGenericAbiSupport_sample_app_jar_000.kt"))
         assertFalse(secondArtifactScopedFilesByName.containsKey("WinRTEventProjectionHelper_000.kt"))
+        val artifactEventHelperTypeNames = Regex("internal (?:class|object) ((?:_EventSource_|WinRTEventProjectionHelper_)[A-Za-z0-9_]+)")
+            .findAll(artifactScopedFilesByName.values.joinToString("\n", transform = KotlinProjectionFile::contents))
+            .map { match -> match.groupValues[1] }
+            .toSet()
+        val secondArtifactEventHelperTypeNames = Regex("internal (?:class|object) ((?:_EventSource_|WinRTEventProjectionHelper_)[A-Za-z0-9_]+)")
+            .findAll(secondArtifactScopedFilesByName.values.joinToString("\n", transform = KotlinProjectionFile::contents))
+            .map { match -> match.groupValues[1] }
+            .toSet()
+        val duplicateArtifactEventHelperTypeNames = artifactEventHelperTypeNames.intersect(secondArtifactEventHelperTypeNames)
+        assertTrue(
+            duplicateArtifactEventHelperTypeNames.joinToString(),
+            duplicateArtifactEventHelperTypeNames.isEmpty(),
+        )
         val eventProjectionHelpers = filesByName.values
             .filter { file -> file.relativePath.contains("/WinRTEventProjectionHelper_") || file.relativePath.contains("/_EventSource_") }
             .joinToString("\n") { file -> file.contents }
@@ -17804,6 +17875,30 @@ class KotlinProjectionGeneratorTest {
             .generate(dispatcherQueueHandlerOnlyModel())
 
         assertFalse(files.any { file -> file.relativePath.endsWith("DispatcherQueueCoroutineDispatcher.kt") })
+    }
+
+    @Test
+    fun generator_skips_dependency_owned_dispatcher_queue_coroutine_dispatcher() {
+        val files = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            suppressedProjectionTypeNames = setOf(
+                "Microsoft.UI.Dispatching.DispatcherQueue",
+                "Microsoft.UI.Dispatching.DispatcherQueueHandler",
+            ),
+        ).generate(dispatcherQueueModel(includeHandler = true))
+
+        assertFalse(files.any { file -> file.relativePath.endsWith("DispatcherQueueCoroutineDispatcher.kt") })
+    }
+
+    @Test
+    fun generator_scopes_namespace_addition_entry_to_support_owner() {
+        val generatedContents = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            supportOwnerIdentity = "sample-lib.jar",
+        ).generate(interopSourceAdditionModel()).joinToString("\n", transform = KotlinProjectionFile::contents)
+
+        assertTrue(generatedContents.contains("data class NamespaceAdditionEntry_sample_lib_jar"))
+        assertFalse(generatedContents.contains("data class NamespaceAdditionEntry("))
     }
 
     private fun interopSourceAdditionModel(): WinRTMetadataModel =

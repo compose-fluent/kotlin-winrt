@@ -215,12 +215,17 @@ class KotlinProjectionSupportRenderer {
                 addAll(renderProjectionSupportAnchors(supportOwnerIdentity))
             }
             addAll(renderGenericAbiSupportSources(inventory.genericAbiInventory, genericAbiSupportFileName))
-            addAll(renderDispatcherQueueSynchronizationContextAdditions(plans))
+            addAll(
+                renderDispatcherQueueSynchronizationContextAdditions(
+                    plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
+                ),
+            )
             addAll(renderEventProjectionHelpers(
                 model,
                 eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
                 allPlans = plans,
                 eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
+                supportOwnerIdentity = supportOwnerIdentity,
             ))
         }
     }
@@ -750,7 +755,11 @@ class KotlinProjectionSupportRenderer {
         if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
             return emptyList()
         }
-        val entryClass = ClassName(SUPPORT_PACKAGE, "GenericAbiDelegateEntry")
+        val entryClass = supportEntryClassName(
+            baseName = "GenericAbiDelegateEntry",
+            ownerScopedContainerName = genericAbiSupportFileName,
+            defaultContainerName = "WinRTGenericAbiSupport",
+        )
         val delegates = inventory.genericAbiDelegates.sortedWith(
             compareBy(
                 { descriptor -> descriptor.abiDelegateName },
@@ -825,7 +834,7 @@ class KotlinProjectionSupportRenderer {
         val fileSpec = supportFileSpec(genericAbiSupportFileName)
             .addType(
                 dataClass(
-                    className = "GenericAbiDelegateEntry",
+                    className = entryClass.simpleName,
                     fields = listOf(
                         "name" to stringTypeName(),
                         "sourceGenericType" to stringTypeName(),
@@ -875,7 +884,7 @@ class KotlinProjectionSupportRenderer {
             .apply {
                 beginControlFlow("return when (name)")
                 delegates.forEach { descriptor ->
-                    addStatement("%S -> %L", descriptor.abiDelegateName, genericAbiDelegateEntryCode(descriptor))
+                    addStatement("%S -> %L", descriptor.abiDelegateName, genericAbiDelegateEntryCode(descriptor, entryClass))
                 }
                 addStatement("else -> null")
                 endControlFlow()
@@ -894,7 +903,7 @@ class KotlinProjectionSupportRenderer {
             .apply {
                 beginControlFlow("return when (sourceGenericType)")
                 entries.forEach { (sourceGenericType, descriptors) ->
-                    addStatement("%S -> %L", sourceGenericType, genericAbiDelegateEntryListCode(descriptors))
+                    addStatement("%S -> %L", sourceGenericType, genericAbiDelegateEntryListCode(descriptors, entryClass))
                 }
                 addStatement("else -> null")
                 endControlFlow()
@@ -936,8 +945,18 @@ class KotlinProjectionSupportRenderer {
     private fun genericAbiSupportShardFunctionPrefix(genericAbiSupportFileName: String): String =
         genericAbiSupportFileName.replaceFirstChar { char -> char.lowercase() }
 
+    private fun supportEntryClassName(
+        baseName: String,
+        ownerScopedContainerName: String,
+        defaultContainerName: String,
+    ): ClassName = ClassName(
+        SUPPORT_PACKAGE,
+        baseName + ownerScopedContainerName.removePrefix(defaultContainerName),
+    )
+
     private fun genericAbiDelegateEntryListCode(
         delegates: List<WinRTGenericAbiDelegateDescriptor>,
+        entryClass: ClassName,
     ): CodeBlock {
         if (delegates.isEmpty()) {
             return CodeBlock.of("emptyList()")
@@ -946,7 +965,7 @@ class KotlinProjectionSupportRenderer {
         code.add("listOf(\n")
         code.indent()
         delegates.forEach { descriptor ->
-            code.add("%L,\n", genericAbiDelegateEntryCode(descriptor))
+            code.add("%L,\n", genericAbiDelegateEntryCode(descriptor, entryClass))
         }
         code.unindent()
         code.add(")")
@@ -955,10 +974,11 @@ class KotlinProjectionSupportRenderer {
 
     private fun genericAbiDelegateEntryCode(
         descriptor: WinRTGenericAbiDelegateDescriptor,
+        entryClass: ClassName,
     ): CodeBlock =
         CodeBlock.of(
             "%T(%S, %S, %S, %S, %L, %L)",
-            ClassName(SUPPORT_PACKAGE, "GenericAbiDelegateEntry"),
+            entryClass,
             descriptor.abiDelegateName,
             descriptor.sourceGenericType.typeName,
             descriptor.operationName,
@@ -974,11 +994,15 @@ class KotlinProjectionSupportRenderer {
         if (descriptors.isEmpty()) {
             return null
         }
-        val entryClass = ClassName(SUPPORT_PACKAGE, "GenericTypeInstantiationEntry")
+        val entryClass = supportEntryClassName(
+            baseName = "GenericTypeInstantiationEntry",
+            ownerScopedContainerName = genericTypeInstantiationsClassName.simpleName,
+            defaultContainerName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME.simpleName,
+        )
         val fileSpec = supportFileSpec(genericTypeInstantiationsClassName.simpleName)
             .addType(
                 dataClass(
-                    className = "GenericTypeInstantiationEntry",
+                    className = entryClass.simpleName,
                     fields = listOf(
                         "className" to stringTypeName(),
                         "sourceType" to stringTypeName(),
@@ -1007,9 +1031,13 @@ class KotlinProjectionSupportRenderer {
         eventOwnerPlans: List<KotlinTypeProjectionPlan>,
         allPlans: List<KotlinTypeProjectionPlan>,
         eventProjectionHelperFilePrefix: String,
+        supportOwnerIdentity: String?,
     ): List<KotlinProjectionFile> {
-        val eventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
-        val delegateEventSourceEntries = planner.eventSourceDescriptors(model, allPlans)
+        val ownerSuffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)
+        val eventSourceEntries = planner.eventSourceDescriptors(model, eventOwnerPlans)
+            .map { descriptor -> descriptor.withSupportOwnerSuffix(ownerSuffix) }
+        val delegateEventSourceEntries = planner.eventSourceDescriptors(model, eventOwnerPlans)
+            .map { descriptor -> descriptor.withSupportOwnerSuffix(ownerSuffix) }
         if (eventSourceEntries.isEmpty() && delegateEventSourceEntries.isEmpty()) {
             return emptyList()
         }
@@ -1034,7 +1062,7 @@ class KotlinProjectionSupportRenderer {
             .toSortedMap(compareBy({ it.first }, { it.second }))
             .values
             .forEach { ownerEntries ->
-                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType)?.let(::add)
+                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType, supportOwnerIdentity)?.let(::add)
             }
         }
         return helperTypes
@@ -1048,6 +1076,11 @@ class KotlinProjectionSupportRenderer {
                 supportFile("$fileName.kt", fileSpec)
             }
     }
+
+    private fun WinRTEventHelperSubclassDescriptor.withSupportOwnerSuffix(
+        ownerSuffix: String?,
+    ): WinRTEventHelperSubclassDescriptor =
+        if (ownerSuffix == null || usesSharedEventHandlerSource) this else copy(sourceClassName = "${sourceClassName}_$ownerSuffix")
 
     private fun renderAbiImplementationPlan(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
         val abiPlans = plans.filter { plan ->
@@ -1592,11 +1625,15 @@ class KotlinProjectionSupportRenderer {
         if (inventory.namespaceAdditions.isEmpty()) {
             return null
         }
-        val entryClass = ClassName(SUPPORT_PACKAGE, "NamespaceAdditionEntry")
+        val entryClass = supportEntryClassName(
+            baseName = "NamespaceAdditionEntry",
+            ownerScopedContainerName = namespaceAdditionsClassName.simpleName,
+            defaultContainerName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME.simpleName,
+        )
         val fileSpec = supportFileSpec(namespaceAdditionsClassName.simpleName)
             .addType(
                 dataClass(
-                    className = "NamespaceAdditionEntry",
+                    className = entryClass.simpleName,
                     fields = listOf(
                         "namespace" to stringTypeName(),
                         "kind" to stringTypeName(),
@@ -4241,12 +4278,14 @@ class KotlinProjectionSupportRenderer {
         ownerEntries: List<WinRTEventHelperSubclassDescriptor>,
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
+        supportOwnerIdentity: String?,
     ): TypeSpec? {
         val firstEntry = ownerEntries.first()
         val builder = TypeSpec.objectBuilder(
             eventSourceOwnerHelperName(
                 ownerType = firstEntry.ownerTypeName,
                 eventType = firstEntry.eventTypeName,
+                supportOwnerIdentity = supportOwnerIdentity,
             ),
         )
             .addModifiers(KModifier.INTERNAL)

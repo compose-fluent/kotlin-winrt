@@ -43,6 +43,8 @@ Each generated FQN must have exactly one prebuilt artifact owner. Windows App SD
 
 Public projection artifacts whose signatures expose Windows SDK types will publish the Windows SDK projection as an API dependency. Validation will publish to a temporary repository and compile isolated JVM and `mingwX64` consumers using only the intended top-level coordinate.
 
+WebView2 keeps the package boundary used by Windows App SDK: `Microsoft.Web.WebView2.Core` is published from a dedicated Kotlin projection artifact, while the WinUI `Microsoft.UI.Xaml.Controls.WebView2` control remains in the Windows App SDK projection. The Windows App SDK artifact exposes the WebView2 Core artifact as an API dependency so its public control interfaces remain consumable without duplicate Core declarations.
+
 ## Gradle Projection And Authoring Gating
 
 Local projection generation and authoring compiler discovery are separate decisions. Dependency-owned or empty projection inventories may skip projection source generation, but Kotlin compilations capable of containing `@WinRTAuthoredRuntimeClass` declarations must still run the compiler plugin and emit authored candidates, WinMD, host manifests, and TypeDetails inputs.
