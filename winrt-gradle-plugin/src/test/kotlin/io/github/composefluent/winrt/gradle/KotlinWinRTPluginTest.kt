@@ -666,7 +666,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun plugin_injects_compiler_plugin_options_into_multiplatform_native_compilation() {
+    fun runtime_only_multiplatform_native_compilation_keeps_authoring_options_without_projection_support() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
@@ -677,17 +677,10 @@ class KotlinWinRTPluginTest {
         val compilerArgs = compileTask.compilerOptions.freeCompilerArgs.get()
         val joinedArgs = compilerArgs.joinToString(separator = "\n")
 
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:metadataIndex=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredCandidatesOutput=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredMetadataOutput=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoredHostManifestOutput=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoringAssemblyName=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest=") })
-        assertTrue(joinedArgs, compilerArgs.any { it.startsWith("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory=") })
-        assertTrue(joinedArgs, joinedArgs.replace("\\", "/").contains("build/kotlin-winrt/native-authoring/compileKotlinWinuiMingw"))
+        assertTrue(joinedArgs, compilerArgs.any { it.contains(":authoredCandidatesOutput=") })
+        assertTrue(joinedArgs, compilerArgs.any { it.contains(":authoredWinmdOutput=") })
+        assertFalse(joinedArgs, compilerArgs.any { it.contains(":compilerSupportManifest=") })
+        assertFalse(joinedArgs, compilerArgs.any { it.contains(":compilerSupportClassOutputDirectory=") })
     }
 
     @Test
@@ -712,12 +705,10 @@ class KotlinWinRTPluginTest {
             },
         )
         val compileTask = project.tasks.named("compileKotlinWinuiMingw").get() as KotlinNativeCompile
-        assertTrue(
-            compileTask.compilerOptions.freeCompilerArgs.get().joinToString("\n"),
-            compileTask.compilerOptions.freeCompilerArgs.get().any {
-                it == "plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=${project.name}.dll"
-            },
-        )
+        val compilerArgs = compileTask.compilerOptions.freeCompilerArgs.get()
+        val joinedCompilerArgs = compilerArgs.joinToString("\n")
+        assertTrue(joinedCompilerArgs, compilerArgs.any { it.contains(":authoredCandidatesOutput=") })
+        assertFalse(joinedCompilerArgs, compilerArgs.any { it.contains(":compilerSupportManifest=") })
         val validationTaskName = "validateCompileKotlinWinuiMingwWinRTAuthoredCandidates"
         val validationTask = project.tasks.named(validationTaskName, ValidateWinRTAuthoredCandidatesTask::class.java).get()
         assertTrue(validationTask.allowTargetSpecificHostManifest.get())
@@ -766,7 +757,7 @@ class KotlinWinRTPluginTest {
                 val task = project.tasks.named(taskName).get()
                 val dependencies = task.taskDependencies.getDependencies(task).map { it.name }
                 assertTrue(
-                    "$taskName must validate native authored artifacts before publication",
+                    "$taskName must validate native authored artifacts",
                     validationTaskName in dependencies,
                 )
                 assertFalse(
@@ -965,11 +956,11 @@ class KotlinWinRTPluginTest {
         assertTrue(identityElements.isCanBeConsumed)
         assertEquals(listOf(":producer"), dependencyProjectPaths)
         assertTrue(
-            "WinRT compile keeps generated metadata/compiler support available for possible local subclass authoring: $compileDependencies",
+            "forwarding library compile must retain authoring preparation: $compileDependencies",
             "generateWinRTProjections" in compileDependencies,
         )
         assertTrue(
-            "WinRT identity keeps source-scanned authoring metadata available for possible local subclass authoring: $identityDependencies",
+            "forwarding library identity must retain authoring metadata preparation: $identityDependencies",
             "generateWinRTProjections" in identityDependencies,
         )
         assertFalse(
@@ -8797,6 +8788,185 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun authoring_only_jvm_library_keeps_discovery_and_validation_without_local_projection_output() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-authoring-only-plugin-test-")
+        val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
+        val authoringJar = authoringJarPath().toString().replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-authoring-only-plugin-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx1024m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "io.github.compose-fluent.winrt"
+            }
+
+            configurations.configureEach {
+                exclude group: "io.github.compose-fluent", module: "winrt-runtime"
+                exclude group: "io.github.compose-fluent", module: "winrt-authoring"
+            }
+
+            dependencies {
+                implementation files("$runtimeJar")
+                implementation files("$authoringJar")
+                add("kotlinWinRTLibraryDependencyIdentity", files("dependency-identity.json"))
+            }
+
+            winRT {
+                windowsSdk("10.0.26100.0", false, false)
+            }
+
+            tasks.register("printAuthoringOnlyCompilerArgs") {
+                doLast {
+                    def localGenerationRequired = project.extensions.extraProperties
+                        .get("kotlinWinRTLocalGenerationRequired")
+                        .get()
+                    def mainSourceDirs = kotlin.sourceSets.named("main").get().kotlin.srcDirs
+                    println("AUTHORING_ONLY_LOCAL_GENERATION=" + localGenerationRequired)
+                    println("AUTHORING_ONLY_MAIN_SOURCES=" + mainSourceDirs)
+                    if (localGenerationRequired) {
+                        throw new GradleException("Authoring-only fixture unexpectedly requires local projection generation")
+                    }
+                    if (mainSourceDirs.any { it.path.replace('\\', '/').contains('/generated/kotlin-winrt/src/') }) {
+                        throw new GradleException("Authoring-only fixture includes generated projection sources: " + mainSourceDirs)
+                    }
+                    def compileTask = tasks.named("compileKotlin").get()
+                    def compilerOptions = compileTask.class.methods
+                        .find { it.name == "getCompilerOptions" && it.parameterCount == 0 }
+                        .invoke(compileTask)
+                    def freeCompilerArgs = compilerOptions.class.methods
+                        .find { it.name == "getFreeCompilerArgs" && it.parameterCount == 0 }
+                        .invoke(compilerOptions)
+                    def args = freeCompilerArgs.class.methods
+                        .find { it.name == "get" && it.parameterCount == 0 }
+                        .invoke(freeCompilerArgs)
+                    println("AUTHORING_ONLY_ARGS=" + args)
+                }
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("dependency-identity.json"),
+            """
+            {
+              "projectedTypes": ["Windows.Foundation.IStringable"],
+              "authoringMetadataIndexRows": ["Windows.Foundation.IStringable\tInterface\t\t\t"]
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/main/kotlin/sample/PublicAuthoredThing.kt"),
+            """
+            package sample
+
+            import io.github.composefluent.winrt.runtime.WinRTAuthoredRuntimeClass
+
+            @WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
+            class PublicAuthoredThing
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(
+                "printAuthoringOnlyCompilerArgs",
+                "check",
+                "jar",
+                "--stacktrace",
+                "--rerun-tasks",
+                "--max-workers=1",
+            )
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":validateCompileKotlinWinRTAuthoredCandidates")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":check")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":jar")?.outcome)
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:metadataIndex="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredCandidatesOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredWinmdOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoredHostManifestOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:authoringAssemblyName=kotlin-winrt-authoring-only-plugin-test"))
+        assertFalse(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
+        assertFalse(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
+        assertEquals(null, result.task(":mergeWinRTCompilerSupport"))
+
+        val generatedProjectionRoot = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        val generatedProjectionKotlinFiles = Files.walk(generatedProjectionRoot).use { paths ->
+            paths.filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+                .toList()
+        }
+        assertTrue(
+            "Authoring-only generation must not emit projection Kotlin files: $generatedProjectionKotlinFiles",
+            generatedProjectionKotlinFiles.isEmpty(),
+        )
+        listOf(
+            "projection-registrar.tsv",
+            "type-shape-descriptors.tsv",
+            "source-additions.tsv",
+            "generic-instantiations.tsv",
+        ).forEach { projectionSupportFile ->
+            assertFalse(
+                "Authoring-only generation must not emit $projectionSupportFile",
+                Files.exists(generatedProjectionRoot.resolve("kotlin-winrt-support/$projectionSupportFile")),
+            )
+        }
+        val generatedAuthoringRoot = projectDir.resolve("build/generated/kotlin-winrt-authoring/src/jvmMain/kotlin")
+        assertTrue(
+            "Authoring-only generation must retain generated TypeDetails sources under $generatedAuthoringRoot",
+            Files.walk(generatedAuthoringRoot).use { paths ->
+                paths.anyMatch { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+            },
+        )
+
+        val compilerOutputRoot = projectDir.resolve("build/classes/kotlin/main")
+        assertTrue(Files.isRegularFile(compilerOutputRoot.resolve("kotlin-winrt/authored-candidates.tsv")))
+        assertTrue(
+            Files.readString(compilerOutputRoot.resolve("kotlin-winrt/authored-candidates.tsv"))
+                .contains("sample.PublicAuthoredThing"),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                compilerOutputRoot.resolve("kotlin-winrt-authoring/kotlin-winrt-authoring-only-plugin-test.winmd"),
+            ),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                compilerOutputRoot.resolve("kotlin-winrt-authoring/kotlin-winrt-authoring-only-plugin-test.host.json"),
+            ),
+        )
+    }
+
+    @Test
     fun multiplatform_jvm_authoring_identity_uses_target_jar_archive_file_name() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-identity-artifact-test-")
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
@@ -9381,7 +9551,8 @@ class KotlinWinRTPluginTest {
         assertTrue(
             compilerArgs.joinToString(separator = "\n"),
             compilerArgs.any { arg ->
-                arg == "plugin:io.github.composefluent.winrt.compiler:authoringTargetArtifactName=custom-projection.jar"
+                arg == "plugin:io.github.composefluent.winrt.compiler:" +
+                    "authoringTargetArtifactName=custom-projection.jar"
             },
         )
     }
