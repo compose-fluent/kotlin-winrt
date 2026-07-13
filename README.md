@@ -183,9 +183,6 @@ dependencies {
 
 winRT {
     windowsSdk(includeExtensions = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
-        generateProjection = false
-    }
 }
 ```
 
