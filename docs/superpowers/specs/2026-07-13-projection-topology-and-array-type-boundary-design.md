@@ -43,23 +43,34 @@ When building prebuilt App SDK, WebView2, or XAML projections in this repository
 - the dependent projection does not mutate the Windows SDK project's version;
 - consumers remain responsible for declaring their selected Windows SDK projection.
 
-The plugin must model this as an internal projection-reference/identity edge rather than an `api` dependency. The implementation should reuse existing identity configurations and variant selection instead of adding a parallel ownership DSL.
+The repository convention must model this as an internal projection-reference/identity edge rather than an `api` dependency. The implementation should reuse the public plugin's existing identity configurations and variant selection instead of adding a parallel ownership DSL.
 
-## Build Plugin Convergence
+## Repository Build Convention Convergence
 
 Prebuilt projection build scripts should contain only module-specific metadata inputs, filters, coordinates, and ordinary dependencies that are truly published.
 
-The Kotlin/WinRT Gradle plugin will own the shared mechanics:
+The shared prebuilt mechanics belong to this repository's `kotlin-winrt-build-convention` included build, not to the published `io.github.compose-fluent.winrt` plugin. A repository-only precompiled convention plugin, such as `winrt.prebuilt-projection`, will be applied by the prebuilt projection modules.
 
-- discover dependency identities from the normal dependency graph;
-- expose a non-published build reference for sibling prebuilt projection compilation and identity consumption;
+The public Kotlin/WinRT plugin remains responsible only for reusable projection generation, identity propagation, authoring, and application integration. It must not gain knowledge of this repository's prebuilt module names, publication topology, or validation fixtures.
+
+The repository prebuilt convention will own the shared mechanics:
+
+- mirror non-published `commonMainCompileOnly` projection references into the existing Kotlin/WinRT identity configuration;
+- preserve ordinary `commonMainApi` only for dependencies that are genuinely part of the published public contract;
 - configure generated source and compiler-support wiring;
 - normalize publication metadata for genuinely public API dependencies;
 - register the standard generated-output validation task and attach it to `check`;
 - derive valid-composition duplicate checks from dependency identities;
 - reject an invalid composition containing both Windows.UI.Xaml and Microsoft.UI.Xaml projection families.
 
-The plugin must eliminate per-module `evaluationDependsOn`, manual `kotlinWinRTLibraryDependencyIdentity` additions, repeated `MavenPublication.pom.withXml` blocks, repeated validation task registration, and manual `check` wiring.
+The intended module dependency shapes are explicit:
+
+- `windows-ui-xaml` uses the selected Windows SDK projection as `commonMainCompileOnly`;
+- `windows-webview2` uses the selected Windows SDK projection as `commonMainCompileOnly`;
+- `windows-app-sdk` uses the selected Windows SDK projection as `commonMainCompileOnly` and publishes `windows-webview2` through `commonMainApi`;
+- none of these modules publishes a Windows SDK artifact dependency.
+
+The convention plugin must eliminate per-module `evaluationDependsOn`, manual `kotlinWinRTLibraryDependencyIdentity` additions, repeated `MavenPublication.pom.withXml` blocks, repeated validation task registration, and manual `check` wiring.
 
 Published consumer fixtures must use only ordinary dependency declarations. They must not know the internal identity configuration name. App SDK consumer validation must declare both the App SDK coordinate and an independently selected Windows SDK coordinate.
 
@@ -88,7 +99,7 @@ No permanent platform stub or platform-specific classification table replaces th
 
 ## Validation
 
-Gradle plugin regression coverage must prove:
+Repository build-convention and Gradle integration coverage must prove:
 
 - ordinary dependencies automatically provide identity metadata without explicit identity configuration entries;
 - prebuilt module scripts no longer need `evaluationDependsOn`, POM XML mutation, duplicated audit task registration, or duplicated `check` wiring;
@@ -108,8 +119,8 @@ Runtime and generator coverage must prove:
 
 ## Delivery Order
 
-1. Add failing Gradle plugin tests for identity-derived prebuilt wiring, SDK-independent App SDK publication, family composition, and simplified consumers.
-2. Move common publication and validation mechanics into the Gradle plugin and simplify the prebuilt build scripts.
+1. Add failing build-convention/Gradle integration tests for identity-derived prebuilt wiring, SDK-independent App SDK publication, family composition, and simplified consumers.
+2. Move common publication and validation mechanics into `kotlin-winrt-build-convention` and simplify the prebuilt build scripts without adding prebuilt behavior to the public Kotlin/WinRT plugin.
 3. Add failing common/JVM tests for reflection-free reference-array classification.
 4. Replace reflection-based component discovery with explicit/reified common metadata flow and update generated/authoring call sites.
 5. Run focused JVM and `mingwX64` tests, split publication consumers, valid-family composition checks, and the full project-review remediation gate.
