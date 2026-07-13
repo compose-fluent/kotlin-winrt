@@ -27,6 +27,7 @@ import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.bundling.Jar
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -45,6 +46,21 @@ import java.util.Base64
 import java.util.jar.JarFile
 
 class KotlinWinRTPluginTest {
+    @Test
+    fun memoized_provider_computes_its_value_once() {
+        val project = ProjectBuilder.builder().build()
+        var computations = 0
+
+        val provider = memoizedBooleanProvider(project) {
+            computations += 1
+            true
+        }
+
+        assertTrue(provider.get())
+        assertTrue(provider.get())
+        assertEquals(1, computations)
+    }
+
     @Test
     fun generated_projection_output_audit_rejects_duplicates_fallbacks_and_growth() {
         val project = ProjectBuilder.builder().build()
@@ -964,6 +980,242 @@ class KotlinWinRTPluginTest {
             "forwarding library identity must not build the target jar or it can cycle through validation/compile: $identityDependencies",
             "winuiJvmJar" in identityDependencies,
         )
+    }
+
+    @Test
+    fun runtime_only_winui_library_keeps_authoring_preparation_without_local_projection_output() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val projectionOwner = ProjectBuilder.builder().withName("projectionOwner").withParent(root).build()
+        val runtimeConsumer = ProjectBuilder.builder().withName("runtimeConsumer").withParent(root).build()
+
+        projectionOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        projectionOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        projectionOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        runtimeConsumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        runtimeConsumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        runtimeConsumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        runtimeConsumer.dependencies.add(
+            "winuiMainImplementation",
+            runtimeConsumer.dependencies.project(mapOf("path" to ":projectionOwner")),
+        )
+
+        val implementationDependencies = runtimeConsumer.configurations.getByName("winuiMainImplementation").dependencies
+        val compileTask = runtimeConsumer.tasks.named("compileKotlinWinuiJvm", KotlinJvmCompile::class.java).get()
+        val compileDependencies = taskDependencyNames(compileTask)
+        val compilerArguments = compileTask.compilerOptions.freeCompilerArgs.get()
+        val identityTask = runtimeConsumer.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+        val identityDependencies = taskDependencyNames(identityTask)
+        val generateTask = runtimeConsumer.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        ).get()
+
+        assertHasKotlinWinRTRuntimeDependency(implementationDependencies)
+        assertHasKotlinWinRTAuthoringDependency(implementationDependencies)
+        assertTrue(
+            "runtime-only WinUI library compile must retain authoring preparation: $compileDependencies",
+            "generateWinRTProjections" in compileDependencies,
+        )
+        assertFalse(generateTask.emitProjectionSources.get())
+        assertFalse(
+            "runtime-only WinUI library compile must not merge local compiler support: $compileDependencies",
+            "mergeWinRTCompilerSupport" in compileDependencies,
+        )
+        assertTrue(
+            "runtime-only WinUI library identity must retain authoring metadata preparation: $identityDependencies",
+            "generateWinRTProjections" in identityDependencies,
+        )
+        assertTrue(compilerArguments.any { argument -> argument.contains(":authoredCandidatesOutput=") })
+        assertFalse(compilerArguments.any { argument -> argument.contains(":compilerSupportManifest=") })
+    }
+
+    @Test
+    fun prebuilt_projection_consumer_does_not_regenerate_dependency_nuget_surface_without_local_requests() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val projectionOwner = ProjectBuilder.builder().withName("projectionOwner").withParent(root).build()
+        val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
+
+        projectionOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        projectionOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        projectionOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val dependencyIdentity = projectionOwner.layout.buildDirectory
+            .file("generated/kotlin-winrt/identity/kotlin-winrt.json")
+            .get()
+            .asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": ["Microsoft"],
+              "includeTypes": [],
+              "projectionShapeVersion": 1,
+              "projectedTypes": ["Microsoft.UI.Xaml.Controls.IWebView22"],
+              "sourceAdditions": [],
+              "excludeNamespaces": [],
+              "excludeTypes": ["Microsoft.UI.Xaml.Controls.WebView2"],
+              "nugetPackages": ["Microsoft.WindowsAppSDK@2.1.3"]
+            }
+            """.trimIndent(),
+        )
+
+        consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        consumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.dependencies.add(
+            "winuiMainImplementation",
+            consumer.dependencies.project(mapOf("path" to ":projectionOwner")),
+        )
+        consumer.dependencies.add(
+            "kotlinWinRTLibraryDependencyIdentity",
+            consumer.dependencies.project(mapOf("path" to ":projectionOwner")),
+        )
+
+        val localGenerationProvider =
+            consumer.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as org.gradle.api.provider.Provider<*>
+        val compileTask = consumer.tasks.named("compileKotlinWinuiJvm", KotlinJvmCompile::class.java).get()
+        val compileDependencies = taskDependencyNames(compileTask)
+        val generateTask = consumer.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        ).get()
+
+        assertEquals(false, localGenerationProvider.get())
+        assertTrue(
+            "prebuilt projection consumer compile must retain authoring preparation: $compileDependencies",
+            "generateWinRTProjections" in compileDependencies,
+        )
+        assertFalse(generateTask.emitProjectionSources.get())
+        assertFalse(
+            "prebuilt projection consumer compile must not merge local compiler support: $compileDependencies",
+            "mergeWinRTCompilerSupport" in compileDependencies,
+        )
+    }
+
+    @Test
+    fun kmp_sources_jar_depends_on_local_projection_generation_when_winrt_types_are_requested() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.extraProperties["kotlinWinRTLocalGenerationRequired"] = project.provider { true }
+        val sourcesJar = project.tasks.findByName("sourcesJar")
+            ?: project.tasks.register("sourcesJar", Jar::class.java).get()
+
+        val dependencies = taskDependencyNames(sourcesJar)
+
+        assertTrue("sourcesJar dependencies: $dependencies", "generateWinRTProjections" in dependencies)
+        assertTrue("sourcesJar dependencies: $dependencies", "mergeWinRTCompilerSupport" in dependencies)
+    }
+
+    @Test
+    fun kmp_target_sources_jars_depend_on_local_projection_generation() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            mingwX64()
+        }
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.extraProperties["kotlinWinRTLocalGenerationRequired"] = project.provider { true }
+
+        listOf("jvmSourcesJar", "mingwX64SourcesJar").forEach { taskName ->
+            val sourcesJar = project.tasks.findByName(taskName)
+                ?: project.tasks.register(taskName, Jar::class.java).get()
+            val dependencies = taskDependencyNames(sourcesJar)
+
+            assertTrue("$taskName dependencies: $dependencies", "generateWinRTProjections" in dependencies)
+            assertTrue("$taskName dependencies: $dependencies", "mergeWinRTCompilerSupport" in dependencies)
+        }
+    }
+
+    @Test
+    fun kmp_sources_jar_keeps_authoring_preparation_without_local_projection_output() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val sourcesJar = project.tasks.findByName("sourcesJar")
+            ?: project.tasks.register("sourcesJar", Jar::class.java).get()
+
+        val dependencies = taskDependencyNames(sourcesJar)
+        val generateTask = project.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        ).get()
+
+        assertTrue("sourcesJar dependencies: $dependencies", "generateWinRTProjections" in dependencies)
+        assertFalse("sourcesJar dependencies: $dependencies", "mergeWinRTCompilerSupport" in dependencies)
+        assertFalse(generateTask.emitProjectionSources.get())
+    }
+
+    @Test
+    fun dependency_owned_projection_request_does_not_wire_local_generation() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val dependencyOwner = ProjectBuilder.builder().withName("dependencyOwner").withParent(root).build()
+        val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
+        val dependencyIdentity = dependencyOwner.layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt.json")
+            .get()
+            .asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": [],
+              "includeTypes": ["Windows.Foundation.IStringable"],
+              "projectionShapeVersion": 1,
+              "projectedTypes": ["Windows.Foundation.IStringable"],
+              "sourceAdditions": ["winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+
+        dependencyOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        dependencyOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        dependencyOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        consumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.extensions.getByType(WinRTExtension::class.java).type("Windows.Foundation.IStringable")
+        consumer.dependencies.add(
+            "winuiMainImplementation",
+            consumer.dependencies.project(mapOf("path" to ":dependencyOwner")),
+        )
+
+        val compileTask = consumer.tasks.named("compileKotlinWinuiJvm", KotlinJvmCompile::class.java).get()
+        val localGenerationProvider =
+            consumer.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as org.gradle.api.provider.Provider<*>
+        val compileDependencies = taskDependencyNames(compileTask)
+        val compilerArguments = compileTask.compilerOptions.freeCompilerArgs.get()
+        val identityTask = consumer.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+        val identityDependencies = taskDependencyNames(identityTask)
+        val generateTask = consumer.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        ).get()
+
+        assertEquals(false, localGenerationProvider.get())
+        assertTrue(
+            "dependency-owned explicit type request compile must retain authoring preparation: $compileDependencies",
+            "generateWinRTProjections" in compileDependencies,
+        )
+        assertFalse(generateTask.emitProjectionSources.get())
+        assertFalse(
+            "dependency-owned explicit type request must not merge local compiler support: $compileDependencies",
+            "mergeWinRTCompilerSupport" in compileDependencies,
+        )
+        assertTrue(
+            "dependency-owned explicit type request identity must retain authoring metadata preparation: $identityDependencies",
+            "generateWinRTProjections" in identityDependencies,
+        )
+        assertTrue(compilerArguments.any { argument -> argument.contains(":authoredCandidatesOutput=") })
+        assertFalse(compilerArguments.any { argument -> argument.contains(":compilerSupportManifest=") })
     }
 
     @Test
@@ -8417,9 +8669,14 @@ class KotlinWinRTPluginTest {
                     def supportRoot = layout.buildDirectory.dir(
                         "classes/kotlin/winuiJvm/main/io/github/composefluent/winrt/projections/support",
                     ).get().asFile
-                    def compilerManifest = new File(supportRoot, "WinRTCompilerSupportManifest.class")
-                    if (!compilerManifest.isFile()) {
-                        throw new GradleException("Expected compiler support manifest in WinUI JVM output: " + compilerManifest)
+                    def hasCompilerManifest = false
+                    supportRoot.eachFileRecurse(groovy.io.FileType.FILES) {
+                        if (it.name.startsWith("WinRTCompilerSupportManifest_") && it.name.endsWith(".class")) {
+                            hasCompilerManifest = true
+                        }
+                    }
+                    if (!hasCompilerManifest) {
+                        throw new GradleException("Expected owner-scoped compiler support manifest under: " + supportRoot)
                     }
                     def hasProjectionSupportInitializer = false
                     supportRoot.eachFileRecurse(groovy.io.FileType.FILES) {

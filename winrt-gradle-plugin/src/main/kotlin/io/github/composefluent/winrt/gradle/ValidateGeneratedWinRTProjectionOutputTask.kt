@@ -25,6 +25,17 @@ abstract class ValidateGeneratedWinRTProjectionOutputTask : DefaultTask() {
     abstract val compiledClassesDirectories: ConfigurableFileCollection
 
     @get:Input
+    abstract val crossArtifactClassOwners: ListProperty<String>
+
+    @get:Optional
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val crossArtifactClassDirectories: ConfigurableFileCollection
+
+    @get:Input
+    abstract val allowedDuplicateClassPaths: ListProperty<String>
+
+    @get:Input
     abstract val forbiddenPatterns: ListProperty<String>
 
     @get:Input
@@ -45,6 +56,8 @@ abstract class ValidateGeneratedWinRTProjectionOutputTask : DefaultTask() {
     init {
         forbiddenPatterns.convention(DEFAULT_FORBIDDEN_PATTERNS)
         repeatedTablePatterns.convention(DEFAULT_REPEATED_TABLE_PATTERNS)
+        crossArtifactClassOwners.convention(emptyList())
+        allowedDuplicateClassPaths.convention(emptyList())
         maxTotalKotlinSourceBytes.convention(DEFAULT_MAX_TOTAL_KOTLIN_SOURCE_BYTES)
         maxKotlinSourceFileLines.convention(DEFAULT_MAX_KOTLIN_SOURCE_FILE_LINES)
         maxTotalClassBytes.convention(DEFAULT_MAX_TOTAL_CLASS_BYTES)
@@ -77,6 +90,7 @@ abstract class ValidateGeneratedWinRTProjectionOutputTask : DefaultTask() {
         validateRepeatedTables(root, kotlinFiles, tableRegexes, violations)
         validateSourceSize(root, kotlinFiles, violations)
         validateClassSize(violations)
+        validateCrossArtifactClassOwnership(violations)
         if (violations.isNotEmpty()) {
             val sample = violations.take(MAX_REPORTED_VIOLATIONS).joinToString(System.lineSeparator())
             throw IllegalStateException(
@@ -174,6 +188,42 @@ abstract class ValidateGeneratedWinRTProjectionOutputTask : DefaultTask() {
         }
     }
 
+    private fun validateCrossArtifactClassOwnership(violations: MutableList<String>) {
+        val owners = crossArtifactClassOwners.get()
+        val roots = crossArtifactClassDirectories.files.toList()
+        require(owners.size == roots.size) {
+            "Cross-artifact class owners (${owners.size}) must match class roots (${roots.size})."
+        }
+        val allowedPaths = allowedDuplicateClassPaths.get().map(String::lowercase).toSet()
+        val classPaths = owners.zip(roots).flatMap { (owner, root) ->
+            if (!root.isDirectory) {
+                emptyList()
+            } else {
+                root.walkTopDown()
+                    .filter { file -> file.isFile && file.extension == "class" }
+                    .map { file ->
+                        val relativePath = root.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+                        OwnedClassPath(owner, relativePath)
+                    }
+                    .toList()
+            }
+        }
+        classPaths.groupBy { entry -> entry.relativePath.lowercase() }
+            .toSortedMap()
+            .forEach { (collisionKey, entries) ->
+                val duplicateOwners = entries.map(OwnedClassPath::owner).distinct().sorted()
+                if (duplicateOwners.size > 1 && collisionKey !in allowedPaths) {
+                    violations +=
+                        "duplicate class path '${entries.first().relativePath}' in owners: ${duplicateOwners.joinToString()}"
+                }
+            }
+    }
+
+    private data class OwnedClassPath(
+        val owner: String,
+        val relativePath: String,
+    )
+
     companion object {
         private const val MAX_REPORTED_VIOLATIONS = 50
         private const val DEFAULT_MAX_TOTAL_KOTLIN_SOURCE_BYTES = 75_000_000L
@@ -217,5 +267,6 @@ abstract class ValidateGeneratedWinRTProjectionOutputTask : DefaultTask() {
             """when\s*\(\s*(sourceType|projectedTypeName|runtimeClassName|ownerType|typeName|kind)\s*\)""",
             """(sourceType|projectedTypeName|runtimeClassName|ownerType|typeName)\s+to\s+(?:\{|\w+Entry\()""",
         )
+
     }
 }

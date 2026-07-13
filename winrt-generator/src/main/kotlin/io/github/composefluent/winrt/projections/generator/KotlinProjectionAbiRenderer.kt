@@ -352,7 +352,12 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
                 abiArgumentExpression = CodeBlock.of("%L.abi", marshalerName),
                 abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
                 scopeOpeners = listOf(
-                    CodeBlock.of("%M(%L).use { %L ->", WINRT_OBJECT_MARSHALER_FUNCTION_NAME, parameterName, marshalerName),
+                    CodeBlock.of(
+                        "%M(%N).use { %L ->",
+                        WINRT_OBJECT_MARSHALER_FUNCTION_NAME,
+                        kotlinPoetNameLiteral(parameterName),
+                        marshalerName,
+                    ),
                 ),
             )
         }
@@ -392,23 +397,37 @@ private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
     val marshalerName = generatedLocalIdentifier("__", parameterName, "ProjectionMarshaler")
+    val marshalerScope = if (parameterName.length + parameterBinding.typeBinding.resolvedTypeName.length > 60) {
+        val resourceName = generatedLocalIdentifier("__", parameterName, "ProjectionMarshalerResource")
+        CodeBlock.of(
+            "val %L = %M(%N, %S, %T(%S))\n%L.use { %L ->",
+            resourceName,
+            WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
+            kotlinPoetNameLiteral(parameterName),
+            parameterBinding.typeBinding.resolvedTypeName,
+            GUID_CLASS_NAME,
+            interfaceId.toString(),
+            resourceName,
+            marshalerName,
+        )
+    } else {
+        CodeBlock.of(
+            "%M(%N, %S, %T(%S)).use { %L ->",
+            WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
+            kotlinPoetNameLiteral(parameterName),
+            parameterBinding.typeBinding.resolvedTypeName,
+            GUID_CLASS_NAME,
+            interfaceId.toString(),
+            marshalerName,
+        )
+    }
     return KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L.abi", marshalerName),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        scopeOpeners = listOf(
-            CodeBlock.of(
-                "%M(%N, %S, %T(%S)).use { %L ->",
-                WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
-                kotlinPoetNameLiteral(parameterName),
-                parameterBinding.typeBinding.resolvedTypeName,
-                GUID_CLASS_NAME,
-                interfaceId.toString(),
-                marshalerName,
-            ),
-        ),
+        scopeOpeners = listOf(marshalerScope),
     )
 }
 

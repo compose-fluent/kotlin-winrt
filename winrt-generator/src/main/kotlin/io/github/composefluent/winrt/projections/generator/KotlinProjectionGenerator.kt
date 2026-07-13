@@ -1715,6 +1715,7 @@ class KotlinProjectionGenerator(
                 useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
                 genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
+                supportOwnerIdentity = supportOwnerIdentity,
             )
         } else {
             renderer

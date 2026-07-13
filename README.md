@@ -178,6 +178,7 @@ For the default Windows SDK, Windows.UI.Xaml, and Windows App SDK / WinUI surfac
 ```kotlin
 dependencies {
     implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
+    implementation("io.github.compose-fluent:winrt-projections-windows-webview2:1.0.3719.77")
     implementation("io.github.compose-fluent:winrt-projections-windows-ui-xaml:10.0.26100.0")
     implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.1.3")
 }
@@ -191,6 +192,8 @@ winRT {
 ```
 
 Projection artifact versions follow their metadata baseline. Snapshot projection builds append the kotlin-winrt snapshot suffix, for example `10.0.26100.0-kotlin-winrt-0.1.0-SNAPSHOT`.
+
+The WebView2 Core projection is a separate artifact, matching the `Microsoft.Web.WebView2` NuGet boundary. The Windows App SDK projection depends on it publicly and owns the WinUI `Microsoft.UI.Xaml.Controls.WebView2` control, so applications using the App SDK coordinate receive both surfaces without duplicate generated classes.
 
 Prebuilt projections are never selected implicitly from a Windows SDK or NuGet version declaration. Add the prebuilt projection artifact to `dependencies` when you want to use it. A `nugetPackage(...)` declaration defaults to local projection generation; set `generateProjection = false` only when the projection surface is supplied by an explicit dependency and the NuGet package is needed for runtime assets.
 
