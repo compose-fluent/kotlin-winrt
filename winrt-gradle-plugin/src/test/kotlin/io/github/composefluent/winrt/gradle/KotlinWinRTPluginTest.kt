@@ -8967,6 +8967,117 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun sample_mode_defaults_to_winui_and_explicit_disable_selects_no_winui_without_app_sdk_packages() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-sample-mode-plugin-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-sample-mode-plugin-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "io.github.compose-fluent.winrt"
+            }
+
+            def winuiEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWinUI")
+                .map { it.toBoolean() }
+                .orElse(true)
+            def windowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
+                .orElse("2.1.3")
+
+            kotlin {
+                jvm("winuiJvm")
+                mingwX64()
+                sourceSets {
+                    winuiMain.kotlin.srcDir("src/winuiMain/kotlin")
+                    if (!winuiEnabled.get()) {
+                        winuiMain.kotlin.setSrcDirs([])
+                        noWinuiMain {
+                            dependsOn(commonMain)
+                        }
+                        winuiJvmMain.dependsOn(noWinuiMain)
+                        mingwX64Main.dependsOn(noWinuiMain)
+                    }
+                }
+            }
+
+            winRT {
+                if (winuiEnabled.get()) {
+                    nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion.get()) {
+                        generateProjection = false
+                    }
+                    nugetPackage("WinUIEssential.WinUI3", "1.6.7") {
+                        generateProjection = false
+                    }
+                }
+            }
+
+            tasks.register("printSampleMode") {
+                doLast {
+                    def noWinuiMain = kotlin.sourceSets.findByName("noWinuiMain")
+                    def winuiMain = kotlin.sourceSets.getByName("winuiMain")
+                    def winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
+                    def mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
+                    def packageIds = winRT.nugetPackages.collect { it.packageId }
+                    println("SAMPLE_MODE=" + (winuiEnabled.get() ? "winui" : "no-winui"))
+                    println("NO_WINUI_SOURCE_SET=" + (noWinuiMain != null))
+                    println("JVM_USES_NO_WINUI=" + (noWinuiMain != null && winuiJvmMain.dependsOn.contains(noWinuiMain)))
+                    println("MINGW_USES_NO_WINUI=" + (noWinuiMain != null && mingwX64Main.dependsOn.contains(noWinuiMain)))
+                    println("WINUI_USER_SOURCES=" + winuiMain.kotlin.srcDirs.findAll {
+                        it.path.replace('\\', '/').endsWith('src/winuiMain/kotlin')
+                    })
+                    println("SAMPLE_NUGET_PACKAGES=" + packageIds)
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val defaultResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("printSampleMode", "--stacktrace")
+            .build()
+        assertTrue(defaultResult.output.contains("SAMPLE_MODE=winui"))
+        assertTrue(defaultResult.output.contains("NO_WINUI_SOURCE_SET=false"))
+        assertFalse(defaultResult.output.contains("WINUI_USER_SOURCES=[]"))
+        assertTrue(
+            defaultResult.output.contains(
+                "SAMPLE_NUGET_PACKAGES=[Microsoft.WindowsAppSDK, WinUIEssential.WinUI3]",
+            ),
+        )
+
+        val disabledResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("printSampleMode", "-PkotlinWinRT.samples.enableWinUI=false", "--stacktrace")
+            .build()
+        assertTrue(disabledResult.output.contains("SAMPLE_MODE=no-winui"))
+        assertTrue(disabledResult.output.contains("NO_WINUI_SOURCE_SET=true"))
+        assertTrue(disabledResult.output.contains("JVM_USES_NO_WINUI=true"))
+        assertTrue(disabledResult.output.contains("MINGW_USES_NO_WINUI=true"))
+        assertTrue(disabledResult.output.contains("WINUI_USER_SOURCES=[]"))
+        assertTrue(disabledResult.output.contains("SAMPLE_NUGET_PACKAGES=[]"))
+    }
+
+    @Test
     fun multiplatform_jvm_authoring_identity_uses_target_jar_archive_file_name() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-identity-artifact-test-")
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
@@ -10866,7 +10977,9 @@ class KotlinWinRTPluginTest {
 
     @Test
     fun multiplatform_mingw_application_package_stages_release_executable_at_root() {
-        val projectDir = Files.createTempDirectory("kotlin-winrt-mingw-package-test-")
+        val fixtureRoot = repositoryRoot().resolve("winrt-gradle-plugin/build/test-fixtures")
+        Files.createDirectories(fixtureRoot)
+        val projectDir = Files.createTempDirectory(fixtureRoot, "kotlin-winrt-mingw-package-test-")
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),

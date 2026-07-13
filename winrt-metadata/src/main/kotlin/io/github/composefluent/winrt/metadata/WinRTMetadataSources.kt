@@ -354,20 +354,96 @@ object WinRTNuGetPackageResolver {
         rootIdentity: WinRTNuGetPackageIdentity,
         globalPackagesRoots: List<Path> = globalPackagesRoots(),
     ): List<WinRTNuGetResolvedPackage> {
-        val queue = ArrayDeque(listOf(rootIdentity))
+        val queue = ArrayDeque(listOf(NuGetPackageRequest(rootIdentity, isDependency = false)))
         val visited = linkedSetOf<String>()
+        val resolvedByPackageId = mutableMapOf<String, WinRTNuGetResolvedPackage>()
         val resolved = mutableListOf<WinRTNuGetResolvedPackage>()
         while (queue.isNotEmpty()) {
             val current = queue.removeFirst()
-            val currentResolved = resolve(current, globalPackagesRoots)
+            val requestedPackageIdKey = current.identity.normalizedPackageId.lowercase()
+            if (current.isDependency) {
+                resolvedByPackageId[requestedPackageIdKey]?.let { selected ->
+                    val constraint = NuGetVersionConstraint.parse(current.identity.version)
+                    val selectedVersion = requireNotNull(NuGetVersion.parse(selected.identity.normalizedVersion)) {
+                        "Selected NuGet package ${selected.identity.normalizedPackageId} has an invalid version " +
+                            "${selected.identity.normalizedVersion}."
+                    }
+                    if (!constraint.accepts(selectedVersion)) {
+                        val conflicting = resolveDependency(current.identity, globalPackagesRoots)
+                        throw IllegalArgumentException(
+                            "NuGet dependency closure selected conflicting versions of " +
+                                "${current.identity.normalizedPackageId}: nearest version " +
+                                "${selected.identity.normalizedVersion} at ${selected.packageRoot} and " +
+                                "${conflicting.identity.normalizedVersion} at ${conflicting.packageRoot} for " +
+                                "constraint ${current.identity.version}.",
+                        )
+                    }
+                    continue
+                }
+            }
+            val currentResolved = if (current.isDependency) {
+                resolveDependency(current.identity, globalPackagesRoots)
+            } else {
+                resolve(current.identity, globalPackagesRoots)
+            }
             val key = nuGetCanonicalPathKey(currentResolved.packageRoot)
+            val packageIdKey = currentResolved.identity.normalizedPackageId.lowercase()
+            val existing = resolvedByPackageId[packageIdKey]
+            require(existing == null || nuGetCanonicalPathKey(existing.packageRoot) == key) {
+                "NuGet dependency closure selected conflicting versions of ${currentResolved.identity.normalizedPackageId}: " +
+                    "${existing!!.identity.normalizedVersion} at ${existing.packageRoot} and " +
+                    "${currentResolved.identity.normalizedVersion} at ${currentResolved.packageRoot}."
+            }
+            resolvedByPackageId.putIfAbsent(packageIdKey, currentResolved)
             if (!visited.add(key)) {
                 continue
             }
             resolved += currentResolved
-            currentResolved.dependencies.forEach(queue::add)
+            currentResolved.dependencies.forEach { dependency ->
+                queue.add(NuGetPackageRequest(dependency, isDependency = true))
+            }
         }
         return resolved
+    }
+
+    private fun resolveDependency(
+        identity: WinRTNuGetPackageIdentity,
+        globalPackagesRoots: List<Path>,
+    ): WinRTNuGetResolvedPackage {
+        val root = dependencyPackageRoot(identity, globalPackagesRoots)
+        return resolvePackageRoot(root)
+    }
+
+    private fun dependencyPackageRoot(
+        identity: WinRTNuGetPackageIdentity,
+        globalPackagesRoots: List<Path>,
+    ): Path {
+        val constraint = NuGetVersionConstraint.parse(identity.version)
+        val packageDirectoryName = identity.normalizedPackageId.lowercase()
+        val candidates = globalPackagesRoots.flatMap { root ->
+            val packageRoot = root.resolve(packageDirectoryName)
+            if (!packageRoot.isDirectory()) {
+                emptyList()
+            } else {
+                Files.list(packageRoot).use { versions ->
+                    versions.iterator().asSequence()
+                        .filter(Path::isDirectory)
+                        .mapNotNull { path ->
+                            NuGetVersion.parse(path.fileName.toString())?.let { version -> version to path }
+                        }
+                        .toList()
+                }
+            }
+        }
+        return candidates
+            .filter { (version) -> constraint.accepts(version) }
+            .minWithOrNull(compareBy<Pair<NuGetVersion, Path>> { it.first }.thenBy { it.second.toString() })
+            ?.second
+            ?.let(::nuGetCanonicalizePath)
+            ?: throw IllegalArgumentException(
+                "NuGet dependency ${identity.normalizedPackageId}@${identity.version} was not found in global packages roots: " +
+                    globalPackagesRoots.joinToString(),
+            )
     }
 
     fun dependencies(packageRoot: Path): List<WinRTNuGetPackageIdentity> {
@@ -388,6 +464,120 @@ object WinRTNuGetPackageResolver {
                 add(WinRTNuGetPackageIdentity(id, version))
             }
         }.distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
+    }
+
+    private data class NuGetPackageRequest(
+        val identity: WinRTNuGetPackageIdentity,
+        val isDependency: Boolean,
+    )
+
+    private data class NuGetVersionConstraint(
+        val lower: NuGetVersion?,
+        val lowerInclusive: Boolean,
+        val upper: NuGetVersion?,
+        val upperInclusive: Boolean,
+    ) {
+        fun accepts(version: NuGetVersion): Boolean {
+            if (lower != null) {
+                val comparison = version.compareTo(lower)
+                if (comparison < 0 || (comparison == 0 && !lowerInclusive)) {
+                    return false
+                }
+            }
+            if (upper != null) {
+                val comparison = version.compareTo(upper)
+                if (comparison > 0 || (comparison == 0 && !upperInclusive)) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        companion object {
+            fun parse(value: String): NuGetVersionConstraint {
+                val trimmed = value.trim()
+                if (',' !in trimmed) {
+                    val exact = trimmed.startsWith("[") && trimmed.endsWith("]")
+                    val version = NuGetVersion.parse(trimmed.trim('[', ']', '(', ')'))
+                        ?: throw IllegalArgumentException("Unsupported NuGet dependency version constraint: $value")
+                    return if (exact) {
+                        NuGetVersionConstraint(version, true, version, true)
+                    } else {
+                        NuGetVersionConstraint(version, true, null, false)
+                    }
+                }
+
+                require(
+                    (trimmed.startsWith("[") || trimmed.startsWith("(")) &&
+                        (trimmed.endsWith("]") || trimmed.endsWith(")")),
+                ) {
+                    "Unsupported NuGet dependency version constraint: $value"
+                }
+                val bounds = trimmed.substring(1, trimmed.length - 1).split(',', limit = 2)
+                val lower = bounds[0].trim().takeIf(String::isNotEmpty)?.let(NuGetVersion::parse)
+                val upper = bounds[1].trim().takeIf(String::isNotEmpty)?.let(NuGetVersion::parse)
+                return NuGetVersionConstraint(
+                    lower = lower,
+                    lowerInclusive = trimmed.startsWith("["),
+                    upper = upper,
+                    upperInclusive = trimmed.endsWith("]"),
+                )
+            }
+        }
+    }
+
+    private data class NuGetVersion(
+        val release: List<Int>,
+        val prerelease: List<String>,
+    ) : Comparable<NuGetVersion> {
+        override fun compareTo(other: NuGetVersion): Int {
+            repeat(maxOf(release.size, other.release.size)) { index ->
+                val comparison = (release.getOrNull(index) ?: 0).compareTo(other.release.getOrNull(index) ?: 0)
+                if (comparison != 0) {
+                    return comparison
+                }
+            }
+            if (prerelease.isEmpty() || other.prerelease.isEmpty()) {
+                return when {
+                    prerelease.isEmpty() && other.prerelease.isNotEmpty() -> 1
+                    prerelease.isNotEmpty() && other.prerelease.isEmpty() -> -1
+                    else -> 0
+                }
+            }
+            repeat(maxOf(prerelease.size, other.prerelease.size)) { index ->
+                val left = prerelease.getOrNull(index) ?: return -1
+                val right = other.prerelease.getOrNull(index) ?: return 1
+                val leftNumber = left.toIntOrNull()
+                val rightNumber = right.toIntOrNull()
+                val comparison = when {
+                    leftNumber != null && rightNumber != null -> leftNumber.compareTo(rightNumber)
+                    leftNumber != null -> -1
+                    rightNumber != null -> 1
+                    else -> left.compareTo(right, ignoreCase = true)
+                }
+                if (comparison != 0) {
+                    return comparison
+                }
+            }
+            return 0
+        }
+
+        companion object {
+            fun parse(value: String): NuGetVersion? {
+                val versionAndPrerelease = value.substringBefore('+').split('-', limit = 2)
+                val release = versionAndPrerelease[0]
+                    .split('.')
+                    .map { it.toIntOrNull() ?: return null }
+                if (release.isEmpty()) {
+                    return null
+                }
+                val prerelease = versionAndPrerelease.getOrNull(1)
+                    ?.split('.', '-')
+                    ?.filter(String::isNotEmpty)
+                    .orEmpty()
+                return NuGetVersion(release, prerelease)
+            }
+        }
     }
 
     private fun packageIdentity(packageRoot: Path): WinRTNuGetPackageIdentity {
