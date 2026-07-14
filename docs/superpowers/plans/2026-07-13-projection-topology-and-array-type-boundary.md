@@ -32,7 +32,7 @@
 - Produces: `validateDependencyProjectionIdentityOwnership(identityFiles: Iterable<File>)`.
 - Consumes: `readProjectionSurfaceIdentity(File)`.
 
-- [ ] **Step 1: Add a failing duplicate-owner test**
+- [x] **Step 1: Add a failing duplicate-owner test**
 
 Create two identity JSON files that both claim `Windows.UI.Xaml.Data.BindableAttribute`. Assert the new validator fails and names the type plus both files. Add a disjoint control case that succeeds.
 
@@ -43,7 +43,7 @@ val failure = assertFailsWith<IllegalStateException> {
 assertTrue(failure.message.orEmpty().contains("Windows.UI.Xaml.Data.BindableAttribute"))
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 ./gradlew.bat -p winrt-gradle-plugin :test --tests "*dependency_projection_identity*" --rerun-tasks --max-workers=1
@@ -51,7 +51,7 @@ assertTrue(failure.message.orEmpty().contains("Windows.UI.Xaml.Data.BindableAttr
 
 Expected: FAIL because projected dependency owners are currently unioned.
 
-- [ ] **Step 3: Implement one ownership validator**
+- [x] **Step 3: Implement one ownership validator**
 
 ```kotlin
 internal fun validateDependencyProjectionIdentityOwnership(identityFiles: Iterable<File>) {
@@ -71,7 +71,7 @@ internal fun validateDependencyProjectionIdentityOwnership(identityFiles: Iterab
 
 Call it before dependency-owned suppression and reuse it from source-addition collection.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```powershell
 ./gradlew.bat -p winrt-gradle-plugin :test --tests "*dependency_projection_identity*" --tests "*dependency_owned_projection*" --max-workers=1
@@ -102,7 +102,7 @@ git commit -m "fix(gradle): reject conflicting projection identities"
 - Reads `commonMainApi` as real public dependencies.
 - Produces `auditGeneratedWinRTProjectionOutput` and `validatePrebuiltProjectionPublication` tasks.
 
-- [ ] **Step 1: Add a failing TestKit fixture**
+- [x] **Step 1: Add a failing TestKit fixture**
 
 Create `sdk` and `projection` projects. Apply `winrt.prebuilt-projection` and declare:
 
@@ -114,7 +114,7 @@ dependencies {
 
 Assert the SDK project appears in `kotlinWinRTLibraryDependencyIdentity`, `check` depends on the generated-output audit, and the publication validator exists. Add a POM fixture proving compile-only references are absent while `commonMainApi` dependencies use compile scope.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 ./gradlew.bat -p kotlin-winrt-build-convention test --tests "*WinRTPrebuiltProjectionConventionPluginTest*" --rerun-tasks --max-workers=1
@@ -122,7 +122,7 @@ Assert the SDK project appears in `kotlinWinRTLibraryDependencyIdentity`, `check
 
 Expected: FAIL because the plugin does not exist.
 
-- [ ] **Step 3: Register and implement the convention**
+- [x] **Step 3: Register and implement the convention**
 
 Register in `kotlin-winrt-build-convention/build.gradle.kts`:
 
@@ -139,13 +139,13 @@ gradlePlugin {
 
 The convention applies `build-convention` and `winrt.publish`. Prebuilt modules continue to apply `io.github.compose-fluent.winrt` explicitly; the convention uses `pluginManager.withPlugin("io.github.compose-fluent.winrt")` to lazily mirror `commonMainCompileOnly` project dependencies into the existing identity configuration, register both validation tasks, and wire the audit into `check`. The convention build must not depend on or include the public plugin build, and it must not use `evaluationDependsOn`.
 
-- [ ] **Step 4: Move publication/output validation**
+- [x] **Step 4: Move publication/output validation**
 
 Move repository-specific split POM/module validation from `winrt-gradle-plugin` into `ValidatePrebuiltProjectionPublicationTask`. The task checks JVM, mingw, and KMP metadata and derives required API modules from `commonMainApi`.
 
 Move generated-source and prebuilt cross-artifact class checking from `ValidateGeneratedWinRTProjectionOutputTask` into `ValidatePrebuiltProjectionOutputTask`. Its comparison set is the current artifact plus direct compile-only/API project references, never a hand-maintained peer graph. Update the root projection smoke module to use the convention-build task type as well.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 ```powershell
 ./gradlew.bat -p kotlin-winrt-build-convention test --max-workers=1
@@ -173,7 +173,7 @@ git commit -m "build: centralize prebuilt projection conventions"
 - App SDK alone publishes WebView2 through `commonMainApi`.
 - Legal compositions: SDK + Windows.UI.Xaml; SDK + WebView2 + App SDK.
 
-- [ ] **Step 1: Add failing publication/family tests**
+- [x] **Step 1: Add failing publication/family tests**
 
 Assert:
 
@@ -186,7 +186,7 @@ SDK + WebView2 + App SDK: valid
 Windows.UI.Xaml + App SDK: duplicate identity owner failure
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 ./gradlew.bat validateWinRTSplitProjectionPublication --rerun-tasks --max-workers=1
@@ -194,7 +194,7 @@ Windows.UI.Xaml + App SDK: duplicate identity owner failure
 
 Expected: FAIL because current publications bind Windows SDK and the XAML filters hide the family conflict.
 
-- [ ] **Step 3: Simplify prebuilt scripts**
+- [x] **Step 3: Simplify prebuilt scripts**
 
 Apply `id("winrt.prebuilt-projection")`. Remove per-module `evaluationDependsOn`, manual identity additions, `pom.withXml`, audit registration, `check` wiring, SDK project version mutation, and local `projectionArtifactVersion` definitions.
 
@@ -213,15 +213,15 @@ dependencies {
 }
 ```
 
-- [ ] **Step 4: Restore XAML independence**
+- [x] **Step 4: Restore XAML independence**
 
 Remove the `BindableAttribute` and `ContentPropertyAttribute` exclusions from `windows-ui-xaml`. Keep only `.cswinrt`-aligned exclusions and the separately tracked Maps collision. Do not make App SDK and Windows.UI.Xaml dependencies of each other.
 
-- [ ] **Step 5: Simplify consumers**
+- [x] **Step 5: Simplify consumers**
 
 Remove all explicit `kotlinWinRTLibraryDependencyIdentity` declarations. Each non-SDK consumer independently declares its selected SDK coordinate plus its target coordinate. App SDK receives WebView2 transitively.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ```powershell
 ./gradlew.bat -I gradle/nuget-root.init.gradle validateWinRTSplitProjectionPublication --max-workers=1
@@ -254,7 +254,7 @@ git commit -m "fix(projections): restore independent xaml families"
 - Produces `Marshaler.inspectableArray(elementType: KClass<*>): Marshaler<Any?>` and reified convenience `Marshaler.inspectableArray<T>()`.
 - `inspectableAny()` remains dynamic and supplies no declared element type.
 
-- [ ] **Step 1: Add failing common tests**
+- [x] **Step 1: Add failing common tests**
 
 Cover explicit `Any`, explicit `Int`, dynamic homogeneous, dynamic heterogeneous, empty, and all-null arrays. Add a source audit that rejects `.componentType`, `.javaClass`, and `type.java` in reference-array classification.
 
@@ -265,7 +265,7 @@ assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(emptyArray<Any?>(), 
 assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(arrayOf<Any?>(1, "text"), null))
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 ./gradlew.bat :winrt-runtime:jvmTest --tests "*ValueBoxingTest*reference*array*" --rerun-tasks --max-workers=1
@@ -274,7 +274,7 @@ assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(arrayOf<Any?>(1, "te
 
 Expected: FAIL because explicit typing does not exist and JVM reflection remains.
 
-- [ ] **Step 3: Remove expect/actual reflection**
+- [x] **Step 3: Remove expect/actual reflection**
 
 Delete the three component-type files. `WinRTTypeClassifier.arrayElementType` retains primitive arrays only. Implement one shared classifier:
 
@@ -291,15 +291,15 @@ private fun classifyReferenceArray(value: Array<*>, declaredElementType: KClass<
 }
 ```
 
-- [ ] **Step 4: Carry explicit metadata through marshaling**
+- [x] **Step 4: Carry explicit metadata through marshaling**
 
 Add explicit and reified `inspectableArray` factories. The selected descriptor must drive the reference-array IID, `IPropertyValue` array type, and runtime class name through synthetic CCW creation. Do not infer from the runtime array class.
 
-- [ ] **Step 5: Update generated known-array paths**
+- [x] **Step 5: Update generated known-array paths**
 
 Render `Marshaler.inspectableArray<QualifiedElementType>()` whenever generator/authoring metadata knows a reference-array element type. Keep `inspectableAny()` only for truly dynamic `Any?`.
 
-- [ ] **Step 6: Verify parity and commit**
+- [x] **Step 6: Verify parity and commit**
 
 ```powershell
 ./gradlew.bat :winrt-runtime:jvmTest :winrt-runtime:mingwX64Test :winrt-generator:test --max-workers=1
@@ -314,11 +314,13 @@ git commit -m "fix(runtime): make reference array typing explicit"
 - Modify: this plan file
 - Modify: `PLAN.md`
 
-- [ ] **Step 1: Update aggregate validation**
+- [x] **Step 1: Update aggregate validation**
 
 The final gate must include convention tests, public plugin tests, identity conflict coverage, both legal projection families, invalid mixed-family validation, JVM/Native runtime tests, generator tests, publication metadata, and WinUI/non-WinUI sample compiles.
 
-- [ ] **Step 2: Run the complete Windows gate**
+The nested no-WinUI sample build uses a 768 MiB Gradle heap with one tier-1 compiler so it cannot reserve a second 4 GiB daemon while included-build validation is resident.
+
+- [x] **Step 2: Run the complete Windows gate**
 
 ```powershell
 $env:NUGET_PACKAGES='F:\Dependencies\nuget'
@@ -328,7 +330,7 @@ $env:KONAN_DATA_DIR='C:\Users\Sanlorng\.konan'
 
 Expected: `BUILD SUCCESSFUL`; the invalid family fixture fails only inside its expected-failure validator.
 
-- [ ] **Step 3: Audit source and publication boundaries**
+- [x] **Step 3: Audit source and publication boundaries**
 
 ```powershell
 git diff --check
@@ -338,7 +340,7 @@ rg -n "componentType|javaClass|type\.java" winrt-runtime/src -g '*.kt'
 
 Expected: no prebuilt-script duplication and no reference-array Java reflection.
 
-- [ ] **Step 4: Complete plan and commit**
+- [x] **Step 4: Complete plan and commit**
 
 Mark this plan and Review-Followup-01 complete.
 

@@ -894,6 +894,59 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun identity_elements_follow_kmp_producer_plugin_applied_after_dependency_declaration() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val producer = ProjectBuilder.builder().withName("producer").withParent(root).build()
+        val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
+
+        consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.dependencies.add(
+            "commonMainApi",
+            consumer.dependencies.project(mapOf("path" to ":producer")),
+        )
+
+        val identityElements = consumer.configurations
+            .getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
+        assertTrue(identityElements.dependencies.isEmpty())
+
+        producer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+
+        assertEquals(
+            listOf(":producer"),
+            identityElements.dependencies.filterIsInstance<ProjectDependency>().map { it.path },
+        )
+    }
+
+    @Test
+    fun identity_elements_exclude_unverified_kmp_runtime_project_dependency() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        ProjectBuilder.builder().withName("runtime").withParent(root).build()
+        val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
+
+        consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.dependencies.add(
+            "commonMainApi",
+            consumer.dependencies.project(mapOf("path" to ":runtime")),
+        )
+
+        val identityElements = consumer.configurations
+            .getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
+            .dependencies
+            .filterIsInstance<ProjectDependency>()
+            .map { it.path }
+        val identityDependencies = consumer.configurations
+            .getByName("kotlinWinRTLibraryDependencyIdentity")
+            .dependencies
+            .filterIsInstance<ProjectDependency>()
+            .map { it.path }
+
+        assertTrue(identityElements.isEmpty())
+        assertEquals(listOf(":runtime"), identityDependencies)
+    }
+
+    @Test
     fun forwarding_library_identity_forwards_dependencies_without_authored_validation_cycle() {
         val root = ProjectBuilder.builder().withName("root").build()
         val producer = ProjectBuilder.builder().withName("producer").withParent(root).build()
