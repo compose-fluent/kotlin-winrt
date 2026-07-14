@@ -2064,16 +2064,26 @@ private fun configureWinRTIdentityProjectDependencies(
     fun canRegisterIdentityDependency(): Boolean =
         identityDependencies.state == org.gradle.api.artifacts.Configuration.State.UNRESOLVED
 
-    fun registerDependency(dependency: ProjectDependency) {
-        if (!canRegisterIdentityDependency()) {
+    fun registerKnownWinRTProjectDependency(dependency: ProjectDependency) {
+        if (!canRegisterIdentityDependency() || !registeredProjectPaths.add(dependency.path)) {
             return
         }
+        identityDependencies.dependencies.add(dependency.copy())
+    }
+
+    fun registerDependency(
+        dependency: ProjectDependency,
+        allowUnverifiedKmpProducer: Boolean,
+    ) {
         val dependencyProject = project.findProject(dependency.path)
-        if ((includeExternalModules || dependencyProject?.hasKotlinWinRTIdentityMetadata() == true) &&
-            registeredProjectPaths.add(dependency.path)
-        ) {
-            identityDependencies.dependencies.add(dependency.copy())
+        if (allowUnverifiedKmpProducer || dependencyProject?.hasKotlinWinRTIdentityMetadata() == true) {
+            registerKnownWinRTProjectDependency(dependency)
         }
+        dependencyProject?.plugins?.withType(KotlinWinRTPlugin::class.java)?.all(
+            Action {
+                registerKnownWinRTProjectDependency(dependency)
+            },
+        )
     }
     fun registerDependency(dependency: ExternalModuleDependency) {
         if (!canRegisterIdentityDependency()) {
@@ -2100,7 +2110,11 @@ private fun configureWinRTIdentityProjectDependencies(
         }
         configuration.dependencies.all { dependency ->
             when (dependency) {
-                is ProjectDependency -> registerDependency(dependency)
+                is ProjectDependency -> registerDependency(
+                    dependency = dependency,
+                    allowUnverifiedKmpProducer = includeExternalModules && configuration.name
+                        .isKotlinMultiplatformWinRTIdentitySourceConfiguration(),
+                )
                 is ExternalModuleDependency -> if (includeExternalModules) registerDependency(dependency)
             }
         }
@@ -2111,12 +2125,15 @@ private fun configureWinRTIdentityProjectDependencies(
 private fun String.isWinRTIdentityDependencySourceConfiguration(): Boolean =
     this == "api" ||
         this == "implementation" ||
-        ("Main" in this && (
-            endsWith("Api") ||
-                endsWith("Implementation") ||
-                endsWith("ApiMetadata") ||
-                endsWith("ImplementationMetadata")
-            ))
+        isKotlinMultiplatformWinRTIdentitySourceConfiguration()
+
+private fun String.isKotlinMultiplatformWinRTIdentitySourceConfiguration(): Boolean =
+    "Main" in this && (
+        endsWith("Api") ||
+            endsWith("Implementation") ||
+            endsWith("ApiMetadata") ||
+            endsWith("ImplementationMetadata")
+        )
 
 internal fun kotlinWinRTIdentityExternalModuleNames(moduleName: String): List<String> {
     val rootModuleName = kotlinTargetModuleSuffixes.firstNotNullOfOrNull { suffix ->

@@ -337,6 +337,13 @@ val validateWinRTNoWinUISampleMode by tasks.registering(Exec::class) {
     val nugetRootInitScript = rootProject.file("gradle/nuget-root.init.gradle")
     val nugetPackagesRoot = providers.environmentVariable("NUGET_PACKAGES")
         .orElse(rootProject.layout.projectDirectory.dir(".gradle/nuget-packages").asFile.absolutePath)
+    val nestedGradleJvmArgs = listOf(
+        "-Xmx768m",
+        "-XX:+UseSerialGC",
+        "-XX:CICompilerCount=1",
+        "-XX:TieredStopAtLevel=1",
+        "-Dfile.encoding=UTF-8",
+    ).joinToString(" ")
     commandLine(
         "cmd",
         "/c",
@@ -347,6 +354,7 @@ val validateWinRTNoWinUISampleMode by tasks.registering(Exec::class) {
         "--no-daemon",
         "--max-workers=1",
         "--console=plain",
+        "-Dorg.gradle.jvmargs=$nestedGradleJvmArgs",
         "-I",
         nugetRootInitScript.absolutePath,
         "-Pkotlin.compiler.execution.strategy=in-process",
@@ -367,6 +375,7 @@ tasks.register("validateProjectReviewRemediation") {
     dependsOn(":winrt-compiler-plugin:test")
     dependsOn(":winrt-authoring:jvmTest")
     dependsOn(":winrt-authoring:mingwX64Test")
+    dependsOn(gradle.includedBuild("kotlin-winrt-build-convention").task(":test"))
     dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
     dependsOn(":winrt-projections:windows-ui-xaml:auditGeneratedWinRTProjectionOutput")
     dependsOn(":winrt-projections:windows-app-sdk:auditGeneratedWinRTProjectionOutput")
