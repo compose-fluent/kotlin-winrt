@@ -25,4 +25,20 @@ class ValueBoxingNativeTest {
         assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(empty))
         assertEquals(IID.IReferenceArrayOfObject, ValueBoxingMetadata.referenceArrayInterfaceIdForValue(empty))
     }
+
+    @Test
+    fun single_reference_array_registration_does_not_type_erased_reference_arrays() {
+        TypeNameSupport.clearRegistriesForTests()
+        try {
+            val registeredArrayType = emptyArray<String>()::class
+            val typeOnlyArrayType = emptyArray<Any?>()::class
+            assertEquals<kotlin.reflect.KClass<*>>(registeredArrayType, typeOnlyArrayType)
+
+            TypeNameSupport.registerReferenceArrayType(String::class, registeredArrayType)
+
+            assertNull(TypeNameSupport.registeredReferenceArrayElementType(typeOnlyArrayType))
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
 }

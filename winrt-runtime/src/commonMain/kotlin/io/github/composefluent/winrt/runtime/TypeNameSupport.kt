@@ -19,6 +19,10 @@ object TypeNameSupport {
 
     private val registeredProjectionTypes = ConcurrentCacheMap<String, KClass<*>>()
     private val registeredReferenceArrayTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
+    private val registeredReferenceArrayElementTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
+    private val ambiguousReferenceArrayTypes = ConcurrentCacheSet<KClass<*>>()
+    private val erasedReferenceArrayType = emptyArray<Any?>()::class
+    private val registeredReferenceArrayTypesLock = PlatformLock()
     private val projectionTypeNameToBaseTypeNameMappingsLock = PlatformLock()
     private val projectionTypeNameToBaseTypeNameMappings = mutableListOf<Map<String, String>>()
     private val typeNameCache = ConcurrentCacheMap<String, TypeLookupResult>()
@@ -81,7 +85,24 @@ object TypeNameSupport {
     ) {
         typeNameCache.clear()
         registeredReferenceArrayTypes[elementType] = arrayType
+        registeredReferenceArrayTypesLock.withLock {
+            if (arrayType == erasedReferenceArrayType) {
+                registeredReferenceArrayElementTypes.remove(arrayType)
+                ambiguousReferenceArrayTypes.add(arrayType)
+            } else if (arrayType !in ambiguousReferenceArrayTypes) {
+                val existing = registeredReferenceArrayElementTypes[arrayType]
+                if (existing == null || existing == elementType) {
+                    registeredReferenceArrayElementTypes[arrayType] = elementType
+                } else {
+                    registeredReferenceArrayElementTypes.remove(arrayType)
+                    ambiguousReferenceArrayTypes.add(arrayType)
+                }
+            }
+        }
     }
+
+    internal fun registeredReferenceArrayElementType(arrayType: KClass<*>): KClass<*>? =
+        registeredReferenceArrayElementTypes[arrayType]
 
     internal fun findRcwKClassByNameCached(
         runtimeClassName: String,
@@ -157,6 +178,8 @@ object TypeNameSupport {
     internal fun clearRegistriesForTests() {
         registeredProjectionTypes.clear()
         registeredReferenceArrayTypes.clear()
+        registeredReferenceArrayElementTypes.clear()
+        ambiguousReferenceArrayTypes.clear()
         projectionTypeNameToBaseTypeNameMappingsLock.withLock {
             projectionTypeNameToBaseTypeNameMappings.clear()
         }
@@ -195,10 +218,10 @@ object TypeNameSupport {
             ?: registeredReferenceArrayTypes[elementType]
 
     private fun referenceArrayRuntimeClassName(type: KClass<*>): String? {
-        if (arrayElementType(type) == null) {
-            return null
-        }
-        return WinRTValueBoxing.boxedRuntimeClassNameForType(type)
+        val elementType = WinRTTypeClassifier.primitiveArrayElementType(type)
+            ?: registeredReferenceArrayElementType(type)
+            ?: return null
+        return WinRTValueBoxing.boxedRuntimeClassNameForReferenceArrayElementType(elementType)
     }
 
     // Kotlin common KClass does not preserve Array<T>'s element type. Match CsWinRT's

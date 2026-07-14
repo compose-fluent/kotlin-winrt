@@ -41,9 +41,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    @Test
+    fun generator_emits_explicit_element_metadata_for_known_reference_arrays() {
+        val expression = KotlinProjectionRenderer()
+            .nonBlittableArrayElementMarshalerExpression(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.Object,
+                    typeName = "System.Object",
+                ),
+            )
+            .toString()
+
+        assertTrue(expression, expression.contains("Marshaler.inspectableArray<kotlin.Any>()"))
+        assertFalse(expression, expression.contains("inspectableAny()"))
+    }
+
+    @Test
+    fun reference_array_classification_source_has_no_jvm_reflection_boundary() {
+        val repositoryRoot = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+            .first { Files.isDirectory(it.resolve("winrt-runtime")) }
+        val sourceFiles = listOf(
+            repositoryRoot.resolve("winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRTTypeClassifier.kt"),
+            repositoryRoot.resolve("winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/ValueBoxingMetadata.kt"),
+            repositoryRoot.resolve("winrt-runtime/src/jvmMain/kotlin/io/github/composefluent/winrt/runtime/ReferenceArrayComponentType.jvm.kt"),
+        ).filter(Files::exists)
+        val classificationSource = sourceFiles.joinToString("\n") { Files.readString(it) }
+
+        listOf(".componentType", ".javaClass", "type.java").forEach { forbidden ->
+            assertFalse("Reference-array classification must not contain '$forbidden'.", classificationSource.contains(forbidden))
+        }
+    }
+
     private fun composableFactory(interfaceName: String, isVisible: Boolean = true): WinRTAttributedFactoryShape =
         WinRTAttributedFactoryShape(
             interfaceName = interfaceName,

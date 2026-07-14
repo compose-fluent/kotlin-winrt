@@ -6,17 +6,26 @@ internal object WinRTValueBoxing {
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
         ValueBoxingMetadata.boxedRuntimeClassNameForType(type)
 
-    fun boxedRuntimeClassNameForValue(value: Any): String? =
-        ValueBoxingMetadata.boxedRuntimeClassNameForValue(value)
+    fun boxedRuntimeClassNameForValue(
+        value: Any,
+        declaredElementType: KClass<*>? = null,
+    ): String? = ValueBoxingMetadata.boxedRuntimeClassNameForValue(value, declaredElementType)
 
     fun boxedRuntimeClassNameForReferenceArrayInterface(interfaceId: Guid): String? =
         ValueBoxingMetadata.boxedRuntimeClassNameForReferenceArrayInterface(interfaceId)
 
-    fun isPropertyValueCompatible(value: Any): Boolean =
-        ValueBoxingMetadata.isPropertyValueCompatible(value)
+    fun boxedRuntimeClassNameForReferenceArrayElementType(elementType: KClass<*>): String? =
+        ValueBoxingMetadata.boxedRuntimeClassNameForReferenceArrayElementType(elementType)
 
-    fun propertyTypeOf(value: Any): PropertyType =
-        ValueBoxingMetadata.propertyTypeOf(value)
+    fun isPropertyValueCompatible(
+        value: Any,
+        declaredElementType: KClass<*>? = null,
+    ): Boolean = ValueBoxingMetadata.isPropertyValueCompatible(value, declaredElementType)
+
+    fun propertyTypeOf(
+        value: Any,
+        declaredElementType: KClass<*>? = null,
+    ): PropertyType = ValueBoxingMetadata.propertyTypeOf(value, declaredElementType)
 
     fun isNumericScalar(value: Any): Boolean =
         ValueBoxingMetadata.isNumericScalar(value)
@@ -26,8 +35,11 @@ internal object WinRTValueBoxing {
             ValueBoxingInterop.createReferenceInterfaceDefinition(interfaceId, value)
         }
 
-    fun createReferenceArrayInterfaceDefinition(value: Any): WinRTInspectableInterfaceDefinition? =
-        ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
+    fun createReferenceArrayInterfaceDefinition(
+        value: Any,
+        declaredElementType: KClass<*>? = null,
+    ): WinRTInspectableInterfaceDefinition? =
+        ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value, declaredElementType)?.let { interfaceId ->
             ValueBoxingInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
         }
 
@@ -68,8 +80,10 @@ internal object WinRTValueBoxing {
             }
         }
 
-        if (isArrayKClass(projectedType) || WinRTTypeClassifier.primitiveArrayElementType(projectedType) != null) {
-            val elementType = WinRTTypeClassifier.primitiveArrayElementType(projectedType) ?: arrayElementType(projectedType) ?: return null
+        val arrayElementType = WinRTTypeClassifier.primitiveArrayElementType(projectedType)
+            ?: TypeNameSupport.registeredReferenceArrayElementType(projectedType)
+        if (arrayElementType != null) {
+            val elementType = arrayElementType
             val descriptor = ValueBoxingMetadata.descriptorForClass(elementType) ?: return null
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return null
             return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
@@ -117,5 +131,3 @@ internal object WinRTValueBoxing {
             descriptor.fromAbiBits(PlatformAbi.readInt32(resultOut))
         }
 }
-
-private fun isArrayKClass(type: KClass<*>): Boolean = arrayElementType(type) != null

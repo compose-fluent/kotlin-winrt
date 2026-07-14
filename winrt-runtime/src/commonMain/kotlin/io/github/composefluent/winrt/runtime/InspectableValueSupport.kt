@@ -1,12 +1,17 @@
 package io.github.composefluent.winrt.runtime
 
-internal fun createSyntheticValueCcwDefinition(value: Any): WinRTCcwDefinition? {
+import kotlin.reflect.KClass
+
+internal fun createSyntheticValueCcwDefinition(
+    value: Any,
+    declaredReferenceArrayElementType: KClass<*>? = null,
+): WinRTCcwDefinition? {
     val interfaceDefinitions =
         buildList {
-            if (WinRTValueBoxing.isPropertyValueCompatible(value)) {
-                add(createPropertyValueInterfaceDefinition(value))
+            if (WinRTValueBoxing.isPropertyValueCompatible(value, declaredReferenceArrayElementType)) {
+                add(createPropertyValueInterfaceDefinition(value, WinRTValueBoxing.propertyTypeOf(value, declaredReferenceArrayElementType)))
             }
-            WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value)?.let(::add)
+            WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value, declaredReferenceArrayElementType)?.let(::add)
                 ?: WinRTValueBoxing.createReferenceInterfaceDefinition(value)?.let(::add)
         }
     if (interfaceDefinitions.isEmpty()) {
@@ -21,12 +26,15 @@ internal fun createSyntheticValueCcwDefinition(value: Any): WinRTCcwDefinition? 
     return WinRTCcwDefinition(
         interfaceDefinitions = interfaceDefinitions,
         defaultInterfaceId = defaultInterfaceId,
-        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForValue(value),
+        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForValue(value, declaredReferenceArrayElementType),
     )
 }
 
-internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRTCcwDefinition? {
-    createSyntheticValueCcwDefinition(value)?.let { return it }
+internal fun createSyntheticInspectableCcwDefinition(
+    value: Any,
+    declaredReferenceArrayElementType: KClass<*>? = null,
+): WinRTCcwDefinition? {
+    createSyntheticValueCcwDefinition(value, declaredReferenceArrayElementType)?.let { return it }
     if (value is AutoCloseable) {
         return WinRTCcwDefinition(
             interfaceDefinitions = listOf(createClosableInspectableInterfaceDefinition(value)),

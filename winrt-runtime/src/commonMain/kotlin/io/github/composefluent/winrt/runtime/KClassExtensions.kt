@@ -33,7 +33,7 @@ internal fun enumConstants(type: KClass<*>): Array<Any>? =
 internal fun isExceptionType(type: KClass<*>): Boolean =
     type.registeredWinRTType()?.isExceptionType == true
 
-/** Returns the platform-declared array element type when the target preserves that metadata. */
+/** Returns the element type for primitive arrays. Reference arrays require explicit metadata. */
 internal fun arrayElementType(type: KClass<*>): KClass<*>? =
     WinRTTypeClassifier.arrayElementType(type)
 
