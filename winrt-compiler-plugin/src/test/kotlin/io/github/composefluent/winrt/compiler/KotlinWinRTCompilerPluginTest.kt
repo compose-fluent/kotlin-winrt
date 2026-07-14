@@ -513,7 +513,7 @@ class KotlinWinRTCompilerPluginTest {
     }
 
     @Test
-    fun compiler_support_manifest_allows_artifact_scoped_generic_instantiation_class_names() {
+    fun compiler_support_manifest_preserves_artifact_scoped_generic_instantiation_class_names() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-generic-owner-", ".tsv")
         Files.writeString(
             manifest,
@@ -529,10 +529,6 @@ class KotlinWinRTCompilerPluginTest {
         assertEquals(
             "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_sample_lib_jar",
             entries.single().className,
-        )
-        assertEquals(
-            "io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry_sample_lib_jar",
-            genericTypeInstantiationEntryClassName(entries.single().className),
         )
     }
 

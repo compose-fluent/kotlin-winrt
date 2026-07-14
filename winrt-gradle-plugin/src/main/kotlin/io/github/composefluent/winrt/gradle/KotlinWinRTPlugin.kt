@@ -1,8 +1,10 @@
 package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTMetadataFilter
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
+import io.github.composefluent.winrt.metadata.WinRTNamespaceAdditions
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.metadata.projectionInventory
@@ -1057,7 +1059,7 @@ private fun configureWinRTGeneration(
                         task.authoringTypeDetailsOutputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
                     val generatedMingwApplicationEntrySourcesPath =
                         generatedMingwApplicationEntrySources.get().asFile.toPath().toAbsolutePath().normalize()
-                    kotlinMainSourceDirs(project).filterNot { sourceDir ->
+                    kotlinWinRTAuthoringSourceDirs(project).filterNot { sourceDir ->
                         val normalizedSourceDir = sourceDir.toPath().toAbsolutePath().normalize()
                         normalizedSourceDir.startsWith(generatedSourcesPath) ||
                             normalizedSourceDir.startsWith(generatedAuthoringSourcesPath) ||
@@ -1855,7 +1857,11 @@ private fun kotlinWinRTLocalGenerationRequired(
 ): Provider<Boolean> =
     memoizedBooleanProvider(project) {
         try {
-            kotlinWinRTCombinedProjectionHasLocalOutput(extension, dependencyIdentityFiles.files)
+            if (!kotlinWinRTLocalGenerationMetadataPlan(extension, emptySet()).hasLocalProjectionSelection) {
+                false
+            } else {
+                kotlinWinRTCombinedProjectionHasLocalOutput(extension, dependencyIdentityFiles.files)
+            }
         } catch (_: Exception) {
             true
         }
@@ -1882,13 +1888,11 @@ private fun kotlinWinRTCombinedProjectionHasLocalOutput(
     if (kotlinWinRTApplicationPackagingOnly(extension)) {
         return false
     }
-    if (kotlinWinRTExplicitTypeRequestsAreDependencyOwned(extension, dependencyIdentityFiles)) {
-        return false
-    }
-    if (!kotlinWinRTHasLocalProjectionRequest(extension)) {
-        return false
-    }
-    var sources = kotlinWinRTLocalGenerationMetadataSources(extension, dependencyIdentityFiles)
+    kotlinWinRTDependencySuppressedExactTypeInventoryHasLocalOutput(
+        extension = extension,
+        dependencyIdentityFiles = dependencyIdentityFiles,
+    )?.let { return it }
+    var sources = kotlinWinRTLocalGenerationMetadataPlan(extension, dependencyIdentityFiles).sources
     if (sources.isEmpty()) {
         return false
     }
@@ -1955,39 +1959,79 @@ private fun kotlinWinRTApplicationPackagingOnly(extension: BaseWinRTExtension): 
         extension.includeTypes.get().isEmpty() &&
         !extension.generateWindowsSdkProjection.get()
 
-private fun kotlinWinRTHasLocalProjectionRequest(extension: BaseWinRTExtension): Boolean =
-    extension.metadataInputs.get().isNotEmpty() ||
-        extension.includeNamespaces.get().isNotEmpty() ||
-        extension.includeTypes.get().isNotEmpty() ||
-        extension.generateWindowsSdkProjection.get() ||
-        extension.nugetPackages.any { pkg -> pkg.generateProjection }
-
-private fun kotlinWinRTExplicitTypeRequestsAreDependencyOwned(
+private fun kotlinWinRTDependencySuppressedExactTypeInventoryHasLocalOutput(
     extension: BaseWinRTExtension,
     dependencyIdentityFiles: Set<File>,
-): Boolean {
+): Boolean? {
     if (
         extension.metadataInputs.get().isNotEmpty() ||
         extension.includeNamespaces.get().isNotEmpty() ||
         extension.generateWindowsSdkProjection.get() ||
-        extension.nugetPackages.any { pkg -> pkg.generateProjection }
+        extension.windowsSdkVersion.isPresent ||
+        extension.includeWindowsSdkExtensions.get() ||
+        extension.nugetPackages.any { pkg -> pkg.generateProjection } ||
+        extension.excludeNamespaces.get().isNotEmpty() ||
+        extension.excludeTypes.get().isNotEmpty()
     ) {
-        return false
+        return null
     }
-    val includeTypes = extension.includeTypes.get().toSet()
-    if (includeTypes.isEmpty()) {
-        return false
+    val requestedTypes = extension.includeTypes.get().toSet()
+    if (
+        requestedTypes.isEmpty() ||
+        "Microsoft.UI.Xaml.ResourceDictionary" in requestedTypes ||
+        "Windows.UI.Xaml.ResourceDictionary" in requestedTypes
+    ) {
+        return null
     }
-    return dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles).containsAll(includeTypes)
+    val identities = dependencyIdentityFiles
+        .filter(File::isFile)
+        .map(::readProjectionSurfaceIdentity)
+    if (
+        identities.isEmpty() ||
+        identities.any { identity ->
+            identity.projectionShapeVersion != CURRENT_PROJECTION_SHAPE_VERSION || identity.projectedTypes == null
+        }
+    ) {
+        return null
+    }
+    val dependencyProjectedTypes = identities
+        .flatMap(ProjectionSurfaceIdentity::currentShapeProjectedTypes)
+        .toSet()
+    if (!dependencyProjectedTypes.containsAll(requestedTypes)) {
+        return null
+    }
+    val inventoryTypeNames = identities
+        .flatMap { identity -> identity.includeTypes + identity.currentShapeProjectedTypes() }
+        .plus(requestedTypes)
+        .toSet()
+    val inventoryNamespaces = inventoryTypeNames
+        .map { typeName -> typeName.substringBeforeLast('.', missingDelimiterValue = "") }
+        .filter(String::isNotEmpty)
+        .toSet()
+    val additionFilter = WinRTMetadataFilter(
+        include = inventoryTypeNames,
+        exclude = extension.additionExcludeNamespaces.get().toSet(),
+    ).normalized()
+    val dependencySourceAdditions = dependencySourceAdditionTypeNames(dependencyIdentityFiles)
+    return WinRTNamespaceAdditions.forNamespaces(inventoryNamespaces, additionFilter)
+        .asSequence()
+        .flatMap { addition -> addition.generatedTypeNames.asSequence() }
+        .any { typeName -> typeName !in dependencySourceAdditions }
 }
 
-private fun kotlinWinRTLocalGenerationMetadataSources(
+private data class KotlinWinRTLocalGenerationMetadataPlan(
+    val sources: List<WinRTMetadataSource>,
+    val hasLocalProjectionSelection: Boolean,
+)
+
+private fun kotlinWinRTLocalGenerationMetadataPlan(
     extension: BaseWinRTExtension,
     dependencyIdentityFiles: Set<File>,
-): List<WinRTMetadataSource> {
+): KotlinWinRTLocalGenerationMetadataPlan {
     val explicitSources = extension.metadataInputs.get().map(WinRTMetadataSource::parse)
     val hasProjectionFilter = extension.includeNamespaces.get().isNotEmpty() || extension.includeTypes.get().isNotEmpty()
-    val packageSpecs = (projectionNuGetPackageSpecs(extension) + dependencyIdentityFiles.flatMap(::readNuGetPackages))
+    val projectionPackageSpecs = projectionNuGetPackageSpecs(extension)
+    val packageSpecs = (projectionPackageSpecs + dependencyIdentityFiles.flatMap(::readNuGetPackages))
         .distinct()
         .sorted()
     val sdkSource = if (
@@ -2007,19 +2051,29 @@ private fun kotlinWinRTLocalGenerationMetadataSources(
     } else {
         emptyList()
     }
-    val nugetRoots = WinRTNuGetPackageResolver.globalPackagesRoots(
-        explicitRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of),
+    val nugetSources = if (packageSpecs.isEmpty()) {
+        emptyList()
+    } else {
+        val nugetRoots = WinRTNuGetPackageResolver.globalPackagesRoots(
+            explicitRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of),
+        )
+        packageSpecs
+            .map(::parseNuGetPackageIdentity)
+            .map { identity ->
+                WinRTMetadataSource.nugetPackage(
+                    packageId = identity.normalizedPackageId,
+                    version = identity.normalizedVersion,
+                    globalPackagesRoots = nugetRoots,
+                )
+            }
+    }
+    return KotlinWinRTLocalGenerationMetadataPlan(
+        sources = explicitSources + sdkSource + nugetSources,
+        hasLocalProjectionSelection = explicitSources.isNotEmpty() ||
+            hasProjectionFilter ||
+            extension.generateWindowsSdkProjection.get() ||
+            projectionPackageSpecs.isNotEmpty(),
     )
-    val nugetSources = packageSpecs
-        .map(::parseNuGetPackageIdentity)
-        .map { identity ->
-            WinRTMetadataSource.nugetPackage(
-                packageId = identity.normalizedPackageId,
-                version = identity.normalizedVersion,
-                globalPackagesRoots = nugetRoots,
-            )
-        }
-    return explicitSources + sdkSource + nugetSources
 }
 
 private fun kotlinWinRTLocalCompilerSupportDependencies(
@@ -2450,10 +2504,26 @@ private fun addWinRTCompilerPluginOptions(
     )
 }
 
-private fun kotlinMainSourceDirs(project: Project): List<File> {
+private fun kotlinWinRTAuthoringSourceDirs(project: Project): List<File> {
     project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.let { kotlinExtension ->
-        return kotlinExtension.sourceSets
+        val sourceSets = linkedSetOf<KotlinSourceSet>()
+        fun collectSourceSet(sourceSet: KotlinSourceSet) {
+            if (!sourceSets.add(sourceSet)) {
+                return
+            }
+            sourceSet.dependsOn.forEach(::collectSourceSet)
+        }
+        kotlinExtension.targets.withType(KotlinJvmTarget::class.java).forEach { target ->
+            collectSourceSet(target.compilations.getByName("main").defaultSourceSet)
+        }
+        kotlinExtension.targets.withType(KotlinNativeTarget::class.java)
+            .filter(KotlinNativeTarget::isMingwX64Target)
+            .forEach { target ->
+                collectSourceSet(target.compilations.getByName("main").defaultSourceSet)
+            }
+        return sourceSets
             .flatMap { sourceSet -> sourceSet.kotlin.srcDirs }
+            .distinctBy { sourceDir -> sourceDir.toPath().toAbsolutePath().normalize() }
             .filter(::containsKotlinSourceFile)
     }
     val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return emptyList()

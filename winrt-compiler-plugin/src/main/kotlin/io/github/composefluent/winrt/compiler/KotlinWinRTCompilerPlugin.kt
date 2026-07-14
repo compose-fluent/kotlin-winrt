@@ -4652,15 +4652,20 @@ class KotlinWinRTIrGenerationExtension(
                 file,
             ),
         )
-        val entryClassFqName = genericTypeInstantiationEntryClassName(supportClassFqName)
+        val initializeEntry = requireCompilerSupportPrerequisite(
+            description = "generic type instantiation",
+            prerequisite = "$supportClassFqName.initializeEntry with 1 regular parameter",
+            value = supportClass.functionNamedWithRegularParameterCount("initializeEntry", 1),
+        )
+        val entryParameter = initializeEntry.owner.parameters
+            .single { parameter -> parameter.kind == IrParameterKind.Regular }
         val entryClass = requireCompilerSupportPrerequisite(
             description = "generic type instantiation",
-            prerequisite = "class $entryClassFqName",
-            value = pluginContext.findClassSymbol(
-                ClassId.topLevel(FqName(entryClassFqName)),
-                file,
-            ),
+            prerequisite = "$supportClassFqName.initializeEntry parameter class",
+            value = entryParameter.type.classOrNull,
         )
+        val entryClassName = entryClass.owner.fqNameWhenAvailable?.asString()
+            ?: entryClass.owner.name.asString()
         val entryConstructor = entryClass.owner.declarations
             .filterIsInstance<IrConstructor>()
             .singleOrNull { constructor ->
@@ -4670,21 +4675,7 @@ class KotlinWinRTIrGenerationExtension(
             .let { symbol ->
                 requireCompilerSupportPrerequisite(
                     description = "generic type instantiation",
-                    prerequisite = "${entryClassFqName.substringAfterLast('.')} constructor with 9 regular parameters",
-                    value = symbol,
-                )
-            }
-        val initializeEntry = supportClass.owner.declarations
-            .filterIsInstance<IrSimpleFunction>()
-            .singleOrNull { function ->
-                function.name.asString() == "initializeEntry" &&
-                    function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 1
-            }
-            ?.symbol
-            .let { symbol ->
-                requireCompilerSupportPrerequisite(
-                    description = "generic type instantiation",
-                    prerequisite = "WinRTGenericTypeInstantiations.initializeEntry with 1 regular parameter",
+                    prerequisite = "$entryClassName constructor with 9 regular parameters",
                     value = symbol,
                 )
             }
@@ -5873,14 +5864,6 @@ fun <T : Any> resolveProjectionRegistrarClasses(
             }
             entry to projectedClass
         }
-
-internal fun genericTypeInstantiationEntryClassName(supportClassName: String): String {
-    val packageName = supportClassName.substringBeforeLast('.', missingDelimiterValue = "")
-    val supportSimpleName = supportClassName.substringAfterLast('.')
-    val ownerSuffix = supportSimpleName.removePrefix("WinRTGenericTypeInstantiations")
-    val entrySimpleName = "GenericTypeInstantiationEntry$ownerSuffix"
-    return if (packageName.isEmpty()) entrySimpleName else "$packageName.$entrySimpleName"
-}
 
 fun <T : Any> requireCompilerSupportPrerequisite(
     description: String,
