@@ -987,7 +987,7 @@ internal data class ProjectionSurfaceIdentity(
 
 internal const val CURRENT_PROJECTION_SHAPE_VERSION: Int = 1
 
-private fun ProjectionSurfaceIdentity.currentShapeProjectedTypes(): List<String> =
+internal fun ProjectionSurfaceIdentity.currentShapeProjectedTypes(): List<String> =
     projectedTypes.orEmpty().takeIf { projectionShapeVersion == CURRENT_PROJECTION_SHAPE_VERSION }.orEmpty()
 
 internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): ProjectionSurfaceIdentity {
