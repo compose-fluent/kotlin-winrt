@@ -12,6 +12,52 @@ class ValueBoxingTest {
     private val boxedReferenceGenericInterface = "61C17706-2D65-11E0-9AE8-D48564015472"
 
     @Test
+    fun reference_array_classification_uses_explicit_or_conservative_dynamic_metadata() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(arrayOf<Any?>(1, 2), Any::class))
+        assertEquals(IID.IReferenceArrayOfInt32, referenceArrayIid(arrayOf(1, 2), Int::class))
+        assertEquals(IID.IReferenceArrayOfInt32, referenceArrayIid(arrayOf<Any?>(1, 2), null))
+        assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(arrayOf<Any?>(1, "text"), null))
+        assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(emptyArray<Any?>(), null))
+        assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(arrayOf<Any?>(null, null), null))
+        assertEquals(IID.IReferenceArrayOfObject, referenceArrayIid(arrayOf(UnknownReferenceArrayElement), null))
+    }
+
+    @Test
+    fun reference_array_ccw_cache_keeps_explicit_and_dynamic_metadata_separate() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+        val value = arrayOf<Any?>(1, 2)
+        val explicitMarshaler = Marshaler.inspectableArray<Any>()
+        val dynamicMarshaler = Marshaler.inspectableAny()
+
+        val explicitAbi = explicitMarshaler.fromManaged(value) as RawAddress
+        val dynamicAbi = dynamicMarshaler.fromManaged(value) as RawAddress
+        try {
+            assertReferenceArrayCcwMetadata(
+                pointer = explicitAbi,
+                expectedInterfaceId = IID.IReferenceArrayOfObject,
+                unexpectedInterfaceId = IID.IReferenceArrayOfInt32,
+                expectedPropertyType = PropertyType.InspectableArray,
+                expectedRuntimeClassName = "Windows.Foundation.IReferenceArray`1<Object>",
+            )
+            assertReferenceArrayCcwMetadata(
+                pointer = dynamicAbi,
+                expectedInterfaceId = IID.IReferenceArrayOfInt32,
+                unexpectedInterfaceId = IID.IReferenceArrayOfObject,
+                expectedPropertyType = PropertyType.Int32Array,
+                expectedRuntimeClassName = "Windows.Foundation.IReferenceArray`1<Int32>",
+            )
+        } finally {
+            dynamicMarshaler.disposeAbi(dynamicAbi)
+            explicitMarshaler.disposeAbi(explicitAbi)
+        }
+    }
+
+    @Test
     fun inspectable_marshaler_unboxes_property_values_and_arrays() {
         if (!PlatformRuntime.isWindows) {
             return
@@ -55,6 +101,29 @@ class ValueBoxingTest {
         ).forEach { value ->
             assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(value))
             assertEquals(IID.IReferenceArrayOfObject, ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value))
+        }
+    }
+
+    private fun referenceArrayIid(
+        value: Array<*>,
+        declaredElementType: KClass<*>?,
+    ): Guid? = ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value, declaredElementType)
+
+    private fun assertReferenceArrayCcwMetadata(
+        pointer: RawAddress,
+        expectedInterfaceId: Guid,
+        unexpectedInterfaceId: Guid,
+        expectedPropertyType: PropertyType,
+        expectedRuntimeClassName: String,
+    ) {
+        IInspectableReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->
+            assertEquals(expectedRuntimeClassName, inspectable.getRuntimeClassName())
+            inspectable.queryInterface(expectedInterfaceId).getOrThrow().close()
+            assertTrue(inspectable.queryInterface(unexpectedInterfaceId).isFailure)
+            inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
+                val projected = WinRTPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
+                assertEquals(expectedPropertyType, projected.type())
+            }
         }
     }
 
@@ -452,6 +521,8 @@ class ValueBoxingTest {
             arrayType = emptyArray<ProjectedPoint>()::class,
         )
     }
+
+    private object UnknownReferenceArrayElement
 
     private data class ProjectedPoint(
         val x: Float,

@@ -602,7 +602,10 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayElementMarshalerExpressio
     when (elementBinding.kind) {
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.string()", MARSHALER_CLASS_NAME)
         KotlinProjectionAbiValueKind.Object,
-        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.inspectableAny()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.InspectableReference -> {
+            val elementType = resolveTypeName(elementBinding.resolvedTypeName).copy(nullable = false)
+            CodeBlock.of("%T.inspectableArray<%T>()", MARSHALER_CLASS_NAME, elementType)
+        }
         KotlinProjectionAbiValueKind.ProjectedInterface -> {
             val interfaceId = elementBinding.interfaceId ?: return null
             val projectedType = resolveTypeName(elementBinding.resolvedTypeName).copy(nullable = false)

@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.reflect.KClass
+
 interface WinRTProjectedDelegate {
     fun createWinRTDelegateHandle(): WinRTDelegateHandle
 }
@@ -14,21 +16,27 @@ class WinRTObjectMarshaler internal constructor(
 }
 
 object WinRTObjectMarshaller {
-    fun createMarshaler(value: Any?): WinRTObjectMarshaler =
+    fun createMarshaler(
+        value: Any?,
+        declaredReferenceArrayElementType: KClass<*>? = null,
+    ): WinRTObjectMarshaler =
         when (value) {
             null -> WinRTObjectMarshaler(PlatformAbi.nullPointer)
             else -> ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
-                ?: createMarshalerCore(value)
+                ?: createMarshalerCore(value, declaredReferenceArrayElementType)
         }
 
-    private fun createMarshalerCore(value: Any): WinRTObjectMarshaler =
+    private fun createMarshalerCore(
+        value: Any,
+        declaredReferenceArrayElementType: KClass<*>?,
+    ): WinRTObjectMarshaler =
         when (value) {
             is WinRTProjectedDelegate -> createDelegateMarshaler(value)
             is RawAddress -> WinRTObjectMarshaler(value)
             is RawComPtr -> WinRTObjectMarshaler(value.asRawAddress())
             is ComObjectReference -> createInspectableMarshaler(value)
             is IWinRTObject -> createInspectableMarshaler(value.nativeObject)
-            else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).let { reference ->
+            else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable, declaredReferenceArrayElementType).let { reference ->
                 WinRTBuiltInProjectionRuntimeHooks.retainProjectedObjectReferenceForMarshaling(reference)
                 WinRTObjectMarshaler(reference.pointer.asRawAddress())
             }
@@ -43,22 +51,28 @@ object WinRTObjectMarshaller {
                 ?: ComWrappersSupport.createRcwForComObject(pointer)
         }
 
-    fun fromManaged(value: Any?): RawAddress =
+    fun fromManaged(
+        value: Any?,
+        declaredReferenceArrayElementType: KClass<*>? = null,
+    ): RawAddress =
         when (value) {
             null -> PlatformAbi.nullPointer
             else -> ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
                 reference.asInspectable().useAndGetRef()
-            } ?: fromManagedCore(value)
+            } ?: fromManagedCore(value, declaredReferenceArrayElementType)
         }
 
-    private fun fromManagedCore(value: Any): RawAddress =
+    private fun fromManagedCore(
+        value: Any,
+        declaredReferenceArrayElementType: KClass<*>?,
+    ): RawAddress =
         when (value) {
             is WinRTProjectedDelegate -> fromManagedDelegate(value)
             is RawAddress -> value
             is RawComPtr -> value.asRawAddress()
             is ComObjectReference -> value.asInspectable().useAndGetRef()
             is IWinRTObject -> value.nativeObject.asInspectable().useAndGetRef()
-            else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
+            else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable, declaredReferenceArrayElementType).useAndGetRef()
         }
 
     private fun createInspectableMarshaler(reference: ComObjectReference): WinRTObjectMarshaler {

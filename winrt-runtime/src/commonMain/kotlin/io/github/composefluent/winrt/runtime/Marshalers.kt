@@ -121,6 +121,12 @@ class Marshaler<T> internal constructor(
 
         fun inspectableAny(): Marshaler<Any?> = MarshalInspectable.any()
 
+        fun inspectableArray(elementType: KClass<*>): Marshaler<Any?> =
+            MarshalInspectable.array(elementType)
+
+        inline fun <reified T> inspectableArray(): Marshaler<Any?> =
+            inspectableArray(T::class)
+
         fun <T> genericParameter(): Marshaler<T> = MarshalGenericParameter.of()
 
         fun <T> referenceValueAdapter(adapter: WinRTReferenceValueAdapter<T>): Marshaler<T> =
@@ -502,6 +508,29 @@ object MarshalInspectable {
             },
             fromAbiPointer = WinRTObjectMarshaller::fromAbi,
             fromManagedPointer = WinRTObjectMarshaller::fromManaged,
+            disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
+            disposeAbiPointer = { pointer ->
+                if (!PlatformAbi.isNull(pointer)) {
+                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
+                }
+            },
+        )
+
+    fun array(elementType: KClass<*>): Marshaler<Any?> =
+        pointerMarshaler(
+            category = WinRTAbiCategory.INSPECTABLE,
+            createMarshaler = { value -> WinRTObjectMarshaller.createMarshaler(value, elementType) },
+            getAbiPointer = { value ->
+                when (value) {
+                    null -> PlatformAbi.nullPointer
+                    is WinRTObjectMarshaler -> value.abi
+                    is ComObjectReference -> value.pointer.asRawAddress()
+                    is RawAddress -> value
+                    else -> error("Expected inspectable marshaler, got '${abiTypeName(value)}'.")
+                }
+            },
+            fromAbiPointer = WinRTObjectMarshaller::fromAbi,
+            fromManagedPointer = { value -> WinRTObjectMarshaller.fromManaged(value, elementType) },
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
             disposeAbiPointer = { pointer ->
                 if (!PlatformAbi.isNull(pointer)) {

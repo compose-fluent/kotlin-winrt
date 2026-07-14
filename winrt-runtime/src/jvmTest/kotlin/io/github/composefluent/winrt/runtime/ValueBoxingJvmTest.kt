@@ -2,28 +2,42 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ValueBoxingJvmTest {
     @Test
-    fun reference_array_component_metadata_does_not_depend_on_registration() {
+    fun concrete_reference_array_registration_retains_type_only_metadata() {
         TypeNameSupport.clearRegistriesForTests()
+        try {
+            val arrayType = emptyArray<String>()::class
+            TypeNameSupport.registerReferenceArrayType(String::class, arrayType)
+            val elementType = TypeNameSupport.registeredReferenceArrayElementType(arrayType)
+                ?: error("Concrete JVM array registration should retain its element type.")
 
-        assertEquals(String::class, arrayElementType(emptyArray<String>()::class))
-        assertEquals(Any::class, arrayElementType(emptyArray<Any?>()::class))
+            assertEquals<kotlin.reflect.KClass<*>>(
+                String::class,
+                elementType,
+            )
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun reference_array_component_metadata_is_not_recovered_from_jvm_reflection() {
+        TypeNameSupport.clearRegistriesForTests()
+        try {
+            assertNull(arrayElementType(emptyArray<String>()::class))
+            assertNull(arrayElementType(emptyArray<Any?>()::class))
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
     }
 
     @Test
     fun declared_object_arrays_round_trip_as_inspectable_arrays() {
         ComWrappersSupport.clearRegistriesForTests()
-
-        val objectArrayClass = emptyArray<Any?>()::class
-        assertEquals(Any::class, arrayElementType(objectArrayClass))
-        assertEquals(
-            "Windows.Foundation.IReferenceArray`1<Object>",
-            WinRTValueBoxing.boxedRuntimeClassNameForType(objectArrayClass),
-        )
-        assertTrue(Projections.isTypeWindowsRuntimeType(objectArrayClass))
 
         assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(1, "text"), IID.IReferenceArrayOfInt32)
         assertInspectableObjectArrayRoundTrip(arrayOf<Any?>(null, "text"), IID.IReferenceArrayOfString)
@@ -34,9 +48,9 @@ class ValueBoxingJvmTest {
         expected: Array<Any?>,
         unexpectedReferenceArrayInterfaceId: Guid,
     ) {
-        assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(expected))
+        assertEquals(PropertyType.InspectableArray, WinRTValueBoxing.propertyTypeOf(expected, Any::class))
 
-        val marshaler = Marshaler.inspectableAny()
+        val marshaler = Marshaler.inspectableArray<Any>()
         val abi = marshaler.fromManaged(expected) as RawAddress
         try {
             IInspectableReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->

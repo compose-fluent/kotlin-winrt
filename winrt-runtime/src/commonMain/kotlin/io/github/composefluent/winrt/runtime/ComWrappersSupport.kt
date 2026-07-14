@@ -19,7 +19,7 @@ class SingleInterfaceOptimizedObject(
 }
 
 object ComWrappersSupport {
-    private val ccwHostCache = WeakKeyStateMap<Any, CachedCcwHost>()
+    private val ccwHostCache = WeakKeyStateMap<Any, ConcurrentCacheMap<CcwMetadataKey, CachedCcwHost>>()
     private val rcwCache = WeakValueCache<Long, Any>()
 
     init {
@@ -261,6 +261,7 @@ object ComWrappersSupport {
     fun createCCWForObject(
         value: Any,
         interfaceId: Guid? = null,
+        declaredReferenceArrayElementType: KClass<*>? = null,
     ): ComObjectReference {
         platformEnsureInspectableProjectionInteropRegistered()
         tryUnwrapObject(value)?.use { unwrapped ->
@@ -275,8 +276,15 @@ object ComWrappersSupport {
 
         tryCreateComposableCCWForObject(value, interfaceId)?.let { return it }
 
-        val cachedHost = ccwHostCache.getOrPut(value) {
-            createCachedCcwHost(value)
+        val effectiveElementType = declaredReferenceArrayElementType.takeIf { value is Array<*> }
+        val metadataKey = CcwMetadataKey(effectiveElementType)
+        val cachedHosts = ccwHostCache.getOrPut(value) {
+            ConcurrentCacheMap()
+        }
+        val cachedHost = cachedHosts.computeIfAbsent(metadataKey) {
+            createCachedCcwHost(value, effectiveElementType) {
+                cachedHosts.remove(metadataKey)
+            }
         }
         val requestedInterface = interfaceId ?: cachedHost.defaultInterfaceId
         return cachedHost.createReference(requestedInterface)
@@ -299,8 +307,12 @@ object ComWrappersSupport {
         return CachedCcwHost(host, definition.defaultInterfaceId).createReference(interfaceId)
     }
 
-    private fun createCachedCcwHost(value: Any): CachedCcwHost {
-        val definition = createCcwDefinition(value)
+    private fun createCachedCcwHost(
+        value: Any,
+        declaredReferenceArrayElementType: KClass<*>?,
+        removeFromCache: () -> Unit,
+    ): CachedCcwHost {
+        val definition = createCcwDefinition(value, declaredReferenceArrayElementType)
         val composableInnerReference = (value as? WinRTComposableObject)
             ?.winRTComposableObjectReference
             ?.inner
@@ -322,7 +334,7 @@ object ComWrappersSupport {
                 null
             },
             cleanupAction = {
-                ccwHostCache.remove(value)
+                removeFromCache()
             },
         )
         return CachedCcwHost(host, definition.defaultInterfaceId)
@@ -700,7 +712,10 @@ object ComWrappersSupport {
         }
     }
 
-    private fun createCcwDefinition(value: Any): WinRTCcwDefinition {
+    private fun createCcwDefinition(
+        value: Any,
+        declaredReferenceArrayElementType: KClass<*>? = null,
+    ): WinRTCcwDefinition {
         CcwFactoryRegistry.findFactory(value)?.let { factory ->
             traceCcw("create CCW definition value=${value::class.qualifiedName} source=registered-factory")
             return InteropRuntimeHooks.augmentInspectableDefinition(
@@ -708,7 +723,12 @@ object ComWrappersSupport {
                 XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, factory(value)),
             )
         }
-        platformCreateSyntheticCcwDefinition(value)?.let {
+        val syntheticDefinition = if (declaredReferenceArrayElementType == null) {
+            platformCreateSyntheticCcwDefinition(value)
+        } else {
+            createSyntheticInspectableCcwDefinition(value, declaredReferenceArrayElementType)
+        }
+        syntheticDefinition?.let {
             traceCcw("create CCW definition value=${value::class.qualifiedName} source=synthetic")
             return InteropRuntimeHooks.augmentInspectableDefinition(
                 value,
@@ -787,6 +807,10 @@ object ComWrappersSupport {
             }
         }
     }
+
+    private data class CcwMetadataKey(
+        val declaredReferenceArrayElementType: KClass<*>?,
+    )
 
 }
 
