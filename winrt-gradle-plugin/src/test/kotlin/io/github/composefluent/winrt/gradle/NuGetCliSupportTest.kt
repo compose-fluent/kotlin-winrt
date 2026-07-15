@@ -6,8 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
+import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
 
 class NuGetCliSupportTest {
+    @Test
+    fun preparing_install_root_removes_packages_from_previous_restore() {
+        val installRoot = Files.createTempDirectory("kotlin-winrt-nuget-install-root-")
+        val stalePackage = installRoot.resolve("Microsoft.WindowsAppSDK.Foundation.1.8.260415000")
+        Files.createDirectories(stalePackage.resolve("metadata"))
+        Files.writeString(stalePackage.resolve("metadata/Microsoft.Windows.Management.Deployment.winmd"), "stale")
+
+        prepareNuGetInstallRoot(installRoot)
+
+        assertTrue(installRoot.isDirectory())
+        assertFalse(stalePackage.exists())
+    }
+
     @Test
     fun install_keeps_global_package_cache_and_disables_nuget_internal_parallelism() {
         assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))

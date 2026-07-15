@@ -261,8 +261,7 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
         if (packageIdentities.isEmpty()) {
             return emptyList()
         }
-        val installRoot = temporaryDir.toPath().resolve("nuget-install")
-        Files.createDirectories(installRoot)
+        val installRoot = prepareNuGetInstallRoot(temporaryDir.toPath().resolve("nuget-install"))
         packageIdentities.forEach { identity ->
             runNuGetInstall(identity, installRoot)
         }

@@ -14,6 +14,12 @@ import java.util.zip.ZipInputStream
 import kotlin.concurrent.withLock
 import kotlin.io.path.notExists
 
+internal fun prepareNuGetInstallRoot(installRoot: Path): Path {
+    GradleFileOperations.cleanDirectory(installRoot)
+    Files.createDirectories(installRoot)
+    return installRoot
+}
+
 internal class NuGetCliSupport(
     private val executable: String,
     private val cliVersion: String,

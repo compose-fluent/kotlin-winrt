@@ -299,9 +299,11 @@ object WinRTNuGetPackageResolver {
         environment: Map<String, String> = System.getenv(),
         userHome: String? = System.getProperty("user.home"),
     ): List<Path> {
-        val roots = explicitRoots +
-            nugetLocalsOutput.orEmpty().let(::parseNuGetGlobalPackagesOutput) +
-            defaultGlobalPackagesRoot(environment, userHome)
+        val roots = buildList {
+            addAll(explicitRoots)
+            addAll(nugetLocalsOutput.orEmpty().let(::parseNuGetGlobalPackagesOutput))
+            add(defaultGlobalPackagesRoot(environment, userHome))
+        }
         return roots
             .map { it.toAbsolutePath().normalize() }
             .distinctBy { nuGetCanonicalPathKey(it) }

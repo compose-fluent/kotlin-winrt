@@ -1125,6 +1125,25 @@ class WinRTMetadataLoaderTest {
     }
 
     @Test
+    fun nuget_resolver_keeps_each_global_packages_root_as_one_absolute_path() {
+        val explicitRoot = Files.createTempDirectory("kotlin-winrt-nuget-explicit-root")
+        val cliRoot = Files.createTempDirectory("kotlin-winrt-nuget-cli-root")
+        val environmentRoot = Files.createTempDirectory("kotlin-winrt-nuget-environment-root")
+            .resolve("nested")
+            .resolve("packages")
+
+        assertEquals(
+            listOf(explicitRoot, cliRoot, environmentRoot).map { it.toAbsolutePath().normalize() },
+            WinRTNuGetPackageResolver.globalPackagesRoots(
+                explicitRoots = listOf(explicitRoot),
+                nugetLocalsOutput = "global-packages: $cliRoot",
+                environment = mapOf("NUGET_PACKAGES" to environmentRoot.toString()),
+                userHome = null,
+            ),
+        )
+    }
+
+    @Test
     fun nuget_resolver_prefers_longest_version_suffix_for_cli_install_directories() {
         assertEquals(
             WinRTNuGetPackageIdentity("Microsoft.WindowsAppSDK.WinUI", "1.8.260415005"),

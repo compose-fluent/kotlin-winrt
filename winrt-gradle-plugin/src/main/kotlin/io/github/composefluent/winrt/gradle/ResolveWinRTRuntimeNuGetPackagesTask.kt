@@ -99,8 +99,7 @@ abstract class ResolveWinRTRuntimeNuGetPackagesTask : DefaultTask() {
     private fun restoreNuGetPackages(
         identities: List<WinRTNuGetPackageIdentity>,
     ): List<Path> {
-        val installRoot = temporaryDir.toPath().resolve("nuget-install")
-        Files.createDirectories(installRoot)
+        val installRoot = prepareNuGetInstallRoot(temporaryDir.toPath().resolve("nuget-install"))
         identities.forEach { identity ->
             nuGetCli().run(
                 arguments = listOf(
