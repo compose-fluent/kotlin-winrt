@@ -579,8 +579,9 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             return emptyList()
         }
 
-        val installRoot = parameters.workDirectory.get().asFile.toPath().resolve("nuget-install")
-        Files.createDirectories(installRoot)
+        val installRoot = prepareNuGetInstallRoot(
+            parameters.workDirectory.get().asFile.toPath().resolve("nuget-install"),
+        )
         packageIdentities.forEach { identity ->
             runNuGetInstall(identity, installRoot)
         }
