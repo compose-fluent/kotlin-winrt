@@ -5,7 +5,7 @@
 [![JVM](https://img.shields.io/badge/target-JVM%20%28JDK%2025%29-blue)](#targets)
 [![mingwX64](https://img.shields.io/badge/target-mingwX64-green)](#targets)
 [![Windows SDK](https://img.shields.io/badge/Windows%20SDK-10.0.26100.0-blue)](gradle.properties)
-[![WindowsAppSDK](https://img.shields.io/badge/WindowsAppSDK-2.1.3-blue)](gradle.properties)
+[![WindowsAppSDK](https://img.shields.io/badge/WindowsAppSDK-2.2.0-blue)](gradle.properties)
 
 `kotlin-winrt` is a Kotlin projection for WinRT and WinUI 3. It provides runtime interop, WinMD metadata loading, projection generation, Kotlin-authored WinRT type support, runtime asset staging, and WinUI application launch support for:
 
@@ -189,12 +189,12 @@ winRT {
 ```kotlin
 dependencies {
     implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
-    implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.1.3")
+    implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.2.0")
 }
 
 winRT {
     windowsSdk(includeExtensions = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+    nugetPackage("Microsoft.WindowsAppSDK", "2.2.0") {
         generateProjection = false
     }
 }
@@ -220,7 +220,7 @@ When a project intentionally needs a local projection from a NuGet package, keep
 ```kotlin
 winRT {
     windowsSdk(includeExtensions = true, generateProjection = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+    nugetPackage("Microsoft.WindowsAppSDK", "2.2.0") {
         generateProjection = true
     }
 
@@ -258,7 +258,7 @@ winRT {
     }
 
     windowsSdk(includeExtensions = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3")
+    nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
 }
 ```
 

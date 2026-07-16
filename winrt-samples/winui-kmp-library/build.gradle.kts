@@ -10,7 +10,7 @@ tasks.named<GenerateWinRTProjectionsTask>("generateWinRTProjections") {
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
-    .orElse("2.1.3")
+    .orElse("2.2.0")
 val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 

@@ -54,7 +54,7 @@ jobs:
           path: |
             ~\.nuget\packages
             ~\.gradle\caches\kotlin-winrt\nuget
-          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-2.1.3
+          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-2.2.0
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Setup Gradle
@@ -87,7 +87,7 @@ jobs:
             :winrt-compiler-plugin:test \
             :winrt-projections:jvmTest \
             :winrt-projections:mingwX64Test \
-            -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.1.3 \
+            -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.2.0 \
             --no-configuration-cache
 
       - name: Verify Publish to Maven Local
