@@ -67,7 +67,7 @@ val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWin
     .map(String::toBooleanStrict)
     .orElse(true)
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
-    .orElse("2.1.3")
+    .orElse("2.2.0")
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
     .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRT.samples.nugetGlobalPackagesRoot")

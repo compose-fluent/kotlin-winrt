@@ -1135,7 +1135,7 @@ class KotlinWinRTPluginTest {
               "sourceAdditions": [],
               "excludeNamespaces": [],
               "excludeTypes": ["Microsoft.UI.Xaml.Controls.WebView2"],
-              "nugetPackages": ["Microsoft.WindowsAppSDK@2.1.3"]
+              "nugetPackages": ["Microsoft.WindowsAppSDK@2.2.0"]
             }
             """.trimIndent(),
         )
@@ -9386,7 +9386,7 @@ class KotlinWinRTPluginTest {
                 .map { it.toBoolean() }
                 .orElse(true)
             def windowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
-                .orElse("2.1.3")
+                .orElse("2.2.0")
 
             kotlin {
                 jvm("winuiJvm")

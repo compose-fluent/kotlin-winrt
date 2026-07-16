@@ -123,3 +123,9 @@ git add -- gradle.properties build.gradle.kts README.md .github/workflows/ci.yml
 git commit -m "build: upgrade default Windows App SDK to 2.2.0"
 ```
 
+## Execution Results
+
+- Active configuration, README, workflow, sample, and current-default test references no longer contain `2.1.3`.
+- `:winrt-projections:windows-app-sdk:compileCommonMainKotlinMetadata` passed with a temporary 2 GiB Gradle heap, and the generated/restored outputs identify `Microsoft.WindowsAppSDK` `2.2.0`.
+- The two affected `KotlinWinRTPluginTest` cases passed.
+- Full local JVM compilation was attempted with the repository 4 GiB heap, a 2 GiB heap, and a 2 GiB Tier-1 single-JIT diagnostic profile. The C2 runs ended in native-memory OOM; the Tier-1 run avoided the crash but exceeded the one-hour execution window. `mingwX64` compilation was not started after the resource-bound JVM gate. CI remains the full-target compile gate for this baseline update.
