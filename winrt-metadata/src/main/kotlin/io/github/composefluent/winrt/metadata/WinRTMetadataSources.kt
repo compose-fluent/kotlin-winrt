@@ -687,6 +687,45 @@ data class WinRTResolvedMetadataFile(
     val sourceDescription: String,
 )
 
+data class WinRTWindowsSdkContract(
+    val name: String,
+    val version: String,
+) {
+    val majorVersion: Int
+        get() = contractVersionComponents(version)?.first()
+            ?: throw IllegalArgumentException("Invalid Windows SDK API contract version '$version' for '$name'.")
+
+    fun normalized(): WinRTWindowsSdkContract {
+        val normalizedName = name.trim()
+        val normalizedVersion = version.trim()
+        require(normalizedName.isNotEmpty()) {
+            "Windows SDK API contract name cannot be blank."
+        }
+        require(contractVersionComponents(normalizedVersion) != null) {
+            "Invalid Windows SDK API contract version '$version' for '$normalizedName'."
+        }
+        return copy(name = normalizedName, version = normalizedVersion)
+    }
+}
+
+data class WinRTWindowsSdkSelection(
+    val version: String,
+    val contracts: List<WinRTWindowsSdkContract>,
+) {
+    fun contractMajorVersion(name: String): Int? = contracts
+        .asSequence()
+        .filter { contract -> contract.name == name }
+        .maxOfOrNull(WinRTWindowsSdkContract::majorVersion)
+
+    fun normalized(): WinRTWindowsSdkSelection = copy(
+        version = version.trim(),
+        contracts = contracts
+            .map(WinRTWindowsSdkContract::normalized)
+            .distinct()
+            .sortedWith(compareBy(WinRTWindowsSdkContract::name, WinRTWindowsSdkContract::version)),
+    )
+}
+
 data class WinRTMetadataCache(
     val files: List<Path>,
     val resolvedFiles: List<WinRTResolvedMetadataFile> = files.map {
@@ -697,8 +736,11 @@ data class WinRTMetadataCache(
         )
     },
     val packageAssets: List<WinRTPackageAsset> = emptyList(),
+    val windowsSdkSelections: List<WinRTWindowsSdkSelection> = emptyList(),
 ) {
     fun load(): WinRTMetadataModel = WinRTMetadataLoader.loadDiscoveredFiles(files)
+        .copy(windowsSdkSelections = windowsSdkSelections)
+        .normalized()
 }
 
 object WinRTMetadataSourceResolver {
@@ -721,7 +763,12 @@ object WinRTMetadataSourceResolver {
             .flatMap(ResolvedMetadataSource::packageAssets)
             .distinctBy { asset -> "${canonicalPathKey(asset.packagePath)}:${asset.relativePath}" }
             .sortedWith(compareBy({ canonicalPathKey(it.packagePath) }, { it.relativePath }))
-        return WinRTMetadataCache(files, resolvedFiles, packageAssets)
+        val windowsSdkSelections = resolvedSources
+            .flatMap(ResolvedMetadataSource::windowsSdkSelections)
+            .map(WinRTWindowsSdkSelection::normalized)
+            .distinct()
+            .sortedWith { left, right -> compareWindowsSdkVersions(left.version, right.version) }
+        return WinRTMetadataCache(files, resolvedFiles, packageAssets, windowsSdkSelections)
     }
 
     fun resolve(vararg sources: WinRTMetadataSource): WinRTMetadataCache = resolve(sources.toList())
@@ -740,21 +787,27 @@ object WinRTMetadataSourceResolver {
                 WinRTResolvedMetadataFile(file, WinRTMetadataSourceKind.Path, source.path.toString())
             },
         )
-        is WinRTMetadataSource.WindowsSdk -> ResolvedMetadataSource(
-            windowsSdkFiles(source).map { file ->
+        is WinRTMetadataSource.WindowsSdk -> resolveWindowsSdk(source)
+        is WinRTMetadataSource.NuGetPackage -> resolveNuGetPackage(source.packagePath)
+        is WinRTMetadataSource.NuGetPackageReference -> resolveNuGetPackageReference(source)
+    }
+
+    private fun resolveWindowsSdk(source: WinRTMetadataSource.WindowsSdk): ResolvedMetadataSource {
+        val metadata = windowsSdkMetadata(source)
+        return ResolvedMetadataSource(
+            files = metadata.files.map { file ->
                 WinRTResolvedMetadataFile(
                     file = file,
                     sourceKind = WinRTMetadataSourceKind.WindowsSdk,
                     sourceDescription = buildString {
                         append("sdk")
-                        source.version?.let { append(":").append(it) }
+                        append(":").append(metadata.selection.version)
                         if (source.includeExtensions) append("+")
                     },
                 )
             },
+            windowsSdkSelections = listOf(metadata.selection),
         )
-        is WinRTMetadataSource.NuGetPackage -> resolveNuGetPackage(source.packagePath)
-        is WinRTMetadataSource.NuGetPackageReference -> resolveNuGetPackageReference(source)
     }
 
     private fun discoverPathSource(path: Path): List<Path> = when {
@@ -780,12 +833,13 @@ object WinRTMetadataSourceResolver {
         return discoverPathSource(metadataDirectory)
     }
 
-    private fun windowsSdkFiles(source: WinRTMetadataSource.WindowsSdk): List<Path> {
+    private fun windowsSdkMetadata(source: WinRTMetadataSource.WindowsSdk): ResolvedWindowsSdkMetadata {
         val sdkRoot = source.sdkRoot ?: locateWindowsSdkRoot(source.discoveryMode)
         val version = source.version ?: latestWindowsSdkVersion(sdkRoot)
         val files = linkedSetOf<Path>()
         val platformXml = sdkRoot.resolve("Platforms").resolve("UAP").resolve(version).resolve("Platform.xml")
-        addFilesFromApiContractXml(files, sdkRoot, version, platformXml)
+        val platformContracts = readApiContracts(platformXml)
+        addFilesFromApiContracts(files, sdkRoot, version, platformXml, platformContracts)
 
         if (source.includeExtensions) {
             val extensionSdks = sdkRoot.resolve("Extension SDKs")
@@ -795,12 +849,23 @@ object WinRTMetadataSourceResolver {
                         .map { it.resolve(version).resolve("SDKManifest.xml") }
                         .filter { it.isRegularFile() }
                         .sortedWith(compareBy { canonicalPathKey(it) })
-                        .forEach { manifest -> addFilesFromApiContractXml(files, sdkRoot, version, manifest) }
+                        .forEach { manifest ->
+                            addFilesFromApiContracts(
+                                files = files,
+                                sdkRoot = sdkRoot,
+                                sdkVersion = version,
+                                xmlPath = manifest,
+                                contracts = readApiContracts(manifest),
+                            )
+                        }
                 }
             }
         }
 
-        return files.toList()
+        return ResolvedWindowsSdkMetadata(
+            files = files.toList(),
+            selection = WinRTWindowsSdkSelection(version, platformContracts).normalized(),
+        )
     }
 
     private fun resolveNuGetPackage(packagePath: Path): ResolvedMetadataSource {
@@ -933,17 +998,12 @@ object WinRTMetadataSourceResolver {
                 .filter { it.resolve("Platform.xml").isRegularFile() }
                 .map { it.name }
                 .filter { WINDOWS_SDK_VERSION.matches(it) }
-                .sortedWith(::compareSdkVersions)
+                .sortedWith(::compareWindowsSdkVersions)
                 .lastOrNull()
         } ?: throw IllegalArgumentException("Could not find a Windows SDK version with Platform.xml under $platforms.")
     }
 
-    private fun addFilesFromApiContractXml(
-        files: MutableSet<Path>,
-        sdkRoot: Path,
-        sdkVersion: String,
-        xmlPath: Path,
-    ) {
+    private fun readApiContracts(xmlPath: Path): List<WinRTWindowsSdkContract> {
         if (!xmlPath.isRegularFile()) {
             throw IllegalArgumentException("Could not read the Windows SDK metadata contract file at $xmlPath.")
         }
@@ -955,6 +1015,7 @@ object WinRTMetadataSourceResolver {
         val apiContracts = document.getElementsByTagNameNS("*", "ApiContract")
             .takeIf { it.length > 0 }
             ?: document.getElementsByTagName("ApiContract")
+        val contracts = mutableListOf<WinRTWindowsSdkContract>()
         for (index in 0 until apiContracts.length) {
             val node = apiContracts.item(index)
             val attributes = node.attributes
@@ -962,14 +1023,37 @@ object WinRTMetadataSourceResolver {
                 ?: throw IllegalArgumentException("ApiContract in $xmlPath is missing a name attribute.")
             val version = attributes.getNamedItem("version")?.nodeValue
                 ?: throw IllegalArgumentException("ApiContract '$name' in $xmlPath is missing a version attribute.")
+            val contract = runCatching {
+                WinRTWindowsSdkContract(name, version).normalized()
+            }.getOrElse { failure ->
+                throw IllegalArgumentException(
+                    "ApiContract '$name' in $xmlPath has invalid version '$version'.",
+                    failure,
+                )
+            }
+            contracts += contract
+        }
+        return contracts
+            .distinct()
+            .sortedWith(compareBy(WinRTWindowsSdkContract::name, WinRTWindowsSdkContract::version))
+    }
+
+    private fun addFilesFromApiContracts(
+        files: MutableSet<Path>,
+        sdkRoot: Path,
+        sdkVersion: String,
+        xmlPath: Path,
+        contracts: List<WinRTWindowsSdkContract>,
+    ) {
+        contracts.forEach { contract ->
             val file = sdkRoot
                 .resolve("References")
                 .resolve(sdkVersion)
-                .resolve(name)
-                .resolve(version)
-                .resolve("$name.winmd")
+                .resolve(contract.name)
+                .resolve(contract.version)
+                .resolve("${contract.name}.winmd")
             if (!file.isRegularFile()) {
-                throw IllegalArgumentException("ApiContract '$name' in $xmlPath references missing WinMD $file.")
+                throw IllegalArgumentException("ApiContract '${contract.name}' in $xmlPath references missing WinMD $file.")
             }
             files.add(file)
         }
@@ -987,18 +1071,6 @@ object WinRTMetadataSourceResolver {
             if (isWindows()) value.lowercase() else value
         }
 
-    private fun compareSdkVersions(left: String, right: String): Int {
-        val leftParts = left.split('.').map(String::toInt)
-        val rightParts = right.split('.').map(String::toInt)
-        for (index in 0 until maxOf(leftParts.size, rightParts.size)) {
-            val comparison = leftParts.getOrElse(index) { 0 }.compareTo(rightParts.getOrElse(index) { 0 })
-            if (comparison != 0) {
-                return comparison
-            }
-        }
-        return 0
-    }
-
     private fun is64BitProcess(): Boolean =
         System.getProperty("os.arch").contains("64")
 
@@ -1011,4 +1083,31 @@ object WinRTMetadataSourceResolver {
 private data class ResolvedMetadataSource(
     val files: List<WinRTResolvedMetadataFile>,
     val packageAssets: List<WinRTPackageAsset> = emptyList(),
+    val windowsSdkSelections: List<WinRTWindowsSdkSelection> = emptyList(),
 )
+
+private data class ResolvedWindowsSdkMetadata(
+    val files: List<Path>,
+    val selection: WinRTWindowsSdkSelection,
+)
+
+private fun contractVersionComponents(version: String): List<Int>? {
+    val components = version.trim().split('.')
+    if (components.size != 4) {
+        return null
+    }
+    val numbers = components.map { component -> component.toIntOrNull() ?: return null }
+    return numbers.takeIf { values -> values.first() > 0 && values.drop(1).all { it >= 0 } }
+}
+
+internal fun compareWindowsSdkVersions(left: String, right: String): Int {
+    val leftParts = left.split('.').map(String::toInt)
+    val rightParts = right.split('.').map(String::toInt)
+    for (index in 0 until maxOf(leftParts.size, rightParts.size)) {
+        val comparison = leftParts.getOrElse(index) { 0 }.compareTo(rightParts.getOrElse(index) { 0 })
+        if (comparison != 0) {
+            return comparison
+        }
+    }
+    return 0
+}

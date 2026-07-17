@@ -833,7 +833,15 @@ data class WinRTNamespace(
 
 data class WinRTMetadataModel(
     val namespaces: List<WinRTNamespace>,
+    val windowsSdkSelections: List<WinRTWindowsSdkSelection> = emptyList(),
 ) {
+    val universalApiContractMajorVersion: Int?
+        get() = windowsSdkSelections
+            .mapNotNull { selection ->
+                selection.contractMajorVersion(WINDOWS_FOUNDATION_UNIVERSAL_API_CONTRACT)
+            }
+            .maxOrNull()
+
     fun normalized(): WinRTMetadataModel =
         copy(
             namespaces = namespaces
@@ -852,8 +860,14 @@ data class WinRTMetadataModel(
                     )
                 }
                 .sortedBy(WinRTNamespace::name),
+            windowsSdkSelections = windowsSdkSelections
+                .map(WinRTWindowsSdkSelection::normalized)
+                .distinct()
+                .sortedWith { left, right -> compareWindowsSdkVersions(left.version, right.version) },
         )
 }
+
+private const val WINDOWS_FOUNDATION_UNIVERSAL_API_CONTRACT = "Windows.Foundation.UniversalApiContract"
 
 private fun mergeKind(left: WinRTTypeKind, right: WinRTTypeKind): WinRTTypeKind = when {
     left == right -> left
