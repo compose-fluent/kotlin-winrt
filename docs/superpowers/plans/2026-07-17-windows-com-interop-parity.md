@@ -54,7 +54,7 @@
 - Produces: `WinRTMetadataCache.windowsSdkSelections: List<WinRTWindowsSdkSelection>`.
 - Produces: `WinRTMetadataModel.windowsSdkSelections: List<WinRTWindowsSdkSelection>` and `universalApiContractMajorVersion: Int?`.
 
-- [ ] **Step 1: Write failing resolver and propagation tests**
+- [x] **Step 1: Write failing resolver and propagation tests**
 
   Add tests that create SDK fixtures with `Platform.xml` entries carrying explicit versions, then assert:
 
@@ -70,7 +70,7 @@
 
   Add a two-SDK-source test where UAC 14 and 15 normalize deterministically and the model reports 15. Extend `writeApiContractXml` and `copyContractWinmd` to accept `Triple<String, String, Path>` so the WinMD lookup version matches each XML entry. Add malformed versions `""`, `"abc"`, and `"0.0.0.0"` and assert the resolver names the contract and `Platform.xml` in its `IllegalArgumentException`.
 
-- [ ] **Step 2: Run the metadata resolver tests and verify RED**
+- [x] **Step 2: Run the metadata resolver tests and verify RED**
 
   Run:
 
@@ -80,7 +80,7 @@
 
   Expected: compilation fails because SDK selection types and cache/model properties do not exist.
 
-- [ ] **Step 3: Implement structured SDK parsing and model propagation**
+- [x] **Step 3: Implement structured SDK parsing and model propagation**
 
   Add the concrete contracts:
 
@@ -127,11 +127,11 @@
 
   Reject blank names, versions that are not four numeric components with a positive major component and non-negative remaining components, and SDK platform inventories without a valid Universal API Contract only when interop selection requests it in Task 2.
 
-- [ ] **Step 4: Run metadata tests and verify GREEN**
+- [x] **Step 4: Run metadata tests and verify GREEN**
 
   Run the command from Step 2. Expected: all `WinRTMetadataLoaderTest` tests pass.
 
-- [ ] **Step 5: Update `PLAN.md` and commit Task 1**
+- [x] **Step 5: Update `PLAN.md` and commit Task 1**
 
   Mark the SDK inventory prerequisite complete inside the active COM interop item, then commit only Task 1 files:
 
