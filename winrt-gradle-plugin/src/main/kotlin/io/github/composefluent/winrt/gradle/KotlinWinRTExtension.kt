@@ -23,6 +23,7 @@ interface BaseWinRTExtension {
     val excludeTypes: ListProperty<String>
     val additionExcludeNamespaces: ListProperty<String>
     val metadataInputs: ListProperty<String>
+    val windowsSdkDeclared: Property<Boolean>
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
     val generateWindowsSdkProjection: Property<Boolean>
@@ -70,6 +71,7 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
     override val excludeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val additionExcludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val windowsSdkDeclared: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val generateWindowsSdkProjection: Property<Boolean> =
@@ -122,6 +124,7 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
         includeExtensions: Boolean,
         generateProjection: Boolean,
     ) {
+        windowsSdkDeclared.set(true)
         version?.let(windowsSdkVersion::set)
         includeWindowsSdkExtensions.set(includeExtensions)
         generateWindowsSdkProjection.set(generateProjection)

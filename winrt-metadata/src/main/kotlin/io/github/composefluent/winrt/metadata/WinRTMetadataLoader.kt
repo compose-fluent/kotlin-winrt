@@ -393,7 +393,7 @@ private class MetadataTables private constructor(
         var cursor = tableOffsets[TABLE_TYPE_REF]
         repeat(rowCount) { rowIndex ->
             cursor += codedIndexSize(CODED_RESOLUTION_SCOPE)
-            val (name, _) = splitGenericArity(readStringAt(cursor))
+            val (name, _) = readStringAt(cursor).splitGenericArity()
             cursor += stringIndexSize
             val namespace = readStringAt(cursor)
             cursor += stringIndexSize
@@ -423,7 +423,7 @@ private class MetadataTables private constructor(
             cursor += simpleIndexSize(TABLE_FIELD)
             val methodListStart = readIndex(cursor, simpleIndexSize(TABLE_METHOD_DEF))
             cursor += simpleIndexSize(TABLE_METHOD_DEF)
-            val (name, genericParameterCount) = splitGenericArity(rawName)
+            val (name, genericParameterCount) = rawName.splitGenericArity()
             rows += RawTypeDef(flags, namespace, name, genericParameterCount, extendsToken, fieldListStart, methodListStart)
         }
         return rows
@@ -2846,7 +2846,7 @@ private fun normalizeSignatureTypeName(typeName: String?): String =
 
 private fun normalizeSignatureTypeReferenceName(typeName: String?): String {
     val normalized = normalizeSignatureTypeName(typeName)
-    return splitGenericArity(normalized).first
+    return normalized.splitGenericArity().first
 }
 
 private fun ByteBuffer.byteAt(offset: Int): Byte = get(offset)
@@ -2997,15 +2997,6 @@ private fun ByteBuffer.readCompressedUnsignedInt(offset: Int): Pair<Int, Int> {
             (((first and 0x1F) shl 24) or (second shl 16) or (third shl 8) or fourth) to (offset + 4)
         }
     }
-}
-
-private fun splitGenericArity(typeName: String): Pair<String, Int> {
-    val backtick = typeName.lastIndexOf('`')
-    if (backtick <= 0 || backtick == typeName.lastIndex) {
-        return typeName to 0
-    }
-    val arity = typeName.substring(backtick + 1).toIntOrNull() ?: return typeName to 0
-    return typeName.substring(0, backtick) to arity
 }
 
 private fun ByteArray.readCompressedUnsignedInt(offset: Int): Pair<Int, Int> {

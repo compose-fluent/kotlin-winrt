@@ -28,8 +28,15 @@ import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeLayout
 import io.github.composefluent.winrt.metadata.WinRTTypeLayoutKind
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
+import io.github.composefluent.winrt.metadata.WinRTWindowsSdkContract
+import io.github.composefluent.winrt.metadata.WinRTWindowsSdkSelection
 import io.github.composefluent.winrt.metadata.WinRTEventDefinition
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTComInteropAdapters
+import io.github.composefluent.winrt.metadata.WinRTComInteropMethodDescriptor
+import io.github.composefluent.winrt.metadata.WinRTComInteropParameterDescriptor
+import io.github.composefluent.winrt.metadata.WinRTComInteropParameterType
+import io.github.composefluent.winrt.metadata.WinRTComInteropResultDescriptor
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.runtime.Guid
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
@@ -17825,7 +17832,7 @@ class KotlinProjectionGeneratorTest {
 
     @Test
     fun generator_emits_owner_scoped_winrt_and_wasdk_interop_source_additions() {
-        val filesByPath = KotlinProjectionGenerator(emitSupportFiles = true)
+        val filesByPath = interopSourceAdditionGenerator()
             .generate(interopSourceAdditionModel())
             .associateBy(KotlinProjectionFile::relativePath)
 
@@ -17848,6 +17855,18 @@ class KotlinProjectionGeneratorTest {
         assertTrue(initializeWithWindow.contains("preventReleaseOnDispose = true"))
         assertFalse(initializeWithWindow.contains("ComVtableInvoker"))
 
+        val inputPaneInterop = filesByPath.getValue("windows/ui/viewmanagement/InputPaneInterop.kt").contents
+        assertTrue(inputPaneInterop.contains("package windows.ui.viewmanagement"))
+        assertTrue(inputPaneInterop.contains("public object InputPaneInterop"))
+        assertTrue(inputPaneInterop.contains("Guid(\"75CF2C57-9195-4931-8332-F0B409E916AF\")"))
+        assertTrue(inputPaneInterop.contains("public fun getForWindow(appWindow: RawAddress): InputPane"))
+        assertTrue(inputPaneInterop.contains("ActivationFactory.get(InputPane.Metadata.TYPE_NAME, I_INPUT_PANE_INTEROP_IID)"))
+        assertTrue(inputPaneInterop.contains("InputPane.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(inputPaneInterop.contains("WinRTProjectionIntrinsic.callProjectedRuntimeClass("))
+        assertTrue(inputPaneInterop.contains("\"RawAddress,RawAddress\""))
+        assertTrue(inputPaneInterop.contains("6,"))
+        assertFalse(inputPaneInterop.contains("ComVtableInvoker"))
+
         val win32Interop = filesByPath.getValue("microsoft/ui/Win32Interop.kt").contents
         assertTrue(win32Interop.contains("package microsoft.ui"))
         assertTrue(win32Interop.contains("public object Win32Interop"))
@@ -17859,40 +17878,310 @@ class KotlinProjectionGeneratorTest {
 
         val namespaceAdditions = filesByPath.getValue("io/github/composefluent/winrt/projections/support/WinRTNamespaceAdditions.kt").contents
         assertTrue(namespaceAdditions.contains("microsoft.ui.Win32Interop"))
+        assertTrue(namespaceAdditions.contains("windows.ui.viewmanagement.InputPaneInterop"))
         assertTrue(namespaceAdditions.contains("winrt.interop.WindowNative"))
         assertTrue(namespaceAdditions.contains("winrt.interop.InitializeWithWindow"))
 
         val sourceAdditions = filesByPath.getValue("kotlin-winrt-support/source-additions.tsv").contents
         assertEquals(
-            "generatedTypeName\n" +
-                "microsoft.ui.Win32Interop\n" +
-                "winrt.interop.InitializeWithWindow\n" +
-                "winrt.interop.WindowNative\n",
+            (setOf("microsoft.ui.Win32Interop") + windowsComInteropSourceAdditionTypeNames)
+                .sorted()
+                .joinToString(separator = "\n", prefix = "generatedTypeName\n", postfix = "\n"),
             sourceAdditions,
         )
     }
 
     @Test
-    fun generator_suppresses_dependency_owned_interop_source_additions() {
-        val filesByPath = KotlinProjectionGenerator(
-            emitSupportFiles = true,
-            suppressedSourceAdditionTypeNames = setOf(
-                "microsoft.ui.Win32Interop",
-                "winrt.interop.InitializeWithWindow",
-                "winrt.interop.WindowNative",
+    fun generator_emits_runtime_class_and_unit_com_interop_methods_from_catalog() {
+        val filesByPath = interopSourceAdditionGenerator()
+            .generate(interopSourceAdditionModel())
+            .associateBy(KotlinProjectionFile::relativePath)
+        val runtimeMethods = listOf(
+            RuntimeComInteropExpectation(
+                "windows/applicationmodel/datatransfer/DataTransferManagerInterop.kt",
+                "3A3DCD6C-3EAB-43DC-BCDE-45671CE800C8",
+                "public fun getForWindow(appWindow: RawAddress): DataTransferManager",
+                3,
             ),
+            RuntimeComInteropExpectation(
+                "windows/applicationmodel/datatransfer/dragdrop/core/DragDropManagerInterop.kt",
+                "5AD8CBA7-4C01-4DAC-9074-827894292D63",
+                "public fun getForWindow(appWindow: RawAddress): CoreDragDropManager",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/graphics/display/DisplayInformationInterop.kt",
+                "7449121C-382B-4705-8DA7-A795BA482013",
+                "public fun getForMonitor(monitor: RawAddress): DisplayInformation",
+                7,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/graphics/printing/PrintManagerInterop.kt",
+                "C5435A42-8D43-4E7B-A68A-EF311E392087",
+                "public fun getForWindow(appWindow: RawAddress): PrintManager",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/media/SystemMediaTransportControlsInterop.kt",
+                "DDB0472D-C911-4A1F-86D9-DC3D71A95F5A",
+                "public fun getForWindow(appWindow: RawAddress): SystemMediaTransportControls",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/media/playto/PlayToManagerInterop.kt",
+                "24394699-1F2C-4EB3-8CD7-0EC1DA42A540",
+                "public fun getForWindow(appWindow: RawAddress): PlayToManager",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/applicationsettings/AccountsSettingsPaneInterop.kt",
+                "D3EE12AD-3865-4362-9746-B75A682DF0E6",
+                "public fun getForWindow(appWindow: RawAddress): AccountsSettingsPane",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/input/RadialControllerConfigurationInterop.kt",
+                "787CDAAC-3186-476D-87E4-B9374A7B9970",
+                "public fun getForWindow(hwnd: RawAddress): RadialControllerConfiguration",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/input/RadialControllerInterop.kt",
+                "1B0535C9-57AD-45C1-9D79-AD5C34360513",
+                "public fun createForWindow(hwnd: RawAddress): RadialController",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/input/core/RadialControllerIndependentInputSourceInterop.kt",
+                "3D577EFF-4CEE-11E6-B535-001BDC06AB3B",
+                "public fun createForWindow(hwnd: RawAddress): RadialControllerIndependentInputSource",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/input/spatial/SpatialInteractionManagerInterop.kt",
+                "5C4EE536-6A98-4B86-A170-587013D6FD4B",
+                "public fun getForWindow(window: RawAddress): SpatialInteractionManager",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/viewmanagement/InputPaneInterop.kt",
+                "75CF2C57-9195-4931-8332-F0B409E916AF",
+                "public fun getForWindow(appWindow: RawAddress): InputPane",
+                6,
+            ),
+            RuntimeComInteropExpectation(
+                "windows/ui/viewmanagement/UIViewSettingsInterop.kt",
+                "3694DBF9-8F68-44BE-8FF5-195C98EDE8A6",
+                "public fun getForWindow(hwnd: RawAddress): UIViewSettings",
+                6,
+            ),
+        )
+
+        runtimeMethods.forEach { expected ->
+            val source = filesByPath.getValue(expected.relativePath).contents
+            assertTrue(expected.relativePath, source.contains("Guid(\"${expected.queryIid}\")"))
+            assertTrue(expected.relativePath, source.contains(expected.publicSignature))
+            assertTrue(expected.relativePath, source.contains("WinRTProjectionIntrinsic.callProjectedRuntimeClass("))
+            assertTrue(expected.relativePath, source.contains("${expected.slot},"))
+            assertFalse(expected.relativePath, source.contains("ComVtableInvoker"))
+        }
+
+        val dataTransfer = filesByPath.getValue("windows/applicationmodel/datatransfer/DataTransferManagerInterop.kt").contents
+        assertTrue(dataTransfer.contains("Guid(\"A5CAEE9B-8708-49D1-8D36-67D25A8DA00C\")"))
+        assertTrue(dataTransfer.contains("public fun showShareUIForWindow(appWindow: RawAddress)"))
+        assertTrue(dataTransfer.contains("WinRTProjectionIntrinsic.callUnit("))
+        assertTrue(dataTransfer.contains("4,"))
+
+        val playTo = filesByPath.getValue("windows/media/playto/PlayToManagerInterop.kt").contents
+        assertTrue(playTo.contains("public fun showPlayToUIForWindow(appWindow: RawAddress)"))
+        assertTrue(playTo.contains("WinRTProjectionIntrinsic.callUnit("))
+        assertTrue(playTo.contains("7,"))
+
+        windowsComInteropSourceAdditionTypeNames.forEach { typeName ->
+            val relativePath = typeName.replace('.', '/') + ".kt"
+            assertTrue("Missing catalog helper source $relativePath", relativePath in filesByPath)
+        }
+
+        WinRTComInteropAdapters.all.forEach { adapter ->
+            val source = filesByPath.getValue("${adapter.projectedTypeName.replace('.', '/')}.kt").contents
+            adapter.methods.forEach { method ->
+                val parameters = method.parameters.joinToString(", ") { parameter ->
+                    "${parameter.name}: ${comInteropGeneratedParameterType(parameter)}"
+                }
+                val returnType = comInteropGeneratedReturnType(method.result)
+                val signature = if (returnType == null) {
+                    "public fun ${method.name}($parameters) {"
+                } else {
+                    "public fun ${method.name}($parameters): $returnType"
+                }
+                assertTrue(
+                    "Missing catalog method signature ${adapter.projectedTypeName}.${method.name}",
+                    source.contains(signature),
+                )
+                assertTrue(
+                    "Missing catalog vtable slot ${adapter.projectedTypeName}.${method.name}",
+                    source.contains("                ${method.slot},"),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun com_interop_renderer_rejects_unsupported_catalog_method_shapes() {
+        val base = WinRTComInteropAdapters.all.single { adapter -> adapter.name == "InputPaneInterop" }
+        val descriptor = base.copy(
+            methods = base.methods + WinRTComInteropMethodDescriptor(
+                name = "unsupported",
+                slot = 99,
+                parameters = listOf(
+                    WinRTComInteropParameterDescriptor(
+                        name = "value",
+                        type = WinRTComInteropParameterType.StringValue,
+                    ),
+                ),
+                result = WinRTComInteropResultDescriptor.UnitResult,
+            ),
+        )
+
+        val failure = runCatching {
+            KotlinComInteropSourceRenderer().render(descriptor, interopSourceAdditionModel())
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("unsupported"))
+        assertTrue(failure?.message.orEmpty().contains("InputPaneInterop"))
+    }
+
+    @Test
+    fun generator_emits_async_com_interop_methods_with_scoped_abi_marshalling() {
+        val filesByPath = interopSourceAdditionGenerator()
+            .generate(interopSourceAdditionModel())
+            .associateBy(KotlinProjectionFile::relativePath)
+        fun methodBlock(source: String, methodName: String): String {
+            val start = source.indexOf("public fun $methodName(")
+            assertTrue("Missing $methodName", start >= 0)
+            val nextMethod = source.indexOf("\n    public fun ", start + 1)
+            val end = if (nextMethod >= 0) nextMethod else source.lastIndexOf("\n}")
+            return source.substring(start, end)
+        }
+        fun intrinsicCallBlock(methodSource: String): String {
+            val start = methodSource.indexOf("WinRTProjectionIntrinsic.callProjectedInterface(")
+            assertTrue(methodSource, start >= 0)
+            val end = methodSource.indexOf("\n                )", start)
+            assertTrue(methodSource, end >= 0)
+            return methodSource.substring(start, end + "\n                )".length)
+        }
+        fun assertResultIidIsLastAbiArgument(methodSource: String) {
+            val intrinsicCall = intrinsicCallBlock(methodSource)
+            val lastArgument = intrinsicCall
+                .substringBeforeLast("\n                )")
+                .trimEnd()
+                .substringAfterLast('\n')
+                .trim()
+            assertEquals("resultIid,", lastArgument)
+        }
+
+        val printManager = filesByPath.getValue("windows/graphics/printing/PrintManagerInterop.kt").contents
+        val showPrintUi = methodBlock(printManager, "showPrintUIForWindowAsync")
+        assertTrue(showPrintUi.contains("public fun showPrintUIForWindowAsync(appWindow: RawAddress): WinRTAsyncOperationReference<Boolean>"))
+        assertTrue(showPrintUi.contains("WinRTAsyncOperationReference.interfaceId(WinRTTypeSignature.boolean())"))
+        assertTrue(printManager.contains("WinRTProjectionIntrinsic.callProjectedInterface("))
+        assertTrue(printManager.contains("\"RawAddress,RawAddress\""))
+        assertTrue(printManager.contains("import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop"))
+        assertTrue(printManager.contains("import io.github.composefluent.winrt.runtime.WinRTTypeSignature"))
+
+        val userConsent = filesByPath.getValue("windows/security/credentials/ui/UserConsentVerifierInterop.kt").contents
+        val requestVerification = methodBlock(userConsent, "requestVerificationForWindowAsync")
+        assertTrue(requestVerification.contains("public fun requestVerificationForWindowAsync(appWindow: RawAddress, message: String): WinRTAsyncOperationReference<UserConsentVerificationResult>"))
+        assertTrue(requestVerification.contains("WinRTAsyncOperationReference.interfaceId(WinRTTypeSignature.enum(\"Windows.Security.Credentials.UI.UserConsentVerificationResult\", WinRTTypeSignature.int32()))"))
+        assertTrue(userConsent.contains("HString.createReference(message).use { __messageAbi ->"))
+        assertTrue(userConsent.contains("__messageAbi.handle,"))
+        assertTrue(userConsent.contains("resultIid,"))
+        assertTrue(userConsent.contains("import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop"))
+        assertTrue(userConsent.contains("import io.github.composefluent.winrt.runtime.WinRTTypeSignature"))
+
+        val webAuthentication = filesByPath
+            .getValue("windows/security/authentication/web/core/WebAuthenticationCoreManagerInterop.kt")
+            .contents
+        val requestToken = methodBlock(webAuthentication, "requestTokenForWindowAsync")
+        val requestTokenWithWebAccount = methodBlock(webAuthentication, "requestTokenWithWebAccountForWindowAsync")
+        assertTrue(requestToken.contains("public fun requestTokenForWindowAsync(appWindow: RawAddress, request: WebTokenRequest): WinRTAsyncOperationReference<WebTokenRequestResult>"))
+        assertTrue(requestTokenWithWebAccount.contains("public fun requestTokenWithWebAccountForWindowAsync(appWindow: RawAddress, request: WebTokenRequest, webAccount: WebAccount): WinRTAsyncOperationReference<WebTokenRequestResult>"))
+        assertTrue(requestToken.contains("WinRTAsyncOperationReference.interfaceId(WinRTTypeSignature.runtimeClass(\"Windows.Security.Authentication.Web.Core.WebTokenRequestResult\", WinRTTypeSignature.guid(WebTokenRequestResult.Metadata.DEFAULT_INTERFACE_IID)))"))
+        assertTrue(webAuthentication.contains("winRTProjectionMarshaler(request,"))
+        assertTrue(webAuthentication.contains("winRTProjectionMarshaler(webAccount,"))
+        assertTrue(webAuthentication.contains("__requestProjectionMarshaler.abi,"))
+        assertTrue(webAuthentication.contains("__webAccountProjectionMarshaler.abi,"))
+        assertTrue(webAuthentication.contains("import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop"))
+        assertTrue(webAuthentication.contains("import io.github.composefluent.winrt.runtime.WinRTTypeSignature"))
+        assertTrue(webAuthentication.contains("import io.github.composefluent.winrt.runtime.IUnknownReference"))
+        assertTrue(webAuthentication.contains("import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler"))
+        assertTrue(webAuthentication.contains("import windows.security.credentials.WebAccount"))
+
+        val accountsSettings = filesByPath.getValue("windows/ui/applicationsettings/AccountsSettingsPaneInterop.kt").contents
+        val showManageAccounts = methodBlock(accountsSettings, "showManageAccountsForWindowAsync")
+        val showAddAccount = methodBlock(accountsSettings, "showAddAccountForWindowAsync")
+        assertTrue(showManageAccounts.contains("public fun showManageAccountsForWindowAsync(appWindow: RawAddress): WinRTAsyncActionReference"))
+        assertTrue(showAddAccount.contains("public fun showAddAccountForWindowAsync(appWindow: RawAddress): WinRTAsyncActionReference"))
+        assertTrue(accountsSettings.contains("WinRTAsyncInterfaceIds.IAsyncAction"))
+
+        listOf(showPrintUi, requestVerification, requestToken, requestTokenWithWebAccount, showManageAccounts, showAddAccount)
+            .forEach(::assertResultIidIsLastAbiArgument)
+        val requestTokenCall = intrinsicCallBlock(requestToken)
+        val requestTokenWithWebAccountCall = intrinsicCallBlock(requestTokenWithWebAccount)
+        assertTrue(requestTokenCall.contains("__requestProjectionMarshaler.abi,"))
+        assertFalse(requestTokenCall.contains("\n                request,"))
+        assertTrue(requestTokenWithWebAccountCall.contains("__requestProjectionMarshaler.abi,"))
+        assertTrue(requestTokenWithWebAccountCall.contains("__webAccountProjectionMarshaler.abi,"))
+        assertFalse(requestTokenWithWebAccountCall.contains("\n                request,"))
+        assertFalse(requestTokenWithWebAccountCall.contains("\n                webAccount,"))
+
+        listOf(printManager, userConsent, webAuthentication, accountsSettings).forEach { source ->
+            assertTrue(source.contains("WinRTProjectionIntrinsic.callProjectedInterface("))
+            assertFalse(source.contains("ComVtableInvoker"))
+            assertFalse(source.contains("invokeGenericArgs"))
+        }
+    }
+
+    @Test
+    fun generator_canonicalizes_arity_qualified_com_interop_catalog_imports_against_base_named_metadata_definition() {
+        val filesByPath = interopSourceAdditionGenerator()
+            .generate(interopSourceAdditionModel())
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        listOf(
+            "windows/graphics/printing/PrintManagerInterop.kt",
+            "windows/security/authentication/web/core/WebAuthenticationCoreManagerInterop.kt",
+            "windows/security/credentials/ui/UserConsentVerifierInterop.kt",
+        ).forEach { relativePath ->
+            val source = filesByPath.getValue(relativePath).contents
+            assertTrue(source, source.contains("import windows.foundation.IAsyncOperation"))
+            assertFalse(source, source.contains("import windows.foundation.IAsyncOperation`1"))
+        }
+    }
+
+    @Test
+    fun generator_suppresses_dependency_owned_interop_source_additions() {
+        val filesByPath = interopSourceAdditionGenerator(
+            suppressedSourceAdditionTypeNames = windowsComInteropSourceAdditionTypeNames + "microsoft.ui.Win32Interop",
         ).generate(interopSourceAdditionModel()).associateBy(KotlinProjectionFile::relativePath)
 
         assertFalse("microsoft/ui/Win32Interop.kt" in filesByPath)
+        assertFalse("windows/ui/viewmanagement/InputPaneInterop.kt" in filesByPath)
         assertFalse("winrt/interop/InitializeWithWindow.kt" in filesByPath)
         assertFalse("winrt/interop/WindowNative.kt" in filesByPath)
         assertFalse("kotlin-winrt-support/source-additions.tsv" in filesByPath)
-        assertFalse("io/github/composefluent/winrt/projections/support/WinRTNamespaceAdditions.kt" in filesByPath)
+        val namespaceAdditions = filesByPath
+            .getValue("io/github/composefluent/winrt/projections/support/WinRTNamespaceAdditions.kt")
+            .contents
+        (windowsComInteropSourceAdditionTypeNames + "microsoft.ui.Win32Interop").forEach { typeName ->
+            assertFalse(typeName, namespaceAdditions.contains(typeName))
+        }
     }
 
     @Test
     fun generator_emits_winrt_interop_source_additions_for_windows_projection_owner() {
-        val filesByPath = KotlinProjectionGenerator(emitSupportFiles = true)
+        val filesByPath = interopSourceAdditionGenerator()
             .generate(
                 WinRTMetadataModel(
                     namespaces = listOf(
@@ -17907,6 +18196,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                         ),
                     ),
+                    windowsSdkSelections = windowsSdkSelections(1),
                 ),
             )
             .associateBy(KotlinProjectionFile::relativePath)
@@ -17915,6 +18205,67 @@ class KotlinProjectionGeneratorTest {
         assertTrue("winrt/interop/InitializeWithWindow.kt" in filesByPath)
         assertTrue(
             filesByPath.getValue("kotlin-winrt-support/source-additions.tsv").contents.contains("winrt.interop.WindowNative"),
+        )
+    }
+
+    @Test
+    fun generator_preserves_caller_windows_sdk_selection_after_include_model_completion() {
+        val fixture = supplementalWindowsSdkFixture()
+        val model = interopSourceAdditionModel()
+        val projectionContext = WinRTMetadataProjectionContext(
+            sources = listOf(
+                WinRTMetadataSource.windowsSdk(
+                    version = fixture.version,
+                    sdkRoot = fixture.root,
+                ),
+            ),
+            include = setOf("SimpleMathComponent") + model.namespaces.map(WinRTNamespace::name),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = projectionContext,
+        )
+            .generate(model)
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(projectionContext.sources.single() is WinRTMetadataSource.WindowsSdk)
+        windowsComInteropSourceAdditionTypeNames.forEach { typeName ->
+            assertTrue("Missing UAC-gated helper $typeName", "${typeName.replace('.', '/')}.kt" in filesByPath)
+        }
+        assertTrue(
+            filesByPath.getValue("kotlin-winrt-support/source-additions.tsv").contents.contains(
+                "windows.security.authentication.web.core.WebAuthenticationCoreManagerInterop",
+            ),
+        )
+    }
+
+    @Test
+    fun generator_preserves_supplemental_windows_sdk_selection_after_include_model_completion() {
+        val fixture = supplementalWindowsSdkFixture(universalApiContractMajorVersion = 15)
+        val model = interopSourceAdditionModel().copy(windowsSdkSelections = windowsSdkSelections(1))
+        val projectionContext = WinRTMetadataProjectionContext(
+            sources = listOf(
+                WinRTMetadataSource.windowsSdk(
+                    version = fixture.version,
+                    sdkRoot = fixture.root,
+                ),
+            ),
+            include = setOf("SimpleMathComponent") + model.namespaces.map(WinRTNamespace::name),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = projectionContext,
+        )
+            .generate(model)
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue("windows/graphics/display/DisplayInformationInterop.kt" in filesByPath)
+        assertTrue(
+            filesByPath.getValue("kotlin-winrt-support/source-additions.tsv").contents.contains(
+                "windows.graphics.display.DisplayInformationInterop",
+            ),
         )
     }
 
@@ -17961,14 +18312,128 @@ class KotlinProjectionGeneratorTest {
 
     @Test
     fun generator_scopes_namespace_addition_entry_to_support_owner() {
-        val generatedContents = KotlinProjectionGenerator(
-            emitSupportFiles = true,
+        val generatedContents = interopSourceAdditionGenerator(
             supportOwnerIdentity = "sample-lib.jar",
         ).generate(interopSourceAdditionModel()).joinToString("\n", transform = KotlinProjectionFile::contents)
 
         assertTrue(generatedContents.contains("data class NamespaceAdditionEntry_sample_lib_jar"))
         assertFalse(generatedContents.contains("data class NamespaceAdditionEntry("))
     }
+
+    private data class RuntimeComInteropExpectation(
+        val relativePath: String,
+        val queryIid: String,
+        val publicSignature: String,
+        val slot: Int,
+    )
+
+    private fun comInteropGeneratedParameterType(
+        parameter: WinRTComInteropParameterDescriptor,
+    ): String = when (val type = parameter.type) {
+        WinRTComInteropParameterType.RawAddress -> "RawAddress"
+        WinRTComInteropParameterType.StringValue -> "String"
+        is WinRTComInteropParameterType.ProjectedObject -> type.typeName.substringAfterLast('.')
+    }
+
+    private fun comInteropGeneratedReturnType(
+        result: WinRTComInteropResultDescriptor,
+    ): String? = when (result) {
+        WinRTComInteropResultDescriptor.UnitResult -> null
+        is WinRTComInteropResultDescriptor.ProjectedRuntimeClass -> result.typeName.substringAfterLast('.')
+        WinRTComInteropResultDescriptor.AsyncAction -> "WinRTAsyncActionReference"
+        is WinRTComInteropResultDescriptor.AsyncOperation ->
+            "WinRTAsyncOperationReference<${result.resultTypeName.substringAfterLast('.')}>"
+    }
+
+    private val windowsComInteropSourceAdditionTypeNames = setOf(
+        "windows.applicationmodel.datatransfer.DataTransferManagerInterop",
+        "windows.applicationmodel.datatransfer.dragdrop.core.DragDropManagerInterop",
+        "windows.graphics.display.DisplayInformationInterop",
+        "windows.graphics.printing.PrintManagerInterop",
+        "windows.media.SystemMediaTransportControlsInterop",
+        "windows.media.playto.PlayToManagerInterop",
+        "windows.security.authentication.web.core.WebAuthenticationCoreManagerInterop",
+        "windows.security.credentials.ui.UserConsentVerifierInterop",
+        "windows.ui.applicationsettings.AccountsSettingsPaneInterop",
+        "windows.ui.input.RadialControllerConfigurationInterop",
+        "windows.ui.input.RadialControllerInterop",
+        "windows.ui.input.core.RadialControllerIndependentInputSourceInterop",
+        "windows.ui.input.spatial.SpatialInteractionManagerInterop",
+        "windows.ui.viewmanagement.InputPaneInterop",
+        "windows.ui.viewmanagement.UIViewSettingsInterop",
+        "winrt.interop.InitializeWithWindow",
+        "winrt.interop.WindowNative",
+    )
+
+    private fun windowsSdkSelections(uac: Int): List<WinRTWindowsSdkSelection> = listOf(
+        WinRTWindowsSdkSelection(
+            version = "10.0.22621.0",
+            contracts = listOf(
+                WinRTWindowsSdkContract(
+                    name = "Windows.Foundation.UniversalApiContract",
+                    version = "$uac.0.0.0",
+                ),
+            ),
+        ),
+    )
+
+    private data class SupplementalWindowsSdkFixture(
+        val root: Path,
+        val version: String,
+    )
+
+    private fun supplementalWindowsSdkFixture(
+        universalApiContractMajorVersion: Int? = null,
+    ): SupplementalWindowsSdkFixture {
+        val version = "10.0.22621.0"
+        val root = Files.createTempDirectory("kotlin-winrt-generator-sdk-")
+        val repositoryRoot = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+            .first { Files.isDirectory(it.resolve("winrt-projections")) }
+        val contractName = "SimpleMathComponent"
+        val contractVersion = "1.0.0.0"
+        val platformXml = root.resolve("Platforms/UAP/$version/Platform.xml")
+        Files.createDirectories(platformXml.parent)
+        val contracts = buildList {
+            add("""<ApiContract name="$contractName" version="$contractVersion" />""")
+            universalApiContractMajorVersion?.let { uac ->
+                add("""<ApiContract name="Windows.Foundation.UniversalApiContract" version="$uac.0.0.0" />""")
+            }
+        }
+        Files.writeString(
+            platformXml,
+            """
+            <ApplicationPlatform xmlns="urn:schemas-microsoft-com:platform">
+              <ContainedApiContracts>
+                ${contracts.joinToString("\n                ")}
+              </ContainedApiContracts>
+            </ApplicationPlatform>
+            """.trimIndent(),
+        )
+        val contractWinmd = root.resolve("References/$version/$contractName/$contractVersion/$contractName.winmd")
+        Files.createDirectories(contractWinmd.parent)
+        Files.copy(repositoryRoot.resolve("winrt-projections/src/main/winrt/SimpleMathComponent.winmd"), contractWinmd)
+        universalApiContractMajorVersion?.let { uac ->
+            val universalApiContractWinmd = root.resolve(
+                "References/$version/Windows.Foundation.UniversalApiContract/$uac.0.0.0/Windows.Foundation.UniversalApiContract.winmd",
+            )
+            Files.createDirectories(universalApiContractWinmd.parent)
+            Files.copy(repositoryRoot.resolve("winrt-projections/src/main/winrt/SimpleMathComponent.winmd"), universalApiContractWinmd)
+        }
+
+        return SupplementalWindowsSdkFixture(root, version)
+    }
+
+    private fun interopSourceAdditionGenerator(
+        suppressedSourceAdditionTypeNames: Set<String> = emptySet(),
+        supportOwnerIdentity: String? = null,
+    ): KotlinProjectionGenerator = KotlinProjectionGenerator(
+        emitSupportFiles = true,
+        projectionContext = WinRTMetadataProjectionContext(
+            sources = listOf(WinRTMetadataSource.windowsSdk(version = "10.0.22621.0")),
+        ),
+        suppressedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
+        supportOwnerIdentity = supportOwnerIdentity,
+    )
 
     private fun interopSourceAdditionModel(): WinRTMetadataModel =
         WinRTMetadataModel(
@@ -18013,8 +18478,72 @@ class KotlinProjectionGeneratorTest {
                         ),
                     ),
                 ),
+            ) + comInteropProjectionNamespaces(),
+            windowsSdkSelections = windowsSdkSelections(15),
+        )
+
+    private fun comInteropProjectionNamespaces(): List<WinRTNamespace> {
+        val runtimeClasses = listOf(
+            "Windows.ApplicationModel.DataTransfer" to "DataTransferManager",
+            "Windows.ApplicationModel.DataTransfer.DragDrop.Core" to "CoreDragDropManager",
+            "Windows.Graphics.Display" to "DisplayInformation",
+            "Windows.Graphics.Printing" to "PrintManager",
+            "Windows.Media" to "SystemMediaTransportControls",
+            "Windows.Media.PlayTo" to "PlayToManager",
+            "Windows.Security.Authentication.Web.Core" to "WebAuthenticationCoreManager",
+            "Windows.Security.Authentication.Web.Core" to "WebTokenRequest",
+            "Windows.Security.Authentication.Web.Core" to "WebTokenRequestResult",
+            "Windows.Security.Credentials" to "WebAccount",
+            "Windows.Security.Credentials.UI" to "UserConsentVerifier",
+            "Windows.UI.ApplicationSettings" to "AccountsSettingsPane",
+            "Windows.UI.Input" to "RadialController",
+            "Windows.UI.Input" to "RadialControllerConfiguration",
+            "Windows.UI.Input.Core" to "RadialControllerIndependentInputSource",
+            "Windows.UI.Input.Spatial" to "SpatialInteractionManager",
+            "Windows.UI.ViewManagement" to "InputPane",
+            "Windows.UI.ViewManagement" to "UIViewSettings",
+        )
+        val types = runtimeClasses.flatMapIndexed { index, (namespace, name) ->
+            val interfaceName = "I$name"
+            listOf(
+                WinRTTypeDefinition(
+                    namespace = namespace,
+                    name = interfaceName,
+                    kind = WinRTTypeKind.Interface,
+                    iid = Guid("11111111-2222-3333-4444-${(index + 700).toString().padStart(12, '0')}"),
+                ),
+                WinRTTypeDefinition(
+                    namespace = namespace,
+                    name = name,
+                    kind = WinRTTypeKind.RuntimeClass,
+                    defaultInterfaceName = "$namespace.$interfaceName",
+                ),
+            )
+        } + listOf(
+            WinRTTypeDefinition(
+                namespace = "Windows.Security.Credentials.UI",
+                name = "UserConsentVerificationResult",
+                kind = WinRTTypeKind.Enum,
+                enumUnderlyingType = WinRTIntegralType.Int32,
+            ),
+            WinRTTypeDefinition(
+                namespace = "Windows.Foundation",
+                name = "IAsyncAction",
+                kind = WinRTTypeKind.Interface,
+                iid = Guid("5A648006-843A-4DA9-865B-9D26E5DFAD7B"),
+            ),
+            WinRTTypeDefinition(
+                namespace = "Windows.Foundation",
+                name = "IAsyncOperation",
+                kind = WinRTTypeKind.Interface,
+                iid = Guid("9FC2B0BB-E446-44E2-AA61-9CAB8F636AF2"),
+                genericParameterCount = 1,
             ),
         )
+        return types
+            .groupBy(WinRTTypeDefinition::namespace)
+            .map { (namespace, namespaceTypes) -> WinRTNamespace(namespace, namespaceTypes) }
+    }
 
     private fun dispatcherQueueHandlerOnlyModel(): WinRTMetadataModel =
         WinRTMetadataModel(

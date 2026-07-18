@@ -2,8 +2,7 @@ package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.renderAuthoringMetadataIndexRow
-import io.github.composefluent.winrt.metadata.WinRTMetadataFilter
-import io.github.composefluent.winrt.metadata.WinRTNamespaceAdditions
+import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -26,6 +25,10 @@ import kotlin.io.path.name
 
 @CacheableTask
 abstract class GenerateWinRTIdentityTask : DefaultTask() {
+    init {
+        windowsSdkDeclared.convention(false)
+    }
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -61,6 +64,9 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
 
     @get:Input
     abstract val additionExcludeNamespaces: ListProperty<String>
+
+    @get:Input
+    abstract val windowsSdkDeclared: Property<Boolean>
 
     @get:Input
     @get:Optional
@@ -108,6 +114,12 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
     @TaskAction
     fun generate() {
         val target = outputFile.get().asFile.toPath()
+        val effectiveWindowsSdk = effectiveWindowsSdkIdentity(
+            metadataInputs = metadataInputs.get(),
+            dslDeclared = windowsSdkDeclared.get(),
+            dslVersion = windowsSdkVersion.orNull,
+            dslIncludeExtensions = includeWindowsSdkExtensions.get(),
+        )
         Files.createDirectories(target.parent)
         Files.writeString(
             target,
@@ -125,8 +137,9 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
                 appendLine("  \"additionExcludeNamespaces\": ${additionExcludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"windowsSdk\": {")
-                appendLine("    \"version\": ${windowsSdkVersion.orNull.toJsonStringOrNull()},")
-                appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")
+                appendLine("    \"declared\": ${effectiveWindowsSdk.declared},")
+                appendLine("    \"version\": ${effectiveWindowsSdk.version.toJsonStringOrNull()},")
+                appendLine("    \"includeExtensions\": ${effectiveWindowsSdk.includeExtensions}")
                 appendLine("  },")
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
                 appendLine("  \"runtimeAssetRecords\": ${runtimeAssetRecordsToJsonArray(readRuntimeAssetRecords(runtimeAssetFiles.files))},")
@@ -185,21 +198,36 @@ private fun readSourceAdditionManifestTypeNames(file: File): List<String> {
     }
 }
 
-internal fun sourceAdditionTypeNames(
-    includeNamespaces: Iterable<String>,
-    additionExcludeNamespaces: Iterable<String>,
-): List<String> {
-    val includes = includeNamespaces.toSet()
-    return WinRTNamespaceAdditions.forNamespaces(
-        includes,
-        WinRTMetadataFilter(
-            include = includes,
-            exclude = additionExcludeNamespaces.toSet(),
-        ).normalized(),
+private data class EffectiveWindowsSdkIdentity(
+    val declared: Boolean,
+    val version: String?,
+    val includeExtensions: Boolean,
+)
+
+private fun effectiveWindowsSdkIdentity(
+    metadataInputs: List<String>,
+    dslDeclared: Boolean,
+    dslVersion: String?,
+    dslIncludeExtensions: Boolean,
+): EffectiveWindowsSdkIdentity {
+    if (dslDeclared) {
+        return EffectiveWindowsSdkIdentity(
+            declared = true,
+            version = dslVersion,
+            includeExtensions = dslIncludeExtensions,
+        )
+    }
+    // Identity has one effective SDK shape while metadataInputs preserves every source exactly.
+    // For multiple explicit SDK inputs, the last declared SDK input deterministically owns that shape.
+    val metadataSdk = metadataInputs
+        .mapNotNull { input -> runCatching { WinRTMetadataSource.parse(input) }.getOrNull() as? WinRTMetadataSource.WindowsSdk }
+        .lastOrNull()
+        ?: return EffectiveWindowsSdkIdentity(declared = false, version = null, includeExtensions = false)
+    return EffectiveWindowsSdkIdentity(
+        declared = true,
+        version = metadataSdk.version,
+        includeExtensions = metadataSdk.includeExtensions,
     )
-        .flatMap { addition -> addition.generatedTypeNames }
-        .distinct()
-        .sorted()
 }
 
 private val projectionRegistrarHeader = listOf(

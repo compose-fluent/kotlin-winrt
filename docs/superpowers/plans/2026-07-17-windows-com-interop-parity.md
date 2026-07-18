@@ -153,7 +153,7 @@
 - Produces: `WinRTComInteropAdapterDescriptor`, `WinRTComInteropMethodDescriptor`, `WinRTComInteropParameterDescriptor`, `WinRTComInteropResultDescriptor`, and `WinRTComInteropAdapters.forProjection(model, context)`.
 - Produces: `WinRTNamespaceAddition.comInteropAdapters: List<WinRTComInteropAdapterDescriptor>`; `generatedTypeNames` is derived from those descriptors.
 
-- [ ] **Step 1: Write failing boundary and filter tests**
+- [x] **Step 1: Write failing boundary and filter tests**
 
   Build a compact metadata model containing all required runtime classes/interfaces/enums and vary `windowsSdkSelections` across UAC 1, 2, 3, 4, 14, and 15. Assert exact generated helper FQNs:
 
@@ -183,7 +183,7 @@
 
   Each boundary includes all lower-gated helpers plus `winrt.interop.WindowNative` and `winrt.interop.InitializeWithWindow`. Also assert: no SDK selection emits neither UAC-gated helpers nor a guessed UAC; a path source containing UAC metadata still emits none; `additionExclude` removes owning namespaces; missing required types reports a deterministic prerequisite diagnostic rather than emitting a broken helper.
 
-- [ ] **Step 2: Run model tests and verify RED**
+- [x] **Step 2: Run model tests and verify RED**
 
   Run:
 
@@ -193,7 +193,7 @@
 
   Expected: compilation fails because the catalog and SDK-aware namespace additions do not exist.
 
-- [ ] **Step 3: Implement catalog descriptor types and the exact 15 adapters**
+- [x] **Step 3: Implement catalog descriptor types and the exact 15 adapters**
 
   Define sealed result IID sources (`DefaultInterface`, `ParameterizedInterface`, `IAsyncAction`, `Constant`) and ABI value kinds (`RawAddress`, `String`, `ProjectedObject`). Populate exactly this reference table, all with IInspectable base slot 6 except DataTransfer's IUnknown slots 3/4:
 
@@ -217,7 +217,7 @@
 
   Record each method's fully qualified parameter/result type prerequisites. `forProjection` must require an explicit `WindowsSdk` source and a non-null UAC inventory, apply namespace/addition filters, enforce the UAC floor, and validate required types against the normalized model. Replace the static empty COM additions in `WinRTNamespaceAdditions.all` with catalog-derived additions; retain the unversioned `WinRT.Interop` addition and unrelated source additions unchanged.
 
-- [ ] **Step 4: Run model tests and verify GREEN**
+- [x] **Step 4: Run model tests and verify GREEN**
 
   Run the command from Step 2. Expected: all `WinRTMetadataModelTest` tests pass, including the absorbed `InputPaneInterop` test rewritten to declare UAC 1.
 
@@ -241,11 +241,11 @@
 - Consumes: selected `WinRTComInteropAdapterDescriptor` values from `WinRTMetadataProjectionInventory` plus `KotlinProjectionRenderer.renderAbiTypeBinding(...)`.
 - Produces: `KotlinComInteropSourceRenderer.render(descriptor, model): KotlinProjectionFile`.
 
-- [ ] **Step 1: Write failing common-renderer tests for runtime-class and unit shapes**
+- [x] **Step 1: Write failing common-renderer tests for runtime-class and unit shapes**
 
   Generate a UAC 15 model and assert all simple helper files exist with camel-cased public methods, exact slots/IIDs, projected return types, and `RawAddress` parameters. Assert `PlayToManagerInterop.showPlayToUIForWindow` and `DataTransferManagerInterop.showShareUIForWindow` use `WinRTProjectionIntrinsic.callUnit`. Assert every helper source lacks `ComVtableInvoker` and generic fallback text. Remove the existing InputPane-only assertions and replace them with table-driven assertions over all runtime-class/unit methods.
 
-- [ ] **Step 2: Run generator tests and verify RED**
+- [x] **Step 2: Run generator tests and verify RED**
 
   Run:
 
@@ -255,7 +255,7 @@
 
   Expected: tests fail because catalog FQNs are not rendered and the InputPane hard-coded branch cannot render the table.
 
-- [ ] **Step 3: Implement descriptor-driven runtime-class/unit rendering**
+- [x] **Step 3: Implement descriptor-driven runtime-class/unit rendering**
 
   Construct KotlinPoet files from descriptors. For runtime-class results allocate/write the result IID in a confined scope and call:
 
@@ -274,7 +274,7 @@
 
   Remove `withWindowsSdkSourceForWindowsProjectionRoots()`: type completion may use only declared sources, and helper emission must never manufacture an SDK selection.
 
-- [ ] **Step 4: Run generator tests and verify GREEN**
+- [x] **Step 4: Run generator tests and verify GREEN**
 
   Run the command from Step 2. Expected: all `KotlinProjectionGeneratorTest` tests pass for runtime-class/unit helper shapes.
 
@@ -296,7 +296,7 @@
 - Consumes: existing `descriptorIntrinsicArgument`, projected-object marshalers, `WinRTAsyncOperationReference.interfaceId(signature)`, and `WinRTAsyncInterfaceIds.IAsyncAction`.
 - Produces: complete bodies for `PrintManagerInterop`, `UserConsentVerifierInterop`, `WebAuthenticationCoreManagerInterop`, and `AccountsSettingsPaneInterop` async methods.
 
-- [ ] **Step 1: Write failing async/marshalling body tests**
+- [x] **Step 1: Write failing async/marshalling body tests**
 
   Assert exact public signatures:
 
@@ -311,11 +311,11 @@
 
   Assert the generated body scopes/disposes HSTRING and projected-object marshalers, supplies the hidden result-IID address last, uses parameterized async IIDs, and calls the typed projected-interface/async intrinsic path. Reject raw projected object arguments, leaked HSTRING ownership, `ComVtableInvoker`, and vararg fallback.
 
-- [ ] **Step 2: Run generator tests and verify RED**
+- [x] **Step 2: Run generator tests and verify RED**
 
   Use the Task 3 test command. Expected: async/HSTRING/projected-object body assertions fail.
 
-- [ ] **Step 3: Implement async IID and parameter marshalling through existing abstractions**
+- [x] **Step 3: Implement async IID and parameter marshalling through existing abstractions**
 
   Resolve every public and ABI type through `renderAbiTypeBinding`. Reuse `descriptorIntrinsicArgument(...)` to obtain parameter ABI shapes; use existing scoped marshaller code generation for `String`, `WebTokenRequest`, and `WebAccount`. Allocate/write the async result IID:
 
@@ -330,7 +330,7 @@
 
   Use the existing projected-interface/async intrinsic rendering helpers so returned pointers acquire exactly one managed owner. The inspected `WinRTProjectionIntrinsic` surface already represents these descriptors, so this task makes no runtime or compiler-plugin change. If implementation evidence contradicts that inspection, stop before editing those modules and amend the approved design and this plan with the exact missing common intrinsic plus both JVM/native lowerings.
 
-- [ ] **Step 4: Run generator and runtime/compiler tests and verify GREEN**
+- [x] **Step 4: Run generator and runtime/compiler tests and verify GREEN**
 
   Run:
 
@@ -348,6 +348,41 @@
   git commit -m "feat(generator): marshal COM interop async calls"
   ```
 
+### Task 4.5: Preserve Windows SDK Identity During Projection Model Completion
+
+**Files:**
+- Modify: `winrt-generator/src/main/kotlin/io/github/composefluent/winrt/projections/generator/KotlinProjectionGenerator.kt`
+- Test: `winrt-generator/src/test/kotlin/io/github/composefluent/winrt/projections/generator/KotlinProjectionGeneratorTest.kt`
+- Modify: `PLAN.md`
+
+**Interfaces:**
+- Consumes: the caller-supplied normalized model plus the supplemental model loaded when `projectionContext.include` is non-empty.
+- Produces: a completed `WinRTMetadataModel` whose namespaces and `windowsSdkSelections` both preserve the union of caller and supplemental metadata.
+
+- [x] **Step 1: Write a failing completion-merge regression test**
+
+  Exercise the non-empty `projectionContext.include` branch with an explicit Windows SDK source and an input model carrying a known UAC selection. Assert the completed generation still selects the expected UAC-gated interop helper/source-addition inventory. The test must fail against the current namespace-only reconstruction because it drops `windowsSdkSelections`.
+
+- [x] **Step 2: Run the focused generator regression and verify RED**
+
+  Run the new test alone first. Expected: the helper inventory is absent or otherwise demonstrates that the completed model lost the declared SDK/UAC selection.
+
+- [x] **Step 3: Merge SDK selections alongside namespaces**
+
+  Retain the loaded supplemental model before projection-surface filtering. Use its filtered namespaces for completion, but merge its unfiltered `windowsSdkSelections` with caller selections in one normalized model. Do not synthesize SDK identity and do not add another UAC selection path outside `WinRTMetadataModel`.
+
+- [x] **Step 4: Run the focused regression and generator class, then verify GREEN**
+
+  Run the new test alone, then the full `KotlinProjectionGeneratorTest` class with `--max-workers=1`. Expected: all executed tests pass, with only existing environment-conditioned skips.
+
+- [ ] **Step 5: Update `PLAN.md` and commit Task 4.5**
+
+  Keep this as a separate generator commit when Git write access is available:
+
+  ```powershell
+  git commit -m "fix(generator): preserve Windows SDK projection identity"
+  ```
+
 ### Task 5: Preserve Exact Gradle Identity and Dependency Suppression
 
 **Files:**
@@ -360,11 +395,11 @@
 - Consumes: exact catalog-filtered `source-additions.tsv` emitted by the generator.
 - Produces: identity `generatedTypeNames` containing only helpers emitted for the declared SDK/UAC and filters; downstream `suppressedSourceAdditionTypeNames` removes those exact FQNs.
 
-- [ ] **Step 1: Write failing Gradle boundary and dependency tests**
+- [x] **Step 1: Write failing Gradle boundary and dependency tests**
 
   Replace the current static `sourceAdditionTypeNames(namespaces, excludes)` InputPane assertion with fixture-backed SDK/UAC cases. Assert UAC 1, 2, 3, 4, 14, and 15 publish the same cumulative sets as Task 2. Add a fixture with Windows WinMD path input but no `windowsSdk(...)` and assert no UAC-gated additions. Add a producer/consumer fixture where the producer owns UAC-15 helper FQNs and assert the consumer emits none of those helper files or identity names.
 
-- [ ] **Step 2: Run plugin tests and verify RED**
+- [x] **Step 2: Run plugin tests and verify RED**
 
   Run:
 
@@ -374,20 +409,17 @@
 
   Expected: boundary/producer-consumer assertions fail while identity still reconstructs static namespace additions.
 
-- [ ] **Step 3: Make Gradle consume exact emitted catalog ownership**
+- [x] **Step 3: Make Gradle consume exact emitted catalog ownership**
 
   Keep the existing source-addition manifest as the sole helper-FQN boundary. Pass declared Windows SDK source information through every metadata/generator context used by generation and identity. Remove any direct `WinRTNamespaceAdditions.forNamespaces(...)` reconstruction at Gradle call sites when it can diverge from SDK/UAC selection; identity must read or calculate the same `WinRTMetadataProjectionInventory` used by generation. Apply existing dependency identity suppression after catalog selection, never inside metadata.
 
-- [ ] **Step 4: Run plugin tests and verify GREEN**
+- [x] **Step 4: Run focused plugin tests and verify GREEN**
 
-  Run the command from Step 2. Expected: all `KotlinWinRTPluginTest` tests pass.
+  The six Task 5 Gradle regressions pass together, and the real-WinMD generic-prerequisite regression passes. The required class-wide command was attempted with the mandated 900000 ms timeout but did not finish; preserve that timeout as a verification concern rather than attributing unrelated class failures to Task 5.
 
-- [ ] **Step 5: Update `PLAN.md` and commit Task 5**
+- [x] **Step 5: Update `PLAN.md` and record the sandbox commit restriction**
 
-  ```powershell
-  git add PLAN.md winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/GenerateWinRTIdentityTask.kt winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/KotlinWinRTPlugin.kt winrt-gradle-plugin/src/test/kotlin/io/github/composefluent/winrt/gradle/KotlinWinRTPluginTest.kt
-  git commit -m "fix(gradle): publish UAC-gated interop identity"
-  ```
+  `.git` is read-only in the execution sandbox, and the shared working tree contains prerequisite Tasks 2-4.5, so no isolated Task 5 commit was created. Preserve the coherent working tree for the controller's eventual commit.
 
 ### Task 6: Compile Real Windows SDK Projections and Close the Slice
 
@@ -399,15 +431,15 @@
 - Consumes: complete metadata catalog, generator renderer, Gradle identity, and installed Windows SDK `Platform.xml` inventories.
 - Produces: compiling JVM and `mingwX64` Windows SDK projections with all helpers supported by the selected SDK.
 
-- [ ] **Step 1: Run targeted metadata, generator, and Gradle test classes separately**
+- [x] **Step 1: Run targeted metadata, generator, and Gradle validation separately**
 
-  Run the three commands from Tasks 1/2, 3/4, and 5 as separate Gradle invocations. Expected: all pass.
+  Actual: the focused metadata exact-activation-type regressions pass; the focused generator catalog/unsupported-shape regressions pass; the full `KotlinProjectionGeneratorTest` run completes with 385 tests, 3 environment-conditioned skips, and 0 failures/errors; and the real Gradle exact-type producer/consumer TestKit E2E passes with matching producer manifest/identity ownership and complete dependency-owned consumer suppression. The previously documented full Gradle class-wide host resource failures remain outside these focused Task 6 behaviors.
 
-- [ ] **Step 2: Validate installed SDK boundary inventories where available**
+- [x] **Step 2: Validate installed SDK boundary inventories where available**
 
-  For each installed `10.0.19041.0`, `10.0.22000.0`, `10.0.22621.0`, and `10.0.26100.0`, invoke the Windows SDK generation/identity test fixture with that explicit version. Expected: helper set equals its `Platform.xml` UAC major, including `DisplayInformationInterop` only at UAC 15 or newer. Record unavailable local SDKs as environment gaps in `PLAN.md`; do not guess their UAC versions.
+  Actual: local `10.0.19041.0` and `10.0.22000.0` lack both `Platform.xml` and `References`, so their UAC values remain recorded as unavailable rather than guessed. Installed `10.0.22621.0` reports UAC15 and generated the expected 17-helper inventory; installed `10.0.26100.0` reports UAC19 and was regenerated last for the final output. `DisplayInformationInterop` is present in both available UAC15-or-newer inventories.
 
-- [ ] **Step 3: Compile the Windows SDK projection for JVM**
+- [x] **Step 3: Compile the Windows SDK projection for JVM**
 
   Run:
 
@@ -415,9 +447,9 @@
   .\gradlew.bat :winrt-projections:windows-sdk:compileKotlinJvm --max-workers=1
   ```
 
-  Expected: BUILD SUCCESSFUL and all generated helper sources compile.
+  Actual: explicit SDK `10.0.26100.0` compilation completed with exit code 0 and `BUILD SUCCESSFUL in 11m 6s`; all generated helper sources compile on JVM.
 
-- [ ] **Step 4: Compile the Windows SDK projection for `mingwX64`**
+- [x] **Step 4: Compile the Windows SDK projection for `mingwX64`**
 
   Run:
 
@@ -425,15 +457,21 @@
   .\gradlew.bat :winrt-projections:windows-sdk:compileKotlinMingwX64 --max-workers=1
   ```
 
-  Expected: BUILD SUCCESSFUL with the same public helper API and native intrinsic lowering.
+  Actual: explicit SDK `10.0.26100.0` compilation completed with exit code 0 and `BUILD SUCCESSFUL in 10m 17s` using installed Microsoft JDK 25, Gradle 9.4, the ignored workspace-local `.gradle-review` user home, in-process/non-incremental Kotlin compilation, and one worker.
 
-- [ ] **Step 5: Audit generated sources and identity**
+- [x] **Step 5: Audit generated sources and identity**
 
-  Verify the selected UAC-15-or-newer SDK produces exactly 17 helper FQNs: the 15 catalog helpers plus `winrt.interop.WindowNative` and `winrt.interop.InitializeWithWindow`. Verify `source-additions.tsv` contains those same sorted FQNs, no internal `WinRT.Interop.I*Interop` public declarations, no duplicate helper owners, no `ComVtableInvoker`, and no change to `microsoft.ui.Win32Interop`.
+  Actual: the final UAC19 output has exactly 17 ordinal-sorted helper FQNs in both `source-additions.tsv` and identity; `DisplayInformationInterop` is present; all 17 helpers have exactly one public owner; the three async-operation helpers import canonical `windows.foundation.IAsyncOperation`; and scans report zero public internal `I*Interop` declarations, `ComVtableInvoker` references, arity-suffixed async imports, or `microsoft.ui.Win32Interop` leakage.
 
-- [ ] **Step 6: Complete `PLAN.md`, run final diff/status review, and commit validation**
+- [x] **Step 6: Complete `PLAN.md` and run final diff/status review**
 
-  Mark the active COM interop item complete with exact command results and any resource/environment limitations. Review `git diff --check`, `git status --short`, and the commits from Tasks 1-5. Commit only final projection/plan evidence:
+  Actual: `PLAN.md` and this plan contain the exact fresh test, UAC19 audit, and JVM/`mingwX64` compile results. `git diff --check` passes; both untracked production files have zero trailing-whitespace matches and final newlines; status contains only the coherent parity source/test/plan delta plus explicitly excluded `.gradle-review/` and `.worktrees/`. A final read-only reviewer inspected the two remediated areas and their focused regressions, reported no Critical, Important, or Minor issues, and assessed the remediation as ready to merge.
+
+- [ ] **Step 7: Commit the coherent parity slice when Git becomes writable**
+
+  `.git` is read-only in the current execution sandbox, so the coherent shared working tree must remain uncommitted here. When Git write access is restored, stage the complete parity slice intentionally and create atomic commits at the documented Task boundaries; do not include `.gradle-review/`, `.worktrees/`, or `.superpowers/sdd/` evidence/cache artifacts.
+
+  The final projection/plan validation commit remains:
 
   ```powershell
   git add PLAN.md winrt-projections/windows-sdk

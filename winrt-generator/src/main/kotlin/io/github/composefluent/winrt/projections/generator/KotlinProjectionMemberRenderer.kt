@@ -1086,8 +1086,18 @@ internal data class DescriptorIntrinsicArgument(
 internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
     parameter: KotlinProjectionAbiParameterBinding,
     includeStruct: Boolean = false,
+    useRawAbiScopedMarshaling: Boolean = false,
 ): DescriptorIntrinsicArgument? {
     val binding = parameter.typeBinding
+    if (
+        useRawAbiScopedMarshaling &&
+        binding.kind in setOf(
+            KotlinProjectionAbiValueKind.String,
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        )
+    ) {
+        return rawAbiScopedDescriptorIntrinsicArgument(parameter)
+    }
     descriptorCollectionIntrinsicArgument(parameter)?.let { return it }
     val shape = if (includeStruct) {
         descriptorStructCapableArgumentShape(binding)
@@ -1148,6 +1158,29 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
             expressions = listOf(CodeBlock.of("%L", parameter.name)),
         )
     }
+}
+
+private fun KotlinProjectionRenderer.rawAbiScopedDescriptorIntrinsicArgument(
+    parameter: KotlinProjectionAbiParameterBinding,
+): DescriptorIntrinsicArgument? {
+    val marshaler = buildAbiParameterMarshaler(parameter) ?: return null
+    if (
+        marshaler.abiArgumentKind != KotlinProjectionComArgumentKind.Pointer ||
+        marshaler.extraAbiArgumentExpressions.isNotEmpty() ||
+        marshaler.extraAbiArgumentKinds.isNotEmpty() ||
+        marshaler.postCallStatements.isNotEmpty() ||
+        marshaler.finallyStatements.isNotEmpty() ||
+        marshaler.resultAllocation != null ||
+        marshaler.resultLocalDeclarations != null ||
+        marshaler.readbackStatement != null
+    ) {
+        return null
+    }
+    return DescriptorIntrinsicArgument(
+        shape = "RawAddress",
+        expressions = listOf(marshaler.abiArgumentExpression),
+        scopeOpeners = marshaler.scopeOpeners,
+    )
 }
 
 private fun KotlinProjectionRenderer.descriptorCollectionIntrinsicArgument(

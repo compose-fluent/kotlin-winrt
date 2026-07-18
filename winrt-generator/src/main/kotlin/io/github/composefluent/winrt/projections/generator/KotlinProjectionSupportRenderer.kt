@@ -108,6 +108,7 @@ import kotlin.io.path.extension
 
 class KotlinProjectionSupportRenderer {
     private val typeRenderer = KotlinProjectionRenderer()
+    private val comInteropSourceRenderer = KotlinComInteropSourceRenderer(typeRenderer)
     private val supportTypeRenderer = KotlinProjectionRenderer(
         useInterfaceProjectionArtifacts = true,
         useProjectionIntrinsics = true,
@@ -212,7 +213,7 @@ class KotlinProjectionSupportRenderer {
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
                 renderSourceAdditionCompilerInput(inventory),
             ).forEach(::add)
-            addAll(renderSourceAdditionFiles(inventory))
+            addAll(renderSourceAdditionFiles(model, inventory))
             if (emitProjectionRegistrar) {
                 addAll(renderProjectionSupportAnchors(supportOwnerIdentity))
             }
@@ -1678,12 +1679,23 @@ class KotlinProjectionSupportRenderer {
         return supportFile("${namespaceAdditionsClassName.simpleName}.kt", fileSpec)
     }
 
-    private fun renderSourceAdditionFiles(inventory: WinRTMetadataProjectionInventory): List<KotlinProjectionFile> =
-        inventory.namespaceAdditions
+    private fun renderSourceAdditionFiles(
+        model: WinRTMetadataModel,
+        inventory: WinRTMetadataProjectionInventory,
+    ): List<KotlinProjectionFile> {
+        val comInteropAdaptersByTypeName = inventory.namespaceAdditions
+            .flatMap(WinRTNamespaceAddition::comInteropAdapters)
+            .associateBy { adapter -> adapter.projectedTypeName }
+        return inventory.namespaceAdditions
             .flatMap(WinRTNamespaceAddition::generatedTypeNames)
             .distinct()
             .sorted()
-            .mapNotNull(::renderSourceAdditionFile)
+            .mapNotNull { typeName ->
+                comInteropAdaptersByTypeName[typeName]
+                    ?.let { adapter -> comInteropSourceRenderer.render(adapter, model) }
+                    ?: renderSourceAdditionFile(typeName)
+            }
+    }
 
     private fun renderSourceAdditionCompilerInput(inventory: WinRTMetadataProjectionInventory): KotlinProjectionFile? {
         val generatedTypeNames = inventory.namespaceAdditions

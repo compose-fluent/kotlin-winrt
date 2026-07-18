@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.runtime.Guid
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -2875,22 +2876,6 @@ class WinRTMetadataModelTest {
                     ),
                 ),
                 WinRTNamespace(
-                    name = "Windows.ApplicationModel.DataTransfer",
-                    types = listOf(
-                        WinRTTypeDefinition(
-                            namespace = "Windows.ApplicationModel.DataTransfer",
-                            name = "DataTransferManager",
-                            kind = WinRTTypeKind.RuntimeClass,
-                        ),
-                    ),
-                ),
-                WinRTNamespace(
-                    name = "WinRT.Interop",
-                    types = listOf(
-                        WinRTTypeDefinition(namespace = "WinRT.Interop", name = "IWindowNative", kind = WinRTTypeKind.Interface),
-                    ),
-                ),
-                WinRTNamespace(
                     name = "Microsoft.UI",
                     types = listOf(
                         WinRTTypeDefinition(namespace = "Microsoft.UI", name = "WindowId", kind = WinRTTypeKind.Struct),
@@ -2910,10 +2895,8 @@ class WinRTMetadataModelTest {
                 sources = emptyList(),
                 include = setOf(
                     "Windows.Foundation",
-                    "WinRT.Interop",
                     "Microsoft.UI",
                     "Microsoft.UI.Xaml",
-                    "Windows.ApplicationModel.DataTransfer",
                     "Windows.UI.Xaml.Controls.Primitives",
                 ),
                 additionExclude = setOf("Microsoft.UI.Xaml.Media.Animation"),
@@ -2923,20 +2906,10 @@ class WinRTMetadataModelTest {
         assertEquals(
             listOf(
                 "Microsoft.UI",
-                "WinRT.Interop",
-                "Windows.ApplicationModel.DataTransfer",
                 "Windows.Foundation",
                 "Windows.UI.Xaml.Controls.Primitives",
             ),
             inventory.namespaceAdditions.map { it.namespace },
-        )
-        assertEquals(
-            WinRTNamespaceAdditionKind.ComInteropAdapter,
-            inventory.namespaceAdditions.single { it.namespace == "Windows.ApplicationModel.DataTransfer" }.kind,
-        )
-        assertEquals(
-            listOf("interop/Windows.ApplicationModel.DataTransfer.kt"),
-            inventory.namespaceAdditions.single { it.namespace == "Windows.ApplicationModel.DataTransfer" }.sourceFiles,
         )
         assertEquals(
             listOf(
@@ -2962,12 +2935,24 @@ class WinRTMetadataModelTest {
             listOf("microsoft.ui.Win32Interop"),
             inventory.namespaceAdditions.single { it.namespace == "Microsoft.UI" }.generatedTypeNames,
         )
-        assertEquals(
-            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
-            inventory.namespaceAdditions.single { it.namespace == "WinRT.Interop" }.generatedTypeNames,
-        )
         assertEquals(true, inventory.helperOutputs.namespaceAdditionsRequired)
         assertTrue("WinRTNamespaceAdditions.kt" in inventory.helperOutputs.requiredHelperFileNames)
+    }
+
+    @Test
+    fun projection_inventory_uses_exact_type_selection_to_trigger_namespace_additions_without_local_metadata() {
+        val inventory = WinRTMetadataModel(namespaces = emptyList()).projectionInventory(
+            WinRTMetadataProjectionContext(
+                sources = emptyList(),
+                include = setOf("Microsoft.UI.Windowing.AppWindow"),
+            ),
+        )
+
+        assertEquals(
+            listOf("microsoft.ui.Win32Interop"),
+            inventory.namespaceAdditions.flatMap { addition -> addition.generatedTypeNames },
+        )
+        assertFalse(inventory.namespaceAdditions.any { addition -> addition.namespace == "WinRT.Interop" })
     }
 
     @Test
@@ -2981,11 +2966,12 @@ class WinRTMetadataModelTest {
                     ),
                 ),
             ),
+            windowsSdkSelections = windowsSdkSelections(1),
         )
 
         val inventory = model.projectionInventory(
             WinRTMetadataProjectionContext(
-                sources = emptyList(),
+                sources = listOf(WinRTMetadataSource.windowsSdk(version = "10.0.10240.0")),
                 include = setOf("Windows.Foundation"),
             ),
         )
@@ -2994,6 +2980,178 @@ class WinRTMetadataModelTest {
             listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
             inventory.namespaceAdditions.single { it.namespace == "WinRT.Interop" }.generatedTypeNames,
         )
+    }
+
+    @Test
+    fun windows_com_interop_adapters_follow_public_uac_boundaries() {
+        val expectedUac1 = setOf(
+            "windows.applicationmodel.datatransfer.DataTransferManagerInterop",
+            "windows.applicationmodel.datatransfer.dragdrop.core.DragDropManagerInterop",
+            "windows.graphics.printing.PrintManagerInterop",
+            "windows.media.SystemMediaTransportControlsInterop",
+            "windows.media.playto.PlayToManagerInterop",
+            "windows.security.authentication.web.core.WebAuthenticationCoreManagerInterop",
+            "windows.security.credentials.ui.UserConsentVerifierInterop",
+            "windows.ui.applicationsettings.AccountsSettingsPaneInterop",
+            "windows.ui.viewmanagement.InputPaneInterop",
+            "windows.ui.viewmanagement.UIViewSettingsInterop",
+            "winrt.interop.InitializeWithWindow",
+            "winrt.interop.WindowNative",
+        )
+        val expectedByUac = mapOf(
+            1 to expectedUac1,
+            2 to expectedUac1 + "windows.ui.input.spatial.SpatialInteractionManagerInterop",
+            3 to expectedUac1 + setOf(
+                "windows.ui.input.spatial.SpatialInteractionManagerInterop",
+                "windows.ui.input.RadialControllerConfigurationInterop",
+                "windows.ui.input.RadialControllerInterop",
+            ),
+            4 to expectedUac1 + setOf(
+                "windows.ui.input.spatial.SpatialInteractionManagerInterop",
+                "windows.ui.input.RadialControllerConfigurationInterop",
+                "windows.ui.input.RadialControllerInterop",
+                "windows.ui.input.core.RadialControllerIndependentInputSourceInterop",
+            ),
+        )
+        val expectedUac14 = expectedByUac.getValue(4)
+        val expectedUac15 = expectedUac14 + "windows.graphics.display.DisplayInformationInterop"
+
+        (expectedByUac + mapOf(14 to expectedUac14, 15 to expectedUac15)).forEach { (uac, expected) ->
+            val inventory = comInteropAdapterModel(uac).projectionInventory(comInteropProjectionContext())
+
+            assertEquals("Unexpected helper set for UAC $uac", expected, inventory.generatedSourceAdditionTypeNames())
+        }
+    }
+
+    @Test
+    fun windows_com_interop_adapters_require_an_explicit_windows_sdk_source() {
+        val model = comInteropAdapterModel(15)
+        val pathContext = comInteropProjectionContext(
+            sources = listOf(WinRTMetadataSource.path(Path.of("Windows.winmd"))),
+        )
+
+        assertEquals(emptySet<String>(), model.projectionInventory(pathContext).generatedSourceAdditionTypeNames())
+    }
+
+    @Test
+    fun windows_com_interop_adapters_accept_an_unpinned_declared_windows_sdk_with_resolved_selection() {
+        val inventory = comInteropAdapterModel(15).projectionInventory(
+            comInteropProjectionContext(sources = listOf(WinRTMetadataSource.windowsSdk())),
+        )
+
+        assertTrue(
+            "A declared but unpinned Windows SDK must enable the resolved UAC15 helper inventory",
+            "windows.graphics.display.DisplayInformationInterop" in inventory.generatedSourceAdditionTypeNames(),
+        )
+    }
+
+    @Test
+    fun windows_com_interop_adapter_is_selected_for_exact_activation_type_include() {
+        val inventory = comInteropAdapterModel(15).projectionInventory(
+            WinRTMetadataProjectionContext(
+                sources = listOf(WinRTMetadataSource.windowsSdk(version = "10.0.22621.0")),
+                include = setOf("Windows.Graphics.Display.DisplayInformation"),
+            ),
+        )
+
+        assertTrue(
+            "Exact activation-type selection must retain DisplayInformationInterop",
+            "windows.graphics.display.DisplayInformationInterop" in inventory.generatedSourceAdditionTypeNames(),
+        )
+    }
+
+    @Test
+    fun windows_com_interop_adapters_resolve_loaded_generic_typedef_by_base_name_and_arity() {
+        val winmd = Files.createTempFile("kotlin-winrt-com-interop-generic-prerequisite-", ".winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Windows.Foundation.UniversalApiContract",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Windows.Foundation.IAsyncOperation`1",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Windows.Graphics.Printing.IPrintManager",
+                    iid = "00000000-0000-0000-0000-000000000002",
+                ),
+            ),
+            runtimeClasses = listOf(
+                WinRTAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Windows.Graphics.Printing.PrintManager",
+                    interfaceNames = listOf("Windows.Graphics.Printing.IPrintManager"),
+                ),
+            ),
+            outputFile = winmd,
+        )
+        val loaded = WinRTMetadataLoader.load(winmd)
+        val asyncOperation = loaded.namespaces
+            .single { namespace -> namespace.name == "Windows.Foundation" }
+            .types
+            .single { type -> type.name == "IAsyncOperation" }
+        assertEquals("Windows.Foundation.IAsyncOperation", asyncOperation.qualifiedName)
+        assertEquals(1, asyncOperation.genericParameterCount)
+        val model = loaded.copy(windowsSdkSelections = windowsSdkSelections(1)).normalized()
+
+        val inventory = model.projectionInventory(
+            WinRTMetadataProjectionContext(
+                sources = listOf(WinRTMetadataSource.windowsSdk(version = "10.0.10240.0")),
+                include = setOf("Windows.Graphics.Printing"),
+            ),
+        )
+
+        assertTrue(
+            "windows.graphics.printing.PrintManagerInterop" in inventory.generatedSourceAdditionTypeNames(),
+        )
+    }
+
+    @Test
+    fun windows_com_interop_adapters_fail_closed_when_the_declared_sdk_has_no_uac() {
+        val model = comInteropAdapterModel(15).copy(
+            windowsSdkSelections = listOf(
+                WinRTWindowsSdkSelection(
+                    version = "10.0.22621.0",
+                    contracts = listOf(WinRTWindowsSdkContract("Windows.Foundation.FoundationContract", "4.0.0.0")),
+                ),
+            ),
+        )
+
+        val failure = runCatching {
+            model.projectionInventory(comInteropProjectionContext())
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("Windows.Foundation.UniversalApiContract"))
+    }
+
+    @Test
+    fun windows_com_interop_adapters_follow_addition_exclude_prefixes() {
+        val inventory = comInteropAdapterModel(15).projectionInventory(
+            comInteropProjectionContext(additionExclude = setOf("Windows.UI.Input")),
+        )
+
+        assertEquals(
+            setOf(
+                "windows.ui.input.RadialControllerConfigurationInterop",
+                "windows.ui.input.RadialControllerInterop",
+                "windows.ui.input.core.RadialControllerIndependentInputSourceInterop",
+                "windows.ui.input.spatial.SpatialInteractionManagerInterop",
+            ),
+            comInteropAdapterModel(15).projectionInventory(comInteropProjectionContext()).generatedSourceAdditionTypeNames() -
+                inventory.generatedSourceAdditionTypeNames(),
+        )
+    }
+
+    @Test
+    fun windows_com_interop_adapters_report_missing_required_projected_types() {
+        val model = comInteropAdapterModel(1, omittedTypeNames = setOf("Windows.UI.ViewManagement.InputPane"))
+
+        val failure = runCatching {
+            model.projectionInventory(comInteropProjectionContext())
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("InputPaneInterop"))
+        assertTrue(failure?.message.orEmpty().contains("Windows.UI.ViewManagement.InputPane"))
     }
 
     @Test
@@ -3922,5 +4080,98 @@ class WinRTMetadataModelTest {
         assertEquals(true, WinRTMetadataDiagnosticCode.IntentionalKotlinGap in codes)
         assertEquals(1, report.warnings.count { it.code == WinRTMetadataDiagnosticCode.IntentionalKotlinGap })
         assertEquals(false, report.format().contains("Sample.Foundation.IWidget.Transform metadata row 12"))
+    }
+
+    private fun comInteropProjectionContext(
+        sources: List<WinRTMetadataSource> = listOf(WinRTMetadataSource.windowsSdk(version = "10.0.22621.0")),
+        additionExclude: Set<String> = emptySet(),
+    ): WinRTMetadataProjectionContext = WinRTMetadataProjectionContext(
+        sources = sources,
+        include = setOf("Windows"),
+        additionExclude = additionExclude,
+    )
+
+    private fun WinRTMetadataProjectionInventory.generatedSourceAdditionTypeNames(): Set<String> = namespaceAdditions
+        .flatMap(WinRTNamespaceAddition::generatedTypeNames)
+        .toSet()
+
+    private fun windowsSdkSelections(uac: Int): List<WinRTWindowsSdkSelection> = listOf(
+        WinRTWindowsSdkSelection(
+            version = "10.0.22621.0",
+            contracts = listOf(
+                WinRTWindowsSdkContract(
+                    name = "Windows.Foundation.UniversalApiContract",
+                    version = "$uac.0.0.0",
+                ),
+            ),
+        ),
+    )
+
+    private fun comInteropAdapterModel(
+        uac: Int,
+        omittedTypeNames: Set<String> = emptySet(),
+    ): WinRTMetadataModel {
+        val types = buildList {
+            addRuntimeClass("Windows.ApplicationModel.DataTransfer", "DataTransferManager")
+            addRuntimeClass("Windows.ApplicationModel.DataTransfer.DragDrop.Core", "CoreDragDropManager")
+            addRuntimeClass("Windows.Graphics.Display", "DisplayInformation")
+            addRuntimeClass("Windows.Graphics.Printing", "PrintManager")
+            addRuntimeClass("Windows.Media", "SystemMediaTransportControls")
+            addRuntimeClass("Windows.Media.PlayTo", "PlayToManager")
+            addRuntimeClass("Windows.Security.Authentication.Web.Core", "WebAuthenticationCoreManager")
+            addRuntimeClass("Windows.Security.Authentication.Web.Core", "WebTokenRequest")
+            addRuntimeClass("Windows.Security.Authentication.Web.Core", "WebTokenRequestResult")
+            addRuntimeClass("Windows.Security.Credentials", "WebAccount")
+            addRuntimeClass("Windows.Security.Credentials.UI", "UserConsentVerifier")
+            add(
+                WinRTTypeDefinition(
+                    namespace = "Windows.Security.Credentials.UI",
+                    name = "UserConsentVerificationResult",
+                    kind = WinRTTypeKind.Enum,
+                ),
+            )
+            addRuntimeClass("Windows.UI.ApplicationSettings", "AccountsSettingsPane")
+            addRuntimeClass("Windows.UI.Input", "RadialController")
+            addRuntimeClass("Windows.UI.Input", "RadialControllerConfiguration")
+            addRuntimeClass("Windows.UI.Input.Core", "RadialControllerIndependentInputSource")
+            addRuntimeClass("Windows.UI.Input.Spatial", "SpatialInteractionManager")
+            addRuntimeClass("Windows.UI.ViewManagement", "InputPane")
+            addRuntimeClass("Windows.UI.ViewManagement", "UIViewSettings")
+            add(WinRTTypeDefinition("Windows.Foundation", "IAsyncAction", WinRTTypeKind.Interface))
+            add(
+                WinRTTypeDefinition(
+                    "Windows.Foundation",
+                    "IAsyncOperation",
+                    WinRTTypeKind.Interface,
+                    genericParameterCount = 1,
+                ),
+            )
+        }.filterNot { type -> type.qualifiedName in omittedTypeNames }
+
+        return WinRTMetadataModel(
+            namespaces = types
+                .groupBy(WinRTTypeDefinition::namespace)
+                .map { (namespace, namespaceTypes) -> WinRTNamespace(namespace, namespaceTypes) },
+            windowsSdkSelections = windowsSdkSelections(uac),
+        ).normalized()
+    }
+
+    private fun MutableList<WinRTTypeDefinition>.addRuntimeClass(namespace: String, name: String) {
+        val interfaceName = "I$name"
+        add(
+            WinRTTypeDefinition(
+                namespace = namespace,
+                name = interfaceName,
+                kind = WinRTTypeKind.Interface,
+            ),
+        )
+        add(
+            WinRTTypeDefinition(
+                namespace = namespace,
+                name = name,
+                kind = WinRTTypeKind.RuntimeClass,
+                defaultInterfaceName = "$namespace.$interfaceName",
+            ),
+        )
     }
 }

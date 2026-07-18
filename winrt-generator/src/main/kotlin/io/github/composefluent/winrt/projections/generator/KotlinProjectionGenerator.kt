@@ -21,7 +21,6 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventory
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventoryBuilder
 import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
-import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
@@ -226,24 +225,17 @@ class KotlinProjectionGenerator(
             return normalizedModel
         }
         val excludedNamespaces = projectionContext.exclude - projectionContext.excludedTypes
-        val supplementalContext = projectionContext.withWindowsSdkSourceForWindowsProjectionRoots()
-        val supplementalModel = supplementalContext.load().filterProjectionSurface(
+        val loadedSupplementalModel = projectionContext.load()
+        val supplementalModel = loadedSupplementalModel.filterProjectionSurface(
             types = projectionContext.include,
             excludedNamespaces = excludedNamespaces,
             excludedTypes = projectionContext.excludedTypes,
             additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
         )
-        return WinRTMetadataModel(supplementalModel.namespaces + normalizedModel.namespaces).normalized()
-    }
-
-    private fun WinRTMetadataProjectionContext.withWindowsSdkSourceForWindowsProjectionRoots(): WinRTMetadataProjectionContext {
-        if (sources.any { source -> source is WinRTMetadataSource.WindowsSdk }) {
-            return this
-        }
-        if (include.none { name -> name == "Windows" || name.startsWith("Windows.") }) {
-            return this
-        }
-        return copy(sources = listOf(WinRTMetadataSource.windowsSdk()) + sources)
+        return WinRTMetadataModel(
+            namespaces = supplementalModel.namespaces + normalizedModel.namespaces,
+            windowsSdkSelections = loadedSupplementalModel.windowsSdkSelections + normalizedModel.windowsSdkSelections,
+        ).normalized()
     }
 
     private fun authoredProjectedTypeNames(model: WinRTMetadataModel): Set<String> =

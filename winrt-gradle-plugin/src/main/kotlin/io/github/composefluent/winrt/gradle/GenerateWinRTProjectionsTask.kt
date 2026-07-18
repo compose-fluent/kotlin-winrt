@@ -58,6 +58,10 @@ import kotlin.streams.asSequence
 @CacheableTask
 abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     init {
+        windowsSdkDeclared.convention(false)
+    }
+
+    init {
         additionalAuthoringTargetArtifactNames.convention(emptyList())
         emitProjectionSources.convention(true)
     }
@@ -109,6 +113,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
+
+    @get:Input
+    abstract val windowsSdkDeclared: Property<Boolean>
 
     @get:Input
     @get:Optional
@@ -191,6 +198,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.excludeTypes.set(excludeTypes)
             parameters.additionExcludeNamespaces.set(additionExcludeNamespaces)
             parameters.dependencyIdentityFiles.from(dependencyIdentityFiles)
+            parameters.windowsSdkDeclared.set(windowsSdkDeclared)
             parameters.windowsSdkVersion.set(windowsSdkVersion)
             parameters.includeWindowsSdkExtensions.set(includeWindowsSdkExtensions)
             parameters.generateWindowsSdkProjection.set(generateWindowsSdkProjection)
@@ -229,6 +237,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val excludeTypes: ListProperty<String>
     val additionExcludeNamespaces: ListProperty<String>
     val dependencyIdentityFiles: ConfigurableFileCollection
+    val windowsSdkDeclared: Property<Boolean>
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
     val generateWindowsSdkProjection: Property<Boolean>
@@ -266,32 +275,13 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             .forEach(GradleFileOperations::deleteDirectory)
         cleanDirectory(generatedRoot)
         cleanDirectory(authoringTypeDetailsRoot)
-        var sources = metadataSources().withWindowsSdkSourceForProjectionRoots(
-            includeNames = parameters.includeNamespaces.get().toSet() + parameters.includeTypes.get().toSet(),
-            version = parameters.windowsSdkVersion.orNull,
-            includeExtensions = parameters.includeWindowsSdkExtensions.get(),
-        )
+        val sources = metadataSources()
         val effectiveExcludeTypes = parameters.excludeTypes.get()
-        var unfilteredModel = WinRTMetadataLoader.loadSources(sources)
-        sources = sources.withWindowsSdkSourceForUnresolvedWindowsReferences(
-            model = unfilteredModel,
-            version = parameters.windowsSdkVersion.orNull,
-            includeExtensions = parameters.includeWindowsSdkExtensions.get(),
-        )
-        unfilteredModel = WinRTMetadataLoader.loadSources(sources)
+        val unfilteredModel = WinRTMetadataLoader.loadSources(sources)
         val effectiveIncludeTypes = parameters.includeTypes.get() +
             automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
         validateDependencyProjectionIdentityOwnership(parameters.dependencyIdentityFiles.files)
         val dependencyProjectionSurfaceTypes = dependencyProjectionSurfaceTypeNames(parameters.dependencyIdentityFiles.files)
-        val effectiveSources = sources.withWindowsSdkSourceForProjectionRoots(
-            includeNames = parameters.includeNamespaces.get().toSet() + effectiveIncludeTypes.toSet() + dependencyProjectionSurfaceTypes.toSet(),
-            version = parameters.windowsSdkVersion.orNull,
-            includeExtensions = parameters.includeWindowsSdkExtensions.get(),
-        )
-        if (effectiveSources != sources) {
-            sources = effectiveSources
-            unfilteredModel = WinRTMetadataLoader.loadSources(sources)
-        }
         val applicationPackagingOnly = parameters.projectModel.get() == "application" &&
             parameters.metadataInputs.get().isEmpty() &&
             parameters.includeNamespaces.get().isEmpty() &&
@@ -483,24 +473,11 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             }
 
     private fun metadataSources(): List<WinRTMetadataSource> {
-        val applicationPackagingOnly = parameters.projectModel.get() == "application" &&
-            parameters.metadataInputs.get().isEmpty() &&
-            parameters.includeNamespaces.get().isEmpty() &&
-            parameters.includeTypes.get().isEmpty() &&
-            !parameters.generateWindowsSdkProjection.get()
         val explicitSources = parameters.metadataInputs.get().map(WinRTMetadataSource::parse)
-        val hasProjectionFilter = parameters.includeNamespaces.get().isNotEmpty() || parameters.includeTypes.get().isNotEmpty()
         val packageSpecs = (parameters.nugetPackages.get() + parameters.dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .distinct()
             .sorted()
-        val sdkSource = if (
-            parameters.generateWindowsSdkProjection.get() ||
-            parameters.windowsSdkVersion.isPresent ||
-            explicitSources.isNotEmpty() ||
-            hasProjectionFilter ||
-            packageSpecs.isNotEmpty() ||
-            parameters.includeWindowsSdkExtensions.get()
-        ) {
+        val sdkSource = if (parameters.windowsSdkDeclared.get()) {
             listOf(
                 WinRTMetadataSource.windowsSdk(
                     version = parameters.windowsSdkVersion.orNull,
@@ -549,17 +526,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         )
             .map(WinRTMetadataSource::path)
         val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
-        return if (applicationPackagingOnly) {
-            sources
-        } else {
-            sources.ifEmpty {
-                if (hasProjectionFilter && parameters.generateWindowsSdkProjection.get()) {
-                    listOf(WinRTMetadataSource.windowsSdk())
-                } else {
-                    emptyList()
-                }
-            }
-        }
+        return sources
     }
 
     private fun isNuGetPackageClosureAvailable(
@@ -869,25 +836,6 @@ internal fun automaticXamlComponentResourceDictionaryTypes(
         .toList()
 }
 
-internal fun List<WinRTMetadataSource>.withWindowsSdkSourceForProjectionRoots(
-    includeNames: Set<String>,
-    version: String? = null,
-    includeExtensions: Boolean = false,
-): List<WinRTMetadataSource> {
-    if (any { source -> source is WinRTMetadataSource.WindowsSdk }) {
-        return this
-    }
-    if (includeNames.none { name -> name == "Windows" || name.startsWith("Windows.") }) {
-        return this
-    }
-    return listOf(
-        WinRTMetadataSource.windowsSdk(
-            version = version,
-            includeExtensions = includeExtensions,
-        ),
-    ) + this
-}
-
 internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRTAuthoredTypeCandidate>): List<String> =
     candidates
         .flatMap { candidate -> candidate.winRTInterfaceNames + candidate.winRTBaseClassName.orEmpty() + candidate.sourceTypeName }
@@ -895,25 +843,6 @@ internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRTAut
         .filter(String::isNotEmpty)
         .distinct()
         .sorted()
-
-internal fun List<WinRTMetadataSource>.withWindowsSdkSourceForUnresolvedWindowsReferences(
-    model: WinRTMetadataModel,
-    version: String? = null,
-    includeExtensions: Boolean = false,
-): List<WinRTMetadataSource> {
-    if (any { source -> source is WinRTMetadataSource.WindowsSdk }) {
-        return this
-    }
-    if (model.unresolvedWindowsSdkTypeReferences().isEmpty()) {
-        return this
-    }
-    return listOf(
-        WinRTMetadataSource.windowsSdk(
-            version = version,
-            includeExtensions = includeExtensions,
-        ),
-    ) + this
-}
 
 internal fun WinRTMetadataModel.unresolvedWindowsSdkTypeReferences(): Set<String> {
     val definedTypeNames = namespaces

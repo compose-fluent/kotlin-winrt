@@ -8,9 +8,11 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTAuthoredRuntimeClassDescriptor
+import io.github.composefluent.winrt.metadata.WinRTComInteropAdapters
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter
 import io.github.composefluent.winrt.metadata.WinRTPortableExecutableInterfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRTParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
@@ -121,7 +123,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun unresolved_windows_sdk_references_trigger_sdk_source_fallback() {
+    fun unresolved_windows_sdk_references_are_detected_without_source_injection() {
         val model = WinRTMetadataModel(
             listOf(
                 WinRTNamespace(
@@ -153,10 +155,7 @@ class KotlinWinRTPluginTest {
 
         assertTrue(model.unresolvedWindowsSdkTypeReferences().contains("Windows.Foundation.Size"))
 
-        val sources = listOf(WinRTMetadataSource.path(Path.of("sample.winmd")))
-            .withWindowsSdkSourceForUnresolvedWindowsReferences(model)
-
-        assertTrue(sources.first() is WinRTMetadataSource.WindowsSdk)
+        assertEquals(setOf("Windows.Foundation.Size"), model.unresolvedWindowsSdkTypeReferences())
     }
 
     @Test
@@ -1300,7 +1299,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun dependency_owned_projection_request_still_generates_unowned_source_additions() {
+    fun dependency_owned_projection_request_without_declared_sdk_does_not_generate_sdk_source_additions() {
         val root = ProjectBuilder.builder().withName("root").build()
         val dependencyOwner = ProjectBuilder.builder().withName("dependencyOwner").withParent(root).build()
         val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
@@ -1344,12 +1343,119 @@ class KotlinWinRTPluginTest {
             GenerateWinRTProjectionsTask::class.java,
         ).get()
 
-        assertEquals(true, localGenerationProvider.get())
-        assertTrue(generateTask.emitProjectionSources.get())
-        assertTrue(
-            "unowned source additions require local compiler support: $compileDependencies",
+        assertEquals(false, localGenerationProvider.get())
+        assertFalse(generateTask.emitProjectionSources.get())
+        assertFalse(
+            "SDK/UAC source additions require an explicit windowsSdk declaration: $compileDependencies",
             "mergeWinRTCompilerSupport" in compileDependencies,
         )
+    }
+
+    @Test
+    fun dependency_owned_microsoft_ui_windowing_type_still_generates_unowned_win32interop_addition() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-microsoft-ui-windowing-addition-")
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-microsoft-ui-windowing-addition")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-microsoft-ui-windowing-addition"
+            include("producer", "consumer")
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("producer/kotlin-winrt.json"),
+            """
+            {
+              "includeNamespaces": [],
+              "includeTypes": ["Microsoft.UI.Windowing.AppWindow"],
+              "projectionShapeVersion": 1,
+              "projectedTypes": ["Microsoft.UI.Windowing.AppWindow"],
+              "sourceAdditions": [],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("producer/build.gradle"),
+            """
+            plugins {
+                id "base"
+            }
+
+            configurations.create("kotlinWinRTIdentityElements") {
+                canBeConsumed = true
+                canBeResolved = false
+                attributes {
+                    attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, "kotlin-winrt-identity"))
+                }
+            }
+
+            artifacts {
+                add("kotlinWinRTIdentityElements", file("kotlin-winrt.json"))
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("consumer/build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            winRT {
+                type "Microsoft.UI.Windowing.AppWindow"
+            }
+
+            dependencies {
+                add(
+                    "kotlinWinRTLibraryDependencyIdentity",
+                    project(path: ":producer", configuration: "kotlinWinRTIdentityElements"),
+                )
+            }
+
+            tasks.named("generateWinRTProjections") {
+                generatorWorkerJvmArgs.set(["-Xmx128m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":consumer:generateWinRTIdentity", "--stacktrace", "--max-workers=1")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTIdentity")?.outcome)
+        val generatedRoot = projectDir.resolve("consumer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        assertTrue(
+            "Consumer must generate the unowned Microsoft.UI addition",
+            Files.isRegularFile(generatedRoot.resolve("microsoft/ui/Win32Interop.kt")),
+        )
+        val manifestTypeNames = readGeneratedSourceAdditionTypeNames(
+            listOf(generatedRoot.resolve("kotlin-winrt-support/source-additions.tsv").toFile()),
+        )
+        assertEquals(listOf("microsoft.ui.Win32Interop"), manifestTypeNames)
+        assertFalse(Files.exists(generatedRoot.resolve("winrt/interop/WindowNative.kt")))
+        assertFalse(Files.exists(generatedRoot.resolve("winrt/interop/InitializeWithWindow.kt")))
+        val identity = readProjectionSurfaceIdentity(
+            projectDir.resolve("consumer/build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile(),
+        )
+        assertEquals(listOf("microsoft.ui.Win32Interop"), identity.sourceAdditions)
     }
 
     @Test
@@ -1775,6 +1881,23 @@ class KotlinWinRTPluginTest {
         assertFalse(json.contains("ProducerOnly.winmd"))
         assertFalse(json.contains(localWinmd.toString().replace("\\", "\\\\")))
         assertFalse(json.contains("""D:\\a\\producer\\metadata"""))
+    }
+
+    @Test
+    fun identity_task_derives_windows_sdk_shape_from_explicit_sdk_metadata_input() {
+        val project = ProjectBuilder.builder().build()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.winmd("10.0.26100.0+")
+
+        val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+        task.generate()
+
+        val json = Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(json.contains("\"metadataInputs\": [\"10.0.26100.0+\"]"))
+        assertTrue(json.contains("\"declared\": true"))
+        assertTrue(json.contains("\"version\": \"10.0.26100.0\""))
+        assertTrue(json.contains("\"includeExtensions\": true"))
     }
 
     @Test
@@ -9617,23 +9740,310 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun source_addition_identity_follows_owner_namespaces() {
-        assertEquals(
-            listOf("microsoft.ui.Win32Interop", "winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
-            sourceAdditionTypeNames(listOf("Microsoft.UI", "WinRT.Interop"), emptyList()),
+    fun source_addition_identity_matches_fixture_selected_sdk_uac_inventory() {
+        windowsComInteropSourceAdditionTypeNamesByUac.forEach { (uac, expectedTypeNames) ->
+            val fixture = writeGradleWindowsSdkFixture(uac)
+            val generatedRoot = Files.createTempDirectory("kotlin-winrt-gradle-uac-$uac-generated-")
+            val source = WinRTMetadataSource.windowsSdk(
+                version = fixture.version,
+                sdkRoot = fixture.root,
+            )
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                groupProjectionFilesByPackageOnWrite = true,
+                projectionContext = WinRTMetadataProjectionContext(
+                    sources = listOf(source),
+                    include = setOf("Windows"),
+                ),
+            ).generateTo(WinRTMetadataLoader.loadSources(listOf(source)), generatedRoot)
+
+            val manifest = generatedRoot.resolve("kotlin-winrt-support/source-additions.tsv")
+            val manifestTypeNames = readGeneratedSourceAdditionTypeNames(listOf(manifest.toFile()))
+            val identityFile = writeIdentityFromSourceAdditionManifest(manifest)
+            val identityTypeNames = readProjectionSurfaceIdentity(identityFile).sourceAdditions
+
+            assertEquals("Unexpected generated helper inventory for UAC $uac", expectedTypeNames.sorted(), manifestTypeNames)
+            assertEquals("Published identity diverged from source-additions.tsv for UAC $uac", manifestTypeNames, identityTypeNames)
+        }
+    }
+
+    @Test
+    fun windows_winmd_path_without_declared_sdk_emits_no_uac_source_additions_or_identity() {
+        val fixture = writeGradleWindowsSdkFixture(15)
+        val projectDir = Files.createTempDirectory("kotlin-winrt-path-without-sdk-source-additions-")
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-path-without-sdk-source-additions")
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            winRT {
+                winmd "${fixture.winmd.toString().replace("\\", "/")}"
+                namespace "Windows"
+            }
+            """.trimIndent(),
         )
-        assertEquals(
-            listOf("microsoft.ui.Win32Interop"),
-            sourceAdditionTypeNames(listOf("Microsoft.UI.Windowing"), emptyList()),
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withEnvironment(windowsSdkFixtureEnvironment(fixture.root))
+            .withArguments("generateWinRTIdentity", "--stacktrace", "--max-workers=1")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTIdentity")?.outcome)
+        val manifest = projectDir.resolve(
+            "build/generated/kotlin-winrt/src/jvmMain/kotlin/kotlin-winrt-support/source-additions.tsv",
         )
-        assertEquals(
-            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
-            sourceAdditionTypeNames(listOf("Windows.Foundation"), emptyList()),
+        val manifestTypeNames = readGeneratedSourceAdditionTypeNames(listOf(manifest.toFile()))
+        val identity = readProjectionSurfaceIdentity(
+            projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile(),
         )
-        assertEquals(
-            listOf("winrt.interop.InitializeWithWindow", "winrt.interop.WindowNative"),
-            sourceAdditionTypeNames(listOf("Microsoft.UI", "WinRT.Interop"), listOf("Microsoft.UI")),
+        assertEquals(emptyList<String>(), manifestTypeNames)
+        assertEquals(emptyList<String>(), identity.sourceAdditions)
+    }
+
+    @Test
+    fun zero_argument_windows_sdk_call_is_an_explicit_source_addition_declaration() {
+        val project = ProjectBuilder.builder().build()
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.windowsSdk()
+
+        val generationTask = project.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        ).get()
+        val identityTask = project.tasks.named(
+            "generateWinRTIdentity",
+            GenerateWinRTIdentityTask::class.java,
+        ).get()
+        val compilerAuthoredTypeDetailsTask = project.tasks
+            .withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java)
+            .single()
+
+        assertTrue("BaseWinRTExtension must retain an explicit windowsSdk() declaration signal", extension.windowsSdkDeclared.get())
+        assertTrue("GenerateWinRTProjectionsTask must receive the declaration", generationTask.windowsSdkDeclared.get())
+        assertTrue("GenerateWinRTIdentityTask must receive the declaration", identityTask.windowsSdkDeclared.get())
+        assertTrue(
+            "GenerateWinRTCompilerAuthoredTypeDetailsTask must receive the declaration",
+            compilerAuthoredTypeDetailsTask.windowsSdkDeclared.get(),
         )
+    }
+
+    @Test
+    fun producer_owned_uac15_source_additions_are_absent_from_consumer_files_and_identity() {
+        val fixture = writeGradleWindowsSdkFixture(15)
+        val projectDir = Files.createTempDirectory("kotlin-winrt-uac15-producer-consumer-")
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-uac15-producer-consumer")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-uac15-producer-consumer"
+            include("producer", "consumer")
+            """.trimIndent(),
+        )
+        val producerOwnedTypeNames = windowsComInteropSourceAdditionTypeNamesByUac.getValue(15)
+        assertEquals(17, producerOwnedTypeNames.size)
+        writeGradleFile(
+            projectDir.resolve("producer/source-additions.tsv"),
+            (listOf("generatedTypeName") + producerOwnedTypeNames.sorted()).joinToString("\n"),
+        )
+        writeGradleFile(
+            projectDir.resolve("producer/projection-registrar.tsv"),
+            "kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName\tinterfaceIid",
+        )
+        writeGradleFile(
+            projectDir.resolve("producer/build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            tasks.named("generateWinRTIdentity") {
+                sourceAdditionManifestFiles.setFrom(file("source-additions.tsv"))
+                projectionRegistrarFiles.setFrom(file("projection-registrar.tsv"))
+            }
+            tasks.named("generateWinRTProjections") {
+                generatorWorkerJvmArgs.set(["-Xmx128m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+            }
+            """.trimIndent(),
+        )
+        val consumerNamespaces = WinRTComInteropAdapters.all
+            .map { adapter -> adapter.namespace }
+            .distinct()
+            .sorted()
+        writeGradleFile(
+            projectDir.resolve("consumer/build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            winRT {
+                windowsSdk(null, false, false)
+                ${consumerNamespaces.joinToString("\n                ") { namespace -> "namespace \"$namespace\"" }}
+            }
+
+            dependencies {
+                add(
+                    "kotlinWinRTLibraryDependencyIdentity",
+                    project(path: ":producer"),
+                )
+            }
+            tasks.named("generateWinRTProjections") {
+                generatorWorkerJvmArgs.set(["-Xmx512m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withEnvironment(windowsSdkFixtureEnvironment(fixture.root))
+            .withArguments(":consumer:generateWinRTIdentity", "--stacktrace", "--max-workers=1")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTIdentity")?.outcome)
+        val producerIdentity = projectDir.resolve(
+            "producer/build/generated/kotlin-winrt/identity/kotlin-winrt.json",
+        ).toFile()
+        assertEquals(producerOwnedTypeNames, readProjectionSurfaceIdentity(producerIdentity).sourceAdditions.toSet())
+        val consumerRoot = projectDir.resolve("consumer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        producerOwnedTypeNames.forEach { typeName ->
+            assertFalse(
+                "Consumer regenerated producer-owned helper $typeName",
+                Files.exists(consumerRoot.resolve("${typeName.replace('.', '/')}.kt")),
+            )
+        }
+        val consumerManifest = consumerRoot.resolve("kotlin-winrt-support/source-additions.tsv")
+        assertEquals(emptyList<String>(), readGeneratedSourceAdditionTypeNames(listOf(consumerManifest.toFile())))
+        val consumerIdentity = projectDir.resolve(
+            "consumer/build/generated/kotlin-winrt/identity/kotlin-winrt.json",
+        ).toFile()
+        assertEquals(emptyList<String>(), readProjectionSurfaceIdentity(consumerIdentity).sourceAdditions)
+    }
+
+    @Test
+    fun exact_type_windows_com_interop_gradle_generation_publishes_and_suppresses_dependency_owned_helper() {
+        val windowsSdkVersion = "10.0.26100.0"
+        val projectDir = Files.createTempDirectory("kotlin-winrt-exact-com-interop-producer-consumer-")
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-exact-com-interop-producer-consumer")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-exact-com-interop-producer-consumer"
+            include("producer", "consumer")
+            """.trimIndent(),
+        )
+        val exactType = "Windows.Graphics.Display.DisplayInformation"
+        writeGradleFile(
+            projectDir.resolve("producer/build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            winRT {
+                windowsSdk("$windowsSdkVersion", false, false)
+                type "$exactType"
+            }
+
+            tasks.named("generateWinRTProjections") {
+                generatorWorkerJvmArgs.set(["-Xmx512m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("consumer/build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            winRT {
+                windowsSdk("$windowsSdkVersion", false, false)
+                type "$exactType"
+            }
+
+            dependencies {
+                add(
+                    "kotlinWinRTLibraryDependencyIdentity",
+                    project(path: ":producer"),
+                )
+            }
+
+            tasks.named("generateWinRTProjections") {
+                generatorWorkerJvmArgs.set(["-Xmx512m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":consumer:generateWinRTIdentity", "--stacktrace", "--max-workers=1")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTIdentity")?.outcome)
+
+        val producerRoot = projectDir.resolve("producer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        val helperPath = producerRoot.resolve("windows/graphics/display/DisplayInformationInterop.kt")
+        assertTrue("Producer must generate the exact-type COM helper", Files.exists(helperPath))
+        val producerManifest = producerRoot.resolve("kotlin-winrt-support/source-additions.tsv")
+        val producerManifestNames = readGeneratedSourceAdditionTypeNames(listOf(producerManifest.toFile())).toSet()
+        assertTrue("Producer manifest must publish DisplayInformationInterop", "windows.graphics.display.DisplayInformationInterop" in producerManifestNames)
+        val producerIdentity = projectDir.resolve(
+            "producer/build/generated/kotlin-winrt/identity/kotlin-winrt.json",
+        ).toFile()
+        assertEquals(producerManifestNames, readProjectionSurfaceIdentity(producerIdentity).sourceAdditions.toSet())
+
+        val consumerRoot = projectDir.resolve("consumer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        assertFalse(
+            "Consumer must suppress the dependency-owned exact-type COM helper",
+            Files.exists(consumerRoot.resolve("windows/graphics/display/DisplayInformationInterop.kt")),
+        )
+        val consumerManifest = consumerRoot.resolve("kotlin-winrt-support/source-additions.tsv")
+        assertEquals(emptyList<String>(), readGeneratedSourceAdditionTypeNames(listOf(consumerManifest.toFile())))
+        val consumerIdentity = projectDir.resolve(
+            "consumer/build/generated/kotlin-winrt/identity/kotlin-winrt.json",
+        ).toFile()
+        assertEquals(emptyList<String>(), readProjectionSurfaceIdentity(consumerIdentity).sourceAdditions)
     }
 
     @Test
@@ -11513,6 +11923,141 @@ class KotlinWinRTPluginTest {
         )
     }
 }
+
+private val windowsComInteropSourceAdditionTypeNamesByUac: Map<Int, Set<String>> = run {
+    val uac1 = setOf(
+        "windows.applicationmodel.datatransfer.DataTransferManagerInterop",
+        "windows.applicationmodel.datatransfer.dragdrop.core.DragDropManagerInterop",
+        "windows.graphics.printing.PrintManagerInterop",
+        "windows.media.SystemMediaTransportControlsInterop",
+        "windows.media.playto.PlayToManagerInterop",
+        "windows.security.authentication.web.core.WebAuthenticationCoreManagerInterop",
+        "windows.security.credentials.ui.UserConsentVerifierInterop",
+        "windows.ui.applicationsettings.AccountsSettingsPaneInterop",
+        "windows.ui.viewmanagement.InputPaneInterop",
+        "windows.ui.viewmanagement.UIViewSettingsInterop",
+        "winrt.interop.InitializeWithWindow",
+        "winrt.interop.WindowNative",
+    )
+    val uac2 = uac1 + "windows.ui.input.spatial.SpatialInteractionManagerInterop"
+    val uac3 = uac2 + setOf(
+        "windows.ui.input.RadialControllerConfigurationInterop",
+        "windows.ui.input.RadialControllerInterop",
+    )
+    val uac4 = uac3 + "windows.ui.input.core.RadialControllerIndependentInputSourceInterop"
+    mapOf(
+        1 to uac1,
+        2 to uac2,
+        3 to uac3,
+        4 to uac4,
+        14 to uac4,
+        15 to uac4 + "windows.graphics.display.DisplayInformationInterop",
+    )
+}
+
+private data class GradleWindowsSdkFixture(
+    val root: Path,
+    val version: String,
+    val winmd: Path,
+)
+
+private fun writeGradleWindowsSdkFixture(uac: Int): GradleWindowsSdkFixture {
+    val root = Files.createTempDirectory("kotlin-winrt-gradle-windows-sdk-uac-$uac-")
+    val version = "10.0.20000.$uac"
+    val contractName = "Windows.Foundation.UniversalApiContract"
+    val contractVersion = "$uac.0.0.0"
+    val platformXml = root.resolve("Platforms/UAP/$version/Platform.xml")
+    Files.createDirectories(platformXml.parent)
+    Files.writeString(
+        platformXml,
+        """
+        <ApplicationPlatform xmlns="urn:schemas-microsoft-com:platform">
+          <ContainedApiContracts>
+            <ApiContract name="$contractName" version="$contractVersion" />
+          </ContainedApiContracts>
+        </ApplicationPlatform>
+        """.trimIndent(),
+    )
+
+    val winmd = root.resolve("References/$version/$contractName/$contractVersion/$contractName.winmd")
+    val intrinsicInterfaceNames = setOf(
+        "Windows.Foundation.IAsyncAction",
+        "Windows.Foundation.IAsyncOperation`1",
+    )
+    val runtimeClassNames = WinRTComInteropAdapters.all
+        .flatMap { adapter -> adapter.requiredTypeNames }
+        .filterNot(intrinsicInterfaceNames::contains)
+        .distinct()
+        .sorted()
+    val defaultInterfaceNames = runtimeClassNames.associateWith { runtimeClassName ->
+        val namespace = runtimeClassName.substringBeforeLast('.')
+        val name = runtimeClassName.substringAfterLast('.')
+        "$namespace.I$name"
+    }
+    val interfaceNames = (intrinsicInterfaceNames + defaultInterfaceNames.values).sorted()
+    WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+        assemblyName = contractName,
+        interfaces = interfaceNames.mapIndexed { index, interfaceName ->
+            WinRTPortableExecutableInterfaceDescriptor(
+                interfaceName = interfaceName,
+                iid = "00000000-0000-0000-0000-${(index + 1).toString().padStart(12, '0')}",
+            )
+        },
+        runtimeClasses = runtimeClassNames.map { runtimeClassName ->
+            WinRTAuthoredRuntimeClassDescriptor(
+                runtimeClassName = runtimeClassName,
+                interfaceNames = listOf(defaultInterfaceNames.getValue(runtimeClassName)),
+            )
+        },
+        outputFile = winmd,
+    )
+    return GradleWindowsSdkFixture(root, version, winmd)
+}
+
+private fun writeIdentityFromSourceAdditionManifest(manifest: Path?): java.io.File {
+    val projectDir = Files.createTempDirectory("kotlin-winrt-source-addition-identity-")
+    val project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build()
+    project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+    val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+    task.sourceAdditionManifestFiles.setFrom(manifest?.toFile()?.let(::listOf).orEmpty())
+    task.generate()
+    return task.outputFile.get().asFile
+}
+
+private fun writeMinimalGradleFixture(projectDir: Path, projectName: String) {
+    writeGradleFile(
+        projectDir.resolve("settings.gradle.kts"),
+        """
+        pluginManagement {
+            repositories {
+                gradlePluginPortal()
+                mavenCentral()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                mavenCentral()
+            }
+        }
+        rootProject.name = "$projectName"
+        """.trimIndent(),
+    )
+    writeGradleFile(
+        projectDir.resolve("gradle.properties"),
+        """
+        org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+        org.gradle.daemon=false
+        org.gradle.workers.max=1
+        kotlin.compiler.execution.strategy=in-process
+        """.trimIndent(),
+    )
+}
+
+private fun windowsSdkFixtureEnvironment(root: Path): Map<String, String> =
+    System.getenv().toMutableMap().apply {
+        put("KOTLIN_WINRT_WINDOWS_SDK_ROOT", root.toString())
+    }
 
 private fun writeGradleFile(path: Path, content: String) {
     Files.createDirectories(path.parent)
