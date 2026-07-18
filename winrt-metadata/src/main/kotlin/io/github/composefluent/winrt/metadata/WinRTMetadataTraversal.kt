@@ -42,6 +42,7 @@ data class WinRTNamespaceAddition(
     val sourceFiles: List<String> = defaultNamespaceAdditionSourceFiles(namespace, kind),
     val generatedTypeNames: List<String> = defaultNamespaceAdditionGeneratedTypeNames(namespace, kind),
     val triggerNamespaces: List<String> = emptyList(),
+    val comInteropAdapters: List<WinRTComInteropAdapterDescriptor> = emptyList(),
 )
 
 enum class WinRTNamespaceAdditionKind {
@@ -80,20 +81,44 @@ object WinRTNamespaceAdditions {
             ),
             triggerNamespaces = listOf("Windows"),
         ),
-        WinRTNamespaceAddition("Windows.ApplicationModel.DataTransfer", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.ApplicationModel.DataTransfer.DragDrop.Core", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.Graphics.Display", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.Graphics.Printing", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.Media", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.Media.PlayTo", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.Security.Authentication.Web.Core", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.Security.Credentials.UI", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.UI.ApplicationSettings", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.UI.Input", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.UI.Input.Core", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.UI.Input.Spatial", WinRTNamespaceAdditionKind.ComInteropAdapter),
-        WinRTNamespaceAddition("Windows.UI.ViewManagement", WinRTNamespaceAdditionKind.ComInteropAdapter),
     ).sortedBy(WinRTNamespaceAddition::namespace)
+
+    fun forProjection(
+        model: WinRTMetadataModel,
+        namespaces: Iterable<String>,
+        context: WinRTMetadataProjectionContext,
+    ): List<WinRTNamespaceAddition> {
+        val windowsSdkDeclared = context.sources.any { source -> source is WinRTMetadataSource.WindowsSdk }
+        val explicitAdditionTriggerNames = context.include.filter { includedName ->
+            all.any { addition ->
+                addition.triggerNamespaces.any { triggerNamespace ->
+                    includedName == triggerNamespace || includedName.startsWith("$triggerNamespace.")
+                }
+            }
+        }
+        val additionTriggerNames = (namespaces + explicitAdditionTriggerNames)
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+        val staticAdditions = forNamespaces(additionTriggerNames, context.additionFilter)
+            .filterNot { addition -> addition.namespace == "WinRT.Interop" && !windowsSdkDeclared }
+        val adapterAdditions = WinRTComInteropAdapters
+            .forProjection(model, namespaces, context)
+            .groupBy(WinRTComInteropAdapterDescriptor::namespace)
+            .map { (namespace, adapters) ->
+                val sortedAdapters = adapters.sortedBy(WinRTComInteropAdapterDescriptor::projectedTypeName)
+                WinRTNamespaceAddition(
+                    namespace = namespace,
+                    kind = WinRTNamespaceAdditionKind.ComInteropAdapter,
+                    sourceFiles = sortedAdapters.map { adapter ->
+                        "interop/${adapter.namespace}/${adapter.name}.kt"
+                    },
+                    generatedTypeNames = sortedAdapters.map(WinRTComInteropAdapterDescriptor::projectedTypeName),
+                    comInteropAdapters = sortedAdapters,
+                )
+            }
+        return (staticAdditions + adapterAdditions).sortedBy(WinRTNamespaceAddition::namespace)
+    }
 
     fun forNamespaces(namespaces: Iterable<String>, filter: WinRTMetadataFilter): List<WinRTNamespaceAddition> {
         val namespaceSet = namespaces.toSet()
@@ -259,9 +284,10 @@ class WinRTMetadataProjectionInventoryBuilder private constructor(
         }
         val genericAbiInventory = helpers.genericAbiInventory(context)
         val projectionFileWritten = namespaces.any(WinRTNamespaceProjectionInventory::projectionFileWritten)
-        val namespaceAdditions = WinRTNamespaceAdditions.forNamespaces(
-            namespaces.map(WinRTNamespaceProjectionInventory::namespace),
-            context.additionFilter,
+        val namespaceAdditions = WinRTNamespaceAdditions.forProjection(
+            model = model,
+            namespaces = namespaces.map(WinRTNamespaceProjectionInventory::namespace),
+            context = context,
         )
         return WinRTMetadataProjectionInventory(
             namespaces = namespaces,

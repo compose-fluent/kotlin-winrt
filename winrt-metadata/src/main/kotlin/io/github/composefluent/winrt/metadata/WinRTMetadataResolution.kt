@@ -46,11 +46,17 @@ internal fun qualifyTypeName(
     if (rawTypeName in typesByQualifiedName) {
         return rawTypeName
     }
-    if ('.' !in rawTypeName) {
-        val qualified = "$currentNamespace.$rawTypeName"
-        if (qualified in typesByQualifiedName) {
-            return qualified
+    val (baseTypeName, expectedGenericArity) = rawTypeName.splitGenericArity()
+    fun matchingTypeName(candidateName: String): String? {
+        val candidate = typesByQualifiedName[candidateName] ?: return null
+        return candidateName.takeIf {
+            expectedGenericArity == 0 || candidate.genericParameterCount == expectedGenericArity
         }
+    }
+    matchingTypeName(baseTypeName)?.let { return it }
+    if ('.' !in baseTypeName) {
+        val qualified = "$currentNamespace.$baseTypeName"
+        matchingTypeName(qualified)?.let { return it }
     }
     return null
 }

@@ -262,16 +262,15 @@ data class WinRTTypeRef(
     }
 }
 
-private fun String.withoutGenericAritySuffix(): String {
+internal fun String.withoutGenericAritySuffix(): String = splitGenericArity().first
+
+internal fun String.splitGenericArity(): Pair<String, Int> {
     val backtick = lastIndexOf('`')
     if (backtick <= 0 || backtick == lastIndex) {
-        return this
+        return this to 0
     }
-    return if (substring(backtick + 1).all(Char::isDigit)) {
-        substring(0, backtick)
-    } else {
-        this
-    }
+    val arity = substring(backtick + 1).toIntOrNull() ?: return this to 0
+    return substring(0, backtick) to arity
 }
 
 private fun List<String>.normalizedModifiers(): List<String> =
