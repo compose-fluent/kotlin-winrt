@@ -4,7 +4,7 @@
 
 **Goal:** Keep the official `nuget install` restore path while ensuring projection-generation workers explicitly pass the Gradle build's `NUGET_PACKAGES` value to every configured or cached NuGet CLI child process.
 
-**Architecture:** Model `NUGET_PACKAGES` on `GenerateWinRTProjectionsTask`, forward it through `GenerateWinRTProjectionsWorkParameters`, and apply it inside `NuGetCliSupport` immediately before `ProcessBuilder.start()`. The existing package lookup roots and task-local install output remain unchanged.
+**Architecture:** Model the complete owning Gradle environment on `GenerateWinRTProjectionsTask`, apply it to `ProcessWorkerSpec.forkOptions.environment(...)`, and let the Worker and its child tools inherit it. The original narrow `NUGET_PACKAGES` transport is retained below as the completed investigation slice; Task 3 supersedes it at the environment boundary. The existing package lookup roots and task-local install output remain unchanged.
 
 **Tech Stack:** Kotlin/JVM, Gradle Worker API, Gradle Provider API, Microsoft NuGet CLI, JUnit 4, Gradle ProjectBuilder.
 
@@ -236,3 +236,40 @@ Confirm only the planned plugin, tests, `PLAN.md`, and implementation-plan files
 git add -- PLAN.md winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/NuGetCliSupport.kt winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/GenerateWinRTProjectionsTask.kt winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/KotlinWinRTPlugin.kt winrt-gradle-plugin/src/test/kotlin/io/github/composefluent/winrt/gradle/NuGetCliSupportTest.kt winrt-gradle-plugin/src/test/kotlin/io/github/composefluent/winrt/gradle/KotlinWinRTPluginTest.kt
 git commit -m "fix(gradle): propagate NuGet packages into projection worker"
 ```
+
+---
+
+### Task 3: Propagate the complete build environment at the Worker boundary
+
+**Files:**
+- Modify: `winrt-gradle-plugin/src/test/kotlin/io/github/composefluent/winrt/gradle/KotlinWinRTPluginTest.kt`
+- Modify: `winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/GenerateWinRTProjectionsTask.kt`
+- Modify: `winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/KotlinWinRTPlugin.kt`
+- Modify: `winrt-gradle-plugin/src/main/kotlin/io/github/composefluent/winrt/gradle/NuGetCliSupport.kt`
+- Modify: `winrt-gradle-plugin/src/test/kotlin/io/github/composefluent/winrt/gradle/NuGetCliSupportTest.kt`
+- Modify: `PLAN.md`
+
+**Interfaces:**
+- Consumes: `project.providers.environmentVariablesPrefixedBy("")` from the owning Gradle process.
+- Produces: `GenerateWinRTProjectionsTask.workerEnvironment: MapProperty<String, String>`, applied to `ProcessWorkerSpec.forkOptions.environment` before submitting the action.
+- Removes: the Worker-parameter and `NuGetCliSupport` special case that carried only `NUGET_PACKAGES`; child NuGet processes inherit the complete Worker environment naturally.
+
+- [x] **Step 1: Add the failing full-environment wiring assertion**
+
+`KotlinWinRTPluginTest.plugin_wires_extension_inputs_to_generation_task` now requires the task's environment map to equal `System.getenv()`, and `generation_worker_forwards_complete_environment_to_nuget_child_process` exercises the complete Worker-to-NuGet boundary with a fake CLI and minimal WinMD package.
+
+- [x] **Step 2: Run the regression and verify RED**
+
+Run the focused task-wiring test. It failed to compile with `Unresolved reference 'workerEnvironment'`, confirming the assertion was RED for the expected missing input.
+
+- [x] **Step 3: Apply the environment at process isolation**
+
+Add the task input, wire the empty-prefix environment provider, and call `spec.forkOptions.environment(workerEnvironment.get())` before submitting the projection action. Remove the redundant `nugetPackagesDirectory` Worker parameter and launcher override; preserve the task-local `TEMP`, `TMP`, `TMPDIR`, and `NUGET_SCRATCH` overrides.
+
+- [x] **Step 4: Update regressions and verify GREEN**
+
+Keep the NuGet launcher test focused on inherited environment and add coverage that a fake NuGet CLI receives an arbitrary environment value through a real isolated generation Worker. The focused wiring/launcher tests and the real Worker-boundary test passed on Windows with `BUILD SUCCESSFUL`; the temporary removal of `forkOptions.environment(...)` made the Worker-boundary test record an empty value and fail.
+
+- [x] **Step 5: Update the design/plan and commit the follow-up**
+
+Document Gradle's intentional environment sanitization and the generator Worker's complete-environment requirement, run `git diff --check`, and commit the follow-up as one atomic change. The unrelated UAC15 producer/consumer fixture remains a pre-existing fixture-model failure (missing projected generic `IAsyncOperation` prerequisite) and is not part of this environment slice.
