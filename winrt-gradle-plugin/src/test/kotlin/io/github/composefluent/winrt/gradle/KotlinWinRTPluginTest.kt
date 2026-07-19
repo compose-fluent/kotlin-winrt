@@ -39,6 +39,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -250,6 +251,103 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun generation_worker_forwards_complete_environment_to_nuget_child_process() {
+        assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
+        val projectDir = Files.createTempDirectory("kotlin-winrt-generator-worker-environment-test-")
+        val packageId = "Kotlin.WinRT.Worker.Environment.Probe"
+        val packageVersion = "1.0.0"
+        val packageDirectoryName = "$packageId.$packageVersion"
+        val probeValue = "from-owning-gradle-process"
+        val fixtureWinmd = projectDir.resolve("fixture/Sample.winmd")
+        Files.createDirectories(fixtureWinmd.parent)
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = fixtureWinmd,
+        )
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-generator-worker-environment-test")
+        val logFile = projectDir.resolve("worker-environment.txt")
+        val nugetExecutable = projectDir.resolve("nuget.cmd")
+        writeGradleFile(
+            nugetExecutable,
+            """
+            @echo off
+            setlocal
+            >>"$logFile" echo KOTLIN_WINRT_WORKER_ENV_PROBE=%KOTLIN_WINRT_WORKER_ENV_PROBE%
+            >>"$logFile" echo NUGET_PACKAGES=%NUGET_PACKAGES%
+            set "OUTPUT="
+            :parse
+            if "%~1"=="" goto install
+            if /I "%~1"=="-OutputDirectory" (
+              set "OUTPUT=%~2"
+              shift
+            )
+            shift
+            goto parse
+            :install
+            if not defined OUTPUT exit /b 1
+            mkdir "%OUTPUT%\$packageDirectoryName\metadata" 2>nul
+            copy /Y "$fixtureWinmd" "%OUTPUT%\$packageDirectoryName\metadata\Sample.winmd" >nul
+            exit /b %ERRORLEVEL%
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.winrt"
+            }
+
+            winRT {
+                nugetPackage "$packageId", "$packageVersion"
+                namespace "Sample"
+            }
+
+            tasks.named("generateWinRTProjections") {
+                nugetExecutable.set(file("nuget.cmd").absolutePath)
+                restoreNuGetPackages.set(true)
+                useNuGetCliGlobalPackages.set(false)
+                generatorWorkerJvmArgs.set(["-Xmx256m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+            }
+            """.trimIndent(),
+        )
+
+        val environment = System.getenv().toMutableMap().apply {
+            put("KOTLIN_WINRT_WORKER_ENV_PROBE", probeValue)
+            put("NUGET_PACKAGES", projectDir.resolve("global-packages").toString())
+        }
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withEnvironment(environment)
+            .withArguments("generateWinRTProjections", "--stacktrace", "--max-workers=1")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTProjections")?.outcome)
+        val invocation = Files.readAllLines(logFile)
+        assertTrue(
+            invocation.contains("KOTLIN_WINRT_WORKER_ENV_PROBE=$probeValue"),
+        )
+        assertTrue(
+            invocation.contains(
+                "NUGET_PACKAGES=${projectDir.resolve("global-packages")}",
+            ),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin/sample/sample.kt"),
+            ),
+        )
+    }
+
+    @Test
     fun plugin_wires_extension_inputs_to_generation_task() {
         val project = ProjectBuilder.builder().build()
         project.repositories.mavenCentral()
@@ -299,8 +397,8 @@ class KotlinWinRTPluginTest {
         assertEquals("nuget.exe", task.nugetExecutable.get())
         assertEquals("7.3.1", task.nugetCliVersion.get())
         assertEquals(
-            System.getenv("NUGET_PACKAGES"),
-            task.nugetPackagesDirectory.orNull,
+            System.getenv(),
+            task.workerEnvironment.get(),
         )
         assertEquals(false, task.restoreNuGetPackages.get())
         assertEquals(false, task.useNuGetCliGlobalPackages.get())

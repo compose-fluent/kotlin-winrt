@@ -1011,8 +1011,8 @@ private fun configureWinRTGeneration(
                     },
                 ),
             )
-            task.nugetPackagesDirectory.set(
-                project.providers.environmentVariable("NUGET_PACKAGES"),
+            task.workerEnvironment.set(
+                project.providers.environmentVariablesPrefixedBy(""),
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
