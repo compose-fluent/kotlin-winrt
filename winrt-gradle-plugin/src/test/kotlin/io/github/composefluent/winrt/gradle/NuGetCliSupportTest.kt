@@ -63,7 +63,52 @@ class NuGetCliSupportTest {
         val invocation = Files.readString(logFile)
         assertTrue(invocation.contains("-DisableParallelProcessing"))
         assertFalse(invocation.contains("-DirectDownload"))
+        assertTrue(
+            invocation.lineSequence().any { line ->
+                line == "NUGET_PACKAGES=${System.getenv("NUGET_PACKAGES").orEmpty()}"
+            },
+        )
         assertFalse(invocation.contains("NUGET_PACKAGES=${scratchDirectory.resolve("global-packages")}"))
         assertFalse(invocation.contains("NUGET_HTTP_CACHE_PATH=${scratchDirectory.resolve("http-cache")}"))
+    }
+
+    @Test
+    fun install_applies_explicit_global_packages_directory() {
+        assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
+        val root = Files.createTempDirectory("kotlin-winrt-nuget-cli-explicit-cache-")
+        val logFile = root.resolve("nuget-invocation.txt")
+        val executable = root.resolve("nuget.cmd")
+        Files.writeString(
+            executable,
+            """
+            @echo off
+            >>"$logFile" echo NUGET_PACKAGES=%NUGET_PACKAGES%
+            exit /b 0
+            """.trimIndent(),
+        )
+        val expectedPackagesDirectory = root.resolve("global-packages").toString()
+
+        NuGetCliSupport(
+            executable = executable.toString(),
+            cliVersion = "7.3.1",
+            cliCacheDirectory = root.resolve("cli-cache"),
+            nugetPackagesDirectory = expectedPackagesDirectory,
+            logger = Logging.getLogger(NuGetCliSupportTest::class.java),
+        ).run(
+            arguments = listOf(
+                "install",
+                "Microsoft.WindowsAppSDK.Base",
+                "-Version",
+                "1.8.251216001",
+                "-NonInteractive",
+                "-OutputDirectory",
+                root.resolve("install").toString(),
+            ),
+            description = "install Microsoft.WindowsAppSDK.Base",
+        )
+
+        assertTrue(
+            Files.readAllLines(logFile).contains("NUGET_PACKAGES=$expectedPackagesDirectory"),
+        )
     }
 }

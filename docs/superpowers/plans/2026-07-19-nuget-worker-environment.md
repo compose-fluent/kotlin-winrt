@@ -30,7 +30,7 @@
 - Consumes: an optional `String?` containing the caller's effective `NUGET_PACKAGES` value.
 - Produces: `NuGetCliSupport(..., nugetPackagesDirectory: String? = null, ...)`, which applies the override to both configured and cached CLI attempts.
 
-- [ ] **Step 1: Write the failing explicit-environment regression test**
+- [x] **Step 1: Write the failing explicit-environment regression test**
 
 Add a Windows-only test that creates a fake `nuget.cmd`, records `%NUGET_PACKAGES%`, supplies an override that differs from the ambient process value, and requires the recorded line to equal the override:
 
@@ -86,7 +86,7 @@ assertTrue(
 )
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -96,7 +96,7 @@ Run:
 
 Expected: test compilation fails because `NuGetCliSupport` has no `nugetPackagesDirectory` constructor parameter.
 
-- [ ] **Step 3: Implement the narrow ProcessBuilder override**
+- [x] **Step 3: Implement the narrow ProcessBuilder override**
 
 Add the optional constructor parameter and apply it before starting the process:
 
@@ -121,7 +121,7 @@ nugetPackagesDirectory
 
 Keep the existing `TEMP`, `TMP`, `TMPDIR`, and `NUGET_SCRATCH` assignments unchanged.
 
-- [ ] **Step 4: Run the test and verify GREEN**
+- [x] **Step 4: Run the test and verify GREEN**
 
 Run the same focused command from Step 2.
 
@@ -139,7 +139,7 @@ Expected: `install_applies_explicit_global_packages_directory` passes.
 - Consumes: `project.providers.environmentVariable("NUGET_PACKAGES")` in the owning Gradle process.
 - Produces: optional `GenerateWinRTProjectionsTask.nugetPackagesDirectory: Property<String>` and matching `GenerateWinRTProjectionsWorkParameters.nugetPackagesDirectory`, passed to `NuGetCliSupport`.
 
-- [ ] **Step 1: Write the failing task-wiring assertion**
+- [x] **Step 1: Write the failing task-wiring assertion**
 
 In `plugin_wires_extension_inputs_to_generation_task`, add:
 
@@ -150,7 +150,7 @@ assertEquals(
 )
 ```
 
-- [ ] **Step 2: Run the task-wiring test and verify RED**
+- [x] **Step 2: Run the task-wiring test and verify RED**
 
 Run:
 
@@ -160,7 +160,7 @@ Run:
 
 Expected: test compilation fails because `GenerateWinRTProjectionsTask` has no `nugetPackagesDirectory` property.
 
-- [ ] **Step 3: Add the task and worker parameter**
+- [x] **Step 3: Add the task and worker parameter**
 
 In `GenerateWinRTProjectionsTask`, add:
 
@@ -188,7 +188,7 @@ Pass it to the launcher:
 nugetPackagesDirectory = parameters.nugetPackagesDirectory.orNull,
 ```
 
-- [ ] **Step 4: Wire the Gradle environment provider**
+- [x] **Step 4: Wire the Gradle environment provider**
 
 In `KotlinWinRTPlugin.configureWinRTGeneration`, set:
 
@@ -200,7 +200,7 @@ task.nugetPackagesDirectory.set(
 
 Do not expose this property through `WinRTExtension`.
 
-- [ ] **Step 5: Run both focused regressions and verify GREEN**
+- [x] **Step 5: Run both focused regressions and verify GREEN**
 
 Run:
 
@@ -211,9 +211,9 @@ Run:
   --no-build-cache --max-workers=1 --console=plain
 ```
 
-Expected: both tests pass with zero failures.
+Expected: both tests pass with zero failures. The final three-test Windows run completed with `BUILD SUCCESSFUL` and zero failures/errors.
 
-- [ ] **Step 6: Update the canonical plan**
+- [x] **Step 6: Update the canonical plan**
 
 Mark `NuGet-Worker-Environment` complete in `PLAN.md`, record that `nuget install` remains the resolver, record the focused test command and result, and link this implementation plan:
 
@@ -221,7 +221,7 @@ Mark `NuGet-Worker-Environment` complete in `PLAN.md`, record that `nuget instal
 - [x] NuGet-Worker-Environment: preserved the official `nuget install` dependency-closure path and explicitly propagated the owning Gradle process's optional `NUGET_PACKAGES` value through projection worker parameters into both configured and cached NuGet CLI child processes. Process-isolated generation now populates the configured global cache while retaining its clean task-local metadata install root. No `packages.config`, MSBuild, custom NuGet solver, projection-shape change, or public DSL was introduced. Validation: the focused NuGet launcher and projection task-wiring regressions pass on Windows. Design: `docs/superpowers/specs/2026-07-19-nuget-worker-environment-design.md`. Plan: `docs/superpowers/plans/2026-07-19-nuget-worker-environment.md`.
 ```
 
-- [ ] **Step 7: Review and commit the atomic fix**
+- [x] **Step 7: Review and commit the atomic fix**
 
 Run:
 

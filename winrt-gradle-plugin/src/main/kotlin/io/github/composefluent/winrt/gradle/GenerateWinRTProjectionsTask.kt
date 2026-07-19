@@ -137,6 +137,10 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     abstract val nugetCliCacheDirectory: DirectoryProperty
 
     @get:Input
+    @get:Optional
+    abstract val nugetPackagesDirectory: Property<String>
+
+    @get:Input
     abstract val restoreNuGetPackages: Property<Boolean>
 
     @get:Input
@@ -205,6 +209,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.nugetExecutable.set(nugetExecutable)
             parameters.nugetCliVersion.set(nugetCliVersion)
             parameters.nugetCliCacheDirectory.set(nugetCliCacheDirectory)
+            parameters.nugetPackagesDirectory.set(nugetPackagesDirectory)
             parameters.restoreNuGetPackages.set(restoreNuGetPackages)
             parameters.useNuGetCliGlobalPackages.set(useNuGetCliGlobalPackages)
             parameters.nugetGlobalPackagesRoots.set(nugetGlobalPackagesRoots)
@@ -244,6 +249,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val nugetExecutable: Property<String>
     val nugetCliVersion: Property<String>
     val nugetCliCacheDirectory: DirectoryProperty
+    val nugetPackagesDirectory: Property<String>
     val restoreNuGetPackages: Property<Boolean>
     val useNuGetCliGlobalPackages: Property<Boolean>
     val nugetGlobalPackagesRoots: ListProperty<String>
@@ -681,6 +687,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         cliVersion = parameters.nugetCliVersion.get(),
         cliCacheDirectory = parameters.nugetCliCacheDirectory.get().asFile.toPath(),
         scratchDirectory = parameters.workDirectory.get().asFile.toPath().resolve("nuget-scratch"),
+        nugetPackagesDirectory = parameters.nugetPackagesDirectory.orNull,
         logger = logger,
     )
 }

@@ -25,6 +25,7 @@ internal class NuGetCliSupport(
     private val cliVersion: String,
     private val cliCacheDirectory: Path,
     private val scratchDirectory: Path? = null,
+    private val nugetPackagesDirectory: String? = null,
     private val logger: Logger,
 ) {
     fun run(
@@ -118,6 +119,11 @@ internal class NuGetCliSupport(
         if (workingDirectory != null) {
             processBuilder.directory(workingDirectory.toFile())
         }
+        nugetPackagesDirectory
+            ?.takeIf(String::isNotBlank)
+            ?.let { packagesDirectory ->
+                processBuilder.environment()["NUGET_PACKAGES"] = packagesDirectory
+            }
         if (scratchDirectory != null) {
             Files.createDirectories(scratchDirectory)
             val scratchPath = scratchDirectory.toString()

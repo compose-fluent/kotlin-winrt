@@ -298,6 +298,10 @@ class KotlinWinRTPluginTest {
         assertTrue(task.generateWindowsSdkProjection.get())
         assertEquals("nuget.exe", task.nugetExecutable.get())
         assertEquals("7.3.1", task.nugetCliVersion.get())
+        assertEquals(
+            System.getenv("NUGET_PACKAGES"),
+            task.nugetPackagesDirectory.orNull,
+        )
         assertEquals(false, task.restoreNuGetPackages.get())
         assertEquals(false, task.useNuGetCliGlobalPackages.get())
         assertEquals(
