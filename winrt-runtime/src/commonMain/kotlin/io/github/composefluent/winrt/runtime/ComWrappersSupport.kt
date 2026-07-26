@@ -162,7 +162,7 @@ object ComWrappersSupport {
         pointer: RawAddress,
         expectedType: KClass<T>,
     ): T? {
-        val managedValue = rcwCache[PlatformAbi.pointerKey(pointer)]
+        val managedValue = findCachedRcw(PlatformAbi.pointerKey(pointer))
             ?: WinRTInspectableComObject.findManagedValue(pointer)
             ?: return null
         if (!expectedType.isInstance(managedValue)) {
@@ -204,12 +204,8 @@ object ComWrappersSupport {
 
         val pointerKey = rcwCacheKey(pointer)
         if (tryUseCache) {
-            rcwCache[pointerKey]?.let { cached ->
+            findCachedRcw(pointerKey)?.let { cached ->
                 val cachedWinRT = cached as? IWinRTObject
-                if (cachedWinRT != null && cachedWinRT.nativeObject.isDisposed) {
-                    rcwCache.remove(pointerKey)
-                    return@let
-                }
                 if (staticallyDeterminedType == null) {
                     return cached
                 }
@@ -228,6 +224,15 @@ object ComWrappersSupport {
             }
         }
         return rcw
+    }
+
+    private fun findCachedRcw(pointerKey: Long): Any? {
+        val cached = rcwCache[pointerKey] ?: return null
+        if ((cached as? IWinRTObject)?.nativeObject?.isDisposed != true) {
+            return cached
+        }
+        rcwCache.remove(pointerKey)
+        return null
     }
 
     internal fun registerObjectForComInterface(

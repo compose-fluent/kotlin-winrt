@@ -47,6 +47,50 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun generated_wrap_replaces_disposed_cached_runtime_class() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val runtimeClassName = "test.DisposedCachedRuntimeClass"
+        val wrap: (IInspectableReference) -> TestRuntimeClassWrapper = { instance ->
+            val cached = ComWrappersSupport.findObject(
+                PlatformAbi.fromRawComPtr(instance.pointer),
+                TestRuntimeClassWrapper::class,
+            )
+            if (cached != null) {
+                instance.close()
+                cached
+            } else {
+                TestRuntimeClassWrapper(instance)
+            }
+        }
+        ComWrappersSupport.registerRuntimeClassFactory(runtimeClassName, wrap)
+
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = "payload",
+            runtimeClassName = runtimeClassName,
+        )
+        val cached = ComWrappersSupport.createRcwForComObject(
+            host.detachReference(IID.IInspectable),
+        ) as TestRuntimeClassWrapper
+        val freshReference = IInspectableReference(cached.nativeObject.getRefPointer(), IID.IInspectable)
+        cached.nativeObject.close()
+        var wrappedAgain: TestRuntimeClassWrapper? = null
+
+        try {
+            wrappedAgain = wrap(freshReference)
+
+            assertFalse(wrappedAgain === cached)
+            assertSame(freshReference, wrappedAgain.nativeObject)
+            assertFalse(wrappedAgain.nativeObject.isDisposed)
+        } finally {
+            wrappedAgain?.nativeObject?.close()
+            if (!freshReference.isDisposed) {
+                freshReference.close()
+            }
+            cached.nativeObject.close()
+        }
+    }
+
+    @Test
     fun create_ccw_reuses_identity_for_same_managed_object() {
         ComWrappersSupport.clearRegistriesForTests()
         val value = Any()
