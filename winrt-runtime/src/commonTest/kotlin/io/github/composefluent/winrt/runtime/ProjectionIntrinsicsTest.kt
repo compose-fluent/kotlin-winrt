@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class ProjectionIntrinsicsTest {
     @Test
@@ -10,6 +11,18 @@ class ProjectionIntrinsicsTest {
             WinRTProjectionIntrinsic.setInt32(host.reference, slot = 6, value = -42)
 
             assertEquals(-42, host.capturedValue)
+        }
+    }
+
+    @Test
+    fun projection_intrinsic_rejects_disposed_reference_before_vtable_call() {
+        Int32SetterComObject.create().use { host ->
+            host.reference.close()
+
+            assertFailsWith<WinRTObjectDisposedException> {
+                WinRTProjectionIntrinsic.setInt32(host.reference, slot = 6, value = -42)
+            }
+            assertEquals(null, host.capturedValue)
         }
     }
 
@@ -22,6 +35,7 @@ class ProjectionIntrinsicsTest {
             private set
 
         override fun close() {
+            reference.close()
             callback.close()
             scope.close()
         }

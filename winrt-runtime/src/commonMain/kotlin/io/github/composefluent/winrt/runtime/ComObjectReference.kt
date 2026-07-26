@@ -25,7 +25,10 @@ open class ComObjectReference internal constructor(
     )
 
     val pointer: RawComPtr
-        get() = comPtr.pointer
+        get() {
+            comPtr.throwIfDisposed()
+            return comPtr.pointer
+        }
 
     val interfaceId: Guid
         get() = comPtr.interfaceId
