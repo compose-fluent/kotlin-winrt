@@ -9,7 +9,9 @@ import microsoft.ui.xaml.controls.WebView2
 import microsoft.ui.xaml.controls.XamlControlsResources
 import microsoft.ui.xaml.media.MicaBackdrop
 import microsoft.web.webview2.core.CoreWebView2NavigationCompletedEventArgs
+import windows.system.VirtualKey
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -210,6 +212,13 @@ class WebView2SampleTest {
             Visibility.Visible,
             webView2HomeVisibility(WEBVIEW2_HOME_MIN_WIDTH),
         )
+    }
+
+    @Test
+    fun submits_address_only_for_enter_after_navigation_is_ready() {
+        assertFalse(shouldSubmitWebView2Address(VirtualKey.Enter, navigationReady = false))
+        assertFalse(shouldSubmitWebView2Address(VirtualKey.Escape, navigationReady = true))
+        assertTrue(shouldSubmitWebView2Address(VirtualKey.Enter, navigationReady = true))
     }
 
     @Test
