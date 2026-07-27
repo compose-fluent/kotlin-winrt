@@ -1,6 +1,13 @@
 package io.github.composefluent.winrt.samples
 
+import microsoft.ui.xaml.Visibility
+import microsoft.ui.xaml.controls.Grid
+import microsoft.ui.xaml.controls.SymbolIcon
+import microsoft.ui.xaml.controls.TabView
+import microsoft.ui.xaml.controls.TabViewItem
 import microsoft.ui.xaml.controls.WebView2
+import microsoft.ui.xaml.controls.XamlControlsResources
+import microsoft.ui.xaml.media.MicaBackdrop
 import microsoft.web.webview2.core.CoreWebView2NavigationCompletedEventArgs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -177,6 +184,31 @@ class WebView2SampleTest {
         assertEquals(
             "Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs",
             CoreWebView2NavigationCompletedEventArgs.Metadata.TYPE_NAME,
+        )
+    }
+
+    @Test
+    fun generated_browser_shell_surface_is_available() {
+        assertEquals("Microsoft.UI.Xaml.Controls.Grid", Grid.Metadata.TYPE_NAME)
+        assertEquals("Microsoft.UI.Xaml.Controls.TabView", TabView.Metadata.TYPE_NAME)
+        assertEquals("Microsoft.UI.Xaml.Controls.TabViewItem", TabViewItem.Metadata.TYPE_NAME)
+        assertEquals("Microsoft.UI.Xaml.Controls.SymbolIcon", SymbolIcon.Metadata.TYPE_NAME)
+        assertEquals(
+            "Microsoft.UI.Xaml.Controls.XamlControlsResources",
+            XamlControlsResources.Metadata.TYPE_NAME,
+        )
+        assertEquals("Microsoft.UI.Xaml.Media.MicaBackdrop", MicaBackdrop.Metadata.TYPE_NAME)
+    }
+
+    @Test
+    fun hides_home_below_the_narrow_width_boundary() {
+        assertEquals(
+            Visibility.Collapsed,
+            webView2HomeVisibility(WEBVIEW2_HOME_MIN_WIDTH - 1.0),
+        )
+        assertEquals(
+            Visibility.Visible,
+            webView2HomeVisibility(WEBVIEW2_HOME_MIN_WIDTH),
         )
     }
 
