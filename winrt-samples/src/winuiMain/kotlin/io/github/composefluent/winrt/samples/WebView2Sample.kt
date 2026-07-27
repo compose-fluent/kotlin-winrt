@@ -4,18 +4,26 @@ import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.RoutedEventHandler
-import microsoft.ui.xaml.Thickness
+import microsoft.ui.xaml.Visibility
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.controls.Button
-import microsoft.ui.xaml.controls.Orientation
-import microsoft.ui.xaml.controls.StackPanel
 import microsoft.ui.xaml.controls.TextBlock
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.WebView2
+import microsoft.ui.xaml.controls.XamlControlsResources
+import microsoft.ui.xaml.input.KeyEventHandler
+import microsoft.ui.xaml.media.MicaBackdrop
 import windows.foundation.Uri
+import windows.graphics.SizeInt32
+import windows.system.VirtualKey
 
 internal fun shouldRunWebView2Sample(): Boolean =
     winRTSampleOption("kotlin.winrt.samples.runWebView2Sample")
+
+internal fun shouldSubmitWebView2Address(
+    key: VirtualKey,
+    navigationReady: Boolean,
+): Boolean = key == VirtualKey.Enter && navigationReady
 
 internal class WebView2SampleFailures(
     private val autoExit: Boolean,
@@ -190,25 +198,25 @@ internal class WebView2SampleApp(
     private fun launch() {
         println("webview2: onLaunched")
 
-        println("webview2: creating navigation controls")
-        val address = TextBox().apply {
-            text = DEFAULT_ADDRESS
-            width = 560.0
-        }
-        val status = TextBlock().apply {
-            text = "Loading embedded page..."
-        }
-        val back = navigationButton("Back").apply { isEnabled = false }
-        val forward = navigationButton("Forward").apply { isEnabled = false }
-        val reload = navigationButton("Reload").apply { isEnabled = false }
-        val go = navigationButton("Go").apply { isEnabled = false }
-        println("webview2: navigation controls created")
-        println("webview2: creating WebView2 control")
-        val webView = WebView2()
+        println("webview2: installing standard control resources")
+        checkNotNull(Application.current) {
+            "Expected current WinUI application while installing standard control resources."
+        }.resources.mergedDictionaries.add(XamlControlsResources())
+        println("webview2: standard control resources installed")
+
+        println("webview2: creating browser shell")
+        val shell = createWebView2BrowserShell()
+        val address = shell.address.apply { text = DEFAULT_ADDRESS }
+        val status = shell.status
+        val back = shell.back
+        val forward = shell.forward
+        val reload = shell.reload
+        val home = shell.home
+        val go = shell.go
+        val webView = shell.webView
         browser = webView
-        webView.width = 960.0
-        webView.height = 600.0
-        println("webview2: WebView2 control created")
+        home.visibility = webView2HomeVisibility(INITIAL_WINDOW_WIDTH.toDouble())
+        println("webview2: browser shell created")
 
         println("webview2: registering navigation events")
         webView.navigationStarting += { _, eventArgs ->
@@ -218,6 +226,7 @@ internal class WebView2SampleApp(
                 exit = ::exitAfterFatalFailure,
             ) {
                 status.text = "Loading ${eventArgs.uri}"
+                status.visibility = Visibility.Visible
                 println("webview2: navigation starting uri=${eventArgs.uri}")
             }
         }
@@ -231,7 +240,7 @@ internal class WebView2SampleApp(
                 forward.isEnabled = webView.canGoForward
                 println("webview2: navigation completed success=${eventArgs.isSuccess}")
                 if (eventArgs.isSuccess) {
-                    status.text = "Ready"
+                    status.visibility = Visibility.Collapsed
                     if (autoExit) {
                         exitAfterSmoke()
                     }
@@ -253,6 +262,7 @@ internal class WebView2SampleApp(
                 } else {
                     println("webview2: core initialized")
                     reload.isEnabled = true
+                    home.isEnabled = true
                     go.isEnabled = true
                     println("webview2: loading embedded page")
                     try {
@@ -281,29 +291,27 @@ internal class WebView2SampleApp(
         registerClick(reload, "reload command") {
             webView.reload()
         }
+        registerClick(home, "home command") {
+            address.text = DEFAULT_ADDRESS
+            navigate(webView, address, status)
+        }
         registerClick(go, "go command") {
             navigate(webView, address, status)
         }
+        address.keyDown +=
+            KeyEventHandler { _, eventArgs ->
+                executeWebView2Callback(
+                    failures = failures,
+                    name = "address key down callback",
+                    exit = ::exitAfterFatalFailure,
+                ) {
+                    if (shouldSubmitWebView2Address(eventArgs.key, go.isEnabled)) {
+                        eventArgs.handled = true
+                        navigate(webView, address, status)
+                    }
+                }
+            }
         println("webview2: command handlers registered")
-
-        println("webview2: composing content")
-        val toolbar = StackPanel().apply {
-            orientation = Orientation.Horizontal
-            spacing = 8.0
-            children.add(back)
-            children.add(forward)
-            children.add(reload)
-            children.add(address)
-            children.add(go)
-        }
-        val root = StackPanel().apply {
-            padding = Thickness(16.0, 16.0, 16.0, 16.0)
-            spacing = 10.0
-            children.add(toolbar)
-            children.add(status)
-            children.add(webView)
-        }
-        println("webview2: content composed")
 
         println("webview2: creating window")
         val mainWindow = Window()
@@ -317,8 +325,25 @@ internal class WebView2SampleApp(
                 close()
             }
         }
+        mainWindow.sizeChanged += { _, eventArgs ->
+            executeWebView2Callback(
+                failures = failures,
+                name = "window size changed callback",
+                exit = ::exitAfterFatalFailure,
+            ) {
+                home.visibility = webView2HomeVisibility(eventArgs.size.width.toDouble())
+            }
+        }
         mainWindow.title = "Kotlin WinRT WebView2"
-        mainWindow.content = root
+        if (!winRTSampleOption("kotlin.winrt.samples.skipMica")) {
+            mainWindow.systemBackdrop = MicaBackdrop()
+        }
+        mainWindow.extendsContentIntoTitleBar = true
+        mainWindow.content = shell.root
+        mainWindow.setTitleBar(shell.titleBar)
+        checkNotNull(mainWindow.appWindow) {
+            "Expected AppWindow while sizing the WebView2 sample."
+        }.resizeClient(SizeInt32(INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT))
         println("webview2: window content assigned")
         mainWindow.activate()
         println("webview2: window activated")
@@ -351,11 +376,6 @@ internal class WebView2SampleApp(
         }
     }
 
-    private fun navigationButton(label: String): Button =
-        Button().apply {
-            content = label
-        }
-
     private fun registerClick(button: Button, name: String, handler: () -> Unit) {
         button.click +=
             RoutedEventHandler { _, _ ->
@@ -372,9 +392,12 @@ internal class WebView2SampleApp(
         val normalized = normalizeWebView2Address(address.text)
         if (normalized == null) {
             status.text = "Enter an HTTP or HTTPS address."
+            status.visibility = Visibility.Visible
             return
         }
         address.text = normalized
+        status.text = "Loading $normalized"
+        status.visibility = Visibility.Visible
         try {
             webView.source = Uri(normalized)
         } catch (error: Exception) {
@@ -390,6 +413,7 @@ internal class WebView2SampleApp(
             renderStatus = { statusMessage ->
                 println("webview2: failure message=$statusMessage")
                 status.text = statusMessage
+                status.visibility = Visibility.Visible
             },
             exit = ::exitAfterSmoke,
         )
@@ -420,6 +444,8 @@ internal class WebView2SampleApp(
 
     private companion object {
         const val DEFAULT_ADDRESS = "https://example.com"
+        const val INITIAL_WINDOW_WIDTH = 1200
+        const val INITIAL_WINDOW_HEIGHT = 800
 
         val INITIAL_DOCUMENT: String =
             """
