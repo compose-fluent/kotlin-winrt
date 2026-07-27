@@ -199,7 +199,7 @@ Expected: the same two common tests fail for the ownership/retention assertions,
 
 Observed: 311 `mingwX64` runtime tests ran and only the same two new lifecycle tests failed; compilation, linking, and the native test process completed normally.
 
-- [ ] **Step 5: Record RED and commit the contract**
+- [x] **Step 5: Record RED and commit the contract**
 
 Keep `Runtime-Event-Publisher-Lifetime` marked `正在做` in `PLAN.md` and record the exact two expected failures for JVM and `mingwX64`.
 
@@ -214,13 +214,17 @@ git commit -m "test(runtime): define publisher-owned event lifetime"
 - Modify: `winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSource.kt`
 - Modify: `winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSourceState.kt`
 - Modify: `winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSourceShutdownRegistry.kt`
+- Modify: `winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/ManagedComHostState.kt`
+- Modify: `winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRTInspectableComObject.kt`
+- Modify: `winrt-runtime/src/commonTest/kotlin/io/github/composefluent/winrt/runtime/EventRuntimeInfrastructureCommonTest.kt`
+- Modify: `winrt-runtime/src/commonTest/kotlin/io/github/composefluent/winrt/runtime/ManagedComHostStateTest.kt`
 - Modify: `PLAN.md`
 
 **Interfaces:**
-- Consumes: `WinRTDelegateHandle.releaseManagedReferenceForNativeOwnership()`, `WinRTDelegateHandle.addCleanupAction()`, `WeakReferenceReference.resolve()`, `ComObjectReference.tryGetWeakReference()`, and `StandardDelegates.removeEventHandler()`.
-- Produces: `EventSourceShutdownRegistry.registerCallback(...)`, `EventSourceShutdownRegistry.registerVtable(...)`, weak structured registrations, and `.cswinrt`-aligned nonzero COM reference detection.
+- Consumes: `WinRTDelegateHandle.releaseManagedReferenceForNativeOwnership()`, `WinRTDelegateHandle.addCleanupAction()`, `WeakReferenceReference.resolve()`, `ComObjectReference.tryGetWeakReference()`, `ManagedComHostState.tryAddReference()`, and `StandardDelegates.removeEventHandler()`.
+- Produces: `EventSourceShutdownRegistry.registerCallback(...)`, `EventSourceShutdownRegistry.registerVtable(...)`, weak structured registrations, and race-safe `.cswinrt`-aligned nonzero COM reference detection for runtime-owned delegate CCWs.
 
-- [ ] **Step 1: Replace the arbitrary shutdown closure with structured weak state**
+- [x] **Step 1: Replace the arbitrary shutdown closure with structured weak state**
 
 Change `EventSourceShutdownRegistry` so registration entries contain:
 
@@ -253,7 +257,7 @@ fun registerVtable(
 
 The publisher resolver must borrow a still-live original wrapper without closing it, or `use` an owned reference returned by native weak resolution. If neither path resolves, skip remove. `Registration.closeForShutdown()` claims an atomic closed flag, attempts removal only when state, publisher, and removal strategy resolve, always closes the state, and always closes the native weak-reference helper. `unregister()` claims the same flag and releases only weak helper resources. `clearForTests()` must unregister its snapshot instead of dropping native weak helpers.
 
-- [ ] **Step 2: Preserve constructor behavior while selecting shutdown removal strategy**
+- [x] **Step 2: Preserve constructor behavior while selecting shutdown removal strategy**
 
 Give `EventSource` a private primary constructor with an optional `shutdownRemoveHandlerSlot`. Keep both existing protected constructors:
 
@@ -287,7 +291,7 @@ abstract class EventSource<T : Any> private constructor(
 
 Generated projections therefore use `registerVtable`; callback-constructed runtime/test sources use `registerCallback` without the registry strongly retaining the callback.
 
-- [ ] **Step 3: Transfer ownership only after successful native add**
+- [x] **Step 3: Transfer ownership only after successful native add**
 
 In the new-registration branch of `EventSource.subscribe()`:
 
@@ -301,23 +305,23 @@ In the new-registration branch of `EventSource.subscribe()`:
 
 Keep the catch path closing the handle and state and clearing the local weak state. Do not transfer ownership when add throws.
 
-- [ ] **Step 4: Match `.cswinrt` COM-reference detection**
+- [x] **Step 4: Match `.cswinrt` COM-reference detection without stale-pointer probes**
 
-In `EventSourceState.hasComReferences()`, replace the retained-managed-reference comparison:
+Keep the Kotlin-owned managed COM reference explicit until native add succeeds. `EventSourceState` starts with one managed reference, exposes `transferDelegateToNativeOwnership()` to release the handle and move that count to zero, and lets `EventSource.subscribe()` call that state method as its final success-path step.
 
-```kotlin
-if (countAfterRelease > managedReferenceCount) {
-```
+Do not copy `eventInvokePtr` or `referenceTrackerTargetPtr` out of the state lock and then call their vtables. A concurrent final native `Release` can unregister and free the Kotlin CCW between the snapshot and `AddRef`, causing a use-after-free. Resolve the pointer through `WinRTInspectableComObject`'s managed-host registry instead, and atomically pin only a live `ManagedComHostState` with `tryAddReference()` before reading and releasing the reference count. A zero-count host must return `null` and must never be resurrected.
 
-with:
+In `EventSourceState.hasComReferences()`, compare the safely probed count against the current managed-reference count:
 
 ```kotlin
-if (countAfterRelease != 0u) {
+if (countAfterRelease > currentManagedReferenceCount) {
 ```
 
-Remove `managedReferenceCount`. Leave reference-tracker probing unchanged.
+Before transfer this preserves the existing standalone-state behavior by excluding Kotlin's one retained reference. After transfer the count is zero, so the test is equivalent to `.cswinrt`'s `countAfterRelease != 0u`. Kotlin's `ManagedComHostState.addTrackerReference()` also increments the normal COM reference count, so the same pinned probe covers reference-tracker ownership and the stale tracker-target pointer/probe is removed. The tracker path must call `tryAddReference()` before publishing its tracker-count CAS; if the CAS loses, release that temporary pin and retry. This ordering prevents a concurrent final `Release` from cleaning the host between tracker publication and ordinary reference retention, and prevents any subsequent `0 -> 1` resurrection. An unmanaged pointer that is absent from the Kotlin registry is treated as having no managed event-state references and is never dereferenced.
 
-- [ ] **Step 5: Run focused JVM GREEN**
+Add `event_source_state_does_not_probe_an_unmanaged_delegate_pointer` with a three-slot unmanaged IUnknown fake. Its `QueryInterface` returns `E_NOINTERFACE`, while `AddRef` and `Release` count calls. Verify RED against the old implementation (`expected 0 but was 1` for `AddRef`), then verify both counters remain zero after the managed-host probe. Add focused `ManagedComHostStateTest` coverage proving a zero-count host cannot be resurrected by either probe or tracker add, a live host is pinned only for the duration of the probe, and a valid tracker reference still retains the host until tracker release. The tracker regression is RED against the old publish-first implementation because `addTrackerReference()` returns 1 after cleanup instead of 0.
+
+- [x] **Step 5: Run focused JVM GREEN**
 
 Run:
 
@@ -327,7 +331,9 @@ Run:
 
 Expected: all event infrastructure tests pass. The publisher-release regression observes zero remove calls, the abandoned graph becomes weakly collectible, explicit unsubscribe still removes exactly once, and live-publisher shutdown still removes once.
 
-- [ ] **Step 6: Run complete JVM and Native runtime GREEN**
+Observed: all 13 `EventRuntimeInfrastructureCommonTest` JVM tests passed with zero failures and zero errors after introducing pre/post-transfer managed-reference accounting and replacing raw CCW/reference-tracker vtable probes with a pinned managed-host lookup.
+
+- [x] **Step 6: Run complete JVM and Native runtime GREEN**
 
 Run:
 
@@ -337,12 +343,14 @@ Run:
 
 Expected: both complete runtime test targets pass with zero failures. Existing Gradle/Kotlin warnings may remain, but no new warning or native access violation is accepted.
 
-- [ ] **Step 7: Close the runtime slice and commit**
+Observed: the complete rerun passed all 326 JVM runtime tests and all 315 `mingwX64` runtime tests with zero failures, errors, or skips. The Native publisher-release regression initially remained red only because its preflight `retainedReference.get()` kept the resolved target live for the caller frame; removing that test-owned strong resolution made the same lifecycle contract green without changing runtime cleanup or increasing GC retries. A later final-review regression first failed with one unexpected raw `AddRef` call, then passed on both targets after `ManagedComHostState.tryAddReference()` and `WinRTInspectableComObject.tryProbeReferenceCount()` replaced stale-pointer probing. The follow-up tracker regression first observed an invalid `0 -> 1` host resurrection, then passed after tracker add changed from publish-first to pin-first ordering with CAS rollback.
+
+- [x] **Step 7: Close the runtime slice and commit**
 
 Mark `Runtime-Event-Publisher-Lifetime` complete in `PLAN.md` with exact JVM/Native test evidence. Keep `WebView2-Sample（正在做）` until its downstream gate is rerun.
 
 ```powershell
-git add -- PLAN.md winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSource.kt winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSourceState.kt winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSourceShutdownRegistry.kt
+git add -- PLAN.md docs/superpowers/plans/2026-07-27-event-source-publisher-lifetime.md winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSource.kt winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSourceState.kt winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/EventSourceShutdownRegistry.kt winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/ManagedComHostState.kt winrt-runtime/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRTInspectableComObject.kt winrt-runtime/src/commonTest/kotlin/io/github/composefluent/winrt/runtime/EventRuntimeInfrastructureCommonTest.kt winrt-runtime/src/commonTest/kotlin/io/github/composefluent/winrt/runtime/ManagedComHostStateTest.kt
 git commit -m "fix(runtime): restore publisher-owned event lifetime"
 ```
 

@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -139,11 +140,11 @@ class EventRuntimeInfrastructureCommonTest {
 
         try {
             val retainedReference = subscribeCapturedHandler(source)
-            assertNotNull(retainedReference.get())
 
             activeDelegate!!.close()
             activeDelegate = null
 
+            // Do not preflight this weak reference: Native can retain the resolved target for this caller frame.
             drainUntilCleared(retainedReference)
             EventSourceShutdownRegistry.closeAllForTests()
 
@@ -369,6 +370,26 @@ class EventRuntimeInfrastructureCommonTest {
     }
 
     @Test
+    fun event_source_state_does_not_probe_an_unmanaged_delegate_pointer() {
+        FakeUnmanagedDelegateHost.create().use { host ->
+            val state =
+                object : EventSourceState<(Any?, Int) -> Unit>(PlatformAbi.nullPointer, 62) {
+                    override fun createEventInvoke(): (Any?, Int) -> Unit = { _, _ -> }
+                }
+
+            try {
+                state.initializeReferenceTracking(host.pointer)
+
+                assertFalse(state.hasComReferences())
+                assertEquals(0, host.addRefCalls)
+                assertEquals(0, host.releaseCalls)
+            } finally {
+                state.close()
+            }
+        }
+    }
+
+    @Test
     fun event_source_cache_tracks_weak_reference_source_objects() {
         if (!PlatformRuntime.isWindows) {
             return
@@ -492,6 +513,70 @@ class EventRuntimeInfrastructureCommonTest {
         val removals: MutableList<EventRegistrationToken>,
         val received: MutableList<Int>,
     )
+
+    private class FakeUnmanagedDelegateHost private constructor(
+        private val scope: NativeScope,
+        private val callbacks: List<NativeCallbackHandle>,
+        val pointer: RawAddress,
+    ) : AutoCloseable {
+        var addRefCalls: Int = 0
+            private set
+        var releaseCalls: Int = 0
+            private set
+
+        override fun close() {
+            callbacks.asReversed().forEach(NativeCallbackHandle::close)
+            scope.close()
+        }
+
+        private fun queryInterface(args: List<Any?>): Int {
+            PlatformAbi.writePointer(args[2] as RawAddress, PlatformAbi.nullPointer)
+            return KnownHResults.E_NOINTERFACE.value
+        }
+
+        private fun addRef(): Int {
+            addRefCalls += 1
+            return 1
+        }
+
+        private fun release(): Int {
+            releaseCalls += 1
+            return 0
+        }
+
+        companion object {
+            fun create(): FakeUnmanagedDelegateHost {
+                val scope = PlatformAbi.confinedScope()
+                lateinit var host: FakeUnmanagedDelegateHost
+                val queryInterfaceCallback =
+                    ComAbiInteropBridge.createRawInt32Callback(
+                        listOf(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                    ) { args -> host.queryInterface(args) }
+                val addRefCallback =
+                    ComAbiInteropBridge.createRawInt32Callback(listOf(ComAbiValueKind.Pointer)) {
+                        host.addRef()
+                    }
+                val releaseCallback =
+                    ComAbiInteropBridge.createRawInt32Callback(listOf(ComAbiValueKind.Pointer)) {
+                        host.release()
+                    }
+                val vtable = PlatformAbi.allocatePointerArray(scope, 3)
+                PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+                PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+                PlatformAbi.writePointerAt(vtable, IUnknownVftblSlots.Release, releaseCallback.pointer)
+                val objectMemory = PlatformAbi.allocatePointerSlot(scope)
+                PlatformAbi.writePointer(objectMemory, vtable)
+
+                host =
+                    FakeUnmanagedDelegateHost(
+                        scope = scope,
+                        callbacks = listOf(queryInterfaceCallback, addRefCallback, releaseCallback),
+                        pointer = objectMemory,
+                    )
+                return host
+            }
+        }
+    }
 
     private class TestEventHost : AutoCloseable {
         val token = EventRegistrationToken(0x55667788_00000002)

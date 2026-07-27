@@ -9,14 +9,28 @@ import windows.foundation.EventRegistrationToken
  * CLR-specific function-pointer and multicast-delegate details are narrowed to explicit
  * Kotlin lambdas plus `WinRTDelegateHandle`.
  */
-abstract class EventSource<T : Any> protected constructor(
+abstract class EventSource<T : Any> private constructor(
     private val objectReference: ComObjectReference,
     private val addHandler: (ComObjectReference, ComObjectReference) -> EventRegistrationToken,
     private val removeHandler: (ComObjectReference, EventRegistrationToken) -> Unit,
-    private val index: Int = 0,
+    private val index: Int,
+    private val shutdownRemoveHandlerSlot: Int?,
 ) {
     private val lock = PlatformLock()
     private var state: WeakReference<Any>? = EventSourceCache.getState(objectReference, index)
+
+    protected constructor(
+        objectReference: ComObjectReference,
+        addHandler: (ComObjectReference, ComObjectReference) -> EventRegistrationToken,
+        removeHandler: (ComObjectReference, EventRegistrationToken) -> Unit,
+        index: Int = 0,
+    ) : this(
+        objectReference = objectReference,
+        addHandler = addHandler,
+        removeHandler = removeHandler,
+        index = index,
+        shutdownRemoveHandlerSlot = null,
+    )
 
     protected constructor(
         objectReference: ComObjectReference,
@@ -30,6 +44,7 @@ abstract class EventSource<T : Any> protected constructor(
             StandardDelegates.removeEventHandler(reference, vtableIndexForAddHandler + 1, token)
         },
         index = vtableIndexForAddHandler,
+        shutdownRemoveHandlerSlot = vtableIndexForAddHandler + 1,
     )
 
     protected val nativeObjectReference: ComObjectReference
@@ -55,25 +70,35 @@ abstract class EventSource<T : Any> protected constructor(
                 this.state = state.getWeakReferenceForCache()
                 return@withLock
             }
+            val stateReference = state.getWeakReferenceForCache()
             val eventInvokeHandle = createMarshaler(state.eventInvoke)
+            state.eventInvokeHandle = eventInvokeHandle
+            eventInvokeHandle.addCleanupAction {
+                (stateReference.tryGetTarget() as? EventSourceState<*>)?.close()
+            }
             try {
                 eventInvokeHandle.createReference().use { reference ->
                     state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
                     state.token = addHandler(objectReference, reference)
                 }
-                state.eventInvokeHandle = eventInvokeHandle
                 state.installShutdownRegistration(
-                    EventSourceShutdownRegistry.register {
-                        try {
-                            removeHandler(objectReference, state.token)
-                        } finally {
-                            state.close()
-                        }
-                    },
+                    shutdownRemoveHandlerSlot?.let { removeHandlerSlot ->
+                        EventSourceShutdownRegistry.registerVtable(
+                            objectReference = objectReference,
+                            state = stateReference,
+                            token = state.token,
+                            removeHandlerSlot = removeHandlerSlot,
+                        )
+                    } ?: EventSourceShutdownRegistry.registerCallback(
+                        objectReference = objectReference,
+                        state = stateReference,
+                        token = state.token,
+                        removeHandler = removeHandler,
+                    ),
                 )
-                val stateReference = state.getWeakReferenceForCache()
                 this.state = stateReference
                 EventSourceCache.create(objectReference, index, stateReference)
+                state.transferDelegateToNativeOwnership()
             } catch (error: Throwable) {
                 eventInvokeHandle.close()
                 state.close()

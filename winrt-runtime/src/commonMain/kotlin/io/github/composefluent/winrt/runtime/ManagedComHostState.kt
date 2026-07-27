@@ -18,6 +18,20 @@ internal class ManagedComHostState(
 
     fun addReference(): Int = updateReferenceCount(1)
 
+    fun tryAddReference(): Int? {
+        while (true) {
+            val current = referenceCount.load()
+            if (current == 0) {
+                return null
+            }
+            val updated = current + 1
+            check(updated > 0) { "Managed COM host reference count overflowed." }
+            if (referenceCount.compareAndSet(current, updated)) {
+                return updated
+            }
+        }
+    }
+
     fun releaseReference(): Int {
         val updated = updateReferenceCount(-1)
         if (updated == 0) {
@@ -29,13 +43,18 @@ internal class ManagedComHostState(
     fun addTrackerReference(): Int {
         while (true) {
             val current = trackerReferenceCount.load()
-            val next = if (current == Int.MAX_VALUE) current else current + 1
+            if (current == Int.MAX_VALUE) {
+                return current
+            }
+
+            // Pin the live host before publishing tracker ownership so a final Release
+            // cannot clean up the CCW between the two reference-count updates.
+            tryAddReference() ?: return 0
+            val next = current + 1
             if (trackerReferenceCount.compareAndSet(current, next)) {
-                if (next != current) {
-                    addReference()
-                }
                 return next
             }
+            releaseReference()
         }
     }
 
