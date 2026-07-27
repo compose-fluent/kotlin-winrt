@@ -181,6 +181,7 @@ val sampleJvmOptionProperties = listOf(
     "kotlin.winrt.samples.runNativeSmoke",
     "kotlin.winrt.samples.runComponentSmoke",
     "kotlin.winrt.samples.runWinUiSmoke",
+    "kotlin.winrt.samples.runWebView2Sample",
     "kotlin.winrt.samples.autoNavigateWinUi",
     "kotlin.winrt.samples.autoShowMenuFlyout",
     "kotlin.winrt.samples.autoExitWinUi",
@@ -205,7 +206,13 @@ val standardSampleSmokeDefaults = mapOf(
     "kotlin.winrt.samples.autoExitWinUi" to "true",
 )
 
+val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")
+
 tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+    environmentVariables.put(
+        "WEBVIEW2_USER_DATA_FOLDER",
+        webView2UserDataRoot.map { it.dir("jvm").asFile.absolutePath },
+    )
     jvmArgs.addAll(
         providers.provider {
             sampleJvmOptionProperties.map { name ->
@@ -219,6 +226,10 @@ tasks.named<Exec>("runReleaseExecutableMingwX64") {
     dependsOn("stageWinRTApplicationPackage")
     workingDir(layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release"))
     executable(layout.buildDirectory.file("kotlin-winrt/application-layout/mingwX64/release/${project.name}.exe").get().asFile.absolutePath)
+    environment(
+        "WEBVIEW2_USER_DATA_FOLDER",
+        webView2UserDataRoot.get().dir("mingwX64").asFile.absolutePath,
+    )
     sampleJvmOptionProperties.forEach { name ->
         providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "").orNull?.takeIf { it.isNotEmpty() }?.let { value ->
             environment(name, value)

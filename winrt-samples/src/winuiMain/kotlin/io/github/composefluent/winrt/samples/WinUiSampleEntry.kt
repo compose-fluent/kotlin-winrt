@@ -1,5 +1,9 @@
 package io.github.composefluent.winrt.samples
 
 internal actual fun runWinUiSample() {
-    WinUiControlsSample.start()
+    if (shouldRunWebView2Sample()) {
+        WebView2Sample.start()
+    } else {
+        WinUiControlsSample.start()
+    }
 }
