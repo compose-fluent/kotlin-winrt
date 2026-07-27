@@ -32,7 +32,7 @@
 - Consumes: `EventSource.subscribe`, `EventSourceShutdownRegistry.closeAllForTests`, `PlatformManagedWeakReference`, `PlatformFinalization.drain`, and the existing `TestIntEventSource` fake native registration.
 - Produces: common regression tests named `publisher_delegate_release_ends_subscription_without_native_remove` and `shutdown_registry_does_not_retain_abandoned_subscription_graph`.
 
-- [ ] **Step 1: Add a deterministic publisher-teardown regression**
+- [x] **Step 1: Add a deterministic publisher-teardown regression**
 
 Add a test whose native add callback owns one `WinRTDelegateReference`, whose Kotlin handler captures a unique object, and whose remove callback increments a counter. After closing only the native delegate reference, drain finalization and then close the shutdown registry:
 
@@ -92,7 +92,7 @@ private fun subscribeCapturedHandler(
 private data class HandlerCapture(var lastValue: Int = 0)
 ```
 
-- [ ] **Step 2: Add an abandoned-subscription graph regression**
+- [x] **Step 2: Add an abandoned-subscription graph regression**
 
 Create an owned fake publisher reference for cleanup and a second borrowed wrapper passed into `TestIntEventSource`. Return only weak references to that borrowed wrapper and to an object captured exclusively by the injected remove callback, plus the native delegate reference that keeps event state alive:
 
@@ -175,7 +175,7 @@ fun shutdown_registry_does_not_retain_abandoned_subscription_graph() {
 
 Use one generic `drainUntilCleared(reference: PlatformManagedWeakReference<T>)` test helper with the same bounded `PlatformFinalization.drain()` plus allocation-pressure pattern already used by `PlatformCacheSeamsTest`.
 
-- [ ] **Step 3: Run the JVM tests and verify RED**
+- [x] **Step 3: Run the JVM tests and verify RED**
 
 Run:
 
@@ -185,7 +185,9 @@ Run:
 
 Expected: the new publisher-release test fails because the registry/state still retains the handler and later invokes native remove; the abandoned-subscription test fails because the global closure retains the borrowed publisher and callback capture. Existing event tests remain passing before those assertions.
 
-- [ ] **Step 4: Run the Native tests and verify the same RED contract**
+Observed: 12 JVM event tests ran and only the two new tests failed. The weak-reference assertion retained `HandlerCapture(lastValue=0)` in the publisher-release case and a borrowed `ComObjectReference` in the abandoned-subscription case.
+
+- [x] **Step 4: Run the Native tests and verify the same RED contract**
 
 Run:
 
@@ -194,6 +196,8 @@ Run:
 ```
 
 Expected: the same two common tests fail for the ownership/retention assertions, not from compilation, pointer access, or test setup errors.
+
+Observed: 311 `mingwX64` runtime tests ran and only the same two new lifecycle tests failed; compilation, linking, and the native test process completed normally.
 
 - [ ] **Step 5: Record RED and commit the contract**
 
