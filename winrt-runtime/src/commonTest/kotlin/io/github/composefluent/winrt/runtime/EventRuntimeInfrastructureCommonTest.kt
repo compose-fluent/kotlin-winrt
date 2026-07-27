@@ -112,6 +112,78 @@ class EventRuntimeInfrastructureCommonTest {
     }
 
     @Test
+    fun publisher_delegate_release_ends_subscription_without_native_remove() {
+        EventSourceCache.clearForTests()
+        EventSourceShutdownRegistry.clearForTests()
+
+        val owner = WinRTInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        var activeDelegate: WinRTDelegateReference? = null
+        var removals = 0
+        val source =
+            TestIntEventSource(
+                owner = owner,
+                addHandler = { _, handler ->
+                    activeDelegate =
+                        WinRTDelegateReference.fromAbi(
+                            handler.getRefPointer().asRawAddress(),
+                            testIntEventDescriptor,
+                        )
+                    EventRegistrationToken(0x12345678_00000001)
+                },
+                removeHandler = { _, _ ->
+                    removals += 1
+                    activeDelegate?.close()
+                    activeDelegate = null
+                },
+            )
+
+        try {
+            val retainedReference = subscribeCapturedHandler(source)
+            assertNotNull(retainedReference.get())
+
+            activeDelegate!!.close()
+            activeDelegate = null
+
+            drainUntilCleared(retainedReference)
+            EventSourceShutdownRegistry.closeAllForTests()
+
+            assertEquals(0, removals)
+        } finally {
+            EventSourceShutdownRegistry.closeAllForTests()
+            activeDelegate?.close()
+            owner.close()
+            EventSourceCache.clearForTests()
+            EventSourceShutdownRegistry.clearForTests()
+        }
+    }
+
+    @Test
+    fun shutdown_registry_does_not_retain_abandoned_subscription_graph() {
+        EventSourceShutdownRegistry.clearForTests()
+
+        val host = WinRTInspectableComObject.inspectableBox("owner", "test.Owner")
+        val owner = host.createPrimaryReference()
+        val abandoned = abandonSubscription(owner)
+
+        try {
+            drainUntilCleared(abandoned.publisher)
+            drainUntilCleared(abandoned.removalCapture)
+
+            EventSourceShutdownRegistry.closeAllForTests()
+            abandoned.nativeDelegate.invoke(listOf("sender", 19))
+
+            assertEquals(emptyList(), abandoned.removals)
+            assertEquals(emptyList(), abandoned.received)
+        } finally {
+            EventSourceShutdownRegistry.closeAllForTests()
+            abandoned.nativeDelegate.close()
+            owner.close()
+            host.close()
+            EventSourceShutdownRegistry.clearForTests()
+        }
+    }
+
+    @Test
     fun event_source_shutdown_registry_removes_active_native_registration() {
         EventSourceCache.clearForTests()
         EventSourceShutdownRegistry.clearForTests()
@@ -343,6 +415,83 @@ class EventRuntimeInfrastructureCommonTest {
                     }
             }
     }
+
+    private fun subscribeCapturedHandler(
+        source: TestIntEventSource,
+    ): PlatformManagedWeakReference<HandlerCapture> {
+        val retained = HandlerCapture()
+        source.subscribe { _, value ->
+            retained.lastValue = value
+        }
+        return PlatformManagedWeakReference(retained)
+    }
+
+    private fun abandonSubscription(owner: ComObjectReference): AbandonedSubscription {
+        val borrowedPublisher =
+            ComObjectReference(
+                pointer = owner.pointer,
+                interfaceId = owner.interfaceId,
+                preventReleaseOnDispose = true,
+            )
+        val publisherReference = PlatformManagedWeakReference(borrowedPublisher)
+        val removalCapture = RemovalCapture()
+        val removalCaptureReference = PlatformManagedWeakReference(removalCapture)
+        val removals = mutableListOf<EventRegistrationToken>()
+        val received = mutableListOf<Int>()
+        var nativeDelegate: WinRTDelegateReference? = null
+
+        TestIntEventSource(
+            owner = borrowedPublisher,
+            addHandler = { _, handler ->
+                nativeDelegate =
+                    WinRTDelegateReference.fromAbi(
+                        handler.getRefPointer().asRawAddress(),
+                        testIntEventDescriptor,
+                    )
+                EventRegistrationToken(0x22334455_00000001)
+            },
+            removeHandler = { _, token ->
+                removalCapture.calls += 1
+                removals += token
+            },
+        ).subscribe { _, value -> received += value }
+
+        return AbandonedSubscription(
+            publisher = publisherReference,
+            removalCapture = removalCaptureReference,
+            nativeDelegate = nativeDelegate!!,
+            removals = removals,
+            received = received,
+        )
+    }
+
+    private fun <T : Any> drainUntilCleared(reference: PlatformManagedWeakReference<T>) {
+        repeat(10) {
+            PlatformFinalization.drain()
+            if (reference.get() == null) {
+                return
+            }
+            val pressure = List(128) { ByteArray(1024) }
+            assertEquals(128, pressure.size)
+        }
+        assertNull(reference.get())
+    }
+
+    private data class HandlerCapture(
+        var lastValue: Int = 0,
+    )
+
+    private data class RemovalCapture(
+        var calls: Int = 0,
+    )
+
+    private data class AbandonedSubscription(
+        val publisher: PlatformManagedWeakReference<ComObjectReference>,
+        val removalCapture: PlatformManagedWeakReference<RemovalCapture>,
+        val nativeDelegate: WinRTDelegateReference,
+        val removals: MutableList<EventRegistrationToken>,
+        val received: MutableList<Int>,
+    )
 
     private class TestEventHost : AutoCloseable {
         val token = EventRegistrationToken(0x55667788_00000002)
