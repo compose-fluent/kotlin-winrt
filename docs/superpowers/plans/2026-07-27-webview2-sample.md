@@ -28,9 +28,9 @@
 
 **Interfaces:**
 - Consumes: `winRTSampleOption(name: String): Boolean` and generated `WebView2.Metadata.TYPE_NAME`.
-- Produces: `internal fun shouldRunWebView2Sample(): Boolean` and `internal fun normalizeWebView2Address(address: String): String?`.
+- Produces: `internal fun normalizeWebView2Address(address: String): String?`.
 
-- [ ] **Step 1: Write the failing contract tests**
+- [x] **Step 1: Write the failing contract tests**
 
 ```kotlin
 class WebView2SampleTest {
@@ -58,20 +58,17 @@ class WebView2SampleTest {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify RED**
+- [x] **Step 2: Run the test to verify RED**
 
 Run: `.\gradlew.bat :winrt-samples:winuiJvmTest --tests io.github.composefluent.winrt.samples.WebView2SampleTest`
 
 Expected: Kotlin compilation fails because `normalizeWebView2Address` and the selected WebView2 projection surface do not yet exist in the sample compilation.
 
-- [ ] **Step 3: Add the minimal contracts and projection inputs**
+- [x] **Step 3: Add the minimal contracts and projection inputs**
 
-Add `type("Microsoft.UI.Xaml.Controls.WebView2")`, `type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs")`, and `type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs")` to `winRT`. Define option lookup and normalization as:
+Add `type("Microsoft.UI.Xaml.Controls.WebView2")`, `type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs")`, and `type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs")` to `winRT`. Define normalization as:
 
 ```kotlin
-internal fun shouldRunWebView2Sample(): Boolean =
-    winRTSampleOption("kotlin.winrt.samples.runWebView2Sample")
-
 internal fun normalizeWebView2Address(address: String): String? {
     val trimmed = address.trim()
     if (trimmed.isEmpty()) return null
@@ -83,13 +80,13 @@ internal fun normalizeWebView2Address(address: String): String? {
 }
 ```
 
-- [ ] **Step 4: Run the focused test to verify GREEN**
+- [x] **Step 4: Run the focused test to verify GREEN**
 
 Run: `.\gradlew.bat :winrt-samples:winuiJvmTest --tests io.github.composefluent.winrt.samples.WebView2SampleTest`
 
 Expected: all three tests pass.
 
-- [ ] **Step 5: Commit the contract slice**
+- [x] **Step 5: Commit the contract slice**
 
 ```powershell
 git add -- PLAN.md winrt-samples/build.gradle.kts winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WebView2Sample.kt winrt-samples/src/winuiJvmTest/kotlin/io/github/composefluent/winrt/samples/WebView2SampleTest.kt
@@ -108,7 +105,7 @@ git commit -m "test(samples): define WebView2 sample contracts"
 
 **Interfaces:**
 - Consumes: `normalizeWebView2Address(address: String): String?`, `Application.start`, generated `WebView2`, `Uri`, event tokens, and the existing `autoExitWinUi` option.
-- Produces: `object WebView2Sample { fun start() }` and a documented `kotlin.winrt.samples.runWebView2Sample` JVM/native launch option.
+- Produces: `internal fun shouldRunWebView2Sample(): Boolean`, `object WebView2Sample { fun start() }`, and a documented `kotlin.winrt.samples.runWebView2Sample` JVM/native launch option.
 
 - [ ] **Step 1: Extend the test with sample selection**
 
