@@ -104,10 +104,10 @@ git commit -m "test(samples): define WebView2 sample contracts"
 - Modify: `PLAN.md`
 
 **Interfaces:**
-- Consumes: `normalizeWebView2Address(address: String): String?`, `Application.start`, generated `WebView2`, `Uri`, event tokens, and the existing `autoExitWinUi` option.
+- Consumes: `normalizeWebView2Address(address: String): String?`, `Application.start`, generated `WebView2`, `Uri`, projected event surfaces, and the existing `autoExitWinUi` option.
 - Produces: `internal fun shouldRunWebView2Sample(): Boolean`, `object WebView2Sample { fun start() }`, and a documented `kotlin.winrt.samples.runWebView2Sample` JVM/native launch option.
 
-- [ ] **Step 1: Extend the test with sample selection**
+- [x] **Step 1: Extend the test with sample selection**
 
 ```kotlin
 @Test
@@ -123,56 +123,152 @@ fun reads_webview2_sample_selection() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test to verify the new assertion**
+- [x] **Step 2: Run the focused test to verify the new assertion**
 
 Run: `.\gradlew.bat :winrt-samples:winuiJvmTest --tests io.github.composefluent.winrt.samples.WebView2SampleTest`
 
 Expected: the selection test passes against Task 1's contract while the runnable surface is still absent.
 
-- [ ] **Step 3: Implement the WinUI application surface**
+- [x] **Step 3: Implement the WinUI application surface**
 
-Create `WebView2SampleApp : Application(), AutoCloseable` with one retained `Window`, one retained `WebView2`, retained navigation/click event tokens, and these behaviors:
+Create `WebView2SampleApp : Application(), AutoCloseable` with one retained `Window`, one retained `WebView2`, publisher-owned navigation/click event subscriptions, and these behaviors:
 
 ```kotlin
 override fun onLaunched(args: LaunchActivatedEventArgs) {
     val browser = WebView2().apply { width = 960.0; height = 600.0 }
     val address = TextBox().apply { text = "https://example.com"; width = 620.0 }
     val status = TextBlock().apply { text = "Loading embedded page..." }
-    // Register navigation events before assigning content, build Back/Reload/Go handlers,
-    // activate the Window, then call browser.navigateToString(INITIAL_HTML).
+    // Register core-initialized and navigation events before assigning content, build
+    // Back/Reload/Go handlers, activate the Window, then request core initialization.
+    // Enable navigation and call browser.navigateToString(INITIAL_HTML) only after
+    // CoreWebView2Initialized reports a non-null CoreWebView2.
 }
 ```
 
-Navigation-started reports the requested URI. Navigation-completed reports success/error, refreshes back-button state, and calls `Application.current.exit()` when `kotlin.winrt.samples.autoExitWinUi` is true. `close()` removes every retained event token, calls `WebView2.close()`, and clears retained references.
+Navigation-started reports the requested URI. Navigation-completed reports success/error and refreshes back-button state. Interactive failures remain status text. In auto-exit mode, failures are retained for propagation after `Application.start` returns; success or failure closes WebView2 while XAML is still active and then calls `Application.current.exit()`. `Window.Closed` uses the same idempotent cleanup path. Event subscriptions end with their `Window`, `Button`, or `WebView2` publisher and are not explicitly removed. `close()` closes the retained initialization action, calls `WebView2.close()`, and clears retained references without silently discarding cleanup failures.
 
 Route `runWinUiSample()` to `WebView2Sample.start()` only when `shouldRunWebView2Sample()` is true; otherwise retain `WinUiControlsSample.start()`.
 
-- [ ] **Step 4: Propagate the run option and document commands**
+- [x] **Step 4: Propagate the run option and document commands**
 
 Add `kotlin.winrt.samples.runWebView2Sample` to `sampleJvmOptionProperties`. Add these focused commands to README:
 
 ```powershell
-.\gradlew.bat :winrt-samples:runWinRTApplicationHost -Dkotlin.winrt.samples.runWebView2Sample=true
-.\gradlew.bat :winrt-samples:runReleaseExecutableMingwX64 -Dkotlin.winrt.samples.runWebView2Sample=true
+& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" :winrt-samples:runWinRTApplicationHost
+& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" :winrt-samples:runReleaseExecutableMingwX64
 ```
 
-- [ ] **Step 5: Run static target validation**
+- [x] **Step 5: Run static target validation**
 
 Run: `.\gradlew.bat :winrt-samples:winuiJvmTest :winrt-samples:compileKotlinWinuiJvm :winrt-samples:compileKotlinMingwX64`
 
 Expected: tests pass and both target compilations succeed with generated WebView2 control/Core references.
 
-- [ ] **Step 6: Run the JVM WebView2 smoke**
+- [x] **Step 6: Run real JVM and `mingwX64` WebView2 smoke**
 
-Run: `.\gradlew.bat :winrt-samples:runWinRTApplicationHost -Dkotlin.winrt.samples.runWebView2Sample=true -Dkotlin.winrt.samples.autoExitWinUi=true`
+Run: `& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=true" :winrt-samples:runWinRTApplicationHost`
+
+Run: `& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=true" :winrt-samples:runReleaseExecutableMingwX64`
 
 Expected: the host logs WebView2 navigation completion and exits successfully. If the machine lacks the Evergreen WebView2 Runtime, record that external prerequisite without adding a fallback.
 
-- [ ] **Step 7: Close PLAN status and commit**
+Validation: both JVM `runWinRTApplicationHost` and native `runReleaseExecutableMingwX64` logged `core initialized`, `embedded page requested`, and `navigation completed success=true`, then completed with `BUILD SUCCESSFUL`. A separate interactive native launch reached the `Kotlin WinRT WebView2` window and returned exit code 0 after a normal window close, exercising the `Window.Closed` cleanup path.
+
+### Task 3: Harden Callback And Shutdown Failure Paths
+
+**Files:**
+- Modify: `winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WebView2Sample.kt`
+- Modify: `winrt-samples/src/winuiJvmTest/kotlin/io/github/composefluent/winrt/samples/WebView2SampleTest.kt`
+- Modify: `docs/superpowers/specs/2026-07-27-webview2-sample-design.md`
+- Modify: `PLAN.md`
+
+**Interfaces:**
+- Produces: one callback `Exception` boundary, attempt-all owned-resource cleanup, ordered failure recording, and in-loop WebView2 closure only.
+
+- [x] **Step 1: Reproduce cleanup and failure-policy gaps with focused tests**
+
+Verify RED for a missing attempt-all cleanup executor, smoke failure recording before status rendering, continued automatic exit after status-rendering failure, interactive status-only failure handling, and callback exception containment.
+
+- [x] **Step 2: Implement the failure boundaries and lifecycle correction**
+
+Execute all cleanup actions while preserving the first exception and suppressing later exceptions. Route the application initializer, `onLaunched`, WebView2 events, window close, and button clicks through one callback boundary. Record fatal launch, callback, cleanup, exit, and status-rendering failures unconditionally. Do not call `WebView2.close()` after `Application.start` returns; close it only on launch failure, automatic exit, or `Window.Closed` while XAML is live.
+
+- [x] **Step 3: Verify focused GREEN**
+
+All nine `WebView2SampleTest` JVM tests pass after the complete callback and lifecycle wiring.
+
+- [x] **Step 4: Re-run both real smoke targets and interactive native close**
+
+Run fresh JVM and `mingwX64` automatic-exit smoke, verify the expected WebView2 initialization/navigation logs, then launch the native interactive sample, confirm the `Kotlin WinRT WebView2` window, and leave it running for user inspection.
+
+Validation: the fresh combined gate completed in 3m43s with all nine focused JVM tests available and both real targets logging `core initialized`, `embedded page requested`, and `navigation completed success=true`. A separate native interactive launch reported the responsive title `Kotlin WinRT WebView2` and returned exit code 0 after `CloseMainWindow()`. The final user-visible instance is launched only after all source and documentation edits are complete.
+
+### Task 4: Use Publisher-Owned Event Lifetime
+
+**Files:**
+- Modify: `winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WebView2Sample.kt`
+- Modify: `winrt-samples/src/winuiJvmTest/kotlin/io/github/composefluent/winrt/samples/WebView2SampleTest.kt`
+- Modify: `docs/superpowers/specs/2026-07-27-webview2-sample-design.md`
+- Modify: `PLAN.md`
+
+**Interfaces:**
+- Consumes: the `.cswinrt` event-source contract in which the publisher owns the native registration and releases it with the projected control.
+- Produces: a sample with no `EventRegistrationToken` state or explicit `remove*` calls, plus `closeWebView2Resources(closeInitializationAction, closeWebView)` for ordered owned-resource cleanup.
+- Produces: target-specific WebView2 user-data directories outside the tracked staged application output for both documented Gradle launch tasks.
+
+- [x] **Step 1: Record the approved lifetime correction**
+
+Update the design and plan so `Window`, `Button`, and `WebView2` events end with their publisher. Keep deterministic closure only for the retained initialization action and the public WebView2 `Close` operation.
+
+- [x] **Step 2: Write the failing owned-resource cleanup test**
+
+```kotlin
+@Test
+fun closes_only_owned_webview_resources_in_order() {
+    val attempts = mutableListOf<String>()
+
+    closeWebView2Resources(
+        closeInitializationAction = { attempts += "initialization" },
+        closeWebView = { attempts += "webview" },
+    )
+
+    assertEquals(listOf("initialization", "webview"), attempts)
+}
+```
+
+- [x] **Step 3: Run the focused test and verify RED**
+
+Run: `.\gradlew.bat :winrt-samples:winuiJvmTest --tests io.github.composefluent.winrt.samples.WebView2SampleTest.closes_only_owned_webview_resources_in_order`
+
+Expected: Kotlin compilation fails because `closeWebView2Resources` does not exist.
+
+- [x] **Step 4: Remove sample-owned event cleanup**
+
+Implement `closeWebView2Resources` by passing only the non-null initialization and WebView close actions to the existing attempt-all executor. Subscribe inline without retaining returned tokens, remove the self-unsubscribe in `CoreWebView2Initialized`, and delete all event-token fields and `remove*` calls from `WebView2SampleApp.close()`.
+
+The final interactive-to-smoke validation exposed WebView2's default `{executable}.WebView2` user-data folder inside `stageWinRTApplicationPackage` output. Configure `WEBVIEW2_USER_DATA_FOLDER` on the JVM and `mingwX64` Gradle launch tasks so a browser child process finishing after application exit cannot lock a tracked task output during the next staging snapshot.
+
+- [x] **Step 5: Verify focused tests and both real targets**
+
+Run: `.\gradlew.bat :winrt-samples:winuiJvmTest :winrt-samples:compileKotlinWinuiJvm :winrt-samples:compileKotlinMingwX64`
+
+Run: `& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=true" :winrt-samples:runWinRTApplicationHost`
+
+Run: `& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=true" :winrt-samples:runReleaseExecutableMingwX64`
+
+Expected: all focused tests and compilations pass; both real hosts log core initialization, embedded-page navigation, successful completion, and exit without explicit event unsubscription.
+
+Validation: all 10 `WebView2SampleTest` cases passed with zero failures, errors, or skips, and the combined JVM/`mingwX64` compilation gate completed with `BUILD SUCCESSFUL`. Fresh `--rerun-tasks` Native-then-JVM automatic-exit runs executed 45 and 47 tasks, respectively; both logged `core initialized`, `embedded page requested`, and `navigation completed success=true`, then completed in 6m55s and 6m09s. The RED immediate rerun after an interactive Native close failed while Gradle snapshotted the default `{executable}.WebView2` UDF inside staged output; after assigning target-specific UDFs, the forced Native-then-JVM sequence passed with `TrackedUserDataExists=False`, `NativeUserDataExists=True`, and `JvmUserDataExists=True`. A direct Native release launch reported responsive title `Kotlin WinRT WebView2`, non-zero window handle `54137190`, and `Responding=True`; `CloseMainWindow()` returned true and the process exited within 30 seconds with code 0.
+
+- [x] **Step 6: Resolve the final-review host-and-port ambiguity**
+
+Add RED assertions for explicit `file:443`, `about:123`, and `mailto:123` schemes. Restrict the no-scheme `host:port` exception to `localhost`, dotted hosts/IPs, and bracketed IPv6 while retaining HTTPS normalization for those forms. The first new assertion failed against `https://file:443`; after the regex correction, all 10 focused JVM tests and `compileKotlinMingwX64` passed.
+
+- [x] **Step 7: Close PLAN status and commit**
 
 Mark `WebView2-Sample` complete with exact validation evidence.
 
 ```powershell
-git add -- PLAN.md README.md winrt-samples/build.gradle.kts winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WinUiSampleEntry.kt winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WebView2Sample.kt winrt-samples/src/winuiJvmTest/kotlin/io/github/composefluent/winrt/samples/WebView2SampleTest.kt
+git add -- PLAN.md README.md docs/superpowers/plans/2026-07-27-webview2-sample.md docs/superpowers/specs/2026-07-27-webview2-sample-design.md winrt-samples/build.gradle.kts winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WinUiSampleEntry.kt winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WebView2Sample.kt winrt-samples/src/winuiJvmTest/kotlin/io/github/composefluent/winrt/samples/WebView2SampleTest.kt
 git commit -m "feat(samples): add WebView2 browser sample"
 ```

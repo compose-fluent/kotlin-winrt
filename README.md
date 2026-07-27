@@ -362,6 +362,15 @@ Useful focused sample runs:
 .\gradlew.bat :winrt-samples:winui-kmp-app:runReleaseExecutableMingwX64
 ```
 
+Run the WebView2 sample with an installed Evergreen WebView2 Runtime:
+
+```powershell
+& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=false" :winrt-samples:runWinRTApplicationHost
+& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=false" :winrt-samples:runReleaseExecutableMingwX64
+```
+
+The sample starts with embedded offline HTML and accepts HTTP or HTTPS addresses from its navigation bar. Both launch paths stage `WebView2Loader.dll` and the Windows App SDK payload through the normal application layout tasks, and keep WebView2 user data under `winrt-samples/build/kotlin-winrt/webview2-user-data` instead of the tracked application layout.
+
 Linux and macOS can run static checks that do not require Windows Runtime execution:
 
 ```bash
