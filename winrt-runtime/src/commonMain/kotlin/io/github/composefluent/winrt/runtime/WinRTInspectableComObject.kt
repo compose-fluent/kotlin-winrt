@@ -166,6 +166,11 @@ internal class WinRTInspectableComObject(
             trace("Release runtimeClassName=$runtimeClassName count=$count")
         }
 
+    private fun tryProbeReferenceCount(): UInt? {
+        state.tryAddReference() ?: return null
+        return state.releaseReference().toUInt()
+    }
+
     private fun getIids(
         countOut: RawAddress,
         idsOut: RawAddress,
@@ -254,6 +259,9 @@ internal class WinRTInspectableComObject(
                     interfaceIds = host.interfaces.keys.toList(),
                 )
             }
+
+        internal fun tryProbeReferenceCount(pointer: RawAddress): UInt? =
+            registry[PlatformAbi.pointerKey(pointer)]?.tryProbeReferenceCount()
 
         internal fun inspectableBox(
             value: Any?,

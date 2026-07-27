@@ -46,6 +46,44 @@ class ManagedComHostStateTest {
     }
 
     @Test
+    fun `try add reference does not resurrect a cleaned host`() {
+        var cleaned = 0
+        val state = ManagedComHostState { cleaned += 1 }
+
+        assertEquals(0, state.releaseReference())
+        assertNull(state.tryAddReference())
+        assertEquals(1, cleaned)
+    }
+
+    @Test
+    fun `tracker add does not resurrect a cleaned host`() {
+        var cleaned = 0
+        val state = ManagedComHostState { cleaned += 1 }
+
+        assertEquals(0, state.releaseReference())
+        assertEquals(0, state.addTrackerReference())
+        assertEquals(0, state.releaseTrackerReference())
+        assertNull(state.tryAddReference())
+        assertEquals(1, cleaned)
+    }
+
+    @Test
+    fun `managed host reference probe pins only a live host`() {
+        val host = WinRTInspectableComObject.inspectableBox("value", "test.ManagedHost")
+        val reference = host.createPrimaryReference()
+        val pointer = reference.pointer.asRawAddress()
+        host.close()
+
+        try {
+            assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        } finally {
+            reference.close()
+        }
+
+        assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+    }
+
+    @Test
     fun `reference tracker references keep host alive until tracker release`() {
         var cleaned = 0
         val state = ManagedComHostState { cleaned += 1 }

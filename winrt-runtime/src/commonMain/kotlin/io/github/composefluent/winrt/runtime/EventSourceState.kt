@@ -20,7 +20,7 @@ abstract class EventSourceState<T : Any> protected constructor(
     private var disposed = false
     private var handlers: List<T> = emptyList()
     private var eventInvokePointer: RawAddress = PlatformAbi.nullPointer
-    private var referenceTrackerTargetPointer: RawAddress = PlatformAbi.nullPointer
+    private var managedReferenceCount = 1u
     private var shutdownRegistration: AutoCloseable? = null
 
     internal var token: EventRegistrationToken = EventRegistrationToken()
@@ -67,11 +67,18 @@ abstract class EventSourceState<T : Any> protected constructor(
     internal fun getWeakReferenceForCache(): WeakReference<Any> = cacheEntry
 
     internal fun initializeReferenceTracking(pointer: RawAddress) {
-        val trackerTarget = queryReferenceTrackerTarget(pointer)
         lock.withLock {
             eventInvokePointer = pointer
-            referenceTrackerTargetPointer = trackerTarget
         }
+    }
+
+    internal fun transferDelegateToNativeOwnership() {
+        val handle =
+            lock.withLock {
+                managedReferenceCount = 0u
+                eventInvokeHandle
+            } ?: return
+        handle.releaseManagedReferenceForNativeOwnership()
     }
 
     internal fun installShutdownRegistration(registration: AutoCloseable) {
@@ -95,34 +102,18 @@ abstract class EventSourceState<T : Any> protected constructor(
     }
 
     internal fun hasComReferences(): Boolean {
-        val pointers =
+        val reference =
             lock.withLock {
-                eventInvokePointer to referenceTrackerTargetPointer
+                eventInvokePointer to managedReferenceCount
             }
-        val eventPointer = pointers.first
-        if (!PlatformAbi.isNull(eventPointer)) {
-            WinRTPlatformApi.addRefRaw(eventPointer)
-            val countAfterRelease = WinRTPlatformApi.releaseRaw(eventPointer)
-            if (countAfterRelease > managedReferenceCount) {
-                return true
-            }
+        if (PlatformAbi.isNull(reference.first)) {
+            return false
         }
 
-        val trackerTargetPointer = pointers.second
-        if (!PlatformAbi.isNull(trackerTargetPointer)) {
-            ComVtableInvoker.invoke(
-                trackerTargetPointer.asRawComPtr(),
-                ReferenceTrackerTargetVftblSlots.AddRefFromReferenceTracker,
-            )
-            val countAfterRelease = ComVtableInvoker.invoke(
-                trackerTargetPointer.asRawComPtr(),
-                ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker,
-            ).toUInt()
-            if (countAfterRelease != 0u) {
-                return true
-            }
-        }
-        return false
+        // Kotlin tracker references also increment ManagedComHostState's normal COM count,
+        // so one pinned managed-host probe covers both checks without dereferencing stale CCW pointers.
+        val countAfterRelease = WinRTInspectableComObject.tryProbeReferenceCount(reference.first) ?: return false
+        return countAfterRelease > reference.second
     }
 
     override fun close() {
@@ -138,7 +129,6 @@ abstract class EventSourceState<T : Any> protected constructor(
                 EventSourceCache.remove(objectPointerKey, index, cacheEntry)
                 cacheCleanupRegistration.close()
                 eventInvokePointer = PlatformAbi.nullPointer
-                referenceTrackerTargetPointer = PlatformAbi.nullPointer
                 val handle = eventInvokeHandle.also {
                     eventInvokeHandle = null
                 }
@@ -166,18 +156,5 @@ abstract class EventSourceState<T : Any> protected constructor(
 
     companion object {
         private val finalizationHook = FinalizationHook()
-        private val managedReferenceCount = 1u
-
-        private fun queryReferenceTrackerTarget(pointer: RawAddress): RawAddress {
-            if (PlatformAbi.isNull(pointer)) {
-                return PlatformAbi.nullPointer
-            }
-            val result = WinRTPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTrackerTarget)
-            if (result.hResultValue != KnownHResults.S_OK.value || PlatformAbi.isNull(result.pointer)) {
-                return PlatformAbi.nullPointer
-            }
-            WinRTPlatformApi.releaseRaw(result.pointer)
-            return result.pointer
-        }
     }
 }
