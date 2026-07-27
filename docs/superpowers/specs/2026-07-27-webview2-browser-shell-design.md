@@ -12,6 +12,8 @@ The existing `WinUiXamlComponentResources` helper is outside this sample's resou
 
 ## Shell Composition
 
+All shell controls and layout tracks are constructed programmatically in Kotlin. This slice does not use `XamlReader`, embedded XAML markup, or `.xaml` files; XAML appears only in the platform API and resource-dictionary names.
+
 The window extends content into a custom title bar while retaining native Windows minimize, maximize, and close buttons. A `TabView` occupies the application-controlled title-bar area and contains exactly one non-closable `TabViewItem`. The add-tab button is hidden. Empty title-bar space remains draggable and the layout reserves the native caption-button region.
 
 The selected tab represents the embedded WebView2 browser. Below the tab strip, the browser surface contains:
