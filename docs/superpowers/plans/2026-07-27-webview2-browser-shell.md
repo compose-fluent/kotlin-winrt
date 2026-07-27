@@ -34,7 +34,7 @@
 - Consumes: generated WinUI metadata and `Visibility` value constants.
 - Produces: `internal const val WEBVIEW2_HOME_MIN_WIDTH: Double` and `internal fun webView2HomeVisibility(windowWidth: Double): Visibility`.
 
-- [ ] **Step 1: Write the failing projection and responsive tests**
+- [x] **Step 1: Write the failing projection and responsive tests**
 
 Add imports for `Grid`, `SymbolIcon`, `TabView`, `TabViewItem`, `Visibility`, `XamlControlsResources`, and `MicaBackdrop`, then add:
 
@@ -56,7 +56,7 @@ fun hides_home_below_the_narrow_width_boundary() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -66,7 +66,7 @@ Run:
 
 Expected: compilation fails because the new projected types and responsive helper are not selected or defined.
 
-- [ ] **Step 3: Select the exact generated WinUI types**
+- [x] **Step 3: Select the exact generated WinUI types**
 
 Add exact `type(...)` entries for:
 
@@ -91,7 +91,7 @@ type("Windows.System.VirtualKey")
 
 Do not add a broad namespace projection or handwritten projection file.
 
-- [ ] **Step 4: Add the minimal responsive helper**
+- [x] **Step 4: Add the minimal responsive helper**
 
 Create `WebView2BrowserShell.kt` with:
 
@@ -102,13 +102,15 @@ internal fun webView2HomeVisibility(windowWidth: Double): Visibility =
     if (windowWidth >= WEBVIEW2_HOME_MIN_WIDTH) Visibility.Visible else Visibility.Collapsed
 ```
 
-- [ ] **Step 5: Run the focused test and verify GREEN**
+- [x] **Step 5: Run the focused test and verify GREEN**
 
 Run the command from Step 2.
 
 Expected: all `WebView2SampleTest` cases pass.
 
-- [ ] **Step 6: Commit the contract slice**
+Validation: all 12 focused tests passed with zero failures, errors, or skips after the sample projection regenerated in 6m56s.
+
+- [x] **Step 6: Commit the contract slice**
 
 ```powershell
 git add -- PLAN.md winrt-samples/build.gradle.kts winrt-samples/src/winuiMain/kotlin/io/github/composefluent/winrt/samples/WebView2BrowserShell.kt winrt-samples/src/winuiJvmTest/kotlin/io/github/composefluent/winrt/samples/WebView2SampleTest.kt
