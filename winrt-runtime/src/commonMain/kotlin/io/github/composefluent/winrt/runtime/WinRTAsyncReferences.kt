@@ -19,9 +19,22 @@ open class WinRTAsyncReferenceBase internal constructor(
         interfaceId: Guid,
     ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId))
 
-    private val asyncInfoView: WinRTAsyncInfoView = WinRTAsyncInfoView(comPtr)
+    // IAsyncInfo is a sibling WinRT interface, not the prefix of each async interface's ABI vtable.
+    // Resolve and own it separately so async RCWs use its actual vtable.
+    private val asyncInfoComPtr = lazy {
+        comPtr.queryInterface(WinRTAsyncInterfaceIds.IAsyncInfo).getOrThrow()
+    }
+    private val asyncInfoView = lazy {
+        WinRTAsyncInfoView(asyncInfoComPtr.value)
+    }
 
-    internal fun asAsyncInfoView(): WinRTAsyncInfoView = asyncInfoView
+    internal fun asAsyncInfoView(): WinRTAsyncInfoView = asyncInfoView.value
+
+    internal fun releaseAsyncInfoReference() {
+        if (asyncInfoComPtr.isInitialized()) {
+            asyncInfoComPtr.value.close()
+        }
+    }
 }
 
 open class WinRTAsyncInfoReference internal constructor(
@@ -50,7 +63,11 @@ open class WinRTAsyncInfoReference internal constructor(
         try {
             asAsyncInfoView().closeAsyncInfo()
         } finally {
-            super.close()
+            try {
+                releaseAsyncInfoReference()
+            } finally {
+                super.close()
+            }
         }
     }
 }

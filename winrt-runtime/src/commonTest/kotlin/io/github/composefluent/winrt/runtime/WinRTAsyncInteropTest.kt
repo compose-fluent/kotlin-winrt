@@ -263,36 +263,40 @@ class WinRTAsyncInteropTest {
         AsyncInfo.runAction(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)) {
             kotlinx.coroutines.awaitCancellation()
         }.use { action ->
-            val startedCloseHr = ComVtableInvoker.invoke(action.pointer, WinRTAsyncInfoVftblSlots.Close)
-            assertEquals(KnownHResults.E_ILLEGAL_STATE_CHANGE.value, startedCloseHr)
+            action.queryInterface(WinRTAsyncInterfaceIds.IAsyncInfo).getOrThrow().use { asyncInfo ->
+                val startedCloseHr = ComVtableInvoker.invoke(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Close)
+                assertEquals(KnownHResults.E_ILLEGAL_STATE_CHANGE.value, startedCloseHr)
 
-            val statusHr = PlatformAbi.confinedScope().use { scope ->
-                val statusOut = PlatformAbi.allocateInt32Slot(scope)
-                ComVtableInvoker.invokeArgs(action.pointer, WinRTAsyncInfoVftblSlots.Status, statusOut)
+                val statusHr = PlatformAbi.confinedScope().use { scope ->
+                    val statusOut = PlatformAbi.allocateInt32Slot(scope)
+                    ComVtableInvoker.invokeArgs(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Status, statusOut)
+                }
+                assertEquals(KnownHResults.S_OK.value, statusHr)
             }
-            assertEquals(KnownHResults.S_OK.value, statusHr)
 
             action.cancel()
         }
 
         AsyncInfo.completedAction().use { action ->
-            val closeHr = ComVtableInvoker.invoke(action.pointer, WinRTAsyncInfoVftblSlots.Close)
-            assertEquals(KnownHResults.S_OK.value, closeHr)
+            action.queryInterface(WinRTAsyncInterfaceIds.IAsyncInfo).getOrThrow().use { asyncInfo ->
+                val closeHr = ComVtableInvoker.invoke(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Close)
+                assertEquals(KnownHResults.S_OK.value, closeHr)
 
-            val statusHr = PlatformAbi.confinedScope().use { scope ->
-                val statusOut = PlatformAbi.allocateInt32Slot(scope)
-                ComVtableInvoker.invokeArgs(action.pointer, WinRTAsyncInfoVftblSlots.Status, statusOut)
+                val statusHr = PlatformAbi.confinedScope().use { scope ->
+                    val statusOut = PlatformAbi.allocateInt32Slot(scope)
+                    ComVtableInvoker.invokeArgs(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Status, statusOut)
+                }
+                assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, statusHr)
+
+                val idHr = PlatformAbi.confinedScope().use { scope ->
+                    val idOut = PlatformAbi.allocateInt32Slot(scope)
+                    ComVtableInvoker.invokeArgs(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Id, idOut)
+                }
+                assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, idHr)
+
+                val secondCloseHr = ComVtableInvoker.invoke(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Close)
+                assertEquals(KnownHResults.S_OK.value, secondCloseHr)
             }
-            assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, statusHr)
-
-            val idHr = PlatformAbi.confinedScope().use { scope ->
-                val idOut = PlatformAbi.allocateInt32Slot(scope)
-                ComVtableInvoker.invokeArgs(action.pointer, WinRTAsyncInfoVftblSlots.Id, idOut)
-            }
-            assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, idHr)
-
-            val secondCloseHr = ComVtableInvoker.invoke(action.pointer, WinRTAsyncInfoVftblSlots.Close)
-            assertEquals(KnownHResults.S_OK.value, secondCloseHr)
         }
     }
 
@@ -417,7 +421,10 @@ class WinRTAsyncInteropTest {
                     assertEquals(WinRTAsyncStatus.Canceled, action.status())
                     assertEquals(null, capturedStatus)
 
-                    val closeWhileCancellationRequestedHr = ComVtableInvoker.invoke(action.pointer, WinRTAsyncInfoVftblSlots.Close)
+                    val closeWhileCancellationRequestedHr =
+                        action.queryInterface(WinRTAsyncInterfaceIds.IAsyncInfo).getOrThrow().use { asyncInfo ->
+                            ComVtableInvoker.invoke(asyncInfo.pointer, WinRTAsyncInfoVftblSlots.Close)
+                        }
                     assertEquals(KnownHResults.E_ILLEGAL_STATE_CHANGE.value, closeWhileCancellationRequestedHr)
 
                     val resultsWhileCancellationRequestedHr =
