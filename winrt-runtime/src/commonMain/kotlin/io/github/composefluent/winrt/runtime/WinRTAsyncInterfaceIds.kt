@@ -27,31 +27,31 @@ object WinRTAsyncInfoVftblSlots {
 }
 
 object WinRTAsyncActionVftblSlots {
-    const val PutCompleted = 11
-    const val GetCompleted = 12
-    const val GetResults = 13
+    const val PutCompleted = 6
+    const val GetCompleted = 7
+    const val GetResults = 8
 }
 
 object WinRTAsyncOperationVftblSlots {
-    const val PutCompleted = 11
-    const val GetCompleted = 12
-    const val GetResults = 13
+    const val PutCompleted = 6
+    const val GetCompleted = 7
+    const val GetResults = 8
 }
 
 object WinRTAsyncActionWithProgressVftblSlots {
-    const val PutProgress = 11
-    const val GetProgress = 12
-    const val PutCompleted = 13
-    const val GetCompleted = 14
-    const val GetResults = 15
+    const val PutProgress = 6
+    const val GetProgress = 7
+    const val PutCompleted = 8
+    const val GetCompleted = 9
+    const val GetResults = 10
 }
 
 object WinRTAsyncOperationWithProgressVftblSlots {
-    const val PutProgress = 11
-    const val GetProgress = 12
-    const val PutCompleted = 13
-    const val GetCompleted = 14
-    const val GetResults = 15
+    const val PutProgress = 6
+    const val GetProgress = 7
+    const val PutCompleted = 8
+    const val GetCompleted = 9
+    const val GetResults = 10
 }
 
 enum class WinRTAsyncStatus(val abiValue: Int) {

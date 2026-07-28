@@ -541,7 +541,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
     fun createAsyncActionInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = WinRTAsyncInterfaceIds.IAsyncAction,
-            methods = asyncInfoMethods() + listOf(
+            methods = listOf(
                 WinRTInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
                     setCompletedHandler(args[0] as RawAddress, WinRTAsyncInterfaceIds.AsyncActionCompletedHandler)
                     KnownHResults.S_OK.value
@@ -564,7 +564,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
     ): WinRTInspectableInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = interfaceId,
-            methods = asyncInfoMethods() + listOf(
+            methods = listOf(
                 WinRTInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
                     setCompletedHandler(args[0] as RawAddress, completedHandlerInterfaceId)
                     KnownHResults.S_OK.value
@@ -588,7 +588,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
     ): WinRTInspectableInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = interfaceId,
-            methods = asyncInfoMethods() + progressMethods(progressHandlerInterfaceId) + listOf(
+            methods = progressMethods(progressHandlerInterfaceId) + listOf(
                 WinRTInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
                     setCompletedHandler(args[0] as RawAddress, completedHandlerInterfaceId)
                     KnownHResults.S_OK.value
@@ -613,7 +613,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
     ): WinRTInspectableInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = interfaceId,
-            methods = asyncInfoMethods() + progressMethods(progressHandlerInterfaceId) + listOf(
+            methods = progressMethods(progressHandlerInterfaceId) + listOf(
                 WinRTInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
                     setCompletedHandler(args[0] as RawAddress, completedHandlerInterfaceId)
                     KnownHResults.S_OK.value
