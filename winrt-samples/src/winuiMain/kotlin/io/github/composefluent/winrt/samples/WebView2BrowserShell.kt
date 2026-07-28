@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.samples
 
+import microsoft.ui.xaml.FrameworkElement
 import microsoft.ui.xaml.GridLength
 import microsoft.ui.xaml.GridUnitType
 import microsoft.ui.xaml.HorizontalAlignment
@@ -7,9 +8,13 @@ import microsoft.ui.xaml.Thickness
 import microsoft.ui.xaml.VerticalAlignment
 import microsoft.ui.xaml.Visibility
 import microsoft.ui.xaml.automation.AutomationProperties
+import microsoft.ui.xaml.controls.Border
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.ColumnDefinition
+import microsoft.ui.xaml.controls.Control
 import microsoft.ui.xaml.controls.Grid
+import microsoft.ui.xaml.controls.Panel
+import microsoft.ui.xaml.controls.ProgressBar
 import microsoft.ui.xaml.controls.RowDefinition
 import microsoft.ui.xaml.controls.Symbol
 import microsoft.ui.xaml.controls.SymbolIcon
@@ -18,8 +23,11 @@ import microsoft.ui.xaml.controls.TabViewItem
 import microsoft.ui.xaml.controls.TabViewWidthMode
 import microsoft.ui.xaml.controls.TextBlock
 import microsoft.ui.xaml.controls.TextBox
+import microsoft.ui.xaml.controls.ToolTip
 import microsoft.ui.xaml.controls.ToolTipService
+import microsoft.ui.xaml.controls.Viewbox
 import microsoft.ui.xaml.controls.WebView2
+import windows.ui.Color
 
 internal const val WEBVIEW2_HOME_MIN_WIDTH = 720.0
 
@@ -34,6 +42,7 @@ internal data class WebView2BrowserShell(
     val root: Grid,
     val titleBar: TabView,
     val address: TextBox,
+    val loading: ProgressBar,
     val status: TextBlock,
     val back: Button,
     val forward: Button,
@@ -43,7 +52,11 @@ internal data class WebView2BrowserShell(
     val webView: WebView2,
 )
 
-internal fun createWebView2BrowserShell(): WebView2BrowserShell {
+internal fun createWebView2BrowserShell(
+    subtleButtonStyle: Any,
+    selectedSurfaceBrush: Any,
+    cardStrokeBrush: Any,
+): WebView2BrowserShell {
     val titleBar =
         TabView().apply {
             isAddTabButtonVisible = false
@@ -56,29 +69,43 @@ internal fun createWebView2BrowserShell(): WebView2BrowserShell {
             verticalAlignment = VerticalAlignment.Stretch
             tabItems.add(
                 TabViewItem().apply {
+                    resources["TabViewItemHeaderBackgroundSelected"] = selectedSurfaceBrush
+                    ToolTipService.setToolTip(this, ToolTip().apply { isEnabled = false })
                     header = "Kotlin WinRT"
                     isClosable = false
                 },
             )
         }
 
-    val back = navigationButton(Symbol.Back, "Back").apply { isEnabled = false }
-    val forward = navigationButton(Symbol.Forward, "Forward").apply { isEnabled = false }
-    val reload = navigationButton(Symbol.Refresh, "Reload").apply { isEnabled = false }
-    val home = navigationButton(Symbol.Home, "Home").apply { isEnabled = false }
-    val go = navigationButton(Symbol.Go, "Go").apply { isEnabled = false }
+    val back = navigationButton(Symbol.Back, "Back", subtleButtonStyle).apply { isEnabled = false }
+    val forward = navigationButton(Symbol.Forward, "Forward", subtleButtonStyle).apply { isEnabled = false }
+    val reload = navigationButton(Symbol.Refresh, "Reload", subtleButtonStyle).apply { isEnabled = false }
+    val home = navigationButton(Symbol.Home, "Home", subtleButtonStyle).apply { isEnabled = false }
+    val go = navigationButton(Symbol.Go, "Go", subtleButtonStyle).apply { isEnabled = false }
     val address =
         TextBox().apply {
             minWidth = 120.0
+            height = 34.0
             placeholderText = "Enter HTTP or HTTPS address"
             horizontalAlignment = HorizontalAlignment.Stretch
             verticalAlignment = VerticalAlignment.Center
+            verticalContentAlignment = VerticalAlignment.Center
             margin = Thickness(4.0, 0.0, 4.0, 0.0)
+            padding = Thickness(10.0, 5.0, 6.0, 5.0)
+            setValue(Control.backgroundProperty, selectedSurfaceBrush)
+            setValue(Control.borderBrushProperty, cardStrokeBrush)
+            borderThickness = Thickness(1.0, 1.0, 1.0, 1.0)
+            resources["TextControlBackground"] = selectedSurfaceBrush
+            resources["TextControlBackgroundPointerOver"] = selectedSurfaceBrush
+            resources["TextControlBackgroundFocused"] = selectedSurfaceBrush
+            resources["TextControlBorderBrush"] = cardStrokeBrush
+            resources["TextControlBorderBrushPointerOver"] = cardStrokeBrush
         }
 
     val toolbar =
         Grid().apply {
             padding = Thickness(8.0, 4.0, 8.0, 4.0)
+            columnSpacing = 4.0
             columnDefinitions.add(autoColumn())
             columnDefinitions.add(autoColumn())
             columnDefinitions.add(autoColumn())
@@ -94,31 +121,59 @@ internal fun createWebView2BrowserShell(): WebView2BrowserShell {
             addToolbarControl(go, 5)
         }
 
-    val status =
-        TextBlock().apply {
-            text = "Loading embedded page..."
+    val loading =
+        ProgressBar().apply {
+            isIndeterminate = true
             visibility = Visibility.Visible
+            horizontalAlignment = HorizontalAlignment.Stretch
+            verticalAlignment = VerticalAlignment.Center
             margin = Thickness(12.0, 2.0, 12.0, 6.0)
         }
-    val webView = WebView2()
-
-    val root =
+    val status =
+        TextBlock().apply {
+            visibility = Visibility.Collapsed
+            margin = Thickness(12.0, 2.0, 12.0, 6.0)
+        }
+    val statusHost =
         Grid().apply {
-            rowDefinitions.add(row(48.0, GridUnitType.Pixel))
+            children.add(loading)
+            children.add(status)
+        }
+    val webView = WebView2().apply { defaultBackgroundColor = transparentColor() }
+    val webViewHost =
+        Border().apply {
+            setValue(Border.backgroundProperty, selectedSurfaceBrush)
+            setValue(Border.borderBrushProperty, cardStrokeBrush)
+            borderThickness = Thickness(0.0, 1.0, 0.0, 0.0)
+            child = webView
+        }
+
+    val contentSurface =
+        Grid().apply {
             rowDefinitions.add(row(1.0, GridUnitType.Auto))
             rowDefinitions.add(row(1.0, GridUnitType.Auto))
             rowDefinitions.add(row(1.0, GridUnitType.Star))
+            setValue(Panel.backgroundProperty, selectedSurfaceBrush)
+
+            addRootControl(toolbar, 0)
+            addRootControl(statusHost, 1)
+            addRootControl(webViewHost, 2)
+        }
+
+    val root =
+        Grid().apply {
+            rowDefinitions.add(row(40.0, GridUnitType.Pixel))
+            rowDefinitions.add(row(1.0, GridUnitType.Star))
 
             addRootControl(titleBar, 0)
-            addRootControl(toolbar, 1)
-            addRootControl(status, 2)
-            addRootControl(webView, 3)
+            addRootControl(contentSurface, 1)
         }
 
     return WebView2BrowserShell(
         root = root,
         titleBar = titleBar,
         address = address,
+        loading = loading,
         status = status,
         back = back,
         forward = forward,
@@ -129,15 +184,33 @@ internal fun createWebView2BrowserShell(): WebView2BrowserShell {
     )
 }
 
-private fun navigationButton(symbol: Symbol, label: String): Button =
+private fun navigationButton(symbol: Symbol, label: String, subtleButtonStyle: Any): Button =
     Button().apply {
-        content = SymbolIcon(symbol)
-        width = 40.0
-        height = 40.0
+        content =
+            Viewbox().apply {
+                width = 14.0
+                height = 14.0
+                child = SymbolIcon(symbol)
+            }
+        setValue(FrameworkElement.styleProperty, subtleButtonStyle)
+        width = 34.0
+        height = 34.0
+        padding = Thickness(0.0, 0.0, 0.0, 0.0)
+        horizontalContentAlignment = HorizontalAlignment.Center
+        verticalContentAlignment = VerticalAlignment.Center
         verticalAlignment = VerticalAlignment.Center
+        shadow = null
         ToolTipService.setToolTip(this, label)
         AutomationProperties.setName(this, label)
     }
+
+private fun transparentColor(): Color =
+    Color(
+        a = 0u.toUByte(),
+        r = 0u.toUByte(),
+        g = 0u.toUByte(),
+        b = 0u.toUByte(),
+    )
 
 private fun autoColumn(): ColumnDefinition =
     ColumnDefinition().apply {
