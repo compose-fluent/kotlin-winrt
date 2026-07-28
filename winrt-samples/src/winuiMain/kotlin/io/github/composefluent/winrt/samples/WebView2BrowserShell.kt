@@ -1,11 +1,9 @@
 package io.github.composefluent.winrt.samples
 
-import microsoft.ui.xaml.DependencyObject
 import microsoft.ui.xaml.FrameworkElement
 import microsoft.ui.xaml.GridLength
 import microsoft.ui.xaml.GridUnitType
 import microsoft.ui.xaml.HorizontalAlignment
-import microsoft.ui.xaml.RoutedEventHandler
 import microsoft.ui.xaml.Thickness
 import microsoft.ui.xaml.VerticalAlignment
 import microsoft.ui.xaml.Visibility
@@ -28,7 +26,6 @@ import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.ToolTipService
 import microsoft.ui.xaml.controls.Viewbox
 import microsoft.ui.xaml.controls.WebView2
-import microsoft.ui.xaml.media.VisualTreeHelper
 import windows.ui.Color
 
 internal const val WEBVIEW2_HOME_MIN_WIDTH = 720.0
@@ -44,6 +41,7 @@ internal fun webView2HomeVisibility(windowWidth: Double): Visibility =
 internal data class WebView2BrowserShell(
     val root: Grid,
     val titleBar: TabView,
+    val titleBarDragRegion: Grid,
     val address: TextBox,
     val loading: ProgressBar,
     val status: TextBlock,
@@ -59,7 +57,13 @@ internal fun createWebView2BrowserShell(
     subtleButtonStyle: Any,
     selectedSurfaceBrush: Any,
     cardStrokeBrush: Any,
+    transparentBrush: Any,
 ): WebView2BrowserShell {
+    val titleBarDragRegion =
+        Grid().apply {
+            minWidth = 188.0
+            setValue(Panel.backgroundProperty, transparentBrush)
+        }
     val titleBar =
         TabView().apply {
             isAddTabButtonVisible = false
@@ -70,23 +74,14 @@ internal fun createWebView2BrowserShell(
             canTearOutTabs = false
             horizontalAlignment = HorizontalAlignment.Stretch
             verticalAlignment = VerticalAlignment.Stretch
-            val tabItem =
+            tabStripFooter = titleBarDragRegion
+            tabItems.add(
                 TabViewItem().apply {
                     resources["TabViewItemHeaderBackgroundSelected"] = selectedSurfaceBrush
                     header = "Kotlin WinRT"
                     isClosable = false
-                }
-            tabItem.loaded += RoutedEventHandler { _, _ ->
-                val disabled =
-                    try {
-                        disableTabCloseButtonToolTip(tabItem)
-                    } catch (error: Exception) {
-                        println("webview2: tab close tooltip clear failed error=${error.message}")
-                        false
-                    }
-                println("webview2: tab close tooltip cleared=$disabled")
-            }
-            tabItems.add(tabItem)
+                },
+            )
         }
 
     val back = navigationButton(Symbol.Back, "Back", subtleButtonStyle).apply { isEnabled = false }
@@ -189,6 +184,7 @@ internal fun createWebView2BrowserShell(
     return WebView2BrowserShell(
         root = root,
         titleBar = titleBar,
+        titleBarDragRegion = titleBarDragRegion,
         address = address,
         loading = loading,
         status = status,
@@ -228,32 +224,6 @@ internal fun webView2TransparentColor(): Color =
         g = 0u.toUByte(),
         b = 0u.toUByte(),
     )
-
-private fun disableTabCloseButtonToolTip(tabItem: TabViewItem): Boolean {
-    tabItem.applyTemplate()
-    return disableCloseButtonToolTipInVisualTree(tabItem)
-}
-
-private fun disableCloseButtonToolTipInVisualTree(parent: DependencyObject): Boolean {
-    val childCount = VisualTreeHelper.getChildrenCount(parent)
-    for (index in 0 until childCount) {
-        val child = VisualTreeHelper.getChild(parent, index)
-        val name =
-            try {
-                child.getValue(FrameworkElement.nameProperty) as? String
-            } catch (_: Exception) {
-                null
-            }
-        if (name == "CloseButton") {
-            ToolTipService.setToolTip(child, null)
-            return true
-        }
-        if (disableCloseButtonToolTipInVisualTree(child)) {
-            return true
-        }
-    }
-    return false
-}
 
 private fun autoColumn(): ColumnDefinition =
     ColumnDefinition().apply {

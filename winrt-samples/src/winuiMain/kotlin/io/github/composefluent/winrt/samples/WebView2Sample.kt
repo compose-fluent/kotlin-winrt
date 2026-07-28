@@ -226,6 +226,10 @@ internal class WebView2SampleApp(
             checkNotNull(application.resources["CardStrokeColorDefaultBrush"]) {
                 "Expected the default card stroke brush after installing standard control resources."
             }
+        val transparentBrush =
+            checkNotNull(application.resources["SubtleFillColorTransparentBrush"]) {
+                "Expected the transparent subtle-fill brush after installing standard control resources."
+            }
         println("webview2: standard control resources installed")
 
         println("webview2: creating browser shell")
@@ -234,6 +238,7 @@ internal class WebView2SampleApp(
                 subtleButtonStyle,
                 selectedSurfaceBrush,
                 cardStrokeBrush,
+                transparentBrush,
             )
         val address = shell.address.apply { text = DEFAULT_ADDRESS }
         val loading = shell.loading
@@ -371,7 +376,7 @@ internal class WebView2SampleApp(
         }
         mainWindow.extendsContentIntoTitleBar = true
         mainWindow.content = shell.root
-        mainWindow.setTitleBar(shell.titleBar)
+        mainWindow.setTitleBar(shell.titleBarDragRegion)
         checkNotNull(mainWindow.appWindow) {
             "Expected AppWindow while sizing the WebView2 sample."
         }.resizeClient(SizeInt32(INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT))
