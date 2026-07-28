@@ -7,6 +7,7 @@ import microsoft.ui.xaml.RoutedEventHandler
 import microsoft.ui.xaml.Visibility
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.controls.Button
+import microsoft.ui.xaml.controls.ProgressBar
 import microsoft.ui.xaml.controls.TextBlock
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.WebView2
@@ -199,14 +200,32 @@ internal class WebView2SampleApp(
         println("webview2: onLaunched")
 
         println("webview2: installing standard control resources")
-        checkNotNull(Application.current) {
+        val application = checkNotNull(Application.current) {
             "Expected current WinUI application while installing standard control resources."
-        }.resources.mergedDictionaries.add(XamlControlsResources())
+        }
+        application.resources.mergedDictionaries.add(XamlControlsResources())
+        val subtleButtonStyle = checkNotNull(application.resources["SubtleButtonStyle"]) {
+            "Expected SubtleButtonStyle after installing standard control resources."
+        }
+        val selectedSurfaceBrush =
+            checkNotNull(application.resources["LayerOnMicaBaseAltFillColorDefaultBrush"]) {
+                "Expected the layer-on-Mica surface brush after installing standard control resources."
+            }
+        val cardStrokeBrush =
+            checkNotNull(application.resources["CardStrokeColorDefaultBrush"]) {
+                "Expected the default card stroke brush after installing standard control resources."
+            }
         println("webview2: standard control resources installed")
 
         println("webview2: creating browser shell")
-        val shell = createWebView2BrowserShell()
+        val shell =
+            createWebView2BrowserShell(
+                subtleButtonStyle,
+                selectedSurfaceBrush,
+                cardStrokeBrush,
+            )
         val address = shell.address.apply { text = DEFAULT_ADDRESS }
+        val loading = shell.loading
         val status = shell.status
         val back = shell.back
         val forward = shell.forward
@@ -225,8 +244,8 @@ internal class WebView2SampleApp(
                 name = "navigation starting callback",
                 exit = ::exitAfterFatalFailure,
             ) {
-                status.text = "Loading ${eventArgs.uri}"
-                status.visibility = Visibility.Visible
+                loading.visibility = Visibility.Visible
+                status.visibility = Visibility.Collapsed
                 println("webview2: navigation starting uri=${eventArgs.uri}")
             }
         }
@@ -240,12 +259,13 @@ internal class WebView2SampleApp(
                 forward.isEnabled = webView.canGoForward
                 println("webview2: navigation completed success=${eventArgs.isSuccess}")
                 if (eventArgs.isSuccess) {
+                    loading.visibility = Visibility.Collapsed
                     status.visibility = Visibility.Collapsed
                     if (autoExit) {
                         exitAfterSmoke()
                     }
                 } else {
-                    reportFailure(status, "WebView2 navigation failed: ${eventArgs.webErrorStatus}")
+                    reportFailure(loading, status, "WebView2 navigation failed: ${eventArgs.webErrorStatus}")
                 }
             }
         }
@@ -258,7 +278,7 @@ internal class WebView2SampleApp(
                 if (webView.coreWebView2 == null) {
                     val error = eventArgs.exception
                     println("webview2: core initialization failed error=${error.message}")
-                    reportFailure(status, "WebView2 initialization failed", error)
+                    reportFailure(loading, status, "WebView2 initialization failed", error)
                 } else {
                     println("webview2: core initialized")
                     reload.isEnabled = true
@@ -270,7 +290,7 @@ internal class WebView2SampleApp(
                         println("webview2: embedded page requested")
                     } catch (error: Exception) {
                         println("webview2: embedded page failed error=${error.message}")
-                        reportFailure(status, "Embedded WebView2 navigation failed", error)
+                        reportFailure(loading, status, "Embedded WebView2 navigation failed", error)
                     }
                 }
             }
@@ -293,10 +313,10 @@ internal class WebView2SampleApp(
         }
         registerClick(home, "home command") {
             address.text = DEFAULT_ADDRESS
-            navigate(webView, address, status)
+            navigate(webView, address, loading, status)
         }
         registerClick(go, "go command") {
-            navigate(webView, address, status)
+            navigate(webView, address, loading, status)
         }
         address.keyDown +=
             KeyEventHandler { _, eventArgs ->
@@ -307,7 +327,7 @@ internal class WebView2SampleApp(
                 ) {
                     if (shouldSubmitWebView2Address(eventArgs.key, go.isEnabled)) {
                         eventArgs.handled = true
-                        navigate(webView, address, status)
+                        navigate(webView, address, loading, status)
                     }
                 }
             }
@@ -353,7 +373,7 @@ internal class WebView2SampleApp(
             println("webview2: core initialization requested")
         } catch (error: Exception) {
             println("webview2: core initialization request failed error=${error.message}")
-            reportFailure(status, "WebView2 initialization request failed", error)
+            reportFailure(loading, status, "WebView2 initialization request failed", error)
         }
     }
 
@@ -388,30 +408,42 @@ internal class WebView2SampleApp(
             }
     }
 
-    private fun navigate(webView: WebView2, address: TextBox, status: TextBlock) {
+    private fun navigate(
+        webView: WebView2,
+        address: TextBox,
+        loading: ProgressBar,
+        status: TextBlock,
+    ) {
         val normalized = normalizeWebView2Address(address.text)
         if (normalized == null) {
+            loading.visibility = Visibility.Collapsed
             status.text = "Enter an HTTP or HTTPS address."
             status.visibility = Visibility.Visible
             return
         }
         address.text = normalized
-        status.text = "Loading $normalized"
-        status.visibility = Visibility.Visible
+        loading.visibility = Visibility.Visible
+        status.visibility = Visibility.Collapsed
         try {
             webView.source = Uri(normalized)
         } catch (error: Exception) {
-            reportFailure(status, "WebView2 navigation failed", error)
+            reportFailure(loading, status, "WebView2 navigation failed", error)
         }
     }
 
-    private fun reportFailure(status: TextBlock, message: String, cause: Throwable? = null) {
+    private fun reportFailure(
+        loading: ProgressBar,
+        status: TextBlock,
+        message: String,
+        cause: Throwable? = null,
+    ) {
         reportWebView2Failure(
             failures = failures,
             message = message,
             cause = cause,
             renderStatus = { statusMessage ->
                 println("webview2: failure message=$statusMessage")
+                loading.visibility = Visibility.Collapsed
                 status.text = statusMessage
                 status.visibility = Visibility.Visible
             },
@@ -456,7 +488,7 @@ internal class WebView2SampleApp(
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Kotlin WinRT WebView2</title>
                 <style>
-                  body { margin: 0; font-family: "Segoe UI", sans-serif; color: #17202a; background: #f4f7f9; }
+                  body { margin: 0; font-family: "Segoe UI", sans-serif; color: #17202a; background: transparent; }
                   main { max-width: 720px; margin: 96px auto; padding: 0 32px; }
                   h1 { font-size: 42px; font-weight: 650; margin: 8px 0 16px; }
                   p { max-width: 560px; font-size: 18px; line-height: 1.6; color: #46515c; }
