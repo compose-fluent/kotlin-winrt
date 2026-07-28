@@ -8725,6 +8725,19 @@ class KotlinProjectionGeneratorTest {
                     types = listOf(
                         WinRTTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "Color",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(
+                                WinRTFieldDefinition("A", "Byte"),
+                                WinRTFieldDefinition("R", "Byte"),
+                                WinRTFieldDefinition("G", "Byte"),
+                                WinRTFieldDefinition("B", "Byte"),
+                            ),
+                            abiSize = 4,
+                            abiAlignment = 1,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "WidgetKind",
                             kind = WinRTTypeKind.Enum,
                             enumUnderlyingType = WinRTIntegralType.Int32,
@@ -8752,6 +8765,7 @@ class KotlinProjectionGeneratorTest {
                                         WinRTParameterDefinition("kind", "Sample.Foundation.WidgetKind"),
                                         WinRTParameterDefinition("width", "Int"),
                                         WinRTParameterDefinition("id", "UInt"),
+                                        WinRTParameterDefinition("color", "Sample.Foundation.Color"),
                                     ),
                                     methodRowId = 10,
                                 ),
@@ -8784,9 +8798,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal fun createWithId("))
         assertTrue(widgetContents.contains("WinRTProjectionIntrinsic.callProjectedInterface("))
         assertTrue(widgetContents.contains("acquire(),"))
-        assertTrue(widgetContents.contains("\"Int32,Int32,UInt32\""))
+        assertTrue(widgetContents.contains("\"Int32,Int32,UInt32,Struct4_1\""))
         assertTrue(widgetContents.contains("{ __result -> __result.use { it.asInspectable() } },"))
         assertTrue(widgetContents.contains("kind.abiValue"))
+        assertTrue(widgetContents.contains("Color.Metadata,"))
+        assertFalse(widgetContents.contains("PlatformAbi.allocateBytes"))
         assertFalse(widgetContents.contains("ComVtableInvoker.invokeGenericArgs(instance = acquire().pointer"))
     }
 

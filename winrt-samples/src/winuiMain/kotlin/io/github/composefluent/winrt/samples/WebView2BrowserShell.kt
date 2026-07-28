@@ -1,9 +1,11 @@
 package io.github.composefluent.winrt.samples
 
+import microsoft.ui.xaml.DependencyObject
 import microsoft.ui.xaml.FrameworkElement
 import microsoft.ui.xaml.GridLength
 import microsoft.ui.xaml.GridUnitType
 import microsoft.ui.xaml.HorizontalAlignment
+import microsoft.ui.xaml.RoutedEventHandler
 import microsoft.ui.xaml.Thickness
 import microsoft.ui.xaml.VerticalAlignment
 import microsoft.ui.xaml.Visibility
@@ -23,13 +25,14 @@ import microsoft.ui.xaml.controls.TabViewItem
 import microsoft.ui.xaml.controls.TabViewWidthMode
 import microsoft.ui.xaml.controls.TextBlock
 import microsoft.ui.xaml.controls.TextBox
-import microsoft.ui.xaml.controls.ToolTip
 import microsoft.ui.xaml.controls.ToolTipService
 import microsoft.ui.xaml.controls.Viewbox
 import microsoft.ui.xaml.controls.WebView2
+import microsoft.ui.xaml.media.VisualTreeHelper
 import windows.ui.Color
 
 internal const val WEBVIEW2_HOME_MIN_WIDTH = 720.0
+private const val WEBVIEW2_VISUAL_BRIDGE_BACKGROUND_RESOURCE = "BrushForThemeBackgroundColor"
 
 internal fun webView2HomeVisibility(windowWidth: Double): Visibility =
     if (windowWidth >= WEBVIEW2_HOME_MIN_WIDTH) {
@@ -67,14 +70,23 @@ internal fun createWebView2BrowserShell(
             canTearOutTabs = false
             horizontalAlignment = HorizontalAlignment.Stretch
             verticalAlignment = VerticalAlignment.Stretch
-            tabItems.add(
+            val tabItem =
                 TabViewItem().apply {
                     resources["TabViewItemHeaderBackgroundSelected"] = selectedSurfaceBrush
-                    ToolTipService.setToolTip(this, ToolTip().apply { isEnabled = false })
                     header = "Kotlin WinRT"
                     isClosable = false
-                },
-            )
+                }
+            tabItem.loaded += RoutedEventHandler { _, _ ->
+                val disabled =
+                    try {
+                        disableTabCloseButtonToolTip(tabItem)
+                    } catch (error: Exception) {
+                        println("webview2: tab close tooltip clear failed error=${error.message}")
+                        false
+                    }
+                println("webview2: tab close tooltip cleared=$disabled")
+            }
+            tabItems.add(tabItem)
         }
 
     val back = navigationButton(Symbol.Back, "Back", subtleButtonStyle).apply { isEnabled = false }
@@ -139,7 +151,12 @@ internal fun createWebView2BrowserShell(
             children.add(loading)
             children.add(status)
         }
-    val webView = WebView2().apply { defaultBackgroundColor = transparentColor() }
+    val transparentBackground = webView2TransparentColor()
+    val webView =
+        WebView2().apply {
+            defaultBackgroundColor = transparentBackground
+            resources[WEBVIEW2_VISUAL_BRIDGE_BACKGROUND_RESOURCE] = selectedSurfaceBrush
+        }
     val webViewHost =
         Border().apply {
             setValue(Border.backgroundProperty, selectedSurfaceBrush)
@@ -204,13 +221,39 @@ private fun navigationButton(symbol: Symbol, label: String, subtleButtonStyle: A
         AutomationProperties.setName(this, label)
     }
 
-private fun transparentColor(): Color =
+internal fun webView2TransparentColor(): Color =
     Color(
         a = 0u.toUByte(),
         r = 0u.toUByte(),
         g = 0u.toUByte(),
         b = 0u.toUByte(),
     )
+
+private fun disableTabCloseButtonToolTip(tabItem: TabViewItem): Boolean {
+    tabItem.applyTemplate()
+    return disableCloseButtonToolTipInVisualTree(tabItem)
+}
+
+private fun disableCloseButtonToolTipInVisualTree(parent: DependencyObject): Boolean {
+    val childCount = VisualTreeHelper.getChildrenCount(parent)
+    for (index in 0 until childCount) {
+        val child = VisualTreeHelper.getChild(parent, index)
+        val name =
+            try {
+                child.getValue(FrameworkElement.nameProperty) as? String
+            } catch (_: Exception) {
+                null
+            }
+        if (name == "CloseButton") {
+            ToolTipService.setToolTip(child, null)
+            return true
+        }
+        if (disableCloseButtonToolTipInVisualTree(child)) {
+            return true
+        }
+    }
+    return false
+}
 
 private fun autoColumn(): ColumnDefinition =
     ColumnDefinition().apply {
