@@ -1,14 +1,7 @@
 package io.github.composefluent.winrt.samples
 
-import io.github.composefluent.winrt.runtime.await
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
 import microsoft.ui.composition.systembackdrops.MicaKind
-import microsoft.ui.dispatching.DispatcherQueue
-import microsoft.ui.dispatching.asCoroutineDispatcher
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.RoutedEventHandler
@@ -22,7 +15,6 @@ import microsoft.ui.xaml.controls.WebView2
 import microsoft.ui.xaml.controls.XamlControlsResources
 import microsoft.ui.xaml.input.KeyEventHandler
 import microsoft.ui.xaml.media.MicaBackdrop
-import microsoft.web.webview2.core.CoreWebView2Environment
 import windows.foundation.Uri
 import windows.graphics.SizeInt32
 import windows.system.VirtualKey
@@ -196,7 +188,7 @@ internal class WebView2SampleApp(
     private var closed = false
     private var window: Window? = null
     private var browser: WebView2? = null
-    private var initializationScope: CoroutineScope? = null
+    private var initializationAction: WinRTAsyncActionReference? = null
 
     override fun onLaunched(args: LaunchActivatedEventArgs) {
         executeWebView2Callback(
@@ -384,33 +376,13 @@ internal class WebView2SampleApp(
         mainWindow.activate()
         println("webview2: window activated")
         println("webview2: requesting core initialization")
-        val scope = CoroutineScope(SupervisorJob() + DispatcherQueue.getForCurrentThread().asCoroutineDispatcher())
-        initializationScope = scope
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            try {
-                println("webview2: creating CoreWebView2 environment")
-                val environmentOperation = CoreWebView2Environment.createAsync()
-                val environment = environmentOperation.use { operation ->
-                    println("webview2: environment creation requested status=${operation.status()}")
-                    operation.await()
-                }
-                println("webview2: CoreWebView2 environment created")
-                val controllerOptions = environment.createCoreWebView2ControllerOptions().apply {
-                    defaultBackgroundColor = webView2TransparentColor()
-                }
-                println("webview2: transparent controller options configured before core initialization")
-                webView.ensureCoreWebView2Async(environment, controllerOptions).use { action ->
-                    action.await()
-                }
-                println("webview2: core initialization completed")
-            } catch (error: Exception) {
-                if (!closed) {
-                    println("webview2: core initialization request failed error=${error.message}")
-                    reportFailure(loading, status, "WebView2 initialization request failed", error)
-                }
-            }
+        try {
+            initializationAction = webView.ensureCoreWebView2Async()
+            println("webview2: core initialization requested")
+        } catch (error: Exception) {
+            println("webview2: core initialization request failed error=${error.message}")
+            reportFailure(loading, status, "WebView2 initialization request failed", error)
         }
-        println("webview2: core initialization requested")
     }
 
     override fun close() {
@@ -419,14 +391,14 @@ internal class WebView2SampleApp(
         }
         closed = true
         val webView = browser
-        val pendingInitialization = initializationScope
+        val pendingInitialization = initializationAction
         try {
             closeWebView2Resources(
-                closeInitializationAction = pendingInitialization?.let { scope -> { scope.cancel() } },
+                closeInitializationAction = pendingInitialization?.let { it::close },
                 closeWebView = webView?.let { it::close },
             )
         } finally {
-            initializationScope = null
+            initializationAction = null
             browser = null
             window = null
         }
