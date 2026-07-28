@@ -188,7 +188,6 @@ winRT {
         type("Microsoft.UI.Xaml.Markup.XamlReader")
         type("Microsoft.UI.Xaml.Media.MicaBackdrop")
         type("Microsoft.UI.Xaml.Media.SystemBackdrop")
-        type("Microsoft.UI.Xaml.Media.VisualTreeHelper")
         type("WinUI3Package.SettingsCard")
         type("WinUI3Package.Shimmer")
         type("Windows.System.VirtualKey")
