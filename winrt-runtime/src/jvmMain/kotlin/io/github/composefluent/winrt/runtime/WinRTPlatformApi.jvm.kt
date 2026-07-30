@@ -844,7 +844,7 @@ actual object WinRTPlatformApi {
         outHandle: MemorySegment,
     ): Int {
         ensureWindows()
-        return windowsCreateStringHandle.invokeWithArguments(
+        return windowsCreateStringHandle.invoke(
             utf16Chars,
             length,
             outHandle,
@@ -858,7 +858,7 @@ actual object WinRTPlatformApi {
         outHandle: MemorySegment,
     ): Int {
         ensureWindows()
-        return windowsCreateStringReferenceHandle.invokeWithArguments(
+        return windowsCreateStringReferenceHandle.invoke(
             utf16Chars,
             length,
             header,
@@ -868,12 +868,12 @@ actual object WinRTPlatformApi {
 
     fun windowsDeleteString(handle: MemorySegment) {
         ensureWindows()
-        windowsDeleteStringHandle.invokeWithArguments(handle)
+        windowsDeleteStringHandle.invoke(handle)
     }
 
     fun windowsGetStringRawBuffer(handle: MemorySegment, lengthOut: MemorySegment): MemorySegment {
         ensureWindows()
-        return windowsGetStringRawBufferHandle.invokeWithArguments(handle, lengthOut) as MemorySegment
+        return windowsGetStringRawBufferHandle.invoke(handle, lengthOut) as MemorySegment
     }
 
     fun tryLoadLibraryExW(absolutePath: String, flags: Int): MemorySegment {
