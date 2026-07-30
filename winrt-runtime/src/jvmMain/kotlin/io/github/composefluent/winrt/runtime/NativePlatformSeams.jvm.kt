@@ -70,6 +70,7 @@ private val nativeScalarScratchFrames = ThreadLocal.withInitial(::JvmNativeScala
 internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
     nativeScalarScratchFrames.get().acquire()
 
+@PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(
     private val release: (NativeHStringReferenceFrame) -> Unit,
 ) : AutoCloseable {
@@ -78,6 +79,8 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     private var capacityBytes: Long = 0L
     private var chars: CharArray = CharArray(0)
     private var active: Boolean = false
+
+    actual var handle: RawAddress = RawAddress.Null
 
     actual val utf16Chars: RawAddress
         get() = RawAddress(segment.address() + hStringCharsOffsetBytes)
@@ -90,6 +93,7 @@ internal actual class NativeHStringReferenceFrame internal constructor(
 
     internal fun acquire(value: String): NativeHStringReferenceFrame {
         check(!active) { "Native HSTRING reference frame is already active." }
+        handle = RawAddress.Null
         val charCount = value.length + 1
         ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * Char.SIZE_BYTES)
         ensureCharCapacity(charCount)

@@ -65,6 +65,21 @@ class HStringInteropTest {
     }
 
     @Test
+    fun initialized_hstring_reference_frames_expose_abi_handles_without_wrappers() {
+        acquireInitializedNativeHStringReferenceFrame("outer").use { outer ->
+            assertEquals("outer", NativeStringMarshaller.fromAbi(outer.handle))
+            assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(outer.transientOut)))
+
+            acquireInitializedNativeHStringReferenceFrame("inner").use { inner ->
+                assertEquals("outer", NativeStringMarshaller.fromAbi(outer.handle))
+                assertEquals("inner", NativeStringMarshaller.fromAbi(inner.handle))
+            }
+
+            assertEquals("outer", NativeStringMarshaller.fromAbi(outer.handle))
+        }
+    }
+
+    @Test
     fun string_marshaler_matches_reference_empty_and_non_empty_rules() {
         assertNull(NativeStringMarshaller.createMarshaler(null))
         assertNull(NativeStringMarshaller.createMarshaler(""))

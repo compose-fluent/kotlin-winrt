@@ -40,27 +40,10 @@ class HString private constructor(
         }
 
         fun createReference(value: String): ReferencedHString {
-            if (!PlatformRuntime.isWindows) {
-                error("HSTRING is only available on Windows.")
-            }
-            val frame = acquireNativeHStringReferenceFrame(value)
+            val frame = acquireInitializedNativeHStringReferenceFrame(value)
             try {
-                val handle = if (value.isEmpty()) {
-                    PlatformAbi.nullPointer
-                } else {
-                    WinRTPlatformApi.checkSucceededRaw(
-                        WinRTPlatformApi.windowsCreateStringReferenceRaw(
-                            utf16Chars = frame.utf16Chars,
-                            length = value.length,
-                            header = frame.header,
-                            outHandle = frame.transientOut,
-                        ),
-                    )
-                    PlatformAbi.readPointer(frame.transientOut)
-                }
-                PlatformAbi.writePointer(frame.transientOut, PlatformAbi.nullPointer)
                 return ReferencedHString(
-                    handle = handle,
+                    handle = frame.handle,
                     lifetime = frame,
                     transientOut = frame.transientOut,
                 )
@@ -71,6 +54,34 @@ class HString private constructor(
         }
 
         fun fromHandle(handle: RawAddress, owner: Boolean): HString = HString(handle, owner)
+    }
+}
+
+@PublishedApi
+internal fun acquireInitializedNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame {
+    if (!PlatformRuntime.isWindows) {
+        error("HSTRING is only available on Windows.")
+    }
+    val frame = acquireNativeHStringReferenceFrame(value)
+    try {
+        frame.handle = if (value.isEmpty()) {
+            PlatformAbi.nullPointer
+        } else {
+            WinRTPlatformApi.checkSucceededRaw(
+                WinRTPlatformApi.windowsCreateStringReferenceRaw(
+                    utf16Chars = frame.utf16Chars,
+                    length = value.length,
+                    header = frame.header,
+                    outHandle = frame.transientOut,
+                ),
+            )
+            PlatformAbi.readPointer(frame.transientOut)
+        }
+        PlatformAbi.writePointer(frame.transientOut, PlatformAbi.nullPointer)
+        return frame
+    } catch (error: Throwable) {
+        frame.close()
+        throw error
     }
 }
 

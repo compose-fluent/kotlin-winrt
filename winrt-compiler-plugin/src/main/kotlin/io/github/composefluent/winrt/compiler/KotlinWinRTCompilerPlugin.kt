@@ -797,10 +797,7 @@ class KotlinWinRTIrGenerationExtension(
                                 }
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
-                                        value = builder.irCall(hStringCreateReference).apply {
-                                            arguments[0] = builder.irGetObject(hStringCompanion)
-                                            arguments[1] = value
-                                        },
+                                        value = createHStringReferenceFrame(builder, value),
                                         nameHint = "value${valueIndex}Abi",
                                         isMutable = false,
                                         origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -867,7 +864,7 @@ class KotlinWinRTIrGenerationExtension(
                                             arguments[1] = builder.irGet(valueAbi)
                                         }
                                     }
-                                    stringAbis.forEach { stringAbi ->
+                                    stringAbis.asReversed().forEach { stringAbi ->
                                         +builder.irCall(referencedHStringClose).apply {
                                             arguments[0] = builder.irGet(stringAbi)
                                         }
@@ -983,10 +980,7 @@ class KotlinWinRTIrGenerationExtension(
                                 }
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
-                                        value = builder.irCall(hStringCreateReference).apply {
-                                            arguments[0] = builder.irGetObject(hStringCompanion)
-                                            arguments[1] = value
-                                        },
+                                        value = createHStringReferenceFrame(builder, value),
                                         nameHint = "value${valueIndex}Abi",
                                         isMutable = false,
                                         origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -1042,7 +1036,7 @@ class KotlinWinRTIrGenerationExtension(
                                             arguments[1] = builder.irGet(valueAbi)
                                         }
                                     }
-                                    stringAbis.forEach { stringAbi ->
+                                    stringAbis.asReversed().forEach { stringAbi ->
                                         +builder.irCall(referencedHStringClose).apply {
                                             arguments[0] = builder.irGet(stringAbi)
                                         }
@@ -1084,10 +1078,7 @@ class KotlinWinRTIrGenerationExtension(
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = call.type) {
                 val valueAbi = irTemporary(
-                    value = builder.irCall(hStringCreateReference).apply {
-                        arguments[0] = builder.irGetObject(hStringCompanion)
-                        arguments[1] = value
-                    },
+                    value = createHStringReferenceFrame(builder, value),
                     nameHint = "valueAbi",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -1877,10 +1868,7 @@ class KotlinWinRTIrGenerationExtension(
                                 }
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
-                                        value = builder.irCall(hStringCreateReference).apply {
-                                            arguments[0] = builder.irGetObject(hStringCompanion)
-                                            arguments[1] = value
-                                        },
+                                        value = createHStringReferenceFrame(builder, value),
                                         nameHint = "value${valueIndex}Abi",
                                         isMutable = false,
                                         origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -1927,7 +1915,7 @@ class KotlinWinRTIrGenerationExtension(
                                         arguments[1] = builder.irGet(valueAbi)
                                     }
                                 }
-                                stringAbis.forEach { stringAbi ->
+                                stringAbis.asReversed().forEach { stringAbi ->
                                     +builder.irCall(referencedHStringClose).apply {
                                         arguments[0] = builder.irGet(stringAbi)
                                     }
@@ -2372,10 +2360,7 @@ class KotlinWinRTIrGenerationExtension(
                                 }
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
-                                        value = builder.irCall(hStringCreateReference).apply {
-                                            arguments[0] = builder.irGetObject(hStringCompanion)
-                                            arguments[1] = value
-                                        },
+                                        value = createHStringReferenceFrame(builder, value),
                                         nameHint = "value${valueIndex}Abi",
                                         isMutable = false,
                                         origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -2559,10 +2544,7 @@ class KotlinWinRTIrGenerationExtension(
                                 }
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
-                                        value = builder.irCall(hStringCreateReference).apply {
-                                            arguments[0] = builder.irGetObject(hStringCompanion)
-                                            arguments[1] = value
-                                        },
+                                        value = createHStringReferenceFrame(builder, value),
                                         nameHint = "value${valueIndex}Abi",
                                         isMutable = false,
                                         origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -2600,7 +2582,7 @@ class KotlinWinRTIrGenerationExtension(
                                             arguments[1] = builder.irGet(valueAbi)
                                         }
                                     }
-                                    stringAbis.forEach { stringAbi ->
+                                    stringAbis.asReversed().forEach { stringAbi ->
                                         +builder.irCall(referencedHStringClose).apply {
                                             arguments[0] = builder.irGet(stringAbi)
                                         }
@@ -2712,10 +2694,7 @@ class KotlinWinRTIrGenerationExtension(
                                 }
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
-                                        value = builder.irCall(hStringCreateReference).apply {
-                                            arguments[0] = builder.irGetObject(hStringCompanion)
-                                            arguments[1] = value
-                                        },
+                                        value = createHStringReferenceFrame(builder, value),
                                         nameHint = "value${valueIndex}Abi",
                                         isMutable = false,
                                         origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -2752,7 +2731,7 @@ class KotlinWinRTIrGenerationExtension(
                                             arguments[1] = builder.irGet(valueAbi)
                                         }
                                     }
-                                    stringAbis.forEach { stringAbi ->
+                                    stringAbis.asReversed().forEach { stringAbi ->
                                         +builder.irCall(referencedHStringClose).apply {
                                             arguments[0] = builder.irGet(stringAbi)
                                         }
@@ -3278,6 +3257,14 @@ class KotlinWinRTIrGenerationExtension(
                 }
             }
 
+        private fun createHStringReferenceFrame(
+            builder: DeclarationIrBuilder,
+            value: IrExpression,
+        ): IrExpression =
+            builder.irCall(hStringCreateReference).apply {
+                arguments[0] = value
+            }
+
         companion object {
             fun create(pluginContext: IrPluginContext, fromFile: IrFile?): WinRTProjectionIntrinsicIrLowerings? {
                 val hString = pluginContext.findClassSymbol(WINRT_HSTRING_CLASS_ID, fromFile)
@@ -3287,11 +3274,17 @@ class KotlinWinRTIrGenerationExtension(
                     .singleOrNull { it.name.asString() == "Companion" }
                     ?.symbol
                     ?: return null
-                val hStringCreateReference = hStringCompanion.functionNamed("createReference") ?: return null
+                val hStringCreateReference = pluginContext.findFunctionSymbols(
+                    CallableId(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        Name.identifier("acquireInitializedNativeHStringReferenceFrame"),
+                    ),
+                    fromFile,
+                ).singleOrNull() ?: return null
                 val hStringFromHandle = hStringCompanion.functionNamed("fromHandle") ?: return null
                 val hStringToKString = hString.functionNamed("toKString") ?: return null
                 val hStringClose = hString.functionNamed("close") ?: return null
-                val referencedHString = pluginContext.findClassSymbol(WINRT_REFERENCED_HSTRING_CLASS_ID, fromFile)
+                val referencedHString = pluginContext.findClassSymbol(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_CLASS_ID, fromFile)
                     ?: return null
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
                 val referencedHStringTransientOutGetter = referencedHString.propertyGetter("transientOut") ?: return null
@@ -5447,8 +5440,8 @@ private val WINRT_COM_VTABLE_INVOKER_FQ_NAME =
 private val WINRT_HSTRING_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HString"))
 
-private val WINRT_REFERENCED_HSTRING_CLASS_ID =
-    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ReferencedHString"))
+private val WINRT_NATIVE_HSTRING_REFERENCE_FRAME_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeHStringReferenceFrame"))
 
 private val WINRT_IWINRT_OBJECT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("IWinRTObject"))

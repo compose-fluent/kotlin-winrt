@@ -139,6 +139,7 @@ private object NativeScalarScratchFrames {
 internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
     NativeScalarScratchFrames.pool.acquire()
 
+@PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(
     private val release: (NativeHStringReferenceFrame) -> Unit,
 ) : AutoCloseable {
@@ -146,6 +147,8 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     private var base: RawAddress = RawAddress.Null
     private var capacityBytes: Long = 0L
     private var active: Boolean = false
+
+    actual var handle: RawAddress = RawAddress.Null
 
     actual val utf16Chars: RawAddress
         get() = RawAddress(base.value + hStringCharsOffsetBytes)
@@ -158,6 +161,7 @@ internal actual class NativeHStringReferenceFrame internal constructor(
 
     internal fun acquire(value: String): NativeHStringReferenceFrame {
         check(!active) { "Native HSTRING reference frame is already active." }
+        handle = RawAddress.Null
         val charCount = value.length + 1
         ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * UShort.SIZE_BYTES)
         PlatformAbi.zeroBytes(base, hStringCharsOffsetBytes)

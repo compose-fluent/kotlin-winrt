@@ -12,7 +12,9 @@ internal expect class NativeScalarScratchFrame : AutoCloseable {
 
 internal expect fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame
 
+@PublishedApi
 internal expect class NativeHStringReferenceFrame : AutoCloseable {
+    var handle: RawAddress
     val utf16Chars: RawAddress
     val header: RawAddress
     val transientOut: RawAddress
