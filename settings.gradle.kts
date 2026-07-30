@@ -35,6 +35,7 @@ include(
     ":winrt-projections:windows-webview2",
     ":winrt-projections:windows-ui-xaml",
     ":winrt-projections:windows-app-sdk",
+    ":winrt-benchmarks",
     ":winrt-samples",
     ":winrt-samples:winui-kmp-base-library",
     ":winrt-samples:winui-kmp-library",

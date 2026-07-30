@@ -31,6 +31,7 @@ WinUI validation runs through both the generated JVM application host and the `m
 - `winrt-compiler-plugin`: compiler-visible projection and authoring support.
 - `winrt-projections`: generated projection output and prebuilt Windows SDK / Windows.UI.Xaml / Windows App SDK projection artifacts.
 - `winrt-authoring`: Kotlin-authored WinRT type, TypeDetails, host manifest, and native export support.
+- `winrt-benchmarks`: projection-cost comparisons across Kotlin/JVM, Kotlin/Native, CsWinRT, and C++/WinRT.
 - `winrt-samples`: validation applications and sample surfaces.
 
 ## Snapshot Setup
@@ -352,6 +353,14 @@ Use Windows for full build and runtime validation:
 .\gradlew.bat validateWinRTFullWindowsSdkProjectionGate
 .\gradlew.bat :winrt-samples:check
 ```
+
+Run the projection benchmark matrix on an x64 Windows machine with .NET 8 and the Visual Studio C++ build tools:
+
+```powershell
+.\gradlew.bat :winrt-benchmarks:benchmarkAll
+```
+
+The generated comparison report is written to `winrt-benchmarks/build/reports/benchmarks/benchmark-report.md`. See `winrt-benchmarks/README.md` for workload semantics, runner prerequisites, and tuning parameters.
 
 Useful focused sample runs:
 
