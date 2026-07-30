@@ -165,7 +165,7 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         handle = RawAddress.Null
         val charCount = value.length + 1
         ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * UShort.SIZE_BYTES)
-        PlatformAbi.zeroBytes(base, hStringCharsOffsetBytes)
+        // WindowsCreateStringReference overwrites header and transientOut as pure output parameters.
         val destination = utf16Chars.asCPointer<UShortVar>()
         value.forEachIndexed { index, char -> destination[index] = char.code.toUShort() }
         destination[value.length] = 0u

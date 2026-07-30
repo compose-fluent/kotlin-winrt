@@ -47,18 +47,18 @@ class HStringInteropTest {
     }
 
     @Test
-    fun hstring_reference_frame_reuses_and_clears_top_level_storage() {
+    fun initialized_hstring_reference_frame_reuses_top_level_storage_and_resets_transient_output() {
         val firstFrameAddress = acquireNativeHStringReferenceFrame("first").use { frame ->
             PlatformAbi.writePointer(frame.transientOut, frame.utf16Chars)
             PlatformAbi.writeInt64(frame.header, 0x1122334455667788L)
             PlatformAbi.pointerKey(frame.transientOut)
         }
 
-        acquireNativeHStringReferenceFrame("second").use { frame ->
+        acquireInitializedNativeHStringReferenceFrame("second").use { frame ->
             assertEquals(firstFrameAddress, PlatformAbi.pointerKey(frame.transientOut))
             assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(frame.transientOut)))
-            assertEquals(0L, PlatformAbi.readInt64(frame.header))
             assertEquals("second", PlatformAbi.readUtf16(frame.utf16Chars, "second".length))
+            assertEquals("second", NativeStringMarshaller.fromAbi(frame.handle))
         }
     }
 
