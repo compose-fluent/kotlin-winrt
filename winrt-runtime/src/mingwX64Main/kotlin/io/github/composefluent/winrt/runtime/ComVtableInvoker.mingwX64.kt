@@ -45,21 +45,27 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
     ): Int =
-        invokeHResultWords(instance, slot)
+        instance.vtableMethod<HResult0>(slot).invoke(instance.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: RawAddress,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.value)
+        instance.vtableMethod<HResultPointer1>(slot).invoke(
+            instance.toOpaquePointer(),
+            arg0.toOpaquePointer(),
+        )
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: RawComPtr,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.value)
+        instance.vtableMethod<HResultPointer1>(slot).invoke(
+            instance.toOpaquePointer(),
+            arg0.toOpaquePointer(),
+        )
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -88,7 +94,11 @@ actual object ComVtableInvoker {
         arg0: RawAddress,
         arg1: RawAddress,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.value, arg1.value)
+        instance.vtableMethod<HResultPointer2>(slot).invoke(
+            instance.toOpaquePointer(),
+            arg0.toOpaquePointer(),
+            arg1.toOpaquePointer(),
+        )
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -96,7 +106,11 @@ actual object ComVtableInvoker {
         arg0: RawComPtr,
         arg1: RawAddress,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.value, arg1.value)
+        instance.vtableMethod<HResultPointer2>(slot).invoke(
+            instance.toOpaquePointer(),
+            arg0.toOpaquePointer(),
+            arg1.toOpaquePointer(),
+        )
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -509,6 +523,9 @@ private fun MutableList<Byte>.emitZeroStackWord(stackOffset: Int) {
 }
 
 private typealias PointerResult0 = CFunction<(COpaquePointer?) -> COpaquePointer?>
+private typealias HResult0 = CFunction<(COpaquePointer?) -> Int>
+private typealias HResultPointer1 = CFunction<(COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultPointer2 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultUniversal =
     CFunction<(Long, Long, Long, Long, Long, Long, Long, Long) -> Int>
 
