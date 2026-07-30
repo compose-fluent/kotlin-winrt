@@ -5,8 +5,10 @@ class HString private constructor(
     private val owner: Boolean,
 ) : AutoCloseable {
     fun toKString(): String =
-        PlatformAbi.confinedScope().use { scope ->
-            val lengthOut = PlatformAbi.allocateInt32Slot(scope)
+        if (PlatformAbi.isNull(handle)) {
+            ""
+        } else acquireNativeScalarScratchFrame().use { frame ->
+            val lengthOut = frame.pointer
             val buffer = WinRTPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
             PlatformAbi.readUtf16(buffer, PlatformAbi.readInt32(lengthOut))
         }
@@ -41,32 +43,29 @@ class HString private constructor(
             if (!PlatformRuntime.isWindows) {
                 error("HSTRING is only available on Windows.")
             }
-            if (value.isEmpty()) {
-                return ReferencedHString(
-                    handle = PlatformAbi.nullPointer,
-                    lifetime = null,
-                )
-            }
-
-            val scope = PlatformAbi.confinedScope()
+            val frame = acquireNativeHStringReferenceFrame(value)
             try {
-                val utf16 = PlatformAbi.allocateUtf16(scope, value, nulTerminated = true)
-                val header = PlatformAbi.allocateBytes(scope, PlatformAbi.hStringHeaderSizeBytes)
-                val out = PlatformAbi.allocatePointerSlot(scope)
-                WinRTPlatformApi.checkSucceededRaw(
-                    WinRTPlatformApi.windowsCreateStringReferenceRaw(
-                        utf16Chars = utf16,
-                        length = value.length,
-                        header = header,
-                        outHandle = out,
-                    ),
-                )
+                val handle = if (value.isEmpty()) {
+                    PlatformAbi.nullPointer
+                } else {
+                    WinRTPlatformApi.checkSucceededRaw(
+                        WinRTPlatformApi.windowsCreateStringReferenceRaw(
+                            utf16Chars = frame.utf16Chars,
+                            length = value.length,
+                            header = frame.header,
+                            outHandle = frame.transientOut,
+                        ),
+                    )
+                    PlatformAbi.readPointer(frame.transientOut)
+                }
+                PlatformAbi.writePointer(frame.transientOut, PlatformAbi.nullPointer)
                 return ReferencedHString(
-                    handle = PlatformAbi.readPointer(out),
-                    lifetime = scope,
+                    handle = handle,
+                    lifetime = frame,
+                    transientOut = frame.transientOut,
                 )
             } catch (error: Throwable) {
-                scope.close()
+                frame.close()
                 throw error
             }
         }
@@ -78,6 +77,7 @@ class HString private constructor(
 class ReferencedHString internal constructor(
     val handle: RawAddress,
     private val lifetime: AutoCloseable?,
+    @PublishedApi internal val transientOut: RawAddress = PlatformAbi.nullPointer,
 ) : AutoCloseable {
     fun toKString(): String =
         if (PlatformAbi.isNull(handle)) {

@@ -12027,7 +12027,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_binds_single_parameter_string_and_uint32_members() {
+    fun generator_binds_string_and_uint32_members_through_descriptor_intrinsics() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
                 WinRTNamespace(
@@ -12062,6 +12062,15 @@ class KotlinProjectionGeneratorTest {
                                     returnTypeName = "Unit",
                                     parameters = listOf(WinRTParameterDefinition("index", "UInt")),
                                     methodRowId = 13,
+                                ),
+                                WinRTMethodDefinition(
+                                    name = "getNamedStringOrDefault",
+                                    returnTypeName = "String",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("name", "String"),
+                                        WinRTParameterDefinition("defaultValue", "String"),
+                                    ),
+                                    methodRowId = 16,
                                 ),
                             ),
                             properties = listOf(
@@ -12104,6 +12113,14 @@ class KotlinProjectionGeneratorTest {
                                     returnTypeName = "Unit",
                                     parameters = listOf(WinRTParameterDefinition("index", "UInt")),
                                 ),
+                                WinRTMethodDefinition(
+                                    name = "getNamedStringOrDefault",
+                                    returnTypeName = "String",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("name", "String"),
+                                        WinRTParameterDefinition("defaultValue", "String"),
+                                    ),
+                                ),
                             ),
                             properties = listOf(
                                 WinRTPropertyDefinition(
@@ -12119,20 +12136,25 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val widgetContents = KotlinProjectionGenerator()
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("Widget.kt")
-            .contents
+        val widgetContents = filesByName.getValue("Widget.kt").contents
+        val interfaceContents = filesByName.getValue("IWidget.kt").contents
 
         assertFalse(widgetContents.contains("WinRTAbiMarshalers"))
         assertTrue(widgetContents.contains("fun getNamedString(name: String): String"))
+        assertTrue(widgetContents.contains("fun getNamedStringOrDefault(name: String, defaultValue: String): String"))
         if (widgetContents.contains("Projection")) {
             assertTrue(widgetContents.contains(".getNamedString(name)"))
         } else {
-            assertTrue(widgetContents.contains("HString.createReference(name).use { __nameAbi ->"))
-            assertFalse(widgetContents.contains("-> {"))
+            assertTrue(widgetContents.contains("WinRTProjectionIntrinsic.callScalar("))
         }
+        assertTrue(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callScalar("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"String,String\""))
+        assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(name)"))
+        assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(defaultValue)"))
+        assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.confinedScope()"))
         assertTrue(widgetContents.contains("GETNAMEDSTRING_SLOT"))
         assertTrue(widgetContents.contains("fun getStringAt(index: UInt): String"))
         assertTrue(widgetContents, widgetContents.contains("index.toInt()") || widgetContents.contains("_iWidgetProjection.getStringAt(index)"))

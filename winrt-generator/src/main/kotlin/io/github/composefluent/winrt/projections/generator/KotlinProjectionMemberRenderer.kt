@@ -1074,6 +1074,7 @@ internal fun scalarIntrinsicReturnShape(binding: KotlinProjectionAbiTypeBinding)
         KotlinProjectionAbiValueKind.UInt64 -> "UInt64"
         KotlinProjectionAbiValueKind.Float -> "Float"
         KotlinProjectionAbiValueKind.Double -> "Double"
+        KotlinProjectionAbiValueKind.String -> "String"
         else -> null
     }
 

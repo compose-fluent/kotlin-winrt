@@ -128,6 +128,94 @@ private object NativeScalarScratchFrames {
 internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
     NativeScalarScratchFrames.pool.acquire()
 
+internal actual class NativeHStringReferenceFrame internal constructor(
+    private val release: (NativeHStringReferenceFrame) -> Unit,
+) : AutoCloseable {
+    private var allocation: COpaquePointer? = null
+    private var base: RawAddress = RawAddress.Null
+    private var capacityBytes: Long = 0L
+    private var active: Boolean = false
+
+    actual val utf16Chars: RawAddress
+        get() = RawAddress(base.value + hStringCharsOffsetBytes)
+
+    actual val header: RawAddress
+        get() = RawAddress(base.value + hStringHeaderOffsetBytes)
+
+    actual val transientOut: RawAddress
+        get() = base
+
+    internal fun acquire(value: String): NativeHStringReferenceFrame {
+        check(!active) { "Native HSTRING reference frame is already active." }
+        val charCount = value.length + 1
+        ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * UShort.SIZE_BYTES)
+        PlatformAbi.zeroBytes(base, hStringCharsOffsetBytes)
+        val destination = utf16Chars.asCPointer<UShortVar>()
+        value.forEachIndexed { index, char -> destination[index] = char.code.toUShort() }
+        destination[value.length] = 0u
+        active = true
+        return this
+    }
+
+    actual override fun close() {
+        if (active) {
+            release(this)
+            active = false
+        }
+    }
+
+    private fun ensureCapacity(requiredBytes: Long) {
+        if (capacityBytes >= requiredBytes) {
+            return
+        }
+        require(requiredBytes <= Int.MAX_VALUE.toLong()) {
+            "Native HSTRING reference frame exceeds the supported allocation size."
+        }
+        var newCapacity = maxOf(hStringInitialFrameSizeBytes, capacityBytes)
+        while (newCapacity < requiredBytes) {
+            newCapacity = minOf(newCapacity * 2L, Int.MAX_VALUE.toLong())
+        }
+        allocation?.let { nativeHeap.free(it.rawValue) }
+        allocation = nativeHeap.allocArray<ByteVar>(newCapacity.toInt()).reinterpret<COpaque>()
+        base = requireNotNull(allocation).asRawAddress()
+        capacityBytes = newCapacity
+    }
+}
+
+private class MingwNativeHStringReferenceFramePool {
+    private val frames = mutableListOf<NativeHStringReferenceFrame>()
+    private var depth: Int = 0
+
+    fun acquire(value: String): NativeHStringReferenceFrame {
+        val frame = frames.getOrNull(depth) ?: createFrame()
+        frame.acquire(value)
+        depth += 1
+        return frame
+    }
+
+    private fun createFrame(): NativeHStringReferenceFrame =
+        NativeHStringReferenceFrame(release = ::release).also(frames::add)
+
+    private fun release(frame: NativeHStringReferenceFrame) {
+        check(depth > 0 && frames[depth - 1] === frame) {
+            "Native HSTRING reference frames must close in reverse acquisition order."
+        }
+        depth -= 1
+    }
+}
+
+@ThreadLocal
+private object NativeHStringReferenceFrames {
+    val pool = MingwNativeHStringReferenceFramePool()
+}
+
+internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
+    NativeHStringReferenceFrames.pool.acquire(value)
+
+private const val hStringHeaderOffsetBytes: Long = 8L
+private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + 24L
+private const val hStringInitialFrameSizeBytes: Long = 64L
+
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,
     private val onClose: () -> Unit,

@@ -70,6 +70,103 @@ private val nativeScalarScratchFrames = ThreadLocal.withInitial(::JvmNativeScala
 internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
     nativeScalarScratchFrames.get().acquire()
 
+internal actual class NativeHStringReferenceFrame internal constructor(
+    private val release: (NativeHStringReferenceFrame) -> Unit,
+) : AutoCloseable {
+    private var arena: Arena? = null
+    private var segment: MemorySegment = MemorySegment.NULL
+    private var capacityBytes: Long = 0L
+    private var chars: CharArray = CharArray(0)
+    private var active: Boolean = false
+
+    actual val utf16Chars: RawAddress
+        get() = RawAddress(segment.address() + hStringCharsOffsetBytes)
+
+    actual val header: RawAddress
+        get() = RawAddress(segment.address() + hStringHeaderOffsetBytes)
+
+    actual val transientOut: RawAddress
+        get() = segment.asRawAddress()
+
+    internal fun acquire(value: String): NativeHStringReferenceFrame {
+        check(!active) { "Native HSTRING reference frame is already active." }
+        val charCount = value.length + 1
+        ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * Char.SIZE_BYTES)
+        ensureCharCapacity(charCount)
+        segment.asSlice(0, hStringCharsOffsetBytes).fill(0)
+        value.toCharArray(chars, destinationOffset = 0, startIndex = 0, endIndex = value.length)
+        chars[value.length] = '\u0000'
+        segment.asSlice(hStringCharsOffsetBytes, charCount.toLong() * Char.SIZE_BYTES)
+            .copyFrom(MemorySegment.ofArray(chars).asSlice(0, charCount.toLong() * Char.SIZE_BYTES))
+        active = true
+        return this
+    }
+
+    actual override fun close() {
+        if (active) {
+            release(this)
+            active = false
+        }
+    }
+
+    private fun ensureCapacity(requiredBytes: Long) {
+        if (capacityBytes >= requiredBytes) {
+            return
+        }
+        var newCapacity = maxOf(hStringInitialFrameSizeBytes, capacityBytes)
+        while (newCapacity < requiredBytes) {
+            newCapacity = Math.multiplyExact(newCapacity, 2L)
+        }
+        arena?.close()
+        arena = Arena.ofConfined()
+        segment = requireNotNull(arena).allocate(newCapacity, ValueLayout.JAVA_LONG.byteAlignment())
+        capacityBytes = newCapacity
+    }
+
+    private fun ensureCharCapacity(requiredChars: Int) {
+        if (chars.size >= requiredChars) {
+            return
+        }
+        var newCapacity = maxOf(hStringInitialCharCapacity, chars.size)
+        while (newCapacity < requiredChars) {
+            newCapacity = Math.multiplyExact(newCapacity, 2)
+        }
+        chars = CharArray(newCapacity)
+    }
+}
+
+private class JvmNativeHStringReferenceFramePool {
+    private val frames = mutableListOf<NativeHStringReferenceFrame>()
+    private var depth: Int = 0
+
+    fun acquire(value: String): NativeHStringReferenceFrame {
+        val frame = frames.getOrNull(depth) ?: createFrame()
+        frame.acquire(value)
+        depth += 1
+        return frame
+    }
+
+    private fun createFrame(): NativeHStringReferenceFrame =
+        NativeHStringReferenceFrame(release = ::release).also(frames::add)
+
+    private fun release(frame: NativeHStringReferenceFrame) {
+        check(depth > 0 && frames[depth - 1] === frame) {
+            "Native HSTRING reference frames must close in reverse acquisition order."
+        }
+        depth -= 1
+    }
+}
+
+private val nativeHStringReferenceFrames = ThreadLocal.withInitial(::JvmNativeHStringReferenceFramePool)
+
+internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
+    nativeHStringReferenceFrames.get().acquire(value)
+
+private const val hStringHeaderOffsetBytes: Long = 8L
+private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + 24L
+private const val hStringInitialFrameSizeBytes: Long = 64L
+private const val hStringInitialCharCapacity: Int = 16
+
 @OptIn(ExperimentalAtomicApi::class)
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,

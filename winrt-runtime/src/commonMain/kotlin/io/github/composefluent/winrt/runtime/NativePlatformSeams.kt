@@ -12,6 +12,16 @@ internal expect class NativeScalarScratchFrame : AutoCloseable {
 
 internal expect fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame
 
+internal expect class NativeHStringReferenceFrame : AutoCloseable {
+    val utf16Chars: RawAddress
+    val header: RawAddress
+    val transientOut: RawAddress
+
+    override fun close()
+}
+
+internal expect fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame
+
 /**
  * A native allocation whose backing memory is owned and can be freed by closing this handle.
  * This is used when transferring ownership of heap allocations (e.g. array marshalling).

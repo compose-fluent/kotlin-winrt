@@ -537,6 +537,7 @@ class KotlinWinRTIrGenerationExtension(
         private val hStringToKString: IrSimpleFunctionSymbol,
         private val hStringClose: IrSimpleFunctionSymbol,
         private val referencedHStringHandleGetter: IrSimpleFunctionSymbol,
+        private val referencedHStringTransientOutGetter: IrSimpleFunctionSymbol,
         private val referencedHStringClose: IrSimpleFunctionSymbol,
         private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol,
         private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol,
@@ -2254,6 +2255,7 @@ class KotlinWinRTIrGenerationExtension(
                 "UInt64" -> NoArgumentGetterReturnKind.UInt64
                 "Float" -> NoArgumentGetterReturnKind.Float
                 "Double" -> NoArgumentGetterReturnKind.Double
+                "String" -> NoArgumentGetterReturnKind.String
                 "RawAddress" -> NoArgumentGetterReturnKind.RawAddress
                 else -> return null
             }
@@ -2282,8 +2284,7 @@ class KotlinWinRTIrGenerationExtension(
             if ((returnKind == NoArgumentGetterReturnKind.UInt8 && ubyteConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt16 && ushortConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
-                (returnKind == NoArgumentGetterReturnKind.UInt64 && ulongConstructor == null) ||
-                returnKind == NoArgumentGetterReturnKind.String
+                (returnKind == NoArgumentGetterReturnKind.UInt64 && ulongConstructor == null)
             ) {
                 return null
             }
@@ -2299,24 +2300,23 @@ class KotlinWinRTIrGenerationExtension(
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            val hasStructArguments = argumentKinds.any { it.isStruct }
+            val hasStringArguments = UnitCallAbiArgumentKind.String in argumentKinds
             return builder.irBlock(resultType = call.type) {
-                val nativeScope = irTemporary(
-                    value = builder.irCall(platformAbiConfinedScope).apply {
-                        arguments[0] = builder.irGetObject(platformAbi)
-                    },
-                    nameHint = "scope",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                )
-                +builder.irTry(
-                    type = call.type,
-                    tryResult = builder.irBlock(resultType = call.type) {
-                        val resultOut = irTemporary(
-                            value = allocateGetterResultSlot(builder, returnKind, builder.irGet(nativeScope)),
-                            nameHint = "resultOut",
-                            isMutable = false,
-                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                        )
+                val nativeScope = if (hasStructArguments || !hasStringArguments) {
+                    irTemporary(
+                        value = builder.irCall(platformAbiConfinedScope).apply {
+                            arguments[0] = builder.irGetObject(platformAbi)
+                        },
+                        nameHint = "scope",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                } else {
+                    null
+                }
+                fun callWithPreparedArguments(): IrExpression =
+                    builder.irBlock(resultType = call.type) {
                         val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
                         val structAbis =
                             mutableListOf<Pair<org.jetbrains.kotlin.ir.declarations.IrVariable, org.jetbrains.kotlin.ir.declarations.IrVariable>>()
@@ -2351,7 +2351,7 @@ class KotlinWinRTIrGenerationExtension(
                                     val valueAbi = irTemporary(
                                         value = builder.irCall(platformAbiAllocateBytes).apply {
                                             arguments[0] = builder.irGetObject(platformAbi)
-                                            arguments[1] = builder.irGet(nativeScope)
+                                            arguments[1] = builder.irGet(requireNotNull(nativeScope))
                                             arguments[2] = builder.irCall(nativeStructLayoutSizeBytesGetter).apply {
                                                 arguments[0] = builder.irCall(nativeStructAdapterLayoutGetter).apply {
                                                     arguments[0] = builder.irGet(adapter)
@@ -2389,6 +2389,20 @@ class KotlinWinRTIrGenerationExtension(
                         }
 
                         val abiValues = argumentKinds.map(::abiValueFor)
+                        val resultOut = irTemporary(
+                            value = stringAbis.firstOrNull()?.let { stringAbi ->
+                                builder.irCall(referencedHStringTransientOutGetter).apply {
+                                    arguments[0] = builder.irGet(stringAbi)
+                                }
+                            } ?: allocateGetterResultSlot(
+                                builder,
+                                returnKind,
+                                builder.irGet(requireNotNull(nativeScope)),
+                            ),
+                            nameHint = "resultOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
                         val callArgumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object
                         val callValues = abiValues + builder.irGet(resultOut)
                         val callBlock = if (jvmSymbols != null) {
@@ -2432,7 +2446,7 @@ class KotlinWinRTIrGenerationExtension(
                                             arguments[1] = builder.irGet(valueAbi)
                                         }
                                     }
-                                    stringAbis.forEach { stringAbi ->
+                                    stringAbis.asReversed().forEach { stringAbi ->
                                         +builder.irCall(referencedHStringClose).apply {
                                             arguments[0] = builder.irGet(stringAbi)
                                         }
@@ -2440,14 +2454,21 @@ class KotlinWinRTIrGenerationExtension(
                                 },
                             )
                         }
-                    },
-                    catches = emptyList(),
-                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                        +builder.irCall(nativeScopeClose).apply {
-                            arguments[0] = builder.irGet(nativeScope)
-                        }
-                    },
-                )
+                    }
+                if (nativeScope == null) {
+                    +callWithPreparedArguments()
+                } else {
+                    +builder.irTry(
+                        type = call.type,
+                        tryResult = callWithPreparedArguments(),
+                        catches = emptyList(),
+                        finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                            +builder.irCall(nativeScopeClose).apply {
+                                arguments[0] = builder.irGet(nativeScope)
+                            }
+                        },
+                    )
+                }
             }
         }
 
@@ -3273,6 +3294,7 @@ class KotlinWinRTIrGenerationExtension(
                 val referencedHString = pluginContext.findClassSymbol(WINRT_REFERENCED_HSTRING_CLASS_ID, fromFile)
                     ?: return null
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
+                val referencedHStringTransientOutGetter = referencedHString.propertyGetter("transientOut") ?: return null
                 val referencedHStringClose = referencedHString.functionNamed("close") ?: return null
                 val iWinRTObject = pluginContext.findClassSymbol(WINRT_IWINRT_OBJECT_CLASS_ID, fromFile)
                     ?: return null
@@ -3379,6 +3401,7 @@ class KotlinWinRTIrGenerationExtension(
                     hStringToKString = hStringToKString,
                     hStringClose = hStringClose,
                     referencedHStringHandleGetter = referencedHStringHandleGetter,
+                    referencedHStringTransientOutGetter = referencedHStringTransientOutGetter,
                     referencedHStringClose = referencedHStringClose,
                     iWinRTObjectNativeObjectGetter = iWinRTObjectNativeObjectGetter,
                     comObjectReferencePointerGetter = comObjectReferencePointerGetter,

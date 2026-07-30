@@ -59,8 +59,8 @@ object WinRTProjectionIntrinsic {
         intrinsicNotLowered("callObject", reference, slot, abiShape, *arguments)
 
     fun getString(reference: ComObjectReference, slot: Int): String =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
                 .requireSuccess("WinRT getString")
             HString.fromHandle(PlatformAbi.readPointer(resultOut), owner = true).use(HString::toKString)
@@ -166,7 +166,7 @@ object WinRTProjectionIntrinsic {
         intrinsicNotLowered("getNullableProjectedInterface", reference, slot, wrap)
 
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
-        HString.create(value).use { hString ->
+        HString.createReference(value).use { hString ->
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, hString.handle))
                 .requireSuccess("WinRT setString")
         }
