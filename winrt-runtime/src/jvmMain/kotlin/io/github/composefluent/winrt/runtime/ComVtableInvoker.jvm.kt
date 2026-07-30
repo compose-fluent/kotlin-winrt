@@ -17,85 +17,40 @@ actual object ComVtableInvoker {
     private val linker = Linker.nativeLinker()
     private val lookup = MethodHandles.lookup()
     private val sharedArena = Arena.global()
-    private val downcallHandles = ConcurrentCacheMap<ComDowncallKey, MethodHandle>()
+    private val genericDowncallHandles = ConcurrentCacheMap<ComMethodSignature, MethodHandle>()
     private val callbackEntries = ConcurrentCacheMap<Long, RegisteredCallback>()
     private val nextCallbackId = AtomicLong(1)
-    private val pointerDescriptor = FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
-    private val hResultPtrDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultInt32Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT)
-    private val hResultInt64Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG)
-    private val hResultPtrPtrDescriptor =
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultInt32PtrDescriptor =
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
-    private val hResultInt32Int32Descriptor =
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
-    private val hResultPtrPtrPtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultInt32PtrPtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultPtrInt32PtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultInt32Int32PtrPtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultPtrPtrPtrPtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultPtrPtrInt32PtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
+    private val pointerHandle =
+        linker.downcallHandle(FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS))
+    private val hResultHandle = createHResultHandle()
+    private val hResultPtrHandle = createHResultHandle(ValueLayout.ADDRESS)
+    private val hResultInt32Handle = createHResultHandle(ValueLayout.JAVA_INT)
+    private val hResultInt64Handle = createHResultHandle(ValueLayout.JAVA_LONG)
+    private val hResultPtrPtrHandle = createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+    private val hResultInt32PtrHandle = createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
+    private val hResultInt32Int32Handle = createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
+    private val hResultPtrPtrPtrHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+    private val hResultInt32PtrPtrHandle =
+        createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+    private val hResultPtrInt32PtrHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
+    private val hResultInt32Int32PtrPtrHandle =
+        createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+    private val hResultPtrPtrPtrPtrHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+    private val hResultPtrPtrInt32PtrHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
+    private val hResultPtrPtrPtrInt32PtrHandle =
+        createHResultHandle(
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
             ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS,
         )
-    private val hResultPtrPtrPtrInt32PtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultPtrPtrInt32PtrInt32PtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
+    private val hResultPtrPtrInt32PtrInt32PtrHandle =
+        createHResultHandle(
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
             ValueLayout.JAVA_INT,
@@ -103,10 +58,8 @@ actual object ComVtableInvoker {
             ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS,
         )
-    private val hResultPtrPtrPtrInt32PtrInt32Descriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
+    private val hResultPtrPtrPtrInt32PtrInt32Handle =
+        createHResultHandle(
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
@@ -120,7 +73,7 @@ actual object ComVtableInvoker {
         slot: Int,
     ): RawAddress {
         val instanceSegment = asSegment(instance)
-        return (downcallHandle(instanceSegment, slot, pointerDescriptor).invoke(instanceSegment) as MemorySegment)
+        return (pointerHandle.invoke(vtableEntry(instanceSegment, slot), instanceSegment) as MemorySegment)
             .asRawAddress()
     }
 
@@ -129,7 +82,7 @@ actual object ComVtableInvoker {
         slot: Int,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultDescriptor).invoke(instanceSegment) as Int
+        return hResultHandle.invoke(vtableEntry(instanceSegment, slot), instanceSegment) as Int
     }
 
     actual fun invokeArgs(
@@ -138,8 +91,7 @@ actual object ComVtableInvoker {
         arg0: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0)) as Int
+        return hResultPtrHandle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, asSegment(arg0)) as Int
     }
 
     actual fun invokeArgs(
@@ -148,8 +100,7 @@ actual object ComVtableInvoker {
         arg0: RawComPtr,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0)) as Int
+        return hResultPtrHandle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, asSegment(arg0)) as Int
     }
 
     actual fun invokeArgs(
@@ -158,7 +109,7 @@ actual object ComVtableInvoker {
         arg0: Int,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32Descriptor).invoke(instanceSegment, arg0) as Int
+        return hResultInt32Handle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, arg0) as Int
     }
 
     actual fun invokeArgs(
@@ -167,7 +118,7 @@ actual object ComVtableInvoker {
         arg0: UInt,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32Descriptor).invoke(instanceSegment, arg0.toInt()) as Int
+        return hResultInt32Handle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, arg0.toInt()) as Int
     }
 
     actual fun invokeArgs(
@@ -176,7 +127,7 @@ actual object ComVtableInvoker {
         arg0: Long,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt64Descriptor).invoke(instanceSegment, arg0) as Int
+        return hResultInt64Handle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, arg0) as Int
     }
 
     actual fun invokeArgs(
@@ -186,8 +137,12 @@ actual object ComVtableInvoker {
         arg1: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1)) as Int
+        return hResultPtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -197,8 +152,12 @@ actual object ComVtableInvoker {
         arg1: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1)) as Int
+        return hResultPtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -208,8 +167,12 @@ actual object ComVtableInvoker {
         arg1: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32PtrDescriptor)
-            .invoke(instanceSegment, arg0, asSegment(arg1)) as Int
+        return hResultInt32PtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0,
+            asSegment(arg1),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -220,8 +183,13 @@ actual object ComVtableInvoker {
         arg2: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32PtrPtrDescriptor)
-            .invoke(instanceSegment, arg0, asSegment(arg1), asSegment(arg2)) as Int
+        return hResultInt32PtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0,
+            asSegment(arg1),
+            asSegment(arg2),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -231,8 +199,12 @@ actual object ComVtableInvoker {
         arg1: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32PtrDescriptor)
-            .invoke(instanceSegment, arg0.toInt(), asSegment(arg1)) as Int
+        return hResultInt32PtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0.toInt(),
+            asSegment(arg1),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -242,8 +214,7 @@ actual object ComVtableInvoker {
         arg1: Int,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32Int32Descriptor)
-            .invoke(instanceSegment, arg0, arg1) as Int
+        return hResultInt32Int32Handle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, arg0, arg1) as Int
     }
 
     actual fun invokeArgs(
@@ -254,8 +225,13 @@ actual object ComVtableInvoker {
         arg2: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrPtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), asSegment(arg2)) as Int
+        return hResultPtrPtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+            asSegment(arg2),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -266,8 +242,13 @@ actual object ComVtableInvoker {
         arg2: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32PtrPtrDescriptor)
-            .invoke(instanceSegment, arg0, asSegment(arg1), asSegment(arg2)) as Int
+        return hResultInt32PtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0,
+            asSegment(arg1),
+            asSegment(arg2),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -278,8 +259,13 @@ actual object ComVtableInvoker {
         arg2: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrInt32PtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), arg1, asSegment(arg2)) as Int
+        return hResultPtrInt32PtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            arg1,
+            asSegment(arg2),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -290,8 +276,13 @@ actual object ComVtableInvoker {
         arg2: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32PtrPtrDescriptor)
-            .invoke(instanceSegment, arg0.toInt(), asSegment(arg1), asSegment(arg2)) as Int
+        return hResultInt32PtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0.toInt(),
+            asSegment(arg1),
+            asSegment(arg2),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -303,8 +294,14 @@ actual object ComVtableInvoker {
         arg3: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32Int32PtrPtrDescriptor)
-            .invoke(instanceSegment, arg0, arg1, asSegment(arg2), asSegment(arg3)) as Int
+        return hResultInt32Int32PtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0,
+            arg1,
+            asSegment(arg2),
+            asSegment(arg3),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -316,8 +313,14 @@ actual object ComVtableInvoker {
         arg3: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32Int32PtrPtrDescriptor)
-            .invoke(instanceSegment, arg0.toInt(), arg1, asSegment(arg2), asSegment(arg3)) as Int
+        return hResultInt32Int32PtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0.toInt(),
+            arg1,
+            asSegment(arg2),
+            asSegment(arg3),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -329,8 +332,14 @@ actual object ComVtableInvoker {
         arg3: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt32Int32PtrPtrDescriptor)
-            .invoke(instanceSegment, arg0.toInt(), arg1.toInt(), asSegment(arg2), asSegment(arg3)) as Int
+        return hResultInt32Int32PtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            arg0.toInt(),
+            arg1.toInt(),
+            asSegment(arg2),
+            asSegment(arg3),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -342,8 +351,14 @@ actual object ComVtableInvoker {
         arg3: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrInt32PtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), arg2, asSegment(arg3)) as Int
+        return hResultPtrPtrInt32PtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+            arg2,
+            asSegment(arg3),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -355,8 +370,14 @@ actual object ComVtableInvoker {
         arg3: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrPtrPtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), asSegment(arg2), asSegment(arg3)) as Int
+        return hResultPtrPtrPtrPtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+            asSegment(arg2),
+            asSegment(arg3),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -369,8 +390,15 @@ actual object ComVtableInvoker {
         arg4: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrPtrInt32PtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), asSegment(arg2), arg3, asSegment(arg4)) as Int
+        return hResultPtrPtrPtrInt32PtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+            asSegment(arg2),
+            arg3,
+            asSegment(arg4),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -384,8 +412,16 @@ actual object ComVtableInvoker {
         arg5: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrInt32PtrInt32PtrDescriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), arg2, asSegment(arg3), arg4, asSegment(arg5)) as Int
+        return hResultPtrPtrInt32PtrInt32PtrHandle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+            arg2,
+            asSegment(arg3),
+            arg4,
+            asSegment(arg5),
+        ) as Int
     }
 
     actual fun invokeArgs(
@@ -399,8 +435,16 @@ actual object ComVtableInvoker {
         arg5: Int,
     ): Int {
         val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrPtrInt32PtrInt32Descriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), asSegment(arg2), arg3, asSegment(arg4), arg5) as Int
+        return hResultPtrPtrPtrInt32PtrInt32Handle.invoke(
+            vtableEntry(instanceSegment, slot),
+            instanceSegment,
+            asSegment(arg0),
+            asSegment(arg1),
+            asSegment(arg2),
+            arg3,
+            asSegment(arg4),
+            arg5,
+        ) as Int
     }
 
     internal actual fun invokeGeneric(
@@ -466,26 +510,29 @@ actual object ComVtableInvoker {
         }
 
         val instanceSegment = asSegment(instance)
-        val handle = downcallHandle(vtableEntry(instanceSegment, slot), signature.asFunctionDescriptorWithThis())
+        val function = vtableEntry(instanceSegment, slot)
+        val handle = genericDowncallHandles.computeIfAbsent(signature) {
+            linker.downcallHandle(it.asFunctionDescriptorWithThis())
+        }
 
         return when (words.size) {
-            0 -> handle.invokeWithArguments(instanceSegment) as Int
+            0 -> handle.invokeWithArguments(function, instanceSegment) as Int
             1 -> {
                 val arg0 = toCarrier(signature.explicitParameterKinds[0], words[0])
-                handle.invokeWithArguments(instanceSegment, arg0) as Int
+                handle.invokeWithArguments(function, instanceSegment, arg0) as Int
             }
 
             2 -> {
                 val arg0 = toCarrier(signature.explicitParameterKinds[0], words[0])
                 val arg1 = toCarrier(signature.explicitParameterKinds[1], words[1])
-                handle.invokeWithArguments(instanceSegment, arg0, arg1) as Int
+                handle.invokeWithArguments(function, instanceSegment, arg0, arg1) as Int
             }
 
             3 -> {
                 val arg0 = toCarrier(signature.explicitParameterKinds[0], words[0])
                 val arg1 = toCarrier(signature.explicitParameterKinds[1], words[1])
                 val arg2 = toCarrier(signature.explicitParameterKinds[2], words[2])
-                handle.invokeWithArguments(instanceSegment, arg0, arg1, arg2) as Int
+                handle.invokeWithArguments(function, instanceSegment, arg0, arg1, arg2) as Int
             }
 
             4 -> {
@@ -493,12 +540,13 @@ actual object ComVtableInvoker {
                 val arg1 = toCarrier(signature.explicitParameterKinds[1], words[1])
                 val arg2 = toCarrier(signature.explicitParameterKinds[2], words[2])
                 val arg3 = toCarrier(signature.explicitParameterKinds[3], words[3])
-                handle.invokeWithArguments(instanceSegment, arg0, arg1, arg2, arg3) as Int
+                handle.invokeWithArguments(function, instanceSegment, arg0, arg1, arg2, arg3) as Int
             }
 
             else -> {
                 val convertedArgs =
-                    buildList(words.size + 1) {
+                    buildList(words.size + 2) {
+                        add(function)
                         add(instanceSegment)
                         words.indices.forEach { index ->
                             add(toCarrier(signature.explicitParameterKinds[index], words[index]))
@@ -546,24 +594,10 @@ actual object ComVtableInvoker {
         )
     }
 
-    private fun downcallHandle(
-        instance: MemorySegment,
-        slot: Int,
-        descriptor: FunctionDescriptor,
-    ): MethodHandle = downcallHandle(vtableEntry(instance, slot), descriptor)
-
-    private fun downcallHandle(
-        function: MemorySegment,
-        descriptor: FunctionDescriptor,
-    ): MethodHandle {
-        val key = ComDowncallKey(function.address(), descriptor)
-        return downcallHandles.computeIfAbsent(key) {
-            linker.downcallHandle(
-                MemorySegment.ofAddress(it.functionAddress),
-                it.descriptor,
-            )
-        }
-    }
+    private fun createHResultHandle(vararg explicitParameterLayouts: MemoryLayout): MethodHandle =
+        linker.downcallHandle(
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, *explicitParameterLayouts),
+        )
 
     private fun nextCallbackId(): Long {
         while (true) {
@@ -592,21 +626,6 @@ actual object ComVtableInvoker {
             platformHResultFromThrowable(error).value
         }
     }
-}
-
-private class ComDowncallKey(
-    val functionAddress: Long,
-    val descriptor: FunctionDescriptor,
-) {
-    private val descriptorKey: String = descriptor.toString()
-
-    override fun equals(other: Any?): Boolean =
-        other is ComDowncallKey &&
-            functionAddress == other.functionAddress &&
-            descriptorKey == other.descriptorKey
-
-    override fun hashCode(): Int =
-        31 * functionAddress.hashCode() + descriptorKey.hashCode()
 }
 
 private data class CallbackSignature(
