@@ -11811,6 +11811,150 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun runtime_class_required_interface_members_use_declaring_interface_reference() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IValue",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Value",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            isExclusiveTo = true,
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IValue"),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IValue"),
+                            ),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Value",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .first { it.relativePath.substringAfterLast('/') == "Widget.kt" }
+            .contents
+
+        assertTrue(widgetContents, Regex("""getInt32\(\s*_iValue,\s*6,""").containsMatchIn(widgetContents))
+        assertFalse(widgetContents, Regex("""getInt32\(\s*_defaultInterface,\s*6,""").containsMatchIn(widgetContents))
+        assertFalse(widgetContents, widgetContents.contains("IWidget.Metadata.wrap(_iValue)"))
+    }
+
+    @Test
+    fun runtime_class_projection_forwarding_chooses_owner_cache_with_mixed_declaring_interfaces() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IValue",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Value",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            isExclusiveTo = true,
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IValue"),
+                            ),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                    getterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IValue"),
+                            ),
+                            properties = listOf(
+                                WinRTPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Value",
+                                ),
+                                WinRTPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .first { it.relativePath.substringAfterLast('/') == "Widget.kt" }
+            .contents
+
+        assertTrue(widgetContents, widgetContents.contains("private val _iWidgetProjection: IWidget"))
+        assertTrue(
+            widgetContents,
+            widgetContents.contains("IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"),
+        )
+        assertTrue(widgetContents, widgetContents.contains("get() = _iWidgetProjection.`value`"))
+        assertTrue(widgetContents, widgetContents.contains("get() = _iWidgetProjection.name"))
+        assertFalse(widgetContents, widgetContents.contains("IWidget.Metadata.wrap(_iValue)"))
+    }
+
+    @Test
     fun generator_binds_simple_runtime_getters_and_no_arg_methods() {
         val model = WinRTMetadataModel(
             namespaces = listOf(
@@ -14468,6 +14612,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|cache=Sample_FastAbi_IWidgetOverridesCache|default=false|skip=fast-abi-non-default-exclusive"))
         assertFalse(widgetContents, widgetContents.contains("MODE_GETTER_SLOT_OWNER_CACHE"))
         assertTrue(widgetContents, widgetContents.contains("_iWidgetOverridesProjection"))
+        assertTrue(widgetContents, widgetContents.contains("IWidgetOverrides.Metadata.wrap(_defaultInterface)"))
+        assertFalse(widgetContents, widgetContents.contains("Metadata.acquireInterface(_inner, IWidgetOverrides.Metadata.IID)"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("val FAST_ABI_INTERFACE_SLOTS: List<String>"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))

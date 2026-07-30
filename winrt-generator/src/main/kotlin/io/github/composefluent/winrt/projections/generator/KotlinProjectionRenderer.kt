@@ -1609,7 +1609,10 @@ class KotlinProjectionRenderer(
             .distinctBy { it.projectionPropertyName }
             .sortedBy { it.projectionPropertyName }
             .forEach { target ->
-                val initializer = if (target.ownerCachePropertyName == "_defaultInterface") {
+                val initializer = if (
+                    target.ownerCachePropertyName == "_defaultInterface" &&
+                    !target.usesFastAbiDefaultInterface
+                ) {
                     val rawInterfaceType = projectionClassName(target.rawInterfaceName)
                     CodeBlock.of(
                         "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
@@ -1785,6 +1788,7 @@ class KotlinProjectionRenderer(
         val interfaceName: String,
         val ownerCachePropertyName: String,
         val projectionPropertyName: String,
+        val usesFastAbiDefaultInterface: Boolean = false,
     )
 
     private fun runtimeClassDelegatedInterfaceTargets(
@@ -1817,9 +1821,8 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
     ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> {
         val ownerInterfaceBindings = plan.instanceMemberBindings
-            .distinctBy { binding -> binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?") }
-        return ownerInterfaceBindings.mapNotNull { binding ->
-            val rawInterfaceName = binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?")
+            .groupBy { binding -> binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?") }
+        return ownerInterfaceBindings.mapNotNull { (rawInterfaceName, bindings) ->
             if (isMappedCollectionInterfaceName(rawInterfaceName) || isRuntimeOwnedMappedTypeName(rawInterfaceName)) {
                 return@mapNotNull null
             }
@@ -1845,11 +1848,37 @@ class KotlinProjectionRenderer(
             if (!canRenderInterfaceProxy(interfacePlan)) {
                 return@mapNotNull null
             }
+            val expectedOwnerCache = requiredForwardOwnerCache(
+                bindings.first().ownerInterfaceQualifiedName,
+                plan.defaultInterfaceName,
+            )
+            val binding = bindings.firstOrNull { candidate ->
+                candidate.ownerCachePropertyName == expectedOwnerCache
+            } ?: bindings.firstOrNull { candidate ->
+                candidate.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?") == rawInterfaceName
+            }
+            val ownerCachePropertyName = binding?.ownerCachePropertyName
+                ?: expectedOwnerCache.takeIf {
+                    rawInterfaceName != plan.defaultInterfaceName?.substringBefore('<')?.removeSuffix("?") &&
+                        plan.implementedInterfaceBindings.any { implemented ->
+                            implemented.iid != null &&
+                                implemented.qualifiedName.substringBefore('<').removeSuffix("?") == rawInterfaceName &&
+                                plan.objectReferenceSurfaceDescriptor
+                                    ?.objectReferencePlans
+                                    ?.firstOrNull { objectReference ->
+                                        objectReference.interfaceName.substringBefore('<').removeSuffix("?") == rawInterfaceName
+                                    }
+                                    ?.skippedReason == null
+                        }
+                }
+                ?: return@mapNotNull null
             rawInterfaceName to RuntimeClassInterfaceProjectionForwardTarget(
                 rawInterfaceName = rawInterfaceName,
-                interfaceName = binding.ownerInterfaceQualifiedName,
-                ownerCachePropertyName = binding.ownerCachePropertyName,
+                interfaceName = bindings.first().ownerInterfaceQualifiedName,
+                ownerCachePropertyName = ownerCachePropertyName,
                 projectionPropertyName = "_${interfaceType.name.replaceFirstChar(Char::lowercase)}Projection",
+                usesFastAbiDefaultInterface = ownerCachePropertyName == "_defaultInterface" &&
+                    plan.fastAbiClassDescriptor?.containsOtherInterface(rawInterfaceName) == true,
             )
         }.toMap()
     }

@@ -535,8 +535,8 @@ class KotlinProjectionPlanner(
                     signatureMatcher = { interfaceType ->
                         interfaceType.methods.any { it.projectionSignatureKey() == method.projectionSignatureKey() }
                     },
-                    ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
-                        fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                    ownerCachePropertyNameResolver = { _, slotInterface ->
+                        fastAbiOwnerCachePropertyName(slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
                     },
                     slotConstantNameResolver = { interfaceType ->
                         interfaceType.methods
@@ -568,8 +568,8 @@ class KotlinProjectionPlanner(
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionGetterAccessor()
                             }
                         },
-                        ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
-                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                        ownerCachePropertyNameResolver = { _, slotInterface ->
+                            fastAbiOwnerCachePropertyName(slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
                         },
                     )?.let(::add)
                 }
@@ -599,8 +599,8 @@ class KotlinProjectionPlanner(
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionSetterAccessor()
                             }
                         },
-                        ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
-                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                        ownerCachePropertyNameResolver = { _, slotInterface ->
+                            fastAbiOwnerCachePropertyName(slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
                         },
                     )?.let(::add)
                 }
@@ -635,7 +635,6 @@ class KotlinProjectionPlanner(
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
                             fastAbiOwnerCachePropertyName(
-                                ownerInterface,
                                 slotInterface,
                                 defaultInterfaceName = if (ownerInterface.contains('<')) null else candidateInterfaces.firstOrNull(),
                                 typesByQualifiedName,
@@ -694,7 +693,6 @@ class KotlinProjectionPlanner(
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
                             fastAbiOwnerCachePropertyName(
-                                ownerInterface,
                                 slotInterface,
                                 defaultInterfaceName = if (ownerInterface.contains('<')) null else candidateInterfaces.firstOrNull(),
                                 typesByQualifiedName,
@@ -1860,7 +1858,6 @@ class KotlinProjectionPlanner(
         }
 
     private fun fastAbiOwnerCachePropertyName(
-        ownerInterfaceName: String,
         slotInterfaceName: String,
         defaultInterfaceName: String?,
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
@@ -1871,7 +1868,7 @@ class KotlinProjectionPlanner(
         return if (fastAbiClass?.containsOtherInterface(slotInterfaceName.substringBefore('<')) == true && defaultInterfaceName != null) {
             ownerCachePropertyName(defaultInterfaceName, defaultInterfaceName)
         } else {
-            ownerCachePropertyName(ownerInterfaceName, defaultInterfaceName)
+            ownerCachePropertyName(slotInterfaceName, defaultInterfaceName)
         }
     }
 
