@@ -33,6 +33,7 @@ import kotlinx.cinterop.value
 import kotlinx.io.files.Path
 import kotlin.native.concurrent.ThreadLocal
 import platform.posix.getenv
+import platform.posix.memset
 import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
 import platform.windows.FreeLibrary
@@ -440,10 +441,7 @@ actual object PlatformAbi {
     }
 
     actual fun zeroBytes(pointer: RawAddress, sizeBytes: Long) {
-        val bytes = pointer.asCPointer<ByteVar>()
-        repeat(sizeBytes.toInt()) { index ->
-            bytes[index] = 0
-        }
+        memset(pointer.toOpaquePointer(), 0, sizeBytes.toULong())
     }
 }
 
