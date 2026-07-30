@@ -96,11 +96,16 @@ internal actual class NativeScalarScratchFrame internal constructor(
 }
 
 private class MingwNativeScalarScratchFramePool {
-    private val frames = mutableListOf<NativeScalarScratchFrame>()
+    private val primaryFrame = createFrame()
+    private val nestedFrames = mutableListOf<NativeScalarScratchFrame>()
     private var depth: Int = 0
 
     fun acquire(): NativeScalarScratchFrame {
-        val frame = frames.getOrNull(depth) ?: createFrame()
+        val frame = if (depth == 0) {
+            primaryFrame
+        } else {
+            nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
+        }
         frame.acquire()
         depth += 1
         return frame
@@ -110,10 +115,16 @@ private class MingwNativeScalarScratchFramePool {
         NativeScalarScratchFrame(
             pointer = nativeHeap.alloc<LongVar>().ptr.reinterpret<COpaque>().asRawAddress(),
             release = ::release,
-        ).also(frames::add)
+        )
+
+    private fun createNestedFrame(): NativeScalarScratchFrame =
+        createFrame().also(nestedFrames::add)
 
     private fun release(frame: NativeScalarScratchFrame) {
-        check(depth > 0 && frames[depth - 1] === frame) {
+        check(
+            depth > 0 &&
+                if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
+        ) {
             "Native scalar scratch frames must close in reverse acquisition order."
         }
         depth -= 1
@@ -183,21 +194,32 @@ internal actual class NativeHStringReferenceFrame internal constructor(
 }
 
 private class MingwNativeHStringReferenceFramePool {
-    private val frames = mutableListOf<NativeHStringReferenceFrame>()
+    private val primaryFrame = createFrame()
+    private val nestedFrames = mutableListOf<NativeHStringReferenceFrame>()
     private var depth: Int = 0
 
     fun acquire(value: String): NativeHStringReferenceFrame {
-        val frame = frames.getOrNull(depth) ?: createFrame()
+        val frame = if (depth == 0) {
+            primaryFrame
+        } else {
+            nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
+        }
         frame.acquire(value)
         depth += 1
         return frame
     }
 
     private fun createFrame(): NativeHStringReferenceFrame =
-        NativeHStringReferenceFrame(release = ::release).also(frames::add)
+        NativeHStringReferenceFrame(release = ::release)
+
+    private fun createNestedFrame(): NativeHStringReferenceFrame =
+        createFrame().also(nestedFrames::add)
 
     private fun release(frame: NativeHStringReferenceFrame) {
-        check(depth > 0 && frames[depth - 1] === frame) {
+        check(
+            depth > 0 &&
+                if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
+        ) {
             "Native HSTRING reference frames must close in reverse acquisition order."
         }
         depth -= 1
