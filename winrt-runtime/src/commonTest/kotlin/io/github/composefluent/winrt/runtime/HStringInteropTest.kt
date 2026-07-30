@@ -21,6 +21,32 @@ class HStringInteropTest {
     }
 
     @Test
+    fun hstring_reference_frames_preserve_utf16_code_units_and_terminator() {
+        val values = listOf(
+            "ascii",
+            "\u6c49\u5b57",
+            "\ud83d\ude80",
+            "left\u0000right",
+        )
+
+        values.forEach { value ->
+            acquireNativeHStringReferenceFrame(value).use { frame ->
+                assertEquals(value, PlatformAbi.readUtf16(frame.utf16Chars, value.length))
+                val terminator = PlatformAbi.slice(
+                    frame.utf16Chars,
+                    value.length.toLong() * Char.SIZE_BYTES,
+                    Char.SIZE_BYTES.toLong(),
+                )
+                assertEquals('\u0000', PlatformAbi.readChar16(terminator))
+            }
+
+            HString.createReference(value).use { referenced ->
+                assertEquals(value, referenced.toKString())
+            }
+        }
+    }
+
+    @Test
     fun hstring_reference_frame_reuses_and_clears_top_level_storage() {
         val firstFrameAddress = acquireNativeHStringReferenceFrame("first").use { frame ->
             PlatformAbi.writePointer(frame.transientOut, frame.utf16Chars)
