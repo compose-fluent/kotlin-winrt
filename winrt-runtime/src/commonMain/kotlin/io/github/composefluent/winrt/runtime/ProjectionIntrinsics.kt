@@ -67,23 +67,23 @@ object WinRTProjectionIntrinsic {
         }
 
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt8Slot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
                 .requireSuccess("WinRT getBoolean")
             BooleanMarshaller.fromAbi(PlatformAbi.readInt8(resultOut))
         }
 
     fun getNoExceptionBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt8Slot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
             BooleanMarshaller.fromAbi(PlatformAbi.readInt8(resultOut))
         }
 
     fun getInt32(reference: ComObjectReference, slot: Int): Int =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt32Slot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
                 .requireSuccess("WinRT getInt32")
             PlatformAbi.readInt32(resultOut)
@@ -93,8 +93,8 @@ object WinRTProjectionIntrinsic {
         getInt32(reference, slot).toUInt()
 
     fun getInt64(reference: ComObjectReference, slot: Int): Long =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt64Slot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
                 .requireSuccess("WinRT getInt64")
             PlatformAbi.readInt64(resultOut)
@@ -104,16 +104,16 @@ object WinRTProjectionIntrinsic {
         getInt64(reference, slot).toULong()
 
     fun getFloat(reference: ComObjectReference, slot: Int): Float =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateBytes(scope, sizeBytes = 4, alignmentBytes = 4)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
                 .requireSuccess("WinRT getFloat")
             PlatformAbi.readFloat(resultOut)
         }
 
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateDoubleSlot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
                 .requireSuccess("WinRT getDouble")
             PlatformAbi.readDouble(resultOut)

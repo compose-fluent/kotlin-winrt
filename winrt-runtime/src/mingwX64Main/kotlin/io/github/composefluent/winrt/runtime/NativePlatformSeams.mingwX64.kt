@@ -31,6 +31,7 @@ import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlinx.io.files.Path
+import kotlin.native.concurrent.ThreadLocal
 import platform.posix.getenv
 import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
@@ -72,6 +73,60 @@ actual class NativeScope internal constructor(
         allocations.clear()
     }
 }
+
+internal actual class NativeScalarScratchFrame internal constructor(
+    actual val pointer: RawAddress,
+    private val release: (NativeScalarScratchFrame) -> Unit,
+) : AutoCloseable {
+    private var active: Boolean = false
+
+    internal fun acquire(): NativeScalarScratchFrame {
+        check(!active) { "Native scalar scratch frame is already active." }
+        pointer.asCPointer<LongVar>().pointed.value = 0L
+        active = true
+        return this
+    }
+
+    actual override fun close() {
+        if (active) {
+            release(this)
+            active = false
+        }
+    }
+}
+
+private class MingwNativeScalarScratchFramePool {
+    private val frames = mutableListOf<NativeScalarScratchFrame>()
+    private var depth: Int = 0
+
+    fun acquire(): NativeScalarScratchFrame {
+        val frame = frames.getOrNull(depth) ?: createFrame()
+        frame.acquire()
+        depth += 1
+        return frame
+    }
+
+    private fun createFrame(): NativeScalarScratchFrame =
+        NativeScalarScratchFrame(
+            pointer = nativeHeap.alloc<LongVar>().ptr.reinterpret<COpaque>().asRawAddress(),
+            release = ::release,
+        ).also(frames::add)
+
+    private fun release(frame: NativeScalarScratchFrame) {
+        check(depth > 0 && frames[depth - 1] === frame) {
+            "Native scalar scratch frames must close in reverse acquisition order."
+        }
+        depth -= 1
+    }
+}
+
+@ThreadLocal
+private object NativeScalarScratchFrames {
+    val pool = MingwNativeScalarScratchFramePool()
+}
+
+internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
+    NativeScalarScratchFrames.pool.acquire()
 
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,

@@ -17,6 +17,59 @@ actual class NativeScope internal constructor(
     }
 }
 
+internal actual class NativeScalarScratchFrame internal constructor(
+    private val segment: MemorySegment,
+    private val release: (NativeScalarScratchFrame) -> Unit,
+) : AutoCloseable {
+    actual val pointer: RawAddress = segment.asRawAddress()
+
+    private var active: Boolean = false
+
+    internal fun acquire(): NativeScalarScratchFrame {
+        check(!active) { "Native scalar scratch frame is already active." }
+        segment.set(ValueLayout.JAVA_LONG, 0, 0L)
+        active = true
+        return this
+    }
+
+    actual override fun close() {
+        if (active) {
+            release(this)
+            active = false
+        }
+    }
+}
+
+private class JvmNativeScalarScratchFramePool {
+    private val frames = mutableListOf<NativeScalarScratchFrame>()
+    private var depth: Int = 0
+
+    fun acquire(): NativeScalarScratchFrame {
+        val frame = frames.getOrNull(depth) ?: createFrame()
+        frame.acquire()
+        depth += 1
+        return frame
+    }
+
+    private fun createFrame(): NativeScalarScratchFrame =
+        NativeScalarScratchFrame(
+            segment = Arena.global().allocate(ValueLayout.JAVA_LONG),
+            release = ::release,
+        ).also(frames::add)
+
+    private fun release(frame: NativeScalarScratchFrame) {
+        check(depth > 0 && frames[depth - 1] === frame) {
+            "Native scalar scratch frames must close in reverse acquisition order."
+        }
+        depth -= 1
+    }
+}
+
+private val nativeScalarScratchFrames = ThreadLocal.withInitial(::JvmNativeScalarScratchFramePool)
+
+internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
+    nativeScalarScratchFrames.get().acquire()
+
 @OptIn(ExperimentalAtomicApi::class)
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,

@@ -4,6 +4,14 @@ expect class NativeScope : AutoCloseable {
     override fun close()
 }
 
+internal expect class NativeScalarScratchFrame : AutoCloseable {
+    val pointer: RawAddress
+
+    override fun close()
+}
+
+internal expect fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame
+
 /**
  * A native allocation whose backing memory is owned and can be freed by closing this handle.
  * This is used when transferring ownership of heap allocations (e.g. array marshalling).
