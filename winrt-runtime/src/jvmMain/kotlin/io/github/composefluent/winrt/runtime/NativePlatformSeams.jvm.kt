@@ -17,20 +17,44 @@ actual class NativeScope internal constructor(
     }
 }
 
+@PublishedApi
 internal actual class NativeScalarScratchFrame internal constructor(
-    private val segment: MemorySegment,
+    @PublishedApi internal val segment: MemorySegment,
     private val release: (NativeScalarScratchFrame) -> Unit,
 ) : AutoCloseable {
     actual val pointer: RawAddress = segment.asRawAddress()
 
     private var active: Boolean = false
 
-    internal fun acquire(): NativeScalarScratchFrame {
+    internal fun acquire(clear: Boolean): NativeScalarScratchFrame {
         check(!active) { "Native scalar scratch frame is already active." }
-        segment.set(ValueLayout.JAVA_LONG, 0, 0L)
+        if (clear) {
+            segment.set(ValueLayout.JAVA_LONG, 0, 0L)
+        }
         active = true
         return this
     }
+
+    actual fun readPointer(): RawAddress =
+        segment.get(ValueLayout.ADDRESS, 0).asRawAddress()
+
+    actual fun readInt8(): Byte =
+        segment.get(ValueLayout.JAVA_BYTE, 0)
+
+    actual fun readInt16(): Short =
+        segment.get(ValueLayout.JAVA_SHORT, 0)
+
+    actual fun readInt32(): Int =
+        segment.get(ValueLayout.JAVA_INT, 0)
+
+    actual fun readInt64(): Long =
+        segment.get(ValueLayout.JAVA_LONG, 0)
+
+    actual fun readFloat(): Float =
+        segment.get(ValueLayout.JAVA_FLOAT, 0)
+
+    actual fun readDouble(): Double =
+        segment.get(ValueLayout.JAVA_DOUBLE, 0)
 
     actual override fun close() {
         if (active) {
@@ -41,12 +65,17 @@ internal actual class NativeScalarScratchFrame internal constructor(
 }
 
 private class JvmNativeScalarScratchFramePool {
-    private val frames = mutableListOf<NativeScalarScratchFrame>()
+    private val primaryFrame = createFrame()
+    private val nestedFrames = mutableListOf<NativeScalarScratchFrame>()
     private var depth: Int = 0
 
-    fun acquire(): NativeScalarScratchFrame {
-        val frame = frames.getOrNull(depth) ?: createFrame()
-        frame.acquire()
+    fun acquire(clear: Boolean): NativeScalarScratchFrame {
+        val frame = if (depth == 0) {
+            primaryFrame
+        } else {
+            nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
+        }
+        frame.acquire(clear)
         depth += 1
         return frame
     }
@@ -55,10 +84,16 @@ private class JvmNativeScalarScratchFramePool {
         NativeScalarScratchFrame(
             segment = Arena.global().allocate(ValueLayout.JAVA_LONG),
             release = ::release,
-        ).also(frames::add)
+        )
+
+    private fun createNestedFrame(): NativeScalarScratchFrame =
+        createFrame().also(nestedFrames::add)
 
     private fun release(frame: NativeScalarScratchFrame) {
-        check(depth > 0 && frames[depth - 1] === frame) {
+        check(
+            depth > 0 &&
+                if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
+        ) {
             "Native scalar scratch frames must close in reverse acquisition order."
         }
         depth -= 1
@@ -67,8 +102,9 @@ private class JvmNativeScalarScratchFramePool {
 
 private val nativeScalarScratchFrames = ThreadLocal.withInitial(::JvmNativeScalarScratchFramePool)
 
-internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
-    nativeScalarScratchFrames.get().acquire()
+@PublishedApi
+internal actual fun acquireNativeScalarScratchFrame(clear: Boolean): NativeScalarScratchFrame =
+    nativeScalarScratchFrames.get().acquire(clear)
 
 @PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(

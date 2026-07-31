@@ -27,6 +27,7 @@ internal static class Program
     private static void Run(BenchmarkOptions options)
     {
         JsonObject json = JsonObject.Parse(Payload);
+        JsonArray jsonArray = JsonArray.Parse("[42.5]");
         long stringifiedLength = json.Stringify().Length;
         var scenarios = new[]
         {
@@ -58,6 +59,18 @@ internal static class Program
                         {
                             checksum++;
                         }
+                    }
+                    return checksum;
+                }),
+            new BenchmarkScenario(
+                "get_array_number_at",
+                42,
+                iterations =>
+                {
+                    long checksum = 0;
+                    for (int index = 0; index < iterations; index++)
+                    {
+                        checksum += (long)jsonArray.GetNumberAt(0);
                     }
                     return checksum;
                 }),
@@ -150,6 +163,7 @@ internal static class Program
 
         Console.Write(jsonLines);
         GC.KeepAlive(json);
+        GC.KeepAlive(jsonArray);
     }
 
     private static BenchmarkResult RunScenario(

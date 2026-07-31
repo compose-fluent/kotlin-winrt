@@ -17,6 +17,12 @@ expect object ComVtableInvoker {
         arg0: RawAddress,
     ): Int
 
+    internal fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: NativeScalarScratchFrame,
+    ): Int
+
     fun invokeArgs(
         instance: RawComPtr,
         slot: Int,

@@ -75,18 +75,44 @@ actual class NativeScope internal constructor(
     }
 }
 
+@PublishedApi
 internal actual class NativeScalarScratchFrame internal constructor(
-    actual val pointer: RawAddress,
+    @PublishedApi internal val storage: CPointer<LongVar>,
     private val release: (NativeScalarScratchFrame) -> Unit,
 ) : AutoCloseable {
+    actual val pointer: RawAddress = storage.reinterpret<COpaque>().asRawAddress()
+
     private var active: Boolean = false
 
-    internal fun acquire(): NativeScalarScratchFrame {
+    internal fun acquire(clear: Boolean): NativeScalarScratchFrame {
         check(!active) { "Native scalar scratch frame is already active." }
-        pointer.asCPointer<LongVar>().pointed.value = 0L
+        if (clear) {
+            storage.pointed.value = 0L
+        }
         active = true
         return this
     }
+
+    actual fun readPointer(): RawAddress =
+        storage.reinterpret<COpaquePointerVar>().pointed.value.asRawAddress()
+
+    actual fun readInt8(): Byte =
+        storage.reinterpret<ByteVar>().pointed.value
+
+    actual fun readInt16(): Short =
+        storage.reinterpret<ShortVar>().pointed.value
+
+    actual fun readInt32(): Int =
+        storage.reinterpret<IntVar>().pointed.value
+
+    actual fun readInt64(): Long =
+        storage.pointed.value
+
+    actual fun readFloat(): Float =
+        storage.reinterpret<FloatVar>().pointed.value
+
+    actual fun readDouble(): Double =
+        storage.reinterpret<DoubleVar>().pointed.value
 
     actual override fun close() {
         if (active) {
@@ -101,20 +127,20 @@ private class MingwNativeScalarScratchFramePool {
     private val nestedFrames = mutableListOf<NativeScalarScratchFrame>()
     private var depth: Int = 0
 
-    fun acquire(): NativeScalarScratchFrame {
+    fun acquire(clear: Boolean): NativeScalarScratchFrame {
         val frame = if (depth == 0) {
             primaryFrame
         } else {
             nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
         }
-        frame.acquire()
+        frame.acquire(clear)
         depth += 1
         return frame
     }
 
     private fun createFrame(): NativeScalarScratchFrame =
         NativeScalarScratchFrame(
-            pointer = nativeHeap.alloc<LongVar>().ptr.reinterpret<COpaque>().asRawAddress(),
+            storage = nativeHeap.alloc<LongVar>().ptr,
             release = ::release,
         )
 
@@ -137,8 +163,9 @@ private object NativeScalarScratchFrames {
     val pool = MingwNativeScalarScratchFramePool()
 }
 
-internal actual fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame =
-    NativeScalarScratchFrames.pool.acquire()
+@PublishedApi
+internal actual fun acquireNativeScalarScratchFrame(clear: Boolean): NativeScalarScratchFrame =
+    NativeScalarScratchFrames.pool.acquire(clear)
 
 @PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(

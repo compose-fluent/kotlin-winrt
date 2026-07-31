@@ -59,64 +59,65 @@ object WinRTProjectionIntrinsic {
         intrinsicNotLowered("callObject", reference, slot, abiShape, *arguments)
 
     fun getString(reference: ComObjectReference, slot: Int): String =
-        acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getString")
-            HString.fromHandle(PlatformAbi.readPointer(resultOut), owner = true).use(HString::toKString)
+            HString.fromHandle(frame.readPointer(), owner = true).use(HString::toKString)
         }
 
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getBoolean")
-            BooleanMarshaller.fromAbi(PlatformAbi.readInt8(resultOut))
+            BooleanMarshaller.fromAbi(frame.readInt8())
         }
 
     fun getNoExceptionBoolean(reference: ComObjectReference, slot: Int): Boolean =
         acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
-            BooleanMarshaller.fromAbi(PlatformAbi.readInt8(resultOut))
+            ComVtableInvoker.invokeArgs(reference.pointer, slot, frame)
+            BooleanMarshaller.fromAbi(frame.readInt8())
         }
 
     fun getInt32(reference: ComObjectReference, slot: Int): Int =
-        acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getInt32")
-            PlatformAbi.readInt32(resultOut)
+            frame.readInt32()
         }
 
     fun getUInt32(reference: ComObjectReference, slot: Int): UInt =
-        getInt32(reference, slot).toUInt()
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
+                .requireSuccess("WinRT getUInt32")
+            frame.readInt32().toUInt()
+        }
 
     fun getInt64(reference: ComObjectReference, slot: Int): Long =
-        acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getInt64")
-            PlatformAbi.readInt64(resultOut)
+            frame.readInt64()
         }
 
     fun getUInt64(reference: ComObjectReference, slot: Int): ULong =
-        getInt64(reference, slot).toULong()
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
+                .requireSuccess("WinRT getUInt64")
+            frame.readInt64().toULong()
+        }
 
     fun getFloat(reference: ComObjectReference, slot: Int): Float =
-        acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getFloat")
-            PlatformAbi.readFloat(resultOut)
+            frame.readFloat()
         }
 
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
-        acquireNativeScalarScratchFrame().use { frame ->
-            val resultOut = frame.pointer
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut))
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getDouble")
-            PlatformAbi.readDouble(resultOut)
+            frame.readDouble()
         }
 
     fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
@@ -166,8 +167,8 @@ object WinRTProjectionIntrinsic {
         intrinsicNotLowered("getNullableProjectedInterface", reference, slot, wrap)
 
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
-        HString.createReference(value).use { hString ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, hString.handle))
+        acquireInitializedNativeHStringReferenceFrame(value).use { frame ->
+            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame.handle))
                 .requireSuccess("WinRT setString")
         }
 

@@ -539,6 +539,18 @@ class KotlinWinRTIrGenerationExtension(
         private val referencedHStringHandleGetter: IrSimpleFunctionSymbol,
         private val referencedHStringTransientOutGetter: IrSimpleFunctionSymbol,
         private val referencedHStringClose: IrSimpleFunctionSymbol,
+        private val acquireNativeScalarScratchFrame: IrSimpleFunctionSymbol,
+        private val scalarScratchFramePointerGetter: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameJvmCarrierGetter: IrSimpleFunctionSymbol?,
+        private val scalarScratchFrameNativeCarrierGetter: IrSimpleFunctionSymbol?,
+        private val scalarScratchFrameReadPointer: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameReadInt8: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameReadInt16: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameReadInt32: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameReadInt64: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameReadFloat: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameReadDouble: IrSimpleFunctionSymbol,
+        private val scalarScratchFrameClose: IrSimpleFunctionSymbol,
         private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol,
         private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol,
         private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
@@ -1961,23 +1973,15 @@ class KotlinWinRTIrGenerationExtension(
             val slot = call.arguments.getOrNull(2) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = call.type) {
-                val nativeScope = irTemporary(
-                    value = builder.irCall(platformAbiConfinedScope).apply {
-                        arguments[0] = builder.irGetObject(platformAbi)
-                    },
-                    nameHint = "scope",
+                val resultFrame = irTemporary(
+                    value = acquireScalarScratchFrame(builder, clear = !checkHResult),
+                    nameHint = "resultFrame",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 +builder.irTry(
                     type = call.type,
                     tryResult = builder.irBlock(resultType = call.type) {
-                        val resultOut = irTemporary(
-                            value = allocateGetterResultSlot(builder, returnKind, builder.irGet(nativeScope)),
-                            nameHint = "resultOut",
-                            isMutable = false,
-                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                        )
                         +directCallUnitBlock(
                             jvmSymbols = jvmSymbols,
                             nativeSymbols = nativeSymbols,
@@ -1986,20 +1990,129 @@ class KotlinWinRTIrGenerationExtension(
                             reference = reference,
                             slot = slot,
                             argumentKinds = listOf(UnitCallAbiArgumentKind.Object),
-                            values = listOf(builder.irGet(resultOut)),
+                            values = listOf(
+                                scalarScratchFrameCallCarrier(
+                                    builder,
+                                    builder.irGet(resultFrame),
+                                    jvmSymbols,
+                                    nativeSymbols,
+                                ),
+                            ),
                             checkHResult = checkHResult,
                         )
-                        +readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
+                        +readScalarScratchFrameResult(
+                            builder,
+                            pluginContext,
+                            returnKind,
+                            builder.irGet(resultFrame),
+                        )
                     },
                     catches = emptyList(),
                     finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                        +builder.irCall(nativeScopeClose).apply {
-                            arguments[0] = builder.irGet(nativeScope)
+                        +builder.irCall(scalarScratchFrameClose).apply {
+                            arguments[0] = builder.irGet(resultFrame)
                         }
                     },
                 )
             }
         }
+
+        private fun acquireScalarScratchFrame(
+            builder: DeclarationIrBuilder,
+            clear: Boolean,
+        ): IrExpression =
+            builder.irCall(acquireNativeScalarScratchFrame).apply {
+                arguments[0] = builder.irBoolean(clear)
+            }
+
+        private fun scalarScratchFramePointer(
+            builder: DeclarationIrBuilder,
+            frame: IrExpression,
+        ): IrExpression =
+            builder.irCall(scalarScratchFramePointerGetter).apply {
+                arguments[0] = frame
+            }
+
+        private fun scalarScratchFrameCallCarrier(
+            builder: DeclarationIrBuilder,
+            frame: IrExpression,
+            jvmSymbols: JvmFfmSymbols?,
+            nativeSymbols: NativeCInteropSymbols?,
+        ): IrExpression {
+            val carrierGetter = when {
+                jvmSymbols != null -> scalarScratchFrameJvmCarrierGetter
+                nativeSymbols != null -> scalarScratchFrameNativeCarrierGetter
+                else -> null
+            }
+            return carrierGetter?.let { getter ->
+                builder.irCall(getter).apply {
+                    arguments[0] = frame
+                }
+            } ?: scalarScratchFramePointer(builder, frame)
+        }
+
+        private fun readScalarScratchFrameResult(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            returnKind: NoArgumentGetterReturnKind,
+            frame: IrExpression,
+        ): IrExpression =
+            when (returnKind) {
+                NoArgumentGetterReturnKind.String -> readHStringHandleGetterResult(
+                    builder,
+                    pluginContext,
+                    builder.irCall(scalarScratchFrameReadPointer).apply {
+                        arguments[0] = frame
+                    },
+                )
+                NoArgumentGetterReturnKind.Boolean -> builder.irNotEquals(
+                    builder.irCall(scalarScratchFrameReadInt8).apply {
+                        arguments[0] = frame
+                    },
+                    builder.irByte(0),
+                )
+                NoArgumentGetterReturnKind.Int8 -> builder.irCall(scalarScratchFrameReadInt8).apply {
+                    arguments[0] = frame
+                }
+                NoArgumentGetterReturnKind.UInt8 -> builder.irCall(requireNotNull(ubyteConstructor)).apply {
+                    arguments[0] = builder.irCall(scalarScratchFrameReadInt8).apply {
+                        arguments[0] = frame
+                    }
+                }
+                NoArgumentGetterReturnKind.Int16 -> builder.irCall(scalarScratchFrameReadInt16).apply {
+                    arguments[0] = frame
+                }
+                NoArgumentGetterReturnKind.UInt16 -> builder.irCall(requireNotNull(ushortConstructor)).apply {
+                    arguments[0] = builder.irCall(scalarScratchFrameReadInt16).apply {
+                        arguments[0] = frame
+                    }
+                }
+                NoArgumentGetterReturnKind.Int32 -> builder.irCall(scalarScratchFrameReadInt32).apply {
+                    arguments[0] = frame
+                }
+                NoArgumentGetterReturnKind.UInt32 -> builder.irCall(requireNotNull(uintConstructor)).apply {
+                    arguments[0] = builder.irCall(scalarScratchFrameReadInt32).apply {
+                        arguments[0] = frame
+                    }
+                }
+                NoArgumentGetterReturnKind.Int64 -> builder.irCall(scalarScratchFrameReadInt64).apply {
+                    arguments[0] = frame
+                }
+                NoArgumentGetterReturnKind.UInt64 -> builder.irCall(requireNotNull(ulongConstructor)).apply {
+                    arguments[0] = builder.irCall(scalarScratchFrameReadInt64).apply {
+                        arguments[0] = frame
+                    }
+                }
+                NoArgumentGetterReturnKind.Float -> builder.irCall(scalarScratchFrameReadFloat).apply {
+                    arguments[0] = frame
+                }
+                NoArgumentGetterReturnKind.Double -> builder.irCall(scalarScratchFrameReadDouble).apply {
+                    arguments[0] = frame
+                }
+                NoArgumentGetterReturnKind.RawAddress -> builder.irCall(scalarScratchFrameReadPointer).apply {
+                    arguments[0] = frame
+                }
+            }
 
         private fun allocateGetterResultSlot(
             builder: DeclarationIrBuilder,
@@ -2108,14 +2221,25 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext: IrPluginContext,
             resultOut: IrExpression,
         ): IrExpression =
+            readHStringHandleGetterResult(
+                builder,
+                pluginContext,
+                builder.irCall(platformAbiReadPointer).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                },
+            )
+
+        private fun readHStringHandleGetterResult(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            handle: IrExpression,
+        ): IrExpression =
             builder.irBlock(resultType = pluginContext.irBuiltIns.stringType) {
                 val value = irTemporary(
                     value = builder.irCall(hStringFromHandle).apply {
                         arguments[0] = builder.irGetObject(hStringCompanion)
-                        arguments[1] = builder.irCall(platformAbiReadPointer).apply {
-                            arguments[0] = builder.irGetObject(platformAbi)
-                            arguments[1] = resultOut
-                        }
+                        arguments[1] = handle
                         arguments[2] = builder.irBoolean(true)
                     },
                     nameHint = "result",
@@ -2289,9 +2413,8 @@ class KotlinWinRTIrGenerationExtension(
             val slot = call.arguments.getOrNull(2) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             val hasStructArguments = argumentKinds.any { it.isStruct }
-            val hasStringArguments = UnitCallAbiArgumentKind.String in argumentKinds
             return builder.irBlock(resultType = call.type) {
-                val nativeScope = if (hasStructArguments || !hasStringArguments) {
+                val nativeScope = if (hasStructArguments) {
                     irTemporary(
                         value = builder.irCall(platformAbiConfinedScope).apply {
                             arguments[0] = builder.irGetObject(platformAbi)
@@ -2374,15 +2497,26 @@ class KotlinWinRTIrGenerationExtension(
                         }
 
                         val abiValues = argumentKinds.map(::abiValueFor)
+                        val resultFrame = if (stringAbis.isEmpty()) {
+                            irTemporary(
+                                value = acquireScalarScratchFrame(builder, clear = false),
+                                nameHint = "resultFrame",
+                                isMutable = false,
+                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                            )
+                        } else {
+                            null
+                        }
                         val resultOut = irTemporary(
                             value = stringAbis.firstOrNull()?.let { stringAbi ->
                                 builder.irCall(referencedHStringTransientOutGetter).apply {
                                     arguments[0] = builder.irGet(stringAbi)
                                 }
-                            } ?: allocateGetterResultSlot(
+                            } ?: scalarScratchFrameCallCarrier(
                                 builder,
-                                returnKind,
-                                builder.irGet(requireNotNull(nativeScope)),
+                                builder.irGet(requireNotNull(resultFrame)),
+                                jvmSymbols,
+                                nativeSymbols,
                             ),
                             nameHint = "resultOut",
                             isMutable = false,
@@ -2412,33 +2546,42 @@ class KotlinWinRTIrGenerationExtension(
                                 values = callValues,
                             )
                         }
-                        val readResult = readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
-                        if (stringAbis.isEmpty() && structAbis.isEmpty()) {
-                            +callBlock
-                            +readResult
+                        val readResult = if (resultFrame == null) {
+                            readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
                         } else {
-                            +builder.irTry(
-                                type = call.type,
-                                tryResult = builder.irBlock(resultType = call.type) {
-                                    +callBlock
-                                    +readResult
-                                },
-                                catches = emptyList(),
-                                finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                                    structAbis.forEach { (adapter, valueAbi) ->
-                                        +builder.irCall(nativeStructAdapterDisposeAbi).apply {
-                                            arguments[0] = builder.irGet(adapter)
-                                            arguments[1] = builder.irGet(valueAbi)
-                                        }
-                                    }
-                                    stringAbis.asReversed().forEach { stringAbi ->
-                                        +builder.irCall(referencedHStringClose).apply {
-                                            arguments[0] = builder.irGet(stringAbi)
-                                        }
-                                    }
-                                },
+                            readScalarScratchFrameResult(
+                                builder,
+                                pluginContext,
+                                returnKind,
+                                builder.irGet(resultFrame),
                             )
                         }
+                        +builder.irTry(
+                            type = call.type,
+                            tryResult = builder.irBlock(resultType = call.type) {
+                                +callBlock
+                                +readResult
+                            },
+                            catches = emptyList(),
+                            finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                resultFrame?.let { frame ->
+                                    +builder.irCall(scalarScratchFrameClose).apply {
+                                        arguments[0] = builder.irGet(frame)
+                                    }
+                                }
+                                structAbis.forEach { (adapter, valueAbi) ->
+                                    +builder.irCall(nativeStructAdapterDisposeAbi).apply {
+                                        arguments[0] = builder.irGet(adapter)
+                                        arguments[1] = builder.irGet(valueAbi)
+                                    }
+                                }
+                                stringAbis.asReversed().forEach { stringAbi ->
+                                    +builder.irCall(referencedHStringClose).apply {
+                                        arguments[0] = builder.irGet(stringAbi)
+                                    }
+                                }
+                            },
+                        )
                     }
                 if (nativeScope == null) {
                     +callWithPreparedArguments()
@@ -3289,6 +3432,32 @@ class KotlinWinRTIrGenerationExtension(
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
                 val referencedHStringTransientOutGetter = referencedHString.propertyGetter("transientOut") ?: return null
                 val referencedHStringClose = referencedHString.functionNamed("close") ?: return null
+                val scalarScratchFrame = pluginContext.findClassSymbol(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_CLASS_ID, fromFile)
+                    ?: return null
+                val acquireNativeScalarScratchFrame = pluginContext.findFunctionSymbols(
+                    CallableId(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        Name.identifier("acquireNativeScalarScratchFrame"),
+                    ),
+                    fromFile,
+                ).singleOrNull() ?: return null
+                val scalarScratchFramePointerGetter = scalarScratchFrame.propertyGetter("pointer") ?: return null
+                val scalarScratchFrameJvmCarrierGetter = pluginContext.findPropertySymbols(
+                    CallableId(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_CLASS_ID, Name.identifier("segment")),
+                    fromFile,
+                ).singleOrNull()?.owner?.getter?.symbol
+                val scalarScratchFrameNativeCarrierGetter = pluginContext.findPropertySymbols(
+                    CallableId(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_CLASS_ID, Name.identifier("storage")),
+                    fromFile,
+                ).singleOrNull()?.owner?.getter?.symbol
+                val scalarScratchFrameReadPointer = scalarScratchFrame.functionNamed("readPointer") ?: return null
+                val scalarScratchFrameReadInt8 = scalarScratchFrame.functionNamed("readInt8") ?: return null
+                val scalarScratchFrameReadInt16 = scalarScratchFrame.functionNamed("readInt16") ?: return null
+                val scalarScratchFrameReadInt32 = scalarScratchFrame.functionNamed("readInt32") ?: return null
+                val scalarScratchFrameReadInt64 = scalarScratchFrame.functionNamed("readInt64") ?: return null
+                val scalarScratchFrameReadFloat = scalarScratchFrame.functionNamed("readFloat") ?: return null
+                val scalarScratchFrameReadDouble = scalarScratchFrame.functionNamed("readDouble") ?: return null
+                val scalarScratchFrameClose = scalarScratchFrame.functionNamed("close") ?: return null
                 val iWinRTObject = pluginContext.findClassSymbol(WINRT_IWINRT_OBJECT_CLASS_ID, fromFile)
                     ?: return null
                 val iWinRTObjectNativeObjectGetter = iWinRTObject.propertyGetter("nativeObject") ?: return null
@@ -3396,6 +3565,18 @@ class KotlinWinRTIrGenerationExtension(
                     referencedHStringHandleGetter = referencedHStringHandleGetter,
                     referencedHStringTransientOutGetter = referencedHStringTransientOutGetter,
                     referencedHStringClose = referencedHStringClose,
+                    acquireNativeScalarScratchFrame = acquireNativeScalarScratchFrame,
+                    scalarScratchFramePointerGetter = scalarScratchFramePointerGetter,
+                    scalarScratchFrameJvmCarrierGetter = scalarScratchFrameJvmCarrierGetter,
+                    scalarScratchFrameNativeCarrierGetter = scalarScratchFrameNativeCarrierGetter,
+                    scalarScratchFrameReadPointer = scalarScratchFrameReadPointer,
+                    scalarScratchFrameReadInt8 = scalarScratchFrameReadInt8,
+                    scalarScratchFrameReadInt16 = scalarScratchFrameReadInt16,
+                    scalarScratchFrameReadInt32 = scalarScratchFrameReadInt32,
+                    scalarScratchFrameReadInt64 = scalarScratchFrameReadInt64,
+                    scalarScratchFrameReadFloat = scalarScratchFrameReadFloat,
+                    scalarScratchFrameReadDouble = scalarScratchFrameReadDouble,
+                    scalarScratchFrameClose = scalarScratchFrameClose,
                     iWinRTObjectNativeObjectGetter = iWinRTObjectNativeObjectGetter,
                     comObjectReferencePointerGetter = comObjectReferencePointerGetter,
                     rawComPtrValueGetter = rawComPtrValueGetter,
@@ -3538,8 +3719,9 @@ class KotlinWinRTIrGenerationExtension(
                     UnitCallAbiArgumentKind.RawComPtr -> rawComPtrToOpaquePointer(builder, value)
                     UnitCallAbiArgumentKind.RawAddress,
                     UnitCallAbiArgumentKind.StructPointer,
-                    UnitCallAbiArgumentKind.String,
-                    UnitCallAbiArgumentKind.Object -> rawAddressToOpaquePointer(builder, value)
+                    UnitCallAbiArgumentKind.String -> rawAddressToOpaquePointer(builder, value)
+                    UnitCallAbiArgumentKind.Object ->
+                        if (value.type.classOrNull == cPointer) value else rawAddressToOpaquePointer(builder, value)
                     UnitCallAbiArgumentKind.Byte,
                     UnitCallAbiArgumentKind.Int16,
                     UnitCallAbiArgumentKind.Int32,
@@ -3739,8 +3921,9 @@ class KotlinWinRTIrGenerationExtension(
                     UnitCallAbiArgumentKind.Struct4,
                     UnitCallAbiArgumentKind.Struct8,
                     UnitCallAbiArgumentKind.StructPointer,
-                    UnitCallAbiArgumentKind.String,
-                    UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
+                    UnitCallAbiArgumentKind.String -> segmentFromRawAddress(builder, value)
+                    UnitCallAbiArgumentKind.Object ->
+                        if (value.type == memorySegmentType) value else segmentFromRawAddress(builder, value)
                 }
 
             fun invokeHResultDowncall(
@@ -5442,6 +5625,9 @@ private val WINRT_HSTRING_CLASS_ID =
 
 private val WINRT_NATIVE_HSTRING_REFERENCE_FRAME_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeHStringReferenceFrame"))
+
+private val WINRT_NATIVE_SCALAR_SCRATCH_FRAME_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeScalarScratchFrame"))
 
 private val WINRT_IWINRT_OBJECT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("IWinRTObject"))

@@ -243,6 +243,7 @@ int wmain(int argc, wchar_t** argv)
         using namespace winrt::Windows::Data::Json;
 
         JsonObject const json = JsonObject::Parse(payload);
+        JsonArray const json_array = JsonArray::Parse(L"[42.5]");
         std::uint64_t const stringified_length = json.Stringify().size();
         std::vector<benchmark_scenario> const scenarios{
             {
@@ -273,6 +274,19 @@ int wmain(int argc, wchar_t** argv)
                         {
                             ++checksum;
                         }
+                    }
+                    return checksum;
+                },
+            },
+            {
+                "get_array_number_at",
+                42,
+                [json_array](int iterations)
+                {
+                    std::uint64_t checksum{};
+                    for (int index = 0; index < iterations; ++index)
+                    {
+                        checksum += static_cast<std::uint64_t>(json_array.GetNumberAt(0));
                     }
                     return checksum;
                 },

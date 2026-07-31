@@ -57,6 +57,16 @@ actual object ComVtableInvoker {
             arg0.toOpaquePointer(),
         )
 
+    internal actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: NativeScalarScratchFrame,
+    ): Int =
+        instance.vtableMethod<HResultPointer1>(slot).invoke(
+            instance.toOpaquePointer(),
+            arg0.storage.reinterpret<COpaque>(),
+        )
+
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
@@ -72,21 +82,21 @@ actual object ComVtableInvoker {
         slot: Int,
         arg0: Int,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.toLong())
+        instance.vtableMethod<HResultInt32>(slot).invoke(instance.toOpaquePointer(), arg0)
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: UInt,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.toLong())
+        instance.vtableMethod<HResultUInt32>(slot).invoke(instance.toOpaquePointer(), arg0)
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: Long,
     ): Int =
-        invokeHResultWords(instance, slot, arg0)
+        instance.vtableMethod<HResultInt64>(slot).invoke(instance.toOpaquePointer(), arg0)
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -526,6 +536,9 @@ private typealias PointerResult0 = CFunction<(COpaquePointer?) -> COpaquePointer
 private typealias HResult0 = CFunction<(COpaquePointer?) -> Int>
 private typealias HResultPointer1 = CFunction<(COpaquePointer?, COpaquePointer?) -> Int>
 private typealias HResultPointer2 = CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>
+private typealias HResultInt32 = CFunction<(COpaquePointer?, Int) -> Int>
+private typealias HResultUInt32 = CFunction<(COpaquePointer?, UInt) -> Int>
+private typealias HResultInt64 = CFunction<(COpaquePointer?, Long) -> Int>
 private typealias HResultUniversal =
     CFunction<(Long, Long, Long, Long, Long, Long, Long, Long) -> Int>
 

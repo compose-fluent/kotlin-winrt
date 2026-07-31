@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.benchmarks
 
 import io.github.composefluent.winrt.runtime.RuntimeScope
+import windows.`data`.json.JsonArray
 import windows.`data`.json.JsonObject
 import windows.`data`.json.JsonValueType
 
@@ -14,6 +15,7 @@ fun main(args: Array<String>) {
 
 private fun createWinRTScenarios(): List<BenchmarkScenario> {
     val json = JsonObject.parse(PAYLOAD)
+    val jsonArray = JsonArray.parse("[42.5]")
     val stringifiedLength = json.stringify().length.toLong()
 
     return listOf(
@@ -32,6 +34,13 @@ private fun createWinRTScenarios(): List<BenchmarkScenario> {
                 if (json.valueType == JsonValueType.Object) {
                     checksum += 1L
                 }
+            }
+            checksum
+        },
+        BenchmarkScenario("get_array_number_at", expectedSingleChecksum = 42L) { iterations ->
+            var checksum = 0L
+            repeat(iterations) {
+                checksum += jsonArray.getNumberAt(0u).toLong()
             }
             checksum
         },

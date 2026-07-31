@@ -19,6 +19,7 @@ All runners use `Windows.Data.Json`, which is implemented by Windows itself. Thi
 | --- | --- |
 | `activate_json_object` | Activate `JsonObject` and read `IJsonValue.ValueType` |
 | `get_value_type` | Read a non-default interface scalar property on an existing object |
+| `get_array_number_at` | Read a Double through an expanded scalar-result call on an existing array |
 | `get_named_boolean` | Marshal an HSTRING input and return a Boolean |
 | `get_named_string` | Marshal an HSTRING input and return an HSTRING |
 | `stringify` | Invoke `IJsonValue.Stringify` and return an HSTRING |

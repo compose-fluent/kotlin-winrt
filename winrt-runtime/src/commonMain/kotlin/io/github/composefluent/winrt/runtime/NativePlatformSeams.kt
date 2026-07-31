@@ -4,13 +4,29 @@ expect class NativeScope : AutoCloseable {
     override fun close()
 }
 
+@PublishedApi
 internal expect class NativeScalarScratchFrame : AutoCloseable {
     val pointer: RawAddress
+
+    fun readPointer(): RawAddress
+
+    fun readInt8(): Byte
+
+    fun readInt16(): Short
+
+    fun readInt32(): Int
+
+    fun readInt64(): Long
+
+    fun readFloat(): Float
+
+    fun readDouble(): Double
 
     override fun close()
 }
 
-internal expect fun acquireNativeScalarScratchFrame(): NativeScalarScratchFrame
+@PublishedApi
+internal expect fun acquireNativeScalarScratchFrame(clear: Boolean = true): NativeScalarScratchFrame
 
 @PublishedApi
 internal expect class NativeHStringReferenceFrame : AutoCloseable {

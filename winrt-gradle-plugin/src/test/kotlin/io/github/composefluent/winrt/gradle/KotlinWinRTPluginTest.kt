@@ -11376,6 +11376,12 @@ class KotlinWinRTPluginTest {
                         fun rawAddressScalar(reference: ComObjectReference): RawAddress =
                             WinRTProjectionIntrinsic.callScalar(reference, 11, "RawAddress", "")
 
+                        fun int16Scalar(reference: ComObjectReference): Short =
+                            WinRTProjectionIntrinsic.callScalar(reference, 12, "Int16", "")
+
+                        fun stringScalar(reference: ComObjectReference): String =
+                            WinRTProjectionIntrinsic.callScalar(reference, 13, "String", "")
+
                         fun booleanWithStruct(reference: ComObjectReference, value: Point): Boolean =
                             WinRTProjectionIntrinsic.callBoolean(reference, 9, "Struct8_4", value, Point.Metadata)
 
@@ -11412,6 +11418,18 @@ class KotlinWinRTPluginTest {
                     }
                     if (!contents.contains("WinRTJvmFfmDowncallHandles")) {
                         throw new GradleException("KMP JVM class did not lower projection intrinsic to JVM FFM")
+                    }
+                    if (!contents.contains("acquireNativeScalarScratchFrame")) {
+                        throw new GradleException("KMP JVM scalar intrinsic did not acquire the reusable result frame")
+                    }
+                    if (!contents.contains("getSegment")) {
+                        throw new GradleException("KMP JVM scalar intrinsic did not pass the result frame's FFM carrier directly")
+                    }
+                    if (!contents.contains("readInt16")) {
+                        throw new GradleException("KMP JVM scalar intrinsic did not read the result through the typed frame carrier")
+                    }
+                    if (!contents.contains("readPointer")) {
+                        throw new GradleException("KMP JVM HSTRING intrinsic did not read the result through the reusable frame")
                     }
                     if (!contents.contains("Struct8_4")) {
                         throw new GradleException("KMP JVM class did not preserve small struct ABI shape token")

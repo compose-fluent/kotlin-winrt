@@ -94,6 +94,15 @@ actual object ComVtableInvoker {
         return hResultPtrHandle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, asSegment(arg0)) as Int
     }
 
+    internal actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: NativeScalarScratchFrame,
+    ): Int {
+        val instanceSegment = asSegment(instance)
+        return hResultPtrHandle.invoke(vtableEntry(instanceSegment, slot), instanceSegment, arg0.segment) as Int
+    }
+
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,

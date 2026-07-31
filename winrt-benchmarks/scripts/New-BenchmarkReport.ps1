@@ -48,7 +48,8 @@ foreach ($entry in $runnerFiles.GetEnumerator()) {
 
 $referenceRecords = @($recordsByRunner["cppwinrt"])
 $scenarioOrder = @($referenceRecords | ForEach-Object { [string]$_.scenario })
-if (($scenarioOrder | Select-Object -Unique).Count -ne $scenarioOrder.Count) {
+$uniqueScenarios = @($scenarioOrder | Select-Object -Unique)
+if ($uniqueScenarios.Count -ne $scenarioOrder.Count) {
     throw "C++/WinRT result contains duplicate scenario records."
 }
 
