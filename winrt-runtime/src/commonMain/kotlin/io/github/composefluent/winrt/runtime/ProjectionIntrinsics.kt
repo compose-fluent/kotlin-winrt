@@ -58,12 +58,16 @@ object WinRTProjectionIntrinsic {
     ): Any? =
         intrinsicNotLowered("callObject", reference, slot, abiShape, *arguments)
 
-    fun getString(reference: ComObjectReference, slot: Int): String =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+    fun getString(reference: ComObjectReference, slot: Int): String {
+        val frame = acquireNativeScalarScratchFrame(clear = false)
+        try {
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getString")
-            HString.fromHandle(frame.readPointer(), owner = true).use(HString::toKString)
+            return consumeOwnedHString(frame.readPointer(), frame.pointer)
+        } finally {
+            frame.close()
         }
+    }
 
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
         acquireNativeScalarScratchFrame(clear = false).use { frame ->

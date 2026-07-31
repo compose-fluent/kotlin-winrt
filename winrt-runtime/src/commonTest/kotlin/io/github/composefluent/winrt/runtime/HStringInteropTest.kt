@@ -47,6 +47,28 @@ class HStringInteropTest {
     }
 
     @Test
+    fun owned_hstring_consumer_reuses_result_slot_and_preserves_utf16_code_units() {
+        val values = listOf(
+            "",
+            "ascii",
+            "\u6c49\u5b57",
+            "\ud83d\ude80",
+            "left\u0000right",
+        )
+
+        values.forEach { value ->
+            acquireNativeScalarScratchFrame(clear = false).use { frame ->
+                val owned = HString.create(value)
+                PlatformAbi.writePointer(frame.pointer, owned.handle)
+                val handle = frame.readPointer()
+
+                assertEquals(value, consumeOwnedHString(handle, frame.pointer))
+                assertEquals(value.length, frame.readInt32())
+            }
+        }
+    }
+
+    @Test
     fun initialized_hstring_reference_frame_reuses_top_level_storage_and_resets_transient_output() {
         val firstFrameAddress = acquireNativeHStringReferenceFrame("first").use { frame ->
             PlatformAbi.writePointer(frame.transientOut, frame.utf16Chars)

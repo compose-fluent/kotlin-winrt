@@ -1,5 +1,21 @@
 package io.github.composefluent.winrt.runtime
 
+@PublishedApi
+internal fun consumeOwnedHString(
+    handle: RawAddress,
+    lengthOut: RawAddress,
+): String {
+    if (PlatformAbi.isNull(handle)) {
+        return ""
+    }
+    try {
+        val buffer = WinRTPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
+        return PlatformAbi.readUtf16(buffer, PlatformAbi.readInt32(lengthOut))
+    } finally {
+        WinRTPlatformApi.windowsDeleteStringRaw(handle)
+    }
+}
+
 class HString private constructor(
     val handle: RawAddress,
     private val owner: Boolean,

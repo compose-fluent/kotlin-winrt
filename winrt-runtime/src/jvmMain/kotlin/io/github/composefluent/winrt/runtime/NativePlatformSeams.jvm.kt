@@ -326,8 +326,7 @@ actual object PlatformAbi {
             return ""
         }
         val sized = pointer.asMemorySegment().reinterpret(length.toLong() * ValueLayout.JAVA_CHAR.byteSize())
-        val bytes = sized.toArray(ValueLayout.JAVA_BYTE)
-        return String(bytes, StandardCharsets.UTF_16LE)
+        return String(sized.toArray(char16Layout))
     }
 
     actual fun readGuid(pointer: RawAddress): Guid {

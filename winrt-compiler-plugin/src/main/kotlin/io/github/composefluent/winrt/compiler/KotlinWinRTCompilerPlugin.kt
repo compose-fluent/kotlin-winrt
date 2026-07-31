@@ -531,11 +531,8 @@ class KotlinWinRTIrGenerationExtension(
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private class WinRTProjectionIntrinsicIrLowerings private constructor(
-        private val hStringCompanion: IrClassSymbol,
         private val hStringCreateReference: IrSimpleFunctionSymbol,
-        private val hStringFromHandle: IrSimpleFunctionSymbol,
-        private val hStringToKString: IrSimpleFunctionSymbol,
-        private val hStringClose: IrSimpleFunctionSymbol,
+        private val consumeOwnedHString: IrSimpleFunctionSymbol,
         private val referencedHStringHandleGetter: IrSimpleFunctionSymbol,
         private val referencedHStringTransientOutGetter: IrSimpleFunctionSymbol,
         private val referencedHStringClose: IrSimpleFunctionSymbol,
@@ -2060,10 +2057,10 @@ class KotlinWinRTIrGenerationExtension(
             when (returnKind) {
                 NoArgumentGetterReturnKind.String -> readHStringHandleGetterResult(
                     builder,
-                    pluginContext,
                     builder.irCall(scalarScratchFrameReadPointer).apply {
                         arguments[0] = frame
                     },
+                    scalarScratchFramePointer(builder, frame),
                 )
                 NoArgumentGetterReturnKind.Boolean -> builder.irNotEquals(
                     builder.irCall(scalarScratchFrameReadInt8).apply {
@@ -2154,7 +2151,7 @@ class KotlinWinRTIrGenerationExtension(
             resultOut: IrExpression,
         ): IrExpression =
             when (returnKind) {
-                NoArgumentGetterReturnKind.String -> readHStringGetterResult(builder, pluginContext, resultOut)
+                NoArgumentGetterReturnKind.String -> readHStringGetterResult(builder, resultOut)
                 NoArgumentGetterReturnKind.Boolean -> builder.irNotEquals(
                     builder.irCall(platformAbiReadInt8).apply {
                         arguments[0] = builder.irGetObject(platformAbi)
@@ -2218,46 +2215,25 @@ class KotlinWinRTIrGenerationExtension(
 
         private fun readHStringGetterResult(
             builder: DeclarationIrBuilder,
-            pluginContext: IrPluginContext,
             resultOut: IrExpression,
         ): IrExpression =
             readHStringHandleGetterResult(
                 builder,
-                pluginContext,
                 builder.irCall(platformAbiReadPointer).apply {
                     arguments[0] = builder.irGetObject(platformAbi)
                     arguments[1] = resultOut
                 },
+                resultOut,
             )
 
         private fun readHStringHandleGetterResult(
             builder: DeclarationIrBuilder,
-            pluginContext: IrPluginContext,
             handle: IrExpression,
+            lengthOut: IrExpression,
         ): IrExpression =
-            builder.irBlock(resultType = pluginContext.irBuiltIns.stringType) {
-                val value = irTemporary(
-                    value = builder.irCall(hStringFromHandle).apply {
-                        arguments[0] = builder.irGetObject(hStringCompanion)
-                        arguments[1] = handle
-                        arguments[2] = builder.irBoolean(true)
-                    },
-                    nameHint = "result",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                )
-                +builder.irTry(
-                    type = pluginContext.irBuiltIns.stringType,
-                    tryResult = builder.irCall(hStringToKString).apply {
-                        arguments[0] = builder.irGet(value)
-                    },
-                    catches = emptyList(),
-                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                        +builder.irCall(hStringClose).apply {
-                            arguments[0] = builder.irGet(value)
-                        }
-                    },
-                )
+            builder.irCall(consumeOwnedHString).apply {
+                arguments[0] = handle
+                arguments[1] = lengthOut
             }
 
         private fun lowerOneArgumentUnit(
@@ -3410,13 +3386,6 @@ class KotlinWinRTIrGenerationExtension(
 
         companion object {
             fun create(pluginContext: IrPluginContext, fromFile: IrFile?): WinRTProjectionIntrinsicIrLowerings? {
-                val hString = pluginContext.findClassSymbol(WINRT_HSTRING_CLASS_ID, fromFile)
-                    ?: return null
-                val hStringCompanion = hString.owner.declarations
-                    .filterIsInstance<IrClass>()
-                    .singleOrNull { it.name.asString() == "Companion" }
-                    ?.symbol
-                    ?: return null
                 val hStringCreateReference = pluginContext.findFunctionSymbols(
                     CallableId(
                         WINRT_RUNTIME_PACKAGE_FQ_NAME,
@@ -3424,9 +3393,13 @@ class KotlinWinRTIrGenerationExtension(
                     ),
                     fromFile,
                 ).singleOrNull() ?: return null
-                val hStringFromHandle = hStringCompanion.functionNamed("fromHandle") ?: return null
-                val hStringToKString = hString.functionNamed("toKString") ?: return null
-                val hStringClose = hString.functionNamed("close") ?: return null
+                val consumeOwnedHString = pluginContext.findFunctionSymbols(
+                    CallableId(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        Name.identifier("consumeOwnedHString"),
+                    ),
+                    fromFile,
+                ).singleOrNull() ?: return null
                 val referencedHString = pluginContext.findClassSymbol(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_CLASS_ID, fromFile)
                     ?: return null
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
@@ -3557,11 +3530,8 @@ class KotlinWinRTIrGenerationExtension(
                 val ulongConstructor = pluginContext.findClassSymbol(KOTLIN_ULONG_CLASS_ID, fromFile)
                     ?.singleValueConstructor()
                 return WinRTProjectionIntrinsicIrLowerings(
-                    hStringCompanion = hStringCompanion,
                     hStringCreateReference = hStringCreateReference,
-                    hStringFromHandle = hStringFromHandle,
-                    hStringToKString = hStringToKString,
-                    hStringClose = hStringClose,
+                    consumeOwnedHString = consumeOwnedHString,
                     referencedHStringHandleGetter = referencedHStringHandleGetter,
                     referencedHStringTransientOutGetter = referencedHStringTransientOutGetter,
                     referencedHStringClose = referencedHStringClose,
@@ -5619,9 +5589,6 @@ private const val GENERIC_ABI_LOOKUP_SHARD_SIZE = 48
 
 private val WINRT_COM_VTABLE_INVOKER_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.ComVtableInvoker")
-
-private val WINRT_HSTRING_CLASS_ID =
-    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HString"))
 
 private val WINRT_NATIVE_HSTRING_REFERENCE_FRAME_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeHStringReferenceFrame"))

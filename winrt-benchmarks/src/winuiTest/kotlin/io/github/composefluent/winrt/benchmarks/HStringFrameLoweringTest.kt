@@ -15,4 +15,14 @@ class HStringFrameLoweringTest {
             assertEquals("value", json.getNamedString("name", "fallback"))
         }
     }
+
+    @Test
+    fun generated_string_result_preserves_explicit_utf16_length() {
+        RuntimeScope.initializeMultithreaded().use {
+            val expected = "\u6c49\u5b57\ud83d\ude80left\u0000right"
+            val json = JsonObject.parse("""{"name":"\u6c49\u5b57\ud83d\ude80left\u0000right"}""")
+
+            assertEquals(expected, json.getNamedString("name"))
+        }
+    }
 }
