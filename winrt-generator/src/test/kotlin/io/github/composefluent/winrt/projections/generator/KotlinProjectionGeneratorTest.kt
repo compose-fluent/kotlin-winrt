@@ -4235,7 +4235,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
         assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jsonObject, jsonObject.contains("private val _defaultInterfaceCache: WinRTObjectReferenceCache<ComObjectReference>"))
+        assertTrue(jsonObject, jsonObject.contains("WinRTObjectReferenceCache("))
         assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: ComObjectReference"))
+        assertTrue(jsonObject, jsonObject.contains("get() = _defaultInterfaceCache.value"))
+        assertFalse(jsonObject, jsonObject.contains("private val _defaultInterface: ComObjectReference by lazy"))
         assertTrue(jsonObject, jsonObject.contains("Metadata.acquireInterface(_inner, IJsonObject.Metadata.IID)"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
@@ -11678,7 +11682,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains(": IWidget"))
         assertTrue(widgetContents.contains("IWidgetExtra"))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
-        assertTrue(widgetContents.contains("private val _iWidgetExtra: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("private val _iWidgetExtraCache: WinRTObjectReferenceCache<IUnknownReference>"))
+        assertTrue(widgetContents.contains("get() = _iWidgetExtraCache.value"))
+        assertFalse(widgetContents.contains("private val _iWidgetExtra: IUnknownReference by lazy"))
         assertFalse(widgetContents.contains("TITLE_GETTER_SLOT_OWNER_INTERFACE"))
         assertFalse(widgetContents.contains("TITLE_GETTER_SLOT_OWNER_CACHE"))
         assertTrue(
@@ -22902,7 +22908,8 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(observableMapContents.contains("const val MAPCHANGED_ADD_SLOT: Int = 6"))
         assertTrue(observableMapContents.contains("const val MAPCHANGED_REMOVE_SLOT: Int = 7"))
-        assertTrue(propertySetContents.contains("private val _iObservableMap: IUnknownReference by lazy"))
+        assertTrue(propertySetContents.contains("private val _iObservableMapCache: WinRTObjectReferenceCache<IUnknownReference>"))
+        assertTrue(propertySetContents.contains("get() = _iObservableMapCache.value"))
         assertTrue(propertySetContents.contains(".createEventSource_"))
         assertTrue(propertySetContents.contains("_iObservableMap,"))
         assertFalse(propertySetContents.contains("nativeObject, IObservableMap.Metadata.MAPCHANGED_ADD_SLOT"))

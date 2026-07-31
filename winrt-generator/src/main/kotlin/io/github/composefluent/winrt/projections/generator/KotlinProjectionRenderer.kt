@@ -288,16 +288,14 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
     ) {
         interfaceNativeProjectionCollectionCacheBindings(plan).forEach { binding ->
-            builder.addProperty(
-                PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
-                    .addModifiers(KModifier.PRIVATE)
-                    .delegate(
-                        CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { %M(nativeObject, %L) }",
-                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
-                            runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
-                        ),
+            builder.addObjectReferenceCacheProperty(
+                name = binding.ownerCachePropertyName,
+                type = IUNKNOWN_REFERENCE_CLASS_NAME,
+                createReference = CodeBlock.builder()
+                    .addStatement(
+                        "%M(nativeObject, %L)",
+                        ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
+                        runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                     )
                     .build(),
             )
@@ -341,16 +339,14 @@ class KotlinProjectionRenderer(
             .filterNot { binding -> binding.ownerCachePropertyName in existingCacheNames }
             .distinctBy { binding -> binding.ownerCachePropertyName }
             .forEach { binding ->
-                builder.addProperty(
-                    PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
-                        .addModifiers(KModifier.PRIVATE)
-                        .delegate(
-                            CodeBlock.of(
-                                "lazy(%T.PUBLICATION) { %M(nativeObject, %L) }",
-                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                                ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
-                                runtimeClassInterfaceIdCode(binding.ownerInterfaceInstanceName, plan),
-                            ),
+                builder.addObjectReferenceCacheProperty(
+                    name = binding.ownerCachePropertyName,
+                    type = IUNKNOWN_REFERENCE_CLASS_NAME,
+                    createReference = CodeBlock.builder()
+                        .addStatement(
+                            "%M(nativeObject, %L)",
+                            ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME,
+                            runtimeClassInterfaceIdCode(binding.ownerInterfaceInstanceName, plan),
                         )
                         .build(),
                 )
@@ -1260,26 +1256,20 @@ class KotlinProjectionRenderer(
             } else {
                 IUNKNOWN_REFERENCE_CLASS_NAME
             }
-            builder.addProperty(
-                PropertySpec.builder("_defaultInterface", defaultCacheType)
-                    .addModifiers(KModifier.PRIVATE)
-                    .apply {
-                        if (defaultObjectReferencePlan != null) {
-                            delegate(
-                                runtimeClassObjectReferenceCacheInitializer(
-                                    defaultObjectReferencePlan,
-                                    plan.typesByQualifiedName,
-                                    "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
-                                    projectionClassName(defaultObjectReferencePlan.interfaceName.substringBefore('<')),
-                                ),
-                            )
-                        } else {
-                            delegate(
-                                runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName, "Metadata.acquireDefaultInterface(_inner)"),
-                            )
-                        }
-                    }
-                    .build(),
+            builder.addObjectReferenceCacheProperty(
+                name = "_defaultInterface",
+                type = defaultCacheType,
+                createReference =
+                    if (defaultObjectReferencePlan != null) {
+                        runtimeClassObjectReferenceCacheInitializer(
+                            defaultObjectReferencePlan,
+                            plan.typesByQualifiedName,
+                            "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
+                            projectionClassName(defaultObjectReferencePlan.interfaceName.substringBefore('<')),
+                        )
+                    } else {
+                        runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName, "Metadata.acquireDefaultInterface(_inner)")
+                    },
             )
         }
         plan.implementedInterfaceBindings
@@ -1296,39 +1286,28 @@ class KotlinProjectionRenderer(
                     } else {
                         "Metadata.acquireInterface(_inner, %T.Metadata.IID)"
                     }
-                builder.addProperty(
-                    PropertySpec.builder(
-                        "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
-                        IUNKNOWN_REFERENCE_CLASS_NAME,
-                    )
-                        .addModifiers(KModifier.PRIVATE)
-                        .delegate(
-                            runtimeClassObjectReferenceCacheInitializer(
-                                objectReferencePlan,
-                                plan.typesByQualifiedName,
-                                acquireExpression,
-                                projectionClassName(binding.qualifiedName.substringBefore('<')),
-                            ),
-                        )
-                        .build(),
+                builder.addObjectReferenceCacheProperty(
+                    name = "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
+                    type = IUNKNOWN_REFERENCE_CLASS_NAME,
+                    createReference = runtimeClassObjectReferenceCacheInitializer(
+                        objectReferencePlan,
+                        plan.typesByQualifiedName,
+                        acquireExpression,
+                        projectionClassName(binding.qualifiedName.substringBefore('<')),
+                    ),
                 )
         }
         requiredInterfaceCacheBindings(plan)
             .filter { it.iid != null }
             .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
             .forEach { binding ->
-                builder.addProperty(
-                    PropertySpec.builder(
-                        "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
-                        IUNKNOWN_REFERENCE_CLASS_NAME,
-                    )
-                        .addModifiers(KModifier.PRIVATE)
-                        .delegate(
-                            CodeBlock.of(
-                                "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
-                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                                runtimeClassInterfaceIdCode(binding.qualifiedName, plan),
-                            ),
+                builder.addObjectReferenceCacheProperty(
+                    name = "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
+                    type = IUNKNOWN_REFERENCE_CLASS_NAME,
+                    createReference = CodeBlock.builder()
+                        .addStatement(
+                            "Metadata.acquireInterface(_inner, %L)",
+                            runtimeClassInterfaceIdCode(binding.qualifiedName, plan),
                         )
                         .build(),
                 )
@@ -2481,15 +2460,13 @@ class KotlinProjectionRenderer(
             .toList()
 
         collectionCacheBindings.forEach { binding ->
-            builder.addProperty(
-                PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
-                    .addModifiers(KModifier.PRIVATE)
-                    .delegate(
-                        CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
-                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
-                        ),
+            builder.addObjectReferenceCacheProperty(
+                name = binding.ownerCachePropertyName,
+                type = IUNKNOWN_REFERENCE_CLASS_NAME,
+                createReference = CodeBlock.builder()
+                    .addStatement(
+                        "Metadata.acquireInterface(_inner, %L)",
+                        runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                     )
                     .build(),
             )
@@ -2501,16 +2478,14 @@ class KotlinProjectionRenderer(
                 } else {
                     CodeBlock.of("_inner")
                 }
-            builder.addProperty(
-                PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
-                    .addModifiers(KModifier.PRIVATE)
-                    .delegate(
-                        CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(%L, %L) }",
-                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            acquisitionTarget,
-                            runtimeClassInterfaceIdCode(binding.ownerInterfaceName, plan),
-                        ),
+            builder.addObjectReferenceCacheProperty(
+                name = binding.ownerCachePropertyName,
+                type = IUNKNOWN_REFERENCE_CLASS_NAME,
+                createReference = CodeBlock.builder()
+                    .addStatement(
+                        "Metadata.acquireInterface(%L, %L)",
+                        acquisitionTarget,
+                        runtimeClassInterfaceIdCode(binding.ownerInterfaceName, plan),
                     )
                     .build(),
             )
@@ -3364,13 +3339,43 @@ class KotlinProjectionRenderer(
             body.add(acquireExpression, *acquireArgs)
             body.add("\n")
         }
-        return CodeBlock.builder()
-            .add("lazy(%T.PUBLICATION) {\n", LAZY_THREAD_SAFETY_MODE_CLASS_NAME)
-            .indent()
-            .add(body.build())
-            .unindent()
-            .add("}")
-            .build()
+        return body.build()
+    }
+
+    private fun TypeSpec.Builder.addObjectReferenceCacheProperty(
+        name: String,
+        type: TypeName,
+        createReference: CodeBlock,
+    ) {
+        val cacheName = "${name}Cache"
+        addProperty(
+            PropertySpec.builder(cacheName, WINRT_OBJECT_REFERENCE_CACHE_CLASS_NAME.parameterizedBy(type))
+                .addModifiers(KModifier.PRIVATE)
+                .initializer(
+                    CodeBlock.builder()
+                        .add("%T(\n", WINRT_OBJECT_REFERENCE_CACHE_CLASS_NAME)
+                        .indent()
+                        .add("createReference = {\n")
+                        .indent()
+                        .add(createReference)
+                        .unindent()
+                        .add("},\n")
+                        .unindent()
+                        .add(")")
+                        .build(),
+                )
+                .build(),
+        )
+        addProperty(
+            PropertySpec.builder(name, type)
+                .addModifiers(KModifier.PRIVATE)
+                .getter(
+                    FunSpec.getterBuilder()
+                        .addStatement("return %L.value", cacheName)
+                        .build(),
+                )
+                .build(),
+        )
     }
 
     private fun runtimeClassInterfaceIdCode(

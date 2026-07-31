@@ -44,6 +44,7 @@ import io.github.composefluent.winrt.runtime.ComMethodSignature
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComWrappersSupport
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
+import io.github.composefluent.winrt.runtime.WinRTObjectReferenceCache
 import io.github.composefluent.winrt.runtime.DerivedComposed
 import io.github.composefluent.winrt.runtime.ExceptionHelpers
 import io.github.composefluent.winrt.runtime.EventSource
@@ -158,6 +159,7 @@ internal val COM_METHOD_SIGNATURE_CLASS_NAME = ComMethodSignature::class.asClass
 internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
 internal val COM_WRAPPERS_SUPPORT_CLASS_NAME = ComWrappersSupport::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
+internal val WINRT_OBJECT_REFERENCE_CACHE_CLASS_NAME = WinRTObjectReferenceCache::class.asClassName()
 internal val DERIVED_COMPOSED_CLASS_NAME = DerivedComposed::class.asClassName()
 internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRTCcwDefinition::class.asClassName()
 internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRTInspectableInterfaceDefinition::class.asClassName()
