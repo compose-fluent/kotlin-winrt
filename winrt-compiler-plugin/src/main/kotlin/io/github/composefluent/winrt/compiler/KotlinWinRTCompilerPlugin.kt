@@ -3071,11 +3071,7 @@ class KotlinWinRTIrGenerationExtension(
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 val handle = irTemporary(
-                    value = if (abiShape == null) {
-                        symbols.downcallHandle(builder, argumentKinds)
-                    } else {
-                        symbols.downcallHandle(builder, abiShape)
-                    },
+                    value = symbols.downcallHandle(builder, argumentKinds, abiShape),
                     nameHint = "handle",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -3255,25 +3251,28 @@ class KotlinWinRTIrGenerationExtension(
             return values.takeIf { it.size == expectedCount }
         }
 
-        private enum class UnitCallAbiArgumentKind {
-            RawAddress,
-            RawComPtr,
-            Byte,
-            Int16,
-            Int32,
-            UInt32,
-            Int64,
-            UInt64,
-            Float,
-            Double,
-            Boolean,
-            String,
-            Struct1,
-            Struct2,
-            Struct4,
-            Struct8,
-            StructPointer,
-            Object,
+        private enum class UnitCallAbiArgumentKind(
+            val jvmFfmAbiToken: String,
+            val jvmFfmCarrierName: String?,
+        ) {
+            RawAddress("RawAddress", "Address"),
+            RawComPtr("RawComPtr", "Address"),
+            Byte("Byte", "Int8"),
+            Int16("Int16", "Int16"),
+            Int32("Int32", "Int32"),
+            UInt32("UInt32", "Int32"),
+            Int64("Int64", "Int64"),
+            UInt64("UInt64", "Int64"),
+            Float("Float", "Float"),
+            Double("Double", "Double"),
+            Boolean("Boolean", "Int8"),
+            String("String", "Address"),
+            Struct1("Struct", null),
+            Struct2("Struct", null),
+            Struct4("Struct", null),
+            Struct8("Struct", null),
+            StructPointer("Struct", null),
+            Object("Object", "Address"),
         }
 
         private val UnitCallAbiArgumentKind.isStruct: Boolean
@@ -3763,6 +3762,7 @@ class KotlinWinRTIrGenerationExtension(
             private val rawAddressValueGetter: IrSimpleFunctionSymbol,
             private val winRTJvmFfmDowncallHandles: IrClassSymbol,
             private val winRTJvmFfmDowncallHandlesHResult: IrSimpleFunctionSymbol,
+            private val winRTJvmFfmFixedHResultHandles: Map<String, JvmStaticHandleValue>,
         ) {
             fun segmentFromRawComPtr(
                 builder: DeclarationIrBuilder,
@@ -3791,44 +3791,34 @@ class KotlinWinRTIrGenerationExtension(
                 }
 
             private fun List<UnitCallAbiArgumentKind>.jvmFfmAbiShape(): String =
-                joinToString(",") { kind -> kind.jvmFfmAbiToken() }
+                joinToString(",") { kind -> kind.jvmFfmAbiToken }
 
-            private fun UnitCallAbiArgumentKind.jvmFfmAbiToken(): String =
-                when (this) {
-                    UnitCallAbiArgumentKind.RawAddress -> "RawAddress"
-                    UnitCallAbiArgumentKind.RawComPtr -> "RawComPtr"
-                    UnitCallAbiArgumentKind.Byte -> "Byte"
-                    UnitCallAbiArgumentKind.Int16 -> "Int16"
-                    UnitCallAbiArgumentKind.Int32 -> "Int32"
-                    UnitCallAbiArgumentKind.UInt32 -> "UInt32"
-                    UnitCallAbiArgumentKind.Int64 -> "Int64"
-                    UnitCallAbiArgumentKind.UInt64 -> "UInt64"
-                    UnitCallAbiArgumentKind.Float -> "Float"
-                    UnitCallAbiArgumentKind.Double -> "Double"
-                    UnitCallAbiArgumentKind.Boolean -> "Boolean"
-                    UnitCallAbiArgumentKind.String -> "String"
-                    UnitCallAbiArgumentKind.Struct1,
-                    UnitCallAbiArgumentKind.Struct2,
-                    UnitCallAbiArgumentKind.Struct4,
-                    UnitCallAbiArgumentKind.Struct8,
-                    UnitCallAbiArgumentKind.StructPointer -> "Struct"
-                    UnitCallAbiArgumentKind.Object -> "Object"
+            private fun List<UnitCallAbiArgumentKind>.jvmFfmFixedHResultHandleName(): String? {
+                if (isEmpty()) {
+                    return "hResultNoArgs"
                 }
+                val name = StringBuilder("hResult")
+                for (kind in this) {
+                    name.append(kind.jvmFfmCarrierName ?: return null)
+                }
+                return name.toString()
+            }
 
             fun downcallHandle(
                 builder: DeclarationIrBuilder,
                 argumentKinds: List<UnitCallAbiArgumentKind>,
-            ): IrExpression =
-                downcallHandle(builder, argumentKinds.jvmFfmAbiShape())
-
-            fun downcallHandle(
-                builder: DeclarationIrBuilder,
-                abiShape: String,
-            ): IrExpression =
-                builder.irCall(winRTJvmFfmDowncallHandlesHResult).apply {
-                    arguments[0] = builder.irGetObject(winRTJvmFfmDowncallHandles)
-                    arguments[1] = builder.irString(abiShape)
+                abiShape: String? = null,
+            ): IrExpression {
+                val fixedHandle = argumentKinds.jvmFfmFixedHResultHandleName()
+                    ?.let(winRTJvmFfmFixedHResultHandles::get)
+                if (fixedHandle != null) {
+                    return fixedHandle.get(builder)
                 }
+                return builder.irCall(winRTJvmFfmDowncallHandlesHResult).apply {
+                    arguments[0] = builder.irGetObject(winRTJvmFfmDowncallHandles)
+                    arguments[1] = builder.irString(abiShape ?: argumentKinds.jvmFfmAbiShape())
+                }
+            }
 
             fun canLower(argumentKinds: List<UnitCallAbiArgumentKind>): Boolean =
                 argumentKinds.all { kind ->
@@ -3939,6 +3929,18 @@ class KotlinWinRTIrGenerationExtension(
                         ?: builder.irCall(requireNotNull(getter))
             }
 
+            private class JvmStaticHandleValue(
+                private val owner: IrClassSymbol,
+                private val field: IrField?,
+                private val getter: IrSimpleFunctionSymbol?,
+            ) {
+                fun get(builder: DeclarationIrBuilder): IrExpression =
+                    field?.let { builder.irGetField(null, it) }
+                        ?: builder.irCall(requireNotNull(getter)).apply {
+                            dispatchReceiver = builder.irGetObject(owner)
+                        }
+            }
+
             companion object {
                 fun create(
                     pluginContext: IrPluginContext,
@@ -3955,6 +3957,30 @@ class KotlinWinRTIrGenerationExtension(
                         pluginContext.findClassSymbol(WINRT_JVM_FFM_DOWNCALL_HANDLES_CLASS_ID, fromFile) ?: return missing()
                     val winRTJvmFfmDowncallHandlesHResult =
                         winRTJvmFfmDowncallHandles.functionNamed("hResult") ?: return missing()
+                    val winRTJvmFfmFixedHResultHandles =
+                        buildMap {
+                            winRTJvmFfmDowncallHandles.owner.declarations
+                                .filterIsInstance<IrField>()
+                                .forEach { field ->
+                                    put(
+                                        field.name.asString(),
+                                        JvmStaticHandleValue(winRTJvmFfmDowncallHandles, field, null),
+                                    )
+                                }
+                            winRTJvmFfmDowncallHandles.owner.declarations
+                                .filterIsInstance<IrProperty>()
+                                .forEach { property ->
+                                    val field = property.backingField
+                                        ?: winRTJvmFfmDowncallHandles.fieldNamed(property.name.asString())
+                                    val getter = property.getter?.symbol
+                                    if (field != null || getter != null) {
+                                        put(
+                                            property.name.asString(),
+                                            JvmStaticHandleValue(winRTJvmFfmDowncallHandles, field, getter),
+                                        )
+                                    }
+                                }
+                        }
                     val uint = pluginContext.findClassSymbol(KOTLIN_UINT_CLASS_ID, fromFile)
                     val ulong = pluginContext.findClassSymbol(KOTLIN_ULONG_CLASS_ID, fromFile)
                     fun staticLayoutValue(classId: ClassId, owner: IrClassSymbol, name: String): JvmStaticLayoutValue? {
@@ -4007,6 +4033,7 @@ class KotlinWinRTIrGenerationExtension(
                         rawAddressValueGetter = rawAddressValueGetter,
                         winRTJvmFfmDowncallHandles = winRTJvmFfmDowncallHandles,
                         winRTJvmFfmDowncallHandlesHResult = winRTJvmFfmDowncallHandlesHResult,
+                        winRTJvmFfmFixedHResultHandles = winRTJvmFfmFixedHResultHandles,
                     )
                 }
             }

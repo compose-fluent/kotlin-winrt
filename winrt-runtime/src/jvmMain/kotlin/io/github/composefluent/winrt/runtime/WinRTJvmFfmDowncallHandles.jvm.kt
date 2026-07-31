@@ -10,11 +10,89 @@ import java.lang.invoke.MethodHandle
  * JVM ABI primitive used by compiler-plugin IR lowering.
  *
  * The plugin still owns vtable lookup, carrier conversion, HRESULT handling, and result readback.
- * This cache only owns the stable descriptor-shaped unbound FFM downcall handle.
+ * This object owns the stable unbound FFM handles shared by compiler-expanded calls and the runtime
+ * vtable invoker. Layout-dependent shapes retain the descriptor cache fallback.
  */
 object WinRTJvmFfmDowncallHandles {
-    private val linker: Linker by lazy { Linker.nativeLinker() }
+    private val linker = Linker.nativeLinker()
     private val hResultHandles = ConcurrentCacheMap<String, MethodHandle>()
+
+    @JvmField
+    val hResultNoArgs: MethodHandle = createHResultHandle()
+
+    @JvmField
+    val hResultAddress: MethodHandle = createHResultHandle(ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultInt32: MethodHandle = createHResultHandle(ValueLayout.JAVA_INT)
+
+    @JvmField
+    val hResultInt64: MethodHandle = createHResultHandle(ValueLayout.JAVA_LONG)
+
+    @JvmField
+    val hResultAddressAddress: MethodHandle = createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultInt32Address: MethodHandle = createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultInt32Int32: MethodHandle = createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
+
+    @JvmField
+    val hResultAddressAddressAddress: MethodHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultInt32AddressAddress: MethodHandle =
+        createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultAddressInt32Address: MethodHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultInt32Int32AddressAddress: MethodHandle =
+        createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultAddressAddressAddressAddress: MethodHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultAddressAddressInt32Address: MethodHandle =
+        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
+
+    @JvmField
+    val hResultAddressAddressAddressInt32Address: MethodHandle =
+        createHResultHandle(
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+        )
+
+    @JvmField
+    val hResultAddressAddressInt32AddressInt32Address: MethodHandle =
+        createHResultHandle(
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+        )
+
+    @JvmField
+    val hResultAddressAddressAddressInt32AddressInt32: MethodHandle =
+        createHResultHandle(
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+        )
 
     fun hResult(abiShape: String): MethodHandle =
         hResultHandles.computeIfAbsent(abiShape) { shape ->
@@ -22,6 +100,11 @@ object WinRTJvmFfmDowncallHandles {
         }
 
     internal fun cachedHResultHandleCount(): Int = hResultHandles.size
+
+    private fun createHResultHandle(vararg explicitParameterLayouts: MemoryLayout): MethodHandle =
+        linker.downcallHandle(
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, *explicitParameterLayouts),
+        )
 
     private fun hResultDescriptor(abiShape: String): FunctionDescriptor {
         val argumentLayouts = if (abiShape.isBlank()) {

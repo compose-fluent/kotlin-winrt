@@ -11382,6 +11382,12 @@ class KotlinWinRTPluginTest {
                         fun stringScalar(reference: ComObjectReference): String =
                             WinRTProjectionIntrinsic.callScalar(reference, 13, "String", "")
 
+                        fun scalarWithUInt32(reference: ComObjectReference, value: UInt): Double =
+                            WinRTProjectionIntrinsic.callScalar(reference, 14, "Double", "UInt32", value)
+
+                        fun stringWithString(reference: ComObjectReference, value: String): String =
+                            WinRTProjectionIntrinsic.callScalar(reference, 15, "String", "String", value)
+
                         fun booleanWithStruct(reference: ComObjectReference, value: Point): Boolean =
                             WinRTProjectionIntrinsic.callBoolean(reference, 9, "Struct8_4", value, Point.Metadata)
 
@@ -11418,6 +11424,12 @@ class KotlinWinRTPluginTest {
                     }
                     if (!contents.contains("WinRTJvmFfmDowncallHandles")) {
                         throw new GradleException("KMP JVM class did not lower projection intrinsic to JVM FFM")
+                    }
+                    if (!contents.contains("hResultInt32Address")) {
+                        throw new GradleException("KMP JVM UInt32,Object intrinsic did not use the shared fixed FFM handle")
+                    }
+                    if (!contents.contains("hResultAddressAddress")) {
+                        throw new GradleException("KMP JVM String,Object intrinsic did not use the shared fixed FFM handle")
                     }
                     if (!contents.contains("acquireNativeScalarScratchFrame")) {
                         throw new GradleException("KMP JVM scalar intrinsic did not acquire the reusable result frame")

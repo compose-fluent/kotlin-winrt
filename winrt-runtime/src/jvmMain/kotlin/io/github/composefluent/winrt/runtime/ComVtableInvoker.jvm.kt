@@ -22,51 +22,24 @@ actual object ComVtableInvoker {
     private val nextCallbackId = AtomicLong(1)
     private val pointerHandle =
         linker.downcallHandle(FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS))
-    private val hResultHandle = createHResultHandle()
-    private val hResultPtrHandle = createHResultHandle(ValueLayout.ADDRESS)
-    private val hResultInt32Handle = createHResultHandle(ValueLayout.JAVA_INT)
-    private val hResultInt64Handle = createHResultHandle(ValueLayout.JAVA_LONG)
-    private val hResultPtrPtrHandle = createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultInt32PtrHandle = createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
-    private val hResultInt32Int32Handle = createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
-    private val hResultPtrPtrPtrHandle =
-        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultInt32PtrPtrHandle =
-        createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultPtrInt32PtrHandle =
-        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
-    private val hResultInt32Int32PtrPtrHandle =
-        createHResultHandle(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultPtrPtrPtrPtrHandle =
-        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultPtrPtrInt32PtrHandle =
-        createHResultHandle(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
-    private val hResultPtrPtrPtrInt32PtrHandle =
-        createHResultHandle(
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-        )
+    private val hResultHandle = WinRTJvmFfmDowncallHandles.hResultNoArgs
+    private val hResultPtrHandle = WinRTJvmFfmDowncallHandles.hResultAddress
+    private val hResultInt32Handle = WinRTJvmFfmDowncallHandles.hResultInt32
+    private val hResultInt64Handle = WinRTJvmFfmDowncallHandles.hResultInt64
+    private val hResultPtrPtrHandle = WinRTJvmFfmDowncallHandles.hResultAddressAddress
+    private val hResultInt32PtrHandle = WinRTJvmFfmDowncallHandles.hResultInt32Address
+    private val hResultInt32Int32Handle = WinRTJvmFfmDowncallHandles.hResultInt32Int32
+    private val hResultPtrPtrPtrHandle = WinRTJvmFfmDowncallHandles.hResultAddressAddressAddress
+    private val hResultInt32PtrPtrHandle = WinRTJvmFfmDowncallHandles.hResultInt32AddressAddress
+    private val hResultPtrInt32PtrHandle = WinRTJvmFfmDowncallHandles.hResultAddressInt32Address
+    private val hResultInt32Int32PtrPtrHandle = WinRTJvmFfmDowncallHandles.hResultInt32Int32AddressAddress
+    private val hResultPtrPtrPtrPtrHandle = WinRTJvmFfmDowncallHandles.hResultAddressAddressAddressAddress
+    private val hResultPtrPtrInt32PtrHandle = WinRTJvmFfmDowncallHandles.hResultAddressAddressInt32Address
+    private val hResultPtrPtrPtrInt32PtrHandle = WinRTJvmFfmDowncallHandles.hResultAddressAddressAddressInt32Address
     private val hResultPtrPtrInt32PtrInt32PtrHandle =
-        createHResultHandle(
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-        )
+        WinRTJvmFfmDowncallHandles.hResultAddressAddressInt32AddressInt32Address
     private val hResultPtrPtrPtrInt32PtrInt32Handle =
-        createHResultHandle(
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_INT,
-        )
+        WinRTJvmFfmDowncallHandles.hResultAddressAddressAddressInt32AddressInt32
 
     actual fun invokePointer(
         instance: RawComPtr,
@@ -602,11 +575,6 @@ actual object ComVtableInvoker {
             onClose = { callbackEntries.remove(callbackId) },
         )
     }
-
-    private fun createHResultHandle(vararg explicitParameterLayouts: MemoryLayout): MethodHandle =
-        linker.downcallHandle(
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, *explicitParameterLayouts),
-        )
 
     private fun nextCallbackId(): Long {
         while (true) {
