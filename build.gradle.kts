@@ -101,6 +101,8 @@ val projectReviewPublicationModules = listOf(
     ":winrt-runtime",
     ":winrt-metadata",
     ":winrt-authoring",
+    ":winrt-compiler-plugin:callsite-contract",
+    ":winrt-compiler-plugin:callsite-lowering",
     ":winrt-compiler-plugin",
     *prebuiltProjectionModules.toTypedArray(),
 )

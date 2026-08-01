@@ -12,3 +12,5 @@ dependencyResolutionManagement {
         }
     }
 }
+
+include(":callsite-contract", ":callsite-lowering")

@@ -30,6 +30,57 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         val apiConfiguration = project.configurations.named(COMMON_MAIN_API_CONFIGURATION)
         val publishedArtifactName = project.extensions.getByType(BasePluginExtension::class.java).archivesName
 
+        val verifyJvmCallSiteLowering = project.tasks.register(
+            JVM_CALL_SITE_VERIFICATION_TASK_NAME,
+            VerifyBinaryMarkerAbsentTask::class.java,
+            Action<VerifyBinaryMarkerAbsentTask> {
+                group = "verification"
+                description = "Verifies that no generated WinRT call-site placeholder reaches JVM bytecode."
+                dependsOn("compileKotlinJvm")
+                binaryArtifacts.from(project.layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+                markers.set(setOf(MODULE_CALL_SITE_PLACEHOLDER))
+                artifactDescription.set("compiled JVM projection classes")
+            },
+        )
+        val verifyMingwX64CallSiteLowering = project.tasks.register(
+            MINGW_CALL_SITE_VERIFICATION_TASK_NAME,
+            VerifyBinaryMarkerAbsentTask::class.java,
+            Action<VerifyBinaryMarkerAbsentTask> {
+                group = "verification"
+                description = "Verifies that no generated WinRT call-site placeholder reaches the mingwX64 klib."
+                dependsOn("compileKotlinMingwX64")
+                binaryArtifacts.from(project.layout.buildDirectory.dir("classes/kotlin/mingwX64/main/klib"))
+                markers.set(setOf(MODULE_CALL_SITE_PLACEHOLDER))
+                artifactDescription.set("compiled mingwX64 projection klib")
+            },
+        )
+        val verifyJvmDirectCallSiteLowering = project.tasks.register(
+            JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME,
+            VerifyBinaryMarkerAbsentTask::class.java,
+            Action<VerifyBinaryMarkerAbsentTask> {
+                group = "verification"
+                description = "Verifies that generated JVM call-site owners contain only direct fixed-shape lowering."
+                dependsOn("compileKotlinJvm")
+                binaryArtifacts.from(
+                    project.layout.buildDirectory.dir("classes/kotlin/jvm/main").map { classesDirectory ->
+                        classesDirectory.asFileTree.matching {
+                            include("io/github/composefluent/winrt/projections/support/WinRTModulePlatformAbiCall_*.class")
+                        }
+                    },
+                )
+                markers.set(DIRECT_CALL_SITE_FORBIDDEN_MARKERS)
+                artifactDescription.set("compiled JVM module call-site owners")
+            },
+        )
+        project.tasks.matching { task -> task.name == "jvmJar" }.configureEach(
+            Action<Task> { dependsOn(verifyJvmCallSiteLowering, verifyJvmDirectCallSiteLowering) },
+        )
+        project.tasks.matching { task ->
+            task.name == "mingwX64MainKlibrary" || task.name == "mingwX64Klib"
+        }.configureEach(
+            Action<Task> { dependsOn(verifyMingwX64CallSiteLowering) },
+        )
+
         compileOnlyConfiguration.configure(Action<Configuration> {
             dependencies.withType(ProjectDependency::class.java).all(Action<ProjectDependency> {
                 val dependency = this
@@ -53,6 +104,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             group = "verification"
             description = "Audits generated prebuilt projection output and direct projection-reference class ownership."
             dependsOn("generateWinRTProjections", "compileKotlinJvm")
+            dependsOn(verifyJvmCallSiteLowering, verifyJvmDirectCallSiteLowering, verifyMingwX64CallSiteLowering)
             generatedSourcesDirectory.set(
                 project.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin"),
             )
@@ -184,5 +236,16 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         const val OUTPUT_AUDIT_TASK_NAME = "auditGeneratedWinRTProjectionOutput"
         const val PUBLICATION_VALIDATION_TASK_NAME = "validatePrebuiltProjectionPublication"
         const val PREBUILT_MAX_TOTAL_CLASS_BYTES = 150_000_000L
+        const val JVM_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteLowering"
+        const val JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteDirectLowering"
+        const val MINGW_CALL_SITE_VERIFICATION_TASK_NAME = "verifyMingwX64ProjectionCallSiteLowering"
+        const val MODULE_CALL_SITE_PLACEHOLDER = "Lowered while compiling the generated WinRT module"
+        val DIRECT_CALL_SITE_FORBIDDEN_MARKERS = setOf(
+            "confinedScope",
+            "allocateBytes",
+            "getLayout",
+            "WinRTProjectionIntrinsic",
+            "kotlin/TODO",
+        )
     }
 }

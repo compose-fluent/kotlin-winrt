@@ -1717,6 +1717,16 @@ private fun kotlinWinRTLocalOrPluginUnderTestDependency(
 
 private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List<Any> {
     val runtimeDependencies = mutableListOf<Any>()
+    runtimeDependencies += kotlinWinRTCompilerPluginSupportDependency(
+        project = project,
+        projectPath = ":winrt-compiler-plugin:callsite-contract",
+        moduleName = "callsite-contract",
+    )
+    runtimeDependencies += kotlinWinRTCompilerPluginSupportDependency(
+        project = project,
+        projectPath = ":winrt-compiler-plugin:callsite-lowering",
+        moduleName = "callsite-lowering",
+    )
     runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
     val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
@@ -1730,6 +1740,17 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
         ?: "io.github.compose-fluent:winrt-metadata:${kotlinWinRTPluginVersion()}"
     return runtimeDependencies
 }
+
+private fun kotlinWinRTCompilerPluginSupportDependency(
+    project: Project,
+    projectPath: String,
+    moduleName: String,
+): Any =
+    kotlinWinRTLocalOrPluginUnderTestDependency(
+        project = project,
+        projectPath = projectPath,
+        moduleName = moduleName,
+    ) ?: "io.github.compose-fluent:$moduleName:${kotlinWinRTPluginVersion()}"
 
 private fun kotlinWinRTLocalGeneratorWorkerClasspath(project: Project): List<File>? {
     val files = listOf(

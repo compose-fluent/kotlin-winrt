@@ -58,71 +58,33 @@ object WinRTProjectionIntrinsic {
     ): Any? =
         intrinsicNotLowered("callObject", reference, slot, abiShape, *arguments)
 
-    fun getString(reference: ComObjectReference, slot: Int): String {
-        val frame = acquireNativeScalarScratchFrame(clear = false)
-        try {
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getString")
-            return frame.consumeOwnedHString()
-        } finally {
-            frame.close()
-        }
-    }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|STRING_OUT|STRING~OWNED~0~0~0|-")
+    fun getString(reference: ComObjectReference, slot: Int): String = TODO("Lowered while building winrt-runtime")
 
-    fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getBoolean")
-            BooleanMarshaller.fromAbi(frame.readInt8())
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|BOOLEAN~NONE~0~0~0|-")
+    fun getBoolean(reference: ComObjectReference, slot: Int): Boolean = TODO("Lowered while building winrt-runtime")
 
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|IGNORE|SCALAR_OUT|BOOLEAN~NONE~0~0~0|-")
     fun getNoExceptionBoolean(reference: ComObjectReference, slot: Int): Boolean =
-        acquireNativeScalarScratchFrame().use { frame ->
-            ComVtableInvoker.invokeArgs(reference.pointer, slot, frame)
-            BooleanMarshaller.fromAbi(frame.readInt8())
-        }
+        TODO("Lowered while building winrt-runtime")
 
-    fun getInt32(reference: ComObjectReference, slot: Int): Int =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getInt32")
-            frame.readInt32()
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|INT32~NONE~0~0~0|-")
+    fun getInt32(reference: ComObjectReference, slot: Int): Int = TODO("Lowered while building winrt-runtime")
 
-    fun getUInt32(reference: ComObjectReference, slot: Int): UInt =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getUInt32")
-            frame.readInt32().toUInt()
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|UINT32~NONE~0~0~0|-")
+    fun getUInt32(reference: ComObjectReference, slot: Int): UInt = TODO("Lowered while building winrt-runtime")
 
-    fun getInt64(reference: ComObjectReference, slot: Int): Long =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getInt64")
-            frame.readInt64()
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|INT64~NONE~0~0~0|-")
+    fun getInt64(reference: ComObjectReference, slot: Int): Long = TODO("Lowered while building winrt-runtime")
 
-    fun getUInt64(reference: ComObjectReference, slot: Int): ULong =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getUInt64")
-            frame.readInt64().toULong()
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|UINT64~NONE~0~0~0|-")
+    fun getUInt64(reference: ComObjectReference, slot: Int): ULong = TODO("Lowered while building winrt-runtime")
 
-    fun getFloat(reference: ComObjectReference, slot: Int): Float =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getFloat")
-            frame.readFloat()
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|FLOAT~NONE~0~0~0|-")
+    fun getFloat(reference: ComObjectReference, slot: Int): Float = TODO("Lowered while building winrt-runtime")
 
-    fun getDouble(reference: ComObjectReference, slot: Int): Double =
-        acquireNativeScalarScratchFrame(clear = false).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
-                .requireSuccess("WinRT getDouble")
-            frame.readDouble()
-        }
+    @WinRTProjectionCallSite("v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|SCALAR_OUT|DOUBLE~NONE~0~0~0|-")
+    fun getDouble(reference: ComObjectReference, slot: Int): Double = TODO("Lowered while building winrt-runtime")
 
     fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
         intrinsicNotLowered("getStruct", reference, slot, adapter)
@@ -170,34 +132,43 @@ object WinRTProjectionIntrinsic {
     ): T? =
         intrinsicNotLowered("getNullableProjectedInterface", reference, slot, wrap)
 
+    @WinRTProjectionCallSite(
+        "v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|UNIT|VOID~NONE~0~0~0|" +
+            "ABI_ARGUMENT~STRING~BORROWED~0~0~0",
+    )
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
-        acquireInitializedNativeHStringReferenceFrame(value).use { frame ->
-            HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame.handle))
-                .requireSuccess("WinRT setString")
-        }
+        TODO("Lowered while building winrt-runtime")
 
     fun setBoolean(reference: ComObjectReference, slot: Int, value: Boolean): Unit =
         intrinsicNotLowered("setBoolean", reference, slot, value)
 
-    fun setInt32(reference: ComObjectReference, slot: Int, value: Int) {
-        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value))
-            .requireSuccess("WinRT setInt32")
-    }
+    @WinRTProjectionCallSite(
+        "v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|UNIT|VOID~NONE~0~0~0|" +
+            "ABI_ARGUMENT~INT32~NONE~0~0~0",
+    )
+    fun setInt32(reference: ComObjectReference, slot: Int, value: Int): Unit =
+        TODO("Lowered while building winrt-runtime")
 
-    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt) {
-        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value))
-            .requireSuccess("WinRT setUInt32")
-    }
+    @WinRTProjectionCallSite(
+        "v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|UNIT|VOID~NONE~0~0~0|" +
+            "ABI_ARGUMENT~UINT32~NONE~0~0~0",
+    )
+    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt): Unit =
+        TODO("Lowered while building winrt-runtime")
 
-    fun setInt64(reference: ComObjectReference, slot: Int, value: Long) {
-        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value))
-            .requireSuccess("WinRT setInt64")
-    }
+    @WinRTProjectionCallSite(
+        "v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|UNIT|VOID~NONE~0~0~0|" +
+            "ABI_ARGUMENT~INT64~NONE~0~0~0",
+    )
+    fun setInt64(reference: ComObjectReference, slot: Int, value: Long): Unit =
+        TODO("Lowered while building winrt-runtime")
 
-    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong) {
-        HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, value.toLong()))
-            .requireSuccess("WinRT setUInt64")
-    }
+    @WinRTProjectionCallSite(
+        "v1|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|UNIT|VOID~NONE~0~0~0|" +
+            "ABI_ARGUMENT~UINT64~NONE~0~0~0",
+    )
+    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong): Unit =
+        TODO("Lowered while building winrt-runtime")
 
     fun setFloat(reference: ComObjectReference, slot: Int, value: Float): Unit =
         intrinsicNotLowered("setFloat", reference, slot, value)

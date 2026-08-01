@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.projections.generator
 
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -9,8 +10,8 @@ import com.squareup.kotlinpoet.LambdaTypeName
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
-import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.asClassName
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteResultStrategy
 
 class KotlinModulePlatformAbiCallSupport(
     private val className: ClassName,
@@ -25,11 +26,11 @@ class KotlinModulePlatformAbiCallSupport(
         helperFunction: String,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.Simple(helperFunction)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -47,11 +48,11 @@ class KotlinModulePlatformAbiCallSupport(
         argumentExpression: CodeBlock,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.Simple(helperFunction)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -71,7 +72,7 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorUnit(shapes)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .apply {
@@ -80,7 +81,7 @@ class KotlinModulePlatformAbiCallSupport(
                     indent()
                 }
             }
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -104,12 +105,12 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorBoolean(shapes)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -130,12 +131,12 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorScalar(returnShape, shapes)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -151,14 +152,15 @@ class KotlinModulePlatformAbiCallSupport(
     internal fun structGetter(
         referenceExpression: String,
         slotExpression: CodeBlock,
+        struct: ModulePlatformAbiStruct,
         adapterExpression: CodeBlock,
     ): CodeBlock? {
-        val call = ModulePlatformAbiCall.StructGetter
-        if (!record(call)) return null
+        val call = ModulePlatformAbiCall.StructGetter(struct)
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -173,15 +175,16 @@ class KotlinModulePlatformAbiCallSupport(
     internal fun structSetter(
         referenceExpression: String,
         slotExpression: CodeBlock,
+        struct: ModulePlatformAbiStruct,
         valueExpression: CodeBlock,
         adapterExpression: CodeBlock,
     ): CodeBlock? {
-        val call = ModulePlatformAbiCall.StructSetter
-        if (!record(call)) return null
+        val call = ModulePlatformAbiCall.StructSetter(struct)
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -197,17 +200,18 @@ class KotlinModulePlatformAbiCallSupport(
     internal fun descriptorStruct(
         referenceExpression: String,
         slotExpression: CodeBlock,
+        resultStruct: ModulePlatformAbiStruct,
         adapterExpression: CodeBlock,
         arguments: List<DescriptorIntrinsicArgument>,
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
-        val call = ModulePlatformAbiCall.DescriptorStruct(shapes)
-        if (!record(call)) return null
+        val call = ModulePlatformAbiCall.DescriptorStruct(resultStruct, shapes)
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
             .indent()
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -229,12 +233,12 @@ class KotlinModulePlatformAbiCallSupport(
         wrapType: ClassName,
     ): CodeBlock? {
         val call = ModulePlatformAbiCall.ProjectedReferenceGetter(helperFunction)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .add("return (\n")
             .indent()
             .addProjectedReferenceWrapStart(helperFunction, wrapType)
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -256,13 +260,13 @@ class KotlinModulePlatformAbiCallSupport(
     ): CodeBlock? {
         val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
         val call = ModulePlatformAbiCall.DescriptorProjectedReference(helperFunction, shapes)
-        if (!record(call)) return null
+        val target = record(call) ?: return null
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return (\n")
             .indent()
             .addProjectedReferenceWrapStart(helperFunction, wrapType)
-            .add("%T.%L(\n", className, call.functionName)
+            .add("%T.%L(\n", target.className, target.functionName)
             .indent()
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
@@ -327,23 +331,36 @@ class KotlinModulePlatformAbiCallSupport(
 
     internal fun plannedCalls(minDescriptorCallOccurrences: Int = 2): Set<ModulePlatformAbiCall> =
         observedCallCounts
-            .filter { (call, count) -> !call.requiresFrequencyThreshold || count >= minDescriptorCallOccurrences }
+            .filter { (call, count) ->
+                KotlinRuntimeOwnedProjectionCallSites.declarationFor(call) == null &&
+                    (!call.requiresFrequencyThreshold || count >= minDescriptorCallOccurrences)
+            }
             .keys
             .toSet()
 
-    private fun record(call: ModulePlatformAbiCall): Boolean {
+    private fun record(call: ModulePlatformAbiCall): ModulePlatformAbiCallTarget? {
         observedCallCounts[call] = (observedCallCounts[call] ?: 0) + 1
+        KotlinRuntimeOwnedProjectionCallSites.declarationFor(call)?.let { declaration ->
+            return ModulePlatformAbiCallTarget(
+                className = ClassName.bestGuess(declaration.ownerFqName),
+                functionName = declaration.functionName,
+            )
+        }
         if (enabledCalls != null && call !in enabledCalls) {
-            return false
+            return null
         }
         calls += call
-        return true
+        return ModulePlatformAbiCallTarget(
+            className = className,
+            functionName = call.functionName,
+        )
     }
 
     private fun renderFunction(
         call: ModulePlatformAbiCall,
         kind: ModulePlatformAbiCallFileKind,
     ): FunSpec {
+        val callSiteDescriptor = call.moduleLocalCallSiteDescriptorOrNull()
         val builder = FunSpec.builder(call.functionName)
             .addModifiers(KModifier.INTERNAL)
             .apply {
@@ -351,11 +368,6 @@ class KotlinModulePlatformAbiCallSupport(
                     ModulePlatformAbiCallFileKind.Expect -> addModifiers(KModifier.EXPECT)
                     ModulePlatformAbiCallFileKind.ActualJvm -> addModifiers(KModifier.ACTUAL)
                     ModulePlatformAbiCallFileKind.Plain -> Unit
-                }
-            }
-            .apply {
-                if (call.hasTypeVariable) {
-                    addTypeVariable(TYPE_VARIABLE_T)
                 }
             }
             .addParameter("instance", COM_OBJECT_REFERENCE_CLASS_NAME)
@@ -370,10 +382,28 @@ class KotlinModulePlatformAbiCallSupport(
             }
             .returns(call.returnTypeName())
         if (kind != ModulePlatformAbiCallFileKind.Expect) {
-            builder.addCode("%L\n", call.body())
+            if (callSiteDescriptor != null) {
+                builder.addAnnotation(
+                    AnnotationSpec.builder(WINRT_PROJECTION_CALL_SITE_CLASS_NAME)
+                        .addMember("%S", callSiteDescriptor.encode())
+                        .build(),
+                )
+                builder.addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
+            } else {
+                builder.addCode("%L\n", call.body())
+            }
         }
         return builder.build()
     }
+
+    private fun ModulePlatformAbiCall.moduleLocalCallSiteDescriptorOrNull() =
+        canonicalCallSiteDescriptorOrNull()?.takeIf { descriptor ->
+            descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.UNIT ||
+                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.SCALAR_OUT ||
+                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.STRING_OUT ||
+                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.REFERENCE_OUT ||
+                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.STRUCT_OUT
+        }
 
     private fun ModulePlatformAbiCall.body(): CodeBlock =
         when (this) {
@@ -387,10 +417,10 @@ class KotlinModulePlatformAbiCallSupport(
             is ModulePlatformAbiCall.DescriptorUnit -> descriptorBody("callUnit", null)
             is ModulePlatformAbiCall.DescriptorBoolean -> descriptorBody("callBoolean", null)
             is ModulePlatformAbiCall.DescriptorScalar -> descriptorBody("callScalar", returnShape)
-            ModulePlatformAbiCall.StructGetter -> CodeBlock.builder()
+            is ModulePlatformAbiCall.StructGetter -> CodeBlock.builder()
                 .add("return %T.getStruct(instance, slot, adapter)", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
                 .build()
-            ModulePlatformAbiCall.StructSetter -> CodeBlock.builder()
+            is ModulePlatformAbiCall.StructSetter -> CodeBlock.builder()
                 .add("return %T.setStruct(instance, slot, value, adapter)", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
                 .build()
             is ModulePlatformAbiCall.DescriptorStruct -> CodeBlock.builder()
@@ -479,24 +509,11 @@ class KotlinModulePlatformAbiCallSupport(
             is ModulePlatformAbiCall.DescriptorUnit -> Unit::class.asClassName()
             is ModulePlatformAbiCall.DescriptorBoolean -> Boolean::class.asClassName()
             is ModulePlatformAbiCall.DescriptorScalar -> returnShape.typeName()
-            ModulePlatformAbiCall.StructGetter -> TYPE_VARIABLE_T
-            ModulePlatformAbiCall.StructSetter -> Unit::class.asClassName()
-            is ModulePlatformAbiCall.DescriptorStruct -> TYPE_VARIABLE_T
+            is ModulePlatformAbiCall.StructGetter -> struct.typeName
+            is ModulePlatformAbiCall.StructSetter -> Unit::class.asClassName()
+            is ModulePlatformAbiCall.DescriptorStruct -> resultStruct.typeName
             is ModulePlatformAbiCall.ProjectedReferenceGetter -> helperFunction.projectedReferenceReturnType()
             is ModulePlatformAbiCall.DescriptorProjectedReference -> helperFunction.projectedReferenceReturnType()
-        }
-
-    private val ModulePlatformAbiCall.hasTypeVariable: Boolean
-        get() = when (this) {
-            is ModulePlatformAbiCall.Simple,
-            is ModulePlatformAbiCall.DescriptorUnit,
-            is ModulePlatformAbiCall.DescriptorBoolean,
-            is ModulePlatformAbiCall.DescriptorScalar -> false
-            ModulePlatformAbiCall.StructGetter,
-            ModulePlatformAbiCall.StructSetter,
-            is ModulePlatformAbiCall.DescriptorStruct -> true
-            is ModulePlatformAbiCall.ProjectedReferenceGetter,
-            is ModulePlatformAbiCall.DescriptorProjectedReference -> false
         }
 
     private val ModulePlatformAbiCall.requiresFrequencyThreshold: Boolean
@@ -507,20 +524,22 @@ class KotlinModulePlatformAbiCallSupport(
             is ModulePlatformAbiCall.DescriptorStruct,
             is ModulePlatformAbiCall.DescriptorProjectedReference -> true
             is ModulePlatformAbiCall.Simple,
-            ModulePlatformAbiCall.StructGetter,
-            ModulePlatformAbiCall.StructSetter,
+            is ModulePlatformAbiCall.StructGetter,
+            is ModulePlatformAbiCall.StructSetter,
             is ModulePlatformAbiCall.ProjectedReferenceGetter -> false
         }
 
     private fun ModulePlatformAbiCall.extraLeadingParameters(): List<ModulePlatformAbiParameter> =
         when (this) {
-            ModulePlatformAbiCall.StructGetter,
-            is ModulePlatformAbiCall.DescriptorStruct -> listOf(
-                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(TYPE_VARIABLE_T)),
+            is ModulePlatformAbiCall.StructGetter -> listOf(
+                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(struct.typeName)),
             )
-            ModulePlatformAbiCall.StructSetter -> listOf(
-                ModulePlatformAbiParameter("value", TYPE_VARIABLE_T),
-                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(TYPE_VARIABLE_T)),
+            is ModulePlatformAbiCall.DescriptorStruct -> listOf(
+                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(resultStruct.typeName)),
+            )
+            is ModulePlatformAbiCall.StructSetter -> listOf(
+                ModulePlatformAbiParameter("value", struct.typeName),
+                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(struct.typeName)),
             )
             is ModulePlatformAbiCall.Simple,
             is ModulePlatformAbiCall.DescriptorUnit,
@@ -602,18 +621,22 @@ class KotlinModulePlatformAbiCallSupport(
             override val functionName: String = "callScalar_${returnShape}_${arguments.shapeSuffix()}"
         }
 
-        object StructGetter : ModulePlatformAbiCall() {
+        data class StructGetter(val struct: ModulePlatformAbiStruct) : ModulePlatformAbiCall() {
             override val arguments: List<String> = emptyList()
-            override val functionName: String = "getStruct"
+            override val functionName: String = "getStruct_${struct.functionSuffix}"
         }
 
-        object StructSetter : ModulePlatformAbiCall() {
+        data class StructSetter(val struct: ModulePlatformAbiStruct) : ModulePlatformAbiCall() {
             override val arguments: List<String> = emptyList()
-            override val functionName: String = "setStruct"
+            override val functionName: String = "setStruct_${struct.functionSuffix}"
         }
 
-        data class DescriptorStruct(override val arguments: List<String>) : ModulePlatformAbiCall() {
-            override val functionName: String = "callStruct_${arguments.shapeSuffix()}"
+        data class DescriptorStruct(
+            val resultStruct: ModulePlatformAbiStruct,
+            override val arguments: List<String>,
+        ) : ModulePlatformAbiCall() {
+            override val functionName: String =
+                "callStruct_${resultStruct.functionSuffix}_${arguments.shapeSuffix()}"
         }
 
         data class ProjectedReferenceGetter(val helperFunction: String) : ModulePlatformAbiCall() {
@@ -634,6 +657,25 @@ class KotlinModulePlatformAbiCallSupport(
         val type: TypeName,
     )
 
+    data class ModulePlatformAbiStruct(
+        val typeName: ClassName,
+        val sizeBytes: Int,
+        val alignmentBytes: Int,
+    ) {
+        init {
+            require(sizeBytes > 0) { "A module WinRT struct call requires a positive ABI size." }
+            require(alignmentBytes > 0) { "A module WinRT struct call requires a positive ABI alignment." }
+        }
+
+        internal val functionSuffix: String
+            get() = "${generatedLocalIdentifier("", typeName.canonicalName)}_${sizeBytes}_${alignmentBytes}"
+    }
+
+    private data class ModulePlatformAbiCallTarget(
+        val className: ClassName,
+        val functionName: String,
+    )
+
     private enum class ModulePlatformAbiCallFileKind {
         Plain,
         Expect,
@@ -641,7 +683,10 @@ class KotlinModulePlatformAbiCallSupport(
     }
 
     private companion object {
-        val TYPE_VARIABLE_T = TypeVariableName("T")
+        const val MODULE_CALL_SITE_PLACEHOLDER = "Lowered while compiling the generated WinRT module"
+
+        val WINRT_PROJECTION_CALL_SITE_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionCallSite")
 
         val fixedShapeTypes = setOf(
             "String",

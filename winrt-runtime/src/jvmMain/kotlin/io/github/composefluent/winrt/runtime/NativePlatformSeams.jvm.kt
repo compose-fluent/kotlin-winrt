@@ -119,6 +119,117 @@ internal actual fun acquireNativeScalarScratchFrame(clear: Boolean): NativeScala
     nativeScalarScratchFrames.get().acquire(clear)
 
 @PublishedApi
+internal actual class NativeStructScratchFrame internal constructor(
+    private val release: (NativeStructScratchFrame) -> Unit,
+) : AutoCloseable {
+    private var arena: Arena = Arena.ofAuto()
+
+    @PublishedApi
+    internal var segment: MemorySegment = MemorySegment.NULL
+        private set
+
+    private var capacityBytes: Long = 0L
+    private var alignmentBytes: Long = 0L
+    private var active: Boolean = false
+
+    actual val pointer: RawAddress
+        get() = segment.asRawAddress()
+
+    internal fun acquire(
+        sizeBytes: Long,
+        alignmentBytes: Long,
+        clear: Boolean,
+    ): NativeStructScratchFrame {
+        check(!active) { "Native struct scratch frame is already active." }
+        require(sizeBytes > 0L) { "Native struct scratch size must be positive." }
+        require(alignmentBytes > 0L) { "Native struct scratch alignment must be positive." }
+        if (capacityBytes < sizeBytes || this.alignmentBytes < alignmentBytes) {
+            arena = Arena.ofAuto()
+            segment = arena.allocate(sizeBytes, alignmentBytes)
+            capacityBytes = sizeBytes
+            this.alignmentBytes = alignmentBytes
+        } else if (clear) {
+            segment.asSlice(0L, sizeBytes).fill(0)
+        }
+        active = true
+        return this
+    }
+
+    actual fun <T> read(adapter: NativeStructAdapter<T>): T =
+        adapter.read(pointer)
+
+    actual fun <T> write(value: T, adapter: NativeStructAdapter<T>) {
+        adapter.write(value, pointer)
+    }
+
+    actual fun disposeAbi(adapter: NativeStructAdapter<*>) {
+        adapter.disposeAbi(pointer)
+    }
+
+    actual fun readInt8Carrier(): Byte = segment.get(ValueLayout.JAVA_BYTE, 0)
+
+    actual fun readInt16Carrier(): Short = segment.get(ValueLayout.JAVA_SHORT, 0)
+
+    actual fun readInt32Carrier(): Int = segment.get(ValueLayout.JAVA_INT, 0)
+
+    actual fun readInt64Carrier(): Long = segment.get(ValueLayout.JAVA_LONG, 0)
+
+    actual override fun close() {
+        if (active) {
+            release(this)
+            active = false
+        }
+    }
+}
+
+private class JvmNativeStructScratchFramePool {
+    private val primaryFrame = createFrame()
+    private val nestedFrames = mutableListOf<NativeStructScratchFrame>()
+    private var depth: Int = 0
+
+    fun acquire(
+        sizeBytes: Long,
+        alignmentBytes: Long,
+        clear: Boolean,
+    ): NativeStructScratchFrame {
+        val frame = if (depth == 0) {
+            primaryFrame
+        } else {
+            nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
+        }
+        frame.acquire(sizeBytes, alignmentBytes, clear)
+        depth += 1
+        return frame
+    }
+
+    private fun createFrame(): NativeStructScratchFrame =
+        NativeStructScratchFrame(release = ::release)
+
+    private fun createNestedFrame(): NativeStructScratchFrame =
+        createFrame().also(nestedFrames::add)
+
+    private fun release(frame: NativeStructScratchFrame) {
+        check(
+            depth > 0 &&
+                if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
+        ) {
+            "Native struct scratch frames must close in reverse acquisition order."
+        }
+        depth -= 1
+    }
+}
+
+private val nativeStructScratchFrames = ThreadLocal.withInitial(::JvmNativeStructScratchFramePool)
+
+@PublishedApi
+internal actual fun acquireNativeStructScratchFrame(
+    sizeBytes: Long,
+    alignmentBytes: Long,
+    clear: Boolean,
+): NativeStructScratchFrame =
+    nativeStructScratchFrames.get().acquire(sizeBytes, alignmentBytes, clear)
+
+@PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(
     private val release: (NativeHStringReferenceFrame) -> Unit,
 ) : AutoCloseable {

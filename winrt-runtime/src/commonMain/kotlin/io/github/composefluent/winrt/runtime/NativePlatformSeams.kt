@@ -31,6 +31,34 @@ internal expect class NativeScalarScratchFrame : AutoCloseable {
 internal expect fun acquireNativeScalarScratchFrame(clear: Boolean = true): NativeScalarScratchFrame
 
 @PublishedApi
+internal expect class NativeStructScratchFrame : AutoCloseable {
+    val pointer: RawAddress
+
+    fun <T> read(adapter: NativeStructAdapter<T>): T
+
+    fun <T> write(value: T, adapter: NativeStructAdapter<T>)
+
+    fun disposeAbi(adapter: NativeStructAdapter<*>)
+
+    fun readInt8Carrier(): Byte
+
+    fun readInt16Carrier(): Short
+
+    fun readInt32Carrier(): Int
+
+    fun readInt64Carrier(): Long
+
+    override fun close()
+}
+
+@PublishedApi
+internal expect fun acquireNativeStructScratchFrame(
+    sizeBytes: Long,
+    alignmentBytes: Long,
+    clear: Boolean = true,
+): NativeStructScratchFrame
+
+@PublishedApi
 internal expect class NativeHStringReferenceFrame : AutoCloseable {
     var handle: RawAddress
     val utf16Chars: RawAddress

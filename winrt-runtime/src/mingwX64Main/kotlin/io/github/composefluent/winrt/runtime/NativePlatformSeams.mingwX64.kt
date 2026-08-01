@@ -180,6 +180,121 @@ internal actual fun acquireNativeScalarScratchFrame(clear: Boolean): NativeScala
     NativeScalarScratchFrames.pool.acquire(clear)
 
 @PublishedApi
+internal actual class NativeStructScratchFrame internal constructor(
+    private val release: (NativeStructScratchFrame) -> Unit,
+) : AutoCloseable {
+    private var allocation: COpaquePointer? = null
+    private var capacityBytes: Long = 0L
+    private var active: Boolean = false
+
+    actual val pointer: RawAddress
+        get() = checkNotNull(allocation) { "Native struct scratch frame has no active allocation." }.asRawAddress()
+
+    internal fun acquire(
+        sizeBytes: Long,
+        alignmentBytes: Long,
+        clear: Boolean,
+    ): NativeStructScratchFrame {
+        check(!active) { "Native struct scratch frame is already active." }
+        require(sizeBytes > 0L) { "Native struct scratch size must be positive." }
+        require(alignmentBytes > 0L) { "Native struct scratch alignment must be positive." }
+        require(alignmentBytes <= 16L) {
+            "Native struct scratch alignment $alignmentBytes exceeds the Windows x64 heap alignment."
+        }
+        if (capacityBytes < sizeBytes) {
+            allocation?.let { pointer -> nativeHeap.free(pointer.rawValue) }
+            allocation = nativeHeap.allocArray<ByteVar>(sizeBytes.toInt()).reinterpret<COpaque>()
+            capacityBytes = sizeBytes
+        }
+        if (clear) {
+            memset(checkNotNull(allocation), 0, sizeBytes.toULong())
+        }
+        active = true
+        return this
+    }
+
+    actual fun <T> read(adapter: NativeStructAdapter<T>): T =
+        adapter.read(pointer)
+
+    actual fun <T> write(value: T, adapter: NativeStructAdapter<T>) {
+        adapter.write(value, pointer)
+    }
+
+    actual fun disposeAbi(adapter: NativeStructAdapter<*>) {
+        adapter.disposeAbi(pointer)
+    }
+
+    actual fun readInt8Carrier(): Byte =
+        checkNotNull(allocation).reinterpret<ByteVar>().pointed.value
+
+    actual fun readInt16Carrier(): Short =
+        checkNotNull(allocation).reinterpret<ShortVar>().pointed.value
+
+    actual fun readInt32Carrier(): Int =
+        checkNotNull(allocation).reinterpret<IntVar>().pointed.value
+
+    actual fun readInt64Carrier(): Long =
+        checkNotNull(allocation).reinterpret<LongVar>().pointed.value
+
+    actual override fun close() {
+        if (active) {
+            release(this)
+            active = false
+        }
+    }
+}
+
+private class MingwNativeStructScratchFramePool {
+    private val primaryFrame = createFrame()
+    private val nestedFrames = mutableListOf<NativeStructScratchFrame>()
+    private var depth: Int = 0
+
+    fun acquire(
+        sizeBytes: Long,
+        alignmentBytes: Long,
+        clear: Boolean,
+    ): NativeStructScratchFrame {
+        val frame = if (depth == 0) {
+            primaryFrame
+        } else {
+            nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
+        }
+        frame.acquire(sizeBytes, alignmentBytes, clear)
+        depth += 1
+        return frame
+    }
+
+    private fun createFrame(): NativeStructScratchFrame =
+        NativeStructScratchFrame(release = ::release)
+
+    private fun createNestedFrame(): NativeStructScratchFrame =
+        createFrame().also(nestedFrames::add)
+
+    private fun release(frame: NativeStructScratchFrame) {
+        check(
+            depth > 0 &&
+                if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
+        ) {
+            "Native struct scratch frames must close in reverse acquisition order."
+        }
+        depth -= 1
+    }
+}
+
+@ThreadLocal
+private object NativeStructScratchFrames {
+    val pool = MingwNativeStructScratchFramePool()
+}
+
+@PublishedApi
+internal actual fun acquireNativeStructScratchFrame(
+    sizeBytes: Long,
+    alignmentBytes: Long,
+    clear: Boolean,
+): NativeStructScratchFrame =
+    NativeStructScratchFrames.pool.acquire(sizeBytes, alignmentBytes, clear)
+
+@PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(
     private val release: (NativeHStringReferenceFrame) -> Unit,
 ) : AutoCloseable {

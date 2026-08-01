@@ -30,6 +30,8 @@ include(
     ":winrt-authoring:native-component-fixture",
     ":winrt-authoring:native-consumer-fixture",
     ":winrt-compiler-plugin",
+    ":winrt-compiler-plugin:callsite-contract",
+    ":winrt-compiler-plugin:callsite-lowering",
     ":winrt-projections",
     ":winrt-projections:windows-sdk",
     ":winrt-projections:windows-webview2",

@@ -12,6 +12,7 @@ description = "Kotlin source generator for WinRT and WinUI projection bindings"
 dependencies {
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
+    implementation(projects.winrtCompilerPlugin.callsiteContract)
     implementation(libs.kotlinpoet)
     testImplementation(libs.junit)
 }

@@ -52,30 +52,21 @@ actual object ComVtableInvoker {
         slot: Int,
         arg0: RawAddress,
     ): Int =
-        instance.vtableMethod<HResultPointer1>(slot).invoke(
-            instance.toOpaquePointer(),
-            arg0.toOpaquePointer(),
-        )
+        nativeInvokeHResultPointer1(instance, slot, arg0.toOpaquePointer())
 
     internal actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: NativeScalarScratchFrame,
     ): Int =
-        instance.vtableMethod<HResultPointer1>(slot).invoke(
-            instance.toOpaquePointer(),
-            arg0.storage.reinterpret<COpaque>(),
-        )
+        nativeInvokeHResultPointer1(instance, slot, arg0.storage.reinterpret<COpaque>())
 
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
         arg0: RawComPtr,
     ): Int =
-        instance.vtableMethod<HResultPointer1>(slot).invoke(
-            instance.toOpaquePointer(),
-            arg0.toOpaquePointer(),
-        )
+        nativeInvokeHResultPointer1(instance, slot, arg0.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -104,11 +95,7 @@ actual object ComVtableInvoker {
         arg0: RawAddress,
         arg1: RawAddress,
     ): Int =
-        instance.vtableMethod<HResultPointer2>(slot).invoke(
-            instance.toOpaquePointer(),
-            arg0.toOpaquePointer(),
-            arg1.toOpaquePointer(),
-        )
+        nativeInvokeHResultPointer2(instance, slot, arg0.toOpaquePointer(), arg1.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -116,11 +103,7 @@ actual object ComVtableInvoker {
         arg0: RawComPtr,
         arg1: RawAddress,
     ): Int =
-        instance.vtableMethod<HResultPointer2>(slot).invoke(
-            instance.toOpaquePointer(),
-            arg0.toOpaquePointer(),
-            arg1.toOpaquePointer(),
-        )
+        nativeInvokeHResultPointer2(instance, slot, arg0.toOpaquePointer(), arg1.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -145,7 +128,7 @@ actual object ComVtableInvoker {
         arg0: UInt,
         arg1: RawAddress,
     ): Int =
-        invokeHResultWords(instance, slot, arg0.toLong(), arg1.value)
+        nativeInvokeHResultUInt32Pointer2(instance, slot, arg0, arg1.toOpaquePointer())
 
     actual fun invokeArgs(
         instance: RawComPtr,
@@ -502,6 +485,65 @@ private class Win64ComCallbackTrampoline private constructor(
 }
 
 private const val maxCallbackWordCount = 7
+
+@PublishedApi
+internal inline fun nativeInvokeHResultPointer1(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+): Int {
+    val objectMemory = instance.value.toCPointer<COpaquePointerVar>()
+        ?: nativeNullComObjectPointer()
+    val vtable = objectMemory.pointed.value ?: nativeNullComVtable()
+    val function = vtable.reinterpret<COpaquePointerVar>()[slot]
+        ?.reinterpret<CFunction<(COpaquePointer?, COpaquePointer?) -> Int>>()
+        ?: nativeNullComVtableSlot(slot)
+    return function.invoke(objectMemory.reinterpret<COpaque>(), arg0)
+}
+
+@PublishedApi
+internal inline fun nativeInvokeHResultUInt32Pointer2(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: UInt,
+    arg1: COpaquePointer?,
+): Int {
+    val objectMemory = instance.value.toCPointer<COpaquePointerVar>()
+        ?: nativeNullComObjectPointer()
+    val vtable = objectMemory.pointed.value ?: nativeNullComVtable()
+    val function = vtable.reinterpret<COpaquePointerVar>()[slot]
+        ?.reinterpret<CFunction<(COpaquePointer?, UInt, COpaquePointer?) -> Int>>()
+        ?: nativeNullComVtableSlot(slot)
+    return function.invoke(objectMemory.reinterpret<COpaque>(), arg0, arg1)
+}
+
+@PublishedApi
+internal inline fun nativeInvokeHResultPointer2(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: COpaquePointer?,
+    arg1: COpaquePointer?,
+): Int {
+    val objectMemory = instance.value.toCPointer<COpaquePointerVar>()
+        ?: nativeNullComObjectPointer()
+    val vtable = objectMemory.pointed.value ?: nativeNullComVtable()
+    val function = vtable.reinterpret<COpaquePointerVar>()[slot]
+        ?.reinterpret<CFunction<(COpaquePointer?, COpaquePointer?, COpaquePointer?) -> Int>>()
+        ?: nativeNullComVtableSlot(slot)
+    return function.invoke(objectMemory.reinterpret<COpaque>(), arg0, arg1)
+}
+
+@PublishedApi
+internal fun nativeNullComObjectPointer(): Nothing =
+    error("Cannot call a null COM object pointer.")
+
+@PublishedApi
+internal fun nativeNullComVtable(): Nothing =
+    error("COM object has a null vtable.")
+
+@PublishedApi
+internal fun nativeNullComVtableSlot(slot: Int): Nothing =
+    error("COM vtable slot $slot is null.")
 
 private fun invokeNativeCallbackRaw(
     callbackId: Int,

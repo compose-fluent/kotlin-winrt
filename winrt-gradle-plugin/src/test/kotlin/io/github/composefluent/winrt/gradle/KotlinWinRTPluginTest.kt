@@ -3340,6 +3340,8 @@ class KotlinWinRTPluginTest {
         val targetConfiguration = project.configurations.create("kotlinCompilerPluginClasspathWinuiJvm")
 
         assertTrue(targetConfiguration.dependencies.isNotEmpty())
+        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "callsite-contract")
+        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "callsite-lowering")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-authoring")
     }
@@ -11399,6 +11401,11 @@ class KotlinWinRTPluginTest {
                             WinRTProjectionSupportIntrinsic.ensureInitialized()
                         }
                     }
+
+                    object RuntimeOwnedIntrinsicProbe {
+                        fun getInt32(reference: ComObjectReference): Int =
+                            WinRTProjectionIntrinsic.getInt32(reference, 16)
+                    }
                     ${"'''"}.stripIndent().trim()
                 }
             }
@@ -11456,6 +11463,15 @@ class KotlinWinRTPluginTest {
                         "(Ljava/lang/foreign/MemorySegment;Ljava/lang/foreign/MemorySegment;Ljava/lang/foreign/MemorySegment;)I",
                     )) {
                         throw new GradleException("KMP JVM class did not lower MethodHandle.invoke with expanded FFM carrier parameters")
+                    }
+                    def runtimeOwnedClassFile = new File(classRoot, "sample/RuntimeOwnedIntrinsicProbe.class")
+                    def runtimeOwnedContents = new String(runtimeOwnedClassFile.bytes, "ISO-8859-1")
+                    if (!runtimeOwnedContents.contains("WinRTProjectionIntrinsic")) {
+                        throw new GradleException("KMP JVM runtime-owned call was incorrectly expanded in the consumer")
+                    }
+                    if (runtimeOwnedContents.contains("WinRTJvmFfmDowncallHandles") ||
+                        runtimeOwnedContents.contains("acquireNativeScalarScratchFrame")) {
+                        throw new GradleException("KMP JVM runtime-owned call contains consumer-side intrinsic lowering")
                     }
                     def hasSupportFallback = false
                     classRoot.eachFileRecurse(groovy.io.FileType.FILES) {

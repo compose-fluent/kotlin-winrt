@@ -7,6 +7,8 @@ plugins {
 description = "Kotlin compiler plugin for WinRT and WinUI projection support"
 
 dependencies {
+    implementation(project.childProjects.getValue("callsite-contract"))
+    implementation(project.childProjects.getValue("callsite-lowering"))
     implementation(projects.winrtAuthoring)
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)

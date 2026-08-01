@@ -1583,6 +1583,7 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
         return null
     }
     val structType = nativeStructClassName(returnBinding) ?: return null
+    val moduleStruct = returnBinding.modulePlatformAbiStruct(structType)
     if (parameterBindings.isNotEmpty()) {
         val arguments = parameterBindings.map { parameter ->
             if (parameter.category != WinRTMetadataParameterCategory.In) {
@@ -1590,12 +1591,15 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
             }
             descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
         }
-        modulePlatformAbiCalls?.descriptorStruct(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            adapterExpression = CodeBlock.of("%T.Metadata", structType),
-            arguments = arguments,
-        )?.let { return it }
+        moduleStruct?.let { struct ->
+            modulePlatformAbiCalls?.descriptorStruct(
+                referenceExpression = referenceExpression,
+                slotExpression = slotExpression,
+                resultStruct = struct,
+                adapterExpression = CodeBlock.of("%T.Metadata", structType),
+                arguments = arguments,
+            )?.let { return it }
+        }
         return CodeBlock.builder()
             .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -1610,11 +1614,14 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
             .closeDescriptorIntrinsicArgumentScopes(arguments)
             .build()
     }
-    modulePlatformAbiCalls?.structGetter(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        adapterExpression = CodeBlock.of("%T.Metadata", structType),
-    )?.let { return it }
+    moduleStruct?.let { struct ->
+        modulePlatformAbiCalls?.structGetter(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            struct = struct,
+            adapterExpression = CodeBlock.of("%T.Metadata", structType),
+        )?.let { return it }
+    }
     return CodeBlock.builder()
         .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
@@ -1766,6 +1773,7 @@ internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInv
         return null
     }
     val structType = nativeStructClassName(parameter.typeBinding) ?: return null
+    val moduleStruct = parameter.typeBinding.modulePlatformAbiStruct(structType)
     val valueParameter = parameter.copy(name = argumentExpression ?: parameter.name)
     val descriptorArgument = descriptorIntrinsicArgument(valueParameter, includeStruct = true)
     if (descriptorArgument != null) {
@@ -1789,12 +1797,15 @@ internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInv
             .closeDescriptorIntrinsicArgumentScopes(arguments)
             .build()
     }
-    modulePlatformAbiCalls?.structSetter(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        valueExpression = CodeBlock.of("%L", argumentExpression ?: parameter.name),
-        adapterExpression = CodeBlock.of("%T.Metadata", structType),
-    )?.let { return it }
+    moduleStruct?.let { struct ->
+        modulePlatformAbiCalls?.structSetter(
+            referenceExpression = referenceExpression,
+            slotExpression = slotExpression,
+            struct = struct,
+            valueExpression = CodeBlock.of("%L", argumentExpression ?: parameter.name),
+            adapterExpression = CodeBlock.of("%T.Metadata", structType),
+        )?.let { return it }
+    }
     return CodeBlock.builder()
         .add("return %T.setStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
@@ -1805,6 +1816,18 @@ internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInv
         .unindent()
         .add(")\n")
         .build()
+}
+
+private fun KotlinProjectionAbiTypeBinding.modulePlatformAbiStruct(
+    typeName: ClassName,
+): KotlinModulePlatformAbiCallSupport.ModulePlatformAbiStruct? {
+    val sizeBytes = abiSize?.takeIf { size -> size > 0 } ?: return null
+    val alignmentBytes = abiAlignment?.takeIf { alignment -> alignment > 0 } ?: return null
+    return KotlinModulePlatformAbiCallSupport.ModulePlatformAbiStruct(
+        typeName = typeName,
+        sizeBytes = sizeBytes,
+        alignmentBytes = alignmentBytes,
+    )
 }
 
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(

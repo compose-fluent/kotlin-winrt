@@ -27,6 +27,8 @@ include(
     ":winrt-authoring",
     ":winrt-generator",
     ":winrt-compiler-plugin",
+    ":winrt-compiler-plugin:callsite-contract",
+    ":winrt-compiler-plugin:callsite-lowering",
 )
 
 project(":winrt-runtime").projectDir = file("../winrt-runtime")
@@ -34,3 +36,5 @@ project(":winrt-metadata").projectDir = file("../winrt-metadata")
 project(":winrt-authoring").projectDir = file("../winrt-authoring")
 project(":winrt-generator").projectDir = file("../winrt-generator")
 project(":winrt-compiler-plugin").projectDir = file("../winrt-compiler-plugin")
+project(":winrt-compiler-plugin:callsite-contract").projectDir = file("../winrt-compiler-plugin/callsite-contract")
+project(":winrt-compiler-plugin:callsite-lowering").projectDir = file("../winrt-compiler-plugin/callsite-lowering")
