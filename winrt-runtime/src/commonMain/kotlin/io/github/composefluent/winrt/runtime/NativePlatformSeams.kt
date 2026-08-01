@@ -8,6 +8,8 @@ expect class NativeScope : AutoCloseable {
 internal expect class NativeScalarScratchFrame : AutoCloseable {
     val pointer: RawAddress
 
+    fun consumeOwnedHString(): String
+
     fun readPointer(): RawAddress
 
     fun readInt8(): Byte
@@ -34,6 +36,8 @@ internal expect class NativeHStringReferenceFrame : AutoCloseable {
     val utf16Chars: RawAddress
     val header: RawAddress
     val transientOut: RawAddress
+
+    fun initializeReference(length: Int)
 
     override fun close()
 }
@@ -118,6 +122,8 @@ expect object PlatformAbi {
     fun readChar16(slot: RawAddress): Char
 
     fun readUtf16(pointer: RawAddress, length: Int): String
+
+    fun readHString(handle: RawAddress): String
 
     fun readGuid(pointer: RawAddress): Guid
 

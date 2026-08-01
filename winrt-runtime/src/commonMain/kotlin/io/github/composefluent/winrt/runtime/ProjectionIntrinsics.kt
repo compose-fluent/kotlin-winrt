@@ -63,7 +63,7 @@ object WinRTProjectionIntrinsic {
         try {
             HResult(ComVtableInvoker.invokeArgs(reference.pointer, slot, frame))
                 .requireSuccess("WinRT getString")
-            return consumeOwnedHString(frame.readPointer(), frame.pointer)
+            return frame.consumeOwnedHString()
         } finally {
             frame.close()
         }

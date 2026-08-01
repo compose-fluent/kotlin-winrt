@@ -540,6 +540,7 @@ class KotlinWinRTIrGenerationExtension(
         private val scalarScratchFramePointerGetter: IrSimpleFunctionSymbol,
         private val scalarScratchFrameJvmCarrierGetter: IrSimpleFunctionSymbol?,
         private val scalarScratchFrameNativeCarrierGetter: IrSimpleFunctionSymbol?,
+        private val scalarScratchFrameConsumeOwnedHString: IrSimpleFunctionSymbol,
         private val scalarScratchFrameReadPointer: IrSimpleFunctionSymbol,
         private val scalarScratchFrameReadInt8: IrSimpleFunctionSymbol,
         private val scalarScratchFrameReadInt16: IrSimpleFunctionSymbol,
@@ -2055,13 +2056,9 @@ class KotlinWinRTIrGenerationExtension(
             frame: IrExpression,
         ): IrExpression =
             when (returnKind) {
-                NoArgumentGetterReturnKind.String -> readHStringHandleGetterResult(
-                    builder,
-                    builder.irCall(scalarScratchFrameReadPointer).apply {
-                        arguments[0] = frame
-                    },
-                    scalarScratchFramePointer(builder, frame),
-                )
+                NoArgumentGetterReturnKind.String -> builder.irCall(scalarScratchFrameConsumeOwnedHString).apply {
+                    arguments[0] = frame
+                }
                 NoArgumentGetterReturnKind.Boolean -> builder.irNotEquals(
                     builder.irCall(scalarScratchFrameReadInt8).apply {
                         arguments[0] = frame
@@ -2223,17 +2220,14 @@ class KotlinWinRTIrGenerationExtension(
                     arguments[0] = builder.irGetObject(platformAbi)
                     arguments[1] = resultOut
                 },
-                resultOut,
             )
 
         private fun readHStringHandleGetterResult(
             builder: DeclarationIrBuilder,
             handle: IrExpression,
-            lengthOut: IrExpression,
         ): IrExpression =
             builder.irCall(consumeOwnedHString).apply {
                 arguments[0] = handle
-                arguments[1] = lengthOut
             }
 
         private fun lowerOneArgumentUnit(
@@ -3422,6 +3416,8 @@ class KotlinWinRTIrGenerationExtension(
                     CallableId(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_CLASS_ID, Name.identifier("storage")),
                     fromFile,
                 ).singleOrNull()?.owner?.getter?.symbol
+                val scalarScratchFrameConsumeOwnedHString =
+                    scalarScratchFrame.functionNamed("consumeOwnedHString") ?: return null
                 val scalarScratchFrameReadPointer = scalarScratchFrame.functionNamed("readPointer") ?: return null
                 val scalarScratchFrameReadInt8 = scalarScratchFrame.functionNamed("readInt8") ?: return null
                 val scalarScratchFrameReadInt16 = scalarScratchFrame.functionNamed("readInt16") ?: return null
@@ -3538,6 +3534,7 @@ class KotlinWinRTIrGenerationExtension(
                     scalarScratchFramePointerGetter = scalarScratchFramePointerGetter,
                     scalarScratchFrameJvmCarrierGetter = scalarScratchFrameJvmCarrierGetter,
                     scalarScratchFrameNativeCarrierGetter = scalarScratchFrameNativeCarrierGetter,
+                    scalarScratchFrameConsumeOwnedHString = scalarScratchFrameConsumeOwnedHString,
                     scalarScratchFrameReadPointer = scalarScratchFrameReadPointer,
                     scalarScratchFrameReadInt8 = scalarScratchFrameReadInt8,
                     scalarScratchFrameReadInt16 = scalarScratchFrameReadInt16,

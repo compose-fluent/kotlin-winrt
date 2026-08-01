@@ -24,12 +24,7 @@ object NativeStringMarshaller {
         }
     }
 
-    fun fromAbi(handle: RawAddress): String =
-        if (PlatformAbi.isNull(handle)) {
-            ""
-        } else {
-            HString.fromHandle(handle, owner = false).toKString()
-        }
+    fun fromAbi(handle: RawAddress): String = PlatformAbi.readHString(handle)
 
     fun fromManaged(value: String?): HString? =
         value?.let(HString::create)

@@ -93,6 +93,18 @@ internal actual class NativeScalarScratchFrame internal constructor(
         return this
     }
 
+    actual fun consumeOwnedHString(): String {
+        val handle = storage.reinterpret<COpaquePointerVar>().pointed.value.asRawAddress()
+        if (PlatformAbi.isNull(handle)) {
+            return ""
+        }
+        try {
+            return PlatformAbi.readHString(handle)
+        } finally {
+            WinRTPlatformApi.windowsDeleteStringRaw(handle)
+        }
+    }
+
     actual fun readPointer(): RawAddress =
         storage.reinterpret<COpaquePointerVar>().pointed.value.asRawAddress()
 
@@ -192,12 +204,30 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         handle = RawAddress.Null
         val charCount = value.length + 1
         ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * UShort.SIZE_BYTES)
-        // WindowsCreateStringReference overwrites header and transientOut as pure output parameters.
         val destination = utf16Chars.asCPointer<UShortVar>()
         value.forEachIndexed { index, char -> destination[index] = char.code.toUShort() }
         destination[value.length] = 0u
         active = true
         return this
+    }
+
+    actual fun initializeReference(length: Int) {
+        check(active) { "Native HSTRING reference frame is not active." }
+        require(length >= 0) { "HSTRING length must be non-negative." }
+        PlatformAbi.zeroBytes(header, hStringHeaderSizeBytes)
+        if (length == 0) {
+            handle = RawAddress.Null
+        } else {
+            // Matches the fast-pass HSTRING header used by Windows SDK C++/WinRT base.h.
+            val headerFields = header.asCPointer<IntVar>()
+            headerFields[0] = hStringReferenceFlag
+            headerFields[1] = length
+            RawAddress(header.value + hStringBufferOffsetBytes)
+                .asCPointer<COpaquePointerVar>()
+                .pointed.value = utf16Chars.toOpaquePointer()
+            handle = header
+        }
+        base.asCPointer<COpaquePointerVar>().pointed.value = null
     }
 
     actual override fun close() {
@@ -267,7 +297,11 @@ internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHSt
     NativeHStringReferenceFrames.pool.acquire(value)
 
 private const val hStringHeaderOffsetBytes: Long = 8L
-private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + 24L
+private const val hStringHeaderSizeBytes: Long = 24L
+private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
+private const val hStringLengthOffsetBytes: Long = 4L
+private const val hStringBufferOffsetBytes: Long = 16L
+private const val hStringReferenceFlag: Int = 1
 private const val hStringInitialFrameSizeBytes: Long = 64L
 
 actual class NativeCallbackHandle internal constructor(
@@ -387,6 +421,25 @@ actual object PlatformAbi {
         }
         val chars = pointer.asCPointer<UShortVar>()
         return CharArray(length) { index -> chars[index].toInt().toChar() }.concatToString()
+    }
+
+    actual fun readHString(handle: RawAddress): String {
+        if (isNull(handle)) {
+            return ""
+        }
+        val length = RawAddress(handle.value + hStringLengthOffsetBytes)
+            .asCPointer<IntVar>()
+            .pointed.value
+        require(length >= 0) { "HSTRING length exceeds the supported Kotlin String size." }
+        if (length == 0) {
+            return ""
+        }
+        val utf16 = RawAddress(handle.value + hStringBufferOffsetBytes)
+            .asCPointer<COpaquePointerVar>()
+            .pointed.value
+            ?.reinterpret<UShortVar>()
+            ?: error("Non-empty HSTRING has a null UTF-16 buffer.")
+        return CharArray(length) { index -> utf16[index].toInt().toChar() }.concatToString()
     }
 
     actual fun readGuid(pointer: RawAddress): Guid =

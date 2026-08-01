@@ -35,6 +35,18 @@ internal actual class NativeScalarScratchFrame internal constructor(
         return this
     }
 
+    actual fun consumeOwnedHString(): String {
+        val handle = segment.get(ValueLayout.ADDRESS, 0)
+        if (handle.address() == 0L) {
+            return ""
+        }
+        try {
+            return PlatformAbi.readHString(handle)
+        } finally {
+            WinRTPlatformApi.windowsDeleteString(handle)
+        }
+    }
+
     actual fun readPointer(): RawAddress =
         segment.get(ValueLayout.ADDRESS, 0).asRawAddress()
 
@@ -112,6 +124,8 @@ internal actual class NativeHStringReferenceFrame internal constructor(
 ) : AutoCloseable {
     private var arena: Arena? = null
     private var segment: MemorySegment = MemorySegment.NULL
+    private var headerSegment: MemorySegment = MemorySegment.NULL
+    private var utf16Segment: MemorySegment = MemorySegment.NULL
     private var capacityBytes: Long = 0L
     private var chars: CharArray = CharArray(0)
     private var active: Boolean = false
@@ -133,13 +147,33 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         val charCount = value.length + 1
         ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * Char.SIZE_BYTES)
         ensureCharCapacity(charCount)
-        segment.asSlice(0, hStringCharsOffsetBytes).fill(0)
         value.toCharArray(chars, destinationOffset = 0, startIndex = 0, endIndex = value.length)
         chars[value.length] = '\u0000'
-        segment.asSlice(hStringCharsOffsetBytes, charCount.toLong() * Char.SIZE_BYTES)
-            .copyFrom(MemorySegment.ofArray(chars).asSlice(0, charCount.toLong() * Char.SIZE_BYTES))
+        MemorySegment.copy(
+            MemorySegment.ofArray(chars),
+            0L,
+            segment,
+            hStringCharsOffsetBytes,
+            charCount.toLong() * Char.SIZE_BYTES,
+        )
         active = true
         return this
+    }
+
+    actual fun initializeReference(length: Int) {
+        check(active) { "Native HSTRING reference frame is not active." }
+        require(length >= 0) { "HSTRING length must be non-negative." }
+        headerSegment.fill(0)
+        if (length == 0) {
+            handle = RawAddress.Null
+        } else {
+            // Matches the fast-pass HSTRING header used by Windows SDK C++/WinRT base.h.
+            headerSegment.set(ValueLayout.JAVA_INT, hStringFlagsOffsetBytes, hStringReferenceFlag)
+            headerSegment.set(ValueLayout.JAVA_INT, hStringLengthOffsetBytes, length)
+            headerSegment.set(ValueLayout.ADDRESS, hStringBufferOffsetBytes, utf16Segment)
+            handle = headerSegment.asRawAddress()
+        }
+        segment.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL)
     }
 
     actual override fun close() {
@@ -160,6 +194,8 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         arena?.close()
         arena = Arena.ofConfined()
         segment = requireNotNull(arena).allocate(newCapacity, ValueLayout.JAVA_LONG.byteAlignment())
+        headerSegment = segment.asSlice(hStringHeaderOffsetBytes, hStringHeaderSizeBytes)
+        utf16Segment = segment.asSlice(hStringCharsOffsetBytes, newCapacity - hStringCharsOffsetBytes)
         capacityBytes = newCapacity
     }
 
@@ -203,7 +239,12 @@ internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHSt
     nativeHStringReferenceFrames.get().acquire(value)
 
 private const val hStringHeaderOffsetBytes: Long = 8L
-private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + 24L
+private const val hStringHeaderSizeBytes: Long = 24L
+private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
+private const val hStringFlagsOffsetBytes: Long = 0L
+private const val hStringLengthOffsetBytes: Long = 4L
+private const val hStringBufferOffsetBytes: Long = 16L
+private const val hStringReferenceFlag: Int = 1
 private const val hStringInitialFrameSizeBytes: Long = 64L
 private const val hStringInitialCharCapacity: Int = 16
 
@@ -327,6 +368,23 @@ actual object PlatformAbi {
         }
         val sized = pointer.asMemorySegment().reinterpret(length.toLong() * ValueLayout.JAVA_CHAR.byteSize())
         return String(sized.toArray(char16Layout))
+    }
+
+    actual fun readHString(handle: RawAddress): String = readHString(handle.asMemorySegment())
+
+    internal fun readHString(handle: MemorySegment): String {
+        if (handle.address() == 0L) {
+            return ""
+        }
+        val header = handle.reinterpret(hStringHeaderSizeBytes)
+        val length = header.get(ValueLayout.JAVA_INT, hStringLengthOffsetBytes)
+        require(length >= 0) { "HSTRING length exceeds the supported Kotlin String size." }
+        if (length == 0) {
+            return ""
+        }
+        val utf16 = header.get(ValueLayout.ADDRESS, hStringBufferOffsetBytes)
+            .reinterpret(length.toLong() * Char.SIZE_BYTES)
+        return String(utf16.toArray(char16Layout))
     }
 
     actual fun readGuid(pointer: RawAddress): Guid {

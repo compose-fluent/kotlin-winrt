@@ -47,7 +47,7 @@ class HStringInteropTest {
     }
 
     @Test
-    fun owned_hstring_consumer_reuses_result_slot_and_preserves_utf16_code_units() {
+    fun owned_hstring_consumers_read_headers_and_preserve_utf16_code_units() {
         val values = listOf(
             "",
             "ascii",
@@ -60,11 +60,11 @@ class HStringInteropTest {
             acquireNativeScalarScratchFrame(clear = false).use { frame ->
                 val owned = HString.create(value)
                 PlatformAbi.writePointer(frame.pointer, owned.handle)
-                val handle = frame.readPointer()
-
-                assertEquals(value, consumeOwnedHString(handle, frame.pointer))
-                assertEquals(value.length, frame.readInt32())
+                assertEquals(value, frame.consumeOwnedHString())
             }
+
+            val owned = HString.create(value)
+            assertEquals(value, consumeOwnedHString(owned.handle))
         }
     }
 
@@ -79,8 +79,29 @@ class HStringInteropTest {
         acquireInitializedNativeHStringReferenceFrame("second").use { frame ->
             assertEquals(firstFrameAddress, PlatformAbi.pointerKey(frame.transientOut))
             assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(frame.transientOut)))
+            assertEquals(1, PlatformAbi.readInt32(frame.header))
+            assertEquals(
+                "second".length,
+                PlatformAbi.readInt32(PlatformAbi.slice(frame.header, 4L, Int.SIZE_BYTES.toLong())),
+            )
+            assertEquals(
+                PlatformAbi.pointerKey(frame.utf16Chars),
+                PlatformAbi.pointerKey(
+                    PlatformAbi.readPointer(PlatformAbi.slice(frame.header, 16L, Long.SIZE_BYTES.toLong())),
+                ),
+            )
+            assertEquals(0, PlatformAbi.readInt32(PlatformAbi.slice(frame.header, 8L, Int.SIZE_BYTES.toLong())))
+            assertEquals(0, PlatformAbi.readInt32(PlatformAbi.slice(frame.header, 12L, Int.SIZE_BYTES.toLong())))
             assertEquals("second", PlatformAbi.readUtf16(frame.utf16Chars, "second".length))
             assertEquals("second", NativeStringMarshaller.fromAbi(frame.handle))
+        }
+    }
+
+    @Test
+    fun initialized_empty_hstring_reference_uses_the_null_handle() {
+        acquireInitializedNativeHStringReferenceFrame("").use { frame ->
+            assertEquals(0L, PlatformAbi.pointerKey(frame.handle))
+            assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(frame.transientOut)))
         }
     }
 

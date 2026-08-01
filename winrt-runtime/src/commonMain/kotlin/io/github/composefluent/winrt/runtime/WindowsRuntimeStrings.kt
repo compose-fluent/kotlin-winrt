@@ -3,14 +3,12 @@ package io.github.composefluent.winrt.runtime
 @PublishedApi
 internal fun consumeOwnedHString(
     handle: RawAddress,
-    lengthOut: RawAddress,
 ): String {
     if (PlatformAbi.isNull(handle)) {
         return ""
     }
     try {
-        val buffer = WinRTPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
-        return PlatformAbi.readUtf16(buffer, PlatformAbi.readInt32(lengthOut))
+        return PlatformAbi.readHString(handle)
     } finally {
         WinRTPlatformApi.windowsDeleteStringRaw(handle)
     }
@@ -20,14 +18,7 @@ class HString private constructor(
     val handle: RawAddress,
     private val owner: Boolean,
 ) : AutoCloseable {
-    fun toKString(): String =
-        if (PlatformAbi.isNull(handle)) {
-            ""
-        } else acquireNativeScalarScratchFrame().use { frame ->
-            val lengthOut = frame.pointer
-            val buffer = WinRTPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
-            PlatformAbi.readUtf16(buffer, PlatformAbi.readInt32(lengthOut))
-        }
+    fun toKString(): String = PlatformAbi.readHString(handle)
 
     override fun close() {
         if (owner && !PlatformAbi.isNull(handle)) {
@@ -80,20 +71,7 @@ internal fun acquireInitializedNativeHStringReferenceFrame(value: String): Nativ
     }
     val frame = acquireNativeHStringReferenceFrame(value)
     try {
-        frame.handle = if (value.isEmpty()) {
-            PlatformAbi.nullPointer
-        } else {
-            WinRTPlatformApi.checkSucceededRaw(
-                WinRTPlatformApi.windowsCreateStringReferenceRaw(
-                    utf16Chars = frame.utf16Chars,
-                    length = value.length,
-                    header = frame.header,
-                    outHandle = frame.transientOut,
-                ),
-            )
-            PlatformAbi.readPointer(frame.transientOut)
-        }
-        PlatformAbi.writePointer(frame.transientOut, PlatformAbi.nullPointer)
+        frame.initializeReference(value.length)
         return frame
     } catch (error: Throwable) {
         frame.close()
@@ -106,12 +84,7 @@ class ReferencedHString internal constructor(
     private val lifetime: AutoCloseable?,
     @PublishedApi internal val transientOut: RawAddress = PlatformAbi.nullPointer,
 ) : AutoCloseable {
-    fun toKString(): String =
-        if (PlatformAbi.isNull(handle)) {
-            ""
-        } else {
-            HString.fromHandle(handle, owner = false).toKString()
-        }
+    fun toKString(): String = PlatformAbi.readHString(handle)
 
     override fun close() {
         lifetime?.close()
