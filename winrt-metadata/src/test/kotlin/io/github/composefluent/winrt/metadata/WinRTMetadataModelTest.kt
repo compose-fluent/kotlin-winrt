@@ -10,6 +10,41 @@ import org.junit.Test
 
 class WinRTMetadataModelTest {
     @Test
+    fun normalization_composes_nested_struct_abi_layouts() {
+        val rational = WinRTTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Rational",
+            kind = WinRTTypeKind.Struct,
+            fields = listOf(
+                WinRTFieldDefinition("Numerator", "UInt32"),
+                WinRTFieldDefinition("Denominator", "UInt32"),
+            ),
+            layout = WinRTTypeLayout(kind = WinRTTypeLayoutKind.Sequential),
+        )
+        val presentationRate = WinRTTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "PresentationRate",
+            kind = WinRTTypeKind.Struct,
+            fields = listOf(
+                WinRTFieldDefinition("VerticalSyncRate", "Sample.Foundation.Rational"),
+                WinRTFieldDefinition("VerticalSyncsPerPresentation", "Int32"),
+            ),
+            layout = WinRTTypeLayout(kind = WinRTTypeLayoutKind.Sequential),
+        )
+
+        val types = WinRTMetadataModel(
+            namespaces = listOf(WinRTNamespace("Sample.Foundation", listOf(presentationRate, rational))),
+        ).normalized().namespaces.single().types.associateBy(WinRTTypeDefinition::name)
+
+        assertEquals(8, types.getValue("Rational").abiSize)
+        assertEquals(4, types.getValue("Rational").abiAlignment)
+        assertEquals(12, types.getValue("PresentationRate").abiSize)
+        assertEquals(4, types.getValue("PresentationRate").abiAlignment)
+        assertEquals(listOf(8, 4), types.getValue("PresentationRate").fields.map(WinRTFieldDefinition::abiSize))
+        assertTrue(types.getValue("PresentationRate").isBlittable)
+    }
+
+    @Test
     fun preserves_declared_type_order() {
         val namespace = WinRTNamespace(
             name = "Windows.Foundation",
@@ -1910,7 +1945,7 @@ class WinRTMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_collect_generic_abi_inventory_from_cached_type_shapes() {
+    fun semantic_helpers_collect_closed_generic_instantiations_from_metadata_shapes() {
         val model = WinRTMetadataModel(
             listOf(
                 WinRTNamespace(
@@ -1981,27 +2016,7 @@ class WinRTMetadataModelTest {
             ),
         )
 
-        val inventory = model.semanticHelpers().genericAbiInventory()
-
-        assertEquals(
-            listOf(
-                "append",
-                "append",
-                "get_Current",
-                "get_Current",
-                "get_Value",
-                "get_at",
-                "get_at",
-                "index_of",
-                "index_of",
-                "insert",
-                "invoke",
-                "lookup",
-                "set_at",
-                "set_at",
-            ),
-            inventory.genericAbiDelegates.map { it.operationName }.sorted(),
-        )
+        val inventory = model.semanticHelpers().genericTypeInstantiationInventory()
         assertEquals(
             listOf(
                 "Sample_Foundation_IGenericBase_Int_",
@@ -2016,7 +2031,6 @@ class WinRTMetadataModelTest {
             listOf(false, false, false, false, false),
             inventory.genericTypeInstantiations.map { it.implementsCcwInterface },
         )
-        assertEquals(listOf("Sample.Foundation.IWidget"), inventory.derivedGenericInterfaces)
         assertEquals(true, model.semanticHelpers().hasDerivedGenericInterface(model.namespaces[2].types.first { it.name == "IWidget" }))
         assertEquals(
             "Windows.Foundation.IReference<Int>",
@@ -2057,7 +2071,7 @@ class WinRTMetadataModelTest {
     }
 
     @Test
-    fun generic_instantiation_writer_dependencies_include_nested_generic_arguments() {
+    fun generic_instantiation_worklist_includes_nested_closed_generic_arguments() {
         val model = WinRTMetadataModel(
             listOf(
                 WinRTNamespace(
@@ -2100,49 +2114,67 @@ class WinRTMetadataModelTest {
                 ),
             ),
         )
-        val descriptors = model.semanticHelpers()
-            .genericInstantiationWriterDescriptors()
-            .associateBy(WinRTGenericInstantiationWriterDescriptor::sourceTypeName)
+        val typeNames = model.semanticHelpers()
+            .genericInstantiationWorklist()
+            .pending
+            .map { instantiation -> instantiation.type.typeName }
 
         assertEquals(
-            listOf("Windows.Foundation.IReference<String>"),
-            descriptors
-                .getValue("Windows.Foundation.Collections.IVector<Windows.Foundation.IReference<String>>")
-                .initializationDependencies,
+            listOf(
+                "Windows.Foundation.Collections.IVector<Windows.Foundation.IReference<String>>",
+                "Windows.Foundation.IReference<String>",
+            ),
+            typeNames,
         )
-        assertTrue("Windows.Foundation.IReference<String>" in descriptors.keys)
     }
 
     @Test
-    fun semantic_helpers_render_generic_abi_delegate_fundamental_aliases_like_reference_abi_types() {
-        val helpers = WinRTMetadataModel(emptyList()).semanticHelpers()
-        val inventory = helpers.collectGenericAbiInventory(
-            WinRTTypeDefinition(
-                namespace = "Sample.Foundation",
-                name = "IUsesFundamentalVectors",
-                kind = WinRTTypeKind.Interface,
-                methods = listOf(
-                    WinRTMethodDefinition("Flags", "Windows.Foundation.Collections.IVector<System.Boolean>"),
-                    WinRTMethodDefinition("Codes", "Windows.Foundation.Collections.IVector<Char16>"),
-                    WinRTMethodDefinition("Names", "Windows.Foundation.Collections.IVector<System.String>"),
+    fun generic_instantiation_worklist_closes_inherited_shapes_without_emitting_open_declarations() {
+        val model = WinRTMetadataModel(
+            listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBase",
+                            kind = WinRTTypeKind.Interface,
+                            genericParameterCount = 1,
+                            genericParameters = listOf(WinRTGenericParameterDefinition("T", 0)),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IDerived",
+                            kind = WinRTTypeKind.Interface,
+                            genericParameterCount = 1,
+                            genericParameters = listOf(WinRTGenericParameterDefinition("T", 0)),
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition("Sample.Foundation.IBase<T0>"),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IConsumer",
+                            kind = WinRTTypeKind.Interface,
+                            methods = listOf(
+                                WinRTMethodDefinition("GetValue", "Sample.Foundation.IDerived<String>"),
+                            ),
+                        ),
+                    ),
                 ),
             ),
         )
 
-        val booleanGetAt = inventory.genericAbiDelegates.single {
-            it.sourceGenericType.typeName == "Windows.Foundation.Collections.IVector<System.Boolean>" &&
-                it.operationName == "get_at"
-        }
-        val charGetAt = inventory.genericAbiDelegates.single {
-            it.sourceGenericType.typeName == "Windows.Foundation.Collections.IVector<Char16>" &&
-                it.operationName == "get_at"
-        }
-
-        assertEquals(listOf("void*", "uint", "out byte", "int"), booleanGetAt.abiParameterTypeNames)
-        assertEquals(listOf("void*", "uint", "out ushort", "int"), charGetAt.abiParameterTypeNames)
-        assertTrue(inventory.genericAbiDelegates.none {
-            it.sourceGenericType.typeName == "Windows.Foundation.Collections.IVector<System.String>"
-        })
+        assertEquals(
+            listOf("Sample.Foundation.IDerived<String>"),
+            model.semanticHelpers().genericTypeInstantiationInventory().genericTypeInstantiations.map { it.type.typeName },
+        )
+        val closedWorklist = model.semanticHelpers().genericInstantiationWorklist().pending.map { it.type.typeName }
+        assertEquals(
+            listOf("Sample.Foundation.IBase<String>", "Sample.Foundation.IDerived<String>"),
+            closedWorklist,
+        )
+        assertFalse(closedWorklist.any { typeName -> typeName.contains("T0") })
     }
 
     @Test
@@ -2214,14 +2246,11 @@ class WinRTMetadataModelTest {
                 "generic_type_instances fixed point",
                 "auxiliary table semantic boundary",
                 "helper output inventory",
-                "WinRTAbiDelegateInitializer conditions",
-                "WinRTGenericTypeInstantiations/base strings conditions",
+                "base strings helper conditions",
                 "is_manually_generated_iface",
                 "projection context flags",
                 "write_class_members property merge",
                 "object/class equals/hashcode helpers",
-                "generic ABI delegate operation entries",
-                "write_generic_type_instantiation descriptor",
                 "type-name writer context",
                 "event helper subclass descriptors",
                 "platform guard/member platform descriptors",
@@ -2236,7 +2265,6 @@ class WinRTMetadataModelTest {
                 "type declaration writer taxonomy",
                 "object-reference/inheritance surface descriptors",
                 "managed ABI invoke descriptors",
-                "generic ABI class initialization descriptors",
                 "required-interface ABI augmentation descriptors",
                 "module activation/authoring helper descriptors",
                 "metadata/generator/runtime/plugin/authoring classification",
@@ -2353,8 +2381,6 @@ class WinRTMetadataModelTest {
         )
         assertEquals(true, inventory.helperOutputs.baseStringHelpersRequired)
         assertEquals(false, inventory.helperOutputs.comInteropHelpersRequired)
-        assertEquals(false, inventory.helperOutputs.abiDelegateInitializerRequired)
-        assertEquals(false, inventory.helperOutputs.genericTypeInstantiationsHelperRequired)
     }
 
     @Test
@@ -3199,14 +3225,10 @@ class WinRTMetadataModelTest {
             ),
         )
 
-        assertEquals(true, netstandardInventory.helperOutputs.abiDelegateInitializerRequired)
-        assertEquals(true, netstandardInventory.helperOutputs.abiDelegateAsyncStatusRequired)
-        assertEquals(false, netstandardInventory.helperOutputs.genericTypeInstantiationsHelperRequired)
         assertEquals(true, netstandardInventory.helperOutputs.comInteropHelpersRequired)
-        assertEquals(true, "WinRTAbiDelegateInitializer.cs" in netstandardInventory.helperOutputs.requiredHelperFileNames)
-        assertEquals(false, net8Inventory.helperOutputs.abiDelegateInitializerRequired)
-        assertEquals(true, net8Inventory.helperOutputs.genericTypeInstantiationsHelperRequired)
-        assertEquals(true, "WinRTGenericTypeInstantiations.cs" in net8Inventory.helperOutputs.requiredHelperFileNames)
+        assertEquals(true, net8Inventory.genericTypeInstantiationInventory.genericTypeInstantiations.isNotEmpty())
+        assertEquals(false, netstandardInventory.helperOutputs.requiredHelperFileNames.any { it.contains("GenericTypeInstantiation") })
+        assertEquals(false, net8Inventory.helperOutputs.requiredHelperFileNames.any { it.contains("GenericTypeInstantiation") })
     }
 
     @Test
@@ -3458,7 +3480,7 @@ class WinRTMetadataModelTest {
         assertEquals(true, objectMethods.hasObjectHashCodeMethod)
         assertEquals(true, objectMethods.objectEquals?.returnTypeMatches)
 
-        val inventory = helpers.collectGenericAbiInventory(
+        val inventory = helpers.collectGenericTypeInstantiationInventory(
             WinRTTypeDefinition(
                 namespace = "Sample.Foundation",
                 name = "IUsesVector",
@@ -3472,24 +3494,9 @@ class WinRTMetadataModelTest {
             ),
         )
         assertEquals(
-            listOf("append", "get_Current", "get_at", "index_of", "set_at"),
-            inventory.genericAbiDelegates.map { it.operationName }.sorted(),
-        )
-        assertEquals(
-            listOf("void*", "uint", "out Sample.Foundation.Point", "int"),
-            inventory.genericAbiDelegates.single { it.operationName == "get_at" }.abiParameterTypeNames,
-        )
-        assertEquals(
             "Windows_Foundation_Collections_IVector_Sample_Foundation_Point_",
             inventory.genericTypeInstantiations.single().instantiationClassName,
         )
-
-        val writerDescriptor = helpers.genericInstantiationWriterDescriptor(inventory.genericTypeInstantiations.single())
-        assertEquals(false, writerDescriptor.isDelegateInstantiation)
-        assertEquals(listOf("GetAt"), writerDescriptor.rcwFunctionNames)
-        assertEquals(emptyList<String>(), writerDescriptor.vtableFunctionNames)
-        assertEquals(listOf("GetAt"), writerDescriptor.propertyAccessorFunctionNames)
-        assertEquals(listOf("Windows.Foundation.EventHandler<Sample.Foundation.Point>"), writerDescriptor.initializationDependencies)
         val fixedPointInstantiations = helpers.genericInstantiationWorklist().pending.map { it.instantiationClassName }
         assertTrue("Windows_Foundation_Collections_IVector_Sample_Foundation_Point_" in fixedPointInstantiations)
         assertTrue("Windows_Foundation_EventHandler_Sample_Foundation_Point_" in fixedPointInstantiations)
@@ -3610,10 +3617,6 @@ class WinRTMetadataModelTest {
         val invoke = helpers.managedAbiInvokeDescriptor("GetValue", iWidget.methods.single(), "method")
         assertEquals(true, invoke.requiresHelperMethod)
         assertEquals(true, invoke.conversionOperations.any { it.endsWith(":toAbi") })
-
-        val genericAbi = helpers.genericAbiClassInitializationDescriptor(vector)
-        assertEquals(true, genericAbi.requiresRcwFallbackInitialization)
-        assertEquals(listOf("GetAt_0", "add_Changed_1"), genericAbi.invokeSlotNames)
 
         val required = helpers.requiredInterfaceAugmentationDescriptor(widget)
         assertEquals(listOf("Sample.Foundation.IWidget"), required.requiredInterfaceNames)

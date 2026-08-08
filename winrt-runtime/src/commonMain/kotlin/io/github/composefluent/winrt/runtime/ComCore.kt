@@ -5,9 +5,48 @@ internal enum class ComOwnershipMode {
     Borrowed,
 }
 
-internal class ComIdentity internal constructor(
-    private val support: RawComObjectReferenceSupport,
-) {
+@PublishedApi
+internal class ComPtr private constructor(
+    val raw: RawComPtr,
+    val interfaceId: Guid,
+    val ownershipMode: ComOwnershipMode,
+    referenceTrackerPointer: RawComPtr,
+    isAggregated: Boolean,
+    @PublishedApi internal val support: RawComObjectReferenceSupport,
+) : AutoCloseable {
+    @Suppress("unused")
+    private val finalizationRegistration = createComPtrFinalizationRegistration(
+        target = this,
+        support = support,
+    )
+
+    init {
+        if (!PlatformAbi.isNull(referenceTrackerPointer)) {
+            support.attachReferenceTracker(
+                trackerPointer = referenceTrackerPointer,
+                addRefFromTrackerSource = true,
+                retainTrackerPointer = ::invokeIUnknownAddRefOnPointer,
+                addRefFromTrackerSourceCallback = ::invokeReferenceTrackerAddRefOnPointer,
+            )
+        }
+    }
+
+    val pointer: RawComPtr
+        get() = raw
+
+    /** Combines the lifetime check and raw-pointer load for generated hot call sites. */
+    @Suppress("NOTHING_TO_INLINE")
+    @PublishedApi
+    internal inline fun checkedPointer(): RawComPtr {
+        if (support.isDisposed) {
+            throw WinRTObjectDisposedException("Object reference is disposed.")
+        }
+        return raw
+    }
+
+    val isDisposed: Boolean
+        get() = support.isDisposed
+
     val hasReferenceTracker: Boolean
         get() = support.hasReferenceTracker
 
@@ -16,39 +55,6 @@ internal class ComIdentity internal constructor(
 
     internal val referenceTrackerHandle: RawComPtr
         get() = support.referenceTrackerHandle
-
-    fun sameIdentity(other: ComIdentity): Boolean = support.sameIdentity(other.support)
-
-    fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean =
-        support.tryInitializeReferenceTracker(
-            addRefFromTrackerSource = addRefFromTrackerSource,
-            retainTrackerPointer = ::invokeIUnknownAddRefOnPointer,
-            addRefFromTrackerSourceCallback = ::invokeReferenceTrackerAddRefOnPointer,
-        )
-}
-
-internal class ComPtr private constructor(
-    val raw: RawComPtr,
-    val interfaceId: Guid,
-    val ownershipMode: ComOwnershipMode,
-    private val support: RawComObjectReferenceSupport,
-) : AutoCloseable {
-    val pointer: RawComPtr
-        get() = raw
-
-    val identity: ComIdentity = ComIdentity(support)
-
-    val isDisposed: Boolean
-        get() = support.isDisposed
-
-    val hasReferenceTracker: Boolean
-        get() = identity.hasReferenceTracker
-
-    val isAggregated: Boolean
-        get() = identity.isAggregated
-
-    internal val referenceTrackerHandle: RawComPtr
-        get() = identity.referenceTrackerHandle
 
     fun addRef(): UInt =
         support.addRef(::invokeReferenceTrackerAddRefOnPointer)
@@ -65,9 +71,13 @@ internal class ComPtr private constructor(
         support.queryInterface(requestedInterfaceId, ::wrapQueriedReference)
 
     fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean =
-        identity.tryInitializeReferenceTracker(addRefFromTrackerSource)
+        support.tryInitializeReferenceTracker(
+            addRefFromTrackerSource = addRefFromTrackerSource,
+            retainTrackerPointer = ::invokeIUnknownAddRefOnPointer,
+            addRefFromTrackerSourceCallback = ::invokeReferenceTrackerAddRefOnPointer,
+        )
 
-    fun sameIdentity(other: ComPtr): Boolean = identity.sameIdentity(other.identity)
+    fun sameIdentity(other: ComPtr): Boolean = support.sameIdentity(other.support)
 
     fun invokeGeneric(
         slot: Int,
@@ -78,12 +88,15 @@ internal class ComPtr private constructor(
         return ComVtableInvoker.invokeGeneric(raw, slot, signature, args)
     }
 
-    fun throwIfDisposed() {
-        support.throwIfDisposed()
+    @Suppress("NOTHING_TO_INLINE")
+    inline fun throwIfDisposed() {
+        if (isDisposed) {
+            throw WinRTObjectDisposedException("Object reference is disposed.")
+        }
     }
 
     override fun close() {
-        closeSupport(support)
+        closeComPtrFinalizationRegistration(finalizationRegistration, support)
     }
 
     private fun wrapQueriedReference(
@@ -118,29 +131,29 @@ internal class ComPtr private constructor(
                 "COM object reference cannot wrap a null pointer."
             }
             val support = RawComObjectReferenceSupport(
-                raw,
-                interfaceId,
-                ownershipMode == ComOwnershipMode.Borrowed,
+                pointer = raw,
+                interfaceId = interfaceId,
+                preventReleaseOnDispose = ownershipMode == ComOwnershipMode.Borrowed,
                 isAggregated = isAggregated,
             )
-            if (!PlatformAbi.isNull(referenceTrackerPointer)) {
-                support.attachReferenceTracker(
-                    trackerPointer = referenceTrackerPointer,
-                    addRefFromTrackerSource = true,
-                    retainTrackerPointer = ::invokeIUnknownAddRefOnPointer,
-                    addRefFromTrackerSourceCallback = ::invokeReferenceTrackerAddRefOnPointer,
-                )
-            }
-            return ComPtr(raw, interfaceId, ownershipMode, support)
-        }
-
-        private fun closeSupport(support: RawComObjectReferenceSupport) {
-            support.close(
-                releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
-                releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
+            return ComPtr(
+                raw = raw,
+                interfaceId = interfaceId,
+                ownershipMode = ownershipMode,
+                referenceTrackerPointer = referenceTrackerPointer,
+                isAggregated = isAggregated,
+                support = support,
             )
         }
+
     }
+}
+
+internal fun closeComPtrSupport(support: RawComObjectReferenceSupport) {
+    support.close(
+        releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
+        releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
+    )
 }
 
 private fun invokeIUnknownAddRefOnPointer(targetPointer: RawComPtr): UInt =

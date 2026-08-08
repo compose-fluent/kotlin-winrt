@@ -864,7 +864,7 @@ data class WinRTMetadataModel(
                 .map(WinRTWindowsSdkSelection::normalized)
                 .distinct()
                 .sortedWith { left, right -> compareWindowsSdkVersions(left.version, right.version) },
-        )
+        ).withResolvedAbiLayouts()
 }
 
 private const val WINDOWS_FOUNDATION_UNIVERSAL_API_CONTRACT = "Windows.Foundation.UniversalApiContract"

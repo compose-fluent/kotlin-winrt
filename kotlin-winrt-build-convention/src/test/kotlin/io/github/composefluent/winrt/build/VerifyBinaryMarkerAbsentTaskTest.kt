@@ -4,6 +4,7 @@ import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.nio.file.Path
 
 class VerifyBinaryMarkerAbsentTaskTest {
     @Test
@@ -38,5 +39,76 @@ class VerifyBinaryMarkerAbsentTaskTest {
         val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
 
         assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains(artifact.toString()))
+    }
+
+    @Test
+    fun requires_each_configured_marker_in_the_binary_artifacts() {
+        val projectDirectory = Files.createTempDirectory("verify-binary-marker-required-")
+        val project = ProjectBuilder.builder().withProjectDir(projectDirectory.toFile()).build()
+        val artifact = projectDirectory.resolve("klib/linkdata/module")
+        Files.createDirectories(artifact.parent)
+        Files.writeString(artifact, "prefix emitted-thunk suffix")
+        val task = project.tasks.create("verifyRequiredMarker", VerifyBinaryMarkerAbsentTask::class.java)
+        task.binaryArtifacts.from(artifact.toFile())
+        task.markers.set(emptySet())
+        task.requiredMarkers.set(setOf("emitted-thunk"))
+        task.artifactDescription.set("test projection")
+
+        val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
+
+        assertTrue(failure?.message.orEmpty(), failure == null)
+    }
+
+    @Test
+    fun scoped_marker_check_ignores_legal_codec_methods() {
+        val artifact = copyFixtureClass("ScopedMarkerFixture")
+        val project = ProjectBuilder.builder().withProjectDir(artifact.parent.toFile()).build()
+        val task = project.tasks.create("verifyScopedMarker", VerifyBinaryMarkerAbsentTask::class.java)
+        task.binaryArtifacts.from(artifact.toFile())
+        task.markers.set(setOf("allocateBytes"))
+        task.methodNamePrefixes.set(setOf("callSite_"))
+        task.artifactDescription.set("scoped projection")
+
+        val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
+
+        assertTrue(failure?.message.orEmpty(), failure == null)
+    }
+
+    @Test
+    fun scoped_marker_check_reports_the_call_site_method() {
+        val artifact = copyFixtureClass("ScopedMarkerCallSiteFixture")
+        val project = ProjectBuilder.builder().withProjectDir(artifact.parent.toFile()).build()
+        val task = project.tasks.create("verifyScopedMarkerFailure", VerifyBinaryMarkerAbsentTask::class.java)
+        task.binaryArtifacts.from(artifact.toFile())
+        task.markers.set(setOf("allocateBytes"))
+        task.methodNamePrefixes.set(setOf("callSite_"))
+        task.artifactDescription.set("scoped projection")
+
+        val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
+
+        assertTrue(failure?.message.orEmpty().contains("method 'callSite_bad'"))
+    }
+
+    private fun copyFixtureClass(simpleName: String): Path {
+        val binaryName = "${VerifyBinaryMarkerAbsentTaskTest::class.java.name.substringBeforeLast('$')}$" +
+            simpleName
+        val resourceName = binaryName.replace('.', '/') + ".class"
+        val resource = VerifyBinaryMarkerAbsentTaskTest::class.java.classLoader
+            .getResourceAsStream(resourceName)
+            ?: error("Missing test fixture class $resourceName")
+        val directory = Files.createTempDirectory("verify-binary-marker-scoped-")
+        return directory.resolve("$simpleName.class").also { target ->
+            resource.use { input -> Files.copy(input, target) }
+        }
+    }
+
+    private class ScopedMarkerFixture {
+        fun callSite_clean() = Unit
+
+        fun codec_allocateBytes() = "allocateBytes"
+    }
+
+    private class ScopedMarkerCallSiteFixture {
+        fun callSite_bad() = "allocateBytes"
     }
 }

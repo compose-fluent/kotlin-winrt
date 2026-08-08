@@ -1,18 +1,9 @@
 package io.github.composefluent.winrt.runtime
 
 @PublishedApi
-internal fun consumeOwnedHString(
+internal expect fun consumeOwnedHString(
     handle: RawAddress,
-): String {
-    if (PlatformAbi.isNull(handle)) {
-        return ""
-    }
-    try {
-        return PlatformAbi.readHString(handle)
-    } finally {
-        WinRTPlatformApi.windowsDeleteStringRaw(handle)
-    }
-}
+): String
 
 class HString private constructor(
     val handle: RawAddress,

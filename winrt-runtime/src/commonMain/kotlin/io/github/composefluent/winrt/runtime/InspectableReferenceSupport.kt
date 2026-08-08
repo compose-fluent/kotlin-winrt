@@ -1,16 +1,22 @@
 package io.github.composefluent.winrt.runtime
 
 internal object ActivationFactoryReferenceSupport {
-    fun <T> activateInstance(
-        invokeActivate: (RawAddress) -> Int,
-        wrapInspectable: (RawAddress) -> T,
-        initializeReferenceTracker: (T) -> Unit,
-    ): T =
-        PlatformAbi.confinedScope().use { scope ->
-            val instanceOut = PlatformAbi.allocatePointerSlot(scope)
-            val hResult = invokeActivate(instanceOut)
+    fun activateInstance(comPtr: ComPtr): IInspectableReference =
+        acquireNativeScalarScratchFrame().use { resultOut ->
+            comPtr.throwIfDisposed()
+            val hResult = ComVtableInvoker.invokeArgs(
+                instance = comPtr.raw,
+                slot = IActivationFactoryVftblSlots.ActivateInstance,
+                arg0 = resultOut,
+            )
+            winRTKeepAlive(comPtr)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            return wrapInspectable(PlatformAbi.readPointer(instanceOut)).also(initializeReferenceTracker)
+            InspectableReference(
+                ComPtr.create(
+                    resultOut.readPointer().asRawComPtr(),
+                    IID.IInspectable,
+                ),
+            ).also { it.tryInitializeReferenceTracker() }
         }
 }
 

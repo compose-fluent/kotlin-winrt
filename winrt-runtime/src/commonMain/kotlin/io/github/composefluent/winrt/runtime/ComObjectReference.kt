@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 open class ComObjectReference internal constructor(
+    @PublishedApi
     internal val comPtr: ComPtr,
 ) : AutoCloseable {
     constructor(
@@ -25,10 +26,7 @@ open class ComObjectReference internal constructor(
     )
 
     val pointer: RawComPtr
-        get() {
-            comPtr.throwIfDisposed()
-            return comPtr.pointer
-        }
+        inline get() = comPtr.checkedPointer()
 
     val interfaceId: Guid
         get() = comPtr.interfaceId
@@ -48,25 +46,23 @@ open class ComObjectReference internal constructor(
     internal val referenceTrackerHandle: RawComPtr
         get() = comPtr.referenceTrackerHandle
 
-    internal fun asIUnknownView(): IUnknownView = IUnknownView(comPtr)
-
     fun addRef(): UInt =
-        asIUnknownView().addRef()
+        comPtr.addRef()
 
     fun release(): UInt =
-        asIUnknownView().release()
+        comPtr.release()
 
     fun getRefPointer(): RawComPtr =
         comPtr.getRefPointer()
 
     open fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? =
-        asIUnknownView().tryQueryInterface(requestedInterfaceId)?.let(::wrapQueriedReference)
+        comPtr.tryQueryInterface(requestedInterfaceId)?.let(::wrapQueriedReference)
 
     fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean =
         comPtr.tryInitializeReferenceTracker(addRefFromTrackerSource)
 
     fun queryInterface(requestedInterfaceId: Guid): Result<ComObjectReference> =
-        asIUnknownView().queryInterface(requestedInterfaceId).map(::wrapQueriedReference)
+        comPtr.queryInterface(requestedInterfaceId).map(::wrapQueriedReference)
 
     fun getDefaultInterfaceObjectReference(vtableSlot: Int): IUnknownReference {
         throwIfDisposed()
@@ -81,7 +77,7 @@ open class ComObjectReference internal constructor(
     }
 
     fun tryAsInspectable(): IInspectableReference? =
-        asIUnknownView().tryQueryInterface(IID.IInspectable)?.let(::InspectableReference)
+        comPtr.tryQueryInterface(IID.IInspectable)?.let(::InspectableReference)
 
     fun asInspectable(): IInspectableReference =
         tryAsInspectable()
@@ -138,9 +134,7 @@ open class IUnknownReference internal constructor(
 }
 
 fun acquireInterfaceReference(instance: ComObjectReference, iid: Guid): IUnknownReference =
-    instance.queryInterface(iid).getOrThrow().use { reference ->
-        IUnknownReference(reference.getRefPointer(), iid)
-    }
+    IUnknownReference(instance.comPtr.queryInterface(iid).getOrThrow())
 
 class ActivationFactoryReference internal constructor(
     comPtr: ComPtr,
@@ -156,7 +150,7 @@ class ActivationFactoryReference internal constructor(
     internal fun asTypedView(): IActivationFactoryView = IActivationFactoryView(comPtr)
 
     fun activateInstance(): IInspectableReference =
-        asTypedView().activateInstance()
+        ActivationFactoryReferenceSupport.activateInstance(comPtr)
 }
 
 class InspectableReference internal constructor(

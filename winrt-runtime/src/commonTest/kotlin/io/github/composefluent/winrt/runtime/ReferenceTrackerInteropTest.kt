@@ -60,6 +60,23 @@ class ReferenceTrackerInteropTest {
         }
     }
 
+    @Test
+    fun acquired_interface_keeps_tracker_without_copying_com_reference() {
+        FakeReferenceTrackerHost.create().use { host ->
+            val reference = IInspectableReference(host.objectPointer.asRawComPtr(), IID.IInspectable)
+            assertTrue(reference.tryInitializeReferenceTracker())
+
+            val queried = acquireInterfaceReference(reference, IID.IInspectable)
+
+            assertTrue(queried.hasReferenceTracker)
+            assertEquals(0, host.objectAddRefCalls)
+            assertEquals(2, host.trackerAddRefFromSourceCalls)
+
+            queried.close()
+            reference.close()
+        }
+    }
+
     private class FakeReferenceTrackerHost private constructor(
         private val scope: NativeScope,
         private val callbacks: List<NativeCallbackHandle>,

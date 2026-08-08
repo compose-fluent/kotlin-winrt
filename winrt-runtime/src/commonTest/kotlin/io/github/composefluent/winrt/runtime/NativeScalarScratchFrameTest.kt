@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 
 class NativeScalarScratchFrameTest {
@@ -32,6 +33,18 @@ class NativeScalarScratchFrameTest {
             }
 
             assertEquals(41L, PlatformAbi.readInt64(outer.pointer))
+        }
+    }
+
+    @Test
+    fun rejects_non_lifo_scalar_frame_close() {
+        val outer = acquireNativeScalarScratchFrame()
+        val inner = acquireNativeScalarScratchFrame()
+        try {
+            assertFailsWith<IllegalStateException> { outer.close() }
+        } finally {
+            inner.close()
+            outer.close()
         }
     }
 }

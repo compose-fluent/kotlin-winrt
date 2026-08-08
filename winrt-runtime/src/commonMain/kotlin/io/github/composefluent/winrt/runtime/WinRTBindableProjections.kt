@@ -14,11 +14,13 @@ import kotlin.collections.AbstractMutableList
  */
 typealias WinRTBindableProjectionMarshaler = WinRTProjectionMarshaler
 
+private val winRTBindableFinalizationHook = FinalizationHook()
+
 internal class WinRTBindableInspectableValue private constructor(
     private val inspectable: IInspectableReference,
 ) : IWinRTObject, AutoCloseable {
     private val closed = AtomicInt(0)
-    private val cleanable = finalizationHook.register(this) { inspectable.close() }
+    private val cleanable = registerBindableFinalization(this, inspectable)
 
     override val nativeObject: ComObjectReference
         get() = inspectable
@@ -35,8 +37,6 @@ internal class WinRTBindableInspectableValue private constructor(
     override fun toString(): String = inspectable.tryGetRuntimeClassName() ?: "Inspectable(${inspectable.pointer.asRawAddress()})"
 
     companion object {
-        private val finalizationHook = FinalizationHook()
-
         fun fromOwnedReference(reference: ComObjectReference): WinRTBindableInspectableValue {
             val inspectable = if (reference is IInspectableReference) {
                 reference
@@ -51,6 +51,14 @@ internal class WinRTBindableInspectableValue private constructor(
         }
     }
 }
+
+private fun registerBindableFinalization(
+    target: Any,
+    inspectable: IInspectableReference,
+): AutoCloseable =
+    winRTBindableFinalizationHook.register(target) {
+        inspectable.close()
+    }
 
 internal object WinRTBindableObjectMarshaller {
     fun createMarshaler(value: Any?): WinRTBindableProjectionMarshaler? {

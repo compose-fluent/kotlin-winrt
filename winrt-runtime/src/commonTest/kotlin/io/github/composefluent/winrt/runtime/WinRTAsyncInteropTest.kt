@@ -700,7 +700,9 @@ class WinRTAsyncInteropTest {
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
         private val registrationFailure: Throwable? = null,
-    ) : WinRTAsyncActionReference(PlatformAbi.allocateBytes(scope, 8)) {
+    ) : WinRTAsyncActionReference(
+        borrowedFakeAsyncComPtr(scope, WinRTAsyncInterfaceIds.IAsyncAction),
+    ) {
         var resultsCalled = false
         var cancelCalled = false
         private var completedHandle: WinRTDelegateHandle? = null
@@ -742,8 +744,7 @@ class WinRTAsyncInteropTest {
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
     ) : WinRTAsyncOperationReference<String>(
-        pointer = PlatformAbi.allocateBytes(scope, 8),
-        interfaceId = Guid("11111111-2222-3333-4444-555555555555"),
+        comPtr = borrowedFakeAsyncComPtr(scope, Guid("11111111-2222-3333-4444-555555555555")),
         completedHandlerInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
         resultReader = { error("Fake override should be used.") },
     ) {
@@ -781,8 +782,7 @@ class WinRTAsyncInteropTest {
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
     ) : WinRTAsyncActionWithProgressReference<Int>(
-        pointer = PlatformAbi.allocateBytes(scope, 8),
-        interfaceId = Guid("22222222-3333-4444-5555-666666666666"),
+        comPtr = borrowedFakeAsyncComPtr(scope, Guid("22222222-3333-4444-5555-666666666666")),
         progressHandlerInterfaceId = Guid("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"),
         completedHandlerInterfaceId = Guid("cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"),
     ) {
@@ -829,8 +829,7 @@ class WinRTAsyncInteropTest {
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
     ) : WinRTAsyncOperationWithProgressReference<String, Int>(
-        pointer = PlatformAbi.allocateBytes(scope, 8),
-        interfaceId = Guid("33333333-4444-5555-6666-777777777777"),
+        comPtr = borrowedFakeAsyncComPtr(scope, Guid("33333333-4444-5555-6666-777777777777")),
         progressHandlerInterfaceId = Guid("dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb"),
         completedHandlerInterfaceId = Guid("eeeeeeee-ffff-aaaa-bbbb-cccccccccccc"),
         resultReader = { error("Fake override should be used.") },
@@ -872,6 +871,16 @@ class WinRTAsyncInteropTest {
         override fun close() = Unit
     }
 }
+
+private fun borrowedFakeAsyncComPtr(
+    scope: NativeScope,
+    interfaceId: Guid,
+): ComPtr =
+    ComPtr.create(
+        raw = PlatformAbi.allocateBytes(scope, 8).asRawComPtr(),
+        interfaceId = interfaceId,
+        ownershipMode = ComOwnershipMode.Borrowed,
+    )
 
 private fun isDelegateHandleClosedForTesting(handle: WinRTDelegateHandle): Boolean =
     try {

@@ -19,6 +19,14 @@ private fun createWinRTScenarios(): List<BenchmarkScenario> {
     val stringifiedLength = json.stringify().length.toLong()
 
     return listOf(
+        BenchmarkScenario("activate_json_object_only", expectedSingleChecksum = 1L) { iterations ->
+            var checksum = 0L
+            repeat(iterations) {
+                JsonObject()
+                checksum += 1L
+            }
+            checksum
+        },
         BenchmarkScenario("activate_json_object", expectedSingleChecksum = 1L) { iterations ->
             var checksum = 0L
             repeat(iterations) {

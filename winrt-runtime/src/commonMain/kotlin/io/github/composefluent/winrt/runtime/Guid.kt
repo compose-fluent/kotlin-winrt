@@ -3,8 +3,35 @@ package io.github.composefluent.winrt.runtime
 class Guid(value: String) {
     val value: String = value.uppercase()
 
+    private val littleEndianBytes: ByteArray
+
+    internal val abiLowBits: Long
+
+    internal val abiHighBits: Long
+
     init {
         require(guidRegex.matches(this.value)) { "Invalid GUID: $value" }
+        littleEndianBytes =
+            byteArrayOf(
+                parseHexByte(6),
+                parseHexByte(4),
+                parseHexByte(2),
+                parseHexByte(0),
+                parseHexByte(11),
+                parseHexByte(9),
+                parseHexByte(16),
+                parseHexByte(14),
+                parseHexByte(19),
+                parseHexByte(21),
+                parseHexByte(24),
+                parseHexByte(26),
+                parseHexByte(28),
+                parseHexByte(30),
+                parseHexByte(32),
+                parseHexByte(34),
+            )
+        abiLowBits = packAbiWord(0)
+        abiHighBits = packAbiWord(Long.SIZE_BYTES)
     }
 
     override fun toString(): String = value
@@ -14,33 +41,38 @@ class Guid(value: String) {
 
     override fun hashCode(): Int = value.hashCode()
 
-    fun toNetworkBytes(): ByteArray {
-        val hex = value.replace("-", "")
-        return ByteArray(BYTE_SIZE) { index ->
-            hex.substring(index * 2, index * 2 + 2).toInt(16).toByte()
-        }
-    }
-
-    fun toLittleEndianBytes(): ByteArray {
-        val network = toNetworkBytes()
-        return byteArrayOf(
-            network[3],
-            network[2],
-            network[1],
-            network[0],
-            network[5],
-            network[4],
-            network[7],
-            network[6],
-            network[8],
-            network[9],
-            network[10],
-            network[11],
-            network[12],
-            network[13],
-            network[14],
-            network[15],
+    fun toNetworkBytes(): ByteArray =
+        byteArrayOf(
+            littleEndianBytes[3],
+            littleEndianBytes[2],
+            littleEndianBytes[1],
+            littleEndianBytes[0],
+            littleEndianBytes[5],
+            littleEndianBytes[4],
+            littleEndianBytes[7],
+            littleEndianBytes[6],
+            littleEndianBytes[8],
+            littleEndianBytes[9],
+            littleEndianBytes[10],
+            littleEndianBytes[11],
+            littleEndianBytes[12],
+            littleEndianBytes[13],
+            littleEndianBytes[14],
+            littleEndianBytes[15],
         )
+
+    fun toLittleEndianBytes(): ByteArray = littleEndianBytes.copyOf()
+
+    private fun parseHexByte(firstCharacterIndex: Int): Byte =
+        ((value[firstCharacterIndex].digitToInt(16) shl 4) or
+            value[firstCharacterIndex + 1].digitToInt(16)).toByte()
+
+    private fun packAbiWord(byteOffset: Int): Long {
+        var word = 0L
+        repeat(Long.SIZE_BYTES) { index ->
+            word = word or (littleEndianBytes[byteOffset + index].toUByte().toLong() shl (index * Byte.SIZE_BITS))
+        }
+        return word
     }
 
     companion object {

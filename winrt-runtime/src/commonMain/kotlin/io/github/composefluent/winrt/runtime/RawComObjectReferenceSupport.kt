@@ -1,21 +1,28 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+
+@OptIn(ExperimentalAtomicApi::class)
+@PublishedApi
 internal class RawComObjectReferenceSupport(
     private val pointer: RawComPtr,
     val interfaceId: Guid,
     private val preventReleaseOnDispose: Boolean = false,
     val isAggregated: Boolean = false,
 ) {
-    private val state = ComObjectReferenceState()
+    private val disposed = AtomicInt(0)
+    private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
+    private var releaseInitialTrackerSourceOnDispose: Boolean = false
 
     val isDisposed: Boolean
-        get() = state.isDisposed
+        get() = disposed.load() != 0
 
     val hasReferenceTracker: Boolean
-        get() = state.hasReferenceTracker
+        get() = !PlatformAbi.isNull(referenceTrackerPointer)
 
     val referenceTrackerHandle: RawComPtr
-        get() = state.referenceTrackerHandle
+        get() = referenceTrackerPointer
 
     fun attachReferenceTracker(
         trackerPointer: RawComPtr,
@@ -23,24 +30,27 @@ internal class RawComObjectReferenceSupport(
         retainTrackerPointer: (RawComPtr) -> Unit,
         addRefFromTrackerSourceCallback: (RawComPtr) -> Unit,
     ) {
-        state.attachReferenceTracker(
-            trackerPointer = trackerPointer,
-            addRefFromTrackerSource = addRefFromTrackerSource,
-            retainTrackerPointer = retainTrackerPointer,
-            addRefFromTrackerSourceCallback = addRefFromTrackerSourceCallback,
-        )
+        if (hasReferenceTracker) {
+            return
+        }
+        referenceTrackerPointer = trackerPointer
+        retainTrackerPointer(trackerPointer)
+        if (addRefFromTrackerSource) {
+            addRefFromTrackerSourceCallback(trackerPointer)
+            releaseInitialTrackerSourceOnDispose = true
+        }
     }
 
     fun addRef(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
         val count = WinRTPlatformApi.addRefRaw(pointer.asNativePointer())
-        state.addRefFromTrackerSource(addRefFromTrackerSourceCallback)
+        addRefFromTrackerSource(addRefFromTrackerSourceCallback)
         return count
     }
 
     fun release(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
-        state.releaseFromTrackerSource(releaseFromTrackerSourceCallback)
+        releaseFromTrackerSource(releaseFromTrackerSourceCallback)
         return WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
     }
 
@@ -137,22 +147,49 @@ internal class RawComObjectReferenceSupport(
         releaseFromTrackerSourceCallback: (RawComPtr) -> Unit,
         releaseTrackerPointer: (RawComPtr) -> Unit,
     ) {
-        if (state.beginDispose()) {
+        if (disposed.compareAndSet(0, 1)) {
             try {
                 if (!preventReleaseOnDispose) {
-                    state.releaseFromTrackerSource(releaseFromTrackerSourceCallback)
+                    releaseFromTrackerSource(releaseFromTrackerSourceCallback)
                     WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
                 }
             } finally {
-                state.disposeReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
+                disposeReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
             }
         }
     }
 
     fun throwIfDisposed() {
-        if (state.isDisposed) {
+        if (isDisposed) {
             throw WinRTObjectDisposedException("Object reference is disposed.")
         }
+    }
+
+    private fun addRefFromTrackerSource(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit) {
+        if (hasReferenceTracker) {
+            addRefFromTrackerSourceCallback(referenceTrackerPointer)
+        }
+    }
+
+    private fun releaseFromTrackerSource(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit) {
+        if (hasReferenceTracker) {
+            releaseFromTrackerSourceCallback(referenceTrackerPointer)
+        }
+    }
+
+    private fun disposeReferenceTracker(
+        releaseFromTrackerSourceCallback: (RawComPtr) -> Unit,
+        releaseTrackerPointer: (RawComPtr) -> Unit,
+    ) {
+        if (!hasReferenceTracker) {
+            return
+        }
+        if (releaseInitialTrackerSourceOnDispose) {
+            releaseFromTrackerSource(releaseFromTrackerSourceCallback)
+        }
+        releaseTrackerPointer(referenceTrackerPointer)
+        referenceTrackerPointer = PlatformAbi.nullComPtr
+        releaseInitialTrackerSourceOnDispose = false
     }
 
     private fun tryQueryIUnknown(target: RawComPtr): RawComPtr? {

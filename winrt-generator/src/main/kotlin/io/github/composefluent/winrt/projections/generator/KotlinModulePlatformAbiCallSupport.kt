@@ -6,746 +6,574 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.LambdaTypeName
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
-import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteResultStrategy
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteHResultPolicy
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteParameterDirection
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteResultKind
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionParameterMetadata
+import java.security.MessageDigest
 
-class KotlinModulePlatformAbiCallSupport(
+private val WINRT_PROJECTION_ABI_TYPE_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiType")
+private val WINRT_PROJECTION_ABI_TYPE_KIND_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiTypeKind")
+private val WINRT_PROJECTION_ABI_CARRIER_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiCarrier")
+private val WINRT_PROJECTION_ABI_VALUE_TRANSFORM_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiValueTransform")
+private val WINRT_PROJECTION_ABI_REFERENCE_KIND_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiReferenceKind")
+
+/** Selects ownership and placement for an already-composed typed WinRT call site. */
+class KotlinModulePlatformAbiCallSupport internal constructor(
     private val className: ClassName,
-    private val enabledCalls: Set<ModulePlatformAbiCall>? = null,
+    enabledCalls: Set<KotlinTypedProjectionCallSitePlan>? = null,
+    private val abiSupportShardCount: Int = 1,
 ) {
-    private val calls = linkedSetOf<ModulePlatformAbiCall>()
-    private val observedCallCounts = linkedMapOf<ModulePlatformAbiCall, Int>()
+    private val enabledCallNames = enabledCalls?.mapTo(linkedSetOf()) { plan -> plan.functionName }
+    private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
+    private val observedCalls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
+    private val observedCallCounts = linkedMapOf<String, Int>()
+    private val codecs = linkedMapOf<String, KotlinProjectionCallSiteCodec>()
+    private val codecsByIdentity = linkedMapOf<KotlinProjectionCallSiteCodecIdentity, KotlinProjectionCallSiteCodec>()
+    private val abiTypes = linkedMapOf<String, KotlinProjectionAbiTypeMetadata>()
 
-    internal fun scalarGetter(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        helperFunction: String,
-    ): CodeBlock? {
-        val call = ModulePlatformAbiCall.Simple(helperFunction)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .build()
+    init {
+        require(
+            abiSupportShardCount > 0 &&
+                (abiSupportShardCount and (abiSupportShardCount - 1)) == 0,
+        ) {
+            "The module ABI support shard count must be a positive power of two."
+        }
     }
 
-    internal fun scalarSetter(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        helperFunction: String,
-        argumentExpression: CodeBlock,
-    ): CodeBlock? {
-        val call = ModulePlatformAbiCall.Simple(helperFunction)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%L,\n", argumentExpression)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .build()
-    }
+    internal fun codecOwnerFqName(abiTypeName: String): String =
+        abiSupportClassName(abiTypeName).canonicalName
 
-    internal fun descriptorUnit(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        arguments: List<DescriptorIntrinsicArgument>,
-        includeReturn: Boolean,
-    ): CodeBlock? {
-        val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
-        val call = ModulePlatformAbiCall.DescriptorUnit(shapes)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .apply {
-                if (includeReturn) {
-                    add("return (\n")
-                    indent()
-                }
+    internal fun callSiteOwnerFqName(plan: KotlinTypedProjectionCallSitePlan): String =
+        callSiteSupportClassName(plan.functionName).canonicalName
+
+    internal fun registerCodec(
+        operation: String,
+        role: KotlinProjectionAbiCodecRole? = null,
+        abiTypeName: String,
+        signature: String,
+        parameters: List<KotlinProjectionCallSiteCodecParameter>,
+        returnType: TypeName,
+        body: CodeBlock,
+    ): String {
+        val identity = KotlinProjectionCallSiteCodecIdentity(
+            role = role,
+            abiTypeName = abiTypeName,
+            parameterTypes = parameters.map(KotlinProjectionCallSiteCodecParameter::type),
+            returnType = returnType,
+            privateDiscriminator = if (role == null) "$operation|$signature" else "",
+        )
+        codecsByIdentity[identity]?.let { existing ->
+            require(existing.hasSameImplementation(parameters, body)) {
+                "Conflicting generated ABI codec implementations for ${role ?: operation} '$abiTypeName': " +
+                    "'${existing.sourceSignature}' vs '$signature'."
             }
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .apply {
-                if (includeReturn) {
-                    unindent()
-                    add(")\n")
-                }
-            }
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-
-    internal fun descriptorBoolean(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        arguments: List<DescriptorIntrinsicArgument>,
-    ): CodeBlock? {
-        val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
-        val call = ModulePlatformAbiCall.DescriptorBoolean(shapes)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-
-    internal fun descriptorScalar(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        returnShape: String,
-        arguments: List<DescriptorIntrinsicArgument>,
-    ): CodeBlock? {
-        val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
-        val call = ModulePlatformAbiCall.DescriptorScalar(returnShape, shapes)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-
-    internal fun structGetter(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        struct: ModulePlatformAbiStruct,
-        adapterExpression: CodeBlock,
-    ): CodeBlock? {
-        val call = ModulePlatformAbiCall.StructGetter(struct)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%L,\n", adapterExpression)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .build()
-    }
-
-    internal fun structSetter(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        struct: ModulePlatformAbiStruct,
-        valueExpression: CodeBlock,
-        adapterExpression: CodeBlock,
-    ): CodeBlock? {
-        val call = ModulePlatformAbiCall.StructSetter(struct)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%L,\n", valueExpression)
-            .add("%L,\n", adapterExpression)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .build()
-    }
-
-    internal fun descriptorStruct(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        resultStruct: ModulePlatformAbiStruct,
-        adapterExpression: CodeBlock,
-        arguments: List<DescriptorIntrinsicArgument>,
-    ): CodeBlock? {
-        val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
-        val call = ModulePlatformAbiCall.DescriptorStruct(resultStruct, shapes)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return (\n")
-            .indent()
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%L,\n", adapterExpression)
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-
-    internal fun projectedObjectGetter(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        helperFunction: String,
-        @Suppress("UNUSED_PARAMETER") returnType: TypeName,
-        wrapType: ClassName,
-    ): CodeBlock? {
-        val call = ModulePlatformAbiCall.ProjectedReferenceGetter(helperFunction)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .add("return (\n")
-            .indent()
-            .addProjectedReferenceWrapStart(helperFunction, wrapType)
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .unindent()
-            .add(")\n")
-            .addProjectedReferenceWrapEnd(helperFunction, wrapType)
-            .unindent()
-            .add(")\n")
-            .build()
-    }
-
-    internal fun descriptorProjectedObject(
-        referenceExpression: String,
-        slotExpression: CodeBlock,
-        helperFunction: String,
-        @Suppress("UNUSED_PARAMETER") returnType: TypeName,
-        wrapType: ClassName,
-        arguments: List<DescriptorIntrinsicArgument>,
-    ): CodeBlock? {
-        val shapes = arguments.fixedSignatureShapesOrNull() ?: return null
-        val call = ModulePlatformAbiCall.DescriptorProjectedReference(helperFunction, shapes)
-        val target = record(call) ?: return null
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return (\n")
-            .indent()
-            .addProjectedReferenceWrapStart(helperFunction, wrapType)
-            .add("%T.%L(\n", target.className, target.functionName)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .addProjectedReferenceWrapEnd(helperFunction, wrapType)
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-
-    internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
-        if (calls.isEmpty()) {
-            return emptyList()
+            return existing.name
         }
-        return when (layout) {
-            KotlinProjectionGenerationLayout.SingleSourceSet -> listOf(renderFile(kind = ModulePlatformAbiCallFileKind.Plain))
-            KotlinProjectionGenerationLayout.ExpectActualJvm -> listOf(
-                renderFile(kind = ModulePlatformAbiCallFileKind.Expect),
-                renderFile(kind = ModulePlatformAbiCallFileKind.ActualJvm),
-            )
+        val name = "codec_${operation}_${stableCodecHash("codec", identity.stableDescriptor())}"
+        val codec = KotlinProjectionCallSiteCodec(
+            name = name,
+            sourceSignature = signature,
+            role = role,
+            abiTypeName = abiTypeName,
+            parameters = parameters,
+            returnType = returnType,
+            body = body,
+        )
+        require(codecs.putIfAbsent(name, codec) == null) {
+            "WinMD call-site codec hash collision for $operation '$signature'."
+        }
+        codecsByIdentity[identity] = codec
+        return name
+    }
+
+    internal fun registerAbiType(metadata: KotlinProjectionAbiTypeMetadata) {
+        val existing = abiTypes.putIfAbsent(metadata.abiTypeName, metadata)
+        require(existing == null || existing == metadata) {
+            "Conflicting generated ABI metadata for '${metadata.abiTypeName}'."
         }
     }
 
-    private fun renderFile(kind: ModulePlatformAbiCallFileKind): KotlinProjectionFile {
-        val fileName = when (kind) {
-            ModulePlatformAbiCallFileKind.Plain -> className.simpleName
-            ModulePlatformAbiCallFileKind.Expect -> className.simpleName
-            ModulePlatformAbiCallFileKind.ActualJvm -> "${className.simpleName}.jvm"
-        }
-        val type = TypeSpec.objectBuilder(className.simpleName)
-            .addModifiers(KModifier.INTERNAL)
-            .apply {
-                when (kind) {
-                    ModulePlatformAbiCallFileKind.Expect -> addModifiers(KModifier.EXPECT)
-                    ModulePlatformAbiCallFileKind.ActualJvm -> addModifiers(KModifier.ACTUAL)
-                    ModulePlatformAbiCallFileKind.Plain -> Unit
-                }
-                calls.sortedWith(compareBy<ModulePlatformAbiCall> { it.functionName }.thenBy { it.arguments.joinToString("_") })
-                    .forEach { call -> addFunction(renderFunction(call, kind)) }
-            }
-            .build()
-        val contents = FileSpec.builder(className.packageName, fileName)
-            .addGeneratedProjectionSuppressions()
-            .addType(type)
-            .build()
-            .toString()
-        val packagePath = className.packageName.replace('.', '/')
-        val prefix = when (kind) {
-            ModulePlatformAbiCallFileKind.Plain -> ""
-            ModulePlatformAbiCallFileKind.Expect -> "commonMain/kotlin/"
-            ModulePlatformAbiCallFileKind.ActualJvm -> "jvmMain/kotlin/"
-        }
-        return KotlinProjectionFile(
-            relativePath = "$prefix$packagePath/$fileName.kt",
-            packageName = className.packageName,
-            contents = contents,
+    internal fun typedInvocation(
+        referenceExpression: String,
+        slotExpression: CodeBlock,
+        invocation: KotlinTypedProjectionCallSiteInvocation,
+    ): CodeBlock {
+        val target = record(invocation.plan)
+        return renderTargetInvocation(
+            target = target,
+            arguments = listOf(CodeBlock.of("%L", referenceExpression), slotExpression) + invocation.arguments,
         )
     }
 
-    internal fun plannedCalls(minDescriptorCallOccurrences: Int = 2): Set<ModulePlatformAbiCall> =
+    internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
+        if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty()) return emptyList()
+        val sourcePrefix = when (layout) {
+            KotlinProjectionGenerationLayout.SingleSourceSet -> ""
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> "commonMain/kotlin/"
+        }
+        if (abiSupportShardCount == 1) {
+            return listOf(
+                renderFile(
+                    sourcePrefix = sourcePrefix,
+                    owner = className,
+                    renderedCalls = calls.values,
+                    renderedCodecs = codecs.values,
+                    renderedAbiTypes = abiTypes.values,
+                ),
+            )
+        }
+
+        val callsByOwner = calls.values.groupBy { plan -> callSiteSupportClassName(plan.functionName) }
+        val codecsByOwner = codecs.values.groupBy { codec -> abiSupportClassName(codec.abiTypeName) }
+        val abiTypesByOwner = abiTypes.values.groupBy { metadata -> abiSupportClassName(metadata.abiTypeName) }
+        val supportOwners = (callsByOwner.keys + codecsByOwner.keys + abiTypesByOwner.keys)
+            .distinct()
+            .sortedBy(ClassName::canonicalName)
+        return buildList {
+            supportOwners.forEach { owner ->
+                add(
+                    renderFile(
+                        sourcePrefix = sourcePrefix,
+                        owner = owner,
+                        renderedCalls = callsByOwner[owner].orEmpty(),
+                        renderedCodecs = codecsByOwner[owner].orEmpty(),
+                        renderedAbiTypes = abiTypesByOwner[owner].orEmpty(),
+                    ),
+                )
+            }
+        }
+    }
+
+    internal fun plannedCalls(minCallOccurrences: Int = 2): Set<KotlinTypedProjectionCallSitePlan> =
         observedCallCounts
-            .filter { (call, count) ->
-                KotlinRuntimeOwnedProjectionCallSites.declarationFor(call) == null &&
-                    (!call.requiresFrequencyThreshold || count >= minDescriptorCallOccurrences)
+            .filter { (functionName, count) ->
+                KotlinRuntimeOwnedProjectionCallSites.declarationFor(observedCalls.getValue(functionName)) == null &&
+                    count >= minCallOccurrences
             }
             .keys
-            .toSet()
+            .mapTo(linkedSetOf()) { functionName -> observedCalls.getValue(functionName) }
 
-    private fun record(call: ModulePlatformAbiCall): ModulePlatformAbiCallTarget? {
-        observedCallCounts[call] = (observedCallCounts[call] ?: 0) + 1
-        KotlinRuntimeOwnedProjectionCallSites.declarationFor(call)?.let { declaration ->
-            return ModulePlatformAbiCallTarget(
+    private fun record(plan: KotlinTypedProjectionCallSitePlan): ModuleCallTarget {
+        val functionName = plan.functionName
+        observedCalls.putCallSite(functionName, plan)
+        observedCallCounts[functionName] = (observedCallCounts[functionName] ?: 0) + 1
+        KotlinRuntimeOwnedProjectionCallSites.declarationFor(plan)?.let { declaration ->
+            return ModuleCallTarget(
                 className = ClassName.bestGuess(declaration.ownerFqName),
                 functionName = declaration.functionName,
             )
         }
-        if (enabledCalls != null && call !in enabledCalls) {
-            return null
+        if (enabledCallNames != null && functionName !in enabledCallNames) {
+            return ModuleCallTarget(
+                functionName = "__winrtCallSite_$functionName",
+                inlineCall = plan,
+            )
         }
-        calls += call
-        return ModulePlatformAbiCallTarget(
-            className = className,
-            functionName = call.functionName,
+        calls.putCallSite(functionName, plan)
+        return ModuleCallTarget(
+            className = callSiteSupportClassName(functionName),
+            functionName = functionName,
         )
     }
 
-    private fun renderFunction(
-        call: ModulePlatformAbiCall,
-        kind: ModulePlatformAbiCallFileKind,
-    ): FunSpec {
-        val callSiteDescriptor = call.moduleLocalCallSiteDescriptorOrNull()
-        val builder = FunSpec.builder(call.functionName)
+    private fun MutableMap<String, KotlinTypedProjectionCallSitePlan>.putCallSite(
+        functionName: String,
+        plan: KotlinTypedProjectionCallSitePlan,
+    ) {
+        val existing = putIfAbsent(functionName, plan) ?: return
+        require(existing.hasSameRenderedDeclarationAs(plan)) {
+            "Generated WinRT CallSite '$functionName' maps to conflicting emitted declarations."
+        }
+    }
+
+    private fun renderFile(
+        sourcePrefix: String,
+        owner: ClassName,
+        renderedCalls: Collection<KotlinTypedProjectionCallSitePlan>,
+        renderedCodecs: Collection<KotlinProjectionCallSiteCodec>,
+        renderedAbiTypes: Collection<KotlinProjectionAbiTypeMetadata>,
+    ): KotlinProjectionFile {
+        val fileName = owner.simpleName
+        val abiTypesByName = renderedAbiTypes.associateBy(KotlinProjectionAbiTypeMetadata::abiTypeName)
+        val abiTypeCodecNames = renderedCodecs
+            .asSequence()
+            .filter { codec -> codec.role != null && codec.abiTypeName in abiTypesByName }
+            .groupBy(KotlinProjectionCallSiteCodec::abiTypeName)
+            .mapValues { (_, codecs) -> codecs.minOf(KotlinProjectionCallSiteCodec::name) }
+        val type = TypeSpec.objectBuilder(fileName)
+            .addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
             .addModifiers(KModifier.INTERNAL)
             .apply {
-                when (kind) {
-                    ModulePlatformAbiCallFileKind.Expect -> addModifiers(KModifier.EXPECT)
-                    ModulePlatformAbiCallFileKind.ActualJvm -> addModifiers(KModifier.ACTUAL)
-                    ModulePlatformAbiCallFileKind.Plain -> Unit
-                }
+                renderedAbiTypes
+                    .filter { metadata -> metadata.abiTypeName !in abiTypeCodecNames }
+                    .sortedBy(KotlinProjectionAbiTypeMetadata::abiTypeName)
+                    .forEach { metadata -> addType(renderAbiType(metadata)) }
+                renderedCodecs.sortedBy(KotlinProjectionCallSiteCodec::name)
+                    .forEach { codec ->
+                        val metadata = abiTypesByName[codec.abiTypeName]
+                            ?.takeIf { abiTypeCodecNames[codec.abiTypeName] == codec.name }
+                        addFunction(renderCodec(codec, metadata))
+                    }
+                renderedCalls.sortedBy(KotlinTypedProjectionCallSitePlan::functionName)
+                    .forEach { plan -> addFunction(renderFunction(plan)) }
             }
+            .build()
+        val contents = FileSpec.builder(owner.packageName, fileName)
+            .addGeneratedProjectionSuppressions()
+            .addType(type)
+            .build()
+            .toString()
+        return KotlinProjectionFile(
+            relativePath = "$sourcePrefix${owner.packageName.replace('.', '/')}/$fileName.kt",
+            packageName = owner.packageName,
+            contents = contents,
+        )
+    }
+
+    private fun abiSupportClassName(abiTypeName: String): ClassName {
+        return supportShardClassName("abi-shard", abiTypeName)
+    }
+
+    private fun callSiteSupportClassName(functionName: String): ClassName {
+        return supportShardClassName("call-shard", functionName)
+    }
+
+    private fun supportShardClassName(kind: String, identity: String): ClassName {
+        if (abiSupportShardCount == 1) return className
+        val bucket = stableCodecHash(kind, identity)
+            .take(2)
+            .toInt(16)
+            .and(abiSupportShardCount - 1)
+            .toString(16)
+            .padStart(2, '0')
+        return ClassName(className.packageName, "${className.simpleName}_Abi_$bucket")
+    }
+
+    private fun renderFunction(plan: KotlinTypedProjectionCallSitePlan): FunSpec =
+        FunSpec.builder(plan.functionName)
+            .addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
+            .addModifiers(KModifier.INTERNAL, KModifier.INLINE)
             .addParameter("instance", COM_OBJECT_REFERENCE_CLASS_NAME)
             .addParameter("slot", Int::class)
             .apply {
-                call.extraLeadingParameters().forEach { parameter ->
-                    addParameter(parameter.name, parameter.type)
-                }
-                call.arguments.forEachIndexed { index, shape ->
-                    addParameter("arg$index", shape.typeName())
+                plan.parameters.forEachIndexed { index, parameter ->
+                    addParameter(
+                        ParameterSpec.builder("arg$index", parameter.type)
+                            .apply {
+                                plan.metadata.parameters[index].annotationSpecOrNull()
+                                    ?.let(::addAnnotation)
+                            }
+                            .build(),
+                    )
                 }
             }
-            .returns(call.returnTypeName())
-        if (kind != ModulePlatformAbiCallFileKind.Expect) {
-            if (callSiteDescriptor != null) {
-                builder.addAnnotation(
-                    AnnotationSpec.builder(WINRT_PROJECTION_CALL_SITE_CLASS_NAME)
-                        .addMember("%S", callSiteDescriptor.encode())
-                        .build(),
-                )
-                builder.addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
-            } else {
-                builder.addCode("%L\n", call.body())
+            .returns(plan.returnType)
+            .addAnnotation(plan.callSiteAnnotationSpec())
+            .addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
+            .build()
+
+    private fun renderCodec(
+        codec: KotlinProjectionCallSiteCodec,
+        abiTypeMetadata: KotlinProjectionAbiTypeMetadata?,
+    ): FunSpec =
+        FunSpec.builder(codec.name)
+            .addModifiers(KModifier.INTERNAL)
+            .apply {
+                codec.parameters.forEach { parameter ->
+                    addParameter(ParameterSpec.builder(parameter.name, parameter.type).build())
+                }
             }
-        }
-        return builder.build()
-    }
-
-    private fun ModulePlatformAbiCall.moduleLocalCallSiteDescriptorOrNull() =
-        canonicalCallSiteDescriptorOrNull()?.takeIf { descriptor ->
-            descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.UNIT ||
-                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.SCALAR_OUT ||
-                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.STRING_OUT ||
-                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.REFERENCE_OUT ||
-                descriptor.resultStrategy == WinRTProjectionCallSiteResultStrategy.STRUCT_OUT
-        }
-
-    private fun ModulePlatformAbiCall.body(): CodeBlock =
-        when (this) {
-            is ModulePlatformAbiCall.Simple -> CodeBlock.builder()
-                .add("return %T.%L(instance, slot", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-                .apply {
-                    arguments.indices.forEach { index -> add(", arg%L", index) }
+            .returns(codec.returnType)
+            .apply {
+                abiTypeMetadata?.let { metadata -> addAnnotation(metadata.annotationSpec()) }
+                codec.role?.let { role ->
+                    addAnnotation(
+                        AnnotationSpec.builder(WINRT_PROJECTION_ABI_CODEC_CLASS_NAME)
+                            .addMember(
+                                "role = %T.%L",
+                                WINRT_PROJECTION_ABI_CODEC_ROLE_CLASS_NAME,
+                                role.name,
+                            )
+                            .addMember("type = %S", codec.abiTypeName)
+                            .build(),
+                    )
                 }
-                .add(")")
-                .build()
-            is ModulePlatformAbiCall.DescriptorUnit -> descriptorBody("callUnit", null)
-            is ModulePlatformAbiCall.DescriptorBoolean -> descriptorBody("callBoolean", null)
-            is ModulePlatformAbiCall.DescriptorScalar -> descriptorBody("callScalar", returnShape)
-            is ModulePlatformAbiCall.StructGetter -> CodeBlock.builder()
-                .add("return %T.getStruct(instance, slot, adapter)", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-                .build()
-            is ModulePlatformAbiCall.StructSetter -> CodeBlock.builder()
-                .add("return %T.setStruct(instance, slot, value, adapter)", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-                .build()
-            is ModulePlatformAbiCall.DescriptorStruct -> CodeBlock.builder()
-                .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-                .indent()
-                .add("instance,\n")
-                .add("slot,\n")
-                .add("%S,\n", arguments.joinToString(","))
-                .add("adapter")
-                .apply {
-                    arguments.indices.forEach { index -> add(",\narg%L", index) }
-                }
-                .add(",\n")
-                .unindent()
-                .add(")")
-                .build()
-            is ModulePlatformAbiCall.ProjectedReferenceGetter -> CodeBlock.builder()
-                .add("return %T.%L(instance, slot) { __result -> __result }", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-                .build()
-            is ModulePlatformAbiCall.DescriptorProjectedReference -> CodeBlock.builder()
-                .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-                .indent()
-                .add("instance,\n")
-                .add("slot,\n")
-                .add("%S,\n", arguments.joinToString(","))
-                .add("{ __result -> __result }")
-                .apply {
-                    arguments.indices.forEach { index -> add(",\narg%L", index) }
-                }
-                .add(",\n")
-                .unindent()
-                .add(")")
-                .build()
-        }
+            }
+            .addCode(codec.body)
+            .build()
 
-    private fun ModulePlatformAbiCall.descriptorBody(
-        intrinsicName: String,
-        returnShape: String?,
-    ): CodeBlock =
-        CodeBlock.builder()
-            .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicName)
+    private fun renderAbiType(metadata: KotlinProjectionAbiTypeMetadata): TypeSpec =
+        TypeSpec.objectBuilder("AbiType_${stableCodecHash("type", metadata.abiTypeName)}")
+            .addModifiers(KModifier.INTERNAL)
+            .addAnnotation(metadata.annotationSpec())
+            .build()
+
+    private fun renderTargetInvocation(
+        target: ModuleCallTarget,
+        arguments: List<CodeBlock>,
+    ): CodeBlock {
+        target.inlineCall?.let { plan -> return renderInlineCallSite(plan, arguments) }
+        return CodeBlock.builder()
+            .apply {
+                target.className?.let { owner -> add("%T.%L(\n", owner, target.functionName) }
+                    ?: add("%L(\n", target.functionName)
+            }
             .indent()
-            .add("instance,\n")
-            .add("slot,\n")
-            .apply {
-                if (returnShape != null) {
-                    add("%S,\n", returnShape)
-                }
-            }
-            .add("%S", arguments.joinToString(","))
-            .apply {
-                arguments.indices.forEach { index -> add(",\narg%L", index) }
-            }
-            .add(",\n")
+            .apply { arguments.forEach { argument -> add("%L,\n", argument) } }
             .unindent()
             .add(")")
             .build()
+    }
 
-    private fun CodeBlock.Builder.addProjectedReferenceWrapStart(
-        helperFunction: String,
-        wrapType: ClassName,
-    ): CodeBlock.Builder =
-        apply {
-            if (!helperFunction.isNullableProjectedReference()) {
-                add("%T.Metadata.wrap(\n", wrapType)
-                indent()
+    private fun renderInlineCallSite(
+        plan: KotlinTypedProjectionCallSitePlan,
+        arguments: List<CodeBlock>,
+    ): CodeBlock {
+        val parameterTypes = listOf(COM_OBJECT_REFERENCE_CLASS_NAME, Int::class.asClassName()) +
+            plan.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
+        require(arguments.size == parameterTypes.size) {
+            "WinMD call-site plan ${plan.functionName} expected ${parameterTypes.size} typed arguments, " +
+                "but generation supplied ${arguments.size}."
+        }
+        return CodeBlock.builder()
+            .add("kotlin.run {\n")
+            .indent()
+            .apply {
+                parameterTypes.zip(arguments).forEachIndexed { index, (type, argument) ->
+                    if (index >= 2) {
+                        plan.metadata.parameters[index - 2].annotationSpecOrNull()?.let { annotation ->
+                            add("%L\n", annotation)
+                        }
+                    }
+                    add("val %L%L: %T = %L\n", INLINE_CALL_SITE_ARGUMENT_PREFIX, index, type, argument)
+                }
             }
-        }
-
-    private fun CodeBlock.Builder.addProjectedReferenceWrapEnd(
-        helperFunction: String,
-        wrapType: ClassName,
-    ): CodeBlock.Builder =
-        apply {
-            if (helperFunction.isNullableProjectedReference()) {
-                add("?.let { %T.Metadata.wrap(it) }\n", wrapType)
-            } else {
-                unindent()
-                add(")\n")
+            .add("%L\n", plan.callSiteAnnotationSpec())
+            .add(
+                "val %L: %T = TODO(%S)\n",
+                INLINE_CALL_SITE_RESULT_NAME,
+                plan.returnType,
+                MODULE_CALL_SITE_PLACEHOLDER,
+            )
+            .apply {
+                if (plan.returnType != Unit::class.asClassName()) add("%L\n", INLINE_CALL_SITE_RESULT_NAME)
             }
-        }
-
-    private fun ModulePlatformAbiCall.returnTypeName(): TypeName =
-        when (this) {
-            is ModulePlatformAbiCall.Simple -> simpleIntrinsicReturnType(helperFunction)
-            is ModulePlatformAbiCall.DescriptorUnit -> Unit::class.asClassName()
-            is ModulePlatformAbiCall.DescriptorBoolean -> Boolean::class.asClassName()
-            is ModulePlatformAbiCall.DescriptorScalar -> returnShape.typeName()
-            is ModulePlatformAbiCall.StructGetter -> struct.typeName
-            is ModulePlatformAbiCall.StructSetter -> Unit::class.asClassName()
-            is ModulePlatformAbiCall.DescriptorStruct -> resultStruct.typeName
-            is ModulePlatformAbiCall.ProjectedReferenceGetter -> helperFunction.projectedReferenceReturnType()
-            is ModulePlatformAbiCall.DescriptorProjectedReference -> helperFunction.projectedReferenceReturnType()
-        }
-
-    private val ModulePlatformAbiCall.requiresFrequencyThreshold: Boolean
-        get() = when (this) {
-            is ModulePlatformAbiCall.DescriptorUnit,
-            is ModulePlatformAbiCall.DescriptorBoolean,
-            is ModulePlatformAbiCall.DescriptorScalar,
-            is ModulePlatformAbiCall.DescriptorStruct,
-            is ModulePlatformAbiCall.DescriptorProjectedReference -> true
-            is ModulePlatformAbiCall.Simple,
-            is ModulePlatformAbiCall.StructGetter,
-            is ModulePlatformAbiCall.StructSetter,
-            is ModulePlatformAbiCall.ProjectedReferenceGetter -> false
-        }
-
-    private fun ModulePlatformAbiCall.extraLeadingParameters(): List<ModulePlatformAbiParameter> =
-        when (this) {
-            is ModulePlatformAbiCall.StructGetter -> listOf(
-                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(struct.typeName)),
-            )
-            is ModulePlatformAbiCall.DescriptorStruct -> listOf(
-                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(resultStruct.typeName)),
-            )
-            is ModulePlatformAbiCall.StructSetter -> listOf(
-                ModulePlatformAbiParameter("value", struct.typeName),
-                ModulePlatformAbiParameter("adapter", NATIVE_STRUCT_ADAPTER_CLASS_NAME.parameterizedBy(struct.typeName)),
-            )
-            is ModulePlatformAbiCall.Simple,
-            is ModulePlatformAbiCall.DescriptorUnit,
-            is ModulePlatformAbiCall.DescriptorBoolean,
-            is ModulePlatformAbiCall.DescriptorScalar,
-            is ModulePlatformAbiCall.ProjectedReferenceGetter,
-            is ModulePlatformAbiCall.DescriptorProjectedReference -> emptyList()
-        }
-
-    private fun List<DescriptorIntrinsicArgument>.fixedSignatureShapesOrNull(): List<String>? {
-        if (any { it.expressions.size != 1 }) {
-            return null
-        }
-        val shapes = map(DescriptorIntrinsicArgument::shape)
-        return shapes.takeIf { it.all(::isFixedSignatureShape) }
+            .unindent()
+            .add("}")
+            .build()
     }
 
-    private fun isFixedSignatureShape(shape: String): Boolean =
-        shape in fixedShapeTypes
-
-    private fun String.typeName(): TypeName =
-        when (this) {
-            "String" -> String::class.asClassName()
-            "Boolean" -> Boolean::class.asClassName()
-            "Int8" -> Byte::class.asClassName()
-            "UInt8" -> UByte::class.asClassName()
-            "Int16" -> Short::class.asClassName()
-            "UInt16" -> UShort::class.asClassName()
-            "Int32" -> Int::class.asClassName()
-            "UInt32" -> UInt::class.asClassName()
-            "Int64" -> Long::class.asClassName()
-            "UInt64" -> ULong::class.asClassName()
-            "Float" -> Float::class.asClassName()
-            "Double" -> Double::class.asClassName()
-            "RawAddress" -> RAW_ADDRESS_CLASS_NAME
-            "Object" -> IWINRT_OBJECT_CLASS_NAME
-            else -> error("Unsupported module platform ABI shape $this")
-        }
-
-    private fun simpleIntrinsicReturnType(helperFunction: String): TypeName =
-        when (helperFunction) {
-            "getString" -> String::class.asClassName()
-            "getBoolean", "getNoExceptionBoolean" -> Boolean::class.asClassName()
-            "getInt32" -> Int::class.asClassName()
-            "getUInt32" -> UInt::class.asClassName()
-            "getInt64" -> Long::class.asClassName()
-            "getUInt64" -> ULong::class.asClassName()
-            "getFloat" -> Float::class.asClassName()
-            "getDouble" -> Double::class.asClassName()
-            "setString",
-            "setBoolean",
-            "setInt32",
-            "setUInt32",
-            "setInt64",
-            "setUInt64",
-            "setFloat",
-            "setDouble" -> Unit::class.asClassName()
-            else -> error("Unsupported simple module platform ABI call $helperFunction")
-        }
-
-    sealed class ModulePlatformAbiCall {
-        abstract val functionName: String
-        abstract val arguments: List<String>
-
-        data class Simple(val helperFunction: String) : ModulePlatformAbiCall() {
-            override val arguments: List<String> = simpleIntrinsicArguments(helperFunction)
-            override val functionName: String = helperFunction
-        }
-
-        data class DescriptorUnit(override val arguments: List<String>) : ModulePlatformAbiCall() {
-            override val functionName: String = "callUnit_${arguments.shapeSuffix()}"
-        }
-
-        data class DescriptorBoolean(override val arguments: List<String>) : ModulePlatformAbiCall() {
-            override val functionName: String = "callBoolean_${arguments.shapeSuffix()}"
-        }
-
-        data class DescriptorScalar(val returnShape: String, override val arguments: List<String>) : ModulePlatformAbiCall() {
-            override val functionName: String = "callScalar_${returnShape}_${arguments.shapeSuffix()}"
-        }
-
-        data class StructGetter(val struct: ModulePlatformAbiStruct) : ModulePlatformAbiCall() {
-            override val arguments: List<String> = emptyList()
-            override val functionName: String = "getStruct_${struct.functionSuffix}"
-        }
-
-        data class StructSetter(val struct: ModulePlatformAbiStruct) : ModulePlatformAbiCall() {
-            override val arguments: List<String> = emptyList()
-            override val functionName: String = "setStruct_${struct.functionSuffix}"
-        }
-
-        data class DescriptorStruct(
-            val resultStruct: ModulePlatformAbiStruct,
-            override val arguments: List<String>,
-        ) : ModulePlatformAbiCall() {
-            override val functionName: String =
-                "callStruct_${resultStruct.functionSuffix}_${arguments.shapeSuffix()}"
-        }
-
-        data class ProjectedReferenceGetter(val helperFunction: String) : ModulePlatformAbiCall() {
-            override val arguments: List<String> = emptyList()
-            override val functionName: String = helperFunction.projectedReferenceFunctionName()
-        }
-
-        data class DescriptorProjectedReference(
-            val helperFunction: String,
-            override val arguments: List<String>,
-        ) : ModulePlatformAbiCall() {
-            override val functionName: String = "${helperFunction.projectedReferenceFunctionName()}_${arguments.shapeSuffix()}"
-        }
-    }
-
-    private data class ModulePlatformAbiParameter(
-        val name: String,
-        val type: TypeName,
-    )
-
-    data class ModulePlatformAbiStruct(
-        val typeName: ClassName,
-        val sizeBytes: Int,
-        val alignmentBytes: Int,
-    ) {
-        init {
-            require(sizeBytes > 0) { "A module WinRT struct call requires a positive ABI size." }
-            require(alignmentBytes > 0) { "A module WinRT struct call requires a positive ABI alignment." }
-        }
-
-        internal val functionSuffix: String
-            get() = "${generatedLocalIdentifier("", typeName.canonicalName)}_${sizeBytes}_${alignmentBytes}"
-    }
-
-    private data class ModulePlatformAbiCallTarget(
-        val className: ClassName,
+    private data class ModuleCallTarget(
+        val className: ClassName? = null,
         val functionName: String,
+        val inlineCall: KotlinTypedProjectionCallSitePlan? = null,
     )
-
-    private enum class ModulePlatformAbiCallFileKind {
-        Plain,
-        Expect,
-        ActualJvm,
-    }
 
     private companion object {
         const val MODULE_CALL_SITE_PLACEHOLDER = "Lowered while compiling the generated WinRT module"
+        const val INLINE_CALL_SITE_ARGUMENT_PREFIX = "__winrtCallSiteArgument"
+        const val INLINE_CALL_SITE_RESULT_NAME = "__winrtCallSiteResult"
 
         val WINRT_PROJECTION_CALL_SITE_CLASS_NAME =
             ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionCallSite")
+        val WINRT_PROJECTION_PARAMETER_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionParameter")
+        val WINRT_CALL_SITE_HRESULT_POLICY_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTCallSiteHResultPolicy")
+        val WINRT_CALL_SITE_RESULT_KIND_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTCallSiteResultKind")
+        val WINRT_CALL_SITE_PARAMETER_DIRECTION_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTCallSiteParameterDirection")
+        val WINRT_PROJECTION_ABI_CODEC_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiCodec")
+        val WINRT_PROJECTION_ABI_CODEC_ROLE_CLASS_NAME =
+            ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionAbiCodecRole")
 
-        val fixedShapeTypes = setOf(
-            "String",
-            "Boolean",
-            "Int8",
-            "UInt8",
-            "Int16",
-            "UInt16",
-            "Int32",
-            "UInt32",
-            "Int64",
-            "UInt64",
-            "Float",
-            "Double",
-            "RawAddress",
-            "Object",
-        )
-
-        fun List<String>.shapeSuffix(): String =
-            joinToString("_").ifEmpty { "Void" }
-
-        fun String.isNullableProjectedReference(): Boolean =
-            startsWith("getNullableProjected")
-
-        fun String.projectedReferenceFunctionName(): String =
-            when (this) {
-                "getProjectedRuntimeClass" -> "getInspectable"
-                "getNullableProjectedRuntimeClass" -> "getNullableInspectable"
-                "getProjectedInterface" -> "getUnknown"
-                "getNullableProjectedInterface" -> "getNullableUnknown"
-                "callProjectedRuntimeClass" -> "callInspectable"
-                "callProjectedInterface" -> "callUnknown"
-                else -> error("Unsupported projected reference ABI call $this")
-            }
-
-        fun String.projectedReferenceReturnType(): TypeName {
-            val baseType = when (this) {
-                "getProjectedRuntimeClass",
-                "getNullableProjectedRuntimeClass",
-                "callProjectedRuntimeClass" -> IINSPECTABLE_REFERENCE_CLASS_NAME
-                "getProjectedInterface",
-                "getNullableProjectedInterface",
-                "callProjectedInterface" -> IUNKNOWN_REFERENCE_CLASS_NAME
-                else -> error("Unsupported projected reference ABI call $this")
-            }
-            return if (isNullableProjectedReference()) baseType.copy(nullable = true) else baseType
-        }
-
-        fun simpleIntrinsicArguments(helperFunction: String): List<String> =
-            when (helperFunction) {
-                "setString" -> listOf("String")
-                "setBoolean" -> listOf("Boolean")
-                "setInt32" -> listOf("Int32")
-                "setUInt32" -> listOf("UInt32")
-                "setInt64" -> listOf("Int64")
-                "setUInt64" -> listOf("UInt64")
-                "setFloat" -> listOf("Float")
-                "setDouble" -> listOf("Double")
-                else -> emptyList()
-            }
+        fun stableCodecHash(operation: String, signature: String): String =
+            MessageDigest.getInstance("SHA-256")
+                .digest("$operation|$signature".toByteArray(Charsets.UTF_8))
+                .take(8)
+                .joinToString("") { byte ->
+                    (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+                }
     }
 }
+
+private fun KotlinTypedProjectionCallSitePlan.hasSameRenderedDeclarationAs(
+    other: KotlinTypedProjectionCallSitePlan,
+): Boolean =
+    metadata == other.metadata &&
+        returnType == other.returnType &&
+        parameters.map(KotlinTypedProjectionCallSiteParameter::type) ==
+        other.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
+
+private fun KotlinTypedProjectionCallSitePlan.callSiteAnnotationSpec(): AnnotationSpec =
+    AnnotationSpec.builder(
+        ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionCallSite"),
+    ).apply {
+        if (metadata.hResultPolicy != WinRTProjectionCallSiteHResultPolicy.CHECK) {
+            addMember(
+                "hResult = %T.%L",
+                ClassName("io.github.composefluent.winrt.runtime", "WinRTCallSiteHResultPolicy"),
+                metadata.hResultPolicy.name,
+            )
+        }
+        if (metadata.resultKind != WinRTProjectionCallSiteResultKind.INFER) {
+            addMember(
+                "result = %T.%L",
+                ClassName("io.github.composefluent.winrt.runtime", "WinRTCallSiteResultKind"),
+                metadata.resultKind.name,
+            )
+        }
+        if (metadata.returnAbiType.isNotEmpty()) addMember("returnAbiType = %S", metadata.returnAbiType)
+    }.build()
+
+private fun WinRTProjectionParameterMetadata.annotationSpecOrNull(): AnnotationSpec? {
+    if (direction == WinRTProjectionCallSiteParameterDirection.IN && abiType.isEmpty()) return null
+    return AnnotationSpec.builder(
+        ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionParameter"),
+    ).apply {
+        if (direction != WinRTProjectionCallSiteParameterDirection.IN) {
+            addMember(
+                "direction = %T.%L",
+                ClassName("io.github.composefluent.winrt.runtime", "WinRTCallSiteParameterDirection"),
+                direction.name,
+            )
+        }
+        if (abiType.isNotEmpty()) addMember("abiType = %S", abiType)
+    }.build()
+}
+
+internal data class KotlinProjectionCallSiteCodecParameter(
+    val name: String,
+    val type: TypeName,
+)
+
+private data class KotlinProjectionCallSiteCodec(
+    val name: String,
+    val sourceSignature: String,
+    val role: KotlinProjectionAbiCodecRole?,
+    val abiTypeName: String,
+    val parameters: List<KotlinProjectionCallSiteCodecParameter>,
+    val returnType: TypeName,
+    val body: CodeBlock,
+) {
+    fun hasSameImplementation(
+        otherParameters: List<KotlinProjectionCallSiteCodecParameter>,
+        otherBody: CodeBlock,
+    ): Boolean = parameters == otherParameters && body.toString() == otherBody.toString()
+}
+
+private data class KotlinProjectionCallSiteCodecIdentity(
+    val role: KotlinProjectionAbiCodecRole?,
+    val abiTypeName: String,
+    val parameterTypes: List<TypeName>,
+    val returnType: TypeName,
+    val privateDiscriminator: String,
+) {
+    fun stableDescriptor(): String = buildString {
+        append(role?.name ?: "PRIVATE")
+        append('|')
+        append(abiTypeName)
+        parameterTypes.joinTo(this, prefix = "|(", postfix = ")")
+        append("|")
+        append(returnType)
+        if (privateDiscriminator.isNotEmpty()) {
+            append('|')
+            append(privateDiscriminator)
+        }
+    }
+}
+
+internal enum class KotlinProjectionAbiCodecRole {
+    TO_ABI,
+    FROM_ABI,
+    CREATE_MARSHALER,
+    COPY_TO_ABI,
+    COPY_FROM_ABI,
+    DISPOSE_ABI,
+}
+
+internal enum class KotlinProjectionAbiTypeKind {
+    ENUM,
+    STRUCT,
+    COM_REFERENCE,
+    ARRAY,
+}
+
+internal enum class KotlinProjectionAbiCarrier {
+    ADDRESS,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    FLOAT32,
+    FLOAT64,
+}
+
+internal enum class KotlinProjectionAbiValueTransform {
+    IDENTITY,
+    BOOLEAN,
+    UNSIGNED,
+    CHAR16,
+}
+
+internal enum class KotlinProjectionAbiReferenceKind {
+    NONE,
+    UNKNOWN,
+    INSPECTABLE,
+}
+
+internal data class KotlinProjectionAbiTypeMetadata(
+    val abiTypeName: String,
+    val kind: KotlinProjectionAbiTypeKind,
+    val carrier: KotlinProjectionAbiCarrier = KotlinProjectionAbiCarrier.ADDRESS,
+    val transform: KotlinProjectionAbiValueTransform = KotlinProjectionAbiValueTransform.IDENTITY,
+    val size: Int = 0,
+    val alignment: Int = 0,
+    val reference: KotlinProjectionAbiReferenceKind = KotlinProjectionAbiReferenceKind.NONE,
+)
+
+internal fun KotlinProjectionAbiTypeMetadata.annotationSpec(): AnnotationSpec =
+    AnnotationSpec.builder(WINRT_PROJECTION_ABI_TYPE_CLASS_NAME)
+        .addMember("name = %S", abiTypeName)
+        .addMember("kind = %T.%L", WINRT_PROJECTION_ABI_TYPE_KIND_CLASS_NAME, kind.name)
+        .addMember("carrier = %T.%L", WINRT_PROJECTION_ABI_CARRIER_CLASS_NAME, carrier.name)
+        .apply {
+            if (size > 0) addMember("size = %L", size)
+            if (alignment > 0) addMember("alignment = %L", alignment)
+            if (transform != KotlinProjectionAbiValueTransform.IDENTITY) {
+                addMember(
+                    "transform = %T.%L",
+                    WINRT_PROJECTION_ABI_VALUE_TRANSFORM_CLASS_NAME,
+                    transform.name,
+                )
+            }
+            if (reference != KotlinProjectionAbiReferenceKind.NONE) {
+                addMember(
+                    "reference = %T.%L",
+                    WINRT_PROJECTION_ABI_REFERENCE_KIND_CLASS_NAME,
+                    reference.name,
+                )
+            }
+        }
+        .build()
+
+internal fun inlineOnlyModulePlatformAbiCallSupport(): KotlinModulePlatformAbiCallSupport =
+    KotlinModulePlatformAbiCallSupport(
+        className = ClassName(
+            "io.github.composefluent.winrt.projections.support",
+            "WinRTModulePlatformAbiCall",
+        ),
+        enabledCalls = emptySet(),
+    )

@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import java.util.concurrent.locks.ReentrantLock
+
 internal actual class PlatformManagedWeakReference<T : Any> actual constructor(target: T?) {
     private var delegate = java.lang.ref.WeakReference(target)
 
@@ -11,9 +13,24 @@ internal actual class PlatformManagedWeakReference<T : Any> actual constructor(t
 }
 
 internal actual class PlatformLock actual constructor() {
-    private val monitor = Any()
+    private val lock = ReentrantLock()
 
-    actual fun <R> withLock(block: () -> R): R = synchronized(monitor) { block() }
+    actual fun enter() {
+        lock.lock()
+    }
+
+    actual fun exit() {
+        lock.unlock()
+    }
+
+    actual fun <R> withLock(block: () -> R): R {
+        enter()
+        try {
+            return block()
+        } finally {
+            exit()
+        }
+    }
 }
 
 internal actual class NativeWeakReferenceHandle internal constructor(
@@ -27,13 +44,8 @@ internal actual class NativeWeakReferenceHandle internal constructor(
 internal actual object WeakReferenceInterop {
     actual fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle? {
         val unwrapped = ComWrappersSupport.tryUnwrapObject(target) ?: return null
-        return unwrapped.use {
-            val weakReferenceSource = unwrapped.queryInterface(IID.IWeakReferenceSource).getOrNull() ?: return null
-            weakReferenceSource.use {
-                WeakReferenceSourceReference(it.pointer.asRawAddress(), IID.IWeakReferenceSource)
-                    .getWeakReference()
-                    ?.let(::NativeWeakReferenceHandle)
-            }
+        return unwrapped.use { reference ->
+            reference.tryGetWeakReference()?.let(::NativeWeakReferenceHandle)
         }
     }
 

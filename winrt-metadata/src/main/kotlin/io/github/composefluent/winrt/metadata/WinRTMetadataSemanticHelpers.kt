@@ -124,18 +124,6 @@ data class WinRTSemanticValueDescriptor(
     val mappedType: WinRTMappedTypeDescriptor?,
 )
 
-data class WinRTGenericAbiDelegateDescriptor(
-    val abiDelegateName: String,
-    val sourceGenericType: WinRTTypeRef,
-    val abiDelegateTypesKey: String,
-    val genericArguments: List<WinRTTypeRef>,
-    val operationName: String = abiDelegateName.removePrefix("_").substringBeforeLast("_", missingDelimiterValue = abiDelegateName.removePrefix("_")),
-    val abiReturnTypeName: String = "Int",
-    val abiParameterTypeNames: List<String> = emptyList(),
-    val declaration: String = "",
-    val typeArrayShape: List<String> = emptyList(),
-)
-
 data class WinRTGenericTypeInstantiationDescriptor(
     val type: WinRTTypeRef,
     val definitionType: WinRTTypeDefinition?,
@@ -144,10 +132,8 @@ data class WinRTGenericTypeInstantiationDescriptor(
     val implementsCcwInterface: Boolean,
 )
 
-data class WinRTGenericAbiInventory(
-    val genericAbiDelegates: List<WinRTGenericAbiDelegateDescriptor>,
+data class WinRTGenericTypeInstantiationInventory(
     val genericTypeInstantiations: List<WinRTGenericTypeInstantiationDescriptor>,
-    val derivedGenericInterfaces: List<String> = emptyList(),
 )
 
 data class WinRTObjectMethodMatchDescriptor(
@@ -164,18 +150,6 @@ data class WinRTClassObjectMethodDescriptor(
     val hasObjectEqualsMethod: Boolean,
     val hasClassEqualsMethod: Boolean,
     val hasObjectHashCodeMethod: Boolean,
-)
-
-data class WinRTGenericInstantiationWriterDescriptor(
-    val instantiationClassName: String,
-    val sourceTypeName: String,
-    val isDelegateInstantiation: Boolean,
-    val rcwFunctionNames: List<String>,
-    val vtableFunctionNames: List<String>,
-    val propertyAccessorFunctionNames: List<String>,
-    val genericReturnOnlyRcwFunctionNames: List<String> = emptyList(),
-    val projectedGenericFallbackFunctionNames: List<String> = emptyList(),
-    val initializationDependencies: List<String>,
 )
 
 enum class WinRTProjectedNameKind {
@@ -470,7 +444,6 @@ data class WinRTVtableWriterDescriptor(
     val methods: List<WinRTMethodVtableDescriptor>,
     val delegateCacheNames: List<String>,
     val usesFunctionPointers: Boolean,
-    val genericAbiTypeArrays: List<List<String>>,
 )
 
 data class WinRTTypeDeclarationDescriptor(
@@ -516,22 +489,12 @@ data class WinRTManagedAbiInvokeDescriptor(
     val requiresHelperMethod: Boolean,
 )
 
-data class WinRTGenericAbiClassInitializationDescriptor(
-    val typeName: String,
-    val requiresRcwFallbackInitialization: Boolean,
-    val requiresCcwFallbackInitialization: Boolean,
-    val genericMethodDelegateVariables: List<String>,
-    val invokeSlotNames: List<String>,
-    val genericTypeArrayDependencies: List<String>,
-)
-
 data class WinRTRequiredInterfaceAugmentationDescriptor(
     val typeName: String,
     val requiredInterfaceNames: List<String>,
     val explicitForwardMemberNames: List<String>,
     val mappedAugmentationMembers: List<String>,
     val mappedHelperPlans: List<WinRTRequiredMappedHelperPlanDescriptor>,
-    val genericAbiParameterArrays: List<List<String>>,
     val implementsCcwInterface: Boolean,
 )
 
@@ -1069,25 +1032,25 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             hasObjectHashCodeMethod = hasObjectHashCodeMethod(type),
         )
 
-    fun genericAbiInventory(): WinRTGenericAbiInventory =
-        genericAbiInventory(WinRTMetadataProjectionContext(sources = emptyList()))
+    fun genericTypeInstantiationInventory(): WinRTGenericTypeInstantiationInventory =
+        genericTypeInstantiationInventory(WinRTMetadataProjectionContext(sources = emptyList()))
 
-    fun genericAbiInventory(context: WinRTMetadataProjectionContext): WinRTGenericAbiInventory {
-        val collector = GenericAbiInventoryCollector()
+    fun genericTypeInstantiationInventory(context: WinRTMetadataProjectionContext): WinRTGenericTypeInstantiationInventory {
+        val collector = GenericTypeInstantiationCollector()
         normalizedModel.namespaces.flatMap(WinRTNamespace::types).forEach { type ->
             collector.addGenericTypeReferencesInType(type)
         }
         return collector.toInventory(context)
     }
 
-    fun collectGenericAbiInventory(type: WinRTTypeDefinition): WinRTGenericAbiInventory =
-        collectGenericAbiInventory(type, WinRTMetadataProjectionContext(sources = emptyList()))
+    fun collectGenericTypeInstantiationInventory(type: WinRTTypeDefinition): WinRTGenericTypeInstantiationInventory =
+        collectGenericTypeInstantiationInventory(type, WinRTMetadataProjectionContext(sources = emptyList()))
 
-    fun collectGenericAbiInventory(
+    fun collectGenericTypeInstantiationInventory(
         type: WinRTTypeDefinition,
         context: WinRTMetadataProjectionContext,
-    ): WinRTGenericAbiInventory {
-        val collector = GenericAbiInventoryCollector()
+    ): WinRTGenericTypeInstantiationInventory {
+        val collector = GenericTypeInstantiationCollector()
         collector.addGenericTypeReferencesInType(type.normalized())
         return collector.toInventory(context)
     }
@@ -1128,126 +1091,63 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             }
         }
 
-        enqueue(genericAbiInventory(context).genericTypeInstantiations)
+        enqueue(genericTypeInstantiationInventory(context).genericTypeInstantiations)
         var index = 0
         while (index < discovered.size) {
             val instantiation = discovered.values.elementAt(index++)
-            val dependencies = genericInstantiationWriterDescriptor(instantiation).initializationDependencies
-            enqueue(dependencies.mapNotNull(::genericTypeInstantiationDescriptorForDependency))
+            val definition = instantiation.definitionType
+            val currentNamespace = definition?.namespace
+                ?: instantiation.type.qualifiedName?.substringBeforeLast('.', "").orEmpty()
+            val dependencyCollector = GenericTypeInstantiationCollector()
+            instantiation.genericArguments.forEach { argument ->
+                dependencyCollector.addGenericTypeReference(argument, currentNamespace)
+            }
+            definition?.implementedInterfaces.orEmpty().forEach { implemented ->
+                dependencyCollector.addGenericTypeReference(
+                    implemented.interfaceType
+                        .substituteTypeParameters(instantiation.genericArguments)
+                        .normalized(),
+                    definition?.namespace.orEmpty(),
+                )
+            }
+            definition?.methods.orEmpty().forEach { method ->
+                dependencyCollector.addGenericTypeReference(
+                    method.returnType.substituteTypeParameters(instantiation.genericArguments).normalized(),
+                    definition?.namespace.orEmpty(),
+                )
+                method.parameters.forEach { parameter ->
+                    dependencyCollector.addGenericTypeReference(
+                        parameter.type.substituteTypeParameters(instantiation.genericArguments).normalized(),
+                        definition?.namespace.orEmpty(),
+                    )
+                }
+            }
+            definition?.properties.orEmpty().forEach { property ->
+                dependencyCollector.addGenericTypeReference(
+                    property.type.substituteTypeParameters(instantiation.genericArguments).normalized(),
+                    definition?.namespace.orEmpty(),
+                )
+            }
+            definition?.fields.orEmpty().forEach { field ->
+                dependencyCollector.addGenericTypeReference(
+                    field.type.substituteTypeParameters(instantiation.genericArguments).normalized(),
+                    definition?.namespace.orEmpty(),
+                )
+            }
+            definition?.events.orEmpty().forEach { event ->
+                dependencyCollector.addGenericTypeReference(
+                    event.delegateType
+                        .substituteTypeParameters(instantiation.genericArguments)
+                        .normalized(),
+                    definition?.namespace.orEmpty(),
+                )
+            }
+            enqueue(dependencyCollector.toInventory(context).genericTypeInstantiations)
         }
 
         return WinRTGenericInstantiationWorklistDescriptor(
             pending = discovered.values.sortedBy(WinRTGenericTypeInstantiationDescriptor::instantiationClassName),
         )
-    }
-
-    fun genericInstantiationWriterDescriptors(
-        context: WinRTMetadataProjectionContext = WinRTMetadataProjectionContext(sources = emptyList()),
-    ): List<WinRTGenericInstantiationWriterDescriptor> =
-        genericInstantiationWorklist(context).pending.map(::genericInstantiationWriterDescriptor)
-
-    fun genericInstantiationWriterDescriptor(
-        instantiation: WinRTGenericTypeInstantiationDescriptor,
-    ): WinRTGenericInstantiationWriterDescriptor {
-        val definition = instantiation.definitionType
-        val isDelegate = definition?.kind == WinRTTypeKind.Delegate
-        val rcwFunctions = mutableListOf<String>()
-        val vtableFunctions = mutableListOf<String>()
-        val propertyFunctions = mutableListOf<String>()
-        val genericReturnOnlyRcwFunctions = mutableListOf<String>()
-        val projectedGenericFallbackFunctions = mutableListOf<String>()
-        if (definition != null && isDelegate) {
-            getDelegateInvoke(definition)?.name?.let { invoke ->
-                rcwFunctions += invoke
-                vtableFunctions += invoke
-                projectedGenericFallbackFunctions += invoke
-            }
-        } else {
-            definition?.methods.orEmpty().forEach { method ->
-                if (!projectedSignatureHasGenericParameters(method.returnType, method.parameters)) return@forEach
-                if (!(isSpecial(method) && (method.name.startsWith("add_") || method.name.startsWith("remove_")))) {
-                    rcwFunctions += method.name
-                    projectedGenericFallbackFunctions += method.name
-                    if (signatureHasOnlyGenericReturn(method.returnType, method.parameters)) {
-                        genericReturnOnlyRcwFunctions += method.name
-                    }
-                }
-            }
-            val methods = definition?.methods.orEmpty()
-            definition?.properties.orEmpty().forEach { property ->
-                val getter = property.getterMethod(methods)
-                val setter = property.setterMethod(methods)
-                val propertyHasGeneric = property.type.containsGenericTypeParameter()
-                if (getter != null) {
-                    if (projectedSignatureHasGenericParameters(getter.returnType, getter.parameters)) {
-                        rcwFunctions += getter.name
-                        propertyFunctions += getter.name
-                        projectedGenericFallbackFunctions += getter.name
-                        if (signatureHasOnlyGenericReturn(getter.returnType, getter.parameters)) {
-                            genericReturnOnlyRcwFunctions += getter.name
-                        }
-                    }
-                } else if (property.getterMethodName != null && propertyHasGeneric) {
-                    rcwFunctions += property.getterMethodName
-                    propertyFunctions += property.getterMethodName
-                    projectedGenericFallbackFunctions += property.getterMethodName
-                    genericReturnOnlyRcwFunctions += property.getterMethodName
-                }
-                if (setter != null) {
-                    if (projectedSignatureHasGenericParameters(setter.returnType, setter.parameters)) {
-                        rcwFunctions += setter.name
-                        propertyFunctions += setter.name
-                        projectedGenericFallbackFunctions += setter.name
-                    }
-                } else if (property.setterMethodName != null && propertyHasGeneric) {
-                    rcwFunctions += property.setterMethodName
-                    propertyFunctions += property.setterMethodName
-                    projectedGenericFallbackFunctions += property.setterMethodName
-                }
-            }
-        }
-        val dependencies = buildList {
-            instantiation.genericArguments.forEach { argument ->
-                addGenericArgumentInstantiationDependencies(argument)
-            }
-            definition?.implementedInterfaces.orEmpty().forEach { implemented ->
-                add(implemented.interfaceType.substituteTypeParameters(instantiation.genericArguments).normalized().typeName)
-            }
-            definition?.events.orEmpty().forEach { event ->
-                add(event.delegateType.substituteTypeParameters(instantiation.genericArguments).normalized().typeName)
-            }
-        }
-        return WinRTGenericInstantiationWriterDescriptor(
-            instantiationClassName = instantiation.instantiationClassName,
-            sourceTypeName = instantiation.type.normalized().typeName,
-            isDelegateInstantiation = isDelegate,
-            rcwFunctionNames = rcwFunctions.distinct(),
-            vtableFunctionNames = vtableFunctions.distinct(),
-            propertyAccessorFunctionNames = propertyFunctions.distinct(),
-            genericReturnOnlyRcwFunctionNames = genericReturnOnlyRcwFunctions.distinct(),
-            projectedGenericFallbackFunctionNames = projectedGenericFallbackFunctions.distinct(),
-            initializationDependencies = dependencies.distinct().sorted(),
-        )
-    }
-
-    private fun MutableList<String>.addGenericArgumentInstantiationDependencies(type: WinRTTypeRef) {
-        val normalized = type.normalized()
-        when (normalized.kind) {
-            WinRTTypeRefKind.Named -> {
-                normalized.typeArguments.forEach { argument ->
-                    addGenericArgumentInstantiationDependencies(argument)
-                }
-                if (normalized.typeArguments.isNotEmpty()) {
-                    add(normalized.typeName)
-                }
-            }
-            WinRTTypeRefKind.Array ->
-                addGenericArgumentInstantiationDependencies(normalized.elementType ?: WinRTTypeRef.unknown())
-            WinRTTypeRefKind.GenericTypeParameter,
-            WinRTTypeRefKind.MethodTypeParameter,
-            WinRTTypeRefKind.Unknown,
-            -> Unit
-        }
     }
 
     private fun WinRTPropertyDefinition.getterMethod(methods: List<WinRTMethodDefinition>): WinRTMethodDefinition? =
@@ -1257,21 +1157,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     private fun WinRTPropertyDefinition.setterMethod(methods: List<WinRTMethodDefinition>): WinRTMethodDefinition? =
         setterMethodRowId?.let { rowId -> methods.firstOrNull { it.methodRowId == rowId } }
             ?: setterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
-
-    private fun genericTypeInstantiationDescriptorForDependency(typeName: String): WinRTGenericTypeInstantiationDescriptor? {
-        val type = WinRTTypeRef.fromDisplayName(typeName).normalized()
-        if (type.typeArguments.isEmpty()) return null
-        val currentNamespace = type.qualifiedName?.substringBeforeLast('.', "") ?: ""
-        val resolved = resolveTypeReference(type, currentNamespace, typesByQualifiedName)
-        val sourceType = resolved.type
-        return WinRTGenericTypeInstantiationDescriptor(
-            type = sourceType,
-            definitionType = resolved.definitionType,
-            instantiationClassName = escapeTypeNameForIdentifier(sourceType.typeName),
-            genericArguments = sourceType.typeArguments,
-            implementsCcwInterface = false,
-        )
-    }
 
     fun projectedMethodSignature(method: WinRTMethodDefinition): WinRTProjectedMethodSignatureDescriptor =
         WinRTProjectedMethodSignatureDescriptor(
@@ -1553,20 +1438,30 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         )
     }
 
-    fun eventHelperSubclassDescriptors(type: WinRTTypeDefinition): List<WinRTEventHelperSubclassDescriptor> =
+    fun eventHelperSubclassDescriptors(
+        type: WinRTTypeDefinition,
+        genericTypeArguments: List<WinRTTypeRef> = emptyList(),
+        ownerTypeName: String = type.qualifiedName,
+    ): List<WinRTEventHelperSubclassDescriptor> =
         type.events.map { event ->
-            val eventType = event.delegateType.normalized()
+            val eventType = event.delegateType
+                .substituteTypeParameters(genericTypeArguments)
+                .normalized()
+            val instantiatedEvent = event.copy(
+                delegateTypeName = eventType.typeName,
+                delegateTypeSignature = eventType,
+            )
             val eventHandlerDescriptor =
                 typeClassifier.classify(eventType, type.namespace).specialType as? WinRTEventHandlerTypeDescriptor
             val usesSharedEventHandlerSource =
                 eventHandlerDescriptor != null &&
                     eventHandlerDescriptor.kind in SHARED_EVENT_HANDLER_SOURCE_KINDS &&
-                    event.supportsSharedEventHandlerSource(type.namespace, eventHandlerDescriptor)
+                    instantiatedEvent.supportsSharedEventHandlerSource(type.namespace, eventHandlerDescriptor)
             WinRTEventHelperSubclassDescriptor(
                 eventTypeName = eventType.typeName,
                 projectedEventTypeName = eventType.typeName,
                 abiEventTypeName = renderAbiTypeName(eventType),
-                ownerTypeName = type.qualifiedName,
+                ownerTypeName = ownerTypeName,
                 sourceClassName = if (usesSharedEventHandlerSource) {
                     "EventHandlerEventSource"
                 } else {
@@ -1774,10 +1669,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             methods = methodVtableDescriptors(type),
             delegateCacheNames = type.methods.map { method -> "_${methodVtableDescriptor(type, method).vmethodName}" },
             usesFunctionPointers = context.target != WinRTMetadataTarget.NetStandard20 && type.genericParameterCount == 0,
-            genericAbiTypeArrays = type.methods.mapNotNull { method ->
-                val genericTypes = getGenericAbiTypes(method)
-                genericTypes.takeIf(List<*>::isNotEmpty)
-            },
         )
 
     fun typeDeclarationDescriptor(
@@ -1887,18 +1778,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         )
     }
 
-    fun genericAbiClassInitializationDescriptor(type: WinRTTypeDefinition): WinRTGenericAbiClassInitializationDescriptor =
-        WinRTGenericAbiClassInitializationDescriptor(
-            typeName = type.qualifiedName,
-            requiresRcwFallbackInitialization = type.genericParameterCount > 0 || hasDerivedGenericInterface(type),
-            requiresCcwFallbackInitialization = doesAbiInterfaceImplementCcwInterface(type),
-            genericMethodDelegateVariables = type.methods.filter { method ->
-                signatureWriterDescriptor(method).hasProjectedGenericParameters
-            }.map { method -> "_${method.name}Delegate" }.sorted(),
-            invokeSlotNames = methodVtableDescriptors(type).map(WinRTMethodVtableDescriptor::vmethodName),
-            genericTypeArrayDependencies = type.methods.flatMap(::getGenericAbiTypes).distinct().sorted(),
-        )
-
     fun requiredInterfaceAugmentationDescriptor(type: WinRTTypeDefinition): WinRTRequiredInterfaceAugmentationDescriptor {
         val required = collectRequiredInterfaceClosure(type)
         val mappedMembers = required.mapNotNull { name ->
@@ -1912,9 +1791,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             explicitForwardMemberNames = explicitImplementations(type).mapNotNull(WinRTExplicitImplementationDescriptor::declarationName).sorted(),
             mappedAugmentationMembers = mappedMembers,
             mappedHelperPlans = required.mapNotNull(::requiredMappedHelperPlan),
-            genericAbiParameterArrays = type.methods.mapNotNull { method ->
-                getGenericAbiTypes(method).takeIf(List<*>::isNotEmpty)
-            },
             implementsCcwInterface = doesAbiInterfaceImplementCcwInterface(type),
         )
     }
@@ -2109,14 +1985,11 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             WinRTMetadataParityAuditEntry("code_writers.h", "generic_type_instances fixed point", "WinRTMetadataSemanticHelpers.genericInstantiationWorklist", true),
             WinRTMetadataParityAuditEntry("WinMD tables", "auxiliary table semantic boundary", "WinRTMetadataSemanticHelpers.auxiliaryTableSemanticBoundaries", true),
             WinRTMetadataParityAuditEntry("main.cpp", "helper output inventory", "WinRTMetadataProjectionInventory.helperOutputs", true),
-            WinRTMetadataParityAuditEntry("main.cpp", "WinRTAbiDelegateInitializer conditions", "WinRTProjectionHelperOutputInventory.abiDelegateInitializerRequired", true),
-            WinRTMetadataParityAuditEntry("main.cpp", "WinRTGenericTypeInstantiations/base strings conditions", "WinRTProjectionHelperOutputInventory", true),
+            WinRTMetadataParityAuditEntry("main.cpp", "base strings helper conditions", "WinRTProjectionHelperOutputInventory", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "is_manually_generated_iface", "WinRTMetadataSemanticHelpers.isManuallyGeneratedInterface", true),
             WinRTMetadataParityAuditEntry("settings.h/code_writers.h", "projection context flags", "WinRTMetadataSemanticHelpers.projectionContextSemantics", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "write_class_members property merge", "WinRTMetadataSemanticHelpers.classMemberMergeDescriptor", true),
             WinRTMetadataParityAuditEntry("helpers.h", "object/class equals/hashcode helpers", "WinRTMetadataSemanticHelpers.classObjectMethodDescriptor", true),
-            WinRTMetadataParityAuditEntry("code_writers.h", "generic ABI delegate operation entries", "WinRTGenericAbiDelegateDescriptor.operationName/declaration/typeArrayShape", true),
-            WinRTMetadataParityAuditEntry("code_writers.h", "write_generic_type_instantiation descriptor", "WinRTMetadataSemanticHelpers.genericInstantiationWriterDescriptor", true),
             WinRTMetadataParityAuditEntry("type_writers.h/code_writers.h", "type-name writer context", "WinRTMetadataSemanticHelpers.typeNameDescriptor", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "event helper subclass descriptors", "WinRTMetadataSemanticHelpers.eventHelperSubclassDescriptors", true),
             WinRTMetadataParityAuditEntry("type_writers.h/code_writers.h", "platform guard/member platform descriptors", "WinRTMetadataSemanticHelpers.platformGuardDescriptor", true),
@@ -2131,7 +2004,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             WinRTMetadataParityAuditEntry("code_writers.h", "type declaration writer taxonomy", "WinRTMetadataSemanticHelpers.typeDeclarationDescriptor", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "object-reference/inheritance surface descriptors", "WinRTMetadataSemanticHelpers.objectReferenceSurfaceDescriptor", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "managed ABI invoke descriptors", "WinRTMetadataSemanticHelpers.managedAbiInvokeDescriptor", true),
-            WinRTMetadataParityAuditEntry("code_writers.h", "generic ABI class initialization descriptors", "WinRTMetadataSemanticHelpers.genericAbiClassInitializationDescriptor", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "required-interface ABI augmentation descriptors", "WinRTMetadataSemanticHelpers.requiredInterfaceAugmentationDescriptor", true),
             WinRTMetadataParityAuditEntry("code_writers.h", "module activation/authoring helper descriptors", "WinRTMetadataSemanticHelpers.moduleActivationAndAuthoringDescriptor", true),
             WinRTMetadataParityAuditEntry("reference full audit", "metadata/generator/runtime/plugin/authoring classification", "PLAN.md Queue 10.9 + Metadata audit classification", true),
@@ -2251,18 +2123,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     private fun WinRTTypeDefinition.effectiveAccessorRowId(accessorName: String, declaredRowId: Int?): Int? =
         methods.firstOrNull { it.name == accessorName }?.methodRowId ?: declaredRowId
 
-    private fun projectedSignatureHasGenericParameters(
-        returnType: WinRTTypeRef,
-        parameters: List<WinRTParameterDefinition>,
-    ): Boolean =
-        returnType.containsGenericTypeParameter() || parameters.any { parameter -> parameter.type.containsGenericTypeParameter() }
-
-    private fun signatureHasOnlyGenericReturn(
-        returnType: WinRTTypeRef,
-        parameters: List<WinRTParameterDefinition>,
-    ): Boolean =
-        returnType.containsGenericTypeParameter() && parameters.none { parameter -> parameter.type.containsGenericTypeParameter() }
-
     private fun WinRTTypeRef.containsGenericTypeParameter(): Boolean {
         val normalized = normalized()
         return normalized.kind == WinRTTypeRefKind.GenericTypeParameter ||
@@ -2335,12 +2195,6 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
 
     private fun cacheNameFor(typeName: String): String =
         escapeTypeNameForIdentifier(typeName).replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } + "Cache"
-
-    private fun getGenericAbiTypes(method: WinRTMethodDefinition): List<String> =
-        (listOf(method.returnType) + method.parameters.map(WinRTParameterDefinition::type))
-            .filter { it.containsGenericTypeParameter() || it.typeArguments.isNotEmpty() }
-            .map { renderAbiTypeName(it) }
-            .distinct()
 
     private fun guidTextToBytes(guid: String): List<Int> =
         guid.filter { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
@@ -2426,28 +2280,20 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     private fun escapeIdentifier(value: String): String =
         if (value in KOTLIN_KEYWORDS || value in CSHARP_PROJECTION_KEYWORDS) "`$value`" else value
 
-    private inner class GenericAbiInventoryCollector {
-        private val abiDelegates = linkedMapOf<String, WinRTGenericAbiDelegateDescriptor>()
+    private inner class GenericTypeInstantiationCollector {
         private val typeInstantiations = linkedMapOf<String, WinRTGenericTypeInstantiationDescriptor>()
-        private val derivedGenericInterfaces = linkedSetOf<String>()
 
         fun addGenericTypeReferencesInType(type: WinRTTypeDefinition) {
             when (type.kind) {
                 WinRTTypeKind.Delegate -> getDelegateInvoke(type)?.let { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
-                WinRTTypeKind.Interface -> {
-                    if (hasDerivedGenericInterface(type)) {
-                        derivedGenericInterfaces += type.qualifiedName
-                    }
-                    addGenericTypeReferencesInInterfaceType(type)
-                }
+                WinRTTypeKind.Interface -> addGenericTypeReferencesInInterfaceType(type)
                 WinRTTypeKind.RuntimeClass -> addGenericTypeReferencesInRuntimeClass(type)
                 else -> Unit
             }
         }
 
-        fun toInventory(context: WinRTMetadataProjectionContext): WinRTGenericAbiInventory =
-            WinRTGenericAbiInventory(
-                genericAbiDelegates = abiDelegates.values.sortedWith(compareBy({ it.abiDelegateTypesKey }, { it.abiDelegateName })),
+        fun toInventory(context: WinRTMetadataProjectionContext): WinRTGenericTypeInstantiationInventory =
+            WinRTGenericTypeInstantiationInventory(
                 genericTypeInstantiations = typeInstantiations.values
                     .map { instantiation ->
                         instantiation.copy(
@@ -2457,24 +2303,23 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
                         )
                     }
                     .sortedBy(WinRTGenericTypeInstantiationDescriptor::instantiationClassName),
-                derivedGenericInterfaces = derivedGenericInterfaces.sorted(),
             )
 
         private fun addGenericTypeReferencesInInterfaceType(type: WinRTTypeDefinition) {
             type.methods.filterNot(::isSpecial).forEach { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
-            type.properties.forEach { property -> addIfGenericTypeReference(property.type, property.type.kind == WinRTTypeRefKind.Array, type.namespace) }
-            type.events.forEach { event -> addIfGenericTypeReference(event.delegateType, isArray = false, currentNamespace = type.namespace) }
+            type.properties.forEach { property -> addGenericTypeReference(property.type, type.namespace) }
+            type.events.forEach { event -> addGenericTypeReference(event.delegateType, type.namespace) }
             type.implementedInterfaces.forEach { implemented ->
-                addIfGenericTypeReference(implemented.interfaceType, isArray = false, currentNamespace = type.namespace)
+                addGenericTypeReference(implemented.interfaceType, type.namespace)
             }
         }
 
         private fun addGenericTypeReferencesInRuntimeClass(type: WinRTTypeDefinition) {
             type.methods.filterNot(::isSpecial).forEach { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
-            type.properties.forEach { property -> addIfGenericTypeReference(property.type, property.type.kind == WinRTTypeRefKind.Array, type.namespace) }
-            type.events.forEach { event -> addIfGenericTypeReference(event.delegateType, isArray = false, currentNamespace = type.namespace) }
+            type.properties.forEach { property -> addGenericTypeReference(property.type, type.namespace) }
+            type.events.forEach { event -> addGenericTypeReference(event.delegateType, type.namespace) }
             type.implementedInterfaces.forEach { implemented ->
-                addIfGenericTypeReference(implemented.interfaceType, isArray = false, currentNamespace = type.namespace)
+                addGenericTypeReference(implemented.interfaceType, type.namespace)
             }
             type.activation.factories.forEach { factory ->
                 typesByQualifiedName[factory.interfaceName]?.let(::addGenericTypeReferencesInInterfaceType)
@@ -2486,21 +2331,21 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
 
         private fun addGenericTypeReferencesInMethod(method: WinRTMethodDefinition, currentNamespace: String) {
             method.parameters.forEach { parameter ->
-                addIfGenericTypeReference(parameter.type, parameter.type.kind == WinRTTypeRefKind.Array, currentNamespace = currentNamespace)
+                addGenericTypeReference(parameter.type, currentNamespace)
             }
-            addIfGenericTypeReference(method.returnType, method.returnType.kind == WinRTTypeRefKind.Array, currentNamespace = currentNamespace)
+            addGenericTypeReference(method.returnType, currentNamespace)
         }
 
-        private fun addIfGenericTypeReference(type: WinRTTypeRef, isArray: Boolean, currentNamespace: String) {
+        fun addGenericTypeReference(type: WinRTTypeRef, currentNamespace: String) {
             val normalized = type.normalized()
             when (normalized.kind) {
                 WinRTTypeRefKind.Named -> {
                     normalized.typeArguments.forEach { argument ->
-                        addIfGenericTypeReference(argument, isArray = false, currentNamespace = currentNamespace)
+                        addGenericTypeReference(argument, currentNamespace)
                     }
                     val resolved = resolveTypeReference(normalized, currentNamespace, typesByQualifiedName)
                     val definitionType = resolved.definitionType
-                    if (normalized.typeArguments.isNotEmpty()) {
+                    if (normalized.typeArguments.isNotEmpty() && !normalized.containsGenericTypeParameter()) {
                         val sourceType = resolved.type
                         val className = escapeTypeNameForIdentifier(sourceType.typeName)
                         typeInstantiations.putIfAbsent(
@@ -2513,311 +2358,23 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
                                 implementsCcwInterface = false,
                             ),
                         )
-                        addAbiDelegatesForType(sourceType)
-                    }
-                    if (isArray) {
-                        addAbiDelegatesForArray(normalized, currentNamespace)
                     }
                     if (definitionType?.kind == WinRTTypeKind.Struct) {
                         definitionType.fields.forEach { field ->
-                            addIfGenericTypeReference(field.type, field.type.kind == WinRTTypeRefKind.Array, definitionType.namespace)
+                            addGenericTypeReference(field.type, definitionType.namespace)
                         }
                     }
                 }
 
                 WinRTTypeRefKind.Array -> {
                     val element = normalized.elementType ?: WinRTTypeRef.unknown()
-                    addIfGenericTypeReference(element, isArray = false, currentNamespace = currentNamespace)
-                    addAbiDelegatesForArray(element, currentNamespace)
+                    addGenericTypeReference(element, currentNamespace)
                 }
 
-                else -> {
-                    if (isArray) {
-                        addAbiDelegatesForArray(normalized, currentNamespace)
-                    }
-                }
+                else -> Unit
             }
         }
 
-        private fun addAbiDelegatesForArray(elementType: WinRTTypeRef, currentNamespace: String) {
-            addAbiDelegatesForType(
-                WinRTTypeRef.named(
-                    qualifiedName = "Windows.Foundation.Collections.IVector",
-                    typeArguments = listOf(resolveTypeReference(elementType, currentNamespace, typesByQualifiedName).type),
-                ),
-            )
-        }
-
-        private fun addAbiDelegatesForType(type: WinRTTypeRef) {
-            val normalized = type.normalized()
-            if (normalized.typeArguments.isEmpty()) return
-            val descriptor = typeClassifier.classify(normalized, "")
-            abiDelegateOperationsFor(descriptor.specialType, normalized.typeArguments).forEach { operation ->
-                val currentNamespace = descriptor.definitionType?.namespace
-                    ?: normalized.qualifiedName?.substringBeforeLast('.', missingDelimiterValue = "")
-                    ?: ""
-                addAbiDelegateOperation(normalized, operation, currentNamespace)
-            }
-        }
-
-        private fun addAbiDelegateOperation(
-            sourceType: WinRTTypeRef,
-            operation: AbiDelegateOperation,
-            currentNamespace: String,
-        ) {
-            val abiTypeNames = operation.argumentIndexes.mapNotNull { index ->
-                sourceType.typeArguments.getOrNull(index)?.let { argument ->
-                    renderAbiDelegateTypeName(argument, currentNamespace)
-                }
-            }
-            val escapedAbiTypes = abiTypeNames.map(::escapeTypeNameForIdentifier)
-            val suffix = escapedAbiTypes.joinToString("_")
-            val delegateName = if (suffix.isEmpty()) "_${operation.name}" else "_${operation.name}_$suffix"
-            val key = listOf(sourceType.typeName, operation.name, abiTypeNames.joinToString("|")).joinToString("#")
-            abiDelegates.putIfAbsent(
-                key,
-                WinRTGenericAbiDelegateDescriptor(
-                    abiDelegateName = delegateName,
-                    sourceGenericType = sourceType,
-                    abiDelegateTypesKey = abiTypeNames.joinToString("_"),
-                    genericArguments = sourceType.typeArguments,
-                    operationName = operation.name,
-                    abiParameterTypeNames = operation.parameterShape(abiTypeNames),
-                    declaration = operation.declaration(delegateName, abiTypeNames),
-                    typeArrayShape = operation.typeArrayShape(abiTypeNames),
-                ),
-            )
-        }
-
-        private fun abiDelegateOperationsFor(
-            specialType: WinRTSpecialTypeDescriptor?,
-            arguments: List<WinRTTypeRef>,
-        ): List<AbiDelegateOperation> =
-            when (specialType) {
-                is WinRTCollectionTypeDescriptor -> collectionAbiDelegateOperationsFor(specialType.kind, arguments)
-                is WinRTReferenceTypeDescriptor -> referenceAbiDelegateOperationsFor(specialType.kind, arguments)
-                is WinRTAsyncTypeDescriptor -> asyncAbiDelegateOperationsFor(specialType.kind, arguments)
-                is WinRTEventHandlerTypeDescriptor -> eventHandlerAbiDelegateOperationsFor(specialType.kind, arguments)
-                is WinRTBindableCollectionTypeDescriptor,
-                null,
-                -> emptyList()
-            }
-
-        private fun collectionAbiDelegateOperationsFor(
-            kind: WinRTCollectionInterfaceKind,
-            arguments: List<WinRTTypeRef>,
-        ): List<AbiDelegateOperation> =
-            when (kind) {
-                WinRTCollectionInterfaceKind.Iterator ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("get_Current", listOf(0), AbiDelegateShape.OutReturn))
-                WinRTCollectionInterfaceKind.KeyValuePair ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("get_Key", listOf(0), AbiDelegateShape.IntPtrOutPointer)) +
-                        ifRequired(arguments, 1, AbiDelegateOperation("get_Value", listOf(1), AbiDelegateShape.IntPtrOutPointer))
-                WinRTCollectionInterfaceKind.MapView -> {
-                    val lookup = if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
-                        listOf(AbiDelegateOperation("lookup", listOf(0, 1), AbiDelegateShape.MapLookup))
-                    } else {
-                        emptyList()
-                    }
-                    lookup + ifRequired(arguments, 0, AbiDelegateOperation("has_key", listOf(0), AbiDelegateShape.HasKey))
-                }
-                WinRTCollectionInterfaceKind.Map -> {
-                    val mapOperations = if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
-                        listOf(
-                            AbiDelegateOperation("lookup", listOf(0, 1), AbiDelegateShape.MapLookup),
-                            AbiDelegateOperation("insert", listOf(0, 1), AbiDelegateShape.MapInsert),
-                        )
-                    } else {
-                        emptyList()
-                    }
-                    mapOperations +
-                        ifRequired(arguments, 0, AbiDelegateOperation("has_key", listOf(0), AbiDelegateShape.HasKey)) +
-                        ifRequired(arguments, 0, AbiDelegateOperation("remove", listOf(0), AbiDelegateShape.Remove))
-                }
-                WinRTCollectionInterfaceKind.VectorView ->
-                    ifRequired(
-                        arguments,
-                        0,
-                        AbiDelegateOperation("get_at", listOf(0), AbiDelegateShape.IndexOutReturn),
-                        AbiDelegateOperation("index_of", listOf(0), AbiDelegateShape.IndexOf),
-                        AbiDelegateOperation("get_Current", listOf(0), AbiDelegateShape.OutReturn),
-                    )
-                WinRTCollectionInterfaceKind.Vector ->
-                    ifRequired(
-                        arguments,
-                        0,
-                        AbiDelegateOperation("get_at", listOf(0), AbiDelegateShape.IndexOutReturn),
-                        AbiDelegateOperation("index_of", listOf(0), AbiDelegateShape.IndexOf),
-                        AbiDelegateOperation("set_at", listOf(0), AbiDelegateShape.IndexValue),
-                        AbiDelegateOperation("append", listOf(0), AbiDelegateShape.Value),
-                        AbiDelegateOperation("get_Current", listOf(0), AbiDelegateShape.OutReturn),
-                    )
-                WinRTCollectionInterfaceKind.Iterable -> emptyList()
-            }
-
-        private fun referenceAbiDelegateOperationsFor(
-            kind: WinRTReferenceInterfaceKind,
-            arguments: List<WinRTTypeRef>,
-        ): List<AbiDelegateOperation> =
-            when (kind) {
-                WinRTReferenceInterfaceKind.Reference ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("get_Value", listOf(0), AbiDelegateShape.OutReturn))
-                WinRTReferenceInterfaceKind.ReferenceArray -> emptyList()
-            }
-
-        private fun asyncAbiDelegateOperationsFor(
-            kind: WinRTAsyncInterfaceKind,
-            arguments: List<WinRTTypeRef>,
-        ): List<AbiDelegateOperation> =
-            when (kind) {
-                WinRTAsyncInterfaceKind.Operation ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("get", listOf(0), AbiDelegateShape.OutReturn))
-                WinRTAsyncInterfaceKind.OperationWithProgress ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("get", listOf(0), AbiDelegateShape.OutReturn)) +
-                        ifRequired(arguments, 1, AbiDelegateOperation("invoke", listOf(1), AbiDelegateShape.AsyncProgress))
-                WinRTAsyncInterfaceKind.Info,
-                WinRTAsyncInterfaceKind.Action,
-                WinRTAsyncInterfaceKind.ActionWithProgress,
-                -> emptyList()
-            }
-
-        private fun eventHandlerAbiDelegateOperationsFor(
-            kind: WinRTEventHandlerKind,
-            arguments: List<WinRTTypeRef>,
-        ): List<AbiDelegateOperation> =
-            when (kind) {
-                WinRTEventHandlerKind.EventHandler ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("invoke", listOf(0), AbiDelegateShape.EventHandler))
-                WinRTEventHandlerKind.TypedEventHandler -> {
-                    if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
-                        listOf(AbiDelegateOperation("invoke", listOf(0, 1), AbiDelegateShape.TypedEventHandler))
-                    } else {
-                        emptyList()
-                    }
-                }
-                WinRTEventHandlerKind.AsyncOperationProgressHandler ->
-                    ifRequired(arguments, 1, AbiDelegateOperation("invoke", listOf(1), AbiDelegateShape.AsyncProgress))
-                WinRTEventHandlerKind.AsyncActionProgressHandler ->
-                    ifRequired(arguments, 0, AbiDelegateOperation("invoke", listOf(0), AbiDelegateShape.AsyncProgress))
-                WinRTEventHandlerKind.PropertyChangedEventHandler,
-                WinRTEventHandlerKind.NotifyCollectionChangedEventHandler,
-                WinRTEventHandlerKind.VectorChangedEventHandler,
-                WinRTEventHandlerKind.BindableVectorChangedEventHandler,
-                WinRTEventHandlerKind.MapChangedEventHandler,
-                -> emptyList()
-            }
-
-        private fun ifRequired(
-            arguments: List<WinRTTypeRef>,
-            index: Int,
-            vararg operations: AbiDelegateOperation,
-        ): List<AbiDelegateOperation> =
-            if (arguments.getOrNull(index)?.isAbiDelegateRequired() == true) operations.toList() else emptyList()
-
-        private fun WinRTTypeRef.isAbiDelegateRequired(): Boolean {
-            val normalized = normalized()
-            return when (normalized.kind) {
-                WinRTTypeRefKind.Named -> {
-                    val descriptor = typeClassifier.classify(normalized, "")
-                    when (descriptor.projectionCategory) {
-                        WinRTProjectionCategory.Fundamental ->
-                            winRTFundamentalTypeForName(descriptor.typeName)?.isWinRTValueType == true
-                        WinRTProjectionCategory.Guid,
-                        WinRTProjectionCategory.Enum,
-                        WinRTProjectionCategory.Struct,
-                        -> true
-                        else -> false
-                    }
-                }
-
-                WinRTTypeRefKind.GenericTypeParameter,
-                WinRTTypeRefKind.MethodTypeParameter,
-                WinRTTypeRefKind.Array,
-                WinRTTypeRefKind.Unknown,
-                -> false
-            }
-        }
-
-        private fun renderAbiDelegateTypeName(type: WinRTTypeRef, currentNamespace: String): String {
-            val resolved = resolveTypeReference(type.normalized(), currentNamespace, typesByQualifiedName).type.normalized()
-            val descriptor = typeClassifier.classify(resolved, currentNamespace)
-            return when (descriptor.projectionCategory) {
-                WinRTProjectionCategory.Fundamental,
-                WinRTProjectionCategory.String,
-                -> winRTFundamentalTypeForName(descriptor.typeName)
-                    ?.toNativeAbiTypeName()
-                    ?: descriptor.typeName
-                WinRTProjectionCategory.Guid,
-                WinRTProjectionCategory.Enum,
-                WinRTProjectionCategory.Struct,
-                -> descriptor.type.typeName
-                WinRTProjectionCategory.Object,
-                WinRTProjectionCategory.Interface,
-                WinRTProjectionCategory.RuntimeClass,
-                WinRTProjectionCategory.Delegate,
-                WinRTProjectionCategory.Attribute,
-                WinRTProjectionCategory.Array,
-                -> "IntPtr"
-                WinRTProjectionCategory.Type,
-                WinRTProjectionCategory.ApiContract,
-                WinRTProjectionCategory.GenericTypeParameter,
-                WinRTProjectionCategory.MethodTypeParameter,
-                WinRTProjectionCategory.Unit,
-                WinRTProjectionCategory.Unknown,
-                -> descriptor.type.typeName
-            }
-        }
-    }
-
-    private enum class AbiDelegateShape {
-        OutReturn,
-        IntPtrOutPointer,
-        MapLookup,
-        MapInsert,
-        HasKey,
-        Remove,
-        IndexOutReturn,
-        IndexOf,
-        IndexValue,
-        Value,
-        EventHandler,
-        TypedEventHandler,
-        AsyncProgress,
-    }
-
-    private data class AbiDelegateOperation(
-        val name: String,
-        val argumentIndexes: List<Int>,
-        val shape: AbiDelegateShape,
-    ) {
-        fun parameterShape(abiTypes: List<String>): List<String> =
-            when (shape) {
-                AbiDelegateShape.OutReturn -> listOf("void*", "out ${abiTypes[0]}", "int")
-                AbiDelegateShape.IntPtrOutPointer -> listOf("IntPtr", "${abiTypes[0]}*", "int")
-                AbiDelegateShape.MapLookup -> listOf("void*", abiTypes[0], "out ${abiTypes[1]}", "int")
-                AbiDelegateShape.MapInsert -> listOf("void*", abiTypes[0], abiTypes[1], "out byte", "int")
-                AbiDelegateShape.HasKey -> listOf("void*", abiTypes[0], "out byte", "int")
-                AbiDelegateShape.Remove -> listOf("void*", abiTypes[0], "int")
-                AbiDelegateShape.IndexOutReturn -> listOf("void*", "uint", "out ${abiTypes[0]}", "int")
-                AbiDelegateShape.IndexOf -> listOf("void*", abiTypes[0], "out uint", "out byte", "int")
-                AbiDelegateShape.IndexValue -> listOf("void*", "uint", abiTypes[0], "int")
-                AbiDelegateShape.Value -> listOf("void*", abiTypes[0], "int")
-                AbiDelegateShape.EventHandler -> listOf("void*", "IntPtr", abiTypes[0], "int")
-                AbiDelegateShape.TypedEventHandler -> listOf("void*", abiTypes[0], abiTypes[1], "int")
-                AbiDelegateShape.AsyncProgress -> listOf("void*", "IntPtr", abiTypes[0], "int")
-            }
-
-        fun declaration(delegateName: String, abiTypes: List<String>): String =
-            "internal unsafe delegate int $delegateName(${parameterShape(abiTypes).dropLast(1).joinToString(", ")});"
-
-        fun typeArrayShape(abiTypes: List<String>): List<String> =
-            parameterShape(abiTypes).map { parameter ->
-                when {
-                    parameter.startsWith("out ") -> "${parameter.removePrefix("out ")}.MakeByRefType()"
-                    parameter.endsWith("*") -> parameter
-                    else -> parameter
-                }
-            }
     }
 
     companion object {

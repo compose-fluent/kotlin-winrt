@@ -12,9 +12,6 @@ import io.github.composefluent.winrt.metadata.isWinRTGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -149,6 +146,10 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     }
 
     return when (effectiveTypeName) {
+        RAW_ADDRESS_CLASS_NAME.simpleName,
+        "io.github.composefluent.winrt.runtime.RawAddress" -> RAW_ADDRESS_CLASS_NAME
+        "RawComPtr",
+        "io.github.composefluent.winrt.runtime.RawComPtr" -> ClassName("io.github.composefluent.winrt.runtime", "RawComPtr")
         IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
         "io.github.composefluent.winrt.runtime.IUnknownReference" -> IUNKNOWN_REFERENCE_CLASS_NAME
         IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,

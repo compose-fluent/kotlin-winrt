@@ -6,7 +6,7 @@ data class WinRTMetadataProjectionInventory(
     val baseTypeMappings: List<WinRTBaseTypeMapping>,
     val eventSourceMappings: List<WinRTEventSourceMapping>,
     val authoredMetadataTypeMappings: List<WinRTAuthoredMetadataTypeMapping>,
-    val genericAbiInventory: WinRTGenericAbiInventory,
+    val genericTypeInstantiationInventory: WinRTGenericTypeInstantiationInventory,
     val helperOutputs: WinRTProjectionHelperOutputInventory,
 ) {
     val projectionFileWritten: Boolean
@@ -17,9 +17,6 @@ data class WinRTProjectionHelperOutputInventory(
     val eventHelpersFileName: String = "WinRTEventHelpers.cs",
     val eventHelpersRequired: Boolean,
     val baseTypeMappingHelperRequired: Boolean,
-    val abiDelegateInitializerRequired: Boolean,
-    val abiDelegateAsyncStatusRequired: Boolean,
-    val genericTypeInstantiationsHelperRequired: Boolean,
     val authoringMetadataTypeMappingHelperRequired: Boolean,
     val baseStringHelpersRequired: Boolean,
     val comInteropHelpersRequired: Boolean,
@@ -29,8 +26,6 @@ data class WinRTProjectionHelperOutputInventory(
         get() = buildList {
             if (eventHelpersRequired) add(eventHelpersFileName)
             if (baseTypeMappingHelperRequired) add("WinRTBaseTypeMappingHelper.cs")
-            if (abiDelegateInitializerRequired) add("WinRTAbiDelegateInitializer.cs")
-            if (genericTypeInstantiationsHelperRequired) add("WinRTGenericTypeInstantiations.cs")
             if (authoringMetadataTypeMappingHelperRequired) add("AuthoringMetadataTypeMappingHelper.cs")
             if (namespaceAdditionsRequired) add("WinRTNamespaceAdditions.kt")
         }
@@ -282,7 +277,7 @@ class WinRTMetadataProjectionInventoryBuilder private constructor(
         val namespaces = model.namespaces.map { namespace ->
             buildNamespace(namespace, baseTypeMappings, eventSourceMappings, authoredMetadataTypeMappings)
         }
-        val genericAbiInventory = helpers.genericAbiInventory(context)
+        val genericTypeInstantiationInventory = helpers.genericTypeInstantiationInventory(context)
         val projectionFileWritten = namespaces.any(WinRTNamespaceProjectionInventory::projectionFileWritten)
         val namespaceAdditions = WinRTNamespaceAdditions.forProjection(
             model = model,
@@ -295,17 +290,10 @@ class WinRTMetadataProjectionInventoryBuilder private constructor(
             baseTypeMappings = baseTypeMappings.values.sortedBy(WinRTBaseTypeMapping::typeName),
             eventSourceMappings = eventSourceMappings.values.sortedBy(WinRTEventSourceMapping::eventTypeName),
             authoredMetadataTypeMappings = authoredMetadataTypeMappings.values.sortedBy(WinRTAuthoredMetadataTypeMapping::projectedTypeName),
-            genericAbiInventory = genericAbiInventory,
+            genericTypeInstantiationInventory = genericTypeInstantiationInventory,
             helperOutputs = WinRTProjectionHelperOutputInventory(
                 eventHelpersRequired = true,
                 baseTypeMappingHelperRequired = baseTypeMappings.isNotEmpty(),
-                abiDelegateInitializerRequired = context.target == WinRTMetadataTarget.NetStandard20 &&
-                    genericAbiInventory.genericAbiDelegates.isNotEmpty(),
-                abiDelegateAsyncStatusRequired = context.target == WinRTMetadataTarget.NetStandard20 &&
-                    genericAbiInventory.genericAbiDelegates.isNotEmpty() &&
-                    context.filter.includes("Windows.Foundation.AsyncStatus"),
-                genericTypeInstantiationsHelperRequired = context.target != WinRTMetadataTarget.NetStandard20 &&
-                    genericAbiInventory.genericTypeInstantiations.isNotEmpty(),
                 authoringMetadataTypeMappingHelperRequired = context.component && authoredMetadataTypeMappings.isNotEmpty(),
                 baseStringHelpersRequired = projectionFileWritten,
                 comInteropHelpersRequired = projectionFileWritten && context.filter.includes("Windows"),

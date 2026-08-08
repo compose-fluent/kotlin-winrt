@@ -1,4 +1,8 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+    kotlin.native.internal.InternalForKotlinNative::class,
+)
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
 package io.github.composefluent.winrt.runtime
 
@@ -15,6 +19,7 @@ import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.ShortVar
 import kotlinx.cinterop.UShortVar
+import kotlinx.cinterop.Vector128
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.get
@@ -32,6 +37,7 @@ import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlinx.io.files.Path
 import kotlin.native.concurrent.ThreadLocal
+import kotlin.native.internal.GCUnsafeCall
 import platform.posix.getenv
 import platform.posix.memset
 import platform.windows.COINIT_APARTMENTTHREADED
@@ -99,9 +105,13 @@ internal actual class NativeScalarScratchFrame internal constructor(
             return ""
         }
         try {
-            return PlatformAbi.readHString(handle)
+            return nativeReadHString(handle)
         } finally {
-            WinRTPlatformApi.windowsDeleteStringRaw(handle)
+            try {
+                WinRTPlatformApi.windowsDeleteStringRaw(handle)
+            } finally {
+                storage.pointed.value = 0L
+            }
         }
     }
 
@@ -301,12 +311,13 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     private var allocation: COpaquePointer? = null
     private var base: RawAddress = RawAddress.Null
     private var capacityBytes: Long = 0L
+    private var pinnedValue: String? = null
     private var active: Boolean = false
 
     actual var handle: RawAddress = RawAddress.Null
 
     actual val utf16Chars: RawAddress
-        get() = RawAddress(base.value + hStringCharsOffsetBytes)
+        get() = pinnedValue?.nativeAddressOf(0).asRawAddress()
 
     actual val header: RawAddress
         get() = RawAddress(base.value + hStringHeaderOffsetBytes)
@@ -317,11 +328,9 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     internal fun acquire(value: String): NativeHStringReferenceFrame {
         check(!active) { "Native HSTRING reference frame is already active." }
         handle = RawAddress.Null
-        val charCount = value.length + 1
-        ensureCapacity(hStringCharsOffsetBytes + charCount.toLong() * UShort.SIZE_BYTES)
-        val destination = utf16Chars.asCPointer<UShortVar>()
-        value.forEachIndexed { index, char -> destination[index] = char.code.toUShort() }
-        destination[value.length] = 0u
+        ensureCapacity(hStringFrameSizeBytes)
+        // Mirrors CsWinRT MarshalString.Pinnable: the HSTRING borrows pinned UTF-16 storage for this call.
+        pinnedValue = if (value.isEmpty()) null else value.toNativePinnable()
         active = true
         return this
     }
@@ -329,7 +338,6 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     actual fun initializeReference(length: Int) {
         check(active) { "Native HSTRING reference frame is not active." }
         require(length >= 0) { "HSTRING length must be non-negative." }
-        PlatformAbi.zeroBytes(header, hStringHeaderSizeBytes)
         if (length == 0) {
             handle = RawAddress.Null
         } else {
@@ -348,6 +356,7 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     actual override fun close() {
         if (active) {
             release(this)
+            pinnedValue = null
             active = false
         }
     }
@@ -367,6 +376,7 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         allocation = nativeHeap.allocArray<ByteVar>(newCapacity.toInt()).reinterpret<COpaque>()
         base = requireNotNull(allocation).asRawAddress()
         capacityBytes = newCapacity
+        memset(base.toOpaquePointer(), 0, capacityBytes.toULong())
     }
 }
 
@@ -411,13 +421,31 @@ private object NativeHStringReferenceFrames {
 internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
     NativeHStringReferenceFrames.pool.acquire(value)
 
+@PublishedApi
+internal actual inline fun winRTPinString(value: String, length: Int): String =
+    if (length == 0) value else value.toNativePinnable()
+
+@PublishedApi
+internal actual inline fun winRTStringAddress(value: String, length: Int): RawAddress =
+    if (length == 0) {
+        RawAddress.Null
+    } else {
+        RawAddress(value.nativeAddressOf(0).rawValue.toLong())
+    }
+
+@PublishedApi
+internal actual inline fun winRTStringLength(value: String): Int = value.length
+
 private const val hStringHeaderOffsetBytes: Long = 8L
 private const val hStringHeaderSizeBytes: Long = 24L
-private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
-private const val hStringLengthOffsetBytes: Long = 4L
-private const val hStringBufferOffsetBytes: Long = 16L
+private const val hStringFrameSizeBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
+@PublishedApi
+internal const val hStringLengthOffsetBytes: Long = 4L
+
+@PublishedApi
+internal const val hStringBufferOffsetBytes: Long = 16L
 private const val hStringReferenceFlag: Int = 1
-private const val hStringInitialFrameSizeBytes: Long = 64L
+private const val hStringInitialFrameSizeBytes: Long = hStringFrameSizeBytes
 
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,
@@ -491,8 +519,10 @@ actual object PlatformAbi {
         val length = value.length + if (nulTerminated) 1 else 0
         val pointer = allocateBytes(scope, length.toLong() * sizeOf<UShortVar>())
         val chars = pointer.asCPointer<UShortVar>()
-        value.forEachIndexed { index, char ->
-            chars[index] = char.code.toUShort()
+        var index = 0
+        while (index < value.length) {
+            chars[index] = value[index].code.toUShort()
+            index += 1
         }
         if (nulTerminated) {
             chars[value.length] = 0u
@@ -534,27 +564,11 @@ actual object PlatformAbi {
         if (length == 0) {
             return ""
         }
-        val chars = pointer.asCPointer<UShortVar>()
-        return CharArray(length) { index -> chars[index].toInt().toChar() }.concatToString()
+        return pointer.asCPointer<UShortVar>().toLengthAwareKString(length)
     }
 
     actual fun readHString(handle: RawAddress): String {
-        if (isNull(handle)) {
-            return ""
-        }
-        val length = RawAddress(handle.value + hStringLengthOffsetBytes)
-            .asCPointer<IntVar>()
-            .pointed.value
-        require(length >= 0) { "HSTRING length exceeds the supported Kotlin String size." }
-        if (length == 0) {
-            return ""
-        }
-        val utf16 = RawAddress(handle.value + hStringBufferOffsetBytes)
-            .asCPointer<COpaquePointerVar>()
-            .pointed.value
-            ?.reinterpret<UShortVar>()
-            ?: error("Non-empty HSTRING has a null UTF-16 buffer.")
-        return CharArray(length) { index -> utf16[index].toInt().toChar() }.concatToString()
+        return nativeReadHString(handle)
     }
 
     actual fun readGuid(pointer: RawAddress): Guid =
@@ -601,7 +615,9 @@ actual object PlatformAbi {
     }
 
     actual fun writeGuid(pointer: RawAddress, value: Guid) {
-        pointer.writeBytes(value.toLittleEndianBytes())
+        val words = pointer.asCPointer<LongVar>()
+        words[0] = value.abiLowBits
+        words[1] = value.abiHighBits
     }
 
     actual fun writeGuid(pointer: RawAddress, offsetBytes: Long, value: Guid) {
@@ -640,6 +656,77 @@ actual object PlatformAbi {
     }
 }
 
+@PublishedApi
+internal inline fun nativeReadHString(handle: RawAddress): String {
+    if (handle.value == 0L) {
+        return ""
+    }
+    val length = RawAddress(handle.value + hStringLengthOffsetBytes)
+        .asCPointer<IntVar>()
+        .pointed.value
+    require(length >= 0) { "HSTRING length exceeds the supported Kotlin String size." }
+    if (length == 0) {
+        return ""
+    }
+    val utf16 = RawAddress(handle.value + hStringBufferOffsetBytes)
+        .asCPointer<COpaquePointerVar>()
+        .pointed.value
+        ?.reinterpret<UShortVar>()
+        ?: error("Non-empty HSTRING has a null UTF-16 buffer.")
+    return utf16.toLengthAwareKString(length)
+}
+
+@PublishedApi
+internal actual fun consumeOwnedHString(handle: RawAddress): String {
+    if (handle.value == 0L) {
+        return ""
+    }
+    try {
+        return nativeReadHString(handle)
+    } finally {
+        WinRTPlatformApi.windowsDeleteStringRaw(handle)
+    }
+}
+
+@PublishedApi
+internal actual inline fun winRTConsumeOwnedHStringScalarResult(
+    handleBits: Long,
+    hResult: Int,
+    checkHResult: Boolean,
+): String {
+    val handle = RawAddress(handleBits)
+    if (checkHResult && hResult < 0) {
+        if (handle.value != 0L) {
+            windowsDeleteStringDirect(handleBits)
+        }
+        HResult(hResult).requireSuccess("WinRT call")
+    }
+    if (handleBits == 0L) {
+        return ""
+    }
+    try {
+        return nativeReadHString(handle)
+    } finally {
+        windowsDeleteStringDirect(handleBits)
+    }
+}
+
+@GCUnsafeCall("CreateStringFromUtf16")
+@PublishedApi
+internal external fun CPointer<UShortVar>.toLengthAwareKString(length: Int): String
+
+@GCUnsafeCall("WindowsDeleteString")
+@PublishedApi
+internal external fun windowsDeleteStringDirect(handle: Long): Int
+
+@GCUnsafeCall("Kotlin_Interop_pinnable")
+@PublishedApi
+internal external fun <T> T.toNativePinnable(): T
+
+@GCUnsafeCall("Kotlin_Arrays_getStringAddressOfElement")
+@PublishedApi
+internal external fun String.nativeAddressOf(index: Int): CPointer<COpaque>
+
 private fun COpaquePointer?.asRawAddress(): RawAddress =
     RawAddress(this?.rawValue?.toLong() ?: 0L)
 
@@ -650,7 +737,8 @@ private fun RawAddress.toOpaquePointer(): COpaquePointer? =
         value.toCPointer<COpaque>()
     }
 
-private inline fun <reified T : CPointed> RawAddress.asCPointer(): CPointer<T> =
+@PublishedApi
+internal inline fun <reified T : CPointed> RawAddress.asCPointer(): CPointer<T> =
     value.toCPointer<T>() ?: error("Cannot dereference a null native pointer.")
 
 private fun RawAddress.readBytes(size: Int): ByteArray {
@@ -801,10 +889,6 @@ actual object WinRTPlatformApi {
             GetProcAddress(combaseModule, "WindowsCreateStringReference")?.reinterpret()
         }
 
-    private val windowsDeleteStringProc: CPointer<CFunction<(COpaquePointer?) -> Int>>? by lazy {
-        GetProcAddress(combaseModule, "WindowsDeleteString")?.reinterpret()
-    }
-
     private val windowsGetStringRawBufferProc:
         CPointer<CFunction<(COpaquePointer?, COpaquePointer?) -> COpaquePointer?>>? by lazy {
             GetProcAddress(combaseModule, "WindowsGetStringRawBuffer")?.reinterpret()
@@ -824,18 +908,7 @@ actual object WinRTPlatformApi {
         }
 
     actual fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult =
-        PlatformAbi.confinedScope().use { scope ->
-            val interfaceIdPointer = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
-            val hResult = ComVtableInvoker.invokeArgs(
-                instance = unknown.asRawComPtr(),
-                slot = IUnknownVftblSlots.QueryInterface,
-                arg0 = interfaceIdPointer,
-                arg1 = resultOut,
-            )
-            NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
-        }
+        queryInterfaceWithReusableScratch(unknown, interfaceId)
 
     actual fun addRefRaw(unknown: RawAddress): UInt =
         ComVtableInvoker.invoke(unknown.asRawComPtr(), IUnknownVftblSlots.AddRef).toUInt()
@@ -1030,7 +1103,7 @@ actual object WinRTPlatformApi {
         ) ?: KnownHResults.E_NOTIMPL.value
 
     actual fun windowsDeleteStringRaw(handle: RawAddress) {
-        windowsDeleteStringProc?.invoke(handle.toOpaquePointer())
+        windowsDeleteStringDirect(handle.value)
     }
 
     actual fun windowsGetStringRawBufferRaw(handle: RawAddress, lengthOut: RawAddress): RawAddress =

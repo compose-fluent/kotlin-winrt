@@ -9,10 +9,6 @@ import io.github.composefluent.winrt.metadata.WinRTEventHelperSubclassDescriptor
 import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiDelegateDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -108,10 +104,8 @@ import kotlin.io.path.extension
 
 class KotlinProjectionSupportRenderer {
     private val typeRenderer = KotlinProjectionRenderer()
-    private val comInteropSourceRenderer = KotlinComInteropSourceRenderer(typeRenderer)
     private val supportTypeRenderer = KotlinProjectionRenderer(
         useInterfaceProjectionArtifacts = true,
-        useProjectionIntrinsics = true,
     )
     private val planner = KotlinProjectionPlanner()
     private val eventProjectionHelperTypesPerFile: Int = 96
@@ -136,8 +130,6 @@ class KotlinProjectionSupportRenderer {
         "IInspectable",
         "IWeakReferenceSource",
     )
-    private val GENERIC_ABI_SOURCE_SHARD_SIZE = 48
-
     fun render(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
@@ -145,23 +137,20 @@ class KotlinProjectionSupportRenderer {
         emitProjectionRegistrar: Boolean = true,
         excludedProjectionTypeNames: Set<String> = emptySet(),
         authoredRuntimeClassNames: Set<String> = emptySet(),
-        genericTypeInstantiationsClassName: ClassName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
         authoringHostExportsClassName: ClassName = WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME,
         authoringServerActivationFactoriesClassName: ClassName = WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME,
         authoringModuleActivationFactoryPlanClassName: ClassName = WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME,
         emitJvmAuthoringHostExports: Boolean = true,
-        genericAbiSupportFileName: String = "WinRTGenericAbiSupport",
         eventProjectionHelperFilePrefix: String = "WinRTEventProjectionHelper",
         namespaceAdditionsClassName: ClassName = WINRT_NAMESPACE_ADDITIONS_CLASS_NAME,
         supportOwnerIdentity: String? = null,
         excludedSourceAdditionTypeNames: Set<String> = emptySet(),
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
     ): List<KotlinProjectionFile> {
-        val inventory = WinRTMetadataProjectionInventoryBuilder.create(model, context)
-            .build()
-            .withoutSourceAdditions(excludedSourceAdditionTypeNames)
+        val inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames)
         validateAuthoringMetadataProjectionPlans(inventory, plans)
         val semanticHelpers = model.semanticHelpers()
-        val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
+        val genericInstantiationWorklist = semanticHelpers.genericInstantiationWorklist(context)
         val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
         return buildList {
             listOfNotNull(
@@ -169,18 +158,12 @@ class KotlinProjectionSupportRenderer {
                     plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
                 ),
                 renderProjectionRegistrarCompilerInput(registrarPlans).takeIf { emitProjectionRegistrar },
-                renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
-                renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
-                renderGenericTypeInstantiations(genericInstantiationWriters, genericTypeInstantiationsClassName),
                 renderCompilerSupportManifest(
                     model,
                     plans,
                     inventory,
-                    genericInstantiationWriters,
                     excludedProjectionTypeNames,
                     emitProjectionRegistrar,
-                    genericTypeInstantiationsClassName,
-                    genericAbiSupportFileName,
                     supportOwnerIdentity,
                 ),
                 renderWinUiXamlComponentResourceInput(model, plans),
@@ -213,25 +196,74 @@ class KotlinProjectionSupportRenderer {
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
                 renderSourceAdditionCompilerInput(inventory),
             ).forEach(::add)
-            addAll(renderSourceAdditionFiles(model, inventory))
+            addAll(
+                renderSourceAdditionFiles(
+                    model,
+                    inventory,
+                    modulePlatformAbiCalls ?: inlineOnlyModulePlatformAbiCallSupport(),
+                ),
+            )
             if (emitProjectionRegistrar) {
                 addAll(renderProjectionSupportAnchors(supportOwnerIdentity))
             }
-            addAll(renderGenericAbiSupportSources(inventory.genericAbiInventory, genericAbiSupportFileName))
             addAll(
                 renderDispatcherQueueSynchronizationContextAdditions(
                     plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
+                ),
+            )
+            addAll(
+                renderClosedGenericProjectionHelpers(
+                    planner = planner,
+                    model = model,
+                    plans = plans,
+                    instantiations = genericInstantiationWorklist.pending,
+                    modulePlatformAbiCalls = modulePlatformAbiCalls,
+                    supportOwnerIdentity = supportOwnerIdentity,
                 ),
             )
             addAll(renderEventProjectionHelpers(
                 model,
                 eventOwnerPlans = plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
                 allPlans = plans,
+                instantiations = genericInstantiationWorklist.pending,
                 eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
                 supportOwnerIdentity = supportOwnerIdentity,
             ))
         }
     }
+
+    internal fun collectModulePlatformAbiCalls(
+        model: WinRTMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+        context: WinRTMetadataProjectionContext,
+        excludedSourceAdditionTypeNames: Set<String>,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
+        supportOwnerIdentity: String?,
+    ) {
+        renderSourceAdditionFiles(
+            model = model,
+            inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames),
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+        )
+        val semanticHelpers = model.semanticHelpers()
+        renderClosedGenericProjectionHelpers(
+            planner = planner,
+            model = model,
+            plans = plans,
+            instantiations = semanticHelpers.genericInstantiationWorklist(context).pending,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+            supportOwnerIdentity = supportOwnerIdentity,
+        )
+    }
+
+    private fun projectionInventory(
+        model: WinRTMetadataModel,
+        context: WinRTMetadataProjectionContext,
+        excludedSourceAdditionTypeNames: Set<String>,
+    ): WinRTMetadataProjectionInventory =
+        WinRTMetadataProjectionInventoryBuilder.create(model, context)
+            .build()
+            .withoutSourceAdditions(excludedSourceAdditionTypeNames)
 
     private fun renderProjectionSupportAnchors(supportOwnerIdentity: String?): List<KotlinProjectionFile> {
         val baseFileName = winRTProjectionSupportAnchorFileName(supportOwnerIdentity)
@@ -528,10 +560,6 @@ class KotlinProjectionSupportRenderer {
             boolRow("CUSTOM_MAPPED_MEMBER_EXPLICIT", descriptor.emitsExplicitMembers)
             boolRow("CUSTOM_MAPPED_MEMBER_PRIVATE", descriptor.emitsPrivateMembers)
         }
-        plan.genericAbiClassInitializationDescriptor?.let { descriptor ->
-            listRow("GENERIC_ABI_INVOKE_SLOTS", descriptor.invokeSlotNames)
-            listRow("GENERIC_ABI_TYPE_ARRAYS", descriptor.genericTypeArrayDependencies)
-        }
         plan.requiredInterfaceAugmentationDescriptor?.let { descriptor ->
             listRow("REQUIRED_INTERFACE_NAMES", descriptor.requiredInterfaceNames)
             listRow("REQUIRED_EXPLICIT_FORWARD_MEMBERS", descriptor.explicitForwardMemberNames)
@@ -577,11 +605,8 @@ class KotlinProjectionSupportRenderer {
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
         inventory: WinRTMetadataProjectionInventory,
-        genericInstantiationWriters: List<WinRTGenericInstantiationWriterDescriptor>,
         excludedProjectionTypeNames: Set<String>,
         emitProjectionRegistrar: Boolean,
-        genericTypeInstantiationsClassName: ClassName,
-        genericAbiSupportFileName: String,
         supportOwnerIdentity: String?,
     ): KotlinProjectionFile? {
         val registrarEntries = if (emitProjectionRegistrar) {
@@ -589,9 +614,6 @@ class KotlinProjectionSupportRenderer {
         } else {
             0
         }
-        val genericInstantiationEntries = genericInstantiationWriters.size
-        val genericAbiRegistryEntries = inventory.genericAbiInventory.genericAbiDelegates.size +
-            inventory.genericAbiInventory.derivedGenericInterfaces.size
         val xamlComponentResourceEntries = winUiXamlComponentResourceDictionaryRuntimeClassNames(model, plans).size
         val rows = listOfNotNull(
             compilerSupportManifestRow(
@@ -599,20 +621,6 @@ class KotlinProjectionSupportRenderer {
                 className = WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "projection-registrar.tsv",
                 entries = registrarEntries,
-                owner = supportOwnerIdentity.orEmpty(),
-            ),
-            compilerSupportManifestRow(
-                kind = "generic-type-instantiation",
-                className = genericTypeInstantiationsClassName.canonicalName,
-                sourceFile = "generic-instantiations.tsv",
-                entries = genericInstantiationEntries,
-                owner = supportOwnerIdentity.orEmpty(),
-            ),
-            compilerSupportManifestRow(
-                kind = "generic-abi-registry",
-                className = "$SUPPORT_PACKAGE.$genericAbiSupportFileName",
-                sourceFile = "generic-abi-registry.tsv",
-                entries = genericAbiRegistryEntries,
                 owner = supportOwnerIdentity.orEmpty(),
             ),
             compilerSupportManifestRow(
@@ -650,36 +658,6 @@ class KotlinProjectionSupportRenderer {
             listOf(kind, className, sourceFile, entries.toString(), owner).joinToString("\t")
         }
 
-    private fun renderGenericTypeInstantiationCompilerInput(
-        descriptors: List<WinRTGenericInstantiationWriterDescriptor>,
-    ): KotlinProjectionFile? {
-        if (descriptors.isEmpty()) {
-            return null
-        }
-        val rows = descriptors.joinToString(
-            separator = "\n",
-            postfix = "\n",
-            prefix = "className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies\n",
-        ) { descriptor ->
-            listOf(
-                descriptor.instantiationClassName,
-                descriptor.sourceTypeName,
-                descriptor.isDelegateInstantiation.toString(),
-                descriptor.rcwFunctionNames.joinToString(","),
-                descriptor.vtableFunctionNames.joinToString(","),
-                descriptor.propertyAccessorFunctionNames.joinToString(","),
-                descriptor.genericReturnOnlyRcwFunctionNames.joinToString(","),
-                descriptor.projectedGenericFallbackFunctionNames.joinToString(","),
-                descriptor.initializationDependencies.joinToString(","),
-            ).joinToString("\t")
-        }
-        return KotlinProjectionFile(
-            relativePath = "kotlin-winrt-support/generic-instantiations.tsv",
-            packageName = "",
-            contents = rows,
-        )
-    }
-
     private fun renderProjectionRegistrarCompilerInput(
         registrationPlans: List<KotlinTypeProjectionPlan>,
     ): KotlinProjectionFile? {
@@ -711,243 +689,6 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
-    private fun renderGenericAbiRegistryCompilerInput(inventory: WinRTGenericAbiInventory): KotlinProjectionFile? {
-        if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
-            return null
-        }
-        val rows = buildList {
-            add("kind\tname\tsourceGenericType\toperation\tdeclaration\tabiParameterTypes\ttypeArrayShape")
-            inventory.derivedGenericInterfaces.forEach { typeName ->
-                add(
-                    listOf(
-                        "derived-interface",
-                        typeName,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                    ).joinToString("\t"),
-                )
-            }
-            inventory.genericAbiDelegates.forEach { descriptor ->
-                add(
-                    listOf(
-                        "delegate",
-                        descriptor.abiDelegateName,
-                        descriptor.sourceGenericType.typeName,
-                        descriptor.operationName,
-                        descriptor.declaration,
-                        descriptor.abiParameterTypeNames.joinToString(GENERIC_ABI_REGISTRY_LIST_SEPARATOR),
-                        descriptor.typeArrayShape.joinToString(GENERIC_ABI_REGISTRY_LIST_SEPARATOR),
-                    ).joinToString("\t"),
-                )
-            }
-        }.joinToString(separator = "\n", postfix = "\n")
-        return KotlinProjectionFile(
-            relativePath = "kotlin-winrt-support/generic-abi-registry.tsv",
-            packageName = "",
-            contents = rows,
-        )
-    }
-
-    private fun renderGenericAbiSupportSources(
-        inventory: WinRTGenericAbiInventory,
-        genericAbiSupportFileName: String,
-    ): List<KotlinProjectionFile> {
-        if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
-            return emptyList()
-        }
-        val entryClass = supportEntryClassName(
-            baseName = "GenericAbiDelegateEntry",
-            ownerScopedContainerName = genericAbiSupportFileName,
-            defaultContainerName = "WinRTGenericAbiSupport",
-        )
-        val delegates = inventory.genericAbiDelegates.sortedWith(
-            compareBy(
-                { descriptor -> descriptor.abiDelegateName },
-                { descriptor -> descriptor.sourceGenericType.typeName },
-            ),
-        ).distinctBy { descriptor ->
-            descriptor.abiDelegateName + "\u0000" + descriptor.sourceGenericType.typeName + "\u0000" +
-                descriptor.typeArrayShape.joinToString("\u0000")
-        }
-        val delegatesByName = delegates.distinctBy(WinRTGenericAbiDelegateDescriptor::abiDelegateName)
-        val delegatesBySourceType = delegates.groupBy { descriptor -> descriptor.sourceGenericType.typeName }.toSortedMap()
-        val derivedInterfaces = inventory.derivedGenericInterfaces.distinct().sorted()
-        val delegatesByNameChunks = delegatesByName.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
-        val delegatesBySourceTypeChunks = delegatesBySourceType.entries.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
-        val derivedInterfaceChunks = derivedInterfaces.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
-        val delegateRegistrationChunks = delegates.chunked(GENERIC_ABI_SOURCE_SHARD_SIZE)
-        val shardPrefix = genericAbiSupportShardFunctionPrefix(genericAbiSupportFileName)
-        val objectBuilder = TypeSpec.objectBuilder(genericAbiSupportFileName)
-            .addModifiers(KModifier.INTERNAL)
-            .addFunction(
-                FunSpec.builder("delegateNamed")
-                    .addParameter("name", stringTypeName())
-                    .returns(entryClass.copy(nullable = true))
-                    .apply {
-                        delegatesByNameChunks.forEachIndexed { index, _ ->
-                            val resultName = "delegateNamedChunk${index}Result"
-                            addStatement("val %L = %LDelegateNamedChunk%L(name)", resultName, shardPrefix, index)
-                            addStatement("if (%L != null) return %L", resultName, resultName)
-                        }
-                        addStatement("return null")
-                    }
-                    .build(),
-            )
-            .addFunction(
-                FunSpec.builder("delegatesForSourceType")
-                    .addParameter("sourceGenericType", stringTypeName())
-                    .returns(List::class.asClassName().parameterizedBy(entryClass))
-                    .apply {
-                        delegatesBySourceTypeChunks.forEachIndexed { index, _ ->
-                            val resultName = "delegatesForSourceTypeChunk${index}Result"
-                            addStatement("val %L = %LDelegatesForSourceTypeChunk%L(sourceGenericType)", resultName, shardPrefix, index)
-                            addStatement("if (%L != null) return %L", resultName, resultName)
-                        }
-                        addStatement("return emptyList()")
-                    }
-                    .build(),
-            )
-            .addFunction(
-                FunSpec.builder("isDerivedGenericInterface")
-                    .addParameter("typeName", stringTypeName())
-                    .returns(Boolean::class)
-                    .apply {
-                        derivedInterfaceChunks.forEachIndexed { index, _ ->
-                            val resultName = "isDerivedGenericInterfaceChunk${index}Result"
-                            addStatement("val %L = %LIsDerivedGenericInterfaceChunk%L(typeName)", resultName, shardPrefix, index)
-                            addStatement("if (%L != null) return %L", resultName, resultName)
-                        }
-                        addStatement("return false")
-                    }
-                    .build(),
-            )
-            .addFunction(
-                FunSpec.builder("registerAbiDelegates")
-                    .addParameter("register", genericAbiRegisterFunctionTypeName())
-                    .apply {
-                        delegateRegistrationChunks.forEachIndexed { index, _ ->
-                            addStatement("%LRegisterAbiDelegatesChunk%L(register)", shardPrefix, index)
-                        }
-                    }
-                    .build(),
-            )
-        val fileSpec = supportFileSpec(genericAbiSupportFileName)
-            .addType(
-                dataClass(
-                    className = entryClass.simpleName,
-                    fields = listOf(
-                        "name" to stringTypeName(),
-                        "sourceGenericType" to stringTypeName(),
-                        "operation" to stringTypeName(),
-                        "declaration" to stringTypeName(),
-                        "abiParameterTypes" to stringListTypeName(),
-                        "typeArrayShape" to stringListTypeName(),
-                    ),
-                ),
-            )
-            .addType(objectBuilder.build())
-            .build()
-        val shardFiles = (0 until maxOf(
-            delegatesByNameChunks.size,
-            delegatesBySourceTypeChunks.size,
-            derivedInterfaceChunks.size,
-            delegateRegistrationChunks.size,
-        )).map { index ->
-            val shardFileName = "${genericAbiSupportFileName}_${index.toString().padStart(3, '0')}"
-            val builder = supportFileSpec(shardFileName)
-            delegatesByNameChunks.getOrNull(index)?.let { chunk ->
-                builder.addFunction(genericAbiDelegateNamedChunk("${shardPrefix}DelegateNamedChunk$index", chunk, entryClass))
-            }
-            delegatesBySourceTypeChunks.getOrNull(index)?.let { chunk ->
-                builder.addFunction(genericAbiDelegatesForSourceTypeChunk("${shardPrefix}DelegatesForSourceTypeChunk$index", chunk, entryClass))
-            }
-            derivedInterfaceChunks.getOrNull(index)?.let { chunk ->
-                builder.addFunction(genericAbiDerivedInterfaceChunk("${shardPrefix}IsDerivedGenericInterfaceChunk$index", chunk))
-            }
-            delegateRegistrationChunks.getOrNull(index)?.let { chunk ->
-                builder.addFunction(genericAbiRegisterDelegatesChunk("${shardPrefix}RegisterAbiDelegatesChunk$index", chunk))
-            }
-            supportFile("$shardFileName.kt", builder.build())
-        }
-        return listOf(supportFile("$genericAbiSupportFileName.kt", fileSpec)) + shardFiles
-    }
-
-    private fun genericAbiDelegateNamedChunk(
-        functionName: String,
-        delegates: List<WinRTGenericAbiDelegateDescriptor>,
-        entryClass: ClassName,
-    ): FunSpec =
-        FunSpec.builder(functionName)
-            .addModifiers(KModifier.INTERNAL)
-            .addParameter("name", stringTypeName())
-            .returns(entryClass.copy(nullable = true))
-            .apply {
-                beginControlFlow("return when (name)")
-                delegates.forEach { descriptor ->
-                    addStatement("%S -> %L", descriptor.abiDelegateName, genericAbiDelegateEntryCode(descriptor, entryClass))
-                }
-                addStatement("else -> null")
-                endControlFlow()
-            }
-            .build()
-
-    private fun genericAbiDelegatesForSourceTypeChunk(
-        functionName: String,
-        entries: List<Map.Entry<String, List<WinRTGenericAbiDelegateDescriptor>>>,
-        entryClass: ClassName,
-    ): FunSpec =
-        FunSpec.builder(functionName)
-            .addModifiers(KModifier.INTERNAL)
-            .addParameter("sourceGenericType", stringTypeName())
-            .returns(List::class.asClassName().parameterizedBy(entryClass).copy(nullable = true))
-            .apply {
-                beginControlFlow("return when (sourceGenericType)")
-                entries.forEach { (sourceGenericType, descriptors) ->
-                    addStatement("%S -> %L", sourceGenericType, genericAbiDelegateEntryListCode(descriptors, entryClass))
-                }
-                addStatement("else -> null")
-                endControlFlow()
-            }
-            .build()
-
-    private fun genericAbiDerivedInterfaceChunk(
-        functionName: String,
-        typeNames: List<String>,
-    ): FunSpec =
-        FunSpec.builder(functionName)
-            .addModifiers(KModifier.INTERNAL)
-            .addParameter("typeName", stringTypeName())
-            .returns(Boolean::class.asClassName().copy(nullable = true))
-            .apply {
-                beginControlFlow("return when (typeName)")
-                typeNames.forEach { typeName ->
-                    addStatement("%S -> true", typeName)
-                }
-                addStatement("else -> null")
-                endControlFlow()
-            }
-            .build()
-
-    private fun genericAbiRegisterDelegatesChunk(
-        functionName: String,
-        delegates: List<WinRTGenericAbiDelegateDescriptor>,
-    ): FunSpec =
-        FunSpec.builder(functionName)
-            .addModifiers(KModifier.INTERNAL)
-            .addParameter("register", genericAbiRegisterFunctionTypeName())
-            .apply {
-                delegates.forEach { descriptor ->
-                    addStatement("register(%L, %S)", stringListCode(descriptor.typeArrayShape), descriptor.abiDelegateName)
-                }
-            }
-            .build()
-
-    private fun genericAbiSupportShardFunctionPrefix(genericAbiSupportFileName: String): String =
-        genericAbiSupportFileName.replaceFirstChar { char -> char.lowercase() }
-
     private fun supportEntryClassName(
         baseName: String,
         ownerScopedContainerName: String,
@@ -957,91 +698,18 @@ class KotlinProjectionSupportRenderer {
         baseName + ownerScopedContainerName.removePrefix(defaultContainerName),
     )
 
-    private fun genericAbiDelegateEntryListCode(
-        delegates: List<WinRTGenericAbiDelegateDescriptor>,
-        entryClass: ClassName,
-    ): CodeBlock {
-        if (delegates.isEmpty()) {
-            return CodeBlock.of("emptyList()")
-        }
-        val code = CodeBlock.builder()
-        code.add("listOf(\n")
-        code.indent()
-        delegates.forEach { descriptor ->
-            code.add("%L,\n", genericAbiDelegateEntryCode(descriptor, entryClass))
-        }
-        code.unindent()
-        code.add(")")
-        return code.build()
-    }
-
-    private fun genericAbiDelegateEntryCode(
-        descriptor: WinRTGenericAbiDelegateDescriptor,
-        entryClass: ClassName,
-    ): CodeBlock =
-        CodeBlock.of(
-            "%T(%S, %S, %S, %S, %L, %L)",
-            entryClass,
-            descriptor.abiDelegateName,
-            descriptor.sourceGenericType.typeName,
-            descriptor.operationName,
-            descriptor.declaration,
-            stringListCode(descriptor.abiParameterTypeNames),
-            stringListCode(descriptor.typeArrayShape),
-        )
-
-    private fun renderGenericTypeInstantiations(
-        descriptors: List<WinRTGenericInstantiationWriterDescriptor>,
-        genericTypeInstantiationsClassName: ClassName,
-    ): KotlinProjectionFile? {
-        if (descriptors.isEmpty()) {
-            return null
-        }
-        val entryClass = supportEntryClassName(
-            baseName = "GenericTypeInstantiationEntry",
-            ownerScopedContainerName = genericTypeInstantiationsClassName.simpleName,
-            defaultContainerName = WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME.simpleName,
-        )
-        val fileSpec = supportFileSpec(genericTypeInstantiationsClassName.simpleName)
-            .addType(
-                dataClass(
-                    className = entryClass.simpleName,
-                    fields = listOf(
-                        "className" to stringTypeName(),
-                        "sourceType" to stringTypeName(),
-                        "isDelegate" to Boolean::class.asClassName(),
-                        "rcwFunctions" to stringListTypeName(),
-                        "vtableFunctions" to stringListTypeName(),
-                        "propertyAccessors" to stringListTypeName(),
-                        "genericReturnOnlyRcwFunctions" to stringListTypeName(),
-                        "projectedGenericFallbacks" to stringListTypeName(),
-                        "dependencies" to stringListTypeName(),
-                    ),
-                ),
-            )
-            .addType(
-                TypeSpec.objectBuilder(genericTypeInstantiationsClassName.simpleName)
-                    .addModifiers(KModifier.INTERNAL)
-                    .addFunctions(genericTypeInstantiationFunctions(entryClass))
-                    .build(),
-            )
-            .build()
-        return supportFile("${genericTypeInstantiationsClassName.simpleName}.kt", fileSpec)
-    }
-
     private fun renderEventProjectionHelpers(
         model: WinRTMetadataModel,
         eventOwnerPlans: List<KotlinTypeProjectionPlan>,
         allPlans: List<KotlinTypeProjectionPlan>,
+        instantiations: List<io.github.composefluent.winrt.metadata.WinRTGenericTypeInstantiationDescriptor>,
         eventProjectionHelperFilePrefix: String,
         supportOwnerIdentity: String?,
     ): List<KotlinProjectionFile> {
         val ownerSuffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)
-        val eventSourceEntries = planner.eventSourceDescriptors(model, eventOwnerPlans)
+        val eventSourceEntries = planner.eventSourceDescriptors(model, eventOwnerPlans, instantiations)
             .map { descriptor -> descriptor.withSupportOwnerSuffix(ownerSuffix) }
-        val delegateEventSourceEntries = planner.eventSourceDescriptors(model, eventOwnerPlans)
-            .map { descriptor -> descriptor.withSupportOwnerSuffix(ownerSuffix) }
-        if (eventSourceEntries.isEmpty() && delegateEventSourceEntries.isEmpty()) {
+        if (eventSourceEntries.isEmpty()) {
             return emptyList()
         }
         val plansByType = allPlans.associateBy { plan -> plan.type.qualifiedName }
@@ -1049,7 +717,7 @@ class KotlinProjectionSupportRenderer {
             .flatMap(WinRTNamespace::types)
             .associateBy(WinRTTypeDefinition::qualifiedName)
         val helperTypes = buildList {
-            delegateEventSourceEntries
+            eventSourceEntries
             .filterNot { it.usesSharedEventHandlerSource }
             .distinctBy(WinRTEventHelperSubclassDescriptor::sourceClassName)
             .forEach { descriptor ->
@@ -1057,7 +725,7 @@ class KotlinProjectionSupportRenderer {
                 val delegatePlan = plansByType[rawEventType] ?: return@forEach
                 val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
                 if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping(plansByType)) {
-                    add(eventSourceSubclassType(descriptor, delegatePlan, invokeShape, plansByType))
+                    add(eventSourceSubclassType(descriptor, delegatePlan, invokeShape, plansByType, supportOwnerIdentity))
                 }
             }
             eventSourceEntries
@@ -1089,7 +757,6 @@ class KotlinProjectionSupportRenderer {
         val abiPlans = plans.filter { plan ->
             plan.typeDeclarationDescriptor.writesAbiDeclaration ||
                 plan.typeDeclarationDescriptor.writesImplementationClass ||
-                plan.genericAbiClassInitializationDescriptor != null ||
                 plan.requiredInterfaceAugmentationDescriptor != null
         }
         if (abiPlans.isEmpty()) {
@@ -1156,7 +823,6 @@ class KotlinProjectionSupportRenderer {
                         "writesAbi" to Boolean::class.asClassName(),
                         "writesImplementationClass" to Boolean::class.asClassName(),
                         "vtableSlots" to stringListTypeName(),
-                        "genericInvokeSlots" to stringListTypeName(),
                         "requiredInterfaces" to stringListTypeName(),
                         "explicitForwards" to stringListTypeName(),
                         "requiredMappedHelpers" to stringListTypeName(),
@@ -1682,6 +1348,7 @@ class KotlinProjectionSupportRenderer {
     private fun renderSourceAdditionFiles(
         model: WinRTMetadataModel,
         inventory: WinRTMetadataProjectionInventory,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
     ): List<KotlinProjectionFile> {
         val comInteropAdaptersByTypeName = inventory.namespaceAdditions
             .flatMap(WinRTNamespaceAddition::comInteropAdapters)
@@ -1692,8 +1359,10 @@ class KotlinProjectionSupportRenderer {
             .sorted()
             .mapNotNull { typeName ->
                 comInteropAdaptersByTypeName[typeName]
-                    ?.let { adapter -> comInteropSourceRenderer.render(adapter, model) }
-                    ?: renderSourceAdditionFile(typeName)
+                    ?.let { adapter ->
+                        KotlinComInteropSourceRenderer(typeRenderer, modulePlatformAbiCalls).render(adapter, model)
+                    }
+                    ?: renderSourceAdditionFile(typeName, modulePlatformAbiCalls)
             }
     }
 
@@ -1716,17 +1385,20 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
-    private fun renderSourceAdditionFile(typeName: String): KotlinProjectionFile? =
+    private fun renderSourceAdditionFile(
+        typeName: String,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
+    ): KotlinProjectionFile? =
         when (typeName) {
             "winrt.interop.WindowNative" -> KotlinProjectionFile(
                 relativePath = "winrt/interop/WindowNative.kt",
                 packageName = "winrt.interop",
-                contents = winRTInteropWindowNativeSource(),
+                contents = winRTInteropWindowNativeSource(modulePlatformAbiCalls),
             )
             "winrt.interop.InitializeWithWindow" -> KotlinProjectionFile(
                 relativePath = "winrt/interop/InitializeWithWindow.kt",
                 packageName = "winrt.interop",
-                contents = winRTInteropInitializeWithWindowSource(),
+                contents = winRTInteropInitializeWithWindowSource(modulePlatformAbiCalls),
             )
             "microsoft.ui.Win32Interop" -> KotlinProjectionFile(
                 relativePath = "microsoft/ui/Win32Interop.kt",
@@ -3860,15 +3532,22 @@ class KotlinProjectionSupportRenderer {
             else -> "null"
         }
 
-    private fun winRTInteropWindowNativeSource(): String =
-        """
+    private fun winRTInteropWindowNativeSource(
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
+    ): String {
+        val invocation = renderSupportCallSite(
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+            referenceExpression = "reference",
+            slot = 3,
+            returnBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+        )
+        return """
         package winrt.interop
 
         import io.github.composefluent.winrt.runtime.Guid
         import io.github.composefluent.winrt.runtime.IUnknownReference
         import io.github.composefluent.winrt.runtime.PlatformAbi
         import io.github.composefluent.winrt.runtime.RawAddress
-        import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
         import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler
 
         public object WindowNative {
@@ -3881,26 +3560,35 @@ class KotlinProjectionSupportRenderer {
                         interfaceId = I_WINDOW_NATIVE_IID,
                         preventReleaseOnDispose = true,
                     ).use { reference ->
-                        WinRTProjectionIntrinsic.callScalar<RawAddress>(
-                            reference,
-                            3,
-                            "RawAddress",
-                            "",
-                        )
+${invocation.toString().prependIndent("                        ")}
                     }
                 }
         }
         """.trimIndent() + "\n"
+    }
 
-    private fun winRTInteropInitializeWithWindowSource(): String =
-        """
+    private fun winRTInteropInitializeWithWindowSource(
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
+    ): String {
+        val invocation = renderSupportCallSite(
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+            referenceExpression = "reference",
+            slot = 3,
+            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+            parameterBindings = listOf(
+                KotlinProjectionAbiParameterBinding(
+                    name = "hwnd",
+                    typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+                ),
+            ),
+        )
+        return """
         package winrt.interop
 
         import io.github.composefluent.winrt.runtime.Guid
         import io.github.composefluent.winrt.runtime.IUnknownReference
         import io.github.composefluent.winrt.runtime.PlatformAbi
         import io.github.composefluent.winrt.runtime.RawAddress
-        import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
         import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler
 
         public object InitializeWithWindow {
@@ -3913,17 +3601,36 @@ class KotlinProjectionSupportRenderer {
                         interfaceId = I_INITIALIZE_WITH_WINDOW_IID,
                         preventReleaseOnDispose = true,
                     ).use { reference ->
-                        WinRTProjectionIntrinsic.callUnit(
-                            reference,
-                            3,
-                            "RawAddress",
-                            hwnd,
-                        )
+${invocation.toString().prependIndent("                        ")}
                     }
                 }
             }
         }
         """.trimIndent() + "\n"
+    }
+
+    private fun renderSupportCallSite(
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
+        referenceExpression: String,
+        slot: Int,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
+    ): CodeBlock {
+        val callPlan = requireNotNull(
+            typeRenderer.buildAbiCallPlan(
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
+            ),
+        ) { "Support call site must have a complete WinMD ABI plan." }
+        val invocation = requireNotNull(typeRenderer.composeTypedProjectionCallSite(callPlan, modulePlatformAbiCalls)) {
+            "Support call site must fold every ABI marshaler slot into its typed descriptor."
+        }
+        return modulePlatformAbiCalls.typedInvocation(
+            referenceExpression = referenceExpression,
+            slotExpression = CodeBlock.of("%L", slot),
+            invocation = invocation,
+        )
+    }
 
     private fun microsoftUiWin32InteropSource(): String =
         """
@@ -4104,26 +3811,12 @@ class KotlinProjectionSupportRenderer {
             .initializer(stringListCode(values))
             .build()
 
-    private fun genericTypeInstantiationFunctions(entryClass: ClassName): List<FunSpec> =
-        listOf(
-            FunSpec.builder("initializeAll")
-                .addCode("return\n")
-                .build(),
-            FunSpec.builder("initializeBySourceType")
-                .addParameter("sourceType", String::class)
-                .addCode("%T.initializeBySourceType(sourceType)\n", WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME)
-                .build(),
-            FunSpec.builder("initializeEntry")
-                .addParameter("entry", entryClass)
-                .addCode("entry.dependencies.forEach(::initializeBySourceType)\n")
-                .build(),
-        )
-
     private fun eventSourceSubclassType(
         descriptor: WinRTEventHelperSubclassDescriptor,
         delegatePlan: KotlinTypeProjectionPlan,
         invokeShape: KotlinProjectionDelegateInvokeShape,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
+        supportOwnerIdentity: String?,
     ): TypeSpec {
         val delegateType = typeRenderer.resolveTypeName(descriptor.projectedEventTypeName)
         return TypeSpec.classBuilder(descriptor.sourceClassName)
@@ -4143,7 +3836,7 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.OVERRIDE)
                     .addParameter("handler", delegateType)
                     .returns(ClassName("io.github.composefluent.winrt.runtime", "WinRTDelegateHandle"))
-                    .addCode(eventSourceCreateMarshalerCode(descriptor, invokeShape, plansByType))
+                    .addCode(eventSourceCreateMarshalerCode(descriptor, invokeShape, plansByType, supportOwnerIdentity))
                     .build(),
             )
             .addFunction(
@@ -4160,13 +3853,21 @@ class KotlinProjectionSupportRenderer {
         descriptor: WinRTEventHelperSubclassDescriptor,
         invokeShape: KotlinProjectionDelegateInvokeShape,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
+        supportOwnerIdentity: String?,
     ): CodeBlock {
         val callbackArguments = CodeBlock.builder()
         invokeShape.parameterBindings.forEachIndexed { index, binding ->
             if (index > 0) {
                 callbackArguments.add(", ")
             }
-            callbackArguments.add(eventSourceCallbackArgumentCode(index, binding.typeBinding, plansByType))
+            callbackArguments.add(
+                eventSourceCallbackArgumentCode(
+                    index,
+                    binding.typeBinding,
+                    plansByType,
+                    supportOwnerIdentity,
+                ),
+            )
         }
         val interfaceId = descriptor.interfaceId ?: invokeShape.interfaceId
         return CodeBlock.builder()
@@ -4193,36 +3894,20 @@ class KotlinProjectionSupportRenderer {
         index: Int,
         binding: KotlinProjectionAbiTypeBinding,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
+        supportOwnerIdentity: String?,
     ): CodeBlock =
         if (mappedTypeByAbiName(binding.typeName) != null) {
             CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
-        } else if (binding.supportsProjectedGenericMetadataWrap(plansByType)) {
-            val wrapTypeName = binding.projectedGenericMetadataWrapTypeName(plansByType)
-                ?: error("Projected generic metadata wrap support requires a matching projection type for ${binding.describeAbiKind()}")
+        } else if (binding.hasClosedGenericProjectionHelper(plansByType)) {
             CodeBlock.of(
-                "%T.Metadata.wrap<%L>(__args[%L] as %T)",
-                typeRenderer.resolveTypeName(wrapTypeName),
-                eventSourceTypeArgumentCode(binding.typeArguments),
+                "%T.wrap(__args[%L] as %T)",
+                requireNotNull(binding.closedGenericProjectionHelperClassName(supportOwnerIdentity)),
                 index,
-                when (binding.kind) {
-                    KotlinProjectionAbiValueKind.ProjectedInterface -> IUNKNOWN_REFERENCE_CLASS_NAME
-                    else -> IINSPECTABLE_REFERENCE_CLASS_NAME
-                },
+                IUNKNOWN_REFERENCE_CLASS_NAME,
             )
         } else {
             typeRenderer.delegateCallbackArgumentCode(index, binding)
         }
-
-    private fun eventSourceTypeArgumentCode(typeArguments: List<KotlinProjectionAbiTypeBinding>): CodeBlock {
-        val code = CodeBlock.builder()
-        typeArguments.forEachIndexed { index, argument ->
-            if (index > 0) {
-                code.add(", ")
-            }
-            code.add("%T", typeRenderer.resolveTypeName(argument.typeName))
-        }
-        return code.build()
-    }
 
     private fun eventSourceDelegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
         bindings.joinToString(prefix = "listOf(", postfix = ")") { eventSourceDelegateValueKindName(it) }
@@ -4388,6 +4073,7 @@ class KotlinProjectionSupportRenderer {
             currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
             typesByQualifiedName = typesByQualifiedName,
         )
+        if (typeBinding.containsOpenGenericShape()) return null
         return typeRenderer.outboundDelegateInvokeShape(typeBinding)
             ?.substituteDelegateTypeArguments(typeBinding.typeArguments)
     }
@@ -4404,36 +4090,6 @@ class KotlinProjectionSupportRenderer {
             },
             returnBinding = returnBinding.substituteGenericTypeArguments(typeArguments),
         )
-    }
-
-    private fun KotlinProjectionAbiTypeBinding.substituteGenericTypeArguments(
-        typeArguments: List<KotlinProjectionAbiTypeBinding>,
-    ): KotlinProjectionAbiTypeBinding {
-        if (kind == KotlinProjectionAbiValueKind.GenericParameter && typeName.isEventSourceGenericTypeParameterName()) {
-            val index = WinRTTypeRef.fromDisplayName(typeName).normalized().genericParameterIndex
-            if (index != null && index in typeArguments.indices) {
-                return typeArguments[index]
-            }
-        }
-        if (this.typeArguments.isEmpty()) {
-            return this
-        }
-        val substitutedArguments = this.typeArguments.map { it.substituteGenericTypeArguments(typeArguments) }
-        return copy(
-            typeName = substituteGenericTypeName(typeName, substitutedArguments),
-            typeArguments = substitutedArguments,
-        )
-    }
-
-    private fun substituteGenericTypeName(
-        typeName: String,
-        typeArguments: List<KotlinProjectionAbiTypeBinding>,
-    ): String {
-        val genericStart = typeName.indexOf('<')
-        if (genericStart < 0 || !typeName.endsWith('>')) {
-            return typeName
-        }
-        return typeName.substring(0, genericStart) + typeArguments.joinToString(prefix = "<", postfix = ">") { it.typeName }
     }
 
     private fun String.isEventSourceGenericTypeParameterName(): Boolean =
@@ -4456,70 +4112,8 @@ class KotlinProjectionSupportRenderer {
         return when {
             typeArguments.isEmpty() -> true
             kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass) -> true
-            else -> supportsProjectedGenericMetadataWrap(plansByType)
+            else -> hasClosedGenericProjectionHelper(plansByType)
         }
-    }
-
-    private fun KotlinProjectionAbiTypeBinding.supportsProjectedGenericMetadataWrap(
-        plansByType: Map<String, KotlinTypeProjectionPlan>,
-    ): Boolean = projectedGenericMetadataWrapTypeName(plansByType) != null
-
-    private fun KotlinProjectionAbiTypeBinding.projectedGenericMetadataWrapTypeName(
-        plansByType: Map<String, KotlinTypeProjectionPlan>,
-    ): String? =
-        projectedGenericMetadataWrapPlan(plansByType)?.type?.qualifiedName
-            ?: collectionEventProjectedGenericMetadataWrapTypeName()
-
-    private fun KotlinProjectionAbiTypeBinding.projectedGenericMetadataWrapPlan(
-        plansByType: Map<String, KotlinTypeProjectionPlan>,
-    ): KotlinTypeProjectionPlan? {
-        if (typeArguments.isEmpty() ||
-            kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass)
-        ) {
-            return null
-        }
-        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
-        val rawResolvedTypeName = resolvedTypeName.substringBefore('<').removeSuffix("?")
-        return listOf(rawResolvedTypeName, rawTypeName)
-            .distinct()
-            .mapNotNull(plansByType::get)
-            .firstOrNull { plan -> planSupportsProjectedGenericMetadataWrap(plan) }
-    }
-
-    private fun KotlinProjectionAbiTypeBinding.planSupportsProjectedGenericMetadataWrap(
-        plan: KotlinTypeProjectionPlan,
-    ): Boolean {
-        if (plan.type.genericParameterCount != typeArguments.size) {
-            return false
-        }
-        return when (kind) {
-            KotlinProjectionAbiValueKind.ProjectedInterface ->
-                supportTypeRenderer.canRenderInterfaceWrapper(plan) ||
-                    plan.readOnlyCollectionBindings.isNotEmpty() ||
-                    plan.mutableCollectionBindings.isNotEmpty()
-            KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-                plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
-                    KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
-                    KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds
-            else -> false
-        }
-    }
-
-    private fun KotlinProjectionAbiTypeBinding.collectionEventProjectedGenericMetadataWrapTypeName(): String? {
-        if (kind != KotlinProjectionAbiValueKind.ProjectedInterface || typeArguments.isEmpty()) {
-            return null
-        }
-        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
-        val rawResolvedTypeName = resolvedTypeName.substringBefore('<').removeSuffix("?")
-        return listOf(rawResolvedTypeName, rawTypeName)
-            .firstOrNull { name ->
-                when (name) {
-                    "Windows.Foundation.Collections.IObservableVector" -> typeArguments.size == 1
-                    "Windows.Foundation.Collections.IObservableMap" -> typeArguments.size == 2
-                    "Windows.Foundation.Collections.IMapChangedEventArgs" -> typeArguments.size == 1
-                    else -> false
-                }
-            }
     }
 
     private fun abiEntriesBuildListCode(indices: IntRange): CodeBlock {
@@ -4546,7 +4140,6 @@ class KotlinProjectionSupportRenderer {
             code.add("writesAbi = %L,\n", plan.typeDeclarationDescriptor.writesAbiDeclaration)
             code.add("writesImplementationClass = %L,\n", plan.typeDeclarationDescriptor.writesImplementationClass)
             code.add("vtableSlots = %L,\n", stringListCode(plan.abiSlotBindings.map { it.constantName }))
-            code.add("genericInvokeSlots = %L,\n", stringListCode(plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty()))
             code.add("requiredInterfaces = %L,\n", stringListCode(plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty()))
             code.add("explicitForwards = %L,\n", stringListCode(plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty()))
             code.add("requiredMappedHelpers = %L,\n", stringListCode(plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().map { it.toSupportPlanString() }))
@@ -4856,9 +4449,6 @@ class KotlinProjectionSupportRenderer {
     private fun stringListTypeName(): TypeName =
         List::class.asClassName().parameterizedBy(stringTypeName())
 
-    private fun genericAbiRegisterFunctionTypeName(): TypeName =
-        Function2::class.asClassName().parameterizedBy(stringListTypeName(), stringTypeName(), UNIT)
-
     private fun io.github.composefluent.winrt.metadata.WinRTRequiredMappedHelperPlanDescriptor.toSupportPlanString(): String =
         listOf(
             interfaceName,
@@ -4875,7 +4465,6 @@ class KotlinProjectionSupportRenderer {
     private companion object {
         const val SUPPORT_PACKAGE = "io.github.composefluent.winrt.projections.support"
         const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
-        const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR = "\u001F"
         const val TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR = "\u001F"
         const val WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME = "Windows.Foundation.IStringable"
     }

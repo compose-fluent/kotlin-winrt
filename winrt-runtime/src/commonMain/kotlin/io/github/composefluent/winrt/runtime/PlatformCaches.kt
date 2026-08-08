@@ -90,3 +90,13 @@ expect class FinalizationHook() {
         cleanup: () -> Unit,
     ): AutoCloseable
 }
+
+internal expect fun createComPtrFinalizationRegistration(
+    target: Any,
+    support: RawComObjectReferenceSupport,
+): Any
+
+internal expect fun closeComPtrFinalizationRegistration(
+    registration: Any,
+    support: RawComObjectReferenceSupport,
+)

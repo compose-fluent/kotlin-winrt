@@ -10,9 +10,6 @@ import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFastAbiClassDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -33,18 +30,19 @@ import io.github.composefluent.winrt.metadata.WinRTSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeRef
+import io.github.composefluent.winrt.metadata.WinRTTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ActivationFactory
+import io.github.composefluent.winrt.runtime.ActivationFactoryReference
 import io.github.composefluent.winrt.runtime.ComAbiValueKind
 import io.github.composefluent.winrt.runtime.ComMethodSignature
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComWrappersSupport
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
-import io.github.composefluent.winrt.runtime.WinRTObjectReferenceCache
 import io.github.composefluent.winrt.runtime.DerivedComposed
 import io.github.composefluent.winrt.runtime.ExceptionHelpers
 import io.github.composefluent.winrt.runtime.EventSource
@@ -54,6 +52,7 @@ import io.github.composefluent.winrt.runtime.HString
 import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.IWinRTObject
+import io.github.composefluent.winrt.runtime.WinRTOut
 import io.github.composefluent.winrt.runtime.KnownHResults
 import io.github.composefluent.winrt.runtime.Marshaler
 import io.github.composefluent.winrt.runtime.NativeStringMarshaller
@@ -74,6 +73,7 @@ import io.github.composefluent.winrt.runtime.WinRTBindableVectorViewProjection
 import io.github.composefluent.winrt.runtime.WinRTCollectionInterfaceIds
 import io.github.composefluent.winrt.runtime.WinRTDictionaryProjection
 import io.github.composefluent.winrt.runtime.WinRTIterableProjection
+import io.github.composefluent.winrt.runtime.WinRTIteratorProjection
 import io.github.composefluent.winrt.runtime.WinRTListProjection
 import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
 import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference
@@ -93,8 +93,6 @@ import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapters
 import io.github.composefluent.winrt.runtime.WinRTPropertyValueProjection
 import io.github.composefluent.winrt.runtime.WinRTGenericParameterProjection
-import io.github.composefluent.winrt.runtime.WinRTGenericAbiSupportIntrinsic
-import io.github.composefluent.winrt.runtime.WinRTGenericTypeInstantiationSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTAuthoringSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic
@@ -104,6 +102,7 @@ import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
 import io.github.composefluent.winrt.runtime.WinRTValueBoxingRegistration
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
+import io.github.composefluent.winrt.runtime.WinRTDelegateArgumentMarshaler
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference
 import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
@@ -112,6 +111,7 @@ import io.github.composefluent.winrt.runtime.WinRTObjectMarshaller
 import io.github.composefluent.winrt.runtime.WinRTProjectedDelegate
 import io.github.composefluent.winrt.runtime.WinRTComposableObject
 import io.github.composefluent.winrt.runtime.WinRTComposableObjectReference
+import io.github.composefluent.winrt.runtime.WinRTComposableFactoryResult
 import io.github.composefluent.winrt.runtime.WinRTAttributeUsage
 import io.github.composefluent.winrt.runtime.WinRTActivationFactory
 import io.github.composefluent.winrt.runtime.WinRTCcwDefinition
@@ -154,18 +154,20 @@ internal val IREFERENCE_GENERIC_INTERFACE_ID = Guid("61C17706-2D65-11E0-9AE8-D48
 internal val IREFERENCE_ARRAY_GENERIC_INTERFACE_ID = Guid("61C17707-2D65-11E0-9AE8-D48564015472")
 internal val GUID_CLASS_NAME = Guid::class.asClassName()
 internal val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
+internal val ACTIVATION_FACTORY_REFERENCE_CLASS_NAME = ActivationFactoryReference::class.asClassName()
 internal val COM_ABI_VALUE_KIND_CLASS_NAME = ComAbiValueKind::class.asClassName()
 internal val COM_METHOD_SIGNATURE_CLASS_NAME = ComMethodSignature::class.asClassName()
 internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
 internal val COM_WRAPPERS_SUPPORT_CLASS_NAME = ComWrappersSupport::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
-internal val WINRT_OBJECT_REFERENCE_CACHE_CLASS_NAME = WinRTObjectReferenceCache::class.asClassName()
+internal val KOTLIN_ATOMIC_REFERENCE_CLASS_NAME =
+    ClassName("kotlin.concurrent.atomics", "AtomicReference")
+internal val KOTLIN_VOLATILE_CLASS_NAME =
+    ClassName("kotlin.concurrent", "Volatile")
 internal val DERIVED_COMPOSED_CLASS_NAME = DerivedComposed::class.asClassName()
 internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRTCcwDefinition::class.asClassName()
 internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRTInspectableInterfaceDefinition::class.asClassName()
 internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRTInspectableMethodDefinition::class.asClassName()
-internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
-    ClassName("io.github.composefluent.winrt.projections.support", "WinRTGenericTypeInstantiations")
 internal val WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringHostExports")
 internal val WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME =
@@ -174,19 +176,6 @@ internal val WINRT_AUTHORING_MODULE_ACTIVATION_FACTORY_PLAN_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringModuleActivationFactoryPlan")
 internal val WINRT_NAMESPACE_ADDITIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTNamespaceAdditions")
-internal fun winRTGenericTypeInstantiationsClassName(ownerIdentity: String?): ClassName {
-    val suffix = ownerIdentity
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
-        ?.toKotlinSupportIdentifierSuffix()
-        ?.takeIf(String::isNotEmpty)
-        ?: return WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME
-    return ClassName(
-        "io.github.composefluent.winrt.projections.support",
-        "WinRTGenericTypeInstantiations_$suffix",
-    )
-}
-
 fun winRTAuthoringHostExportsClassName(ownerIdentity: String?): ClassName =
     winRTSupportOwnerClassName(ownerIdentity, WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME)
 
@@ -201,11 +190,6 @@ internal fun winRTModulePlatformAbiCallClassName(ownerIdentity: String?): ClassN
         ownerIdentity,
         ClassName("io.github.composefluent.winrt.projections.support", "WinRTModulePlatformAbiCall"),
     )
-
-internal fun winRTGenericAbiSupportFileName(ownerIdentity: String?): String {
-    val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTGenericAbiSupport"
-    return "WinRTGenericAbiSupport_$suffix"
-}
 
 internal fun winRTEventProjectionHelperFilePrefix(ownerIdentity: String?): String {
     val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTEventProjectionHelper"
@@ -250,6 +234,7 @@ internal val IID_CLASS_NAME = IID::class.asClassName()
 internal val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 internal val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "IInspectableReference")
 internal val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
+internal val WINRT_OUT_CLASS_NAME = WinRTOut::class.asClassName()
 internal val KNOWN_HRESULTS_CLASS_NAME = KnownHResults::class.asClassName()
 internal val MARSHALER_CLASS_NAME = Marshaler::class.asClassName()
 internal val WINRT_ABI_ARRAY_CLASS_NAME = WinRTAbiArray::class.asClassName()
@@ -263,6 +248,7 @@ internal val WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME = WinRTBindableVec
 internal val WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME = WinRTCollectionInterfaceIds::class.asClassName()
 internal val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRTDictionaryProjection::class.asClassName()
 internal val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRTIterableProjection::class.asClassName()
+internal val WINRT_ITERATOR_PROJECTION_CLASS_NAME = WinRTIteratorProjection::class.asClassName()
 internal val WINRT_LIST_PROJECTION_CLASS_NAME = WinRTListProjection::class.asClassName()
 internal val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRTAsyncActionReference::class.asClassName()
 internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRTAsyncActionWithProgressReference::class.asClassName()
@@ -282,9 +268,6 @@ internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRTReferenceValueAdapt
 internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRTReferenceValueAdapters::class.asClassName()
 internal val WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME = WinRTPropertyValueProjection::class.asClassName()
 internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRTGenericParameterProjection::class.asClassName()
-internal val WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME = WinRTGenericAbiSupportIntrinsic::class.asClassName()
-internal val WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME =
-    WinRTGenericTypeInstantiationSupportIntrinsic::class.asClassName()
 internal val WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME = WinRTAuthoringSupportIntrinsic::class.asClassName()
 internal val WINRT_PROJECTION_INTRINSIC_CLASS_NAME = WinRTProjectionIntrinsic::class.asClassName()
 internal val WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME = WinRTProjectionSupportIntrinsic::class.asClassName()
@@ -300,12 +283,21 @@ internal val ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "acquireInterfaceReference")
 internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_FROM_ABI_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRTPropertyChangedEventArgsFromAbi")
+internal val GET_OR_CREATE_WINRT_OBJECT_REFERENCE_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "getOrCreateWinRTObjectReference")
+internal val PUBLISH_WINRT_OBJECT_REFERENCE_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "publishWinRTObjectReference")
+internal val PUBLISH_GENERATED_WINRT_OBJECT_REFERENCE_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "publishGeneratedWinRTObjectReference")
+internal val PUBLISH_GENERATED_WINRT_VALUE_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "publishGeneratedWinRTValue")
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRTPlatformApi::class.asClassName()
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRTSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRTTypeSignature::class.asClassName()
 internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRTTypeHandle::class.asClassName()
 internal val WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME = WinRTValueBoxingRegistration::class.asClassName()
 internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRTDelegateBridge::class.asClassName()
+internal val WINRT_DELEGATE_ARGUMENT_MARSHALER_CLASS_NAME = WinRTDelegateArgumentMarshaler::class.asClassName()
 internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRTDelegateDescriptor::class.asClassName()
 internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRTDelegateReference::class.asClassName()
 internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRTDelegateValueKind::class.asClassName()
@@ -318,6 +310,7 @@ internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
 internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = ClassName("windows.foundation", "WinRTClosableObject")
 internal val WINRT_COMPOSABLE_OBJECT_CLASS_NAME = WinRTComposableObject::class.asClassName()
 internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRTComposableObjectReference::class.asClassName()
+internal val WINRT_COMPOSABLE_FACTORY_RESULT_CLASS_NAME = WinRTComposableFactoryResult::class.asClassName()
 internal val WINRT_ACTIVATION_FACTORY_CLASS_NAME = WinRTActivationFactory::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 internal val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
@@ -330,6 +323,7 @@ internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
 internal val KOTLIN_DURATION_ALIAS_CLASS_NAME = ClassName("", "TimeDuration")
 internal val KCLASS_STAR_TYPE_NAME = KClass::class.asClassName().parameterizedBy(STAR)
 internal val AUTO_CLOSEABLE_CLASS_NAME = ClassName("kotlin", "AutoCloseable")
+internal val KOTLIN_PUBLISHED_API_CLASS_NAME = ClassName("kotlin", "PublishedApi")
 internal val ILLEGAL_STATE_EXCEPTION_CLASS_NAME = IllegalStateException::class.asClassName()
 internal val NO_SUCH_ELEMENT_EXCEPTION_CLASS_NAME = ClassName("kotlin", "NoSuchElementException")
 internal val LAZY_THREAD_SAFETY_MODE_CLASS_NAME = LazyThreadSafetyMode::class.asClassName()
@@ -341,6 +335,7 @@ internal val MUTABLE_ITERATOR_CLASS_NAME = ClassName("kotlin.collections", "Muta
 internal val MUTABLE_LIST_ITERATOR_CLASS_NAME = ClassName("kotlin.collections", "MutableListIterator")
 internal val MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "MutableSet")
 internal val RAW_ADDRESS_CLASS_NAME = RawAddress::class.asClassName()
+internal val RAW_COM_PTR_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "RawComPtr")
 internal val NATIVE_ABI_LAYOUT_CLASS_NAME = NativeAbiLayout::class.asClassName()
 internal val NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME = NativeNestedStructFieldSpec::class.asClassName()
 internal val NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME = NativeScalarFieldSpec::class.asClassName()
@@ -474,7 +469,6 @@ data class KotlinTypeProjectionPlan(
     val interfaceMemberSignatureSetDescriptor: WinRTInterfaceMemberSignatureSetDescriptor? = null,
     val customMappedMemberOutputDescriptor: WinRTCustomMappedMemberOutputDescriptor? = null,
     val classMemberMergeDescriptor: WinRTClassMemberMergeDescriptor? = null,
-    val genericAbiClassInitializationDescriptor: WinRTGenericAbiClassInitializationDescriptor? = null,
     val requiredInterfaceAugmentationDescriptor: WinRTRequiredInterfaceAugmentationDescriptor? = null,
     val fastAbiClassDescriptor: WinRTFastAbiClassDescriptor? = null,
     val moduleActivationAndAuthoringDescriptor: WinRTModuleActivationAndAuthoringDescriptor? = null,
@@ -597,6 +591,8 @@ enum class KotlinProjectionAbiValueKind {
     Delegate,
     Object,
     GenericParameter,
+    RawAddress,
+    RawComPtr,
     UnknownReference,
     InspectableReference,
     Unsupported,
@@ -610,6 +606,8 @@ internal data class KotlinProjectionMappedType(
     val customObjectAbi: KotlinProjectionCustomObjectAbi? = null,
     val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
     val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
+    val closedGenericAdapter: KotlinProjectionClosedGenericAdapter? = null,
+    val callSiteAdapter: KotlinProjectionMappedCallSiteAdapter? = null,
     val runtimeOwnedProjection: Boolean = false,
     val runtimeOwnedPublicDeclaration: Boolean = false,
     val simpleAbiLookup: Boolean = false,
@@ -632,6 +630,7 @@ internal data class KotlinProjectionCustomStructAbi(
     val fromAbiCarrierFunctionName: String? = null,
     val abiArgumentKind: KotlinProjectionComArgumentKind? = null,
     val abiLayoutExpression: CodeBlock? = null,
+    val alignmentBytes: Int? = null,
 )
 
 internal data class KotlinProjectionCustomObjectAbi(
@@ -639,6 +638,37 @@ internal data class KotlinProjectionCustomObjectAbi(
     val typeHandleName: String,
     val fromAbiFunctionName: String = "objectFromAbi",
     val createReferenceFunctionName: String = "createObjectReference",
+)
+
+private fun mappedCollectionCallSiteAdapter(
+    owner: ClassName,
+    typeArgumentCount: Int,
+): KotlinProjectionMappedCallSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+    runtimeProjectionClassName = owner,
+    fromAbiFunctionName = "fromAbi",
+    createMarshalerFunctionName = "createMarshaler",
+    inputTypeArgumentAdapterCount = typeArgumentCount,
+    inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionMarshaler"),
+    rejectNullInputFactory = true,
+)
+
+private fun mappedAsyncCallSiteAdapter(
+    fromAbiFunctionName: String,
+): KotlinProjectionMappedCallSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+    runtimeProjectionClassName = WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME,
+    fromAbiFunctionName = fromAbiFunctionName,
+    toAbiFunctionName = "toAbi",
+    outputUsesAsyncExpression = true,
+)
+
+private fun mappedBindableCallSiteAdapter(
+    owner: ClassName,
+): KotlinProjectionMappedCallSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+    runtimeProjectionClassName = owner,
+    fromAbiFunctionName = "fromAbi",
+    createMarshalerFunctionName = "createMarshaler",
+    inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionMarshaler"),
+    rejectNullInputFactory = true,
 )
 
 internal data class KotlinProjectionIntegralAbiDescriptor(
@@ -668,6 +698,13 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     KotlinProjectionMappedType(
         "System.Object",
         { ANY.copy(nullable = true) },
+        abiValueKind = KotlinProjectionAbiValueKind.Object,
+        callSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+            runtimeProjectionClassName = WINRT_OBJECT_MARSHALLER_CLASS_NAME,
+            fromAbiFunctionName = "fromAbi",
+            createMarshalerFunctionName = "createMarshaler",
+            inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTObjectMarshaler"),
+        ),
         runtimeOwnedProjection = true,
         simpleAbiLookup = true,
         descriptionName = "Object",
@@ -685,6 +722,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             toAbiFunctionName = "dateTimeToAbi",
             fromAbiCarrierFunctionName = "dateTimeFromAbiValue",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
+            alignmentBytes = 8,
         ),
         simpleAbiLookup = true,
         descriptionName = "DateTime",
@@ -701,6 +739,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             toAbiFunctionName = "timeSpanToAbi",
             fromAbiCarrierFunctionName = "timeSpanFromAbiValue",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
+            alignmentBytes = 8,
         ),
         simpleAbiLookup = true,
         descriptionName = "TimeSpan",
@@ -730,6 +769,16 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.EventRegistrationToken",
         { EVENT_REGISTRATION_TOKEN_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        customStructAbi = KotlinProjectionCustomStructAbi(
+            helperTypeName = EVENT_REGISTRATION_TOKEN_CLASS_NAME.nestedClass("Metadata"),
+            sizeBytes = 8,
+            fromAbiFunctionName = "fromAbi",
+            copyToFunctionName = "copyTo",
+            toAbiFunctionName = "toAbi",
+            fromAbiCarrierFunctionName = "fromAbiValue",
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
+            alignmentBytes = 8,
+        ),
         runtimeOwnedProjection = true,
         simpleAbiLookup = true,
         descriptionName = "EventRegistrationToken",
@@ -746,6 +795,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             toAbiFunctionName = "hResultToAbi",
             fromAbiCarrierFunctionName = "hResultFromAbiValue",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
+            alignmentBytes = 4,
         ),
         runtimeOwnedProjection = true,
         simpleAbiLookup = true,
@@ -762,6 +812,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             "copyTypeNameTo",
             "disposeTypeNameAbi",
             abiLayoutExpression = CodeBlock.of("%T.TYPE_NAME", NATIVE_ABI_LAYOUT_CLASS_NAME),
+            alignmentBytes = 8,
         ),
         simpleAbiLookup = true,
         descriptionName = "TypeName",
@@ -785,6 +836,15 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.IReference",
         { arguments -> arguments.single().copy(nullable = true) },
         abiValueKind = KotlinProjectionAbiValueKind.Reference,
+        callSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+            runtimeProjectionClassName = WINRT_REFERENCE_PROJECTION_CLASS_NAME,
+            fromAbiFunctionName = "fromAbi",
+            createMarshalerFunctionName = "createMarshaler",
+            inputUsesParameterizedInterfaceId = true,
+            inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionMarshaler"),
+            inputFactoryNullable = true,
+            outputConsumesAbi = true,
+        ),
         simpleAbiLookup = true,
         descriptionName = "IReference",
     ),
@@ -792,6 +852,15 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.IReferenceArray",
         { arguments -> Array::class.asClassName().parameterizedBy(arguments.single().copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.ReferenceArray,
+        callSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+            runtimeProjectionClassName = WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME,
+            fromAbiFunctionName = "fromAbi",
+            createMarshalerFunctionName = "createMarshaler",
+            inputUsesParameterizedInterfaceId = true,
+            inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionMarshaler"),
+            inputFactoryNullable = true,
+            outputConsumesAbi = true,
+        ),
         simpleAbiLookup = true,
         descriptionName = "IReferenceArray",
     ),
@@ -799,6 +868,14 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.IPropertyValue",
         { ANY.copy(nullable = true) },
         abiValueKind = KotlinProjectionAbiValueKind.PropertyValue,
+        callSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+            runtimeProjectionClassName = WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME,
+            fromAbiFunctionName = "tryFromBorrowedAbi",
+            outputFromAbiFunctionName = "fromOwnedAbi",
+            createMarshalerFunctionName = "createMarshaler",
+            inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionMarshaler"),
+            inputFactoryNullable = true,
+        ),
         runtimeOwnedProjection = true,
         simpleAbiLookup = true,
         descriptionName = "IPropertyValue",
@@ -808,11 +885,18 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         projectedTypeResolver = { arguments -> Iterable::class.asClassName().parameterizedBy(arguments) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedIterable,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.Iterable,
+        callSiteAdapter = mappedCollectionCallSiteAdapter(WINRT_ITERABLE_PROJECTION_CLASS_NAME, 1),
         descriptionName = "Iterable",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.Collections.IIterator",
         projectedTypeResolver = { arguments -> Iterator::class.asClassName().parameterizedBy(arguments) },
+        closedGenericAdapter = KotlinProjectionClosedGenericAdapter(
+            runtimeProjectionClassName = WINRT_ITERATOR_PROJECTION_CLASS_NAME,
+            typeArgumentCount = 1,
+            fromReferenceFunctionName = "fromReference",
+            createReferenceFunctionName = "createReference",
+        ),
         descriptionName = "Iterator",
     ),
     KotlinProjectionMappedType(
@@ -820,6 +904,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         projectedTypeResolver = { arguments -> List::class.asClassName().parameterizedBy(arguments) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedVectorView,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+        callSiteAdapter = mappedCollectionCallSiteAdapter(WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME, 1),
         descriptionName = "VectorView",
     ),
     KotlinProjectionMappedType(
@@ -827,6 +912,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         projectedTypeResolver = { arguments -> MUTABLE_LIST_CLASS_NAME.parameterizedBy(arguments) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedVector,
         mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        callSiteAdapter = mappedCollectionCallSiteAdapter(WINRT_LIST_PROJECTION_CLASS_NAME, 1),
         descriptionName = "Vector",
     ),
     KotlinProjectionMappedType(
@@ -834,6 +920,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         projectedTypeResolver = { arguments -> Map::class.asClassName().parameterizedBy(arguments) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedMapView,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.MapView,
+        callSiteAdapter = mappedCollectionCallSiteAdapter(WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME, 2),
         descriptionName = "MapView",
     ),
     KotlinProjectionMappedType(
@@ -841,6 +928,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         projectedTypeResolver = { arguments -> MUTABLE_MAP_CLASS_NAME.parameterizedBy(arguments) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedMap,
         mutableCollectionKind = KotlinProjectionMutableCollectionKind.Map,
+        callSiteAdapter = mappedCollectionCallSiteAdapter(WINRT_DICTIONARY_PROJECTION_CLASS_NAME, 2),
         descriptionName = "Map",
     ),
     KotlinProjectionMappedType(
@@ -853,30 +941,40 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             }
         },
         abiValueKind = KotlinProjectionAbiValueKind.MappedKeyValuePair,
+        callSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
+            fromAbiFunctionName = "fromAbi",
+            inputUsesSelfReferenceAdapter = true,
+            inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTObjectMarshaler"),
+            usesClosedGenericHelper = true,
+        ),
         descriptionName = "KeyValuePair",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IAsyncAction",
         { WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncAction,
+        callSiteAdapter = mappedAsyncCallSiteAdapter("action"),
         descriptionName = "IAsyncAction",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IAsyncActionWithProgress",
         { arguments -> WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(arguments.single()) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        callSiteAdapter = mappedAsyncCallSiteAdapter("actionWithProgress"),
         descriptionName = "IAsyncActionWithProgress",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IAsyncOperation",
         { arguments -> WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(arguments.single()) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        callSiteAdapter = mappedAsyncCallSiteAdapter("operation"),
         descriptionName = "IAsyncOperation",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IAsyncOperationWithProgress",
         { arguments -> WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(arguments[0], arguments[1]) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+        callSiteAdapter = mappedAsyncCallSiteAdapter("operationWithProgress"),
         descriptionName = "IAsyncOperationWithProgress",
     ),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.IXamlServiceProvider", { MUX_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "microsoft.ui.xaml.IXamlServiceProvider"), runtimeOwnedPublicDeclaration = true, descriptionName = "IXamlServiceProvider"),
@@ -893,6 +991,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableIterable,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.Iterable,
+        callSiteAdapter = mappedBindableCallSiteAdapter(WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME),
         runtimeOwnedProjection = true,
         descriptionName = "IBindableIterable",
     ),
@@ -901,6 +1000,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { List::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVectorView,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+        callSiteAdapter = mappedBindableCallSiteAdapter(WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME),
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVectorView",
     ),
@@ -909,6 +1009,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVector,
         mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        callSiteAdapter = mappedBindableCallSiteAdapter(WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME),
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
@@ -935,6 +1036,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableIterable,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.Iterable,
+        callSiteAdapter = mappedBindableCallSiteAdapter(WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME),
         runtimeOwnedProjection = true,
         descriptionName = "IBindableIterable",
     ),
@@ -943,6 +1045,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { List::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVectorView,
         readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+        callSiteAdapter = mappedBindableCallSiteAdapter(WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME),
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVectorView",
     ),
@@ -951,6 +1054,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.MappedBindableVector,
         mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        callSiteAdapter = mappedBindableCallSiteAdapter(WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME),
         runtimeOwnedProjection = true,
         descriptionName = "IBindableVector",
     ),
@@ -975,9 +1079,19 @@ internal val MAPPED_TYPES_BY_SIMPLE_ABI_NAME: Map<String, KotlinProjectionMapped
         .filterValues { it.size == 1 }
         .mapValues { (_, mappedTypes) -> mappedTypes.single() }
 
-internal val MAPPED_TYPES_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, KotlinProjectionMappedType> =
+private val MAPPED_TYPES_GROUPED_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, List<KotlinProjectionMappedType>> =
     MAPPED_TYPES.mapNotNull { mappedType ->
         mappedType.abiValueKind?.let { abiValueKind -> abiValueKind to mappedType }
+    }.groupBy(keySelector = { it.first }, valueTransform = { it.second })
+
+internal val AMBIGUOUS_MAPPED_TYPE_ABI_KINDS: Set<KotlinProjectionAbiValueKind> =
+    MAPPED_TYPES_GROUPED_BY_ABI_KIND
+        .filterValues { mappedTypes -> mappedTypes.size > 1 }
+        .keys
+
+internal val MAPPED_TYPES_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, KotlinProjectionMappedType> =
+    MAPPED_TYPES_GROUPED_BY_ABI_KIND.mapNotNull { (abiValueKind, mappedTypes) ->
+        mappedTypes.singleOrNull()?.let { mappedType -> abiValueKind to mappedType }
     }.toMap()
 
 internal fun KotlinProjectionMappedType.isRuntimeOwnedProjection(): Boolean =
@@ -1191,14 +1305,20 @@ internal fun integralAbiSizeExpression(type: WinRTIntegralType): CodeBlock =
 internal fun integralKotlinCastExpression(type: WinRTIntegralType, expression: CodeBlock): CodeBlock =
     CodeBlock.of("%L as %T", expression, integralAbiDescriptor(type).kotlinTypeName)
 
+internal fun integralKotlinToCarrierExpression(type: WinRTIntegralType, expression: CodeBlock): CodeBlock {
+    val suffix = integralAbiDescriptor(type).argumentConversionSuffix
+    return if (suffix.isEmpty()) expression else CodeBlock.of("%L%L", expression, suffix)
+}
+
+internal fun integralCarrierToKotlinExpression(type: WinRTIntegralType, expression: CodeBlock): CodeBlock {
+    val suffix = integralAbiDescriptor(type).carrierToKotlinConversionSuffix
+    return if (suffix.isEmpty()) expression else CodeBlock.of("%L%L", expression, suffix)
+}
+
 internal fun integralPlatformReadExpression(type: WinRTIntegralType, addressExpression: CodeBlock): CodeBlock {
     val descriptor = integralAbiDescriptor(type)
     val readExpression = CodeBlock.of("%T.%L(%L)", PLATFORM_ABI_CLASS_NAME, descriptor.platformReadFunctionName, addressExpression)
-    return if (descriptor.carrierToKotlinConversionSuffix.isEmpty()) {
-        readExpression
-    } else {
-        CodeBlock.of("%L%L", readExpression, descriptor.carrierToKotlinConversionSuffix)
-    }
+    return integralCarrierToKotlinExpression(type, readExpression)
 }
 
 internal fun integralPlatformWriteCode(
@@ -1207,22 +1327,14 @@ internal fun integralPlatformWriteCode(
     valueExpression: CodeBlock,
 ): CodeBlock {
     val descriptor = integralAbiDescriptor(type)
-    val abiValueExpression = if (descriptor.argumentConversionSuffix.isEmpty()) {
-        valueExpression
-    } else {
-        CodeBlock.of("%L%L", valueExpression, descriptor.argumentConversionSuffix)
-    }
+    val abiValueExpression = integralKotlinToCarrierExpression(type, valueExpression)
     return CodeBlock.of("%T.%L(%L, %L)", PLATFORM_ABI_CLASS_NAME, descriptor.platformWriteFunctionName, addressExpression, abiValueExpression)
 }
 
 internal fun integralAbiCarrierExpression(type: WinRTIntegralType, expression: CodeBlock): CodeBlock {
     val descriptor = integralAbiDescriptor(type)
-    val carrierExpression = CodeBlock.of("%L as %T", expression, descriptor.abiCarrierTypeName)
-    return if (descriptor.carrierToKotlinConversionSuffix.isEmpty()) {
-        carrierExpression
-    } else {
-        CodeBlock.of("(%L)%L", carrierExpression, descriptor.carrierToKotlinConversionSuffix)
-    }
+    val carrierExpression = CodeBlock.of("(%L as %T)", expression, descriptor.abiCarrierTypeName)
+    return integralCarrierToKotlinExpression(type, carrierExpression)
 }
 
 internal fun integralResultSlotAllocation(type: WinRTIntegralType, scopeName: String): CodeBlock =
@@ -1246,7 +1358,64 @@ data class KotlinProjectionAbiTypeBinding(
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val typeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
     val structFieldBindings: List<KotlinProjectionAbiTypeBinding> = emptyList(),
+    val structFieldOffsets: List<Int> = emptyList(),
 )
+
+internal fun KotlinProjectionAbiTypeBinding.substituteGenericTypeArguments(
+    genericTypeArguments: List<KotlinProjectionAbiTypeBinding>,
+): KotlinProjectionAbiTypeBinding {
+    if (genericTypeArguments.isEmpty()) return this
+    if (kind == KotlinProjectionAbiValueKind.GenericParameter) {
+        val parameter = WinRTTypeRef.fromDisplayName(typeName).normalized()
+        if (parameter.kind == WinRTTypeRefKind.GenericTypeParameter) {
+            val index = parameter.genericParameterIndex
+            if (index != null && index in genericTypeArguments.indices) {
+                return genericTypeArguments[index]
+            }
+        }
+    }
+
+    val substitutedTypeArguments = typeArguments.map { argument ->
+        argument.substituteGenericTypeArguments(genericTypeArguments)
+    }
+    val substitutedStructFields = structFieldBindings.map { field ->
+        field.substituteGenericTypeArguments(genericTypeArguments)
+    }
+    val substitutedInvokeShape = delegateInvokeShape?.let { shape ->
+        shape.copy(
+            parameterBindings = shape.parameterBindings.map { parameter ->
+                parameter.copy(
+                    typeBinding = parameter.typeBinding.substituteGenericTypeArguments(genericTypeArguments),
+                )
+            },
+            returnBinding = shape.returnBinding.substituteGenericTypeArguments(genericTypeArguments),
+        )
+    }
+    return copy(
+        typeName = substituteClosedGenericTypeName(typeName, substitutedTypeArguments) { argument -> argument.typeName },
+        resolvedTypeName = substituteClosedGenericTypeName(resolvedTypeName, substitutedTypeArguments) { argument ->
+            argument.resolvedTypeName
+        },
+        delegateInvokeShape = substitutedInvokeShape,
+        typeArguments = substitutedTypeArguments,
+        structFieldBindings = substitutedStructFields,
+    )
+}
+
+private fun substituteClosedGenericTypeName(
+    typeName: String,
+    typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    argumentName: (KotlinProjectionAbiTypeBinding) -> String,
+): String {
+    if (typeArguments.isEmpty()) return typeName
+    val trimmed = typeName.trim()
+    val nullableSuffix = if (trimmed.endsWith('?')) "?" else ""
+    val nonNullable = trimmed.removeSuffix("?")
+    if ('<' !in nonNullable || !nonNullable.endsWith('>')) return typeName
+    return nonNullable.substringBefore('<') +
+        typeArguments.joinToString(prefix = "<", postfix = ">", transform = argumentName) +
+        nullableSuffix
+}
 
 data class KotlinProjectionAbiParameterBinding(
     val name: String,
@@ -1260,28 +1429,92 @@ data class KotlinProjectionDelegateInvokeShape(
     val returnBinding: KotlinProjectionAbiTypeBinding,
 )
 
-internal data class KotlinProjectionAbiMarshalerPlan(
-    val name: String,
-    val typeBinding: KotlinProjectionAbiTypeBinding,
-    val isReturn: Boolean,
-    val abiArgumentExpression: CodeBlock,
-    val abiArgumentKind: KotlinProjectionComArgumentKind? = null,
-    val extraAbiArgumentExpressions: List<CodeBlock> = emptyList(),
-    val extraAbiArgumentKinds: List<KotlinProjectionComArgumentKind> = emptyList(),
-    val scopeOpeners: List<CodeBlock> = emptyList(),
-    val postCallStatements: List<CodeBlock> = emptyList(),
-    val finallyStatements: List<CodeBlock> = emptyList(),
-    val resultAllocation: CodeBlock? = null,
-    val resultLocalDeclarations: CodeBlock? = null,
-    val readbackStatement: CodeBlock? = null,
+/** Exact, closed input factory emitted beside module call sites when a slot owns a resource. */
+internal data class KotlinProjectionCallSiteFactory(
+    val returnType: TypeName,
+    val body: CodeBlock,
+    val carrierProperties: List<String>,
+    val nullable: Boolean = returnType.isNullable,
+    val closeFunction: String = "close",
+    val copyFromAbiBody: CodeBlock? = null,
+) {
+    init {
+        require(carrierProperties.isNotEmpty() && carrierProperties.none(String::isBlank)) {
+            "A closed call-site factory must expose every ABI carrier property."
+        }
+        require(closeFunction.isNotBlank()) { "A closed call-site factory must expose its cleanup function." }
+    }
+}
+
+/** Exact, closed, allocation-free input conversion emitted beside a call site. */
+internal data class KotlinProjectionCallSiteInputCodec(
+    val returnType: TypeName,
+    val body: CodeBlock,
+)
+
+internal data class KotlinProjectionClosedGenericAdapter(
+    val runtimeProjectionClassName: ClassName,
+    val typeArgumentCount: Int,
+    val fromReferenceFunctionName: String,
+    val createReferenceFunctionName: String,
+)
+
+/** Static mapped-projection behavior selected once by the central WinRT mapped-type catalog. */
+internal data class KotlinProjectionMappedCallSiteAdapter(
+    val runtimeProjectionClassName: ClassName? = null,
+    val fromAbiFunctionName: String,
+    val outputFromAbiFunctionName: String = fromAbiFunctionName,
+    val toAbiFunctionName: String = "",
+    val createMarshalerFunctionName: String = "",
+    val inputTypeArgumentAdapterCount: Int = 0,
+    val inputUsesSelfReferenceAdapter: Boolean = false,
+    val inputUsesParameterizedInterfaceId: Boolean = false,
+    val inputFactoryReturnType: TypeName? = null,
+    val inputFactoryNullable: Boolean = false,
+    val rejectNullInputFactory: Boolean = false,
+    val usesClosedGenericHelper: Boolean = false,
+    val outputUsesAsyncExpression: Boolean = false,
+    val outputConsumesAbi: Boolean = false,
+) {
+    init {
+        require(fromAbiFunctionName.isNotBlank()) { "A mapped call-site adapter requires a decode symbol." }
+        require(inputTypeArgumentAdapterCount >= 0) { "Mapped adapter argument count must not be negative." }
+        require(!inputUsesSelfReferenceAdapter || inputTypeArgumentAdapterCount == 0) {
+            "A mapped call-site adapter cannot use both self and type-argument adapters."
+        }
+        require(!inputUsesParameterizedInterfaceId || inputTypeArgumentAdapterCount == 0) {
+            "A mapped call-site adapter cannot combine an interface id with type-argument adapters."
+        }
+        require(inputFactoryReturnType == null || createMarshalerFunctionName.isNotBlank() || inputUsesSelfReferenceAdapter) {
+            "A mapped input factory requires a static factory symbol or a self adapter."
+        }
+        require(!usesClosedGenericHelper || runtimeProjectionClassName == null) {
+            "A closed-helper mapped adapter resolves its owner from the closed WinMD binding."
+        }
+    }
+}
+
+internal data class KotlinProjectionAbiSlotPlan(
+    val binding: KotlinProjectionAbiParameterBinding,
+    val recipePlan: KotlinProjectionCallSiteRecipePlan,
 )
 
 internal data class KotlinProjectionAbiCallPlan(
-    val parameterMarshalers: List<KotlinProjectionAbiMarshalerPlan>,
-    val returnMarshaler: KotlinProjectionAbiMarshalerPlan? = null,
+    val returnBinding: KotlinProjectionAbiTypeBinding,
+    val parameterSlots: List<KotlinProjectionAbiSlotPlan>,
+    val returnRecipePlan: KotlinProjectionCallSiteRecipePlan? = null,
     val descriptor: WinRTAbiMarshalerPlanDescriptor? = null,
     val suppressHResultCheck: Boolean = false,
-)
+) {
+    val parameterBindings: List<KotlinProjectionAbiParameterBinding>
+        get() = parameterSlots.map(KotlinProjectionAbiSlotPlan::binding)
+
+    init {
+        require((returnBinding.kind == KotlinProjectionAbiValueKind.Unit) == (returnRecipePlan == null)) {
+            "An ABI call plan must preserve its WinMD return recipe exactly."
+        }
+    }
+}
 
 internal enum class KotlinProjectionComArgumentKind {
     Pointer,

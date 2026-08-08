@@ -32,6 +32,19 @@ internal static class Program
         var scenarios = new[]
         {
             new BenchmarkScenario(
+                "activate_json_object_only",
+                1,
+                iterations =>
+                {
+                    long checksum = 0;
+                    for (int index = 0; index < iterations; index++)
+                    {
+                        _ = new JsonObject();
+                        checksum++;
+                    }
+                    return checksum;
+                }),
+            new BenchmarkScenario(
                 "activate_json_object",
                 1,
                 iterations =>

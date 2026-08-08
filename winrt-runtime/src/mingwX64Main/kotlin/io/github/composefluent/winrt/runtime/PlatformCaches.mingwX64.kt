@@ -1,7 +1,11 @@
-@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+@file:OptIn(
+    kotlin.concurrent.atomics.ExperimentalAtomicApi::class,
+    kotlin.experimental.ExperimentalNativeApi::class,
+)
 
 package io.github.composefluent.winrt.runtime
 
+import kotlin.native.ref.createCleaner
 import kotlin.native.ref.WeakReference as NativeWeakReference
 
 actual class ConcurrentCacheMap<K, V> actual constructor() {
@@ -234,11 +238,46 @@ actual class SnapshotList<T> actual constructor() {
 }
 
 actual class FinalizationHook actual constructor() {
+    @Suppress("UNUSED_PARAMETER")
     actual fun register(
         target: Any,
         cleanup: () -> Unit,
-    ): AutoCloseable =
-        AutoCloseable {
+    ): AutoCloseable = NativeFinalizationRegistration(cleanup)
+}
+
+internal actual fun createComPtrFinalizationRegistration(
+    @Suppress("UNUSED_PARAMETER") target: Any,
+    support: RawComObjectReferenceSupport,
+): Any = createCleaner(support, ::closeComPtrSupport)
+
+internal actual fun closeComPtrFinalizationRegistration(
+    @Suppress("UNUSED_PARAMETER") registration: Any,
+    support: RawComObjectReferenceSupport,
+) {
+    closeComPtrSupport(support)
+}
+
+private class NativeFinalizationRegistration(
+    cleanup: () -> Unit,
+) : AutoCloseable {
+    private val state = NativeFinalizationState(cleanup)
+
+    @Suppress("unused")
+    private val cleaner = createCleaner(state) { it.runOnce() }
+
+    override fun close() {
+        state.runOnce()
+    }
+}
+
+private class NativeFinalizationState(
+    private val cleanup: () -> Unit,
+) {
+    private val cleaned = kotlin.concurrent.atomics.AtomicInt(0)
+
+    fun runOnce() {
+        if (cleaned.compareAndSet(0, 1)) {
             cleanup()
         }
+    }
 }

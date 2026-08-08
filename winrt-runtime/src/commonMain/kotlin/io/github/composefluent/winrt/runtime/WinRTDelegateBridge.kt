@@ -74,7 +74,10 @@ object WinRTDelegateBridge {
     fun createProjectedDelegateHandle(delegate: WinRTProjectedDelegate): WinRTDelegateHandle =
         delegate.createWinRTDelegateHandle()
 
-    private fun createProjectedDelegateArgument(delegate: WinRTProjectedDelegate): WinRTDelegateArgumentMarshaler {
+    fun createProjectedDelegateArgument(delegate: WinRTProjectedDelegate?): WinRTDelegateArgumentMarshaler {
+        if (delegate == null) {
+            return WinRTDelegateArgumentMarshaler(handle = null, reference = null)
+        }
         ComWrappersSupport.tryUnwrapObject(delegate)?.let { reference ->
             return WinRTDelegateArgumentMarshaler(handle = null, reference = reference)
         }

@@ -73,6 +73,20 @@ internal expect class NativeHStringReferenceFrame : AutoCloseable {
 internal expect fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame
 
 /**
+ * Low-level string views used by compiler-lowered direct HSTRING call sites. The returned
+ * string is the lifetime owner for [winRTStringAddress]; lowering keeps it alive through the
+ * native call with [winRTKeepAlive].
+ */
+@PublishedApi
+internal expect inline fun winRTPinString(value: String, length: Int): String
+
+@PublishedApi
+internal expect inline fun winRTStringAddress(value: String, length: Int): RawAddress
+
+@PublishedApi
+internal expect inline fun winRTStringLength(value: String): Int
+
+/**
  * A native allocation whose backing memory is owned and can be freed by closing this handle.
  * This is used when transferring ownership of heap allocations (e.g. array marshalling).
  */
@@ -195,6 +209,36 @@ expect object PlatformAbi {
 
     /** Fills [sizeBytes] bytes starting at [pointer] with zeros. */
     fun zeroBytes(pointer: RawAddress, sizeBytes: Long)
+}
+
+private const val queryInterfaceScratchSizeBytes = Guid.BYTE_SIZE + Long.SIZE_BYTES
+
+internal fun queryInterfaceWithReusableScratch(
+    unknown: RawAddress,
+    interfaceId: Guid,
+): NativePointerResult {
+    if (PlatformAbi.isNull(unknown)) {
+        return NativePointerResult(KnownHResults.E_POINTER.value, PlatformAbi.nullPointer)
+    }
+    return acquireNativeStructScratchFrame(
+        sizeBytes = queryInterfaceScratchSizeBytes.toLong(),
+        alignmentBytes = Long.SIZE_BYTES.toLong(),
+    ).use { scratch ->
+        val interfaceIdPointer = scratch.pointer
+        val resultOut = PlatformAbi.slice(
+            pointer = interfaceIdPointer,
+            offsetBytes = Guid.BYTE_SIZE.toLong(),
+            sizeBytes = Long.SIZE_BYTES.toLong(),
+        )
+        PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+        val hResult = ComVtableInvoker.invokeArgs(
+            instance = PlatformAbi.toRawComPtr(unknown),
+            slot = IUnknownVftblSlots.QueryInterface,
+            arg0 = interfaceIdPointer,
+            arg1 = resultOut,
+        )
+        NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+    }
 }
 
 expect object WinRTPlatformApi {

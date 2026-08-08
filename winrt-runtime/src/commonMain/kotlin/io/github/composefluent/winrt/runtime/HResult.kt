@@ -12,13 +12,14 @@ value class HResult(val value: Int) {
 
     override fun toString(): String = "0x${value.toUInt().toString(16).uppercase().padStart(8, '0')}"
 
-    fun requireSuccess(operation: String = "WinRT call"): HResult {
-        if (isFailure) {
+    inline fun requireSuccess(operation: String = "WinRT call"): HResult {
+        if (value < 0) {
             throwHResultFailure(this, operation)
         }
         return this
     }
 }
 
+@PublishedApi
 internal fun throwHResultFailure(hResult: HResult, operation: String): Nothing =
     throw WinRTExceptionTranslator.exceptionFor(hResult, operation)

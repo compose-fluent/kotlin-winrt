@@ -37,12 +37,20 @@ internal actual class PlatformLock actual constructor() {
         InitializeCriticalSection(section)
     }
 
-    actual fun <R> withLock(block: () -> R): R {
+    actual fun enter() {
         EnterCriticalSection(section)
+    }
+
+    actual fun exit() {
+        LeaveCriticalSection(section)
+    }
+
+    actual fun <R> withLock(block: () -> R): R {
+        enter()
         try {
             return block()
         } finally {
-            LeaveCriticalSection(section)
+            exit()
         }
     }
 }
@@ -61,13 +69,8 @@ internal actual class NativeWeakReferenceHandle internal constructor(
 internal actual object WeakReferenceInterop {
     actual fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle? {
         val unwrapped = ComWrappersSupport.tryUnwrapObject(target) ?: return null
-        return unwrapped.use {
-            val weakReferenceSource = unwrapped.queryInterface(IID.IWeakReferenceSource).getOrNull() ?: return null
-            weakReferenceSource.use {
-                WeakReferenceSourceReference(it.pointer.asRawAddress(), IID.IWeakReferenceSource)
-                    .getWeakReference()
-                    ?.let(::NativeWeakReferenceHandle)
-            }
+        return unwrapped.use { reference ->
+            reference.tryGetWeakReference()?.let(::NativeWeakReferenceHandle)
         }
     }
 

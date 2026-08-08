@@ -1,6 +1,7 @@
 import io.github.composefluent.winrt.build.projectionArtifactVersion
 import io.github.composefluent.winrt.build.ValidateExpectedFailureTask
 import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.testing.Test
@@ -129,6 +130,50 @@ projectReviewPublicationModules.forEach { projectPath ->
 val publishProjectReviewRemediationArtifacts by tasks.registering {
     dependsOn(cleanProjectReviewRemediationRepository)
     dependsOn(projectReviewPublicationTaskPaths)
+}
+
+val publishedRuntimeBoundaryRepository = layout.buildDirectory.dir("optimization-19.8-runtime-repository")
+val cleanPublishedRuntimeBoundaryRepository by tasks.registering(Delete::class) {
+    delete(publishedRuntimeBoundaryRepository)
+}
+
+project(":winrt-runtime").plugins.withId("maven-publish") {
+    project(":winrt-runtime").extensions.getByType(PublishingExtension::class.java).repositories.maven {
+        name = "publishedRuntimeBoundary"
+        url = publishedRuntimeBoundaryRepository.get().asFile.toURI()
+    }
+    project(":winrt-runtime").tasks
+        .withType(PublishToMavenRepository::class.java)
+        .matching { task -> task.name.endsWith("ToPublishedRuntimeBoundaryRepository") }
+        .configureEach {
+            dependsOn(cleanPublishedRuntimeBoundaryRepository)
+        }
+}
+
+val validatePublishedRuntimeOnlyConsumer by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the published JVM/mingwX64 runtime is consumable without either WinRT plugin."
+    workingDir = file("winrt-runtime/published-runtime-consumer-fixture")
+    val gradleExecutable = requireNotNull(gradle.gradleHomeDir).resolve("bin/gradle.bat")
+    val buildJavaHome = providers.systemProperty("java.home")
+    commandLine(
+        "cmd",
+        "/c",
+        gradleExecutable.absolutePath,
+        "verifyPublishedRuntimeBoundary",
+        "--no-daemon",
+        "--max-workers=1",
+        "--console=plain",
+        "--no-build-cache",
+        "--rerun-tasks",
+        "--refresh-dependencies",
+        "-Pkotlin.compiler.execution.strategy=in-process",
+        "-PkotlinWinRT.test.repository=${publishedRuntimeBoundaryRepository.get().asFile.absolutePath}",
+        "-PkotlinWinRT.test.coordinate=io.github.compose-fluent:winrt-runtime:$winrtVersion",
+    )
+    environment("JAVA_HOME", buildJavaHome.get())
+    environment("GRADLE_USER_HOME", gradle.gradleUserHomeDir.absolutePath)
+    dependsOn(":winrt-runtime:publishAllPublicationsToPublishedRuntimeBoundaryRepository")
 }
 
 fun registerPublishedProjectionConsumer(

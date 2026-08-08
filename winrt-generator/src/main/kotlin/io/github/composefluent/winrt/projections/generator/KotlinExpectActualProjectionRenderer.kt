@@ -18,7 +18,6 @@ import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.UNIT
-import com.squareup.kotlinpoet.asClassName
 
 internal class KotlinExpectActualProjectionRenderer(
     private val baseRenderer: KotlinProjectionRenderer,
@@ -101,76 +100,20 @@ internal class KotlinExpectActualProjectionRenderer(
             type.properties.all { it.hasNativeProjectionPropertyAccessor() } &&
             type.events.none(WinRTEventDefinition::isStatic) &&
             type.events.all { event -> event.hasNativeProjectionAccessorPair() } &&
-            type.methods
-                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
-                .all { method ->
-                    canBuildJvmFfmCallPlan(
-                        returnTypeName = method.projectedKotlinReturnTypeName(),
-                        parameters = method.projectedKotlinParameters().map { parameter ->
-                            KotlinProjectionAbiParameterBinding(
-                                name = parameter.name,
-                                typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, type.namespace),
-                                category = metadataParameterCategoryFor(parameter),
-                            )
-                        },
-                        typesByQualifiedName = plan.typesByQualifiedName,
-                        currentNamespace = type.namespace,
-                    )
-                } &&
             type.properties
                 .filterNot(WinRTPropertyDefinition::isStatic)
                 .filter { it.hasNativeProjectionPropertyAccessor() }
                 .all { property ->
-                    val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, plan.typesByQualifiedName)
                     val getterAvailable = if (property.hasNativeProjectionGetterAccessor()) {
-                        canBuildJvmFfmCallPlan(
-                            returnTypeName = propertyTypeName,
-                            parameters = emptyList(),
-                            typesByQualifiedName = plan.typesByQualifiedName,
-                            currentNamespace = type.namespace,
-                        )
+                        true
                     } else {
                         findNativeProjectionGetterInterface(type, property, plan.typesByQualifiedName) != null
                     }
                     getterAvailable && (
                         property.isReadOnly ||
-                            property.hasNativeProjectionSetterAccessor() &&
-                            canBuildJvmFfmCallPlan(
-                                returnTypeName = "Unit",
-                                parameters = listOf(
-                                    KotlinProjectionAbiParameterBinding(
-                                        "value",
-                                        baseRenderer.renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName, type.namespace),
-                                    ),
-                                ),
-                                typesByQualifiedName = plan.typesByQualifiedName,
-                                currentNamespace = type.namespace,
-                            )
+                            property.hasNativeProjectionSetterAccessor()
                         )
                 }
-
-    private fun canBuildJvmFfmCallPlan(
-        returnTypeName: String,
-        parameters: List<KotlinProjectionAbiParameterBinding>,
-        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
-        currentNamespace: String? = null,
-    ): Boolean =
-        runCatching {
-            val returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName, currentNamespace)
-            val parameterBindings = parameters
-            if (
-                !returnBinding.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) ||
-                parameterBindings.any { !it.typeBinding.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) }
-            ) {
-                return@runCatching false
-            }
-            buildJvmInterfaceAbiCallPlan(
-                returnBinding = returnBinding,
-                parameterBindings = parameterBindings,
-                suppressHResultCheck = false,
-                typesByQualifiedName = typesByQualifiedName,
-            )?.jvmFfmShapeOrNull() != null
-        }.getOrDefault(false)
 
     private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRTTypeDefinition> =
         plan.type.implementedInterfaces
@@ -639,7 +582,6 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun renderJvmInterfaceNativeProjection(plan: KotlinTypeProjectionPlan): TypeSpec {
-        val abiShapes = linkedSetOf<List<KotlinProjectionComArgumentKind>>()
         val builder = TypeSpec.classBuilder("NativeProjection")
             .addModifiers(KModifier.PRIVATE)
             .primaryConstructor(
@@ -679,13 +621,13 @@ internal class KotlinExpectActualProjectionRenderer(
             interfaceType.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 val key = projectedMethodSignatureKey(method)
                 if (emittedMethods.add(key)) {
-                    builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
+                    builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName))
                 }
             }
             interfaceType.properties.filterNot(WinRTPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
                 val propertyName = property.name.replaceFirstChar(Char::lowercase)
                 if (emittedProperties.add(propertyName)) {
-                    builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
+                    builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName))
                 }
             }
             interfaceType.events.filterNot(WinRTEventDefinition::isStatic).forEach { event ->
@@ -711,9 +653,6 @@ internal class KotlinExpectActualProjectionRenderer(
                 }
             }
         }
-        if (abiShapes.isNotEmpty()) {
-            builder.addType(renderJvmAbiHelper(abiShapes))
-        }
         return builder.build()
     }
 
@@ -721,10 +660,9 @@ internal class KotlinExpectActualProjectionRenderer(
         slotInterfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
         method: WinRTMethodDefinition,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
-        abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): FunSpec {
-        val returnBinding = baseRenderer.renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), typesByQualifiedName, slotInterfaceType.namespace)
-        val parameterBindings = method.projectedKotlinParameters().map { parameter ->
+        val returnBinding = baseRenderer.renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName, slotInterfaceType.namespace)
+        val parameterBindings = method.parameters.map { parameter ->
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
                 typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, typesByQualifiedName, slotInterfaceType.namespace),
@@ -741,8 +679,7 @@ internal class KotlinExpectActualProjectionRenderer(
             invokeTargetExpression = "nativeObject",
             slotExpression = baseRenderer.metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods)),
             callPlan = callPlan,
-            renderInvocation = { target, slot, arguments -> renderJvmFfmInvocation(target, slot, arguments, abiShapes) },
-        ) ?: error("Generator interface proxy parity failed to emit ${method.name}")
+        )
         val objectShape = closableMethodShape(slotInterfaceType, method) ?: runtimeObjectMethodShape(method)
         return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
             .addModifiers(KModifier.OVERRIDE)
@@ -757,7 +694,6 @@ internal class KotlinExpectActualProjectionRenderer(
         slotInterfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
         property: WinRTPropertyDefinition,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
-        abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): PropertySpec {
         val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName)
         val builder = PropertySpec.builder(
@@ -781,8 +717,7 @@ internal class KotlinExpectActualProjectionRenderer(
                             invokeTargetExpression = "nativeObject",
                             slotExpression = CodeBlock.of("%T.Metadata.%L", baseRenderer.resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
                             callPlan = getterCallPlan,
-                            renderInvocation = { target, slot, arguments -> renderJvmFfmInvocation(target, slot, arguments, abiShapes) },
-                        ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
+                        ),
                     )
                     .build(),
             )
@@ -817,161 +752,13 @@ internal class KotlinExpectActualProjectionRenderer(
                             invokeTargetExpression = "nativeObject",
                             slotExpression = CodeBlock.of("%T.Metadata.%L", baseRenderer.resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
                             callPlan = setterCallPlan,
-                            renderInvocation = { target, slot, arguments -> renderJvmFfmInvocation(target, slot, arguments, abiShapes) },
-                        ) ?: error("Generator interface proxy parity failed to emit setter ${property.name}"),
+                        ),
                     )
                     .build(),
             )
         }
         return builder.build()
     }
-
-    private fun renderJvmFfmInvocation(
-        invokeTargetExpression: String,
-        slotExpression: CodeBlock,
-        abiArguments: List<KotlinProjectionComArgument>,
-        abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
-    ): CodeBlock {
-        val kinds = abiArguments.map { it.kind }
-        val shape = kinds.jvmFfmShapeOrNull()
-            ?: error("Expect/actual JVM projection was selected for a non-FFM ABI shape: $kinds")
-        abiShapes += shape
-        return CodeBlock.builder()
-            .add("JvmAbi.%L(instance = %L.pointer, slot = %L", jvmAbiInvokeFunctionName(shape), invokeTargetExpression, slotExpression)
-            .apply {
-                abiArguments.forEachIndexed { index, argument ->
-                    add(", arg%L = %L", index, argument.expression)
-                }
-            }
-            .add(")")
-            .build()
-    }
-
-    private fun renderJvmAbiHelper(abiShapes: Set<List<KotlinProjectionComArgumentKind>>): TypeSpec =
-        TypeSpec.objectBuilder("JvmAbi")
-            .addModifiers(KModifier.PRIVATE)
-            .addProperty(
-                PropertySpec.builder("linker", ClassName_JAVA_LINKER)
-                    .addModifiers(KModifier.PRIVATE)
-                    .initializer("%T.nativeLinker()", ClassName_JAVA_LINKER)
-                    .build(),
-            )
-            .addProperty(
-                PropertySpec.builder("downcallHandles", ClassName_CONCURRENT_HASH_MAP.parameterizedBy(String::class.asClassName(), ClassName_METHOD_HANDLE))
-                    .addModifiers(KModifier.PRIVATE)
-                    .initializer("%T()", ClassName_CONCURRENT_HASH_MAP)
-                    .build(),
-            )
-            .apply {
-                abiShapes.sortedWith(compareBy<List<KotlinProjectionComArgumentKind>> { it.size }.thenBy { it.joinToString("_") }).forEach { shape ->
-                    addProperty(jvmDescriptorProperty(shape))
-                    addFunction(jvmInvokeFunction(shape))
-                }
-                addFunction(jvmHandleFunction())
-                addFunction(jvmVtableEntryFunction())
-                addFunction(jvmSegmentFunction())
-            }
-            .build()
-
-    private fun jvmDescriptorProperty(shape: List<KotlinProjectionComArgumentKind>): PropertySpec =
-        PropertySpec.builder(jvmAbiDescriptorName(shape), ClassName_FUNCTION_DESCRIPTOR)
-            .addModifiers(KModifier.PRIVATE)
-            .initializer(jvmDescriptorInitializer(shape))
-            .build()
-
-    private fun jvmInvokeFunction(shape: List<KotlinProjectionComArgumentKind>): FunSpec =
-        FunSpec.builder(jvmAbiInvokeFunctionName(shape))
-            .addModifiers(KModifier.PRIVATE)
-            .addParameter("instance", RAW_COM_PTR_CLASS_NAME)
-            .addParameter("slot", Int::class)
-            .apply {
-                shape.forEachIndexed { index, kind ->
-                    addParameter("arg$index", jvmKotlinParameterType(kind))
-                }
-            }
-            .returns(Int::class)
-            .addCode(
-                CodeBlock.builder()
-                    .addStatement("val instanceSegment = segment(instance.value)")
-                    .add("return handle(instanceSegment, slot, %S, %L).invoke(instanceSegment", shape.jvmShapeSuffix(), jvmAbiDescriptorName(shape))
-                    .apply {
-                        shape.forEachIndexed { index, kind ->
-                            add(", %L", jvmArgumentCarrierExpression(kind, "arg$index"))
-                        }
-                    }
-                    .add(") as Int\n")
-                    .build(),
-            )
-            .build()
-
-    private fun jvmHandleFunction(): FunSpec =
-        FunSpec.builder("handle")
-            .addModifiers(KModifier.PRIVATE)
-            .addParameter("instance", ClassName_MEMORY_SEGMENT)
-            .addParameter("slot", Int::class)
-            .addParameter("signature", String::class)
-            .addParameter("descriptor", ClassName_FUNCTION_DESCRIPTOR)
-            .returns(ClassName_METHOD_HANDLE)
-            .addCode(
-                """
-                val function = vtableEntry(instance, slot)
-                val key = "${'$'}{function.address()}:${'$'}signature"
-                return downcallHandles.computeIfAbsent(key) {
-                    linker.downcallHandle(%T.ofAddress(function.address()), descriptor)
-                }
-                """.trimIndent(),
-                ClassName_MEMORY_SEGMENT,
-            )
-            .build()
-
-    private fun jvmVtableEntryFunction(): FunSpec =
-        FunSpec.builder("vtableEntry")
-            .addModifiers(KModifier.PRIVATE)
-            .addParameter("pointer", ClassName_MEMORY_SEGMENT)
-            .addParameter("slot", Int::class)
-            .returns(ClassName_MEMORY_SEGMENT)
-            .addCode(
-                """
-                val objectMemory = pointer.reinterpret(%T.ADDRESS.byteSize())
-                val vtable = objectMemory.get(%T.ADDRESS, 0)
-                val requiredBytes = maxOf(24L, (slot + 1L) * %T.ADDRESS.byteSize())
-                return vtable.reinterpret(requiredBytes).getAtIndex(%T.ADDRESS, slot.toLong())
-                """.trimIndent(),
-                ClassName_VALUE_LAYOUT,
-                ClassName_VALUE_LAYOUT,
-                ClassName_VALUE_LAYOUT,
-                ClassName_VALUE_LAYOUT,
-            )
-            .build()
-
-    private fun jvmSegmentFunction(): FunSpec =
-        FunSpec.builder("segment")
-            .addModifiers(KModifier.PRIVATE)
-            .addParameter("address", Long::class)
-            .returns(ClassName_MEMORY_SEGMENT)
-            .addCode(
-                """
-                return if (address == 0L) {
-                    %T.NULL
-                } else {
-                    %T.ofAddress(address).reinterpret(Long.MAX_VALUE)
-                }
-                """.trimIndent(),
-                ClassName_MEMORY_SEGMENT,
-                ClassName_MEMORY_SEGMENT,
-            )
-            .build()
-
-    private fun jvmDescriptorInitializer(shape: List<KotlinProjectionComArgumentKind>): CodeBlock =
-        CodeBlock.builder()
-            .add("%T.of(%T.JAVA_INT, %T.ADDRESS", ClassName_FUNCTION_DESCRIPTOR, ClassName_VALUE_LAYOUT, ClassName_VALUE_LAYOUT)
-            .apply {
-                shape.forEach { kind ->
-                    add(", %L", jvmValueLayoutCode(kind))
-                }
-            }
-            .add(")")
-            .build()
 
     private fun renderSourceSetFile(
         sourceSetPrefix: String,
@@ -1024,10 +811,10 @@ internal class KotlinExpectActualProjectionRenderer(
             parameterBindings = parameterBindings,
             suppressHResultCheck = suppressHResultCheck,
         ) ?: return null
-        return callPlan.withJvmProjectedInterfaceReturnReadback(returnBinding, typesByQualifiedName)
+        return callPlan.withJvmProjectedInterfaceOutputCodec(returnBinding, typesByQualifiedName)
     }
 
-    private fun KotlinProjectionAbiCallPlan.withJvmProjectedInterfaceReturnReadback(
+    private fun KotlinProjectionAbiCallPlan.withJvmProjectedInterfaceOutputCodec(
         returnBinding: KotlinProjectionAbiTypeBinding,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
     ): KotlinProjectionAbiCallPlan? {
@@ -1035,17 +822,24 @@ internal class KotlinExpectActualProjectionRenderer(
             return this
         }
         val returnInterface = projectedInterfaceType(returnBinding, typesByQualifiedName) ?: return null
-        val returnMarshaler = returnMarshaler ?: return null
+        val recipePlan = returnRecipePlan ?: return null
+        val outputCodec = recipePlan.outputCodecs[recipePlan.recipe]
+            ?: baseRenderer.buildProjectionOutputCodec(returnBinding, recipePlan.recipe)
+        val codecBody = CodeBlock.builder()
+            .apply {
+                if (returnBinding.isNullableAbiTypeName) {
+                    add("if (%T.isNull(__abi)) return null\n", PLATFORM_ABI_CLASS_NAME)
+                } else {
+                    add("if (%T.isNull(__abi)) error(%S)\n", PLATFORM_ABI_CLASS_NAME, "WINRT_E_NULL_ABI_RETURN")
+                }
+            }
+            .add("val __resultRef = %T(%T.toRawComPtr(__abi))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+            .add("return %T.wrap(__resultRef)\n", jvmInterfaceProjectionSupportClassName(returnInterface))
+            .build()
         return copy(
-            returnMarshaler = returnMarshaler.copy(
-                readbackStatement = CodeBlock.of(
-                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __resultRef = %T(%T.toRawComPtr(__resultPointer))\nval __result = %T.wrap(__resultRef)\nreturn __result\n",
-                    PLATFORM_ABI_CLASS_NAME,
-                    abiNullReturnReadback(returnBinding),
-                    IUNKNOWN_REFERENCE_CLASS_NAME,
-                    PLATFORM_ABI_CLASS_NAME,
-                    jvmInterfaceProjectionSupportClassName(returnInterface),
-                ),
+            returnRecipePlan = recipePlan.copy(
+                outputCodecs = recipePlan.outputCodecs +
+                    (recipePlan.recipe to outputCodec.copy(body = codecBody)),
             ),
         )
     }
@@ -1061,143 +855,3 @@ internal class KotlinExpectActualProjectionRenderer(
             ?: typesByQualifiedName[binding.typeName.rawWinRTTypeName()]
     }
 }
-
-private val ClassName_FUNCTION_DESCRIPTOR = ClassName("java.lang.foreign", "FunctionDescriptor")
-private val ClassName_JAVA_LINKER = ClassName("java.lang.foreign", "Linker")
-private val ClassName_MEMORY_SEGMENT = ClassName("java.lang.foreign", "MemorySegment")
-private val ClassName_VALUE_LAYOUT = ClassName("java.lang.foreign", "ValueLayout")
-private val ClassName_METHOD_HANDLE = ClassName("java.lang.invoke", "MethodHandle")
-private val ClassName_CONCURRENT_HASH_MAP = ClassName("java.util.concurrent", "ConcurrentHashMap")
-private val RAW_COM_PTR_CLASS_NAME = ClassName("io.github.composefluent.winrt.runtime", "RawComPtr")
-
-private val supportedJvmFfmKinds = setOf(
-    KotlinProjectionComArgumentKind.Pointer,
-    KotlinProjectionComArgumentKind.Int8,
-    KotlinProjectionComArgumentKind.Int16,
-    KotlinProjectionComArgumentKind.Int32,
-    KotlinProjectionComArgumentKind.Int64,
-    KotlinProjectionComArgumentKind.Float,
-    KotlinProjectionComArgumentKind.Double,
-)
-
-private fun KotlinProjectionAbiCallPlan.jvmFfmShapeOrNull(): List<KotlinProjectionComArgumentKind>? =
-    buildList<KotlinProjectionComArgumentKind?> {
-        parameterMarshalers.forEach { marshaler ->
-            add(marshaler.abiArgumentKind)
-            addAll(marshaler.extraAbiArgumentKinds)
-        }
-        returnMarshaler?.let { marshaler ->
-            add(marshaler.abiArgumentKind)
-            addAll(marshaler.extraAbiArgumentKinds)
-        }
-    }.jvmFfmShapeOrNull()
-
-private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKind(
-    typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
-): Boolean =
-    customObjectAbi(this) == null &&
-        kind in supportedExpectActualJvmMemberAbiKinds &&
-        when (kind) {
-            KotlinProjectionAbiValueKind.ProjectedInterface -> {
-                val type = typesByQualifiedName[resolvedTypeName.rawExpectActualWinRTTypeName()]
-                    ?: typesByQualifiedName[typeName.rawExpectActualWinRTTypeName()]
-                type?.kind == WinRTTypeKind.Interface &&
-                    type.genericParameterCount == 0 &&
-                    typeArguments.isEmpty()
-            }
-            KotlinProjectionAbiValueKind.Array ->
-                typeArguments.singleOrNull()?.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) == true
-            else -> true
-        }
-
-private fun String.rawExpectActualWinRTTypeName(): String =
-    substringBefore('<').removeSuffix("?")
-
-private val supportedExpectActualJvmMemberAbiKinds = setOf(
-    KotlinProjectionAbiValueKind.Unit,
-    KotlinProjectionAbiValueKind.String,
-    KotlinProjectionAbiValueKind.Boolean,
-    KotlinProjectionAbiValueKind.Int8,
-    KotlinProjectionAbiValueKind.UInt8,
-    KotlinProjectionAbiValueKind.Int16,
-    KotlinProjectionAbiValueKind.UInt16,
-    KotlinProjectionAbiValueKind.Int32,
-    KotlinProjectionAbiValueKind.UInt32,
-    KotlinProjectionAbiValueKind.Int64,
-    KotlinProjectionAbiValueKind.UInt64,
-    KotlinProjectionAbiValueKind.Float,
-    KotlinProjectionAbiValueKind.Double,
-    KotlinProjectionAbiValueKind.Char16,
-    KotlinProjectionAbiValueKind.GuidValue,
-    KotlinProjectionAbiValueKind.Array,
-    KotlinProjectionAbiValueKind.Enum,
-    KotlinProjectionAbiValueKind.ProjectedInterface,
-    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-    KotlinProjectionAbiValueKind.Object,
-    KotlinProjectionAbiValueKind.UnknownReference,
-    KotlinProjectionAbiValueKind.InspectableReference,
-)
-
-private fun List<KotlinProjectionComArgumentKind?>.jvmFfmShapeOrNull(): List<KotlinProjectionComArgumentKind>? {
-    val shape = filterNotNull()
-    return shape.takeIf { it.size == size && it.all(supportedJvmFfmKinds::contains) }
-}
-
-private fun jvmAbiDescriptorName(shape: List<KotlinProjectionComArgumentKind>): String =
-    "descriptor_${shape.jvmShapeSuffix()}"
-
-private fun jvmAbiInvokeFunctionName(shape: List<KotlinProjectionComArgumentKind>): String =
-    "invoke_${shape.jvmShapeSuffix()}"
-
-private fun List<KotlinProjectionComArgumentKind>.jvmShapeSuffix(): String =
-    if (isEmpty()) {
-        "none"
-    } else {
-        joinToString("_") { kind ->
-            when (kind) {
-                KotlinProjectionComArgumentKind.Pointer -> "p"
-                KotlinProjectionComArgumentKind.Int8 -> "i8"
-                KotlinProjectionComArgumentKind.Int16 -> "i16"
-                KotlinProjectionComArgumentKind.Int32 -> "i32"
-                KotlinProjectionComArgumentKind.Int64 -> "i64"
-                KotlinProjectionComArgumentKind.Float -> "f32"
-                KotlinProjectionComArgumentKind.Double -> "f64"
-            }
-        }
-    }
-
-private fun jvmKotlinParameterType(kind: KotlinProjectionComArgumentKind): TypeName =
-    when (kind) {
-        KotlinProjectionComArgumentKind.Pointer -> RAW_ADDRESS_CLASS_NAME
-        KotlinProjectionComArgumentKind.Int8 -> Byte::class.asClassName()
-        KotlinProjectionComArgumentKind.Int16 -> Short::class.asClassName()
-        KotlinProjectionComArgumentKind.Int32 -> Int::class.asClassName()
-        KotlinProjectionComArgumentKind.Int64 -> Long::class.asClassName()
-        KotlinProjectionComArgumentKind.Float -> Float::class.asClassName()
-        KotlinProjectionComArgumentKind.Double -> Double::class.asClassName()
-    }
-
-private fun jvmValueLayoutCode(kind: KotlinProjectionComArgumentKind): CodeBlock =
-    when (kind) {
-        KotlinProjectionComArgumentKind.Pointer -> CodeBlock.of("%T.ADDRESS", ClassName_VALUE_LAYOUT)
-        KotlinProjectionComArgumentKind.Int8 -> CodeBlock.of("%T.JAVA_BYTE", ClassName_VALUE_LAYOUT)
-        KotlinProjectionComArgumentKind.Int16 -> CodeBlock.of("%T.JAVA_SHORT", ClassName_VALUE_LAYOUT)
-        KotlinProjectionComArgumentKind.Int32 -> CodeBlock.of("%T.JAVA_INT", ClassName_VALUE_LAYOUT)
-        KotlinProjectionComArgumentKind.Int64 -> CodeBlock.of("%T.JAVA_LONG", ClassName_VALUE_LAYOUT)
-        KotlinProjectionComArgumentKind.Float -> CodeBlock.of("%T.JAVA_FLOAT", ClassName_VALUE_LAYOUT)
-        KotlinProjectionComArgumentKind.Double -> CodeBlock.of("%T.JAVA_DOUBLE", ClassName_VALUE_LAYOUT)
-    }
-
-private fun jvmArgumentCarrierExpression(
-    kind: KotlinProjectionComArgumentKind,
-    argumentName: String,
-): CodeBlock =
-    when (kind) {
-        KotlinProjectionComArgumentKind.Pointer -> CodeBlock.of("segment(%L.value)", argumentName)
-        KotlinProjectionComArgumentKind.Int8,
-        KotlinProjectionComArgumentKind.Int16,
-        KotlinProjectionComArgumentKind.Int32,
-        KotlinProjectionComArgumentKind.Int64,
-        KotlinProjectionComArgumentKind.Float,
-        KotlinProjectionComArgumentKind.Double -> CodeBlock.of("%L", argumentName)
-    }

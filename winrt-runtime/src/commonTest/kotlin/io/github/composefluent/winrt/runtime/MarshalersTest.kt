@@ -227,25 +227,20 @@ class MarshalersTest {
             }
         }
 
-        WinRTDelegateBridge.createDelegateArgument(
-            iid = descriptor.interfaceId,
-            parameterKinds = descriptor.parameterKinds,
-            returnKind = descriptor.returnKind,
-            delegate = projected,
-            callback = { error("Projected delegate arguments must use the projected delegate CCW path.") },
-        ).use { first ->
-            WinRTDelegateBridge.createDelegateArgument(
-                iid = descriptor.interfaceId,
-                parameterKinds = descriptor.parameterKinds,
-                returnKind = descriptor.returnKind,
-                delegate = projected,
-                callback = { error("Projected delegate arguments must use the projected delegate CCW path.") },
-            ).use { second ->
+        WinRTDelegateBridge.createProjectedDelegateArgument(projected).use { first ->
+            WinRTDelegateBridge.createProjectedDelegateArgument(projected).use { second ->
                 assertEquals(1, createCount)
                 assertEquals(PlatformAbi.pointerKey(first.abi), PlatformAbi.pointerKey(second.abi))
             }
         }
         ComWrappersSupport.clearRegistriesForTests()
+    }
+
+    @Test
+    fun projected_delegate_argument_marshaler_accepts_null() {
+        WinRTDelegateBridge.createProjectedDelegateArgument(null).use { marshaler ->
+            assertTrue(PlatformAbi.isNull(marshaler.abi))
+        }
     }
 
     @Test

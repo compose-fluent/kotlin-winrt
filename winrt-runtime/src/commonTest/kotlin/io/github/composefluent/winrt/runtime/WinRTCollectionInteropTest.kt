@@ -291,7 +291,11 @@ class WinRTCollectionInteropTest {
     private open class FakeReference(
         scope: NativeScope,
         val label: String,
-    ) : IUnknownReference(PlatformAbi.allocateBytes(scope, 8).asRawComPtr(), Guid("00000000-0000-0000-0000-000000000201")) {
+    ) : IUnknownReference(
+        PlatformAbi.allocateBytes(scope, 8).asRawComPtr(),
+        Guid("00000000-0000-0000-0000-000000000201"),
+        preventReleaseOnDispose = true,
+    ) {
         override fun close() = Unit
     }
 
@@ -349,7 +353,11 @@ class WinRTCollectionInteropTest {
         scope: NativeScope,
         private val keyResult: IUnknownReference?,
         private val valueResult: IUnknownReference?,
-    ) : WinRTKeyValuePairReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000210")) {
+    ) : WinRTKeyValuePairReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000210"),
+        preventReleaseOnDispose = true,
+    ) {
         override fun key(): IUnknownReference? = keyResult
 
         override fun keyAbiOrNull(): RawAddress? = keyResult?.pointer?.asRawAddress()
@@ -365,7 +373,11 @@ class WinRTCollectionInteropTest {
         scope: NativeScope,
         private val firstResult: WinRTIteratorReference,
         private val iteratorFactory: (() -> WinRTIteratorReference)? = null,
-    ) : WinRTIterableReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000202")) {
+    ) : WinRTIterableReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000202"),
+        preventReleaseOnDispose = true,
+    ) {
         val objectSlots = mutableListOf<Int>()
 
         override fun first(iteratorInterfaceId: Guid): WinRTIteratorReference {
@@ -381,7 +393,11 @@ class WinRTCollectionInteropTest {
         private val currentResults: List<IUnknownReference?>,
         private val currentAbiResults: List<RawAddress?>? = null,
         private val getManyResults: List<IUnknownReference?>,
-    ) : WinRTIteratorReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000203")) {
+    ) : WinRTIteratorReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000203"),
+        preventReleaseOnDispose = true,
+    ) {
         private var currentIndex = 0
         val slotCalls = mutableListOf<Int>()
         val getManySlots = mutableListOf<Pair<Int, Int>>()
@@ -422,7 +438,11 @@ class WinRTCollectionInteropTest {
         private val sizeResult: UInt,
         private val indexOfResult: Pair<Boolean, UInt>,
         private val getManyResults: List<IUnknownReference?>,
-    ) : WinRTVectorViewReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000204")) {
+    ) : WinRTVectorViewReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000204"),
+        preventReleaseOnDispose = true,
+    ) {
         val uintSlots = mutableListOf<Int>()
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val indexOfSlots = mutableListOf<Pair<Int, ComObjectReference>>()
@@ -464,7 +484,11 @@ class WinRTCollectionInteropTest {
         private val getManyResults: List<IUnknownReference?>,
         private val vectorViewResult: WinRTVectorViewReference,
         private val getAtResultsByIndex: Map<UInt, IUnknownReference?> = emptyMap(),
-    ) : WinRTVectorReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000205")) {
+    ) : WinRTVectorReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000205"),
+        preventReleaseOnDispose = true,
+    ) {
         val uintSlots = mutableListOf<Int>()
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val objectSlots = mutableListOf<Int>()
@@ -544,7 +568,11 @@ class WinRTCollectionInteropTest {
         private val hasKeyResult: Boolean,
         private val splitResult: Pair<WinRTMapViewReference?, WinRTMapViewReference?>,
         private val iterableResult: WinRTIterableReference? = null,
-    ) : WinRTMapViewReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000206")) {
+    ) : WinRTMapViewReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000206"),
+        preventReleaseOnDispose = true,
+    ) {
         val lookupSlots = mutableListOf<Pair<Int, RawAddress>>()
         val hasKeySlots = mutableListOf<Pair<Int, RawAddress>>()
         val uintSlots = mutableListOf<Int>()
@@ -596,7 +624,11 @@ class WinRTCollectionInteropTest {
         private val hasKeyResult: Boolean,
         private val insertResult: Boolean,
         private val mapViewResult: WinRTMapViewReference,
-    ) : WinRTMapReference(PlatformAbi.allocateBytes(scope, 8), Guid("00000000-0000-0000-0000-000000000207")) {
+    ) : WinRTMapReference(
+        PlatformAbi.allocateBytes(scope, 8),
+        Guid("00000000-0000-0000-0000-000000000207"),
+        preventReleaseOnDispose = true,
+    ) {
         val lookupSlots = mutableListOf<Pair<Int, ComObjectReference>>()
         val hasKeySlots = mutableListOf<Pair<Int, ComObjectReference>>()
         val uintSlots = mutableListOf<Int>()

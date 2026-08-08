@@ -456,6 +456,27 @@ object WinRTIteratorProjection {
         elementAdapter: WinRTReferenceValueAdapter<T>,
     ): RawAddress = ToAbiHelper(managed, elementAdapter).detachReference()
 
+    fun <T> fromReference(
+        reference: IUnknownReference,
+        elementAdapter: WinRTReferenceValueAdapter<T>,
+    ): FromAbiHelper<T> =
+        FromAbiHelper(
+            iterable = WinRTIteratorReference(
+                reference.getRefPointer().asRawAddress(),
+                iteratorInterfaceId(elementAdapter),
+            ),
+            elementAdapter = elementAdapter,
+        )
+
+    fun <T> createReference(
+        managed: Iterator<T>,
+        elementAdapter: WinRTReferenceValueAdapter<T>,
+    ): IUnknownReference =
+        IUnknownReference(
+            detachReference(managed, elementAdapter).asRawComPtr(),
+            iteratorInterfaceId(elementAdapter),
+        )
+
     private class IteratorState<T>(
         managed: Iterator<T>,
     ) {

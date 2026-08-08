@@ -55,18 +55,13 @@ class InteropRuntimeTest {
 
         RuntimeScope.initializeMultithreaded().use {
             WinRTRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
-                instance.queryInterface(IID.IWeakReferenceSource).getOrThrow().use { weakReferenceSource ->
-                    val weakReference = WeakReferenceSourceReference(
-                        weakReferenceSource.pointer.asRawAddress(),
-                        IID.IWeakReferenceSource,
-                    ).getWeakReference()
-                    assertNotNull(weakReference)
-                    weakReference.use {
-                        val resolved = it.resolve(IID.IUnknown)
-                        assertNotNull(resolved)
-                        resolved.use { resolvedReference ->
-                            assertTrue(resolvedReference.sameIdentity(instance))
-                        }
+                val weakReference = instance.tryGetWeakReference()
+                assertNotNull(weakReference)
+                weakReference.use {
+                    val resolved = it.resolve(IID.IUnknown)
+                    assertNotNull(resolved)
+                    resolved.use { resolvedReference ->
+                        assertTrue(resolvedReference.sameIdentity(instance))
                     }
                 }
             }

@@ -69,6 +69,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                     },
                 )
                 markers.set(DIRECT_CALL_SITE_FORBIDDEN_MARKERS)
+                methodNamePrefixes.set(setOf("callSite_"))
                 artifactDescription.set("compiled JVM module call-site owners")
             },
         )

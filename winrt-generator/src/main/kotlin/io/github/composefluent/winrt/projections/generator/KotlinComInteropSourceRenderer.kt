@@ -16,6 +16,8 @@ import io.github.composefluent.winrt.metadata.lookupIndex
 
 internal class KotlinComInteropSourceRenderer(
     private val typeRenderer: KotlinProjectionRenderer = KotlinProjectionRenderer(),
+    private val modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport =
+        inlineOnlyModulePlatformAbiCallSupport(),
 ) {
     fun render(
         descriptor: WinRTComInteropAdapterDescriptor,
@@ -52,7 +54,6 @@ internal class KotlinComInteropSourceRenderer(
             appendLine()
             appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
             appendLine("import io.github.composefluent.winrt.runtime.Guid")
-            appendLine("import io.github.composefluent.winrt.runtime.HString")
             appendLine("import io.github.composefluent.winrt.runtime.IUnknownReference")
             appendLine("import io.github.composefluent.winrt.runtime.PlatformAbi")
             appendLine("import io.github.composefluent.winrt.runtime.RawAddress")
@@ -60,9 +61,7 @@ internal class KotlinComInteropSourceRenderer(
             appendLine("import io.github.composefluent.winrt.runtime.WinRTAsyncInterfaceIds")
             appendLine("import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference")
             appendLine("import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop")
-            appendLine("import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic")
             appendLine("import io.github.composefluent.winrt.runtime.WinRTTypeSignature")
-            appendLine("import io.github.composefluent.winrt.runtime.winRTProjectionMarshaler")
             foreignProjectedImports.forEach { importName ->
                 appendLine("import $importName")
             }
@@ -157,25 +156,32 @@ internal class KotlinComInteropSourceRenderer(
         val publicParameters = method.parameters.joinToString(", ") { parameter ->
             "${parameter.name}: RawAddress"
         }
-        val arguments = method.parameters.joinToString(",\n") { parameter ->
-            "                    ${parameter.name}"
-        }
-        val abiSignature = List(method.parameters.size + 1) { "RawAddress" }.joinToString(",")
+        val parameterBindings = method.parameters.map { parameter ->
+            KotlinProjectionAbiParameterBinding(
+                name = parameter.name,
+                typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+            )
+        } + KotlinProjectionAbiParameterBinding(
+            name = "resultIid",
+            typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+        )
+        val invocation = renderCallSite(
+            descriptor = descriptor,
+            method = method,
+            returnBinding = KotlinProjectionAbiTypeBinding(
+                KotlinProjectionAbiValueKind.InspectableReference,
+                IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
+            ),
+            parameterBindings = parameterBindings,
+        )
         return buildString {
             appendLine("public fun ${method.name}($publicParameters): $resultTypeName =")
             appendLine("    PlatformAbi.confinedScope().use { scope ->")
             appendLine("        val resultIid = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())")
             appendLine("        PlatformAbi.writeGuid(resultIid, $resultIidExpression)")
             appendLine("        ActivationFactory.get($activationTypeName.Metadata.TYPE_NAME, $queryIidName).use { interop ->")
-            appendLine("            WinRTProjectionIntrinsic.callProjectedRuntimeClass(")
-            appendLine("                interop,")
-            appendLine("                ${method.slot},")
-            appendLine("                \"$abiSignature\",")
-            appendLine("                $resultTypeName.Metadata::wrap,")
-            if (arguments.isNotEmpty()) {
-                appendLine("$arguments,")
-            }
-            appendLine("                resultIid,")
+            appendLine("            $resultTypeName.Metadata.wrap(")
+            appendLine(invocation.renderCallSiteSource(descriptor.projectedPackageName).prependIndent("                "))
             appendLine("            )")
             appendLine("        }")
             append("    }")
@@ -197,18 +203,22 @@ internal class KotlinComInteropSourceRenderer(
         val publicParameters = method.parameters.joinToString(", ") { parameter ->
             "${parameter.name}: RawAddress"
         }
-        val abiSignature = List(method.parameters.size) { "RawAddress" }.joinToString(",")
+        val parameterBindings = method.parameters.map { parameter ->
+            KotlinProjectionAbiParameterBinding(
+                name = parameter.name,
+                typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+            )
+        }
+        val invocation = renderCallSite(
+            descriptor = descriptor,
+            method = method,
+            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+            parameterBindings = parameterBindings,
+        )
         return buildString {
             appendLine("public fun ${method.name}($publicParameters) {")
             appendLine("    ActivationFactory.get($activationTypeName.Metadata.TYPE_NAME, $queryIidName).use { interop ->")
-            appendLine("        WinRTProjectionIntrinsic.callUnit(")
-            appendLine("            interop,")
-            appendLine("            ${method.slot},")
-            appendLine("            \"$abiSignature\",")
-            method.parameters.forEach { parameter ->
-                appendLine("            ${parameter.name},")
-            }
-            appendLine("        )")
+            appendLine(invocation.renderCallSiteSource(descriptor.projectedPackageName).prependIndent("        "))
             appendLine("    }")
             append("}")
         }
@@ -258,23 +268,6 @@ internal class KotlinComInteropSourceRenderer(
                 ),
             )
         }
-        val arguments = method.parameters.zip(parameterBindings).map { (parameter, binding) ->
-            when (parameter.type) {
-                WinRTComInteropParameterType.RawAddress ->
-                    DescriptorIntrinsicArgument(
-                        shape = "RawAddress",
-                        expressions = listOf(CodeBlock.of("%L", parameter.name)),
-                    )
-                else -> typeRenderer.descriptorIntrinsicArgument(
-                    parameter = binding,
-                    useRawAbiScopedMarshaling = true,
-                ) ?: unsupportedMethod(
-                    descriptor,
-                    method,
-                    "parameter '${parameter.name}' cannot be lowered to an intrinsic ABI argument",
-                )
-            }
-        }
         val resultIidExpression = when (result) {
             WinRTComInteropResultDescriptor.AsyncAction -> "WinRTAsyncInterfaceIds.IAsyncAction"
             is WinRTComInteropResultDescriptor.AsyncOperation -> {
@@ -309,38 +302,53 @@ internal class KotlinComInteropSourceRenderer(
         val publicParameters = method.parameters.zip(parameterBindings).joinToString(", ") { (parameter, binding) ->
             "${parameter.name}: ${projectionClassNameForQualifiedName(binding.typeBinding.resolvedTypeName).simpleName}"
         }
-        val abiShape = (arguments.map(DescriptorIntrinsicArgument::shape) + "RawAddress").joinToString(",")
+        val callParameterBindings = parameterBindings + KotlinProjectionAbiParameterBinding(
+            name = "resultIid",
+            typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+        )
+        val invocation = renderCallSite(
+            descriptor = descriptor,
+            method = method,
+            returnBinding = KotlinProjectionAbiTypeBinding(
+                KotlinProjectionAbiValueKind.UnknownReference,
+                IUNKNOWN_REFERENCE_CLASS_NAME.canonicalName,
+            ),
+            parameterBindings = callParameterBindings,
+        )
         val activationTypeName = descriptor.activationTypeName.substringAfterLast('.')
         return buildString {
             appendLine("public fun ${method.name}($publicParameters): $publicReturnType =")
             appendLine("    PlatformAbi.confinedScope().use { scope ->")
             appendLine("        val resultIid = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())")
             appendLine("        PlatformAbi.writeGuid(resultIid, $resultIidExpression)")
-            arguments.flatMap(DescriptorIntrinsicArgument::scopeOpeners).forEach { scopeOpener ->
-                append(scopeOpener.renderComInteropSource(descriptor.projectedPackageName).prependIndent("        "))
-                appendLine()
-            }
             appendLine("        ActivationFactory.get($activationTypeName.Metadata.TYPE_NAME, $queryIidName).use { interop ->")
-            appendLine("            WinRTProjectionIntrinsic.callProjectedInterface(")
-            appendLine("                interop,")
-            appendLine("                ${method.slot},")
-            appendLine("                \"$abiShape\",")
-            appendLine("                { __asyncReference ->")
-            appendLine(asyncExpression.renderComInteropSource(descriptor.projectedPackageName).prependIndent("                    "))
-            appendLine("                },")
-            arguments.forEach { argument ->
-                argument.expressions.forEach { expression ->
-                    appendLine("                ${expression.renderComInteropSource(descriptor.projectedPackageName)},")
-                }
-            }
-            appendLine("                resultIid,")
-            appendLine("            )")
+            appendLine("            val __asyncReference =")
+            appendLine(invocation.renderCallSiteSource(descriptor.projectedPackageName).prependIndent("                "))
+            appendLine(asyncExpression.renderComInteropSource(descriptor.projectedPackageName).prependIndent("            "))
             appendLine("        }")
-            repeat(arguments.sumOf { it.scopeOpeners.size }) {
-                appendLine("        }")
-            }
             append("    }")
         }
+    }
+
+    private fun renderCallSite(
+        descriptor: WinRTComInteropAdapterDescriptor,
+        method: WinRTComInteropMethodDescriptor,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    ): CodeBlock {
+        val callPlan = typeRenderer.requireAbiCallPlan(
+            bindingName = "${descriptor.projectedTypeName}.${method.name}",
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+        )
+        val invocation = requireNotNull(typeRenderer.composeTypedProjectionCallSite(callPlan, modulePlatformAbiCalls)) {
+            "COM interop method ${descriptor.projectedTypeName}.${method.name} must fold every ABI marshaler slot."
+        }
+        return modulePlatformAbiCalls.typedInvocation(
+            referenceExpression = "interop",
+            slotExpression = CodeBlock.of("%L", method.slot),
+            invocation = invocation,
+        )
     }
 
     private fun unsupportedMethod(
@@ -364,6 +372,9 @@ private fun CodeBlock.renderComInteropSource(projectedPackageName: String): Stri
     toString()
         .replace("io.github.composefluent.winrt.runtime.", "")
         .replace("$projectedPackageName.", "")
+
+private fun CodeBlock.renderCallSiteSource(projectedPackageName: String): String =
+    toString().replace("$projectedPackageName.", "")
 
 private fun String.toScreamingSnakeCase(): String =
     replace(Regex("([a-z0-9])([A-Z])"), "$1_$2").uppercase()

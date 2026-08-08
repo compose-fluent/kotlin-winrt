@@ -42,6 +42,10 @@ data class EventRegistrationToken(
 
         fun fromAbi(source: RawAddress): EventRegistrationToken = read(source)
 
+        fun fromAbiValue(value: Long): EventRegistrationToken = EventRegistrationToken(value)
+
+        fun toAbi(value: EventRegistrationToken): Long = value.value
+
         fun copyTo(
             value: EventRegistrationToken,
             destination: RawAddress,

@@ -18,6 +18,33 @@ class WinRTAbiArray internal constructor(
     override fun close() {
         cleanup?.invoke()
     }
+
+    companion object {
+        /** Allocates the contiguous caller-owned storage used by pass/fill-array ABI calls. */
+        fun allocateInput(
+            length: Int,
+            elementSizeBytes: Int,
+            elementAlignmentBytes: Int,
+        ): WinRTAbiArray {
+            require(length >= 0) { "WinRT ABI array length cannot be negative." }
+            require(elementSizeBytes > 0) { "WinRT ABI array elements require a positive size." }
+            require(elementAlignmentBytes > 0) { "WinRT ABI array elements require a positive alignment." }
+            if (length == 0) return WinRTAbiArray(0, PlatformAbi.nullPointer)
+
+            val scope = PlatformAbi.confinedScope()
+            return try {
+                val data = PlatformAbi.allocateBytes(
+                    scope = scope,
+                    sizeBytes = elementSizeBytes.toLong() * length.toLong(),
+                    alignmentBytes = elementAlignmentBytes.toLong(),
+                )
+                WinRTAbiArray(length, data, scope::close)
+            } catch (error: Throwable) {
+                scope.close()
+                throw error
+            }
+        }
+    }
 }
 
 class Marshaler<T> internal constructor(
@@ -722,25 +749,23 @@ private fun <T> createBlittableArray(
         return null
     }
 
-    val scope = PlatformAbi.confinedScope()
+    val array = WinRTAbiArray.allocateInput(
+        length = values.size,
+        elementSizeBytes = abiKind.sizeBytes.toInt(),
+        elementAlignmentBytes = abiKind.alignmentBytes.toInt(),
+    )
     return try {
-        val data =
-            PlatformAbi.allocateBytes(
-                scope = scope,
-                sizeBytes = abiKind.sizeBytes * values.size.toLong(),
-                alignmentBytes = abiKind.alignmentBytes,
-            )
         values.forEachIndexed { index, value ->
-            val slice = data.elementSlice(index, abiKind.sizeBytes)
+            val slice = array.data.elementSlice(index, abiKind.sizeBytes)
             if (value == null) {
                 writeZeroValue(abiKind, slice)
             } else {
                 copyManaged(value, slice)
             }
         }
-        WinRTAbiArray(values.size, data, scope::close)
+        array
     } catch (error: Throwable) {
-        scope.close()
+        array.close()
         throw error
     }
 }

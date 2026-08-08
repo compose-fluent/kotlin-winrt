@@ -427,6 +427,23 @@ object ComWrappersSupport {
         outerInterfaceId: Guid? = null,
         createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
     ): WinRTComposableObjectReference =
+        createComposableCCWForObject(value, outerInterfaceId, null) { baseInterface ->
+            PlatformAbi.confinedScope().use { scope ->
+                val innerOut = PlatformAbi.allocatePointerSlot(scope)
+                val instanceOut = PlatformAbi.allocatePointerSlot(scope)
+                HResult(createInstance(baseInterface, innerOut, instanceOut)).requireSuccess()
+                WinRTComposableFactoryResult(
+                    inner = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(innerOut)),
+                    instance = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(instanceOut)),
+                )
+            }
+        }
+
+    fun createComposableCCWForObject(
+        value: Any,
+        outerInterfaceId: Guid? = null,
+        createInstance: (baseInterface: RawAddress) -> WinRTComposableFactoryResult,
+    ): WinRTComposableObjectReference =
         createComposableCCWForObject(
             value = value,
             outerInterfaceId = outerInterfaceId,
@@ -439,6 +456,24 @@ object ComWrappersSupport {
         outerInterfaceId: Guid?,
         instanceInterfaceId: Guid? = null,
         createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
+    ): WinRTComposableObjectReference =
+        createComposableCCWForObject(value, outerInterfaceId, instanceInterfaceId) { baseInterface ->
+            PlatformAbi.confinedScope().use { scope ->
+                val innerOut = PlatformAbi.allocatePointerSlot(scope)
+                val instanceOut = PlatformAbi.allocatePointerSlot(scope)
+                HResult(createInstance(baseInterface, innerOut, instanceOut)).requireSuccess()
+                WinRTComposableFactoryResult(
+                    inner = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(innerOut)),
+                    instance = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(instanceOut)),
+                )
+            }
+        }
+
+    fun createComposableCCWForObject(
+        value: Any,
+        outerInterfaceId: Guid?,
+        instanceInterfaceId: Guid? = null,
+        createInstance: (baseInterface: RawAddress) -> WinRTComposableFactoryResult,
     ): WinRTComposableObjectReference {
         platformEnsureInspectableProjectionInteropRegistered()
         val definition = createCcwDefinition(value)
@@ -461,97 +496,88 @@ object ComWrappersSupport {
         val isAggregation = outerInterfaceId != null
         var outerReference: ComObjectReference? = null
         return try {
-            PlatformAbi.confinedScope().use { scope ->
-                val innerOut = PlatformAbi.allocatePointerSlot(scope)
-                val instanceOut = PlatformAbi.allocatePointerSlot(scope)
-                val baseInspectable = host.createReference(IID.IInspectable)
-                val hResult = try {
-                    createInstance(
-                        PlatformAbi.fromRawComPtr(baseInspectable.pointer),
-                        innerOut,
-                        instanceOut,
-                    )
-                } finally {
-                    baseInspectable.close()
-                }
-                HResult(hResult).requireSuccess()
-                val innerPointer = PlatformAbi.readPointer(innerOut)
-                if (!PlatformAbi.isNull(innerPointer)) {
-                    host.registerExternalPointerAlias(innerPointer)
-                    registerObjectForComInterface(value, innerPointer)
-                }
-                val instancePointer = PlatformAbi.readPointer(instanceOut)
-                if (PlatformAbi.isNull(instancePointer)) {
-                    throw WinRTUnsupportedOperationException(
-                        "Composable factory returned a null instance pointer.",
-                        KnownHResults.E_POINTER,
-                    )
-                }
-                host.registerExternalPointerAlias(instancePointer)
-                registerObjectForComInterface(value, instancePointer)
-                val requestedInstanceInterfaceId = instanceInterfaceId ?: definition.defaultInterfaceId
-                val projectedInstancePointer =
-                    if (isAggregation) {
-                        instancePointer
-                    } else {
-                        queryInterfacePointerForComposableInstance(instancePointer, requestedInstanceInterfaceId)
-                    }
-                if (projectedInstancePointer != instancePointer) {
-                    host.registerExternalPointerAlias(projectedInstancePointer)
-                    registerObjectForComInterface(value, projectedInstancePointer)
-                }
-                val referenceTrackerProbePointer =
-                    if (!PlatformAbi.isNull(innerPointer)) innerPointer else projectedInstancePointer
-                val isReferenceTrackerObject = hasReferenceTracker(referenceTrackerProbePointer)
-                val isAggregatedReferenceTrackerObject =
-                    !PlatformAbi.isNull(innerPointer) && isReferenceTrackerObject
-                innerReference = if (PlatformAbi.isNull(innerPointer)) {
-                    null
-                } else {
-                    IInspectableReference(
-                        PlatformAbi.toRawComPtr(innerPointer),
-                        IID.IInspectable,
-                        preventReleaseOnDispose = isAggregatedReferenceTrackerObject,
-                        isAggregated = isAggregation,
-                    )
-                }
-                outerReference = host.createReference(definition.defaultInterfaceId)
-                val composedReference = try {
-                    val reference = IInspectableReference(
-                        PlatformAbi.toRawComPtr(projectedInstancePointer),
-                        requestedInstanceInterfaceId,
-                        preventReleaseOnDispose = isAggregation || isAggregatedReferenceTrackerObject,
-                    )
-                    try {
-                        if (!isAggregation && isReferenceTrackerObject) {
-                            reference.tryInitializeReferenceTracker(addRefFromTrackerSource = false)
-                        }
-                        reference
-                    } catch (failure: Throwable) {
-                        reference.close()
-                        throw failure
-                    }
-                } finally {
-                    if (!isAggregation) {
-                        WinRTPlatformApi.releaseRaw(instancePointer)
-                    }
-                }
-                val projectedReference = if (isAggregation) {
-                    requireNotNull(innerReference) {
-                        "Composable aggregation requires the factory to return a non-null inner pointer."
-                    }
-                } else {
-                    composedReference
-                }
-                WinRTComposableObjectReference(
-                    instance = projectedReference,
-                    inner = innerReference,
-                    composed = composedReference.takeUnless { it === projectedReference },
-                    outer = requireNotNull(outerReference),
-                    isAggregatedReferenceTrackerObject = isAggregatedReferenceTrackerObject,
-                    cleanup = host::releaseManagedReference,
+            val baseInspectable = host.createReference(IID.IInspectable)
+            val factoryResult = try {
+                createInstance(PlatformAbi.fromRawComPtr(baseInspectable.pointer))
+            } finally {
+                baseInspectable.close()
+            }
+            val innerPointer = PlatformAbi.fromRawComPtr(factoryResult.inner)
+            if (!PlatformAbi.isNull(innerPointer)) {
+                host.registerExternalPointerAlias(innerPointer)
+                registerObjectForComInterface(value, innerPointer)
+            }
+            val instancePointer = PlatformAbi.fromRawComPtr(factoryResult.instance)
+            if (PlatformAbi.isNull(instancePointer)) {
+                throw WinRTUnsupportedOperationException(
+                    "Composable factory returned a null instance pointer.",
+                    KnownHResults.E_POINTER,
                 )
             }
+            host.registerExternalPointerAlias(instancePointer)
+            registerObjectForComInterface(value, instancePointer)
+            val requestedInstanceInterfaceId = instanceInterfaceId ?: definition.defaultInterfaceId
+            val projectedInstancePointer =
+                if (isAggregation) {
+                    instancePointer
+                } else {
+                    queryInterfacePointerForComposableInstance(instancePointer, requestedInstanceInterfaceId)
+                }
+            if (projectedInstancePointer != instancePointer) {
+                host.registerExternalPointerAlias(projectedInstancePointer)
+                registerObjectForComInterface(value, projectedInstancePointer)
+            }
+            val referenceTrackerProbePointer =
+                if (!PlatformAbi.isNull(innerPointer)) innerPointer else projectedInstancePointer
+            val isReferenceTrackerObject = hasReferenceTracker(referenceTrackerProbePointer)
+            val isAggregatedReferenceTrackerObject =
+                !PlatformAbi.isNull(innerPointer) && isReferenceTrackerObject
+            innerReference = if (PlatformAbi.isNull(innerPointer)) {
+                null
+            } else {
+                IInspectableReference(
+                    PlatformAbi.toRawComPtr(innerPointer),
+                    IID.IInspectable,
+                    preventReleaseOnDispose = isAggregatedReferenceTrackerObject,
+                    isAggregated = isAggregation,
+                )
+            }
+            outerReference = host.createReference(definition.defaultInterfaceId)
+            val composedReference = try {
+                val reference = IInspectableReference(
+                    PlatformAbi.toRawComPtr(projectedInstancePointer),
+                    requestedInstanceInterfaceId,
+                    preventReleaseOnDispose = isAggregation || isAggregatedReferenceTrackerObject,
+                )
+                try {
+                    if (!isAggregation && isReferenceTrackerObject) {
+                        reference.tryInitializeReferenceTracker(addRefFromTrackerSource = false)
+                    }
+                    reference
+                } catch (failure: Throwable) {
+                    reference.close()
+                    throw failure
+                }
+            } finally {
+                if (!isAggregation) {
+                    WinRTPlatformApi.releaseRaw(instancePointer)
+                }
+            }
+            val projectedReference = if (isAggregation) {
+                requireNotNull(innerReference) {
+                    "Composable aggregation requires the factory to return a non-null inner pointer."
+                }
+            } else {
+                composedReference
+            }
+            WinRTComposableObjectReference(
+                instance = projectedReference,
+                inner = innerReference,
+                composed = composedReference.takeUnless { it === projectedReference },
+                outer = requireNotNull(outerReference),
+                isAggregatedReferenceTrackerObject = isAggregatedReferenceTrackerObject,
+                cleanup = host::releaseManagedReference,
+            )
         } catch (failure: Throwable) {
             outerReference?.close()
             host.releaseManagedReference()

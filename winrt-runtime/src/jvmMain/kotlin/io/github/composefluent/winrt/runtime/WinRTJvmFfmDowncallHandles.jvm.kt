@@ -11,11 +11,10 @@ import java.lang.invoke.MethodHandle
  *
  * The plugin still owns vtable lookup, carrier conversion, HRESULT handling, and result readback.
  * This object owns the stable unbound FFM handles shared by compiler-expanded calls and the runtime
- * vtable invoker. Layout-dependent shapes retain the descriptor cache fallback.
+ * vtable invoker.
  */
 object WinRTJvmFfmDowncallHandles {
     private val linker = Linker.nativeLinker()
-    private val hResultHandles = ConcurrentCacheMap<String, MethodHandle>()
 
     @JvmField
     val hResultNoArgs: MethodHandle = createHResultHandle()
@@ -94,69 +93,30 @@ object WinRTJvmFfmDowncallHandles {
             ValueLayout.JAVA_INT,
         )
 
-    fun hResult(abiShape: String): MethodHandle =
-        hResultHandles.computeIfAbsent(abiShape) { shape ->
-            linker.downcallHandle(hResultDescriptor(shape))
-        }
+    /** Initializes one compiler-synthesized static handle from its already closed carrier vector. */
+    @PublishedApi
+    internal fun createExactHResultHandle(vararg explicitParameterLayouts: MemoryLayout): MethodHandle =
+        createHResultHandle(*explicitParameterLayouts)
 
-    internal fun cachedHResultHandleCount(): Int = hResultHandles.size
+    /**
+     * Compiler-lowered WinRT calls use raw 64-bit address words for pointer carriers. On the
+     * Windows x64 ABI they have the same register/stack classification as native pointers,
+     * while avoiding one FFM MemorySegment wrapper for every explicit address argument.
+     */
+    @PublishedApi
+    internal fun createExactHResultWordHandle(vararg explicitParameterLayouts: MemoryLayout): MethodHandle {
+        check(ValueLayout.ADDRESS.byteSize() == ValueLayout.JAVA_LONG.byteSize()) {
+            "Raw-word WinRT downcalls require a 64-bit native address ABI."
+        }
+        return linker.downcallHandle(
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, *explicitParameterLayouts),
+        )
+    }
 
     private fun createHResultHandle(vararg explicitParameterLayouts: MemoryLayout): MethodHandle =
         linker.downcallHandle(
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, *explicitParameterLayouts),
         )
 
-    private fun hResultDescriptor(abiShape: String): FunctionDescriptor {
-        val argumentLayouts = if (abiShape.isBlank()) {
-            emptyArray<MemoryLayout>()
-        } else {
-            abiShape.split(',').map(::layoutForToken).toTypedArray()
-        }
-        return FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, *argumentLayouts)
-    }
 
-    private fun layoutForToken(token: String): MemoryLayout =
-        when (token) {
-            "RawAddress",
-            "RawComPtr",
-            "String",
-            "Struct",
-            "Object" -> ValueLayout.ADDRESS
-            else -> structLayoutForToken(token)
-                ?: scalarLayoutForToken(token)
-                ?: error("Unsupported WinRT JVM FFM ABI shape token: $token")
-        }
-
-    private fun structLayoutForToken(token: String): MemoryLayout? {
-        val match = STRUCT_LAYOUT_TOKEN.matchEntire(token) ?: return null
-        val size = match.groupValues[1].toLong()
-        val alignment = match.groupValues[2].toLong()
-        if (size <= 0 || alignment <= 0) {
-            return null
-        }
-        val chunk = when {
-            alignment >= Long.SIZE_BYTES.toLong() && size % Long.SIZE_BYTES == 0L -> ValueLayout.JAVA_LONG
-            alignment >= Int.SIZE_BYTES.toLong() && size % Int.SIZE_BYTES == 0L -> ValueLayout.JAVA_INT
-            alignment >= Short.SIZE_BYTES.toLong() && size % Short.SIZE_BYTES == 0L -> ValueLayout.JAVA_SHORT
-            alignment == Byte.SIZE_BYTES.toLong() -> ValueLayout.JAVA_BYTE
-            else -> return null
-        }
-        return MemoryLayout.structLayout(*Array((size / chunk.byteSize()).toInt()) { chunk })
-    }
-
-    private val STRUCT_LAYOUT_TOKEN = Regex("""Struct(\d+)_(\d+)""")
-
-    private fun scalarLayoutForToken(token: String): MemoryLayout? =
-        when (token) {
-            "Byte",
-            "Boolean" -> ValueLayout.JAVA_BYTE
-            "Int16" -> ValueLayout.JAVA_SHORT
-            "Int32",
-            "UInt32" -> ValueLayout.JAVA_INT
-            "Int64",
-            "UInt64" -> ValueLayout.JAVA_LONG
-            "Float" -> ValueLayout.JAVA_FLOAT
-            "Double" -> ValueLayout.JAVA_DOUBLE
-            else -> null
-        }
 }

@@ -2,8 +2,10 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class HStringInteropTest {
     @Test
@@ -69,6 +71,18 @@ class HStringInteropTest {
     }
 
     @Test
+    fun owned_hstring_frame_consumption_transfers_and_clears_state_once() {
+        acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            val transferredHandle = HString.create("owned-once").handle
+            PlatformAbi.writePointer(frame.pointer, transferredHandle)
+
+            assertEquals("owned-once", frame.consumeOwnedHString())
+            assertTrue(PlatformAbi.isNull(frame.readPointer()))
+            assertEquals("", frame.consumeOwnedHString())
+        }
+    }
+
+    @Test
     fun initialized_hstring_reference_frame_reuses_top_level_storage_and_resets_transient_output() {
         val firstFrameAddress = acquireNativeHStringReferenceFrame("first").use { frame ->
             PlatformAbi.writePointer(frame.transientOut, frame.utf16Chars)
@@ -118,6 +132,18 @@ class HStringInteropTest {
             }
 
             assertEquals("outer", PlatformAbi.readUtf16(outer.utf16Chars, "outer".length))
+        }
+    }
+
+    @Test
+    fun rejects_non_lifo_hstring_reference_frame_close() {
+        val outer = acquireNativeHStringReferenceFrame("outer")
+        val inner = acquireNativeHStringReferenceFrame("inner")
+        try {
+            assertFailsWith<IllegalStateException> { outer.close() }
+        } finally {
+            inner.close()
+            outer.close()
         }
     }
 

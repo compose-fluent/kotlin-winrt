@@ -11201,13 +11201,127 @@ class KotlinWinRTPluginTest {
         assertTrue(result.output.contains("WinRT runtime class cast to sample.StringableThing is not projection-safe"))
     }
 
+    @Test
+    fun compiler_plugin_rejects_malformed_projection_call_site_descriptors() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/MalformedProjectionCallSite.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.ComObjectReference
+                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
+
+                @WinRTProjectionCallSite("not-a-descriptor")
+                fun malformedProjectionCallSite(
+                    reference: ComObjectReference,
+                    slot: Int,
+                ): Int = TODO()
+            """.trimIndent(),
+            expectedDiagnostic = "has an invalid descriptor",
+            includeWindowsSdkProjection = false,
+        )
+    }
+
+    @Test
+    fun compiler_plugin_rejects_projection_call_site_signature_mismatches() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/MismatchedProjectionCallSite.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.ComObjectReference
+                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
+
+                @WinRTProjectionCallSite(
+                    "v4|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|" +
+                        "RETURN~NONE~VkFMVUV-SU5UMzJ-SU5UMzJ-SURFTlRJVFl-LX4wfjB-MH4tfi1-LX5TVzUwTXpJ",
+                )
+                fun mismatchedProjectionCallSite(
+                    reference: ComObjectReference,
+                    slot: Int,
+                ): Long = TODO()
+            """.trimIndent(),
+            expectedDiagnostic = "expects result kotlin.Int but declares kotlin.Long",
+            includeWindowsSdkProjection = false,
+        )
+    }
+
+    @Test
+    fun compiler_plugin_rejects_unlowered_projection_call_site_when_result_factory_is_unavailable() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/MissingResultFactoryProjectionCallSite.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.ComObjectReference
+                import io.github.composefluent.winrt.runtime.RawAddress
+                import io.github.composefluent.winrt.runtime.WinRTComposableFactoryResult
+                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
+
+                @WinRTProjectionCallSite(
+                    "v4|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|" +
+                        "IN~BORROWED~Q09NX1JFRkVSRU5DRX5BRERSRVNTfkFERFJFU1N-SURFTlRJVFl-UkFXX0FERFJFU1N-MH4wfjB-LX4tfi1-VW1GM1FXUmtjbVZ6Y3c," +
+                        "CALLER_OUT~OWNED~Q09NX1JFRkVSRU5DRX5BRERSRVNTfkFERFJFU1N-SURFTlRJVFl-UkFXX0NPTV9QVFJ-MH4wfjB-LX4tfi1-VW1GM1EyOXRVSFJ5|" +
+                        "aW8uZ2l0aHViLmNvbXBvc2VmbHVlbnQud2lucnQucnVudGltZS5UYXNrM0NhbGxTaXRlTG93ZXJpbmdGaXh0dXJl:" +
+                        "YXNzZW1ibGU:" +
+                        "aW8uZ2l0aHViLmNvbXBvc2VmbHVlbnQud2lucnQucnVudGltZS5SYXdDb21QdHI:" +
+                        "aW8uZ2l0aHViLmNvbXBvc2VmbHVlbnQud2lucnQucnVudGltZS5XaW5SVENvbXBvc2FibGVGYWN0b3J5UmVzdWx0",
+                )
+                fun missingResultFactoryProjectionCallSite(
+                    reference: ComObjectReference,
+                    slot: Int,
+                    baseInterface: RawAddress,
+                ): WinRTComposableFactoryResult = TODO()
+            """.trimIndent(),
+            expectedDiagnostic = "cannot resolve result factory io.github.composefluent.winrt.runtime.Task3CallSiteLoweringFixture.assemble",
+            includeWindowsSdkProjection = false,
+        )
+    }
+
+    @Test
+    fun compiler_plugin_does_not_publish_partially_lowered_struct_frame_ir() {
+        assertCompilerPluginRejectsGeneratedAuthoredSource(
+            sourceFile = "src/commonMain/kotlin/sample/MissingStructCodecProjectionCallSite.kt",
+            sourceText = """
+                package sample
+
+                import io.github.composefluent.winrt.runtime.ComObjectReference
+                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
+
+                data class SampleStruct(val first: Long, val second: Long)
+
+                @WinRTProjectionCallSite(
+                    "v4|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|" +
+                        "RETURN~NONE~U1RSVUNUfkFERFJFU1N-QUREUkVTU35JREVOVElUWX4tfjB-MTZ-OH5jMkZ0Y0d4bExrMXBjM05wYm1kVGRISjFZM1JEYjJSbFl3Oi06Wm5KdmJVRmlhUTpZMjl3ZVZSdlFXSnA6LTotOi06LTotOi06WTJ4dmMyVX4tfi1-VTNSeWRXTjBLSE5oYlhCc1pTNVRZVzF3YkdWVGRISjFZM1I4TVRZNk9Daw",
+                )
+                fun missingStructCodecProjectionCallSite(
+                    reference: ComObjectReference,
+                    slot: Int,
+                ): SampleStruct = TODO()
+            """.trimIndent(),
+            expectedDiagnostic = "cannot lower complete call-site plan",
+            includeWindowsSdkProjection = false,
+        )
+    }
+
     private fun assertCompilerPluginRejectsGeneratedAuthoredSource(
         sourceFile: String,
         sourceText: String,
         expectedDiagnostic: String,
+        includeWindowsSdkProjection: Boolean = true,
     ) {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-authoring-validation-test-")
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
+        val winRTConfiguration = if (includeWindowsSdkProjection) {
+            """
+            winRT {
+                windowsSdk(null, false, true)
+                type "Windows.Foundation.IStringable"
+            }
+            """.trimIndent()
+        } else {
+            ""
+        }
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
@@ -11254,10 +11368,7 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
-            }
+            $winRTConfiguration
 
             def writeNestedAuthoredProbe = tasks.register("writeNestedAuthoredProbe") {
                 dependsOn "generateWinRTProjections"

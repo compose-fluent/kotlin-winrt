@@ -8,6 +8,25 @@ import java.nio.charset.StandardCharsets
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
+@PublishedApi
+internal actual fun consumeOwnedHString(handle: RawAddress): String {
+    if (PlatformAbi.isNull(handle)) {
+        return ""
+    }
+    try {
+        return PlatformAbi.readHString(handle)
+    } finally {
+        WinRTPlatformApi.windowsDeleteStringRaw(handle)
+    }
+}
+
+@PublishedApi
+internal actual inline fun winRTConsumeOwnedHStringScalarResult(
+    handleBits: Long,
+    hResult: Int,
+    checkHResult: Boolean,
+): String = error("Scalar native-result transport is only available on mingwX64.")
+
 actual class NativeScope internal constructor(
     internal val arena: Arena,
     private val onClose: () -> Unit,
@@ -43,7 +62,11 @@ internal actual class NativeScalarScratchFrame internal constructor(
         try {
             return PlatformAbi.readHString(handle)
         } finally {
-            WinRTPlatformApi.windowsDeleteString(handle)
+            try {
+                WinRTPlatformApi.windowsDeleteString(handle)
+            } finally {
+                segment.set(ValueLayout.JAVA_LONG, 0, 0L)
+            }
         }
     }
 
@@ -274,7 +297,6 @@ internal actual class NativeHStringReferenceFrame internal constructor(
     actual fun initializeReference(length: Int) {
         check(active) { "Native HSTRING reference frame is not active." }
         require(length >= 0) { "HSTRING length must be non-negative." }
-        headerSegment.fill(0)
         if (length == 0) {
             handle = RawAddress.Null
         } else {
@@ -323,21 +345,32 @@ internal actual class NativeHStringReferenceFrame internal constructor(
 }
 
 private class JvmNativeHStringReferenceFramePool {
-    private val frames = mutableListOf<NativeHStringReferenceFrame>()
+    private val primaryFrame = createFrame()
+    private val nestedFrames = mutableListOf<NativeHStringReferenceFrame>()
     private var depth: Int = 0
 
     fun acquire(value: String): NativeHStringReferenceFrame {
-        val frame = frames.getOrNull(depth) ?: createFrame()
+        val frame = if (depth == 0) {
+            primaryFrame
+        } else {
+            nestedFrames.getOrNull(depth - 1) ?: createNestedFrame()
+        }
         frame.acquire(value)
         depth += 1
         return frame
     }
 
     private fun createFrame(): NativeHStringReferenceFrame =
-        NativeHStringReferenceFrame(release = ::release).also(frames::add)
+        NativeHStringReferenceFrame(release = ::release)
+
+    private fun createNestedFrame(): NativeHStringReferenceFrame =
+        createFrame().also(nestedFrames::add)
 
     private fun release(frame: NativeHStringReferenceFrame) {
-        check(depth > 0 && frames[depth - 1] === frame) {
+        check(
+            depth > 0 &&
+                if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
+        ) {
             "Native HSTRING reference frames must close in reverse acquisition order."
         }
         depth -= 1
@@ -348,6 +381,15 @@ private val nativeHStringReferenceFrames = ThreadLocal.withInitial(::JvmNativeHS
 
 internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
     nativeHStringReferenceFrames.get().acquire(value)
+
+@PublishedApi
+internal actual inline fun winRTPinString(value: String, length: Int): String = value
+
+@PublishedApi
+internal actual inline fun winRTStringAddress(value: String, length: Int): RawAddress = RawAddress.Null
+
+@PublishedApi
+internal actual inline fun winRTStringLength(value: String): Int = value.length
 
 private const val hStringHeaderOffsetBytes: Long = 8L
 private const val hStringHeaderSizeBytes: Long = 24L
@@ -375,6 +417,7 @@ actual class NativeCallbackHandle internal constructor(
 
 actual object PlatformAbi {
     private val char16Layout = ValueLayout.JAVA_CHAR_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN)
+    private val guidWordLayout = ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN)
 
     actual val nullPointer: RawAddress
         get() = RawAddress.Null
@@ -548,8 +591,9 @@ actual object PlatformAbi {
     }
 
     actual fun writeGuid(pointer: RawAddress, value: Guid) {
-        val bytes = value.toLittleEndianBytes()
-        pointer.asMemorySegment().reinterpret(bytes.size.toLong()).copyFrom(MemorySegment.ofArray(bytes))
+        val target = pointer.asMemorySegment().reinterpret(Guid.BYTE_SIZE.toLong())
+        target.set(guidWordLayout, 0, value.abiLowBits)
+        target.set(guidWordLayout, Long.SIZE_BYTES.toLong(), value.abiHighBits)
     }
 
     actual fun writeGuid(pointer: RawAddress, offsetBytes: Long, value: Guid) {

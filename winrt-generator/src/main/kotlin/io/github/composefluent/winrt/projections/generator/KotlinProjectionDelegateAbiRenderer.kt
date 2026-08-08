@@ -8,9 +8,6 @@ import io.github.composefluent.winrt.metadata.WinRTEventDefinition
 import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -103,99 +100,6 @@ import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
-
-internal fun KotlinProjectionRenderer.enumParameterMarshaler(
-    parameterBinding: KotlinProjectionAbiParameterBinding,
-): KotlinProjectionAbiMarshalerPlan? {
-    val integralType = parameterBinding.typeBinding.enumUnderlyingType ?: return null
-    return KotlinProjectionAbiMarshalerPlan(
-        name = parameterBinding.name,
-        typeBinding = parameterBinding.typeBinding,
-        isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%L.abiValue%L", parameterBinding.name, abiIntegralArgumentConversionSuffix(integralType)),
-        abiArgumentKind = abiArgumentKindForIntegralType(integralType),
-    )
-}
-
-internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
-    parameterBinding: KotlinProjectionAbiParameterBinding,
-): KotlinProjectionAbiMarshalerPlan? {
-    val invokeShape = outboundDelegateInvokeShape(parameterBinding.typeBinding) ?: return null
-    if (!invokeShape.isSupportedOutboundDelegateShape()) {
-        return null
-    }
-    val delegateIid = delegateInterfaceIdCode(parameterBinding.typeBinding, invokeShape) ?: return null
-    if (parameterBinding.typeBinding.isNullableAbiTypeName) {
-        return nullableDelegateParameterMarshaler(parameterBinding, invokeShape, delegateIid)
-    }
-    val abiName = "__${parameterBinding.name}Abi"
-    return KotlinProjectionAbiMarshalerPlan(
-        name = parameterBinding.name,
-        typeBinding = parameterBinding.typeBinding,
-        isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%L.abi", abiName),
-        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        scopeOpeners = listOf(
-            CodeBlock.of(
-                "%T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, delegate = %L, callback = { __args ->\n%L(%L)\n}).use { %L ->",
-                WINRT_DELEGATE_BRIDGE_CLASS_NAME,
-                delegateIid,
-                delegateParameterKindsCode(invokeShape.parameterBindings),
-                delegateInvokeReturnKindCode(invokeShape.returnBinding),
-                delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
-                delegateReturnStructAdapterCode(invokeShape.returnBinding),
-                parameterBinding.name,
-                parameterBinding.name,
-                delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
-                abiName,
-            ),
-        ),
-    )
-}
-
-private fun KotlinProjectionRenderer.nullableDelegateParameterMarshaler(
-    parameterBinding: KotlinProjectionAbiParameterBinding,
-    invokeShape: KotlinProjectionDelegateInvokeShape,
-    delegateIid: CodeBlock,
-): KotlinProjectionAbiMarshalerPlan {
-    val callbackName = "__${parameterBinding.name}Callback"
-    val abiName = "__${parameterBinding.name}Abi"
-    return KotlinProjectionAbiMarshalerPlan(
-        name = parameterBinding.name,
-        typeBinding = parameterBinding.typeBinding,
-        isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%L.abi", abiName),
-        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        scopeOpeners = listOf(
-            CodeBlock.of(
-                """
-                val %L = %L?.let { %L ->
-                { __args: %T<%T?> ->
-                %L(%L)
-                }
-                }
-                %T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, delegate = %L, callback = %L).use { %L ->
-                """.trimIndent(),
-                callbackName,
-                parameterBinding.name,
-                parameterBinding.name,
-                LIST_CLASS_NAME,
-                ANY,
-                parameterBinding.name,
-                delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
-                WINRT_DELEGATE_BRIDGE_CLASS_NAME,
-                delegateIid,
-                delegateParameterKindsCode(invokeShape.parameterBindings),
-                delegateInvokeReturnKindCode(invokeShape.returnBinding),
-                delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
-                delegateReturnStructAdapterCode(invokeShape.returnBinding),
-                parameterBinding.name,
-                callbackName,
-                abiName,
-            ),
-        ),
-    )
-}
 
 internal fun abiArgumentKindForIntegralType(type: WinRTIntegralType): KotlinProjectionComArgumentKind =
     integralAbiDescriptor(type).comArgumentKind
@@ -550,8 +454,13 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
         CodeBlock.of("return %T.Metadata.fromAbi(%L)\n", enumType, integralKotlinCastExpression(integralType, nativeInvokeExpression))
     }
     KotlinProjectionAbiValueKind.ProjectedInterface -> {
-        val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
-        CodeBlock.of("return %T.Metadata.wrap(%L as %T)\n", projectedType, nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
+        val helperClass = returnBinding.closedGenericProjectionHelperClassName(supportOwnerIdentity)
+        if (helperClass != null) {
+            CodeBlock.of("return %T.wrap(%L as %T)\n", helperClass, nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
+        } else {
+            val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
+            CodeBlock.of("return %T.Metadata.wrap(%L as %T)\n", projectedType, nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
+        }
     }
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> {
         val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
@@ -625,12 +534,20 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
         CodeBlock.of("__args[%L] as %T", index, structType)
     }
     KotlinProjectionAbiValueKind.Enum -> delegateEnumCallbackArgumentCode(index, typeBinding)
-    KotlinProjectionAbiValueKind.ProjectedInterface -> CodeBlock.of(
-        "%T.Metadata.wrap(__args[%L] as %T)",
-        resolveTypeName(typeBinding.resolvedTypeName),
-        index,
-        IUNKNOWN_REFERENCE_CLASS_NAME,
-    )
+    KotlinProjectionAbiValueKind.ProjectedInterface ->
+        typeBinding.closedGenericProjectionHelperClassName(supportOwnerIdentity)?.let { helperClass ->
+            CodeBlock.of(
+                "%T.wrap(__args[%L] as %T)",
+                helperClass,
+                index,
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+            )
+        } ?: CodeBlock.of(
+            "%T.Metadata.wrap(__args[%L] as %T)",
+            resolveTypeName(typeBinding.resolvedTypeName),
+            index,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+        )
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
         customObjectAbi(typeBinding)?.let { customAbi ->
             val projectedType = resolveTypeName(typeBinding.resolvedTypeName).copy(nullable = false)

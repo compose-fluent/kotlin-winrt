@@ -54,7 +54,10 @@ class WeakReferenceInteropTest {
 
         val managed = ManagedWeakReferenceTarget("weak")
         val ccw = ComWrappersSupport.createCCWForObject(managed, IID.IInspectable)
-        val target = ProjectedWeakReferenceTarget(PlatformAbi.fromRawComPtr(ccw.getRefPointer()))
+        val target = ProjectedWeakReferenceTarget(
+            pointer = PlatformAbi.fromRawComPtr(ccw.getRefPointer()),
+            preventReleaseOnDispose = false,
+        )
 
         try {
             val weakReference = WeakReferenceInterop.tryCreateNativeWeakReference(target)
@@ -83,8 +86,13 @@ class WeakReferenceInteropTest {
 
     private class ProjectedWeakReferenceTarget(
         pointer: RawAddress,
+        preventReleaseOnDispose: Boolean,
     ) : IWinRTObject {
-        override val nativeObject: ComObjectReference = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+        override val nativeObject: ComObjectReference = IInspectableReference(
+            pointer.asRawComPtr(),
+            IID.IInspectable,
+            preventReleaseOnDispose = preventReleaseOnDispose,
+        )
     }
 
     private fun createAbandonedWeakReference(host: FakeWeakReferenceHost): AbandonedWeakReference {
@@ -112,7 +120,10 @@ class WeakReferenceInteropTest {
             private set
 
         fun createProjectedTarget(): ProjectedWeakReferenceTarget =
-            ProjectedWeakReferenceTarget(targetPointer)
+            ProjectedWeakReferenceTarget(
+                pointer = targetPointer,
+                preventReleaseOnDispose = true,
+            )
 
         override fun close() {
             callbacks.asReversed().forEach(NativeCallbackHandle::close)

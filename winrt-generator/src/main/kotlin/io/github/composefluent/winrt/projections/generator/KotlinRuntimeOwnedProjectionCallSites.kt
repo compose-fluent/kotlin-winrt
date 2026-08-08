@@ -10,7 +10,7 @@ internal object KotlinRuntimeOwnedProjectionCallSites {
     }
 
     fun declarationFor(
-        call: KotlinModulePlatformAbiCallSupport.ModulePlatformAbiCall,
+        plan: KotlinTypedProjectionCallSitePlan,
     ): WinRTProjectionCallSiteDeclaration? =
-        call.canonicalCallSiteDescriptorOrNull()?.let(catalog::get)
+        catalog[plan.runtimeOwnedCatalogKey()]
 }

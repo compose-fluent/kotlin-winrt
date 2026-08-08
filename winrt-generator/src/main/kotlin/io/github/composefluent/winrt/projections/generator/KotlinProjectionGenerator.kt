@@ -10,9 +10,6 @@ import io.github.composefluent.winrt.metadata.WinRTEventHandlerKind
 import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -114,6 +111,9 @@ import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
+private const val LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD = 512
+private const val LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT = 32
+
 class KotlinProjectionGenerator(
     private val planner: KotlinProjectionPlanner = KotlinProjectionPlanner(),
     private val renderer: KotlinProjectionRenderer = KotlinProjectionRenderer(),
@@ -128,12 +128,10 @@ class KotlinProjectionGenerator(
     private val supportOwnerIdentity: String? = null,
     private val emitJvmAuthoringHostExports: Boolean = true,
 ) {
-    private val genericTypeInstantiationsClassName = winRTGenericTypeInstantiationsClassName(supportOwnerIdentity)
     private val authoringHostExportsClassName = winRTAuthoringHostExportsClassName(supportOwnerIdentity)
     private val authoringServerActivationFactoriesClassName = winRTAuthoringServerActivationFactoriesClassName(supportOwnerIdentity)
     private val authoringModuleActivationFactoryPlanClassName = winRTAuthoringModuleActivationFactoryPlanClassName(supportOwnerIdentity)
     private val modulePlatformAbiCallClassName = winRTModulePlatformAbiCallClassName(supportOwnerIdentity)
-    private val genericAbiSupportFileName = winRTGenericAbiSupportFileName(supportOwnerIdentity)
     private val eventProjectionHelperFilePrefix = winRTEventProjectionHelperFilePrefix(supportOwnerIdentity)
     private val namespaceAdditionsClassName = winRTNamespaceAdditionsClassName(supportOwnerIdentity)
 
@@ -151,11 +149,16 @@ class KotlinProjectionGenerator(
             plan.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
-        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(renderedPlans)
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(normalizedModel, renderedPlans)
         val projectionRenderer = projectionFileRenderer(modulePlatformAbiCalls = modulePlatformAbiCalls)
         val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
         if (!emitSupportFiles) {
-            return projectionFiles
+            val closedGenericFiles = closedGenericProjectionFiles(
+                model = normalizedModel,
+                plans = plans,
+                modulePlatformAbiCalls = modulePlatformAbiCalls,
+            )
+            return projectionFiles + closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
         }
         return projectionFiles + supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
     }
@@ -174,7 +177,7 @@ class KotlinProjectionGenerator(
             plan.type.qualifiedName in authoredTypeNames ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
-        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(projectionPlans, renderedPlans)
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(normalizedModel, projectionPlans, renderedPlans)
         val projectionRenderer = projectionFileRenderer(renderedPlans, modulePlatformAbiCalls)
         val projectionFiles = projectionPlans
             .flatMap(projectionRenderer::render)
@@ -185,9 +188,32 @@ class KotlinProjectionGenerator(
                     files
                 }
             }
-        val files = projectionFiles + if (emitSupportFiles) supportFiles(normalizedModel, plans, modulePlatformAbiCalls) else emptyList()
+        val files = projectionFiles + if (emitSupportFiles) {
+            supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
+        } else {
+            val closedGenericFiles = closedGenericProjectionFiles(
+                model = normalizedModel,
+                plans = plans,
+                modulePlatformAbiCalls = modulePlatformAbiCalls,
+            )
+            closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
+        }
         return writeFiles(files, outputRoot)
     }
+
+    private fun closedGenericProjectionFiles(
+        model: WinRTMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
+    ): List<KotlinProjectionFile> =
+        renderClosedGenericProjectionHelpers(
+            planner = planner,
+            model = model,
+            plans = plans,
+            instantiations = model.semanticHelpers().genericInstantiationWorklist(projectionContext).pending,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+            supportOwnerIdentity = supportOwnerIdentity,
+        )
 
     internal fun writeFiles(
         files: List<KotlinProjectionFile>,
@@ -473,7 +499,8 @@ class KotlinProjectionGenerator(
             .flatMap(WinRTNamespace::types)
             .associateBy(WinRTTypeDefinition::qualifiedName)
         val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
-        val descriptorsByOwnerAndEvent = planner.eventSourceDescriptors(model, plans)
+        val genericInstantiations = model.semanticHelpers().genericInstantiationWorklist(projectionContext).pending
+        val descriptorsByOwnerAndEvent = planner.eventSourceDescriptors(model, plans, genericInstantiations)
             .associateBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
         plans.forEach { plan ->
             validateRuntimeClassEventSourceHelperContracts(plan, descriptorsByOwnerAndEvent, typesByQualifiedName, plansByType)
@@ -494,21 +521,12 @@ class KotlinProjectionGenerator(
         plan.type.events
             .filterNot(WinRTEventDefinition::isStatic)
             .forEach { event ->
-                val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
-                    ?: return@forEach
-                val eventTypeName = typesByQualifiedName[binding.slotInterfaceQualifiedName]
-                    ?.events
-                    ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
-                    ?.delegateTypeName
-                    ?: plan.eventInvokeDescriptors
-                    .firstOrNull { it.eventName == event.name && !it.isStatic }
-                    ?.delegateTypeName
-                    ?: event.delegateTypeName
+                val eventSource = plan.boundInstanceEventSource(event) ?: return@forEach
                 validateEventSourceHelperContract(
                     plan,
                     event,
-                    binding.slotInterfaceQualifiedName,
-                    eventTypeName,
+                    eventSource.ownerTypeName,
+                    eventSource.eventTypeBinding.typeName,
                     descriptorsByOwnerAndEvent,
                     typesByQualifiedName,
                     plansByType,
@@ -570,25 +588,16 @@ class KotlinProjectionGenerator(
         if (plan.type.kind != WinRTTypeKind.Interface || !canRenderInterfaceWrapperSafely(plan)) {
             return
         }
-        renderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
-            interfaceType.events
-                .filterNot(WinRTEventDefinition::isStatic)
-                .forEach { event ->
-                    val eventTypeName = plan.typesByQualifiedName[interfaceType.qualifiedName]
-                        ?.events
-                        ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
-                        ?.delegateTypeName
-                        ?: event.delegateTypeName
-                    validateEventSourceHelperContract(
-                        plan,
-                        event,
-                        interfaceType.qualifiedName,
-                        eventTypeName,
-                        descriptorsByOwnerAndEvent,
-                        typesByQualifiedName,
-                        plansByType,
-                    )
-                }
+        renderer.interfaceNativeProjectionEventSourceBindings(plan).forEach { eventSource ->
+            validateEventSourceHelperContract(
+                plan,
+                eventSource.event,
+                eventSource.ownerTypeName,
+                eventSource.event.delegateTypeName,
+                descriptorsByOwnerAndEvent,
+                typesByQualifiedName,
+                plansByType,
+            )
         }
     }
 
@@ -1328,7 +1337,14 @@ class KotlinProjectionGenerator(
                 delegateInvokeContext,
             )
         }
-        if (!delegateInvokeContext && validateAbiCallPlan) {
+        val containsOpenGenericParameter = returnBinding.containsOpenGenericParameter() ||
+            parameterBindings.any { parameter -> parameter.typeBinding.containsOpenGenericParameter() }
+        if (containsOpenGenericParameter) {
+            require(plan.isOpenGenericApiOnlyDeclaration(bindingName)) {
+                "Generator found an unsubstituted generic parameter at real ABI call site " +
+                    "${plan.projectionContractSubject()} binding $bindingName."
+            }
+        } else if (!delegateInvokeContext && validateAbiCallPlan) {
             renderer.requireAbiCallPlan(
                 bindingName = bindingName,
                 returnBinding = returnBinding,
@@ -1337,6 +1353,51 @@ class KotlinProjectionGenerator(
                 suppressHResultCheck = suppressHResultCheck,
             )
         }
+    }
+
+    private fun KotlinProjectionAbiTypeBinding.containsOpenGenericParameter(): Boolean =
+        kind == KotlinProjectionAbiValueKind.GenericParameter ||
+            typeArguments.any { argument -> argument.containsOpenGenericParameter() } ||
+            structFieldBindings.any { field -> field.containsOpenGenericParameter() } ||
+            delegateInvokeShape?.let { shape ->
+                shape.returnBinding.containsOpenGenericParameter() ||
+                    shape.parameterBindings.any { parameter ->
+                        parameter.typeBinding.containsOpenGenericParameter()
+                    }
+            } == true
+
+    private fun KotlinTypeProjectionPlan.isOpenGenericApiOnlyDeclaration(bindingName: String): Boolean {
+        if (isMethodLevelOpenGenericBinding(bindingName)) return true
+        return type.genericParameterCount > 0
+    }
+
+    private fun KotlinTypeProjectionPlan.isMethodLevelOpenGenericBinding(bindingName: String): Boolean {
+        val boundSlots = buildList {
+            instanceMemberBindings
+                .filter { binding -> binding.bindingName == bindingName }
+                .forEach { binding -> add(binding.slotInterfaceQualifiedName to binding.slotConstantName) }
+            staticMemberBindings
+                .filter { binding -> binding.bindingName == bindingName }
+                .forEach { binding -> add(binding.slotInterfaceQualifiedName to binding.slotConstantName) }
+        }
+        if (boundSlots.any { (interfaceName, slotConstantName) ->
+                val interfaceType = typesByQualifiedName[interfaceName.substringBefore('<')]
+                    ?: typesByQualifiedName[interfaceName]
+                    ?: return@any false
+                interfaceType.methods.any { method ->
+                    method.genericParameterCount > 0 &&
+                        method.abiSlotConstantName(interfaceType.methods) == slotConstantName
+                }
+            }
+        ) {
+            return true
+        }
+        val ownerName = bindingName.substringBeforeLast('.', missingDelimiterValue = "")
+        val methodName = bindingName.substringAfterLast('.')
+        return ownerName.isNotEmpty() &&
+            typesByQualifiedName[ownerName]?.methods?.any { method ->
+                method.name == methodName && method.genericParameterCount > 0
+            } == true
     }
 
     private fun validateProjectedAbiTypeBindingContract(
@@ -1696,7 +1757,6 @@ class KotlinProjectionGenerator(
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
                 useInterfaceProjectionArtifacts = true,
-                useProjectionIntrinsics = true,
                 suppressProjectedMemberSlotConstants = groupProjectionFilesByPackageOnWrite,
                 projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite && plans != null) {
                     projectedSlotLiteralMap(plans)
@@ -1705,12 +1765,17 @@ class KotlinProjectionGenerator(
                 },
                 useWinAppSdkTypeRedirects = currentPlan?.requiresWinAppSdkTypeRedirects() == true,
                 useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
-                genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 supportOwnerIdentity = supportOwnerIdentity,
             )
         } else {
-            renderer
+            renderer.withModulePlatformAbiCalls(
+                calls = modulePlatformAbiCalls,
+                ownerIdentity = supportOwnerIdentity,
+                useInterfaceProjectionArtifacts =
+                    renderer.useInterfaceProjectionArtifacts ||
+                        generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm,
+            )
         }
 
     private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
@@ -1748,16 +1813,15 @@ class KotlinProjectionGenerator(
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
             excludedProjectionTypeNames = authoredProjectedTypeNames(model),
             authoredRuntimeClassNames = authoredRuntimeClassNames,
-            genericTypeInstantiationsClassName = genericTypeInstantiationsClassName,
             authoringHostExportsClassName = authoringHostExportsClassName,
             authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
             authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
             emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
-            genericAbiSupportFileName = genericAbiSupportFileName,
             eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
             namespaceAdditionsClassName = namespaceAdditionsClassName,
             supportOwnerIdentity = supportOwnerIdentity,
             excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
         )
         val files = when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> supportRendererFiles
@@ -1794,21 +1858,42 @@ class KotlinProjectionGenerator(
     }
 
     private fun modulePlatformAbiCallSupport(
+        model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
         renderedPlans: List<KotlinTypeProjectionPlan> = plans,
     ): KotlinModulePlatformAbiCallSupport? {
+        val abiSupportShardCount = if (plans.size >= LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD) {
+            LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT
+        } else {
+            1
+        }
         if (!emitSupportFiles) {
-            return null
+            return KotlinModulePlatformAbiCallSupport(
+                className = modulePlatformAbiCallClassName,
+                enabledCalls = emptySet(),
+                abiSupportShardCount = abiSupportShardCount,
+            )
         }
         val collector = KotlinModulePlatformAbiCallSupport(
             className = modulePlatformAbiCallClassName,
             enabledCalls = emptySet(),
+            abiSupportShardCount = abiSupportShardCount,
         )
         val collectorRenderer = projectionFileRenderer(renderedPlans, collector)
         plans.forEach { plan -> collectorRenderer.render(plan) }
+        supportRenderer.collectModulePlatformAbiCalls(
+            model = model,
+            plans = (renderedPlans + supportPlansByQualifiedName(model, renderedPlans).values)
+                .distinctBy { plan -> plan.type.qualifiedName },
+            context = projectionContext,
+            excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
+            modulePlatformAbiCalls = collector,
+            supportOwnerIdentity = supportOwnerIdentity,
+        )
         return KotlinModulePlatformAbiCallSupport(
             className = modulePlatformAbiCallClassName,
             enabledCalls = collector.plannedCalls(),
+            abiSupportShardCount = abiSupportShardCount,
         )
     }
 

@@ -199,16 +199,6 @@ expect object ComVtableInvoker {
         arg5: Int,
     ): Int
 
-    @Deprecated(
-        message = "Legacy no-support generator fallback. Support-file generation must use descriptor intrinsics or direct overloads.",
-        level = DeprecationLevel.ERROR,
-    )
-    fun invokeGenericArgs(
-        instance: RawComPtr,
-        slot: Int,
-        vararg args: Any,
-    ): Int
-
     internal fun invokeGeneric(
         instance: RawComPtr,
         slot: Int,
@@ -226,3 +216,103 @@ expect object ComVtableInvoker {
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle
 }
+
+/**
+ * Internal fixed-carrier entry points used by generated Native call sites. They keep the
+ * public invoker surface stable while allowing the Native actuals to inline the vtable load.
+ */
+@PublishedApi
+internal expect inline fun winRTDirectInvokeHResultAddress(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: RawAddress,
+): Int
+
+@PublishedApi
+internal expect inline fun winRTDirectInvokeHResultAddressAddress(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: RawAddress,
+    arg1: RawAddress,
+): Int
+
+@PublishedApi
+internal expect inline fun winRTDirectInvokeHResultUInt32Address(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: UInt,
+    arg1: RawAddress,
+): Int
+
+@PublishedApi
+internal expect inline fun winRTDirectInvokeHResultInt32Address(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: RawAddress,
+): Int
+
+/**
+ * Native-only recipe thunk factories. [floatingPointKinds] uses two bits per input carrier:
+ * zero for an integer/address word, one for Float, and two for Double. The compiler stores the
+ * returned entry point in a call-site-owner field, so recipe lookup and thunk construction never
+ * occur on the hot path.
+ */
+@PublishedApi
+internal expect fun winRTCreateHResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress
+
+@PublishedApi
+internal expect fun winRTCreatePackedScalarResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress
+
+@PublishedApi
+internal expect fun winRTCreateScalarResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress
+
+@PublishedApi
+internal expect fun winRTCreateWideScalarResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress
+
+@PublishedApi
+internal inline fun winRTPackedScalarResultHResult(packed: Long): Int =
+    (packed ushr Int.SIZE_BITS).toInt()
+
+@PublishedApi
+internal inline fun winRTPackedScalarResultInt8(packed: Long): Byte = packed.toByte()
+
+@PublishedApi
+internal inline fun winRTPackedScalarResultInt16(packed: Long): Short = packed.toShort()
+
+@PublishedApi
+internal inline fun winRTPackedScalarResultInt32(packed: Long): Int = packed.toInt()
+
+@PublishedApi
+internal inline fun winRTPackedScalarResultFloat32(packed: Long): Float = Float.fromBits(packed.toInt())
+
+@PublishedApi
+internal inline fun winRTWideScalarResultFloat64(value: Long): Double = Double.fromBits(value)
+
+@PublishedApi
+internal expect fun winRTScalarResultRecord(): RawAddress
+
+@PublishedApi
+internal expect inline fun winRTScalarResultHResult(record: RawAddress): Int
+
+@PublishedApi
+internal expect inline fun winRTScalarResultValue(record: RawAddress): RawAddress
+
+@PublishedApi
+internal expect inline fun winRTConsumeOwnedHStringScalarResult(
+    handleBits: Long,
+    hResult: Int,
+    checkHResult: Boolean,
+): String

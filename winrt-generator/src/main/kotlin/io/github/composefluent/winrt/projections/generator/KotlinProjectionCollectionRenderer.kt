@@ -8,9 +8,6 @@ import io.github.composefluent.winrt.metadata.WinRTEventDefinition
 import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -99,7 +96,6 @@ import java.time.Duration
 import java.time.OffsetDateTime
 import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
-import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
 internal fun KotlinProjectionRenderer.readOnlyCollectionProjectedType(
@@ -128,19 +124,59 @@ internal fun KotlinProjectionRenderer.mutableCollectionProjectedType(
         )
 }
 
-internal fun KotlinProjectionRenderer.renderMutableCollectionDelegateProperty(
+internal fun KotlinProjectionRenderer.addMutableCollectionDelegateSupport(
+    builder: TypeSpec.Builder,
     binding: KotlinProjectionMutableCollectionBinding,
-): PropertySpec =
-    PropertySpec.builder(binding.delegatePropertyName, mutableCollectionProjectedType(binding))
-        .addModifiers(KModifier.PRIVATE)
-        .delegate(
-            CodeBlock.of(
-                "lazy(%T.PUBLICATION) {\n%L}\n",
-                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                renderMutableCollectionDelegateInitializer(binding),
-            ),
-        )
-        .build()
+) {
+    val type = mutableCollectionProjectedType(binding)
+    val cacheName = "${binding.delegatePropertyName}Cache"
+    val makeName = "${binding.delegatePropertyName}Make"
+    builder.addProperty(
+        PropertySpec.builder(cacheName, type.copy(nullable = true))
+            .addModifiers(KModifier.PRIVATE)
+            .mutable(true)
+            .addAnnotation(KOTLIN_VOLATILE_CLASS_NAME)
+            .initializer("null")
+            .build(),
+    )
+    builder.addFunction(
+        FunSpec.builder(makeName)
+            .addModifiers(KModifier.PRIVATE)
+            .returns(type)
+            .addCode(
+                CodeBlock.builder()
+                    .add("val candidate: %T = kotlin.run {\n", type)
+                    .indent()
+                    .add(renderMutableCollectionDelegateInitializer(binding))
+                    .unindent()
+                    .add("}\n")
+                    .add("return %M(\n", PUBLISH_GENERATED_WINRT_VALUE_FUNCTION_NAME)
+                    .indent()
+                    .add("candidate,\n")
+                    .add("{ %L },\n", cacheName)
+                    .add("{ value ->\n")
+                    .indent()
+                    .add("%L = value\n", cacheName)
+                    .unindent()
+                    .add("},\n")
+                    .unindent()
+                    .add(")\n")
+                    .build(),
+            )
+            .build(),
+    )
+    builder.addProperty(
+        PropertySpec.builder(binding.delegatePropertyName, type)
+            .addModifiers(KModifier.PRIVATE)
+            .getter(
+                FunSpec.getterBuilder()
+                    .addModifiers(KModifier.INLINE)
+                    .addCode("return %L ?: %L()\n", cacheName, makeName)
+                    .build(),
+            )
+            .build(),
+    )
+}
 
 internal fun KotlinProjectionRenderer.renderMutableCollectionDelegateInitializer(
     binding: KotlinProjectionMutableCollectionBinding,
@@ -518,19 +554,59 @@ internal fun KotlinProjectionRenderer.renderMapCollectionDelegateInitializer(
 private fun CodeBlock.withoutInlineReturn(): CodeBlock =
     CodeBlock.of("%L", toString().replace(Regex("""(?m)^(\s*)return\s+"""), "\$1"))
 
-internal fun KotlinProjectionRenderer.renderReadOnlyCollectionDelegateProperty(
+internal fun KotlinProjectionRenderer.addReadOnlyCollectionDelegateSupport(
+    builder: TypeSpec.Builder,
     binding: KotlinProjectionReadOnlyCollectionBinding,
-): PropertySpec =
-    PropertySpec.builder(binding.delegatePropertyName, readOnlyCollectionProjectedType(binding))
-        .addModifiers(KModifier.PRIVATE)
-        .delegate(
-            CodeBlock.of(
-                "lazy(%T.PUBLICATION) {\n%L}\n",
-                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                renderReadOnlyCollectionDelegateInitializer(binding),
-            ),
-        )
-        .build()
+) {
+    val type = readOnlyCollectionProjectedType(binding)
+    val cacheName = "${binding.delegatePropertyName}Cache"
+    val makeName = "${binding.delegatePropertyName}Make"
+    builder.addProperty(
+        PropertySpec.builder(cacheName, type.copy(nullable = true))
+            .addModifiers(KModifier.PRIVATE)
+            .mutable(true)
+            .addAnnotation(KOTLIN_VOLATILE_CLASS_NAME)
+            .initializer("null")
+            .build(),
+    )
+    builder.addFunction(
+        FunSpec.builder(makeName)
+            .addModifiers(KModifier.PRIVATE)
+            .returns(type)
+            .addCode(
+                CodeBlock.builder()
+                    .add("val candidate: %T = kotlin.run {\n", type)
+                    .indent()
+                    .add(renderReadOnlyCollectionDelegateInitializer(binding))
+                    .unindent()
+                    .add("}\n")
+                    .add("return %M(\n", PUBLISH_GENERATED_WINRT_VALUE_FUNCTION_NAME)
+                    .indent()
+                    .add("candidate,\n")
+                    .add("{ %L },\n", cacheName)
+                    .add("{ value ->\n")
+                    .indent()
+                    .add("%L = value\n", cacheName)
+                    .unindent()
+                    .add("},\n")
+                    .unindent()
+                    .add(")\n")
+                    .build(),
+            )
+            .build(),
+    )
+    builder.addProperty(
+        PropertySpec.builder(binding.delegatePropertyName, type)
+            .addModifiers(KModifier.PRIVATE)
+            .getter(
+                FunSpec.getterBuilder()
+                    .addModifiers(KModifier.INLINE)
+                    .addCode("return %L ?: %L()\n", cacheName, makeName)
+                    .build(),
+            )
+            .build(),
+    )
+}
 
 internal fun KotlinProjectionRenderer.renderReadOnlyCollectionDelegateInitializer(
     binding: KotlinProjectionReadOnlyCollectionBinding,
@@ -931,14 +1007,6 @@ internal fun KotlinProjectionRenderer.renderCollectionInvocation(
     parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
 ): CodeBlock {
     val slotExpression = CodeBlock.of("%T.Metadata.%L", projectionClassName(slotInterfaceQualifiedName), slotConstantName)
-    renderInstanceDescriptorUnitIntrinsicInvocation(
-        referenceExpression = invokeTargetExpression,
-        slotExpression = slotExpression,
-        returnBinding = returnBinding,
-        parameterBindings = parameterBindings,
-        suppressHResultCheck = false,
-        includeReturn = false,
-    )?.let { return it }
     val callPlan = requireAbiCallPlan(
         bindingName = "${slotInterfaceQualifiedName.substringAfterLast('.')}_$slotConstantName",
         returnBinding = returnBinding,

@@ -9,9 +9,6 @@ import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
 import io.github.composefluent.winrt.metadata.WinRTFundamentalType
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
@@ -350,8 +347,8 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     val binding = matchingMethodBinding(plan, method) ?: return null
     val slotExpression = binding.slotCodeBlock()
     val objectShape = runtimeObjectMethodShape(method)
-    val methodReturnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, plan.type.namespace)
-    val methodParameterBindings = method.projectedKotlinParameters().map { parameter ->
+    val methodReturnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, plan.type.namespace)
+    val methodParameterBindings = method.parameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             name = parameter.name,
             typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, plan.type.namespace),
@@ -373,84 +370,12 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     val invocation = if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
         renderObjectEqualsInvocation(binding)
     } else {
-        renderInstanceNoArgIntrinsicInvocation(binding)
-            ?: renderInstanceStructResultIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceArrayResultIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceEnumResultIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
-            ?: renderInstanceDescriptorUnitIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceDescriptorBooleanIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceDescriptorScalarIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceDescriptorProjectedObjectIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceDescriptorAsyncIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
-                referenceExpression = binding.ownerCachePropertyName,
-                slotExpression = slotExpression,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                suppressHResultCheck = binding.suppressHResultCheck,
-            )
-            ?: renderBoundInvocation(
-                binding = binding,
-                returnBinding = effectiveReturnBinding,
-                parameterBindings = effectiveParameterBindings,
-                marshalerPlanDescriptor = effectiveMarshalerPlanDescriptor,
-            )
+        renderBoundInvocation(
+            binding = binding,
+            returnBinding = effectiveReturnBinding,
+            parameterBindings = effectiveParameterBindings,
+            marshalerPlanDescriptor = effectiveMarshalerPlanDescriptor,
+        )
     }
     val modifiers = objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding)
     val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
@@ -458,6 +383,11 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(modifiers)
+        .apply {
+            if (objectShape == null && plan.canInlineRuntimeClassProjectionMethod(binding)) {
+                addModifiers(KModifier.INLINE)
+            }
+        }
         .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .apply {
@@ -469,7 +399,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         .build()
 }
 
-private fun KotlinProjectionRenderer.matchingMethodBinding(
+internal fun KotlinProjectionRenderer.matchingMethodBinding(
     plan: KotlinTypeProjectionPlan,
     method: WinRTMethodDefinition,
 ): KotlinProjectionInstanceMemberBinding? {
@@ -478,8 +408,8 @@ private fun KotlinProjectionRenderer.matchingMethodBinding(
     if (candidates.size <= 1) {
         return candidates.firstOrNull()
     }
-    val returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, plan.type.namespace)
-    val parameterBindings = method.projectedKotlinParameters().map { parameter ->
+    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, plan.type.namespace)
+    val parameterBindings = method.parameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             name = parameter.name,
             typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, plan.type.namespace),
@@ -489,6 +419,64 @@ private fun KotlinProjectionRenderer.matchingMethodBinding(
     return candidates.firstOrNull { candidate ->
         candidate.returnBinding == returnBinding && candidate.parameterBindings == parameterBindings
     } ?: candidates.firstOrNull()
+}
+
+internal fun KotlinProjectionRenderer.hasInlineRuntimeClassProjectionMembers(
+    plan: KotlinTypeProjectionPlan,
+): Boolean {
+    val hasInlineMethod = plan.type.methods
+        .asSequence()
+        .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+        .filter { method -> runtimeObjectMethodShape(method) == null }
+        .mapNotNull { method -> matchingMethodBinding(plan, method) }
+        .any(plan::canInlineRuntimeClassProjectionMethod)
+    if (hasInlineMethod) {
+        return true
+    }
+    val hasInlineBoundPropertyAccessor = plan.type.properties
+        .asSequence()
+        .filterNot(WinRTPropertyDefinition::isStatic)
+        .flatMap { property ->
+            sequenceOf(
+                "${property.name.uppercase()}_GETTER_SLOT",
+                "${property.name.uppercase()}_SETTER_SLOT",
+            )
+        }
+        .mapNotNull { bindingName ->
+            plan.instanceMemberBindings.firstOrNull { binding -> binding.bindingName == bindingName }
+        }
+        .any(plan::canInlineRuntimeClassProjectionMethod)
+    return hasInlineBoundPropertyAccessor || hasInlineRequiredForwardPropertyAccessor(plan)
+}
+
+private fun KotlinProjectionRenderer.hasInlineRequiredForwardPropertyAccessor(
+    plan: KotlinTypeProjectionPlan,
+): Boolean {
+    if (plan.type.kind != WinRTTypeKind.RuntimeClass || plan.requiresOpenRuntimeClassShell()) {
+        return false
+    }
+    val existingPropertyNames = plan.type.properties
+        .asSequence()
+        .filterNot(WinRTPropertyDefinition::isStatic)
+        .map { property -> property.name.replaceFirstChar(Char::lowercase) }
+        .toSet()
+    val suppressedMemberNames = mappedCollectionMemberNames(plan)
+    return plan.type.implementedInterfaces
+        .asSequence()
+        .filterNot { implemented -> isRuntimeClassDelegatedInterface(plan, implemented.interfaceName) }
+        .flatMap { implemented ->
+            collectRequiredForwardInterfaceTypes(implemented.interfaceName, plan, mutableSetOf()).asSequence()
+        }
+        .filterNot { requiredInterface -> isRuntimeOwnedMappedTypeName(requiredInterface.interfaceName) }
+        .filter { requiredInterface -> plan.canInlineRuntimeClassProjectionAccessor(requiredInterface.interfaceName) }
+        .any { requiredInterface ->
+            requiredInterface.type.properties.any { property ->
+                !property.isStatic &&
+                    property.name.replaceFirstChar(Char::lowercase) !in existingPropertyNames &&
+                    !(requiredInterface.isMappedCollectionOrIteratorInterface && property.name in suppressedMemberNames) &&
+                    (property.hasNativeProjectionGetterAccessor() || property.hasNativeProjectionSetterAccessor())
+            }
+        }
 }
 
 internal fun WinRTMethodDefinition.projectedRuntimeClassMethodName(
@@ -639,36 +627,21 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     val getterBinding = plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
-    val getterSlotExpression = getterBinding.slotCodeBlock()
     val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(propertyTypeName),
     ).mutable(!property.isReadOnly)
     builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
-    val getterInvocation = renderReferencePropertyGetter(getterBinding)
-        ?: renderProjectedObjectPropertyGetter(getterBinding)
-        ?: renderScalarPropertyGetter(getterBinding)
-        ?: renderInstanceNoArgIntrinsicInvocation(getterBinding)
-        ?: renderInstanceStructResultIntrinsicInvocation(getterBinding)
-        ?: renderInstanceArrayResultIntrinsicInvocation(
-            referenceExpression = getterBinding.ownerCachePropertyName,
-            slotExpression = getterSlotExpression,
-            returnBinding = getterBinding.returnBinding,
-            parameterBindings = getterBinding.parameterBindings,
-            suppressHResultCheck = getterBinding.suppressHResultCheck,
-        )
-        ?: renderInstanceEnumResultIntrinsicInvocation(
-            referenceExpression = getterBinding.ownerCachePropertyName,
-            slotExpression = getterSlotExpression,
-            returnBinding = getterBinding.returnBinding,
-            parameterBindings = getterBinding.parameterBindings,
-            suppressHResultCheck = getterBinding.suppressHResultCheck,
-        )
-        ?: renderBoundInvocation(binding = getterBinding)
+    val getterInvocation = renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
+            .apply {
+                if (plan.canInlineRuntimeClassProjectionMethod(getterBinding)) {
+                    addModifiers(KModifier.INLINE)
+                }
+            }
             .addCode("%L\n", getterInvocation)
             .build(),
     )
@@ -688,21 +661,21 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         )
         builder.setter(
             FunSpec.setterBuilder()
+                .apply {
+                    if (setterBinding != null && plan.canInlineRuntimeClassProjectionMethod(setterBinding)) {
+                        addModifiers(KModifier.INLINE)
+                    }
+                }
                 .addParameter("value", resolveTypeName(propertyTypeName))
                 .addCode(
                     "%L\n",
                     setterBinding?.let {
-                        renderOneArgUnitSetterIntrinsicInvocation(
-                            referenceExpression = it.ownerCachePropertyName,
-                            slotExpression = it.slotCodeBlock(),
-                            returnBinding = it.returnBinding,
+                        renderBoundInvocation(
+                            binding = it,
                             parameterBindings = it.parameterBindings.takeIf { parameters ->
                                 parameters.size == 1 && parameters.single().name == "value"
                             } ?: setterParameterBindings,
-                            suppressHResultCheck = it.suppressHResultCheck,
-                            argumentExpression = "value",
                         )
-                            ?: renderBoundInvocation(it)
                     }
                         ?: missingAbiBindingError("property ${property.name} setter"),
                 )
@@ -725,756 +698,17 @@ internal fun WinRTMethodDefinition.receiveArrayResultParameter(): WinRTParameter
 }
 
 internal fun WinRTMethodDefinition.projectedKotlinParameters(): List<WinRTParameterDefinition> =
-    receiveArrayResultParameter()?.let { receiveArray -> parameters.filterNot { it == receiveArray } } ?: parameters
+    (receiveArrayResultParameter()?.let { receiveArray -> parameters.filterNot { it == receiveArray } } ?: parameters)
+        .map { parameter ->
+            if (metadataParameterCategoryFor(parameter) == WinRTMetadataParameterCategory.Out) {
+                parameter.copy(typeName = "io.github.composefluent.winrt.runtime.WinRTOut<${parameter.typeName}>")
+            } else {
+                parameter
+            }
+        }
 
 internal fun WinRTMethodDefinition.projectedKotlinReturnTypeName(): String =
     receiveArrayResultParameter()?.typeName ?: returnTypeName
-
-private fun KotlinProjectionRenderer.renderInstanceOneArgUnitIntrinsicInvocation(
-    binding: KotlinProjectionInstanceMemberBinding,
-    argumentExpression: String? = null,
-): CodeBlock? {
-    return renderInstanceScalarOneArgUnitIntrinsicInvocation(
-        referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = binding.slotCodeBlock(),
-        returnBinding = binding.returnBinding,
-        parameterBindings = binding.parameterBindings,
-        suppressHResultCheck = binding.suppressHResultCheck,
-        argumentExpression = argumentExpression,
-    )
-}
-
-private fun KotlinProjectionRenderer.renderInstanceScalarOneArgUnitIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-    argumentExpression: String? = null,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        parameterBindings.size != 1 ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    val parameter = parameterBindings.single()
-    val helperFunction = when (parameter.typeBinding.kind) {
-        KotlinProjectionAbiValueKind.String -> {
-            if (parameter.typeBinding.typeName.endsWith("?")) return null
-            "setString"
-        }
-        KotlinProjectionAbiValueKind.Boolean -> "setBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "setInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "setUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "setInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "setUInt64"
-        KotlinProjectionAbiValueKind.Float -> "setFloat"
-        KotlinProjectionAbiValueKind.Double -> "setDouble"
-        else -> return null
-    }
-    modulePlatformAbiCalls?.scalarSetter(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        helperFunction = helperFunction,
-        argumentExpression = CodeBlock.of("%L", argumentExpression ?: parameter.name),
-    )?.let { return it }
-    return CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%L,\n", argumentExpression ?: parameter.name)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderOneArgUnitSetterIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-    argumentExpression: String,
-): CodeBlock? =
-    renderReferencePropertySetter(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        returnBinding = returnBinding,
-        parameterBindings = parameterBindings,
-        suppressHResultCheck = suppressHResultCheck,
-        argumentExpression = argumentExpression,
-    )
-        ?: renderInstanceScalarOneArgUnitIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = suppressHResultCheck,
-            argumentExpression = argumentExpression,
-        )
-        ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = suppressHResultCheck,
-            argumentExpression = argumentExpression,
-        )
-        ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = suppressHResultCheck,
-            argumentExpression = argumentExpression,
-        )
-        ?: renderInstanceDescriptorUnitIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = suppressHResultCheck,
-        )
-
-internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-    includeReturn: Boolean = true,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        parameterBindings.isEmpty() ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-    }
-    if (arguments.count { it.shape == "String" } > 1) {
-        return null
-    }
-    modulePlatformAbiCalls?.descriptorUnit(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        arguments = arguments,
-        includeReturn = includeReturn,
-    )?.let { return it }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("%L%T.callUnit(\n", if (includeReturn) "return " else "", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceDescriptorScalarIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        suppressHResultCheck ||
-        parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val returnShape = scalarIntrinsicReturnShape(returnBinding) ?: return null
-    val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-    }
-    modulePlatformAbiCalls?.descriptorScalar(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        returnShape = returnShape,
-        arguments = arguments,
-    )?.let { return it }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%S,\n", returnShape)
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceDescriptorBooleanIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        suppressHResultCheck ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Boolean ||
-        parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-    }
-    modulePlatformAbiCalls?.descriptorBoolean(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        arguments = arguments,
-    )?.let { return it }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceDescriptorProjectedObjectIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        suppressHResultCheck ||
-        parameterBindings.isEmpty() ||
-        customObjectAbi(returnBinding) != null
-    ) {
-        return null
-    }
-    val helperFunction = when (returnBinding.kind) {
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
-        else -> return null
-    }
-    val returnType = resolvedReturnClassName(returnBinding) ?: return null
-    val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-    }
-    if (returnBinding.typeArguments.isEmpty()) {
-        modulePlatformAbiCalls?.descriptorProjectedObject(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            helperFunction = helperFunction,
-            returnType = resolveTypeName(returnBinding.typeName),
-            wrapType = returnType,
-            arguments = arguments,
-        )?.let { return it }
-    }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .add("%T.Metadata::wrap,\n", returnType)
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceDescriptorAsyncIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        suppressHResultCheck ||
-        parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-    }
-    val asyncExpression = asyncReferenceExpression(
-        returnBinding = returnBinding,
-        pointerExpression = CodeBlock.of("%T.fromRawComPtr(__asyncReference.pointer)", PLATFORM_ABI_CLASS_NAME),
-    ) ?: return null
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .add("{ __asyncReference ->\n")
-        .indent()
-        .add("%L\n", asyncExpression)
-        .unindent()
-        .add("},\n")
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-internal fun scalarIntrinsicReturnShape(binding: KotlinProjectionAbiTypeBinding): String? =
-    when (binding.kind) {
-        KotlinProjectionAbiValueKind.Int8 -> "Int8"
-        KotlinProjectionAbiValueKind.UInt8 -> "UInt8"
-        KotlinProjectionAbiValueKind.Int16 -> "Int16"
-        KotlinProjectionAbiValueKind.UInt16 -> "UInt16"
-        KotlinProjectionAbiValueKind.Int32 -> "Int32"
-        KotlinProjectionAbiValueKind.UInt32 -> "UInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "Int64"
-        KotlinProjectionAbiValueKind.UInt64 -> "UInt64"
-        KotlinProjectionAbiValueKind.Float -> "Float"
-        KotlinProjectionAbiValueKind.Double -> "Double"
-        KotlinProjectionAbiValueKind.String -> "String"
-        else -> null
-    }
-
-internal data class DescriptorIntrinsicArgument(
-    val shape: String,
-    val expressions: List<CodeBlock>,
-    val scopeOpeners: List<CodeBlock> = emptyList(),
-)
-
-internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
-    parameter: KotlinProjectionAbiParameterBinding,
-    includeStruct: Boolean = false,
-    useRawAbiScopedMarshaling: Boolean = false,
-): DescriptorIntrinsicArgument? {
-    val binding = parameter.typeBinding
-    if (
-        useRawAbiScopedMarshaling &&
-        binding.kind in setOf(
-            KotlinProjectionAbiValueKind.String,
-            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-        )
-    ) {
-        return rawAbiScopedDescriptorIntrinsicArgument(parameter)
-    }
-    descriptorCollectionIntrinsicArgument(parameter)?.let { return it }
-    val shape = if (includeStruct) {
-        descriptorStructCapableArgumentShape(binding)
-    } else {
-        descriptorIntrinsicArgumentShape(binding)
-    } ?: return null
-    if (shape == "Object" && binding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
-        val interfaceId = binding.interfaceId ?: return null
-        val marshalerName = generatedLocalIdentifier("__", parameter.name, "ProjectionMarshaler")
-        val marshalerScope = if (parameter.name.length + binding.resolvedTypeName.length > 60) {
-            val resourceName = generatedLocalIdentifier("__", parameter.name, "ProjectionMarshalerResource")
-            CodeBlock.of(
-                "val %L = %M(%N, %S, %T(%S))\n%L.use { %L ->",
-                resourceName,
-                WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
-                kotlinPoetNameLiteral(parameter.name),
-                binding.resolvedTypeName,
-                GUID_CLASS_NAME,
-                interfaceId.toString(),
-                resourceName,
-                marshalerName,
-            )
-        } else {
-            CodeBlock.of(
-                "%M(%N, %S, %T(%S)).use { %L ->",
-                WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
-                kotlinPoetNameLiteral(parameter.name),
-                binding.resolvedTypeName,
-                GUID_CLASS_NAME,
-                interfaceId.toString(),
-                marshalerName,
-            )
-        }
-        return DescriptorIntrinsicArgument(
-            shape = "RawAddress",
-            expressions = listOf(CodeBlock.of("%L.abi", marshalerName)),
-            scopeOpeners = listOf(marshalerScope),
-        )
-    }
-    return when {
-        shape == "Object" -> DescriptorIntrinsicArgument(
-            shape = shape,
-            expressions = listOf(CodeBlock.of("%L as %T", parameter.name, IWINRT_OBJECT_CLASS_NAME)),
-        )
-        shape.startsWith("Struct") -> {
-            val structType = nativeStructAdapterClassName(binding) ?: return null
-            DescriptorIntrinsicArgument(
-                shape = shape,
-                expressions = listOf(CodeBlock.of("%L", parameter.name), CodeBlock.of("%T.Metadata", structType)),
-            )
-        }
-        binding.kind == KotlinProjectionAbiValueKind.Enum -> DescriptorIntrinsicArgument(
-            shape = shape,
-            expressions = listOf(CodeBlock.of("%L.abiValue", parameter.name)),
-        )
-        else -> DescriptorIntrinsicArgument(
-            shape = shape,
-            expressions = listOf(CodeBlock.of("%L", parameter.name)),
-        )
-    }
-}
-
-private fun KotlinProjectionRenderer.rawAbiScopedDescriptorIntrinsicArgument(
-    parameter: KotlinProjectionAbiParameterBinding,
-): DescriptorIntrinsicArgument? {
-    val marshaler = buildAbiParameterMarshaler(parameter) ?: return null
-    if (
-        marshaler.abiArgumentKind != KotlinProjectionComArgumentKind.Pointer ||
-        marshaler.extraAbiArgumentExpressions.isNotEmpty() ||
-        marshaler.extraAbiArgumentKinds.isNotEmpty() ||
-        marshaler.postCallStatements.isNotEmpty() ||
-        marshaler.finallyStatements.isNotEmpty() ||
-        marshaler.resultAllocation != null ||
-        marshaler.resultLocalDeclarations != null ||
-        marshaler.readbackStatement != null
-    ) {
-        return null
-    }
-    return DescriptorIntrinsicArgument(
-        shape = "RawAddress",
-        expressions = listOf(marshaler.abiArgumentExpression),
-        scopeOpeners = marshaler.scopeOpeners,
-    )
-}
-
-private fun KotlinProjectionRenderer.descriptorCollectionIntrinsicArgument(
-    parameter: KotlinProjectionAbiParameterBinding,
-): DescriptorIntrinsicArgument? {
-    val marshaler = when (parameter.typeBinding.kind) {
-        KotlinProjectionAbiValueKind.MappedBindableIterable,
-        KotlinProjectionAbiValueKind.MappedBindableVector,
-        KotlinProjectionAbiValueKind.MappedBindableVectorView -> bindableCollectionParameterMarshaler(parameter)
-        KotlinProjectionAbiValueKind.MappedIterable,
-        KotlinProjectionAbiValueKind.MappedVector,
-        KotlinProjectionAbiValueKind.MappedMap,
-        KotlinProjectionAbiValueKind.MappedVectorView,
-        KotlinProjectionAbiValueKind.MappedMapView -> mappedCollectionParameterMarshaler(parameter)
-        else -> return null
-    } ?: return null
-    if (
-        marshaler.abiArgumentKind != KotlinProjectionComArgumentKind.Pointer ||
-        marshaler.extraAbiArgumentExpressions.isNotEmpty() ||
-        marshaler.postCallStatements.isNotEmpty() ||
-        marshaler.finallyStatements.isNotEmpty() ||
-        marshaler.resultAllocation != null ||
-        marshaler.resultLocalDeclarations != null ||
-        marshaler.readbackStatement != null
-    ) {
-        return null
-    }
-    return DescriptorIntrinsicArgument(
-        shape = "RawAddress",
-        expressions = listOf(marshaler.abiArgumentExpression),
-        scopeOpeners = marshaler.scopeOpeners,
-    )
-}
-
-internal fun CodeBlock.Builder.openDescriptorIntrinsicArgumentScopes(
-    arguments: List<DescriptorIntrinsicArgument>,
-): CodeBlock.Builder {
-    arguments.flatMap(DescriptorIntrinsicArgument::scopeOpeners).forEach { scopeOpener ->
-        add("%L\n", scopeOpener)
-        indent()
-    }
-    return this
-}
-
-internal fun CodeBlock.Builder.closeDescriptorIntrinsicArgumentScopes(
-    arguments: List<DescriptorIntrinsicArgument>,
-): CodeBlock.Builder {
-    repeat(arguments.sumOf { it.scopeOpeners.size }) {
-        unindent()
-        add("}\n")
-    }
-    return this
-}
-
-internal fun CodeBlock.Builder.addDescriptorIntrinsicArgumentExpressions(
-    arguments: List<DescriptorIntrinsicArgument>,
-): CodeBlock.Builder {
-    arguments.forEach { argument ->
-        argument.expressions.forEach { expression ->
-            add("%L,\n", expression)
-        }
-    }
-    return this
-}
-
-internal fun descriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
-    when (binding.kind) {
-        KotlinProjectionAbiValueKind.Int32 ->
-            if (binding.typeName.endsWith("?")) null else "Int32"
-        KotlinProjectionAbiValueKind.UInt32 ->
-            if (binding.typeName.endsWith("?")) null else "UInt32"
-        KotlinProjectionAbiValueKind.Int64 ->
-            if (binding.typeName.endsWith("?")) null else "Int64"
-        KotlinProjectionAbiValueKind.UInt64 ->
-            if (binding.typeName.endsWith("?")) null else "UInt64"
-        KotlinProjectionAbiValueKind.Float ->
-            if (binding.typeName.endsWith("?")) null else "Float"
-        KotlinProjectionAbiValueKind.Double ->
-            if (binding.typeName.endsWith("?")) null else "Double"
-        KotlinProjectionAbiValueKind.Boolean ->
-            if (binding.typeName.endsWith("?")) null else "Boolean"
-        KotlinProjectionAbiValueKind.Enum ->
-            binding.enumUnderlyingType?.let(::integralProjectionIntrinsicShapeName)
-        KotlinProjectionAbiValueKind.String ->
-            if (binding.typeName.endsWith("?")) null else "String"
-        KotlinProjectionAbiValueKind.ProjectedInterface,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            if (
-                binding.typeName.endsWith("?") ||
-                binding.typeArguments.isNotEmpty() ||
-                binding.typeName != binding.resolvedTypeName ||
-                '.' !in binding.typeName ||
-                mappedTypeByAbiName(binding.resolvedTypeName)?.customObjectAbi != null ||
-                mappedTypeByAbiName(binding.typeName)?.customObjectAbi != null
-            ) {
-                null
-            } else {
-                "Object"
-            }
-        else -> null
-    }
-
-internal fun KotlinProjectionRenderer.descriptorStructCapableArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
-    when (binding.kind) {
-        KotlinProjectionAbiValueKind.Struct ->
-            if (binding.typeName.endsWith("?") || nativeStructAdapterClassName(binding) == null) {
-                null
-            } else {
-                descriptorByValueStructArgumentShape(binding)
-            }
-        else -> descriptorIntrinsicArgumentShape(binding)
-    }
-
-private fun descriptorByValueStructArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
-    binding.abiSize
-        ?.takeIf { it > 0 }
-        ?.let { size ->
-            binding.abiAlignment
-                ?.takeIf { it > 0 }
-                ?.let { alignment -> "Struct${size}_${alignment}" }
-        }
-
-private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(
-    binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock? {
-    if (binding.parameterBindings.isNotEmpty() || binding.suppressHResultCheck) {
-        return null
-    }
-    return renderInstanceProjectedObjectGetterInvocation(
-        referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = binding.slotCodeBlock(),
-        returnBinding = binding.returnBinding,
-    )
-}
-
-private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
-    binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock? {
-    if (binding.parameterBindings.isNotEmpty()) {
-        return null
-    }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Boolean ->
-            if (binding.suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
-        KotlinProjectionAbiValueKind.Float -> "getFloat"
-        KotlinProjectionAbiValueKind.Double -> "getDouble"
-        else -> return null
-    }
-    return renderInstanceScalarGetterInvocation(
-        referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = binding.slotCodeBlock(),
-        helperFunction = helperFunction,
-        intrinsic = useProjectionIntrinsics,
-        modulePlatformAbiCalls = modulePlatformAbiCalls,
-    )
-}
-
-internal fun renderInstanceScalarGetterInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    helperFunction: String,
-    @Suppress("UNUSED_PARAMETER")
-    intrinsic: Boolean = false,
-    modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
-): CodeBlock {
-    modulePlatformAbiCalls?.scalarGetter(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        helperFunction = helperFunction,
-    )?.let { return it }
-    return CodeBlock.builder()
-        .add(
-            "return %T.%L(\n",
-            WINRT_PROJECTION_INTRINSIC_CLASS_NAME,
-            helperFunction,
-        )
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    @Suppress("UNUSED_PARAMETER")
-    intrinsic: Boolean = useProjectionIntrinsics,
-): CodeBlock? {
-    if (customObjectAbi(returnBinding) != null) {
-        return null
-    }
-    val helperFunction = when (returnBinding.kind) {
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            if (returnBinding.isNullableAbiReturn) "getNullableProjectedRuntimeClass" else "getProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface ->
-            if (returnBinding.isNullableAbiReturn) "getNullableProjectedInterface" else "getProjectedInterface"
-        else -> return null
-    }
-    val returnType = resolvedReturnClassName(returnBinding) ?: return null
-    if (returnBinding.typeArguments.isEmpty()) {
-        modulePlatformAbiCalls?.projectedObjectGetter(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            helperFunction = helperFunction,
-            returnType = resolveTypeName(returnBinding.typeName),
-            wrapType = returnType,
-        )?.let { return it }
-    }
-    return CodeBlock.builder()
-        .add(
-            "return %T.%L(\n",
-            WINRT_PROJECTION_INTRINSIC_CLASS_NAME,
-            helperFunction,
-        )
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%T.Metadata::wrap,\n", returnType)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderReferencePropertyGetter(
-    binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock? {
-    if (
-        binding.parameterBindings.isNotEmpty() ||
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Reference
-    ) {
-        return null
-    }
-    val interfaceId = referenceInterfaceIdCode(binding.returnBinding) ?: return null
-    return CodeBlock.builder()
-        .add("return %T.getReferenceValue(\n", WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME)
-        .indent()
-        .add("%L,\n", binding.ownerCachePropertyName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%L,\n", interfaceId)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderReferencePropertySetter(
-    binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock? {
-    return renderReferencePropertySetter(
-        referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = binding.slotCodeBlock(),
-        returnBinding = binding.returnBinding,
-        parameterBindings = binding.parameterBindings,
-        suppressHResultCheck = binding.suppressHResultCheck,
-    )
-}
-
-private fun KotlinProjectionRenderer.renderReferencePropertySetter(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-    argumentExpression: String? = null,
-): CodeBlock? {
-    val valueBinding = parameterBindings.singleOrNull() ?: return null
-    if (
-        suppressHResultCheck ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        valueBinding.name != "value" ||
-        valueBinding.typeBinding.kind != KotlinProjectionAbiValueKind.Reference
-    ) {
-        return null
-    }
-    val interfaceId = referenceInterfaceIdCode(valueBinding.typeBinding) ?: return null
-    return CodeBlock.builder()
-        .add("%T.setReferenceValue(\n", WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%L,\n", argumentExpression ?: valueBinding.name)
-        .add("%L,\n", interfaceId)
-        .unindent()
-        .add(")\n")
-        .build()
-}
 
 internal fun missingAbiBindingError(memberName: String): CodeBlock =
     CodeBlock.of(
@@ -1497,10 +731,33 @@ internal fun runtimeClassMemberModifiers(
         ?.interfaceDescriptors
         ?.firstOrNull { it.interfaceTypeName == ownerInterfaceName }
     return when {
-        descriptor?.isOverridableInterface == true && !plan.type.isSealedType -> listOf(KModifier.PROTECTED, KModifier.OPEN)
-        descriptor?.isOverridableInterface == true || descriptor?.isProtectedInterface == true -> listOf(KModifier.PROTECTED)
+        descriptor?.isOverridableInterface == true && !plan.type.isSealedType ->
+            listOf(KModifier.PROTECTED, KModifier.OPEN)
+        descriptor?.isOverridableInterface == true || descriptor?.isProtectedInterface == true ->
+            listOf(KModifier.PROTECTED)
         else -> listOf(KModifier.OVERRIDE)
     }
+}
+
+internal fun KotlinTypeProjectionPlan.canInlineRuntimeClassProjectionMethod(
+    binding: KotlinProjectionInstanceMemberBinding,
+): Boolean =
+    canInlineRuntimeClassProjectionAccessor(binding.ownerInterfaceQualifiedName) &&
+        runtimeClassMemberModifiers(this, binding) == listOf(KModifier.OVERRIDE)
+
+internal fun KotlinTypeProjectionPlan.canInlineRuntimeClassProjectionAccessor(
+    ownerInterfaceName: String,
+): Boolean {
+    if (requiresOpenRuntimeClassShell()) {
+        return false
+    }
+    val rawOwnerInterfaceName = ownerInterfaceName.substringBefore('<').removeSuffix("?")
+    val descriptor = classMemberMergeDescriptor
+        ?.interfaceDescriptors
+        ?.firstOrNull { candidate ->
+            candidate.interfaceTypeName.substringBefore('<').removeSuffix("?") == rawOwnerInterfaceName
+        }
+    return descriptor?.isOverridableInterface != true && descriptor?.isProtectedInterface != true
 }
 
 internal fun authoringInvokeBridgeName(method: WinRTMethodDefinition): String =
@@ -1526,314 +783,9 @@ internal fun KotlinProjectionRenderer.renderBoundInvocation(
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
 }
 
-private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
-    binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock? {
-    if (!useProjectionIntrinsics || binding.parameterBindings.isNotEmpty()) {
-        return null
-    }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Unit -> return null
-        KotlinProjectionAbiValueKind.String -> "getString"
-        KotlinProjectionAbiValueKind.Boolean ->
-            if (binding.suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
-        KotlinProjectionAbiValueKind.Float -> "getFloat"
-        KotlinProjectionAbiValueKind.Double -> "getDouble"
-        else -> return null
-    }
-    return renderInstanceScalarGetterInvocation(
-        referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = binding.slotCodeBlock(),
-        helperFunction = helperFunction,
-        intrinsic = true,
-        modulePlatformAbiCalls = modulePlatformAbiCalls,
-    )
-}
-
-private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocation(
-    binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock? =
-    renderInstanceStructResultIntrinsicInvocation(
-        referenceExpression = binding.ownerCachePropertyName,
-        slotExpression = binding.slotCodeBlock(),
-        returnBinding = binding.returnBinding,
-        parameterBindings = binding.parameterBindings,
-        suppressHResultCheck = binding.suppressHResultCheck,
-    )
-
-private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Struct ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    if (customStructAbi(returnBinding) != null) {
-        return null
-    }
-    val structType = nativeStructClassName(returnBinding) ?: return null
-    val moduleStruct = returnBinding.modulePlatformAbiStruct(structType)
-    if (parameterBindings.isNotEmpty()) {
-        val arguments = parameterBindings.map { parameter ->
-            if (parameter.category != WinRTMetadataParameterCategory.In) {
-                return null
-            }
-            descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-        }
-        moduleStruct?.let { struct ->
-            modulePlatformAbiCalls?.descriptorStruct(
-                referenceExpression = referenceExpression,
-                slotExpression = slotExpression,
-                resultStruct = struct,
-                adapterExpression = CodeBlock.of("%T.Metadata", structType),
-                arguments = arguments,
-            )?.let { return it }
-        }
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%S,\n", arguments.joinToString(",") { it.shape })
-            .add("%T.Metadata,\n", structType)
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-    moduleStruct?.let { struct ->
-        modulePlatformAbiCalls?.structGetter(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            struct = struct,
-            adapterExpression = CodeBlock.of("%T.Metadata", structType),
-        )?.let { return it }
-    }
-    return CodeBlock.builder()
-        .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%T.Metadata,\n", structType)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Enum ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    val enumType = resolvedReturnClassName(returnBinding) ?: return null
-    val integralType = returnBinding.enumUnderlyingType ?: return null
-    val helperFunction = integralProjectionIntrinsicGetterName(integralType) ?: return null
-    if (parameterBindings.isNotEmpty()) {
-        val returnShape = integralProjectionIntrinsicShapeName(integralType) ?: return null
-        val arguments = parameterBindings.map { parameter ->
-            if (parameter.category != WinRTMetadataParameterCategory.In) {
-                return null
-            }
-            descriptorIntrinsicArgument(parameter) ?: return null
-        }
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return %T.Metadata.fromAbi(\n", enumType)
-            .indent()
-            .add("%T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%S,\n", returnShape)
-            .add("%S,\n", arguments.joinToString(",") { it.shape })
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add("),\n")
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-    return CodeBlock.builder()
-        .add("return %T.Metadata.fromAbi(\n", enumType)
-        .indent()
-        .add("%T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .unindent()
-        .add("),\n")
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceArrayResultIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Array ||
-        parameterBindings.isNotEmpty() ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-    val marshaler = arrayElementMarshalerExpression(elementBinding) ?: return null
-    return CodeBlock.builder()
-        .add("return %T.getArray(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%L,\n", marshaler)
-        .unindent()
-        .add(").toTypedArray() as %T\n", resolveTypeName(returnBinding.typeName))
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceEnumOneArgUnitIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-    argumentExpression: String? = null,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        parameterBindings.size != 1 ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    val parameter = parameterBindings.single()
-    val helperFunction = when (parameter.typeBinding.kind) {
-        KotlinProjectionAbiValueKind.Enum ->
-            parameter.typeBinding.enumUnderlyingType?.let(::integralProjectionIntrinsicSetterName)
-                ?: return null
-        else -> return null
-    }
-    return CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%L.abiValue,\n", argumentExpression ?: parameter.name)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-    argumentExpression: String? = null,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        parameterBindings.size != 1 ||
-        suppressHResultCheck
-    ) {
-        return null
-    }
-    val parameter = parameterBindings.single()
-    if (parameter.typeBinding.kind != KotlinProjectionAbiValueKind.Struct || customStructAbi(parameter.typeBinding) != null) {
-        return null
-    }
-    val structType = nativeStructClassName(parameter.typeBinding) ?: return null
-    val moduleStruct = parameter.typeBinding.modulePlatformAbiStruct(structType)
-    val valueParameter = parameter.copy(name = argumentExpression ?: parameter.name)
-    val descriptorArgument = descriptorIntrinsicArgument(valueParameter, includeStruct = true)
-    if (descriptorArgument != null) {
-        val arguments = listOf(descriptorArgument)
-        modulePlatformAbiCalls?.descriptorUnit(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            arguments = arguments,
-            includeReturn = true,
-        )?.let { return it }
-        return CodeBlock.builder()
-            .openDescriptorIntrinsicArgumentScopes(arguments)
-            .add("return %T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-            .indent()
-            .add("%L,\n", referenceExpression)
-            .add("%L,\n", slotExpression)
-            .add("%S,\n", arguments.joinToString(",") { it.shape })
-            .addDescriptorIntrinsicArgumentExpressions(arguments)
-            .unindent()
-            .add(")\n")
-            .closeDescriptorIntrinsicArgumentScopes(arguments)
-            .build()
-    }
-    moduleStruct?.let { struct ->
-        modulePlatformAbiCalls?.structSetter(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            struct = struct,
-            valueExpression = CodeBlock.of("%L", argumentExpression ?: parameter.name),
-            adapterExpression = CodeBlock.of("%T.Metadata", structType),
-        )?.let { return it }
-    }
-    return CodeBlock.builder()
-        .add("return %T.setStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("%L,\n", referenceExpression)
-        .add("%L,\n", slotExpression)
-        .add("%L,\n", argumentExpression ?: parameter.name)
-        .add("%T.Metadata,\n", structType)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionAbiTypeBinding.modulePlatformAbiStruct(
-    typeName: ClassName,
-): KotlinModulePlatformAbiCallSupport.ModulePlatformAbiStruct? {
-    val sizeBytes = abiSize?.takeIf { size -> size > 0 } ?: return null
-    val alignmentBytes = abiAlignment?.takeIf { alignment -> alignment > 0 } ?: return null
-    return KotlinModulePlatformAbiCallSupport.ModulePlatformAbiStruct(
-        typeName = typeName,
-        sizeBytes = sizeBytes,
-        alignmentBytes = alignmentBytes,
-    )
-}
-
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
     binding: KotlinProjectionStaticMemberBinding,
 ): CodeBlock {
-    renderStaticIntrinsicInvocation(binding)?.let { return it }
     val callPlan = requireAbiCallPlan(
         bindingName = binding.bindingName,
         returnBinding = binding.returnBinding,
@@ -1851,7 +803,6 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocationOrNull(
     binding: KotlinProjectionStaticMemberBinding,
 ): CodeBlock? {
-    renderStaticIntrinsicInvocation(binding)?.let { return it }
     val callPlan = buildAbiCallPlan(
         returnBinding = binding.returnBinding,
         parameterBindings = binding.parameterBindings,
@@ -1862,97 +813,6 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocationOrNull(
         invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
         slotExpression = writeTimeSlotCodeBlock(binding),
         callPlan = callPlan,
-    )
-}
-
-private fun KotlinProjectionRenderer.renderStaticIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    val referenceExpression = "StaticInterfaces.${binding.ownerAccessorName}()"
-    val slotExpression = writeTimeSlotCodeBlock(binding)
-    return renderStaticNoArgIntrinsicInvocation(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        returnBinding = binding.returnBinding,
-        parameterBindings = binding.parameterBindings,
-        suppressHResultCheck = binding.suppressHResultCheck,
-    )
-        ?: renderInstanceStructResultIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = binding.returnBinding,
-            parameterBindings = binding.parameterBindings,
-            suppressHResultCheck = binding.suppressHResultCheck,
-        )
-        ?: renderInstanceDescriptorUnitIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = binding.returnBinding,
-            parameterBindings = binding.parameterBindings,
-            suppressHResultCheck = binding.suppressHResultCheck,
-        )
-        ?: renderInstanceDescriptorBooleanIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = binding.returnBinding,
-            parameterBindings = binding.parameterBindings,
-            suppressHResultCheck = binding.suppressHResultCheck,
-        )
-        ?: renderInstanceDescriptorScalarIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = binding.returnBinding,
-            parameterBindings = binding.parameterBindings,
-            suppressHResultCheck = binding.suppressHResultCheck,
-        )
-        ?: renderInstanceDescriptorProjectedObjectIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = binding.returnBinding,
-            parameterBindings = binding.parameterBindings,
-            suppressHResultCheck = binding.suppressHResultCheck,
-        )
-        ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = binding.returnBinding,
-            parameterBindings = binding.parameterBindings,
-            suppressHResultCheck = binding.suppressHResultCheck,
-        )
-}
-
-private fun KotlinProjectionRenderer.renderStaticNoArgIntrinsicInvocation(
-    referenceExpression: String,
-    slotExpression: CodeBlock,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (!useProjectionIntrinsics || parameterBindings.isNotEmpty()) {
-        return null
-    }
-    val helperFunction = when (returnBinding.kind) {
-        KotlinProjectionAbiValueKind.String -> "getString"
-        KotlinProjectionAbiValueKind.Boolean ->
-            if (suppressHResultCheck) "getNoExceptionBoolean" else "getBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
-        KotlinProjectionAbiValueKind.Float -> "getFloat"
-        KotlinProjectionAbiValueKind.Double -> "getDouble"
-        else -> return renderInstanceProjectedObjectGetterInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-        )
-    }
-    return renderInstanceScalarGetterInvocation(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        helperFunction = helperFunction,
-        intrinsic = true,
-        modulePlatformAbiCalls = modulePlatformAbiCalls,
     )
 }
 
@@ -2169,8 +1029,25 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     slotInterfaceType: WinRTTypeDefinition,
     method: WinRTMethodDefinition,
 ): FunSpec? {
-    val returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, slotInterfaceType.namespace)
-    val parameterBindings = method.projectedKotlinParameters().map { parameter ->
+    if (method.genericParameterCount > 0) {
+        return FunSpec.builder(method.projectedMethodName())
+            .addProjectedAttributeAnnotations(
+                slotInterfaceType.projectedAttributes()
+                    .filter(WinRTProjectedAttributeDescriptor::isPlatformAttribute),
+            )
+            .addMethodGenericParameters(method)
+            .addModifiers(KModifier.OVERRIDE)
+            .returns(resolveTypeName(method.projectedKotlinReturnTypeName()))
+            .addParameters(
+                method.projectedKotlinParameters().map { parameter ->
+                    ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+                },
+            )
+            .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
+            .build()
+    }
+    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, slotInterfaceType.namespace)
+    val parameterBindings = method.parameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             name = parameter.name,
             typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace),
@@ -2180,25 +1057,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
     val referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName)
     val slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName)
-    val invocation = renderInstanceDescriptorBooleanIntrinsicInvocation(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        returnBinding = returnBinding,
-        parameterBindings = parameterBindings,
-        suppressHResultCheck = method.isNoException,
-    ) ?: renderInstanceDescriptorScalarIntrinsicInvocation(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        returnBinding = returnBinding,
-        parameterBindings = parameterBindings,
-        suppressHResultCheck = method.isNoException,
-    ) ?: renderInstanceArrayResultIntrinsicInvocation(
-        referenceExpression = referenceExpression,
-        slotExpression = slotExpression,
-        returnBinding = returnBinding,
-        parameterBindings = parameterBindings,
-        suppressHResultCheck = method.isNoException,
-    ) ?: renderInlineAbiInvocation(
+    val invocation = renderInlineAbiInvocation(
         invokeTargetExpression = referenceExpression,
         slotExpression = slotExpression,
         callPlan = buildAbiCallPlan(
@@ -2271,7 +1130,16 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
             slotExpression = metadataSlotExpression(getter.slotInterfaceType.qualifiedName, "${getter.property.name.uppercase()}_GETTER_SLOT"),
             callPlan = callPlan,
         ) ?: return null
-        builder.getter(FunSpec.getterBuilder().addCode("%L\n", invocation).build())
+        builder.getter(
+            FunSpec.getterBuilder()
+                .apply {
+                    if (plan.canInlineRuntimeClassProjectionAccessor(getter.ownerInterfaceName)) {
+                        addModifiers(KModifier.INLINE)
+                    }
+                }
+                .addCode("%L\n", invocation)
+                .build(),
+        )
     }
     property.setter?.let { setter ->
         val setterTypeName = setter.property.projectedPropertyTypeName(setter.ownerInterfaceName, plan.typesByQualifiedName)
@@ -2284,15 +1152,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         )
         val referenceExpression = requiredForwardOwnerCache(setter.ownerInterfaceName, plan.defaultInterfaceName)
         val slotExpression = metadataSlotExpression(setter.slotInterfaceType.qualifiedName, "${setter.property.name.uppercase()}_SETTER_SLOT")
-        val intrinsicInvocation = renderOneArgUnitSetterIntrinsicInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = setter.property.isNoException,
-            argumentExpression = "value",
-        )
-        val invocation = intrinsicInvocation ?: renderInlineAbiInvocation(
+        val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = referenceExpression,
             slotExpression = slotExpression,
             callPlan = buildAbiCallPlan(
@@ -2301,7 +1161,17 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
                 suppressHResultCheck = setter.property.isNoException,
             ) ?: return null,
         ) ?: return null
-        builder.setter(FunSpec.setterBuilder().addParameter("value", propertyType).addCode("%L\n", invocation).build())
+        builder.setter(
+            FunSpec.setterBuilder()
+                .apply {
+                    if (plan.canInlineRuntimeClassProjectionAccessor(setter.ownerInterfaceName)) {
+                        addModifiers(KModifier.INLINE)
+                    }
+                }
+                .addParameter("value", propertyType)
+                .addCode("%L\n", invocation)
+                .build(),
+        )
     }
     return builder.build()
 }

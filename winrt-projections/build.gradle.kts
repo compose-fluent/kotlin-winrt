@@ -36,8 +36,20 @@ val projectionUseFullWindowsSdk = projectionIncludeFullWindowsSdk
     }
 
 kotlin {
-    jvm()
+    jvm {
+        compilerOptions {
+            // The IR plugin already emits direct fixed-shape ABI bodies. Re-running the legacy
+            // JVM peephole optimizer over the full SDK retains millions of ASM analysis nodes.
+            freeCompilerArgs.add("-Xno-optimize")
+        }
+    }
     mingwX64()
+
+    sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+    }
 }
 
 val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
@@ -60,6 +72,42 @@ val verifyMingwX64ProjectionCallSiteLowering by tasks.registering(VerifyBinaryMa
     artifactDescription.set("compiled mingwX64 projection klib")
 }
 
+val verifyMingwX64ProjectionCallSiteDirectLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
+    group = "verification"
+    description = "Verifies that Native generated call sites use recipe thunk accessors without the old vtable reads."
+    dependsOn("compileKotlinMingwX64")
+    binaryArtifacts.from(
+        layout.buildDirectory.dir(
+            "classes/kotlin/mingwX64/main/klib/winrt-projections/default/linkdata",
+        ),
+    )
+    markers.set(setOf("readPointer", "readPointerAt", "kotlin/TODO"))
+    artifactDescription.set("Native projection call-site linkdata")
+}
+
+val verifyMingwX64ProjectionThunkAccessors by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
+    group = "verification"
+    description = "Verifies that Native generated files contain the recipe thunk accessors used by this projection."
+    dependsOn("compileKotlinMingwX64")
+    binaryArtifacts.from(
+        layout.buildDirectory.file(
+            "classes/kotlin/mingwX64/main/klib/winrt-projections/default/ir/debugInfo.knd",
+        ),
+        layout.buildDirectory.file(
+            "classes/kotlin/mingwX64/main/klib/winrt-projections/default/ir/strings.knt",
+        ),
+    )
+    markers.set(emptySet())
+    requiredMarkers.set(
+        setOf(
+            "kotlinWinRTNativeHResultThunk",
+            "kotlinWinRTNativePackedScalarResultThunk",
+            "kotlinWinRTNativeWideScalarResultThunk",
+        ),
+    )
+    artifactDescription.set("Native projection thunk-accessor metadata")
+}
+
 val verifyJvmProjectionCallSiteDirectLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
     description = "Verifies that generated JVM call-site owners contain only direct fixed-shape lowering."
@@ -78,6 +126,7 @@ val verifyJvmProjectionCallSiteDirectLowering by tasks.registering(VerifyBinaryM
         "WinRTProjectionIntrinsic",
         "kotlin/TODO",
     ))
+    methodNamePrefixes.set(setOf("callSite_"))
     artifactDescription.set("compiled JVM module call-site owners")
 }
 
@@ -107,6 +156,8 @@ tasks.matching { task -> task.name == "jvmJar" }.configureEach {
 
 tasks.matching { task -> task.name == "mingwX64MainKlibrary" || task.name == "mingwX64Klib" }.configureEach {
     dependsOn(verifyMingwX64ProjectionCallSiteLowering)
+    dependsOn(verifyMingwX64ProjectionCallSiteDirectLowering)
+    dependsOn(verifyMingwX64ProjectionThunkAccessors)
 }
 
 tasks.named("check") {

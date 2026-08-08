@@ -154,3 +154,25 @@ actual class FinalizationHook actual constructor() {
         }
     }
 }
+
+internal actual fun createComPtrFinalizationRegistration(
+    target: Any,
+    support: RawComObjectReferenceSupport,
+): Any = comPtrCleaner.register(target, ComPtrCleanupAction(support))
+
+private class ComPtrCleanupAction(
+    private val support: RawComObjectReferenceSupport,
+) : Runnable {
+    override fun run() {
+        closeComPtrSupport(support)
+    }
+}
+
+internal actual fun closeComPtrFinalizationRegistration(
+    registration: Any,
+    @Suppress("UNUSED_PARAMETER") support: RawComObjectReferenceSupport,
+) {
+    (registration as Cleaner.Cleanable).clean()
+}
+
+private val comPtrCleaner: Cleaner = Cleaner.create()

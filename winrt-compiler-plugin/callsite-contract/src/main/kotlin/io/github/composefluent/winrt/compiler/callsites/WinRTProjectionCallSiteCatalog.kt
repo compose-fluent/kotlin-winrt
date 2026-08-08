@@ -9,9 +9,14 @@ data class WinRTProjectionCallSiteDeclaration(
     val ownerFqName: String,
     val functionName: String,
     val jvmMethodName: String,
-    val jvmMethodDescriptor: String,
-    val descriptor: WinRTProjectionCallSiteDescriptor,
-)
+    val key: WinRTProjectionCallSiteCatalogKey,
+) {
+    val jvmMethodDescriptor: String
+        get() = key.jvmMethodDescriptor
+
+    val metadata: WinRTProjectionCallSiteMetadata
+        get() = key.metadata
+}
 
 class WinRTProjectionCallSiteCatalog private constructor(
     declarations: List<WinRTProjectionCallSiteDeclaration>,
@@ -19,13 +24,14 @@ class WinRTProjectionCallSiteCatalog private constructor(
     val declarations: List<WinRTProjectionCallSiteDeclaration> =
         declarations.sortedWith(
             compareBy<WinRTProjectionCallSiteDeclaration>(
-                { declaration -> declaration.descriptor.encode() },
+                { declaration -> declaration.key.jvmMethodDescriptor },
+                { declaration -> declaration.key.metadata.toString() },
                 WinRTProjectionCallSiteDeclaration::ownerFqName,
                 WinRTProjectionCallSiteDeclaration::functionName,
             ),
         )
 
-    private val declarationsByDescriptor: Map<WinRTProjectionCallSiteDescriptor, WinRTProjectionCallSiteDeclaration>
+    private val declarationsByKey: Map<WinRTProjectionCallSiteCatalogKey, WinRTProjectionCallSiteDeclaration>
 
     init {
         val duplicateCallable = this.declarations
@@ -37,20 +43,20 @@ class WinRTProjectionCallSiteCatalog private constructor(
             "Duplicate WinRT projection call-site declaration $owner.$function."
         }
 
-        val groupedByDescriptor = this.declarations.groupBy(WinRTProjectionCallSiteDeclaration::descriptor)
-        val duplicateDescriptor = groupedByDescriptor.entries.firstOrNull { (_, matches) -> matches.size > 1 }
-        require(duplicateDescriptor == null) {
-            val matches = requireNotNull(duplicateDescriptor).value
-            "WinRT projection call-site descriptor '${matches.first().descriptor.encode()}' is owned by " +
+        val groupedByKey = this.declarations.groupBy(WinRTProjectionCallSiteDeclaration::key)
+        val duplicateKey = groupedByKey.entries.firstOrNull { (_, matches) -> matches.size > 1 }
+        require(duplicateKey == null) {
+            val matches = requireNotNull(duplicateKey).value
+            "WinRT runtime-owned call-site key '${matches.first().key}' is owned by " +
                 matches.joinToString { declaration ->
                     "${declaration.ownerFqName}.${declaration.functionName}"
                 } + "."
         }
-        declarationsByDescriptor = groupedByDescriptor.mapValues { (_, matches) -> matches.single() }
+        declarationsByKey = groupedByKey.mapValues { (_, matches) -> matches.single() }
     }
 
-    operator fun get(descriptor: WinRTProjectionCallSiteDescriptor): WinRTProjectionCallSiteDeclaration? =
-        declarationsByDescriptor[descriptor]
+    operator fun get(key: WinRTProjectionCallSiteCatalogKey): WinRTProjectionCallSiteDeclaration? =
+        declarationsByKey[key]
 
     companion object {
         fun fromJvmClass(
@@ -70,41 +76,43 @@ class WinRTProjectionCallSiteCatalog private constructor(
         ): WinRTProjectionCallSiteCatalog {
             val classModel = ClassFile.of().parse(classFileBytes)
             val ownerFqName = classModel.thisClass().asInternalName().replace('/', '.')
-            val annotationDescriptor = "L${annotationFqName.replace('.', '/')};"
+            val callSiteAnnotationDescriptor = "L${annotationFqName.replace('.', '/')};"
+            val parameterAnnotationDescriptor =
+                "L${WINRT_PROJECTION_PARAMETER_ANNOTATION_FQ_NAME.replace('.', '/')};"
             val declarations = classModel.methods().mapNotNull { method ->
-                val annotations = buildList {
-                    method.findAttributes(Attributes.runtimeInvisibleAnnotations())
-                        .forEach { attribute -> addAll(attribute.annotations()) }
-                    method.findAttributes(Attributes.runtimeVisibleAnnotations())
-                        .forEach { attribute -> addAll(attribute.annotations()) }
-                }
-                val callSiteAnnotations = annotations.filter { annotation ->
-                    annotation.className().equalsString(annotationDescriptor)
-                }
-                if (callSiteAnnotations.isEmpty()) {
-                    return@mapNotNull null
-                }
+                val callSiteAnnotations = method.declarationAnnotations()
+                    .filter { annotation -> annotation.className().equalsString(callSiteAnnotationDescriptor) }
+                if (callSiteAnnotations.isEmpty()) return@mapNotNull null
                 require(callSiteAnnotations.size == 1) {
                     "JVM method $ownerFqName.${method.methodName().stringValue()} has multiple " +
                         "@$annotationFqName annotations."
                 }
-                val descriptorText = callSiteAnnotations.single().descriptorText(
-                    ownerFqName = ownerFqName,
-                    methodName = method.methodName().stringValue(),
-                    annotationFqName = annotationFqName,
-                )
-                val descriptor = WinRTProjectionCallSiteDescriptor.parse(descriptorText)
-                require(descriptor.encode() == descriptorText) {
-                    "JVM method $ownerFqName.${method.methodName().stringValue()} uses a non-canonical " +
-                        "WinRT projection call-site descriptor '$descriptorText'."
+
+                val parameterAnnotations = method.parameterDeclarationAnnotations()
+                require(parameterAnnotations.size >= 2) {
+                    "JVM method $ownerFqName.${method.methodName().stringValue()} must expose receiver and slot parameters."
                 }
+                val parameters = parameterAnnotations.drop(2).mapIndexed { index, annotations ->
+                    val matches = annotations.filter { annotation ->
+                        annotation.className().equalsString(parameterAnnotationDescriptor)
+                    }
+                    require(matches.size <= 1) {
+                        "JVM method $ownerFqName.${method.methodName().stringValue()} parameter ${index + 2} " +
+                            "has multiple @$WINRT_PROJECTION_PARAMETER_ANNOTATION_FQ_NAME annotations."
+                    }
+                    matches.singleOrNull()?.parameterMetadata()
+                        ?: WinRTProjectionParameterMetadata()
+                }
+                val metadata = callSiteAnnotations.single().callSiteMetadata(parameters)
                 val jvmMethodName = method.methodName().stringValue()
                 WinRTProjectionCallSiteDeclaration(
                     ownerFqName = ownerFqName,
                     functionName = jvmMethodName.kotlinSourceFunctionName(),
                     jvmMethodName = jvmMethodName,
-                    jvmMethodDescriptor = method.methodType().stringValue(),
-                    descriptor = descriptor,
+                    key = WinRTProjectionCallSiteCatalogKey(
+                        metadata = metadata,
+                        jvmMethodDescriptor = method.methodType().stringValue(),
+                    ),
                 )
             }
             return WinRTProjectionCallSiteCatalog(declarations)
@@ -112,23 +120,64 @@ class WinRTProjectionCallSiteCatalog private constructor(
     }
 }
 
-private fun Annotation.descriptorText(
-    ownerFqName: String,
-    methodName: String,
-    annotationFqName: String,
-): String {
-    val descriptorElements = elements().filter { element -> element.name().equalsString("descriptor") }
-    require(descriptorElements.size == 1 && elements().size == 1) {
-        "JVM method $ownerFqName.$methodName has a malformed @$annotationFqName annotation."
+private fun java.lang.classfile.MethodModel.declarationAnnotations(): List<Annotation> = buildList {
+    findAttributes(Attributes.runtimeInvisibleAnnotations())
+        .forEach { attribute -> addAll(attribute.annotations()) }
+    findAttributes(Attributes.runtimeVisibleAnnotations())
+        .forEach { attribute -> addAll(attribute.annotations()) }
+}
+
+private fun java.lang.classfile.MethodModel.parameterDeclarationAnnotations(): List<List<Annotation>> {
+    val invisible = findAttributes(Attributes.runtimeInvisibleParameterAnnotations())
+        .flatMap { attribute -> attribute.parameterAnnotations() }
+    val visible = findAttributes(Attributes.runtimeVisibleParameterAnnotations())
+        .flatMap { attribute -> attribute.parameterAnnotations() }
+    val count = maxOf(invisible.size, visible.size, methodTypeSymbol().parameterCount())
+    return List(count) { index -> invisible.getOrNull(index).orEmpty() + visible.getOrNull(index).orEmpty() }
+}
+
+private fun Annotation.callSiteMetadata(
+    parameters: List<WinRTProjectionParameterMetadata>,
+): WinRTProjectionCallSiteMetadata {
+    val values = elements().associate { element -> element.name().stringValue() to element.value() }
+    val known = setOf("hResult", "result", "returnAbiType")
+    require(values.keys.all(known::contains)) {
+        "Malformed @$WINRT_PROJECTION_CALL_SITE_ANNOTATION_FQ_NAME annotation elements ${values.keys - known}."
     }
-    val value = descriptorElements.single().value()
-    require(value is AnnotationValue.OfString) {
-        "JVM method $ownerFqName.$methodName has a non-string @$annotationFqName descriptor."
+    return WinRTProjectionCallSiteMetadata(
+        hResultPolicy = values["hResult"].enumValueOrDefault(WinRTProjectionCallSiteHResultPolicy.CHECK),
+        resultKind = values["result"].enumValueOrDefault(WinRTProjectionCallSiteResultKind.INFER),
+        returnAbiType = values["returnAbiType"].stringValueOrDefault(),
+        parameters = parameters,
+    )
+}
+
+private fun Annotation.parameterMetadata(): WinRTProjectionParameterMetadata {
+    val values = elements().associate { element -> element.name().stringValue() to element.value() }
+    val known = setOf("direction", "abiType")
+    require(values.keys.all(known::contains)) {
+        "Malformed @$WINRT_PROJECTION_PARAMETER_ANNOTATION_FQ_NAME annotation elements ${values.keys - known}."
     }
-    return value.stringValue()
+    return WinRTProjectionParameterMetadata(
+        direction = values["direction"].enumValueOrDefault(WinRTProjectionCallSiteParameterDirection.IN),
+        abiType = values["abiType"].stringValueOrDefault(),
+    )
+}
+
+private inline fun <reified T : Enum<T>> AnnotationValue?.enumValueOrDefault(default: T): T {
+    if (this == null) return default
+    require(this is AnnotationValue.OfEnum) { "Expected an enum annotation value, got $this." }
+    val name = constantName().stringValue()
+    return enumValues<T>().singleOrNull { value -> value.name == name }
+        ?: error("Unknown ${T::class.simpleName} annotation value '$name'.")
+}
+
+private fun AnnotationValue?.stringValueOrDefault(): String {
+    if (this == null) return ""
+    require(this is AnnotationValue.OfString) { "Expected a string annotation value, got $this." }
+    return stringValue()
 }
 
 private val kotlinJvmMangledSuffix = Regex("-[A-Za-z0-9_]{7}$")
 
-private fun String.kotlinSourceFunctionName(): String =
-    replace(kotlinJvmMangledSuffix, "")
+private fun String.kotlinSourceFunctionName(): String = replace(kotlinJvmMangledSuffix, "")

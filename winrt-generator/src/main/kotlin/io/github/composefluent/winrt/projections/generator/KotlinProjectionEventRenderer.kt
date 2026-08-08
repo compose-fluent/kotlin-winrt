@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.projections.generator
 
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteHResultPolicy
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
@@ -8,16 +9,12 @@ import io.github.composefluent.winrt.metadata.WinRTEventDefinition
 import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRTGenericAbiInventory
-import io.github.composefluent.winrt.metadata.WinRTGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTInterfaceMemberSignatureSetDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventory
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionInventoryBuilder
-import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
 import io.github.composefluent.winrt.metadata.WinRTModuleActivationAndAuthoringDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMethodVtableDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
@@ -448,230 +445,17 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     val binding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == staticMethodBindingName(plan, method)
     } ?: return null
-    val invocation = renderStaticArrayResultIntrinsicInvocation(binding)
-        ?: renderStaticStringProjectedObjectIntrinsicInvocation(binding)
-        ?: renderStaticIntrinsicGetter(binding)
-        ?: renderStaticDescriptorUnitIntrinsicInvocation(binding)
-        ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
-        ?: renderStaticDescriptorScalarIntrinsicInvocation(binding)
-        ?: renderStaticDescriptorProjectedObjectIntrinsicInvocation(binding)
-        ?: renderBoundStaticInvocation(binding)
+    val invocation = renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method)
-        .returns(resolveTypeName(method.returnTypeName))
-        .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(resolveTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(
+            method.projectedKotlinParameters().map { parameter ->
+                ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+            },
+        )
         .addCode("%L\n", invocation)
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticArrayResultIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Array
-    ) {
-        return null
-    }
-    val elementBinding = binding.returnBinding.typeArguments.singleOrNull() ?: return null
-    val marshaler = arrayElementMarshalerExpression(elementBinding) ?: return null
-    val helperFunction = when (binding.parameterBindings.size) {
-        0 -> "staticGetArray"
-        1 -> {
-            val parameter = binding.parameterBindings.single()
-            if (
-                parameter.category != WinRTMetadataParameterCategory.In ||
-                parameter.typeBinding.kind !in setOf(
-                    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-                    KotlinProjectionAbiValueKind.ProjectedInterface,
-                )
-            ) {
-                return null
-            }
-            "staticGetArrayWithProjectedObject"
-        }
-        else -> return null
-    }
-    val code = CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-    binding.parameterBindings.singleOrNull()?.let { parameter ->
-        code.add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-    }
-    code.add("%L,\n", marshaler)
-        .unindent()
-        .add(").toTypedArray() as %T\n", resolveTypeName(binding.returnBinding.typeName))
-    return code.build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticStringProjectedObjectIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.parameterBindings.size != 1
-    ) {
-        return null
-    }
-    val parameter = binding.parameterBindings.single()
-    if (
-        parameter.category != WinRTMetadataParameterCategory.In ||
-        parameter.typeBinding.kind != KotlinProjectionAbiValueKind.String ||
-        parameter.typeBinding.typeName.endsWith("?")
-    ) {
-        return null
-    }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "staticCallProjectedRuntimeClassWithString"
-        KotlinProjectionAbiValueKind.ProjectedInterface -> "staticCallProjectedInterfaceWithString"
-        else -> return null
-    }
-    val returnType = resolvedReturnClassName(binding.returnBinding) ?: return null
-    return CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%L,\n", parameter.name)
-        .add("%T.Metadata::wrap,\n", returnType)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticDescriptorUnitIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        binding.parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter) ?: return null
-    }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticDescriptorBooleanIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Boolean ||
-        binding.parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter) ?: return null
-    }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
-        else -> return null
-    }
-    val returnType = resolvedReturnClassName(binding.returnBinding) ?: return null
-    val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter) ?: return null
-    }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .add("%T.Metadata::wrap,\n", returnType)
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val returnShape = scalarIntrinsicReturnShape(binding.returnBinding) ?: return null
-    val arguments = binding.parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter) ?: return null
-    }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%S,\n", returnShape)
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
         .build()
 }
 
@@ -720,8 +504,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(propertyTypeName),
     ).mutable(!property.isReadOnly)
-    val getterInvocation = renderStaticIntrinsicGetter(getterBinding)
-        ?: renderBoundStaticInvocation(getterBinding)
+    val getterInvocation = renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
@@ -737,96 +520,13 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
                 .addParameter("value", resolveTypeName(propertyTypeName))
                 .addCode(
                     "%L\n",
-                    setterBinding?.let {
-                        renderStaticIntrinsicSetter(it)
-                            ?: renderBoundStaticInvocation(it)
-                    }
+                    setterBinding?.let(::renderBoundStaticInvocation)
                         ?: missingAbiBindingError("static property ${property.name} setter"),
                 )
                 .build(),
         )
     }
     return builder.build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticIntrinsicSetter(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        binding.parameterBindings.size != 1
-    ) {
-        return null
-    }
-    val parameterBinding = binding.parameterBindings.single()
-    if (parameterBinding.category != WinRTMetadataParameterCategory.In) {
-        return null
-    }
-    val intrinsicFunction = when (parameterBinding.typeBinding.kind) {
-        KotlinProjectionAbiValueKind.String -> "setString"
-        KotlinProjectionAbiValueKind.Boolean -> "setBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "setInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "setUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "setInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "setUInt64"
-        KotlinProjectionAbiValueKind.Float -> "setFloat"
-        KotlinProjectionAbiValueKind.Double -> "setDouble"
-        else -> return null
-    }
-    return CodeBlock.builder()
-        .add("%T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicFunction)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.slotCodeBlock())
-        .add("%L,\n", parameterBinding.name)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticIntrinsicGetter(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        binding.parameterBindings.isNotEmpty() ||
-        binding.suppressHResultCheck
-    ) {
-        return null
-    }
-    val intrinsicFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.String -> "getString"
-        KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
-        KotlinProjectionAbiValueKind.Float -> "getFloat"
-        KotlinProjectionAbiValueKind.Double -> "getDouble"
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            if (binding.returnBinding.isNullableAbiReturn) "getNullableProjectedRuntimeClass" else "getProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface ->
-            if (binding.returnBinding.isNullableAbiReturn) "getNullableProjectedInterface" else "getProjectedInterface"
-        else -> return null
-    }
-    val code = CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicFunction)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L", binding.slotCodeBlock())
-    if (binding.returnBinding.kind in setOf(
-            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-            KotlinProjectionAbiValueKind.ProjectedInterface,
-        )
-    ) {
-        code.add(",\n%T.Metadata::wrap", resolvedReturnClassName(binding.returnBinding) ?: return null)
-    }
-    code.add(",\n")
-    code.unindent()
-    code.add(")\n")
-    return code.build()
 }
 
 internal fun KotlinProjectionRenderer.appendCompanionShells(
@@ -856,6 +556,12 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                 PropertySpec.builder("RUNTIME_CLASS", String::class)
                     .addModifiers(KModifier.CONST)
                     .initializer("%S", plan.type.qualifiedName)
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("_activationFactory", ACTIVATION_FACTORY_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .initializer("%T.get(RUNTIME_CLASS)", ACTIVATION_FACTORY_CLASS_NAME)
                     .build(),
             )
             .apply {
@@ -891,12 +597,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
             .addFunction(
                 FunSpec.builder("activate")
                     .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
-                    .addCode(
-                        CodeBlock.of(
-                            "return %T.activateInstance(RUNTIME_CLASS)\n",
-                            ACTIVATION_FACTORY_CLASS_NAME,
-                        ),
-                    )
+                    .addStatement("return _activationFactory.activateInstance()")
                     .build(),
             )
             .build()
@@ -1079,7 +780,6 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
 
 internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
-    val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
         .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
@@ -1101,18 +801,11 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
                 parameterBindings = parameterBindings,
                 suppressHResultCheck = method.isNoException,
             )
-            val invocation = renderActivationFactoryCreateIntrinsicInvocation(
-                factoryClassName = factoryClassName,
-                factoryType = factoryType,
-                method = method,
-                returnBinding = returnBinding,
-                parameterBindings = parameterBindings,
-                suppressHResultCheck = method.isNoException,
-            ) ?: renderInlineAbiInvocation(
+            val invocation = renderInlineAbiInvocation(
                 invokeTargetExpression = "acquire()",
                 slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
                 callPlan = callPlan,
-            ) ?: error("Generator ABI marshaler parity failed to emit factory ${factoryType.qualifiedName}.${method.name}")
+            )
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
                 .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
@@ -1122,56 +815,17 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
         }
 }
 
-private fun KotlinProjectionRenderer.renderActivationFactoryCreateIntrinsicInvocation(
-    factoryClassName: TypeName,
-    factoryType: WinRTTypeDefinition,
-    method: WinRTMethodDefinition,
-    returnBinding: KotlinProjectionAbiTypeBinding,
-    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (
-        !useProjectionIntrinsics ||
-        suppressHResultCheck ||
-        returnBinding.kind != KotlinProjectionAbiValueKind.InspectableReference ||
-        parameterBindings.isEmpty()
-    ) {
-        return null
-    }
-    val arguments = parameterBindings.map { parameter ->
-        if (parameter.category != WinRTMetadataParameterCategory.In) {
-            return null
-        }
-        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
-    }
-    return CodeBlock.builder()
-        .openDescriptorIntrinsicArgumentScopes(arguments)
-        .add("return %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-        .indent()
-        .add("acquire(),\n")
-        .add("%L,\n", metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)))
-        .add("%S,\n", arguments.joinToString(",") { it.shape })
-        .add("{ __result -> __result.use { it.asInspectable() } },\n")
-        .addDescriptorIntrinsicArgumentExpressions(arguments)
-        .unindent()
-        .add(")\n")
-        .closeDescriptorIntrinsicArgumentScopes(arguments)
-        .build()
-}
-
 internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     return plan.composableFactoryBindings
         .flatMap { factory ->
             val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@flatMap emptyList()
-            val factoryClassName = resolveTypeName(factoryType.qualifiedName)
             factoryType.methods
                 .filter(WinRTMethodDefinition::isProjectedCallableMethod)
                 .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
                 .mapNotNull(::composableUserParameters)
-                .map { (method, userParameters) -> Triple(factory, factoryType to factoryClassName, method to userParameters) }
+                .map { (method, userParameters) -> Triple(factory, factoryType, method to userParameters) }
         }
-        .map { (factory, factoryTypeAndClassName, methodAndUserParameters) ->
-            val (factoryType, factoryClassName) = factoryTypeAndClassName
+        .map { (factory, factoryType, methodAndUserParameters) ->
             val (method, userParameters) = methodAndUserParameters
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
@@ -1179,7 +833,7 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
                 .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",
-                    renderComposableFactoryInvocation(plan, factory, factoryType, factoryClassName, method, userParameters),
+                    renderComposableFactoryInvocation(plan, factory, factoryType, method, userParameters),
                 )
                 .build()
         }
@@ -1192,15 +846,13 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
     return plan.composableFactoryBindings
         .flatMap { factory ->
             val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@flatMap emptyList()
-            val factoryClassName = resolveTypeName(factoryType.qualifiedName)
             factoryType.methods
                 .filter(WinRTMethodDefinition::isProjectedCallableMethod)
                 .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
                 .mapNotNull(::composableUserParameters)
-                .map { (method, userParameters) -> Triple(factory, factoryType to factoryClassName, method to userParameters) }
+                .map { (method, userParameters) -> Triple(factory, factoryType, method to userParameters) }
         }
-        .map { (factory, factoryTypeAndClassName, methodAndUserParameters) ->
-            val (factoryType, factoryClassName) = factoryTypeAndClassName
+        .map { (factory, factoryType, methodAndUserParameters) ->
             val (method, userParameters) = methodAndUserParameters
             FunSpec.builder("${factoryCreateFunctionName(method)}ForSubclass")
                 .addModifiers(KModifier.INTERNAL)
@@ -1210,7 +862,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
                 .returns(WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",
-                    renderDerivedComposableFactoryInvocation(plan, factory, factoryType, factoryClassName, method, userParameters),
+                    renderDerivedComposableFactoryInvocation(plan, factory, factoryType, method, userParameters),
                 )
                 .build()
         }
@@ -1220,7 +872,6 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
     factory: KotlinProjectionComposableFactoryBinding,
     factoryType: WinRTTypeDefinition,
-    factoryClassName: TypeName,
     method: WinRTMethodDefinition,
     userParameters: List<WinRTParameterDefinition>,
 ): CodeBlock {
@@ -1231,94 +882,42 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
                 .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }
-    val callPlan = requireAbiCallPlan(
+    val typedCallPlan = requireAbiCallPlan(
         bindingName = "${factoryType.qualifiedName}.${method.name}",
         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-        parameterBindings = parameterBindings,
-        suppressHResultCheck = method.isNoException,
+        parameterBindings = parameterBindings + composableBaseInterfaceBinding(),
     )
-    val code = CodeBlock.builder()
-    val scopedParameterOpeners = callPlan.parameterMarshalers.flatMap { it.scopeOpeners }
-    scopedParameterOpeners.forEach { opener ->
-        code.add("%L\n", opener)
-        code.indent()
-    }
-    code.add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
-    code.add(
-        "return %T.createComposableCCWForObject(value, outerInterfaceId, DEFAULT_INTERFACE_IID) { __baseInterface, __innerOut, __resultOut ->\n",
-        COM_WRAPPERS_SUPPORT_CLASS_NAME,
+    val support = modulePlatformAbiCalls ?: inlineOnlyModulePlatformAbiCallSupport()
+    val invocation = composeTypedProjectionCallSite(
+        callPlan = typedCallPlan,
+        callSiteSupport = support,
+        callerOwnedResultType = WINRT_COMPOSABLE_FACTORY_RESULT_CLASS_NAME,
     )
-    code.indent()
-    val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
-        listOf(KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind)) +
-            marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
-                KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
-            }
-    } + listOf(
-        KotlinProjectionComArgument(CodeBlock.of("__baseInterface"), KotlinProjectionComArgumentKind.Pointer),
-        KotlinProjectionComArgument(CodeBlock.of("__innerOut"), KotlinProjectionComArgumentKind.Pointer),
-        KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer),
+    val call = support.typedInvocation(
+        referenceExpression = "__factory",
+        slotExpression = metadataSlotExpression(
+            factoryType.qualifiedName,
+            method.abiSlotConstantName(factoryType.methods),
+        ),
+        invocation = invocation,
     )
-    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
-    val intrinsicInvocation = if (!callPlan.suppressHResultCheck) {
-        renderInlineDescriptorUnitIntrinsicInvocation(
-            invokeTargetExpression = "__factory",
-            slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
-            abiArguments = abiArguments,
+    return CodeBlock.builder()
+        .add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
+        .add(
+            "return %T.createComposableCCWForObject(value, outerInterfaceId, DEFAULT_INTERFACE_IID) { __baseInterface ->\n",
+            COM_WRAPPERS_SUPPORT_CLASS_NAME,
         )
-    } else {
-        null
-    }
-    if (finallyStatements.isNotEmpty()) {
-        code.add("try {\n")
-        code.indent()
-    }
-    if (intrinsicInvocation != null) {
-        code.add("%L", intrinsicInvocation)
-        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
-            code.add("%L\n", postCallStatement)
-        }
-        code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
-    } else {
-        code.add("val __hr = ")
-        code.add(
-            renderComVtableInvocation(
-                invokeTargetExpression = "__factory",
-                slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
-                abiArguments = abiArguments,
-            ),
-        )
-        code.add("\n")
-        if (!callPlan.suppressHResultCheck) {
-            code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
-        }
-        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
-            code.add("%L\n", postCallStatement)
-        }
-        code.add("__hr\n")
-    }
-    if (finallyStatements.isNotEmpty()) {
-        code.unindent()
-        code.add("} finally {\n")
-        code.indent()
-        finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
-        code.unindent()
-        code.add("}\n")
-    }
-    code.unindent()
-    code.add("}\n")
-    repeat(scopedParameterOpeners.size) {
-        code.unindent()
-        code.add("}\n")
-    }
-    return code.build()
+        .indent()
+        .add("%L\n", call)
+        .unindent()
+        .add("}\n")
+        .build()
 }
 
 private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
     factory: KotlinProjectionComposableFactoryBinding,
     factoryType: WinRTTypeDefinition,
-    factoryClassName: TypeName,
     method: WinRTMethodDefinition,
     userParameters: List<WinRTParameterDefinition>,
 ): CodeBlock {
@@ -1329,140 +928,43 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
                 .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }
-    val callPlan = requireAbiCallPlan(
+    val typedCallPlan = requireAbiCallPlan(
         bindingName = "${factoryType.qualifiedName}.${method.name}",
         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-        parameterBindings = parameterBindings,
+        parameterBindings = parameterBindings + composableBaseInterfaceBinding(),
         suppressHResultCheck = method.isNoException,
     )
-    val code = CodeBlock.builder()
-    val scopedParameterOpeners = callPlan.parameterMarshalers.flatMap { it.scopeOpeners }
-    scopedParameterOpeners.forEach { opener ->
-        code.add("%L\n", opener)
-        code.indent()
-    }
-    code.add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
-    code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
-    code.indent()
-    code.add("val __innerOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
-    val composableInputArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
-        listOf(KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind)) +
-            marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
-                KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
-            }
-    } + listOf(
-        KotlinProjectionComArgument(CodeBlock.of("%T.nullPointer", PLATFORM_ABI_CLASS_NAME), KotlinProjectionComArgumentKind.Pointer),
-        KotlinProjectionComArgument(CodeBlock.of("__innerOut"), KotlinProjectionComArgumentKind.Pointer),
+    val support = modulePlatformAbiCalls ?: inlineOnlyModulePlatformAbiCallSupport()
+    val invocation = composeTypedProjectionCallSite(
+        callPlan = typedCallPlan,
+        callSiteSupport = support,
+        callerOwnedResultType = WINRT_COMPOSABLE_FACTORY_RESULT_CLASS_NAME,
     )
-    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
-    val intrinsicInvocation = renderComposableFactoryInspectableIntrinsicInvocation(
-        factoryType = factoryType,
-        factoryClassName = factoryClassName,
-        method = method,
-        abiArguments = composableInputArguments,
-        postCallStatements = callPlan.parameterMarshalers.flatMap { it.postCallStatements },
-        finallyStatements = finallyStatements,
-        suppressHResultCheck = callPlan.suppressHResultCheck,
+    val call = support.typedInvocation(
+        referenceExpression = "__factory",
+        slotExpression = metadataSlotExpression(
+            factoryType.qualifiedName,
+            method.abiSlotConstantName(factoryType.methods),
+        ),
+        invocation = invocation,
     )
-    if (intrinsicInvocation != null) {
-        code.add("%L", intrinsicInvocation)
-    } else {
-        code.add("val __resultOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
-        val abiArguments = composableInputArguments + KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer)
-        if (finallyStatements.isNotEmpty()) {
-            code.add("try {\n")
-            code.indent()
-        }
-        code.add("val __hr = ")
-        code.add(
-            renderComVtableInvocation(
-                invokeTargetExpression = "__factory",
-                slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
-                abiArguments = abiArguments,
-            ),
+    return CodeBlock.builder()
+        .add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
+        .add("val __baseInterface = %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
+        .add("val __factoryResult = %L\n", call)
+        .add("val __resultRef = %T(__factoryResult.instance)\n", IUNKNOWN_REFERENCE_CLASS_NAME)
+        .add("return __resultRef.use {\n")
+        .indent()
+        .add("val __innerAddress = %T.fromRawComPtr(__factoryResult.inner)\n", PLATFORM_ABI_CLASS_NAME)
+        .add(
+            "if (!%T.isNull(__innerAddress)) %T(__factoryResult.inner).close()\n",
+            PLATFORM_ABI_CLASS_NAME,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
         )
-        code.add("\n")
-        if (!callPlan.suppressHResultCheck) {
-            code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
-        }
-        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
-            code.add("%L\n", postCallStatement)
-        }
-        code.addComposableFactoryInnerCleanup()
-        code.add("val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-        code.add("return __resultRef.use { %T.initializeComposableReference(it, DEFAULT_INTERFACE_IID) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
-        if (finallyStatements.isNotEmpty()) {
-            code.unindent()
-            code.add("} finally {\n")
-            code.indent()
-            finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
-            code.unindent()
-            code.add("}\n")
-        }
-    }
-    code.unindent()
-    code.add("}\n")
-    repeat(scopedParameterOpeners.size) {
-        code.unindent()
-        code.add("}\n")
-    }
-    return code.build()
-}
-
-private fun KotlinProjectionRenderer.renderComposableFactoryInspectableIntrinsicInvocation(
-    factoryType: WinRTTypeDefinition,
-    factoryClassName: TypeName,
-    method: WinRTMethodDefinition,
-    abiArguments: List<KotlinProjectionComArgument>,
-    postCallStatements: List<CodeBlock>,
-    finallyStatements: List<CodeBlock>,
-    suppressHResultCheck: Boolean,
-): CodeBlock? {
-    if (!useProjectionIntrinsics || suppressHResultCheck || abiArguments.isEmpty()) {
-        return null
-    }
-    val argumentShapes = abiArguments.map { argument ->
-        argument.kind?.descriptorAbiToken() ?: return null
-    }
-    val code = CodeBlock.builder()
-    if (finallyStatements.isNotEmpty()) {
-        code.add("try {\n")
-        code.indent()
-    }
-    code.add("val __result = %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-    code.indent()
-    code.add("__factory,\n")
-    code.add("%L,\n", metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)))
-    code.add("%S,\n", argumentShapes.joinToString(","))
-    code.add("{ __result -> __result.use { %T.initializeComposableReference(it, DEFAULT_INTERFACE_IID) } },\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
-    abiArguments.forEach { argument ->
-        code.add("%L,\n", argument.expression)
-    }
-    code.unindent()
-    code.add(")\n")
-    postCallStatements.forEach { postCallStatement ->
-        code.add("%L\n", postCallStatement)
-    }
-    code.addComposableFactoryInnerCleanup()
-    code.add("return __result\n")
-    if (finallyStatements.isNotEmpty()) {
-        code.unindent()
-        code.add("} finally {\n")
-        code.indent()
-        finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
-        code.unindent()
-        code.add("}\n")
-    }
-    return code.build()
-}
-
-private fun CodeBlock.Builder.addComposableFactoryInnerCleanup() {
-    add("val __inner = %T.readPointer(__innerOut)\n", PLATFORM_ABI_CLASS_NAME)
-    add("if (__inner != %T.nullPointer) {\n", PLATFORM_ABI_CLASS_NAME)
-    indent()
-    add("%T(%T.toRawComPtr(__inner)).close()\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-    unindent()
-    add("}\n")
+        .add("%T.initializeComposableReference(it, DEFAULT_INTERFACE_IID)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+        .unindent()
+        .add("}\n")
+        .build()
 }
 
 private fun composableUserParameters(method: WinRTMethodDefinition): Pair<WinRTMethodDefinition, List<WinRTParameterDefinition>>? {
@@ -1560,14 +1062,10 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         builder.addFunction(
             FunSpec.builder("register")
                 .addModifiers(KModifier.INTERNAL)
-                .apply {
-                    if (useProjectionIntrinsics) {
-                        addCode(
-                            "%T.ensureInitialized()\n",
-                            WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
-                        )
-                    }
-                }
+                .addCode(
+                    "%T.ensureInitialized()\n",
+                    WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
+                )
                 .addCode(
                     "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
@@ -1834,10 +1332,6 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
                 .build(),
         )
     }
-    plan.genericAbiClassInitializationDescriptor?.let { descriptor ->
-        builder.addStringListProperty("GENERIC_ABI_INVOKE_SLOTS", descriptor.invokeSlotNames)
-        builder.addStringListProperty("GENERIC_ABI_TYPE_ARRAYS", descriptor.genericTypeArrayDependencies)
-    }
     plan.requiredInterfaceAugmentationDescriptor?.let { descriptor ->
         builder.addStringListProperty("REQUIRED_INTERFACE_NAMES", descriptor.requiredInterfaceNames)
         builder.addStringListProperty("REQUIRED_EXPLICIT_FORWARD_MEMBERS", descriptor.explicitForwardMemberNames)
@@ -1908,3 +1402,12 @@ internal fun eventSourceOwnerHelperName(
     val suffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity) ?: return baseName
     return "${baseName}_$suffix"
 }
+
+private fun composableBaseInterfaceBinding(): KotlinProjectionAbiParameterBinding =
+    KotlinProjectionAbiParameterBinding(
+        name = "__baseInterface",
+        typeBinding = KotlinProjectionAbiTypeBinding(
+            KotlinProjectionAbiValueKind.RawAddress,
+            RAW_ADDRESS_CLASS_NAME.canonicalName,
+        ),
+    )

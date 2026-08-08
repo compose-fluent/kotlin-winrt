@@ -436,28 +436,6 @@ actual object ComVtableInvoker {
         args: LongArray,
     ): Int = invokeCore(instance, slot, signature, args)
 
-    @Deprecated(
-        message = "Legacy no-support generator fallback. Support-file generation must use descriptor intrinsics or direct overloads.",
-        level = DeprecationLevel.ERROR,
-    )
-    actual fun invokeGenericArgs(
-        instance: RawComPtr,
-        slot: Int,
-        vararg args: Any,
-    ): Int {
-        val kinds = args.map(::genericComAbiArgumentKind)
-        val words = args.map(::genericComAbiArgumentWord).toLongArray()
-        return invokeCore(
-            instance = instance,
-            slot = slot,
-            signature = ComMethodSignature(
-                resultKind = ComAbiValueKind.Int32,
-                explicitParameterKinds = kinds,
-            ),
-            words = words,
-        )
-    }
-
     internal actual fun createComMethodCallback(
         signature: ComMethodSignature,
         callback: (List<Any?>) -> Int,
@@ -604,6 +582,73 @@ actual object ComVtableInvoker {
         }
     }
 }
+
+@PublishedApi
+internal actual inline fun winRTDirectInvokeHResultAddress(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: RawAddress,
+): Int = ComVtableInvoker.invokeArgs(instance, slot, arg0)
+
+@PublishedApi
+internal actual inline fun winRTDirectInvokeHResultAddressAddress(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: RawAddress,
+    arg1: RawAddress,
+): Int = ComVtableInvoker.invokeArgs(instance, slot, arg0, arg1)
+
+@PublishedApi
+internal actual inline fun winRTDirectInvokeHResultUInt32Address(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: UInt,
+    arg1: RawAddress,
+): Int = ComVtableInvoker.invokeArgs(instance, slot, arg0, arg1)
+
+@PublishedApi
+internal actual inline fun winRTDirectInvokeHResultInt32Address(
+    instance: RawComPtr,
+    slot: Int,
+    arg0: Int,
+    arg1: RawAddress,
+): Int = ComVtableInvoker.invokeArgs(instance, slot, arg0, arg1)
+
+@PublishedApi
+internal actual fun winRTCreateHResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress = error("Native recipe thunks are only available on mingwX64.")
+
+@PublishedApi
+internal actual fun winRTCreatePackedScalarResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress = error("Native recipe thunks are only available on mingwX64.")
+
+@PublishedApi
+internal actual fun winRTCreateScalarResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress = error("Native recipe thunks are only available on mingwX64.")
+
+@PublishedApi
+internal actual fun winRTCreateWideScalarResultRecipeThunk(
+    inputCount: Int,
+    floatingPointKinds: Long,
+): RawAddress = error("Native recipe thunks are only available on mingwX64.")
+
+@PublishedApi
+internal actual fun winRTScalarResultRecord(): RawAddress =
+    error("Scalar native-result transport is only available on mingwX64.")
+
+@PublishedApi
+internal actual inline fun winRTScalarResultHResult(record: RawAddress): Int =
+    error("Scalar native-result transport is only available on mingwX64.")
+
+@PublishedApi
+internal actual inline fun winRTScalarResultValue(record: RawAddress): RawAddress =
+    error("Scalar native-result transport is only available on mingwX64.")
 
 private data class CallbackSignature(
     val resultKind: ComAbiValueKind,

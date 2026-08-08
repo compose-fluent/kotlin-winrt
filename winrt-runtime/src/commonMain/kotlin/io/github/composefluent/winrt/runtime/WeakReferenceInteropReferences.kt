@@ -15,26 +15,6 @@ internal object WeakReferenceVftblSlots {
  * Managed weak-reference storage and object re-projection stay behind platform seams; the
  * raw `IWeakReferenceSource` / `IWeakReference` call shapes themselves are target-agnostic.
  */
-internal class WeakReferenceSourceReference(
-    pointer: RawAddress,
-    interfaceId: Guid = IID.IWeakReferenceSource,
-) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
-    fun getWeakReference(): WeakReferenceReference? =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            comPtr.throwIfDisposed()
-            HResult(
-                ComVtableInvoker.invokeArgs(comPtr.raw, WeakReferenceSourceVftblSlots.GetWeakReference, resultOut),
-            ).requireSuccess("IWeakReferenceSource.GetWeakReference")
-            val resolvedPointer = PlatformAbi.readPointer(resultOut)
-            if (PlatformAbi.isNull(resolvedPointer)) {
-                null
-            } else {
-                WeakReferenceReference(resolvedPointer, IID.IWeakReference)
-            }
-        }
-}
-
 internal fun ComObjectReference.tryGetWeakReference(): WeakReferenceReference? =
     tryQueryInterface(IID.IWeakReferenceSource)?.use { weakReferenceSource ->
         PlatformAbi.confinedScope().use { scope ->

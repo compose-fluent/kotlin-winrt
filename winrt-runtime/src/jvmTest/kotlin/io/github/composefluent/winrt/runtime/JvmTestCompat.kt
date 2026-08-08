@@ -39,41 +39,6 @@ internal fun GuidMarshaller.copyTo(value: Guid, destination: MemorySegment) {
 
 internal fun GuidMarshaller.readFrom(source: MemorySegment): Guid = readFrom(source.asRawAddress())
 
-internal fun ComObjectReference.invokeAbi(
-    slot: Int,
-    descriptor: ComMethodSignature,
-    vararg args: Any,
-): Int {
-    val rawArgs = args.map {
-        when (it) {
-            is RawAddress -> it
-            is RawComPtr -> it.asRawAddress()
-            is MemorySegment -> it.asRawAddress()
-            else -> error("Unsupported test ABI argument: ${it::class.qualifiedName}")
-        }
-    }
-    return when (rawArgs.size) {
-        0 -> ComVtableInvoker.invoke(pointer, slot)
-        1 -> ComVtableInvoker.invokeArgs(pointer, slot, rawArgs[0])
-        2 -> ComVtableInvoker.invokeArgs(pointer, slot, rawArgs[0], rawArgs[1])
-        3 -> ComVtableInvoker.invokeArgs(pointer, slot, rawArgs[0], rawArgs[1], rawArgs[2])
-        4 -> ComVtableInvoker.invokeArgs(pointer, slot, rawArgs[0], rawArgs[1], rawArgs[2], rawArgs[3])
-        5 -> ComVtableInvoker.invokeGeneric(pointer, slot, descriptor, rawArgs.map(RawAddress::value).toLongArray())
-        else -> error("Unsupported test ABI argument count: ${rawArgs.size}")
-    }
-}
-
-internal fun ComObjectReference.invokeAbi(
-    slot: Int,
-    descriptor: java.lang.foreign.FunctionDescriptor,
-    vararg args: Any,
-): Int =
-    invokeAbi(
-        slot = slot,
-        descriptor = ComMethodSignature.of(*Array(args.size) { ComAbiValueKind.Pointer }),
-        args = *args,
-    )
-
 internal fun ComWrappersSupport.createRcwForComObject(
     pointer: RawComPtr,
     staticallyDeterminedType: WinRTTypeHandle? = null,

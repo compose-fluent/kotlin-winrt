@@ -247,6 +247,20 @@ int wmain(int argc, wchar_t** argv)
         std::uint64_t const stringified_length = json.Stringify().size();
         std::vector<benchmark_scenario> const scenarios{
             {
+                "activate_json_object_only",
+                1,
+                [](int iterations)
+                {
+                    std::uint64_t checksum{};
+                    for (int index = 0; index < iterations; ++index)
+                    {
+                        JsonObject{};
+                        ++checksum;
+                    }
+                    return checksum;
+                },
+            },
+            {
                 "activate_json_object",
                 1,
                 [](int iterations)

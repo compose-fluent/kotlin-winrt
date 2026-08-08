@@ -58,6 +58,7 @@ val verifyMingwX64RuntimeCallSiteLowering by tasks.registering(VerifyBinaryMarke
     val klibDirectory = layout.buildDirectory.dir("classes/kotlin/mingwX64/main/klib/winrt-runtime")
     binaryArtifacts.from(klibDirectory)
     markers.set(setOf("Lowered while building winrt-runtime"))
+    requiredMarkers.set(setOf("kotlinWinRTNativeWideScalarResultThunk"))
     artifactDescription.set("compiled mingwX64 runtime klib")
 }
 
@@ -90,7 +91,13 @@ kotlin {
             }
         }
     }
-    mingwX64()
+    mingwX64 {
+        compilations.getByName("main") {
+            cinterops.create("winrtString") {
+                definitionFile.set(project.file("src/nativeInterop/cinterop/winrtString.def"))
+            }
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {

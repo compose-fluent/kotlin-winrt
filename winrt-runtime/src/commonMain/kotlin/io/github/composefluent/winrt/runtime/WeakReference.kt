@@ -83,6 +83,10 @@ internal expect class PlatformManagedWeakReference<T : Any>(target: T? = null) {
 }
 
 internal expect class PlatformLock() {
+    fun enter()
+
+    fun exit()
+
     fun <R> withLock(block: () -> R): R
 }
 

@@ -456,32 +456,8 @@ actual object WinRTPlatformApi {
     actual fun queryInterfaceRaw(
         unknown: RawAddress,
         interfaceId: Guid,
-    ): NativePointerResult {
-        ensureWindows()
-        if (PlatformAbi.isNull(unknown)) {
-            return NativePointerResult(KnownHResults.E_POINTER.value, PlatformAbi.nullPointer)
-        }
-        return Arena.ofConfined().use { arena ->
-            val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            writeGuidTo(interfaceId, iidMemory)
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val queryInterface = linker.downcallHandle(
-                vtableEntry(unknown.asMemorySegment(), IUnknownVftblSlots.QueryInterface),
-                FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-            )
-            val hr = queryInterface.invokeWithArguments(
-                unknown.asMemorySegment(),
-                iidMemory,
-                resultOut,
-            ) as Int
-            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asRawAddress())
-        }
-    }
+    ): NativePointerResult =
+        queryInterfaceWithReusableScratch(unknown, interfaceId)
 
     actual fun addRefRaw(unknown: RawAddress): UInt =
         invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.AddRef)
