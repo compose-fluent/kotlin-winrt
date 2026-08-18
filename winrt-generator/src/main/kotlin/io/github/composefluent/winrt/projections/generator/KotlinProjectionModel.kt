@@ -55,6 +55,7 @@ import io.github.composefluent.winrt.runtime.IWinRTObject
 import io.github.composefluent.winrt.runtime.WinRTOut
 import io.github.composefluent.winrt.runtime.KnownHResults
 import io.github.composefluent.winrt.runtime.Marshaler
+import io.github.composefluent.winrt.runtime.MarshalDelegate
 import io.github.composefluent.winrt.runtime.NativeStringMarshaller
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
@@ -97,6 +98,8 @@ import io.github.composefluent.winrt.runtime.WinRTAuthoringSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.WinRTProjectedInterface
+import io.github.composefluent.winrt.runtime.WinRTManagedProjectionStateAccess
 import io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
@@ -105,6 +108,7 @@ import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateArgumentMarshaler
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference
+import io.github.composefluent.winrt.runtime.WinRTDelegateVftblSlots
 import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRTEvent
 import io.github.composefluent.winrt.runtime.WinRTObjectMarshaller
@@ -122,6 +126,8 @@ import io.github.composefluent.winrt.runtime.WinRTOverload
 import io.github.composefluent.winrt.runtime.WinRTSupportedOSPlatform
 import io.github.composefluent.winrt.runtime.WinRTInspectableInterfaceDefinition
 import io.github.composefluent.winrt.runtime.WinRTInspectableMethodDefinition
+import io.github.composefluent.winrt.runtime.WinRTProjectionInboundCallSite
+import io.github.composefluent.winrt.runtime.WinRTProjectionParameter
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -168,6 +174,10 @@ internal val DERIVED_COMPOSED_CLASS_NAME = DerivedComposed::class.asClassName()
 internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRTCcwDefinition::class.asClassName()
 internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRTInspectableInterfaceDefinition::class.asClassName()
 internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRTInspectableMethodDefinition::class.asClassName()
+internal val WINRT_PROJECTION_INBOUND_CALL_SITE_CLASS_NAME = WinRTProjectionInboundCallSite::class.asClassName()
+internal val WINRT_PROJECTION_PARAMETER_CLASS_NAME = WinRTProjectionParameter::class.asClassName()
+internal val WINRT_PROJECTION_INBOUND_ENTRY_POINT_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "winRTProjectionInboundEntryPoint")
 internal val WINRT_AUTHORING_HOST_EXPORTS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTAuthoringHostExports")
 internal val WINRT_AUTHORING_SERVER_ACTIVATION_FACTORIES_CLASS_NAME =
@@ -190,6 +200,17 @@ internal fun winRTModulePlatformAbiCallClassName(ownerIdentity: String?): ClassN
         ownerIdentity,
         ClassName("io.github.composefluent.winrt.projections.support", "WinRTModulePlatformAbiCall"),
     )
+
+internal fun winRTProjectedInterfaceCcwFactoriesClassName(ownerIdentity: String?): ClassName =
+    winRTSupportOwnerClassName(
+        ownerIdentity,
+        ClassName("io.github.composefluent.winrt.projections.support", "WinRTProjectedInterfaceCcwFactories"),
+    )
+
+internal fun projectedInterfaceCcwRegisterFunctionName(projectedTypeName: String): String =
+    "register_" + projectedTypeName
+        .replace('.', '_')
+        .replace('`', '_')
 
 internal fun winRTEventProjectionHelperFilePrefix(ownerIdentity: String?): String {
     val suffix = winRTSupportOwnerIdentifierSuffix(ownerIdentity) ?: return "WinRTEventProjectionHelper"
@@ -237,6 +258,7 @@ internal val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
 internal val WINRT_OUT_CLASS_NAME = WinRTOut::class.asClassName()
 internal val KNOWN_HRESULTS_CLASS_NAME = KnownHResults::class.asClassName()
 internal val MARSHALER_CLASS_NAME = Marshaler::class.asClassName()
+internal val MARSHAL_DELEGATE_CLASS_NAME = MarshalDelegate::class.asClassName()
 internal val WINRT_ABI_ARRAY_CLASS_NAME = WinRTAbiArray::class.asClassName()
 internal val NATIVE_STRING_MARSHALER_CLASS_NAME = NativeStringMarshaller::class.asClassName()
 internal val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
@@ -281,6 +303,10 @@ internal val WINRT_AS_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "asWinRT")
 internal val ACQUIRE_INTERFACE_REFERENCE_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "acquireInterfaceReference")
+internal val ACQUIRE_BORROWED_INTERFACE_REFERENCE_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "acquireBorrowedInterfaceReference")
+internal val ACQUIRE_BORROWED_INSPECTABLE_REFERENCE_FUNCTION_NAME =
+    MemberName("io.github.composefluent.winrt.runtime", "acquireBorrowedInspectableReference")
 internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_FROM_ABI_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRTPropertyChangedEventArgsFromAbi")
 internal val GET_OR_CREATE_WINRT_OBJECT_REFERENCE_FUNCTION_NAME =
@@ -300,6 +326,7 @@ internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRTDelegateBridge::class.asCla
 internal val WINRT_DELEGATE_ARGUMENT_MARSHALER_CLASS_NAME = WinRTDelegateArgumentMarshaler::class.asClassName()
 internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRTDelegateDescriptor::class.asClassName()
 internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRTDelegateReference::class.asClassName()
+internal val WINRT_DELEGATE_VFTBL_SLOTS_CLASS_NAME = WinRTDelegateVftblSlots::class.asClassName()
 internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRTDelegateValueKind::class.asClassName()
 internal val WINRT_EVENT_CLASS_NAME = WinRTEvent::class.asClassName()
 internal val WINRT_OBJECT_MARSHALLER_CLASS_NAME = WinRTObjectMarshaller::class.asClassName()
@@ -380,6 +407,8 @@ internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRTDefaultOverload::class.asC
 internal val WINRT_EXPERIMENTAL_CLASS_NAME = WinRTExperimental::class.asClassName()
 internal val WINRT_OVERLOAD_CLASS_NAME = WinRTOverload::class.asClassName()
 internal val WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME = WinRTSupportedOSPlatform::class.asClassName()
+internal val WINRT_PROJECTED_INTERFACE_CLASS_NAME = WinRTProjectedInterface::class.asClassName()
+internal val WINRT_MANAGED_PROJECTION_STATE_ACCESS_CLASS_NAME = WinRTManagedProjectionStateAccess::class.asClassName()
 internal val KOTLIN_UBYTE_CLASS_NAME = ClassName("kotlin", "UByte")
 internal val KOTLIN_UINT_CLASS_NAME = ClassName("kotlin", "UInt")
 internal val KOTLIN_ULONG_CLASS_NAME = ClassName("kotlin", "ULong")

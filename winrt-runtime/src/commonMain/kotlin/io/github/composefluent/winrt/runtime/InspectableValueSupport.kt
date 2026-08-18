@@ -76,9 +76,16 @@ internal fun tryProjectInspectableValue(
     runtimeClassName: String? = inspectable.tryGetRuntimeClassName(),
 ): Any? {
     if (!runtimeClassName.isNullOrBlank()) {
-        TypeNameSupport.findRcwKClassByNameCached(runtimeClassName)?.let { projectedType ->
-            WinRTValueBoxing.tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
+        // CsWinRT's MarshalInspectable<object> only attempts value unboxing when the
+        // runtime class name identifies a boxed WinRT value.  A generic inspectable
+        // such as IKeyValuePair<String, Object> must stay an RCW.  The exact closed
+        // projection plan is cached by runtime class name; only an unknown boxed name
+        // reaches the compatibility QI ladder below.
+        if (!WinRTValueBoxing.isBoxedRuntimeClassName(runtimeClassName)) {
+            return null
         }
+
+        WinRTValueBoxing.tryProjectInspectableForRuntimeClassName(inspectable, runtimeClassName)?.let { return it }
     }
 
     WinRTPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asRawAddress())?.let { return it }

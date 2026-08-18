@@ -6,11 +6,41 @@ import io.github.composefluent.winrt.runtime.NativeStructLayout
 import io.github.composefluent.winrt.runtime.NativeStructScalarKind
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RawAddress
+import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
+import io.github.composefluent.winrt.runtime.WinRTDelegateHandle
+import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
+import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
+import io.github.composefluent.winrt.runtime.WinRTDelegateType
+import io.github.composefluent.winrt.runtime.WinRTProjectedDelegate
 import io.github.composefluent.winrt.runtime.WindowsRuntimeType
 
-typealias EventHandler<TArgs> = (Any?, TArgs) -> Unit
+/**
+ * Generic WinRT event handler declaration. The compiler plugin supplies the closed
+ * descriptor for managed lambdas; the default body keeps handwritten/runtime-only
+ * consumers from accidentally constructing an open generic ABI shape.
+ */
+@WinRTDelegateType(
+    genericInterfaceIid = "9DE1C535-6AE1-11E0-84E1-18A905BCC53F",
+    adapterFunction = "io.github.composefluent.winrt.runtime.adaptWinRTEventHandler",
+)
+fun interface EventHandler<TArgs> : WinRTProjectedDelegate {
+    operator fun invoke(sender: Any?, args: TArgs)
 
-typealias TypedEventHandler<TSender, TResult> = (TSender, TResult) -> Unit
+    override fun createWinRTDelegateHandle(): WinRTDelegateHandle =
+        error("EventHandler lambda must be lowered by the WinRT compiler plugin.")
+}
+
+/** Generic two-argument WinRT event handler declaration. */
+@WinRTDelegateType(
+    genericInterfaceIid = "9DE1C534-6AE1-11E0-84E1-18A905BCC53F",
+    adapterFunction = "io.github.composefluent.winrt.runtime.adaptWinRTTypedEventHandler",
+)
+fun interface TypedEventHandler<TSender, TResult> : WinRTProjectedDelegate {
+    operator fun invoke(sender: TSender, args: TResult)
+
+    override fun createWinRTDelegateHandle(): WinRTDelegateHandle =
+        error("TypedEventHandler lambda must be lowered by the WinRT compiler plugin.")
+}
 
 interface IStringable {
     override fun toString(): String

@@ -462,7 +462,7 @@ actual object WinRTPlatformApi {
     actual fun addRefRaw(unknown: RawAddress): UInt =
         invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.AddRef)
 
-    actual fun releaseRaw(unknown: RawAddress): UInt =
+    actual inline fun releaseRaw(unknown: RawAddress): UInt =
         invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.Release)
 
     actual fun dllGetActivationFactoryRaw(
@@ -1028,19 +1028,13 @@ actual object WinRTPlatformApi {
         }
     }
 
-    private fun invokeUnknownRefCountMethod(unknown: RawAddress, slot: Int): UInt {
+    @PublishedApi
+    internal fun invokeUnknownRefCountMethod(unknown: RawAddress, slot: Int): UInt {
         ensureWindows()
         if (PlatformAbi.isNull(unknown)) {
             return 0u
         }
-        val method = linker.downcallHandle(
-            vtableEntry(unknown.asMemorySegment(), slot),
-            FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-            ),
-        )
-        return (method.invokeWithArguments(unknown.asMemorySegment()) as Int).toUInt()
+        return ComVtableInvoker.invoke(unknown.asRawComPtr(), slot).toUInt()
     }
 
     fun resolveModulePath(fileName: String): String =

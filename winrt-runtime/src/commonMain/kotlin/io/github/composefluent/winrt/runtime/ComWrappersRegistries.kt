@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.reflect.KClass
 
 internal object RcwProjectionFactoryRegistry {
@@ -178,8 +180,34 @@ internal object RuntimeTypeLookupRegistry {
     }
 }
 
+internal class CcwRegistrationSource internal constructor(
+    internal val factory: ((Any) -> WinRTCcwDefinition)? = null,
+    internal val staticDefinition: WinRTCcwDefinition? = null,
+) {
+    init {
+        require((factory == null) != (staticDefinition == null)) {
+            "A CCW registration must contain exactly one source."
+        }
+    }
+}
+
+internal class CcwRegistrationResolution internal constructor(
+    internal val sources: List<CcwRegistrationSource>,
+) {
+    internal val factories: List<(Any) -> WinRTCcwDefinition> = sources.mapNotNull { it.factory }
+    internal val staticDefinitions: List<WinRTCcwDefinition> = sources.mapNotNull { it.staticDefinition }
+    internal val augmentedStaticDefinition: WinRTCcwDefinition? =
+        staticDefinitions
+            .takeIf { definitions -> definitions.isNotEmpty() && factories.isEmpty() }
+            ?.let(::mergeCcwDefinitions)
+            ?.let(::augmentCcwDefinition)
+}
+
 internal object CcwFactoryRegistry {
-    private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRTCcwDefinition>()
+    private val ccwRegistrations = ConcurrentCacheMap<KClass<*>, CcwRegistrationSource>()
+    private val resolvedRegistrations = ConcurrentCacheMap<KClass<*>, ResolvedCcwRegistrations>()
+    @OptIn(ExperimentalAtomicApi::class)
+    private val resolutionGeneration = AtomicInt(0)
 
     init {
         registerBuiltInFactories()
@@ -189,25 +217,98 @@ internal object CcwFactoryRegistry {
         implementationType: KClass<*>,
         factory: (Any) -> WinRTCcwDefinition,
     ): Boolean {
-        traceCcw("register CCW factory type=${implementationType.qualifiedName}")
-        return ccwFactories.putIfAbsent(implementationType, factory) == null
+        traceCcw { "register CCW factory type=${implementationType.qualifiedName}" }
+        val registered = ccwRegistrations.putIfAbsent(
+            implementationType,
+            CcwRegistrationSource(factory = factory),
+        ) == null
+        if (registered) {
+            invalidateResolvedFactories()
+        }
+        return registered
     }
 
-    fun findFactory(value: Any): ((Any) -> WinRTCcwDefinition)? {
-        ccwFactories[value::class]?.let { return it }
-        return ccwFactories.entries.firstOrNull { (type, _) -> type.isInstance(value) }?.value
+    fun registerStaticDefinition(
+        implementationType: KClass<*>,
+        definition: WinRTCcwDefinition,
+    ): Boolean {
+        traceCcw { "register static CCW definition type=${implementationType.qualifiedName}" }
+        val registered = ccwRegistrations.putIfAbsent(
+            implementationType,
+            CcwRegistrationSource(staticDefinition = definition),
+        ) == null
+        if (registered) {
+            invalidateResolvedFactories()
+        }
+        return registered
     }
+
+    @OptIn(ExperimentalAtomicApi::class)
+    fun findRegistration(value: Any): CcwRegistrationResolution {
+        val implementationType = value::class
+        while (true) {
+            val generation = resolutionGeneration.load()
+            resolvedRegistrations[implementationType]
+                ?.takeIf { resolved -> resolved.generation == generation }
+                ?.let { resolved -> return resolved.resolution }
+
+            val resolution = resolveRegistrations(value)
+            if (resolutionGeneration.load() != generation) {
+                continue
+            }
+            resolvedRegistrations[implementationType] = ResolvedCcwRegistrations(generation, resolution)
+            if (resolutionGeneration.load() == generation) {
+                return resolution
+            }
+        }
+    }
+
+    fun findFactories(value: Any): List<(Any) -> WinRTCcwDefinition> =
+        findRegistration(value).factories
+
+    fun findStaticDefinitions(value: Any): List<WinRTCcwDefinition> =
+        findRegistration(value).staticDefinitions
 
     fun clearForTests() {
-        ccwFactories.clear()
+        ccwRegistrations.clear()
         registerBuiltInFactories()
+        invalidateResolvedFactories()
+    }
+
+    private fun resolveRegistrations(value: Any): CcwRegistrationResolution {
+        ccwRegistrations[value::class]?.let { return CcwRegistrationResolution(listOf(it)) }
+        val sources = ccwRegistrations.entries
+            .asSequence()
+            .filter { (type, _) -> type.isInstance(value) }
+            .sortedBy { (type, _) -> type.qualifiedName.orEmpty() }
+            .map { (_, source) -> source }
+            .toList()
+        return CcwRegistrationResolution(sources)
+    }
+
+    @OptIn(ExperimentalAtomicApi::class)
+    private fun invalidateResolvedFactories() {
+        while (true) {
+            val current = resolutionGeneration.load()
+            if (resolutionGeneration.compareAndSet(current, current + 1)) {
+                resolvedRegistrations.clear()
+                return
+            }
+        }
     }
 
     private fun registerBuiltInFactories() {
-        ccwFactories[WinRTActivationFactory::class] = { value ->
-            WinRTActivationFactorySupport.createCcwDefinition(value as WinRTActivationFactory)
-        }
+        ccwRegistrations[WinRTActivationFactory::class] = CcwRegistrationSource(
+            factory = { value ->
+                WinRTActivationFactorySupport.createCcwDefinition(value as WinRTActivationFactory)
+            },
+        )
     }
+
+    private class ResolvedCcwRegistrations(
+        val generation: Int,
+        val resolution: CcwRegistrationResolution,
+    )
 }
 
 internal object RuntimeRegistryResetSupport {
@@ -218,10 +319,12 @@ internal object RuntimeRegistryResetSupport {
         ProjectedDelegateCcwCache.clearForTests()
         ProjectedDelegateObjectRoots.clearForTests()
         RuntimeTypeLookupRegistry.clearForTests()
+        InteropRuntimeHooks.clearForTests()
         FreeThreadedMarshalerSupport.clearForTests()
         TypeNameSupport.clearRegistriesForTests()
         Projections.clearRegistriesForTests()
         TypeExtensions.clearRegistriesForTests()
+        WinRTBuiltInProjectionRuntimeHooks.clearForTests()
         platformEnsureInspectableProjectionInteropRegistered()
     }
 }

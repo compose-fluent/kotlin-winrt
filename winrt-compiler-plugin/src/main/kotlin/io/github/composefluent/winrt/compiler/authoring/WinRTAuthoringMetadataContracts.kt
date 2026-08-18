@@ -129,8 +129,7 @@ fun projectionTypeIndexRecordForSourceType(
     if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX)) {
         return null
     }
-    val winRTTypeName = projectionPackageToMetadataName(sourceTypeName)
-    val winRTType = winRTTypes[winRTTypeName] ?: return null
+    val winRTType = resolveIndexedWinRTTypeByProjectedName(sourceTypeName, winRTTypes) ?: return null
     return KotlinWinRTProjectionTypeIndexRecord(
         sourceTypeName = sourceTypeName,
         winRTTypeName = winRTType.qualifiedName,
@@ -273,8 +272,9 @@ fun resolveWinRTTypeName(
         }
     }
     return candidates
-        .flatMap { candidate -> listOf(candidate, projectionPackageToMetadataName(candidate)) }
-        .firstOrNull { candidate -> candidate in winRTTypes }
+        .firstNotNullOfOrNull { candidate ->
+            resolveIndexedWinRTTypeByProjectedName(candidate, winRTTypes)?.qualifiedName
+        }
 }
 
 fun resolveIndexedWinRTType(
@@ -284,6 +284,19 @@ fun resolveIndexedWinRTType(
     winRTTypes: Map<String, IndexedWinRTType>,
 ): IndexedWinRTType? =
     resolveWinRTTypeName(typeName, packageName, imports, winRTTypes)?.let(winRTTypes::get)
+
+fun resolveIndexedWinRTTypeByProjectedName(
+    typeName: String,
+    winRTTypes: Map<String, IndexedWinRTType>,
+): IndexedWinRTType? {
+    val projectedName = projectionPackageToMetadataName(typeName)
+    return winRTTypes[typeName]
+        ?: winRTTypes[projectedName]
+        ?: winRTTypes.values.firstOrNull { type ->
+            type.qualifiedName.equals(typeName, ignoreCase = true) ||
+                type.qualifiedName.equals(projectedName, ignoreCase = true)
+        }
+}
 
 fun projectionPackageToMetadataName(typeName: String): String {
     return typeName.removePrefix(PROJECTION_PACKAGE_PREFIX)

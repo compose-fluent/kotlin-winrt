@@ -32,9 +32,12 @@ class WinRTDelegateHandle internal constructor(
     }
 
     fun createReference(): WinRTDelegateReference {
-        check(closed.load() == 0) { "Delegate handle is already closed." }
-        return comObject.createReference()
+        return tryCreateReference()
+            ?: throw WinRTObjectDisposedException("Delegate handle is already closed.")
     }
+
+    internal fun tryCreateReference(): WinRTDelegateReference? =
+        if (closed.load() == 0) comObject.tryCreateReference() else null
 
     internal fun releaseManagedReferenceForNativeOwnership() {
         if (managedReferenceReleased.compareAndSet(0, 1)) {

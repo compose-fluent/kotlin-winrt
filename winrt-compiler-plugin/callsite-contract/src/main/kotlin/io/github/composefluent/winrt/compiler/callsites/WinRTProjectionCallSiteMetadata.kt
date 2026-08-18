@@ -6,6 +6,12 @@ const val WINRT_PROJECTION_CALL_SITE_ANNOTATION_FQ_NAME: String =
 const val WINRT_PROJECTION_PARAMETER_ANNOTATION_FQ_NAME: String =
     "io.github.composefluent.winrt.runtime.WinRTProjectionParameter"
 
+const val WINRT_PROJECTION_INBOUND_CALL_SITE_ANNOTATION_FQ_NAME: String =
+    "io.github.composefluent.winrt.runtime.WinRTProjectionInboundCallSite"
+
+const val WINRT_PROJECTION_INBOUND_ENTRY_POINT_FQ_NAME: String =
+    "io.github.composefluent.winrt.runtime.winRTProjectionInboundEntryPoint"
+
 const val WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME: String =
     "io.github.composefluent.winrt.runtime.WinRTProjectionAbiType"
 

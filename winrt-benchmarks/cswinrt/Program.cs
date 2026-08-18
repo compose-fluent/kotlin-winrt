@@ -1,13 +1,18 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Windows.Data.Json;
 
 namespace KotlinWinRT.Benchmarks.CsWinRT;
 
 internal static class Program
 {
-    private const int SchemaVersion = 1;
-    private const string Payload = "{\"name\":\"kotlin-winrt\",\"verified\":true,\"count\":42.5}";
+    private const int SchemaVersion = 3;
+    private const double TargetBatchNanoseconds = 5_000_000;
+    private const int MaxCalibratedIterations = 100_000;
+    private const int MaxCalibrationSteps = 8;
+    private const long MinAdaptiveWarmupOperations = 100_000;
+    private const double MinAdaptiveWarmupNanoseconds = 500_000_000;
+    private const double MaxAdaptiveWarmupNanoseconds = 1_000_000_000;
+    private const int WarmupSettleRounds = 5;
 
     [MTAThread]
     private static int Main(string[] args)
@@ -26,129 +31,45 @@ internal static class Program
 
     private static void Run(BenchmarkOptions options)
     {
-        JsonObject json = JsonObject.Parse(Payload);
-        JsonArray jsonArray = JsonArray.Parse("[42.5]");
-        long stringifiedLength = json.Stringify().Length;
-        var scenarios = new[]
+        IReadOnlyList<BenchmarkScenarioDefinition> definitions = ReferenceScenarios.Definitions;
+        string[] duplicateNames = definitions
+            .GroupBy(definition => definition.Name, StringComparer.Ordinal)
+            .Where(group => group.Count() != 1)
+            .Select(group => group.Key)
+            .Order()
+            .ToArray();
+        if (duplicateNames.Length != 0)
         {
-            new BenchmarkScenario(
-                "activate_json_object_only",
-                1,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        _ = new JsonObject();
-                        checksum++;
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "activate_json_object",
-                1,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        var value = new JsonObject();
-                        if (value.ValueType == JsonValueType.Object)
-                        {
-                            checksum++;
-                        }
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "get_value_type",
-                1,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        if (json.ValueType == JsonValueType.Object)
-                        {
-                            checksum++;
-                        }
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "get_array_number_at",
-                42,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        checksum += (long)jsonArray.GetNumberAt(0);
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "get_named_boolean",
-                1,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        if (json.GetNamedBoolean("verified"))
-                        {
-                            checksum++;
-                        }
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "get_named_string",
-                "kotlin-winrt".Length,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        checksum += json.GetNamedString("name").Length;
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "stringify",
-                stringifiedLength,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        checksum += json.Stringify().Length;
-                    }
-                    return checksum;
-                }),
-            new BenchmarkScenario(
-                "parse_get_named_number",
-                42,
-                iterations =>
-                {
-                    long checksum = 0;
-                    for (int index = 0; index < iterations; index++)
-                    {
-                        checksum += (long)JsonObject.Parse(Payload).GetNamedNumber("count");
-                    }
-                    return checksum;
-                }),
-        };
+            throw new InvalidOperationException($"Duplicate benchmark scenarios: {string.Join(", ", duplicateNames)}.");
+        }
+        if (definitions.Count != ReferenceScenarios.ExpectedScenarioCount)
+        {
+            throw new InvalidOperationException(
+                $"Expected {ReferenceScenarios.ExpectedScenarioCount} reference scenarios, got {definitions.Count}.");
+        }
 
-        var knownNames = scenarios.Select(scenario => scenario.Name).ToHashSet(StringComparer.Ordinal);
+        if (options.ListScenarios)
+        {
+            if (options.Filter.Count != 0)
+            {
+                throw new InvalidOperationException("--list-scenarios cannot be combined with --filter.");
+            }
+            WriteOutput(
+                string.Join(Environment.NewLine, definitions.Select(definition => definition.Name).Order()) +
+                    Environment.NewLine,
+                options.OutputPath);
+            return;
+        }
+
+        var knownNames = definitions.Select(definition => definition.Name).ToHashSet(StringComparer.Ordinal);
         string[] unknownNames = options.Filter.Where(name => !knownNames.Contains(name)).Order().ToArray();
         if (unknownNames.Length != 0)
         {
             throw new InvalidOperationException($"Unknown benchmark scenarios: {string.Join(", ", unknownNames)}.");
         }
 
-        BenchmarkScenario[] selected = scenarios
-            .Where(scenario => options.Filter.Count == 0 || options.Filter.Contains(scenario.Name))
+        BenchmarkScenarioDefinition[] selected = definitions
+            .Where(definition => options.Filter.Count == 0 || options.Filter.Contains(definition.Name))
             .ToArray();
         if (selected.Length == 0)
         {
@@ -156,65 +77,67 @@ internal static class Program
         }
 
         string runtime = $"CsWinRT 2.2.0; .NET {Environment.Version}";
-        BenchmarkResult[] results = selected
-            .Select(scenario => RunScenario(scenario, options, runtime))
-            .ToArray();
+        var results = new List<BenchmarkResult>(selected.Length);
+        foreach (BenchmarkScenarioDefinition definition in selected)
+        {
+            using PreparedBenchmarkScenario scenario = definition.Prepare();
+            results.Add(RunScenario(scenario, options, runtime));
+        }
+
         var serializerOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         string jsonLines = string.Join(
             Environment.NewLine,
             results.Select(result => JsonSerializer.Serialize(result, serializerOptions))) + Environment.NewLine;
 
-        if (options.OutputPath is not null)
+        WriteOutput(jsonLines, options.OutputPath);
+    }
+
+    private static void WriteOutput(string contents, string? outputPath)
+    {
+        if (outputPath is not null)
         {
-            string? parent = Path.GetDirectoryName(Path.GetFullPath(options.OutputPath));
+            string? parent = Path.GetDirectoryName(Path.GetFullPath(outputPath));
             if (!string.IsNullOrEmpty(parent))
             {
                 Directory.CreateDirectory(parent);
             }
-            File.WriteAllText(options.OutputPath, jsonLines);
+            File.WriteAllText(outputPath, contents);
         }
 
-        Console.Write(jsonLines);
-        GC.KeepAlive(json);
-        GC.KeepAlive(jsonArray);
+        Console.Write(contents);
     }
 
     private static BenchmarkResult RunScenario(
-        BenchmarkScenario scenario,
+        PreparedBenchmarkScenario scenario,
         BenchmarkOptions options,
         string runtime)
     {
         long validationChecksum = scenario.RunBatch(1);
-        if (validationChecksum != scenario.ExpectedSingleChecksum)
+        long expectedSingleChecksum = scenario.ExpectedSingleChecksum ?? validationChecksum;
+        if (validationChecksum != expectedSingleChecksum)
         {
             throw new InvalidOperationException(
                 $"Scenario '{scenario.Name}' failed correctness validation: expected " +
-                $"{scenario.ExpectedSingleChecksum}, got {validationChecksum}.");
+                $"{expectedSingleChecksum}, got {validationChecksum}.");
         }
 
-        long expectedChecksum = scenario.ExpectedSingleChecksum * options.Iterations;
-        for (int round = 0; round < options.WarmupRounds; round++)
-        {
-            long checksum = scenario.RunBatch(options.Iterations);
-            if (checksum != expectedChecksum)
-            {
-                throw new InvalidOperationException(
-                    $"Scenario '{scenario.Name}' produced an unstable warmup checksum.");
-            }
-        }
+        int iterations = CalibrateIterations(scenario, expectedSingleChecksum, options.Iterations);
+        WarmupResult warmup = WarmUp(scenario, expectedSingleChecksum, iterations, options.WarmupRounds);
+        iterations = CalibrateIterations(scenario, expectedSingleChecksum, iterations);
+        long expectedChecksum = checked(expectedSingleChecksum * iterations);
 
         var samples = new double[options.MeasurementRounds];
         for (int round = 0; round < options.MeasurementRounds; round++)
         {
             long start = Stopwatch.GetTimestamp();
-            long checksum = scenario.RunBatch(options.Iterations);
+            long checksum = scenario.RunBatch(iterations);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
             if (checksum != expectedChecksum)
             {
                 throw new InvalidOperationException(
                     $"Scenario '{scenario.Name}' produced checksum {checksum}; expected {expectedChecksum}.");
             }
-            samples[round] = elapsed.TotalNanoseconds / options.Iterations;
+            samples[round] = elapsed.TotalNanoseconds / iterations;
         }
 
         double[] sortedSamples = samples.Order().ToArray();
@@ -224,13 +147,72 @@ internal static class Program
             runtime,
             scenario.Name,
             options.WarmupRounds,
+            warmup.Rounds,
+            warmup.Operations,
             options.MeasurementRounds,
             options.Iterations,
+            iterations,
             sortedSamples[0],
             Median(sortedSamples),
             NearestRankPercentile(sortedSamples, 0.95),
-            expectedChecksum,
+            expectedSingleChecksum,
             samples);
+    }
+
+    private static WarmupResult WarmUp(
+        PreparedBenchmarkScenario scenario,
+        long expectedSingleChecksum,
+        int iterations,
+        int minimumRounds)
+    {
+        var warmup = new AdaptiveWarmup(minimumRounds);
+        long expectedChecksum = checked(expectedSingleChecksum * iterations);
+        while (warmup.ShouldContinue)
+        {
+            long start = Stopwatch.GetTimestamp();
+            long checksum = scenario.RunBatch(iterations);
+            double elapsedNanoseconds = Math.Max(Stopwatch.GetElapsedTime(start).TotalNanoseconds, 1.0);
+            if (checksum != expectedChecksum)
+            {
+                throw new InvalidOperationException(
+                    $"Scenario '{scenario.Name}' produced an unstable warmup checksum: " +
+                    $"expected {expectedChecksum}, got {checksum}.");
+            }
+            warmup.RecordBatch(iterations, elapsedNanoseconds);
+        }
+        return new WarmupResult(warmup.Rounds, warmup.Operations);
+    }
+
+    private static int CalibrateIterations(
+        PreparedBenchmarkScenario scenario,
+        long expectedSingleChecksum,
+        int minimumIterations)
+    {
+        int iterations = Math.Min(minimumIterations, MaxCalibratedIterations);
+        for (int step = 0; step < MaxCalibrationSteps; step++)
+        {
+            long start = Stopwatch.GetTimestamp();
+            long checksum = scenario.RunBatch(iterations);
+            double elapsedNanoseconds = Math.Max(Stopwatch.GetElapsedTime(start).TotalNanoseconds, 1.0);
+            long expectedChecksum = checked(expectedSingleChecksum * iterations);
+            if (checksum != expectedChecksum)
+            {
+                throw new InvalidOperationException(
+                    $"Scenario '{scenario.Name}' produced checksum {checksum} during calibration; " +
+                    $"expected {expectedChecksum}.");
+            }
+            if (elapsedNanoseconds >= TargetBatchNanoseconds || iterations == MaxCalibratedIterations)
+            {
+                return iterations;
+            }
+
+            long scale = Math.Clamp(
+                checked((long)Math.Ceiling(TargetBatchNanoseconds / elapsedNanoseconds)),
+                2,
+                1_000);
+            iterations = checked((int)Math.Min((long)iterations * scale, MaxCalibratedIterations));
+        }
+        return iterations;
     }
 
     private static double Median(double[] sortedValues)
@@ -251,9 +233,10 @@ internal static class Program
     {
         int warmupRounds = 5;
         int measurementRounds = 15;
-        int iterations = 10_000;
+        int iterations = 1;
         string? outputPath = null;
         var filter = new HashSet<string>(StringComparer.Ordinal);
+        bool listScenarios = false;
 
         string NextValue(ref int index, string option)
         {
@@ -294,12 +277,15 @@ internal static class Program
                         throw new InvalidOperationException($"{option} must select at least one scenario.");
                     }
                     break;
+                case "--list-scenarios":
+                    listScenarios = true;
+                    break;
                 default:
                     throw new InvalidOperationException($"Unknown benchmark option '{option}'.");
             }
         }
 
-        return new BenchmarkOptions(warmupRounds, measurementRounds, iterations, outputPath, filter);
+        return new BenchmarkOptions(warmupRounds, measurementRounds, iterations, outputPath, filter, listScenarios);
     }
 
     private static int ParseNonNegativeInt(string value, string option) =>
@@ -317,12 +303,8 @@ internal static class Program
         int MeasurementRounds,
         int Iterations,
         string? OutputPath,
-        HashSet<string> Filter);
-
-    private sealed record BenchmarkScenario(
-        string Name,
-        long ExpectedSingleChecksum,
-        Func<int, long> RunBatch);
+        HashSet<string> Filter,
+        bool ListScenarios);
 
     private sealed record BenchmarkResult(
         int SchemaVersion,
@@ -330,11 +312,86 @@ internal static class Program
         string Runtime,
         string Scenario,
         int WarmupRounds,
+        int ActualWarmupRounds,
+        long WarmupOperations,
         int MeasurementRounds,
+        int MinimumIterations,
         int Iterations,
         double MinNsPerOp,
         double MedianNsPerOp,
         double P95NsPerOp,
         long Checksum,
         double[] SamplesNsPerOp);
+
+    private readonly record struct WarmupResult(int Rounds, long Operations);
+
+    private sealed class AdaptiveWarmup
+    {
+        private readonly int minimumRounds;
+        private int? finalRound;
+
+        internal AdaptiveWarmup(int minimumRounds)
+        {
+            if (minimumRounds < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(minimumRounds));
+            }
+            this.minimumRounds = minimumRounds;
+            finalRound = minimumRounds == 0 ? 0 : null;
+        }
+
+        internal int Rounds { get; private set; }
+        internal long Operations { get; private set; }
+        internal double ElapsedNanoseconds { get; private set; }
+        internal bool ShouldContinue => !finalRound.HasValue || Rounds < finalRound.Value;
+
+        internal void RecordBatch(int iterations, double elapsedNanoseconds)
+        {
+            if (!ShouldContinue || iterations <= 0 || elapsedNanoseconds <= 0)
+            {
+                throw new InvalidOperationException("Invalid adaptive warmup batch.");
+            }
+
+            Rounds = checked(Rounds + 1);
+            Operations = checked(Operations + iterations);
+            ElapsedNanoseconds += elapsedNanoseconds;
+
+            if (!finalRound.HasValue && AdaptiveThresholdReached())
+            {
+                finalRound = Math.Max(minimumRounds, checked(Rounds + WarmupSettleRounds));
+            }
+        }
+
+        private bool AdaptiveThresholdReached() =>
+            ElapsedNanoseconds >= MaxAdaptiveWarmupNanoseconds ||
+            (Operations >= MinAdaptiveWarmupOperations &&
+                ElapsedNanoseconds >= MinAdaptiveWarmupNanoseconds);
+    }
+}
+
+internal sealed record BenchmarkScenarioDefinition(
+    string Name,
+    Func<PreparedBenchmarkScenario> Prepare);
+
+internal sealed class PreparedBenchmarkScenario : IDisposable
+{
+    private readonly Action? cleanup;
+
+    internal PreparedBenchmarkScenario(
+        string name,
+        long? expectedSingleChecksum,
+        Func<int, long> runBatch,
+        Action? cleanup = null)
+    {
+        Name = name;
+        ExpectedSingleChecksum = expectedSingleChecksum;
+        RunBatch = runBatch;
+        this.cleanup = cleanup;
+    }
+
+    internal string Name { get; }
+    internal long? ExpectedSingleChecksum { get; }
+    internal Func<int, long> RunBatch { get; }
+
+    public void Dispose() => cleanup?.Invoke();
 }

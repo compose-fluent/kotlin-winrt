@@ -48,6 +48,21 @@ internal object EventSourceCache {
         }
     }
 
+    /**
+     * Resolves the cached publisher only when shutdown cleanup actually runs.
+     *
+     * Event registration already acquired and owns the publisher weak reference here. Keeping
+     * shutdown bookkeeping keyed to this cache avoids repeating the weak-reference QI on every
+     * subscription while preserving the ability to recover after the projected wrapper is gone.
+     */
+    fun resolveTarget(
+        objectPointerKey: Long,
+        interfaceId: Guid,
+    ): ComObjectReference? =
+        lock.withLock {
+            caches[objectPointerKey]?.resolveTarget(interfaceId)
+        }
+
     fun remove(
         objectPointerKey: Long,
         index: Int,
@@ -101,6 +116,9 @@ internal object EventSourceCache {
         }
 
         fun isTargetAlive(): Boolean = target.resolve(IID.IUnknown)?.use { true } ?: false
+
+        fun resolveTarget(interfaceId: Guid): ComObjectReference? =
+            runCatching { target.resolve(interfaceId) }.getOrNull()
 
         fun updateIfDead(newTarget: WeakReferenceReference): WeakReferenceReference? {
             if (isTargetAlive()) {

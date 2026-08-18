@@ -1,86 +1,31 @@
 package io.github.composefluent.winrt.benchmarks
 
 import io.github.composefluent.winrt.runtime.RuntimeScope
-import windows.`data`.json.JsonArray
-import windows.`data`.json.JsonObject
-import windows.`data`.json.JsonValueType
-
-private const val PAYLOAD = "{\"name\":\"kotlin-winrt\",\"verified\":true,\"count\":42.5}"
+import io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic
 
 fun main(args: Array<String>) {
     RuntimeScope.initializeMultithreaded().use {
-        runBenchmarkSuite(args, createWinRTScenarios())
+        WinRTProjectionSupportIntrinsic.ensureInitialized()
+        val scenarios = buildList {
+            addAll(queryInterfaceScenarios())
+            addAll(eventScenarios())
+            addAll(guidScenarios())
+            addAll(reflectionScenarios())
+            addAll(asyncScenarios())
+            addAll(nonAgileObjectScenarios())
+        }
+        check(scenarios.size == REFERENCE_SCENARIO_COUNT) {
+            "Expected $REFERENCE_SCENARIO_COUNT .cswinrt reference scenarios, got ${scenarios.size}."
+        }
+        val duplicateNames = scenarios.groupingBy(BenchmarkScenario::name).eachCount().filterValues { it > 1 }.keys
+        check(duplicateNames.isEmpty()) {
+            "Duplicate benchmark scenarios: ${duplicateNames.sorted().joinToString()}."
+        }
+        runBenchmarkSuite(
+            args = args,
+            scenarios = scenarios,
+        )
     }
 }
 
-private fun createWinRTScenarios(): List<BenchmarkScenario> {
-    val json = JsonObject.parse(PAYLOAD)
-    val jsonArray = JsonArray.parse("[42.5]")
-    val stringifiedLength = json.stringify().length.toLong()
-
-    return listOf(
-        BenchmarkScenario("activate_json_object_only", expectedSingleChecksum = 1L) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                JsonObject()
-                checksum += 1L
-            }
-            checksum
-        },
-        BenchmarkScenario("activate_json_object", expectedSingleChecksum = 1L) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                if (JsonObject().valueType == JsonValueType.Object) {
-                    checksum += 1L
-                }
-            }
-            checksum
-        },
-        BenchmarkScenario("get_value_type", expectedSingleChecksum = 1L) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                if (json.valueType == JsonValueType.Object) {
-                    checksum += 1L
-                }
-            }
-            checksum
-        },
-        BenchmarkScenario("get_array_number_at", expectedSingleChecksum = 42L) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                checksum += jsonArray.getNumberAt(0u).toLong()
-            }
-            checksum
-        },
-        BenchmarkScenario("get_named_boolean", expectedSingleChecksum = 1L) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                if (json.getNamedBoolean("verified")) {
-                    checksum += 1L
-                }
-            }
-            checksum
-        },
-        BenchmarkScenario("get_named_string", expectedSingleChecksum = "kotlin-winrt".length.toLong()) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                checksum += json.getNamedString("name").length
-            }
-            checksum
-        },
-        BenchmarkScenario("stringify", expectedSingleChecksum = stringifiedLength) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                checksum += json.stringify().length
-            }
-            checksum
-        },
-        BenchmarkScenario("parse_get_named_number", expectedSingleChecksum = 42L) { iterations ->
-            var checksum = 0L
-            repeat(iterations) {
-                checksum += JsonObject.parse(PAYLOAD).getNamedNumber("count").toLong()
-            }
-            checksum
-        },
-    )
-}
+private const val REFERENCE_SCENARIO_COUNT: Int = 97

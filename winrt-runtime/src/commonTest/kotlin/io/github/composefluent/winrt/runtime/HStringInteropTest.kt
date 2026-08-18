@@ -120,6 +120,63 @@ class HStringInteropTest {
     }
 
     @Test
+    fun scoped_hstring_reference_abi_reuses_cleared_storage_and_preserves_nested_inputs() {
+        val firstOut = withNativeHStringReferenceAbi("first") { handle, pointerOut ->
+            assertEquals("first", NativeStringMarshaller.fromAbi(handle))
+            assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(pointerOut)))
+            PlatformAbi.writePointer(pointerOut, handle)
+            PlatformAbi.pointerKey(pointerOut)
+        }
+
+        withNativeHStringReferenceAbi("outer") { outerHandle, outerOut ->
+            assertEquals(firstOut, PlatformAbi.pointerKey(outerOut))
+            assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(outerOut)))
+            withNativeHStringReferenceAbi("inner") { innerHandle, innerOut ->
+                assertNotEquals(PlatformAbi.pointerKey(outerOut), PlatformAbi.pointerKey(innerOut))
+                assertEquals("outer", NativeStringMarshaller.fromAbi(outerHandle))
+                assertEquals("inner", NativeStringMarshaller.fromAbi(innerHandle))
+            }
+            assertEquals("outer", NativeStringMarshaller.fromAbi(outerHandle))
+        }
+
+        withNativeHStringReferenceAbi("") { handle, pointerOut ->
+            assertTrue(PlatformAbi.isNull(handle))
+            assertTrue(PlatformAbi.isNull(PlatformAbi.readPointer(pointerOut)))
+        }
+    }
+
+    @Test
+    fun scoped_hstring_reference_abi_preserves_inputs_beyond_embedded_frame_depth() {
+        val activeHandles = mutableSetOf<Long>()
+        val activeOutputs = mutableSetOf<Long>()
+
+        fun verifyDepth(depth: Int) {
+            if (depth == 0) {
+                return
+            }
+            val value = "depth-$depth"
+            withNativeHStringReferenceAbi(value) { handle, pointerOut ->
+                val handleKey = PlatformAbi.pointerKey(handle)
+                val outputKey = PlatformAbi.pointerKey(pointerOut)
+                assertTrue(activeHandles.add(handleKey))
+                assertTrue(activeOutputs.add(outputKey))
+                assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(pointerOut)))
+                assertEquals(value, NativeStringMarshaller.fromAbi(handle))
+
+                verifyDepth(depth - 1)
+
+                assertEquals(value, NativeStringMarshaller.fromAbi(handle))
+                assertTrue(activeHandles.remove(handleKey))
+                assertTrue(activeOutputs.remove(outputKey))
+            }
+        }
+
+        verifyDepth(6)
+        assertTrue(activeHandles.isEmpty())
+        assertTrue(activeOutputs.isEmpty())
+    }
+
+    @Test
     fun nested_hstring_reference_frames_preserve_outer_storage() {
         acquireNativeHStringReferenceFrame("outer").use { outer ->
             acquireNativeHStringReferenceFrame("inner").use { inner ->

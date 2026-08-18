@@ -8,6 +8,20 @@ data class WinRTDelegateDescriptor(
     val returnStructAdapter: NativeStructAdapter<*>? = null,
     val runtimeClassName: String? = null,
 ) {
+    /** Closed ABI signature reused by the delegate vtable and every invocation of this type. */
+    val functionSignature: ComMethodSignature =
+        WinRTDelegateAbiMarshaller.functionSignature(this)
+
+    /**
+     * Closed `IReference<TDelegate>` IID, matching CsWinRT's once-per-type
+     * `ABI.System.Nullable<T>.PIID` metadata.
+     */
+    val referenceInterfaceId: Guid =
+        ParameterizedInterfaceId.createFromParameterizedInterface(
+            IID.IReference,
+            WinRTTypeSignature.delegate(interfaceId),
+        )
+
     init {
         require(returnKind.isSupportedDelegateReturnKind()) {
             "Unsupported delegate return kind: $returnKind."
@@ -42,11 +56,7 @@ data class WinRTDelegateDescriptor(
         return WinRTTypeSignature.parameterizedInterface(genericDelegateIid, *argumentSignatures)
     }
 
-    fun referenceInterfaceId(): Guid =
-        ParameterizedInterfaceId.createFromParameterizedInterface(
-            IID.IReference,
-            WinRTTypeSignature.delegate(interfaceId),
-        )
+    fun referenceInterfaceId(): Guid = referenceInterfaceId
 }
 
 private fun WinRTDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =

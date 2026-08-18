@@ -190,6 +190,34 @@ class KotlinProjectionCallSiteDescriptorsTest {
     }
 
     @Test
+    fun direct_inbound_descriptor_composition_accepts_borrowed_scalars_and_rejects_consuming_mapped_outputs() {
+        val planner = KotlinProjectionPlanner()
+        val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "ModulePlatformAbi"))
+        val renderer = KotlinProjectionRenderer(modulePlatformAbiCalls = support)
+        val objectBinding = planner.classifyAbiTypeBinding("System.Object", "Sample.Foundation", emptyMap())
+        val intBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.Int32,
+            typeName = "Int",
+            resolvedTypeName = "Int",
+        )
+        val vectorViewBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedVectorView,
+            typeName = "Windows.Foundation.Collections.IVectorView<Int>",
+            resolvedTypeName = "Windows.Foundation.Collections.IVectorView<Int>",
+            typeArguments = listOf(intBinding),
+        )
+
+        val objectParameter = renderer.composeDirectInboundCallSiteParameter(objectBinding)
+        val intParameter = renderer.composeDirectInboundCallSiteParameter(intBinding)
+
+        assertNotNull(objectParameter)
+        assertEquals("System.Object", objectParameter?.abiType)
+        assertNotNull(intParameter)
+        assertEquals("kotlin.Int", intParameter?.abiType)
+        assertNull(renderer.composeDirectInboundCallSiteParameter(vectorViewBinding))
+    }
+
+    @Test
     fun nullable_custom_object_factory_uses_nullable_return_and_descriptor_contract() {
         val renderer = KotlinProjectionRenderer()
         val binding = KotlinProjectionAbiTypeBinding(
@@ -590,7 +618,10 @@ class KotlinProjectionCallSiteDescriptorsTest {
     fun module_codec_merge_uses_the_plugin_visible_identity_not_the_private_recipe() {
         val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "ModulePlatformAbi"))
 
-        fun registerCodec(signature: String): String = support.registerCodec(
+        fun registerCodec(
+            signature: String,
+            consumesOwnedAbi: Boolean = true,
+        ): String = support.registerCodec(
             operation = "fromAbi",
             role = KotlinProjectionAbiCodecRole.FROM_ABI,
             abiTypeName = "System.Object",
@@ -598,6 +629,7 @@ class KotlinProjectionCallSiteDescriptorsTest {
             parameters = listOf(KotlinProjectionCallSiteCodecParameter("__abi", INT)),
             returnType = INT,
             body = CodeBlock.of("return __abi\n"),
+            consumesOwnedAbi = consumesOwnedAbi,
         )
 
         val first = registerCodec("private-recipe-a")
@@ -608,16 +640,9 @@ class KotlinProjectionCallSiteDescriptorsTest {
         assertEquals(first, second)
         assertEquals(1, Regex("fun $first\\(").findAll(rendered).count())
         assertEquals(1, Regex("role = WinRTProjectionAbiCodecRole.FROM_ABI").findAll(rendered).count())
+        assertEquals(1, Regex("consumesOwnedAbi = true").findAll(rendered).count())
         val conflict = runCatching {
-            support.registerCodec(
-                operation = "fromAbi",
-                role = KotlinProjectionAbiCodecRole.FROM_ABI,
-                abiTypeName = "System.Object",
-                signature = "private-recipe-c",
-                parameters = listOf(KotlinProjectionCallSiteCodecParameter("__abi", INT)),
-                returnType = INT,
-                body = CodeBlock.of("return __abi + 1\n"),
-            )
+            registerCodec("private-recipe-c", consumesOwnedAbi = false)
         }.exceptionOrNull()
         assertNotNull(conflict)
         assertTrue(conflict?.message.orEmpty().contains("Conflicting generated ABI codec implementations"))

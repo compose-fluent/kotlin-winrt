@@ -143,28 +143,44 @@ class KotlinProjectionGenerator(
 
     fun generate(model: WinRTMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
+        val semanticHelpers = normalizedModel.semanticHelpers()
         val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
         val renderedPlans = plans.filterNot { plan ->
             plan.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
+        val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(normalizedModel, renderedPlans)
-        val projectionRenderer = projectionFileRenderer(modulePlatformAbiCalls = modulePlatformAbiCalls)
+        val projectionRenderer = projectionFileRenderer(
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+            projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
+                .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
+        )
         val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
+        val projectedInterfaceCcwFiles = listOfNotNull(
+            supportRenderer
+                .withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
+                .renderProjectedInterfaceCcwFactories(
+                    projectedInterfaceCcwPlans,
+                    semanticHelpers,
+                    supportOwnerIdentity,
+                ),
+        )
         if (!emitSupportFiles) {
             val closedGenericFiles = closedGenericProjectionFiles(
                 model = normalizedModel,
                 plans = plans,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
             )
-            return projectionFiles + closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
+            return projectionFiles + projectedInterfaceCcwFiles + closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
         }
-        return projectionFiles + supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
+        return projectionFiles + projectedInterfaceCcwFiles + supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
     }
 
     fun generateTo(model: WinRTMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
+        val semanticHelpers = normalizedModel.semanticHelpers()
         val plans = planner.plan(normalizedModel, projectionContext)
         validateGeneratorContracts(normalizedModel, plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
@@ -177,8 +193,14 @@ class KotlinProjectionGenerator(
             plan.type.qualifiedName in authoredTypeNames ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
+        val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(normalizedModel, projectionPlans, renderedPlans)
-        val projectionRenderer = projectionFileRenderer(renderedPlans, modulePlatformAbiCalls)
+        val projectionRenderer = projectionFileRenderer(
+            plans = renderedPlans,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+            projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
+                .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
+        )
         val projectionFiles = projectionPlans
             .flatMap(projectionRenderer::render)
             .let { files ->
@@ -188,7 +210,16 @@ class KotlinProjectionGenerator(
                     files
                 }
             }
-        val files = projectionFiles + if (emitSupportFiles) {
+        val projectedInterfaceCcwFiles = listOfNotNull(
+            supportRenderer
+                .withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
+                .renderProjectedInterfaceCcwFactories(
+                    projectedInterfaceCcwPlans,
+                    semanticHelpers,
+                    supportOwnerIdentity,
+                ),
+        )
+        val files = projectionFiles + projectedInterfaceCcwFiles + if (emitSupportFiles) {
             supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
         } else {
             val closedGenericFiles = closedGenericProjectionFiles(
@@ -1737,14 +1768,27 @@ class KotlinProjectionGenerator(
     private fun projectionFileRenderer(
         plans: List<KotlinTypeProjectionPlan>? = null,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
+        projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
     ): KotlinProjectionFileRenderer =
         when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(projectionRendererForLayout(plans, plan, modulePlatformAbiCalls).render(plan))
+                listOf(
+                    projectionRendererForLayout(
+                        plans,
+                        plan,
+                        modulePlatformAbiCalls,
+                        projectedInterfaceCcwInputTypeNames,
+                    ).render(plan),
+                )
             }
             KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinProjectionFileRenderer { plan ->
                 KotlinExpectActualProjectionRenderer(
-                    projectionRendererForLayout(plans, plan, modulePlatformAbiCalls),
+                    projectionRendererForLayout(
+                        plans,
+                        plan,
+                        modulePlatformAbiCalls,
+                        projectedInterfaceCcwInputTypeNames,
+                    ),
                 ).render(plan)
             }
         }
@@ -1753,6 +1797,7 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>? = null,
         currentPlan: KotlinTypeProjectionPlan? = null,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
+        projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
     ): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
@@ -1767,6 +1812,7 @@ class KotlinProjectionGenerator(
                 useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 supportOwnerIdentity = supportOwnerIdentity,
+                projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
             )
         } else {
             renderer.withModulePlatformAbiCalls(
@@ -1775,7 +1821,18 @@ class KotlinProjectionGenerator(
                 useInterfaceProjectionArtifacts =
                     renderer.useInterfaceProjectionArtifacts ||
                         generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm,
-            )
+            ).let { configured ->
+                KotlinProjectionRenderer(
+                    useInterfaceProjectionArtifacts = configured.useInterfaceProjectionArtifacts,
+                    suppressProjectedMemberSlotConstants = configured.suppressProjectedMemberSlotConstants,
+                    projectedSlotLiterals = configured.projectedSlotLiterals,
+                    useWinAppSdkTypeRedirects = configured.useWinAppSdkTypeRedirects,
+                    useKotlinDurationAlias = configured.useKotlinDurationAlias,
+                    modulePlatformAbiCalls = configured.modulePlatformAbiCalls,
+                    supportOwnerIdentity = configured.supportOwnerIdentity,
+                    projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                )
+            }
         }
 
     private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
@@ -1806,7 +1863,9 @@ class KotlinProjectionGenerator(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     ): List<KotlinProjectionFile> {
         val supportPlans = plans + supportPlansByQualifiedName(model, plans).values
-        val supportRendererFiles = supportRenderer.render(
+        val supportRendererFiles = supportRenderer
+            .withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
+            .render(
             model,
             supportPlans.distinctBy { it.type.qualifiedName },
             projectionContext,
@@ -1872,6 +1931,7 @@ class KotlinProjectionGenerator(
                 className = modulePlatformAbiCallClassName,
                 enabledCalls = emptySet(),
                 abiSupportShardCount = abiSupportShardCount,
+                emitSupportFile = false,
             )
         }
         val collector = KotlinModulePlatformAbiCallSupport(

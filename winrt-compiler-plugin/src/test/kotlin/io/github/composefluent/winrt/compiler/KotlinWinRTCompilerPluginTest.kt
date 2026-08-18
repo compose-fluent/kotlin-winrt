@@ -4,9 +4,11 @@ import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeCandidate
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.compiler.authoring.projectionTypeIndexRecordForSourceType
+import io.github.composefluent.winrt.metadata.WinRTIntegralType
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRTNamespace
+import io.github.composefluent.winrt.metadata.WinRTParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.runtime.Guid
@@ -249,6 +251,171 @@ class KotlinWinRTCompilerPluginTest {
         val contents = output.resolve("sample/WinRT_App_TypeDetails.kt").toFile().readText()
         assertTrue(contents, contents.contains("(value as Application).__winrtAuthoringInvokeOnLaunched(__arg0)"))
         assertFalse(contents, contents.contains("value.winrtAs("))
+        assertTrue(contents, contents.contains("private val ccwDefinition: WinRTCcwDefinition = createCcwDefinition()"))
+        assertTrue(contents, contents.contains("private val registrationToken: Unit = registerOnce()"))
+        assertTrue(contents, contents.contains("private fun registerOnce()"))
+        assertTrue(contents, contents.contains("public fun register()"))
+        assertTrue(contents, contents.contains("registrationToken"))
+        assertTrue(contents, contents.contains("ComWrappersSupport.registerStaticCcwDefinition(App::class, ccwDefinition)"))
+        assertFalse(contents, contents.contains("registerAuthoringTypeDetailsFactory"))
+        assertFalse(contents, contents.contains("createCcwDefinition(value: Any)"))
+
+        val registrarContents = output
+            .resolve("io/github/composefluent/winrt/projections/support/WinRTAuthoringTypeDetailsRegistrar.kt")
+            .toFile()
+            .readText()
+        assertTrue(registrarContents, registrarContents.contains("private val registrationToken: Unit = registerOnce()"))
+        assertTrue(registrarContents, registrarContents.contains("private fun registerOnce()"))
+        assertTrue(registrarContents, registrarContents.contains("WinRT_App_TypeDetails.register()"))
+        assertTrue(registrarContents, registrarContents.contains("public fun register()"))
+        assertTrue(registrarContents, registrarContents.contains("registrationToken"))
+    }
+
+    @Test
+    fun authoring_type_details_emit_semantic_inbound_callsites_only_for_direct_projection_shapes() {
+        val callShapes = WinRTTypeDefinition(
+            namespace = "Sample.CallSites",
+            name = "ICallShapes",
+            kind = WinRTTypeKind.Interface,
+            iid = Guid("11111111-2222-3333-4444-555555555550"),
+            methods = listOf(
+                WinRTMethodDefinition(
+                    name = "Transform",
+                    returnTypeName = "System.Int32",
+                    parameters = listOf(WinRTParameterDefinition("enabled", "System.Boolean")),
+                    methodRowId = 6,
+                ),
+                WinRTMethodDefinition(
+                    name = "EchoStatus",
+                    returnTypeName = "Sample.CallSites.Status",
+                    parameters = listOf(WinRTParameterDefinition("value", "Sample.CallSites.Status")),
+                    methodRowId = 7,
+                ),
+                WinRTMethodDefinition(
+                    name = "EchoInterface",
+                    returnTypeName = "Sample.CallSites.IPlain",
+                    parameters = listOf(WinRTParameterDefinition("value", "Sample.CallSites.IPlain")),
+                    methodRowId = 8,
+                ),
+                WinRTMethodDefinition(
+                    name = "EchoRuntimeClass",
+                    returnTypeName = "Sample.CallSites.ProjectedThing",
+                    parameters = listOf(WinRTParameterDefinition("value", "Sample.CallSites.ProjectedThing")),
+                    methodRowId = 9,
+                ),
+                WinRTMethodDefinition(
+                    name = "ConsumeAuthored",
+                    returnTypeName = "Unit",
+                    parameters = listOf(WinRTParameterDefinition("value", "sample.AuthoredPeer")),
+                    methodRowId = 10,
+                ),
+                WinRTMethodDefinition(
+                    name = "ConsumeHandler",
+                    returnTypeName = "Unit",
+                    parameters = listOf(WinRTParameterDefinition("value", "Sample.CallSites.Handler")),
+                    methodRowId = 11,
+                ),
+                WinRTMethodDefinition(
+                    name = "ConsumeString",
+                    returnTypeName = "Unit",
+                    parameters = listOf(WinRTParameterDefinition("value", "String")),
+                    methodRowId = 12,
+                ),
+            ),
+        )
+        val plainInterface = WinRTTypeDefinition(
+            namespace = "Sample.CallSites",
+            name = "IPlain",
+            kind = WinRTTypeKind.Interface,
+            iid = Guid("11111111-2222-3333-4444-555555555551"),
+        )
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.CallSites",
+                    types = listOf(
+                        callShapes,
+                        plainInterface,
+                        WinRTTypeDefinition(
+                            namespace = "Sample.CallSites",
+                            name = "Status",
+                            kind = WinRTTypeKind.Enum,
+                            enumUnderlyingType = WinRTIntegralType.Int32,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.CallSites",
+                            name = "ProjectedThing",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = plainInterface.qualifiedName,
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.CallSites",
+                            name = "Handler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            methods = listOf(WinRTMethodDefinition("Invoke", "Unit")),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "sample",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "sample",
+                            name = "AuthoredPeer",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = plainInterface.qualifiedName,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val owner = KotlinWinRTAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "Owner",
+            sourceTypeName = "sample.Owner",
+            winRTBaseClassName = null,
+            winRTInterfaceNames = listOf(callShapes.qualifiedName),
+            overridableInterfaceNames = emptyList(),
+        )
+        val authoredPeer = KotlinWinRTAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "AuthoredPeer",
+            sourceTypeName = "sample.AuthoredPeer",
+            winRTBaseClassName = null,
+            winRTInterfaceNames = listOf(plainInterface.qualifiedName),
+            overridableInterfaceNames = emptyList(),
+        )
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-inbound-callsites-")
+
+        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(owner, authoredPeer), model, output)
+
+        val contents = output.resolve("sample/WinRT_Owner_TypeDetails.kt").toFile().readText()
+        assertEquals(
+            4,
+            Regex("abiEntryPoint\\s*=\\s*winRTProjectionInboundEntryPoint").findAll(contents).count(),
+        )
+        assertTrue(contents, contents.contains("returnAbiType = \"kotlin.Int\""))
+        assertTrue(contents, contents.contains("abiType = \"kotlin.Boolean\""))
+        listOf(
+            "Sample.CallSites.Status",
+            "Sample.CallSites.IPlain",
+            "Sample.CallSites.ProjectedThing",
+        ).forEach { identity ->
+            assertTrue(identity, contents.contains("returnAbiType = \"$identity\""))
+            assertTrue(identity, contents.contains("abiType = \"$identity\""))
+        }
+        listOf("consumeAuthored(__arg0)", "consumeHandler(__arg0)", "consumeString(__arg0)").forEach { invocation ->
+            val invocationIndex = contents.indexOf(invocation)
+            assertTrue(invocation, invocationIndex >= 0)
+            val methodStart = contents.lastIndexOf("WinRTInspectableMethodDefinition(", invocationIndex)
+            val fallbackPrefix = contents.substring(methodStart, invocationIndex)
+            assertTrue(invocation, fallbackPrefix.contains("rawArgs"))
+            assertFalse(invocation, fallbackPrefix.contains("abiEntryPoint"))
+        }
+        assertTrue(contents, contents.contains("WinRTObjectMarshaller.fromAbi(rawArgs[0] as RawAddress) as AuthoredPeer"))
+        assertFalse(contents, contents.contains("returnAbiType = \"sample.AuthoredPeer\""))
+        assertFalse(contents, contents.contains("abiType = \"sample.AuthoredPeer\""))
     }
 
     @Test
@@ -1186,6 +1353,39 @@ class KotlinWinRTCompilerPluginTest {
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("expected 2 projection registrar input entries"),
         )
+    }
+
+    @Test
+    fun projection_registrar_reads_guid_signatures_and_legacy_rows() {
+        val root = Files.createTempDirectory("kotlin-winrt-projection-registrar-guid-signature-")
+        val current = root.resolve("current.tsv")
+        Files.writeString(
+            current,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid	guidSignature
+            sample.foundation.IWidget	Sample.Foundation.IWidget	Interface			11111111-2222-3333-4444-555555555555	{11111111-2222-3333-4444-555555555555}
+            sample.foundation.Widget	Sample.Foundation.Widget	RuntimeClass		sample.foundation.Widget.Metadata		rc(Sample.Foundation.Widget;{11111111-2222-3333-4444-555555555555})
+            """.trimIndent() + "\n",
+        )
+        val legacy = root.resolve("legacy.tsv")
+        Files.writeString(
+            legacy,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid
+            sample.foundation.IWidget	Sample.Foundation.IWidget	Interface			11111111-2222-3333-4444-555555555555
+            """.trimIndent() + "\n",
+        )
+
+        val currentEntries = readProjectionRegistrarEntries(current)
+        val legacyEntries = readProjectionRegistrarEntries(legacy)
+
+        assertEquals(2, currentEntries.size)
+        assertEquals("{11111111-2222-3333-4444-555555555555}", currentEntries[0].guidSignature)
+        assertEquals(
+            "rc(Sample.Foundation.Widget;{11111111-2222-3333-4444-555555555555})",
+            currentEntries[1].guidSignature,
+        )
+        assertEquals("", legacyEntries.single().guidSignature)
     }
 
 }

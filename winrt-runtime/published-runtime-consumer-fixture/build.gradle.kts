@@ -219,7 +219,7 @@ fun dumpKlibIr(klib: File): String {
 val verifyPublishedRuntimeBoundary by tasks.registering {
     group = "verification"
     description = "Inspects the isolated published runtime and plugin-free JVM/mingwX64 consumer boundary."
-    dependsOn("compileKotlinJvm", "linkDebugExecutableMingwX64")
+    dependsOn("compileKotlinJvm", "linkReleaseExecutableMingwX64")
 
     doLast {
         check(!pluginManager.hasPlugin("io.github.compose-fluent.winrt"))
@@ -304,6 +304,9 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
             "WinRTProjectionIntrinsic.getInt32:(Lio/github/composefluent/winrt/runtime/ComObjectReference;I)I",
             "WinRTProjectionIntrinsic.getBoolean:(Lio/github/composefluent/winrt/runtime/ComObjectReference;I)Z",
             "WinRTProjectionIntrinsic.getString:(Lio/github/composefluent/winrt/runtime/ComObjectReference;I)Ljava/lang/String;",
+            "WinRTManagedProjectionStateOwner.winRTManagedProjectionState",
+            "PlatformManagedComReferenceCounter.load",
+            "ManagedComHostState.completeBorrowedCallStateTransition",
         ).forEach { expectedCall ->
             check(consumerBytecode.contains(expectedCall)) {
                 "JVM consumer bytecode does not contain the ordinary published-runtime call $expectedCall."
@@ -322,6 +325,14 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
         )
         check(localLoweringMarkers.none(consumerBytecode::contains)) {
             "The JVM consumer locally contains lowered runtime implementation instead of ordinary calls."
+        }
+        check(
+                "releaseWinRTManagedProjectionCallLease" !in consumerBytecode &&
+                "releaseManagedCall" !in consumerBytecode &&
+                "endStaticCallLease" !in consumerBytecode &&
+                "ManagedComHostState.endBorrowedCall" !in consumerBytecode
+        ) {
+            "The published managed call-lease release wrapper was not fully inlined into the JVM consumer."
         }
 
         val runtimeOwnerBytecode = javap(
@@ -355,6 +366,7 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
             "CALL 'io.github.composefluent.winrt.runtime/WinRTProjectionIntrinsic.getBoolean|getBoolean(io.github.composefluent.winrt.runtime.ComObjectReference;kotlin.Int){}[0]'",
             "CALL 'io.github.composefluent.winrt.runtime/WinRTProjectionIntrinsic.getString|getString(io.github.composefluent.winrt.runtime.ComObjectReference;kotlin.Int){}[0]'",
             "CALL 'io.github.composefluent.winrt.runtime.consumer/consumeRuntimeOwnedWrappers|consumeRuntimeOwnedWrappers(io.github.composefluent.winrt.runtime.ComObjectReference;kotlin.Int){}[0]'",
+            "CALL 'io.github.composefluent.winrt.runtime.consumer/consumePublishedManagedCallLease|consumePublishedManagedCallLease(kotlin.Any){}[0]'",
         ).forEach { expectedCall ->
             check(nativeConsumerIr.contains(expectedCall)) {
                 "Native consumer IR does not contain the ordinary published-runtime call $expectedCall."
@@ -364,14 +376,14 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
             "The Native consumer KLIB locally contains lowered runtime implementation instead of ordinary calls."
         }
 
-        val nativeExecutable = layout.buildDirectory.dir("bin/mingwX64/debugExecutable").get().asFile
+        val nativeExecutable = layout.buildDirectory.dir("bin/mingwX64/releaseExecutable").get().asFile
             .walkTopDown()
             .filter(File::isFile)
             .singleOrNull { it.extension.equals("exe", ignoreCase = true) }
         check(nativeExecutable != null) { "Missing linked mingwX64 consumer executable." }
         nativeExecutable.assertMarkersAbsent(
             "linked mingwX64 consumer executable",
-            ownerPlaceholderMarkers + setOf(
+            runtimePlaceholderMarkers + setOf(
                 "KotlinWinRTCompilerPlugin",
                 "WinRTProjectionCallSiteCompilerPlugin",
                 "winrt-compiler-plugin",
@@ -381,11 +393,24 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
         check(nativeBytes.size >= 2 && nativeBytes[0] == 'M'.code.toByte() && nativeBytes[1] == 'Z'.code.toByte()) {
             "Native final artifact is not a PE executable."
         }
-        check(nativeBytes.containsSequence("published-runtime-only-consumer".encodeToByteArray())) {
+        check(nativeBytes.containsSequence("published-runtime-only-consumer".toByteArray(Charsets.UTF_16LE))) {
             "Native final artifact does not retain the statically referenced consumer boundary."
         }
         check(nativeBytes.containsSequence("WindowsDeleteString".encodeToByteArray())) {
             "Native final artifact does not retain the direct WindowsDeleteString import."
+        }
+        check(nativeBytes.containsSequence("ManagedComHostState#completeBorrowedCallStateTransition".encodeToByteArray())) {
+            "Native final artifact does not retain the managed call-lease lifetime state machine."
+        }
+        listOf(
+            "releaseWinRTManagedProjectionCallLease",
+            "releaseManagedCall",
+            "endStaticCallLease",
+            "ManagedComHostState#endBorrowedCall(",
+        ).forEach { wrapper ->
+            check(!nativeBytes.containsSequence(wrapper.encodeToByteArray())) {
+                "The published managed call-lease wrapper '$wrapper' survived Native final linking."
+            }
         }
 
         val reportDirectory = layout.buildDirectory.dir("reports/optimization-19.8").get().asFile

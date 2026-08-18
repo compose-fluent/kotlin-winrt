@@ -44,4 +44,7 @@ internal class IActivationFactoryView(
 ) {
     fun activateInstance(): IInspectableReference =
         ActivationFactoryReferenceSupport.activateInstance(comPtr)
+
+    fun activateInstance(interfaceId: Guid): IInspectableReference =
+        ActivationFactoryReferenceSupport.activateInstance(comPtr, interfaceId)
 }

@@ -16,6 +16,12 @@ internal data class WinRTValueTypeMetadata(
     val propertyType: PropertyType?,
     val propertyTypeArray: PropertyType?,
     val isNumericScalar: Boolean = false,
+    /**
+     * The WinMD projected name, when the descriptor was registered from generated metadata.
+     * Keeping this fact beside the descriptor lets runtime-name based unboxing resolve a closed
+     * value shape without scanning every registered descriptor.
+     */
+    val projectedTypeName: String? = null,
 )
 
 private data class ManagedArrayMetadata(
@@ -51,6 +57,9 @@ internal object ValueBoxingMetadata {
         )
 
     private val dynamicDescriptorsByClass = ConcurrentCacheMap<KClass<*>, WinRTValueTypeMetadata>()
+    private val dynamicDescriptorsByProjectedName = ConcurrentCacheMap<String, WinRTValueTypeMetadata>()
+    private val dynamicDescriptorsByNullableInterfaceId = ConcurrentCacheMap<Guid, WinRTValueTypeMetadata>()
+    private val dynamicDescriptorsByReferenceArrayInterfaceId = ConcurrentCacheMap<Guid, WinRTValueTypeMetadata>()
 
     private val builtInDescriptors =
         listOf(
@@ -76,9 +85,33 @@ internal object ValueBoxingMetadata {
         )
 
     private val builtInDescriptorsByClass = builtInDescriptors.associateBy(WinRTValueTypeMetadata::projectedClass)
+    private val builtInDescriptorsByNullableInterfaceId =
+        builtInDescriptors.mapNotNull { descriptor ->
+            descriptor.nullableInterfaceId?.let { interfaceId -> interfaceId to descriptor }
+        }.toMap()
+    private val builtInDescriptorsByReferenceArrayInterfaceId =
+        builtInDescriptors.mapNotNull { descriptor ->
+            descriptor.referenceArrayInterfaceId?.let { interfaceId -> interfaceId to descriptor }
+        }.toMap()
 
     fun registerDescriptor(descriptor: WinRTValueTypeMetadata) {
+        val previous = dynamicDescriptorsByClass[descriptor.projectedClass]
+        previous?.let(::removeDynamicInterfaceIndexes)
+        previous?.projectedTypeName?.let { previousName ->
+            if (previousName != descriptor.projectedTypeName) {
+                dynamicDescriptorsByProjectedName.remove(previousName)
+            }
+        }
         dynamicDescriptorsByClass[descriptor.projectedClass] = descriptor
+        descriptor.nullableInterfaceId?.let { interfaceId ->
+            dynamicDescriptorsByNullableInterfaceId[interfaceId] = descriptor
+        }
+        descriptor.referenceArrayInterfaceId?.let { interfaceId ->
+            dynamicDescriptorsByReferenceArrayInterfaceId[interfaceId] = descriptor
+        }
+        descriptor.projectedTypeName?.let { projectedName ->
+            dynamicDescriptorsByProjectedName[projectedName] = descriptor
+        }
     }
 
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? {
@@ -170,6 +203,14 @@ internal object ValueBoxingMetadata {
     fun propertyTypeForReferenceArrayInterface(interfaceId: Guid): PropertyType? =
         descriptorForReferenceArrayInterface(interfaceId)?.propertyTypeArray
 
+    fun propertyTypeForReferenceInterface(interfaceId: Guid): PropertyType? =
+        descriptorForReferenceInterface(interfaceId)?.propertyType
+
+    fun boxedRuntimeClassNameForReferenceInterface(interfaceId: Guid): String? =
+        descriptorForReferenceInterface(interfaceId)?.let { descriptor ->
+            boxedReferenceRuntimeClassName(interfaceId, descriptor)
+        }
+
     fun inspectableArrayMetadata(): WinRTValueTypeMetadata = objectMetadata
 
     fun descriptorForClass(type: KClass<*>): WinRTValueTypeMetadata? =
@@ -177,11 +218,23 @@ internal object ValueBoxingMetadata {
             ?: builtInDescriptorsByClass[type]
             ?: if (isAssignableFrom(Exception::class, type)) exceptionMetadata else null
 
+    /**
+     * Resolves a descriptor from the closed WinRT element name.  Generated descriptors are
+     * indexed directly; intrinsic names still flow through the shared type-name registry so the
+     * runtime does not grow a second primitive/type enumeration.
+     */
+    fun descriptorForProjectedTypeName(projectedTypeName: String): WinRTValueTypeMetadata? =
+        dynamicDescriptorsByProjectedName[projectedTypeName]
+            ?: TypeNameSupport.findKClassByNameCached(projectedTypeName)?.let(::descriptorForClass)
+
     fun referenceTypeDescriptors(): List<WinRTValueTypeMetadata> =
         builtInDescriptors + dynamicDescriptorsByClass.values
 
     fun clearDynamicDescriptorsForTests() {
         dynamicDescriptorsByClass.clear()
+        dynamicDescriptorsByProjectedName.clear()
+        dynamicDescriptorsByNullableInterfaceId.clear()
+        dynamicDescriptorsByReferenceArrayInterfaceId.clear()
     }
 
     fun enumMetadataForClass(type: KClass<*>): WinRTEnumBoxingMetadata? {
@@ -272,8 +325,25 @@ internal object ValueBoxingMetadata {
     }
 
     private fun descriptorForReferenceArrayInterface(interfaceId: Guid): WinRTValueTypeMetadata? =
-        dynamicDescriptorsByClass.values.firstOrNull { it.referenceArrayInterfaceId == interfaceId }
-            ?: builtInDescriptors.firstOrNull { it.referenceArrayInterfaceId == interfaceId }
+        builtInDescriptorsByReferenceArrayInterfaceId[interfaceId]
+            ?: dynamicDescriptorsByReferenceArrayInterfaceId[interfaceId]
+
+    private fun descriptorForReferenceInterface(interfaceId: Guid): WinRTValueTypeMetadata? =
+        builtInDescriptorsByNullableInterfaceId[interfaceId]
+            ?: dynamicDescriptorsByNullableInterfaceId[interfaceId]
+
+    private fun removeDynamicInterfaceIndexes(descriptor: WinRTValueTypeMetadata) {
+        descriptor.nullableInterfaceId?.let { interfaceId ->
+            dynamicDescriptorsByNullableInterfaceId.compute(interfaceId) { _, current ->
+                current.takeUnless { it === descriptor }
+            }
+        }
+        descriptor.referenceArrayInterfaceId?.let { interfaceId ->
+            dynamicDescriptorsByReferenceArrayInterfaceId.compute(interfaceId) { _, current ->
+                current.takeUnless { it === descriptor }
+            }
+        }
+    }
 
     private fun isSupportedArrayValue(value: Any): Boolean =
         WinRTTypeClassifier.primitiveArrayElementType(value::class) != null || value is Array<*>

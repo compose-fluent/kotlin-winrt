@@ -63,6 +63,8 @@ internal data class KotlinProjectionCallSiteOutputCodec(
     val parameterType: TypeName,
     val returnType: TypeName,
     val body: CodeBlock,
+    /** The codec expects an owned COM value and therefore cannot decode a borrowed inbound argument. */
+    val consumesOwnedAbi: Boolean,
 )
 
 /** Ordinary inline array elements are fully recoverable from the closed IR element declaration. */
@@ -148,7 +150,7 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
     val returnType = adapter.inputFactoryReturnType ?: return null
     val body = when {
         adapter.inputUsesSelfReferenceAdapter -> {
-            val referenceAdapter = collectionReferenceAdapterCode(binding)
+            val referenceAdapter = collectionReferenceAdapterCode(binding, hoistMetadata = true)
                 ?: error("Mapped WinMD input '${binding.typeName}' has no closed self adapter.")
             CodeBlock.of("return %L.createInputMarshaler(__value)\n", referenceAdapter)
         }
@@ -157,7 +159,7 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
                 ?: error("Mapped WinMD input '${binding.typeName}' has no static factory owner.")
             val arguments = buildList {
                 if (adapter.inputUsesParameterizedInterfaceId) {
-                    add(referenceInterfaceIdCode(binding)
+                    add(referenceInterfaceIdCode(binding, hoistMetadata = true)
                         ?: error("Mapped WinMD input '${binding.typeName}' has no parameterized IID."))
                 } else {
                     require(binding.typeArguments.size == adapter.inputTypeArgumentAdapterCount) {
@@ -165,8 +167,14 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
                             "${adapter.inputTypeArgumentAdapterCount} closed adapter arguments."
                     }
                     binding.typeArguments.forEach { argument ->
-                        add(collectionReferenceAdapterCode(argument)
+                        add(collectionReferenceAdapterCode(argument, hoistMetadata = true)
                             ?: error("Mapped WinMD input '${binding.typeName}' has an unbound argument adapter."))
+                    }
+                    if (binding.kind == KotlinProjectionAbiValueKind.MappedMapView ||
+                        binding.kind == KotlinProjectionAbiValueKind.MappedMap
+                    ) {
+                        add(collectionInterfaceIdCode(binding, hoistMetadata = true)
+                            ?: error("Mapped WinMD input '${binding.typeName}' has no collection IID."))
                     }
                 }
             }
@@ -289,7 +297,7 @@ private fun KotlinProjectionRenderer.buildCallSiteInputValueAdapter(
     WinRTProjectionCallSiteRecipeKind.ENUM,
     WinRTProjectionCallSiteRecipeKind.STRUCT,
     WinRTProjectionCallSiteRecipeKind.COM_REFERENCE,
-    WinRTProjectionCallSiteRecipeKind.PROJECTION -> collectionReferenceAdapterCode(binding)
+    WinRTProjectionCallSiteRecipeKind.PROJECTION -> collectionReferenceAdapterCode(binding, hoistMetadata = true)
     WinRTProjectionCallSiteRecipeKind.VALUE,
     WinRTProjectionCallSiteRecipeKind.HSTRING,
     WinRTProjectionCallSiteRecipeKind.GUID,
@@ -676,7 +684,7 @@ internal fun KotlinProjectionAbiTypeBinding.explicitCallSiteAbiTypeName(): Strin
 internal fun KotlinProjectionAbiTypeBinding.callSiteAbiMetadataName(projectedType: TypeName): String =
     explicitCallSiteAbiTypeName().ifEmpty(projectedType::toString)
 
-private fun KotlinProjectionAbiTypeBinding.closedCallSiteAbiTypeName(): String {
+internal fun KotlinProjectionAbiTypeBinding.closedCallSiteAbiTypeName(): String {
     val rootName = mappedCallSiteType(this)?.abiQualifiedName
         ?: resolvedTypeName.substringBefore('<').removeSuffix("?")
     if (typeArguments.isEmpty()) return rootName
@@ -744,7 +752,24 @@ internal fun KotlinProjectionRenderer.buildProjectionOutputCodec(
         parameterType = RAW_ADDRESS_CLASS_NAME,
         returnType = returnType,
         body = renderProjectionOutputCodecBody(binding, recipe, returnType),
+        consumesOwnedAbi = projectionOutputCodecConsumesOwnedAbi(binding),
     )
+}
+
+private fun KotlinProjectionRenderer.projectionOutputCodecConsumesOwnedAbi(
+    binding: KotlinProjectionAbiTypeBinding,
+): Boolean {
+    val adapter = mappedCallSiteAdapter(binding) ?: return true
+    if (adapter.usesClosedGenericHelper ||
+        adapter.outputUsesAsyncExpression ||
+        adapter.outputConsumesAbi ||
+        adapter.outputFromAbiFunctionName != adapter.fromAbiFunctionName
+    ) {
+        return true
+    }
+    // Object projection is explicitly borrowed: WinRTObjectMarshaller resolves identity without
+    // consuming the incoming reference. Other mapped wrappers retain ownership of their ABI view.
+    return binding.kind != KotlinProjectionAbiValueKind.Object
 }
 
 private fun KotlinProjectionRenderer.renderProjectionOutputCodecBody(
@@ -778,10 +803,9 @@ private fun KotlinProjectionRenderer.renderProjectionOutputCodecBody(
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
             renderProjectedReferenceOutputCodec(binding, recipe, inspectable = true)
         KotlinProjectionAbiValueKind.Delegate -> {
-            val callables = requireNotNull(recipe.callables)
             renderProjectionExpressionResult(
                 binding,
-                CodeBlock.of("%T.%L(__abi)", ClassName.bestGuess(callables.ownerFqName), callables.fromAbi),
+                delegateFromOwnedAbiCode(binding, CodeBlock.of("__abi")),
             )
         }
         else -> error("ABI recipe '${recipe.typeSignature}' unexpectedly classified ${binding.kind} as a projection.")
@@ -795,7 +819,7 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
     adapter: KotlinProjectionMappedCallSiteAdapter,
 ): CodeBlock {
     if (adapter.outputUsesAsyncExpression) {
-        val expression = asyncReferenceExpression(binding, CodeBlock.of("__abi"))
+        val expression = asyncReferenceExpression(binding, CodeBlock.of("__abi"), hoistMetadata = true)
             ?: error("Closed async projection '${binding.typeName}' has no direct ABI expression.")
         return CodeBlock.builder()
             .add("%L", projectionNullGuard(binding))
@@ -824,7 +848,7 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
     }
 
     if (adapter.outputConsumesAbi) {
-        val interfaceId = referenceInterfaceIdCode(binding)
+        val interfaceId = referenceInterfaceIdCode(binding, hoistMetadata = true)
             ?: error("Closed mapped projection '${binding.typeName}' has no parameterized IID.")
         return CodeBlock.builder()
             .add("return try {\n")
@@ -848,8 +872,14 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
         "Mapped WinMD output '${binding.typeName}' expected ${adapter.inputTypeArgumentAdapterCount} closed adapters."
     }
     val arguments = binding.typeArguments.map { argument ->
-        collectionReferenceAdapterCode(argument)
+        collectionReferenceAdapterCode(argument, hoistMetadata = true)
             ?: error("Mapped WinMD output '${binding.typeName}' has an unbound argument adapter.")
+    }.toMutableList()
+    if (binding.kind == KotlinProjectionAbiValueKind.MappedMapView ||
+        binding.kind == KotlinProjectionAbiValueKind.MappedMap
+    ) {
+        arguments += collectionInterfaceIdCode(binding, hoistMetadata = true)
+            ?: error("Mapped WinMD output '${binding.typeName}' has no collection IID.")
     }
     val expression = CodeBlock.builder()
         .add("%T.%L(__abi", owner, adapter.outputFromAbiFunctionName)
@@ -904,7 +934,7 @@ private fun KotlinProjectionRenderer.projectionNullGuard(binding: KotlinProjecti
         CodeBlock.of("if (%T.isNull(__abi)) error(%S)\n", PLATFORM_ABI_CLASS_NAME, "WINRT_E_NULL_ABI_RETURN")
     }
 
-private fun KotlinProjectionRenderer.projectedClassName(binding: KotlinProjectionAbiTypeBinding): ClassName? {
+internal fun KotlinProjectionRenderer.projectedClassName(binding: KotlinProjectionAbiTypeBinding): ClassName? {
     val resolved = runCatching { resolveTypeName(binding.typeName.substringBefore('?')) }.getOrNull()
         ?: runCatching { resolveTypeName(binding.resolvedTypeName.substringBefore('?')) }.getOrNull()
     return when (resolved) {

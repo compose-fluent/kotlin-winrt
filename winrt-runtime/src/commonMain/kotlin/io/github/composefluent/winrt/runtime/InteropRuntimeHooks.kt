@@ -1,12 +1,75 @@
 package io.github.composefluent.winrt.runtime
 
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-
 internal object InteropRuntimeHooks {
+    private val augmentedDefinitionCache =
+        WeakKeyStateMap<WinRTCcwDefinition, CachedAugmentedDefinition>()
+    @kotlin.concurrent.Volatile
+    private var lastAugmentedBase: WinRTCcwDefinition? = null
+    @kotlin.concurrent.Volatile
+    private var lastAugmentedConfiguration: AugmentationConfiguration? = null
+    @kotlin.concurrent.Volatile
+    private var lastAugmentedDefinition: WinRTCcwDefinition? = null
+
     fun augmentInspectableDefinition(
-        value: Any,
         definition: WinRTCcwDefinition,
+    ): WinRTCcwDefinition {
+        val customPropertyProvider =
+            XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
+                existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId },
+            )
+        val configuration = AugmentationConfiguration.current(customPropertyProvider != null)
+        if (definition === lastAugmentedBase && configuration == lastAugmentedConfiguration) {
+            lastAugmentedDefinition?.let { return it }
+        }
+        val cacheable =
+            definition.queryInterfaceFallback == null &&
+                (definition.interfaceDefinitions + definition.hiddenInterfaceDefinitions)
+                    .all(::isHostValueHandler)
+        if (cacheable) {
+            augmentedDefinitionCache[definition]
+                ?.takeIf { it.configuration == configuration }
+                ?.let { return rememberAugmented(definition, configuration, it.definition) }
+            return augmentInspectableDefinitionUncached(
+                definition = definition,
+                customPropertyProvider = customPropertyProvider,
+            ).also { augmented ->
+                augmentedDefinitionCache.remove(definition)
+                augmentedDefinitionCache.getOrPut(definition) {
+                    CachedAugmentedDefinition(configuration, augmented)
+                }
+            }.let { rememberAugmented(definition, configuration, it) }
+        }
+        return rememberAugmented(
+            definition,
+            configuration,
+            augmentInspectableDefinitionUncached(
+            definition = definition,
+            customPropertyProvider = customPropertyProvider,
+            ),
+        )
+    }
+
+    private fun rememberAugmented(
+        base: WinRTCcwDefinition,
+        configuration: AugmentationConfiguration,
+        definition: WinRTCcwDefinition,
+    ): WinRTCcwDefinition {
+        lastAugmentedBase = base
+        lastAugmentedConfiguration = configuration
+        lastAugmentedDefinition = definition
+        return definition
+    }
+
+    internal fun clearForTests() {
+        augmentedDefinitionCache.clear()
+        lastAugmentedBase = null
+        lastAugmentedConfiguration = null
+        lastAugmentedDefinition = null
+    }
+
+    private fun augmentInspectableDefinitionUncached(
+        definition: WinRTCcwDefinition,
+        customPropertyProvider: WinRTInspectableInterfaceDefinition?,
     ): WinRTCcwDefinition {
         val existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId }
         val authoredInterfaces = definition.interfaceDefinitions.filterNot {
@@ -14,25 +77,47 @@ internal object InteropRuntimeHooks {
         }
         val augmentedInterfaces = buildList {
             addAll(authoredInterfaces)
-            add(createStringableInterfaceDefinition(value))
-            XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
-                value = value,
-                existingInterfaceIds = existingInterfaceIds,
-            )?.let(::add)
-            add(createWeakReferenceSourceInterfaceDefinition(value))
+            add(stringableInterfaceDefinition)
+            customPropertyProvider?.let(::add)
+            add(weakReferenceSourceInterfaceDefinition)
             if (IID.IMarshal !in existingInterfaceIds) {
-                add(createMarshalInterfaceDefinition())
+                add(marshalInterfaceDefinition)
             }
-            add(createAgileObjectInterfaceDefinition())
-            add(createInspectableInterfaceDefinition())
-            add(createUnknownInterfaceDefinition())
+            add(agileObjectInterfaceDefinition)
+            add(inspectableInterfaceDefinition)
+            add(unknownInterfaceDefinition)
         }
         return definition.copy(
             interfaceDefinitions = augmentedInterfaces,
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions +
-                createReferenceTrackerTargetInterfaceDefinition() +
-                createReferenceTrackerExtensionInterfaceDefinition(),
+                referenceTrackerTargetInterfaceDefinition +
+                referenceTrackerExtensionInterfaceDefinition,
         )
+    }
+
+    private fun isHostValueHandler(definition: WinRTInspectableInterfaceDefinition): Boolean =
+        definition.methods.all { method ->
+            method.readsHostManagedValue || method.abiEntryPoint != null || method.rawWordHandler != null
+        }
+
+    private data class CachedAugmentedDefinition(
+        val configuration: AugmentationConfiguration,
+        val definition: WinRTCcwDefinition,
+    )
+
+    private data class AugmentationConfiguration(
+        val defaultCustomTypeMappings: Boolean,
+        val customPropertyProviderSupport: Boolean,
+        val customPropertyProviderIncluded: Boolean,
+    ) {
+        companion object {
+            fun current(customPropertyProviderIncluded: Boolean): AugmentationConfiguration =
+                AugmentationConfiguration(
+                defaultCustomTypeMappings = FeatureSwitches.enableDefaultCustomTypeMappings,
+                customPropertyProviderSupport = FeatureSwitches.enableICustomPropertyProviderSupport,
+                customPropertyProviderIncluded = customPropertyProviderIncluded,
+            )
+        }
     }
 
     private val referenceAppendedInterfaceIds = setOf(
@@ -46,77 +131,53 @@ internal object InteropRuntimeHooks {
         IID.IUnknown,
     )
 
-    private fun createReferenceTrackerTargetInterfaceDefinition(): WinRTInspectableInterfaceDefinition {
-        val state = ReferenceTrackerTargetState()
-        return WinRTInspectableInterfaceDefinition(
+    // The actual tracker counter is owned by ManagedComHostState and dispatched by
+    // WinRTInspectableComObject.invokeMethod. This definition is immutable shape metadata.
+    private val referenceTrackerTargetInterfaceDefinition =
+        WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IReferenceTrackerTarget,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = listOf(
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { state.addRefFromReferenceTracker() },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { state.releaseFromReferenceTracker() },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { _, _ -> KnownHResults.S_OK.value },
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { _, _ -> KnownHResults.S_OK.value },
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { _, _ -> KnownHResults.S_OK.value },
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { _, _ -> KnownHResults.S_OK.value },
             ),
         )
-    }
 
-    private fun createReferenceTrackerExtensionInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+    private val referenceTrackerExtensionInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IReferenceTrackerExtension,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = emptyList(),
         )
 
-    @OptIn(ExperimentalAtomicApi::class)
-    private class ReferenceTrackerTargetState {
-        private val trackerReferences = AtomicInt(0)
-
-        fun addRefFromReferenceTracker(): Int {
-            while (true) {
-                val current = trackerReferences.load()
-                val next = if (current == Int.MAX_VALUE) current else current + 1
-                if (trackerReferences.compareAndSet(current, next)) {
-                    return next
-                }
-            }
-        }
-
-        fun releaseFromReferenceTracker(): Int {
-            while (true) {
-                val current = trackerReferences.load()
-                val next = if (current <= 0) 0 else current - 1
-                if (trackerReferences.compareAndSet(current, next)) {
-                    return next
-                }
-            }
-        }
-    }
-
-    private fun createWeakReferenceSourceInterfaceDefinition(
-        value: Any,
-    ): WinRTInspectableInterfaceDefinition =
+    private val weakReferenceSourceInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IWeakReferenceSource,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = listOf(
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr,
-                ) { rawArgs ->
+                ) { managedValue, rawArgs ->
                     val resultOut = rawArgs[0] as RawAddress
-                    PlatformAbi.writePointer(resultOut, createManagedWeakReferencePointer(value))
+                    PlatformAbi.writePointer(
+                        resultOut,
+                        createManagedWeakReferencePointer(requireNotNull(managedValue)),
+                    )
                     KnownHResults.S_OK.value
                 },
             ),
         )
 
-    private fun createMarshalInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+    private val marshalInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IMarshal,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = listOf(
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr_Ptr_Int32_Ptr_Int32_Ptr,
-                ) { rawArgs ->
+                ) { _, rawArgs ->
                     val requestedInterfaceId = PlatformAbi.readGuid(rawArgs[0] as RawAddress)
                     val sourcePointer = rawArgs[1] as RawAddress
                     val destinationContext = rawArgs[2] as Int
@@ -137,7 +198,7 @@ internal object InteropRuntimeHooks {
                 },
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr_Ptr_Int32_Ptr_Int32_Ptr,
-                ) { rawArgs ->
+                ) { _, rawArgs ->
                     val requestedInterfaceId = PlatformAbi.readGuid(rawArgs[0] as RawAddress)
                     val sourcePointer = rawArgs[1] as RawAddress
                     val destinationContext = rawArgs[2] as Int
@@ -158,7 +219,7 @@ internal object InteropRuntimeHooks {
                 },
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr_Ptr_Ptr_Int32_Ptr_Int32,
-                ) { rawArgs ->
+                ) { _, rawArgs ->
                     FreeThreadedMarshalerSupport.proxy().marshalInterface(
                         streamPointer = rawArgs[0] as RawAddress,
                         interfaceId = PlatformAbi.readGuid(rawArgs[1] as RawAddress),
@@ -171,7 +232,7 @@ internal object InteropRuntimeHooks {
                 },
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr_Ptr_Ptr,
-                ) { rawArgs ->
+                ) { _, rawArgs ->
                     val resultOut = rawArgs[2] as RawAddress
                     val resolved = FreeThreadedMarshalerSupport.proxy().unmarshalInterface(
                         streamPointer = rawArgs[0] as RawAddress,
@@ -182,47 +243,50 @@ internal object InteropRuntimeHooks {
                 },
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr,
-                ) { rawArgs ->
+                ) { _, rawArgs ->
                     FreeThreadedMarshalerSupport.proxy().releaseMarshalData(rawArgs[0] as RawAddress)
                     KnownHResults.S_OK.value
                 },
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Int32,
-                ) { rawArgs ->
+                ) { _, rawArgs ->
                     FreeThreadedMarshalerSupport.proxy().disconnectObject(rawArgs[0] as Int)
                     KnownHResults.S_OK.value
                 },
             ),
         )
 
-    private fun createAgileObjectInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+    private val agileObjectInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IAgileObject,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = emptyList(),
         )
 
-    private fun createInspectableInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+    private val inspectableInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IInspectable,
             methods = emptyList(),
         )
 
-    private fun createUnknownInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+    private val unknownInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IUnknown,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = emptyList(),
         )
 
-    private fun createStringableInterfaceDefinition(value: Any): WinRTInspectableInterfaceDefinition =
+    private val stringableInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IStringable,
             methods = listOf(
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                ) { rawArgs ->
-                    PlatformAbi.writePointer(rawArgs[0] as RawAddress, HString.create(value.toString()).handle)
+                ) { managedValue, rawArgs ->
+                    PlatformAbi.writePointer(
+                        rawArgs[0] as RawAddress,
+                        HString.create(requireNotNull(managedValue).toString()).handle,
+                    )
                     KnownHResults.S_OK.value
                 },
             ),

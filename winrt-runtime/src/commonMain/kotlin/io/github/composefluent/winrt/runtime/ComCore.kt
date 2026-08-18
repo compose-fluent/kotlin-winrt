@@ -7,13 +7,17 @@ internal enum class ComOwnershipMode {
 
 @PublishedApi
 internal class ComPtr private constructor(
-    val raw: RawComPtr,
+    private val originalRaw: RawComPtr,
     val interfaceId: Guid,
     val ownershipMode: ComOwnershipMode,
     referenceTrackerPointer: RawComPtr,
     isAggregated: Boolean,
     @PublishedApi internal val support: RawComObjectReferenceSupport,
 ) : AutoCloseable {
+    @PublishedApi
+    internal val raw: RawComPtr
+        get() = support.pointerForCurrentContext()
+
     @Suppress("unused")
     private val finalizationRegistration = createComPtrFinalizationRegistration(
         target = this,
@@ -63,6 +67,36 @@ internal class ComPtr private constructor(
         support.release(::invokeReferenceTrackerReleaseOnPointer)
 
     fun getRefPointer(): RawComPtr = support.getRef()
+
+    /** Mirrors CsWinRT's IObjectReference.AsKnownPtr ownership transfer. */
+    internal fun attachKnownPointer(
+        pointer: RawComPtr,
+        interfaceId: Guid = IID.IUnknown,
+    ): ComPtr {
+        throwIfDisposed()
+        require(!PlatformAbi.isNull(pointer)) {
+            "Known COM object reference cannot wrap a null pointer."
+        }
+
+        addRef()
+        return try {
+            create(
+                raw = pointer,
+                interfaceId = interfaceId,
+                ownershipMode =
+                    if (isAggregated) {
+                        ComOwnershipMode.Borrowed
+                    } else {
+                        ComOwnershipMode.Owned
+                    },
+                referenceTrackerPointer = referenceTrackerHandle,
+                isAggregated = isAggregated,
+            )
+        } catch (error: Throwable) {
+            release()
+            throw error
+        }
+    }
 
     fun tryQueryInterface(requestedInterfaceId: Guid): ComPtr? =
         support.tryQueryInterface(requestedInterfaceId, ::wrapQueriedReference)
@@ -126,6 +160,8 @@ internal class ComPtr private constructor(
             ownershipMode: ComOwnershipMode = ComOwnershipMode.Owned,
             referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr,
             isAggregated: Boolean = false,
+            trackContext: Boolean = true,
+            managedCcwReleaseIdentity: RawAddress = RawAddress.Null,
         ): ComPtr {
             require(!PlatformAbi.isNull(raw)) {
                 "COM object reference cannot wrap a null pointer."
@@ -135,9 +171,11 @@ internal class ComPtr private constructor(
                 interfaceId = interfaceId,
                 preventReleaseOnDispose = ownershipMode == ComOwnershipMode.Borrowed,
                 isAggregated = isAggregated,
+                trackContext = trackContext,
+                managedCcwReleaseIdentity = managedCcwReleaseIdentity,
             )
             return ComPtr(
-                raw = raw,
+                originalRaw = raw,
                 interfaceId = interfaceId,
                 ownershipMode = ownershipMode,
                 referenceTrackerPointer = referenceTrackerPointer,
@@ -156,11 +194,24 @@ internal fun closeComPtrSupport(support: RawComObjectReferenceSupport) {
     )
 }
 
+internal fun closeComPtrSupportFromFinalizer(support: RawComObjectReferenceSupport) {
+    support.close(
+        releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
+        releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
+        deferContextRelease = true,
+    )
+}
+
 private fun invokeIUnknownAddRefOnPointer(targetPointer: RawComPtr): UInt =
     ComVtableInvoker.invoke(
         instance = targetPointer,
         slot = IUnknownVftblSlots.AddRef,
     ).toUInt()
+
+internal fun retainBorrowedComPointer(targetPointer: RawComPtr): RawComPtr {
+    invokeIUnknownAddRefOnPointer(targetPointer)
+    return targetPointer
+}
 
 private fun invokeIUnknownReleaseOnPointer(targetPointer: RawComPtr): UInt =
     ComVtableInvoker.invoke(

@@ -76,9 +76,42 @@ object Projections {
         return existing == null || existing.runtimeClassName != runtimeClassName || !existing.isRuntimeClass
     }
 
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> registerEnumType(
+        type: KClass<T>,
+        projectedTypeName: String,
+        signature: String,
+        abiValue: (T) -> Int,
+        enumEntries: Array<T>,
+    ): Boolean {
+        require(projectedTypeName.isNotBlank()) { "Projected enum type name must not be blank." }
+        require(signature.isNotBlank()) { "Projected enum signature must not be blank." }
+        ensureProjectionMappingsRegistered()
+        clearDerivedCaches()
+        val existing = type.registeredWinRTType()
+        registerTypeDescriptor(
+            type = type,
+            projectedTypeName = projectedTypeName,
+            helperType = existing?.helperType,
+            runtimeClassName = existing?.runtimeClassName,
+            defaultInterface = existing?.defaultInterface,
+            isRuntimeClass = false,
+            isWindowsRuntimeType = true,
+            signature = signature,
+            enumAbiValue = { value -> abiValue(value as T) },
+            enumEntries = enumEntries as Array<Any>,
+        )
+        WinRTValueBoxing.clearRuntimeClassProjectionPlans()
+        return existing == null ||
+            existing.projectedTypeName != projectedTypeName ||
+            existing.signature != signature ||
+            existing.enumAbiValue == null
+    }
+
     fun registerDefaultInterfaceType(
         runtimeClass: KClass<*>,
         defaultInterface: KClass<*>,
+        defaultInterfaceId: Guid? = null,
     ): Boolean {
         ensureProjectionMappingsRegistered()
         explicitProjectedTypeName(runtimeClass)?.let { projectedTypeName ->
@@ -90,6 +123,8 @@ object Projections {
                 defaultInterface = defaultInterface,
                 isRuntimeClass = runtimeClass.registeredWinRTType()?.isRuntimeClass == true,
                 isWindowsRuntimeType = true,
+                guid = defaultInterfaceId,
+                iid = defaultInterfaceId,
             )
         }
         return runtimeClassToDefaultInterfaceMappings.putIfAbsent(runtimeClass, defaultInterface) == null
@@ -202,6 +237,8 @@ object Projections {
         WinRTTypeRegistry.clearForTests()
         ValueBoxingMetadata.clearDynamicDescriptorsForTests()
         ValueBoxingInterop.clearDynamicAdaptersForTests()
+        WinRTValueBoxingRegistration.clearDelegateProjectionsForTests()
+        WinRTValueBoxing.clearRuntimeClassProjectionPlans()
         clearProjectionMappingsForTests()
         ensureProjectionMappingsRegistered()
     }
@@ -234,16 +271,23 @@ object Projections {
         defaultInterface: KClass<*>?,
         isRuntimeClass: Boolean,
         isWindowsRuntimeType: Boolean,
+        guid: Guid? = null,
+        iid: Guid? = null,
+        signature: String? = null,
+        enumAbiValue: ((Any) -> Int)? = null,
+        enumEntries: Array<Any>? = null,
     ) {
         val kClass = type as KClass<Any>
         WinRTTypeRegistry.update(kClass) { existing ->
             WinRTTypeId(
                 kClass = kClass,
                 projectedTypeName = projectedTypeName,
-                guid = existing?.guid,
-                iid = existing?.iid,
-                signature = existing?.signature,
-                enumAbiValue = existing?.enumAbiValue,
+                guid = guid ?: existing?.guid,
+                iid = iid ?: existing?.iid,
+                signature = signature ?: existing?.signature,
+                enumAbiValue = enumAbiValue ?: existing?.enumAbiValue,
+                enumEntries = enumEntries ?: existing?.enumEntries,
+                isExceptionType = existing?.isExceptionType == true,
                 helperType = helperType ?: existing?.helperType,
                 defaultInterface = defaultInterface ?: existing?.defaultInterface,
                 boxedName = existing?.boxedName,

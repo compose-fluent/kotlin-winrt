@@ -73,7 +73,7 @@ open class ComObjectReference internal constructor(
                 KnownHResults.E_POINTER,
             )
         }
-        return IUnknownReference(ComPtr.create(pointer.asRawComPtr(), IID.IUnknown))
+        return IUnknownReference(comPtr.attachKnownPointer(pointer.asRawComPtr()))
     }
 
     fun tryAsInspectable(): IInspectableReference? =
@@ -151,6 +151,9 @@ class ActivationFactoryReference internal constructor(
 
     fun activateInstance(): IInspectableReference =
         ActivationFactoryReferenceSupport.activateInstance(comPtr)
+
+    fun activateInstance(interfaceId: Guid): IInspectableReference =
+        ActivationFactoryReferenceSupport.activateInstance(comPtr, interfaceId)
 }
 
 class InspectableReference internal constructor(

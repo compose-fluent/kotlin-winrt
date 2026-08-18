@@ -592,6 +592,16 @@ class WinRTCollectionInteropTest {
             return lookupResult?.pointer?.asRawAddress()
         }
 
+        override fun <T> lookupProjectedOrNull(
+            key: RawAddress,
+            adapter: WinRTReferenceValueAdapter<T>,
+        ): T? {
+            lookupSlots += 6 to key
+            return lookupResult?.let { reference ->
+                adapter.projectAbi(reference.pointer.asRawAddress())
+            }
+        }
+
         override fun size(): UInt {
             uintSlots += 7
             return sizeResult

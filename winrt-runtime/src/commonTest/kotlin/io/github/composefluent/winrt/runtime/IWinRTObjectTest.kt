@@ -103,7 +103,14 @@ private class FakeWinRTObject(
 private class FakeComObjectReference(
     interfaceId: Guid,
     private val queryResults: Map<Guid, ComObjectReference> = emptyMap(),
-) : ComObjectReference(pointer = allocateFakeComPointer(), interfaceId = interfaceId, preventReleaseOnDispose = true) {
+) : ComObjectReference(
+        ComPtr.create(
+            raw = allocateFakeComPointer(),
+            interfaceId = interfaceId,
+            ownershipMode = ComOwnershipMode.Borrowed,
+            trackContext = false,
+        ),
+    ) {
     private val queryCounts = mutableMapOf<Guid, Int>()
 
     override fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? {

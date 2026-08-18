@@ -28,6 +28,29 @@ open class WinRTReferenceValueAdapter<T>(
             WinRTObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
         }
 
+    /**
+     * Runs an ABI operation while keeping the input representation alive for the duration of
+     * the call.  Reference adapters can override this when the ABI view is already borrowed and
+     * no owning marshaler object is needed.
+     */
+    open fun <R> withInputAbi(
+        value: T,
+        action: (RawAddress) -> R,
+    ): R =
+        createInputMarshaler(value).use { marshaled ->
+            action(marshaled.abi)
+        }
+
+    open fun <R> withInputAbiAndPointerOut(
+        value: T,
+        action: (inputAbi: RawAddress, resultOut: RawAddress) -> R,
+    ): R =
+        withInputAbi(value) { inputAbi ->
+            acquireNativeScalarScratchFrame(clear = true).use { frame ->
+                action(inputAbi, frame.pointer)
+            }
+        }
+
     open fun createOutputMarshaler(value: T): WinRTObjectMarshaler =
         marshaller(value).let { reference ->
             WinRTObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
@@ -88,6 +111,19 @@ object WinRTReferenceValueAdapters {
                     NativeStringMarshaller.disposeMarshaler(marshaler)
                 }
             }
+
+            override fun <R> withInputAbi(
+                value: String,
+                action: (RawAddress) -> R,
+            ): R =
+                withNativeHStringReferenceAbi(value) { handle, _ ->
+                    action(handle)
+                }
+
+            override fun <R> withInputAbiAndPointerOut(
+                value: String,
+                action: (inputAbi: RawAddress, resultOut: RawAddress) -> R,
+            ): R = withNativeHStringReferenceAbi(value, action)
 
             override fun createOutputMarshaler(value: String): WinRTObjectMarshaler {
                 val hstring = NativeStringMarshaller.fromManaged(value)
@@ -180,8 +216,11 @@ object WinRTReferenceValueAdapters {
         projectedTypeName: String,
         defaultInterfaceId: Guid,
         fallbackProjector: (IInspectableReference) -> T,
-    ): WinRTReferenceValueAdapter<T> =
-        WinRTReferenceValueAdapter(
+    ): WinRTReferenceValueAdapter<T> {
+        // Collection ABI results are owned. Keep the statically known type and factory with
+        // the adapter so the hot path does not rebuild either descriptor or projector closure.
+        val typeHandle = WinRTTypeHandle(projectedTypeName, defaultInterfaceId)
+        return object : WinRTReferenceValueAdapter<T>(
             projectedTypeName = projectedTypeName,
             typeSignature = WinRTTypeSignature.object_(),
             projector = { reference ->
@@ -215,7 +254,41 @@ object WinRTReferenceValueAdapters {
             marshaller = { value ->
                 (value as IWinRTObject).nativeObject.queryInterface(defaultInterfaceId).getOrThrow()
             },
-        )
+        ) {
+            private val ownedFactory: (IUnknownReference, WinRTTypeHandle) -> T = { reference, _ ->
+                val inspectable = reference.asInspectable()
+                var transferredToFallback = false
+                try {
+                    val projected = fallbackProjector(inspectable)
+                    if (!projectedType.isInstance(projected)) {
+                        throw WinRTInvalidCastException(
+                            "Unable to project $projectedTypeName value.",
+                            HResult(TYPE_E_TYPEMISMATCH),
+                        )
+                    }
+                    transferredToFallback = true
+                    projected
+                } finally {
+                    // The original owned interface is always consumed here. The inspectable
+                    // reference is transferred to the generated wrapper only on success.
+                    reference.close()
+                    if (!transferredToFallback) {
+                        inspectable.close()
+                    }
+                }
+            }
+
+            override fun projectOwnedAbi(pointer: RawAddress): T =
+                ComWrappersSupport.createRcwForOwnedComObject(
+                    pointer = pointer,
+                    staticallyDeterminedType = typeHandle,
+                    factory = ownedFactory,
+                ) ?: throw WinRTInvalidCastException(
+                    "Expected non-null $projectedTypeName value.",
+                    HResult(TYPE_E_TYPEMISMATCH),
+                )
+        }
+    }
 
     @Suppress("UNCHECKED_CAST")
     fun <T> genericParameter(projectedTypeName: String): WinRTReferenceValueAdapter<T> =
@@ -254,17 +327,16 @@ object WinRTIterableProjection {
     class FromAbiHelper<T> internal constructor(
         private val iterable: WinRTIterableReference,
         private val elementAdapter: WinRTReferenceValueAdapter<T>,
+        override val primaryTypeHandle: WinRTTypeHandle,
     ) : Iterable<T>, IWinRTObject, AutoCloseable {
         override val nativeObject: ComObjectReference
             get() = iterable
-
-        override val primaryTypeHandle: WinRTTypeHandle
-            get() = iterableTypeHandle(elementAdapter)
 
         override fun iterator(): Iterator<T> =
             WinRTIteratorProjection.FromAbiHelper(
                 iterable = iterable.first(iteratorInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
+                primaryTypeHandle = iteratorTypeHandle(elementAdapter),
             )
 
         override fun close() {
@@ -328,27 +400,30 @@ object WinRTIterableProjection {
     fun <T> fromAbi(
         pointer: RawAddress,
         elementAdapter: WinRTReferenceValueAdapter<T>,
-    ): FromAbiHelper<T>? =
-        if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
+    ): FromAbiHelper<T>? {
+        val interfaceId = iterableInterfaceId(elementAdapter)
+        return ComWrappersSupport.createRcwForOwnedInterfaceProjection(
+            pointer = pointer,
+            interfaceId = interfaceId,
+            typeHandleFactory = { iterableTypeHandle(elementAdapter) },
+        ) { ownedPointer, typeHandle ->
             FromAbiHelper(
-                iterable = WinRTIterableReference(pointer, iterableInterfaceId(elementAdapter)),
+                iterable = WinRTIterableReference(ownedPointer, interfaceId),
                 elementAdapter = elementAdapter,
+                primaryTypeHandle = typeHandle,
             )
         }
+    }
 }
 
 object WinRTIteratorProjection {
     class FromAbiHelper<T> internal constructor(
         private val iterable: WinRTIteratorReference,
         private val elementAdapter: WinRTReferenceValueAdapter<T>,
+        override val primaryTypeHandle: WinRTTypeHandle,
     ) : Iterator<T>, IWinRTObject, AutoCloseable {
         override val nativeObject: ComObjectReference
             get() = iterable
-
-        override val primaryTypeHandle: WinRTTypeHandle
-            get() = iteratorTypeHandle(elementAdapter)
 
         private var initialized = false
         private var hasCurrent = false
@@ -466,6 +541,7 @@ object WinRTIteratorProjection {
                 iteratorInterfaceId(elementAdapter),
             ),
             elementAdapter = elementAdapter,
+            primaryTypeHandle = iteratorTypeHandle(elementAdapter),
         )
 
     fun <T> createReference(
@@ -521,12 +597,10 @@ object WinRTReadOnlyListProjection {
     class FromAbiHelper<T> internal constructor(
         private val vectorView: WinRTVectorViewReference,
         private val elementAdapter: WinRTReferenceValueAdapter<T>,
+        override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractList<T>(), IWinRTObject, AutoCloseable {
         override val nativeObject: ComObjectReference
             get() = vectorView
-
-        override val primaryTypeHandle: WinRTTypeHandle
-            get() = vectorViewTypeHandle(elementAdapter)
 
         private val adapter by lazy {
             WinRTVectorViewListAdapter(
@@ -646,27 +720,30 @@ object WinRTReadOnlyListProjection {
     fun <T> fromAbi(
         pointer: RawAddress,
         elementAdapter: WinRTReferenceValueAdapter<T>,
-    ): FromAbiHelper<T>? =
-        if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
+    ): FromAbiHelper<T>? {
+        val interfaceId = vectorViewInterfaceId(elementAdapter)
+        return ComWrappersSupport.createRcwForOwnedInterfaceProjection(
+            pointer = pointer,
+            interfaceId = interfaceId,
+            typeHandleFactory = { vectorViewTypeHandle(elementAdapter) },
+        ) { ownedPointer, typeHandle ->
             FromAbiHelper(
-                vectorView = WinRTVectorViewReference(pointer, vectorViewInterfaceId(elementAdapter)),
+                vectorView = WinRTVectorViewReference(ownedPointer, interfaceId),
                 elementAdapter = elementAdapter,
+                primaryTypeHandle = typeHandle,
             )
         }
+    }
 }
 
 object WinRTListProjection {
     class FromAbiHelper<T> internal constructor(
         private val vector: WinRTVectorReference,
         private val elementAdapter: WinRTReferenceValueAdapter<T>,
+        override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMutableList<T>(), IWinRTObject, AutoCloseable {
         override val nativeObject: ComObjectReference
             get() = vector
-
-        override val primaryTypeHandle: WinRTTypeHandle
-            get() = vectorTypeHandle(elementAdapter)
 
         private val adapter by lazy {
             WinRTVectorListAdapter(
@@ -876,15 +953,20 @@ object WinRTListProjection {
     fun <T> fromAbi(
         pointer: RawAddress,
         elementAdapter: WinRTReferenceValueAdapter<T>,
-    ): FromAbiHelper<T>? =
-        if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
+    ): FromAbiHelper<T>? {
+        val interfaceId = vectorInterfaceId(elementAdapter)
+        return ComWrappersSupport.createRcwForOwnedInterfaceProjection(
+            pointer = pointer,
+            interfaceId = interfaceId,
+            typeHandleFactory = { vectorTypeHandle(elementAdapter) },
+        ) { ownedPointer, typeHandle ->
             FromAbiHelper(
-                vector = WinRTVectorReference(pointer, vectorInterfaceId(elementAdapter)),
+                vector = WinRTVectorReference(ownedPointer, interfaceId),
                 elementAdapter = elementAdapter,
+                primaryTypeHandle = typeHandle,
             )
         }
+    }
 }
 
 object WinRTReadOnlyDictionaryProjection {
@@ -892,12 +974,10 @@ object WinRTReadOnlyDictionaryProjection {
         private val mapView: WinRTMapViewReference,
         private val keyAdapter: WinRTReferenceValueAdapter<K>,
         private val valueAdapter: WinRTReferenceValueAdapter<V>,
+        override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMap<K, V>(), IWinRTObject, AutoCloseable {
         override val nativeObject: ComObjectReference
             get() = mapView
-
-        override val primaryTypeHandle: WinRTTypeHandle
-            get() = mapViewTypeHandle(keyAdapter, valueAdapter)
 
         private val adapter by lazy {
             WinRTMapViewAdapter(
@@ -918,9 +998,15 @@ object WinRTReadOnlyDictionaryProjection {
         override val entries: Set<Map.Entry<K, V>>
             get() = adapter.entries
 
-        override fun containsKey(key: K): Boolean = adapter.containsKey(key)
+        override fun containsKey(key: K): Boolean =
+            keyAdapter.withInputAbi(key) { keyAbi ->
+                mapView.hasKey(keyAbi)
+            }
 
-        override fun get(key: K): V? = adapter[key]
+        override fun get(key: K): V? =
+            keyAdapter.withInputAbiAndPointerOut(key) { keyAbi, resultOut ->
+                mapView.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+            }
 
         override fun close() {
             mapView.close()
@@ -931,17 +1017,19 @@ object WinRTReadOnlyDictionaryProjection {
         private val managed: Map<K, V>,
         private val keyAdapter: WinRTReferenceValueAdapter<K>,
         private val valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
     ) {
+        private val mapViewId: Guid = interfaceId ?: mapViewInterfaceId(keyAdapter, valueAdapter)
         private val host = createCollectionHost(
             managedValue = managed,
-            defaultInterfaceId = mapViewInterfaceId(keyAdapter, valueAdapter),
+            defaultInterfaceId = mapViewId,
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
                     iteratorFactory = { managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
                 ),
                 WinRTInspectableInterfaceDefinition(
-                    interfaceId = mapViewInterfaceId(keyAdapter, valueAdapter),
+                            interfaceId = mapViewId,
                     methods = listOf(
                         WinRTInspectableMethodDefinition(
                             signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
@@ -991,49 +1079,60 @@ object WinRTReadOnlyDictionaryProjection {
         )
 
         fun createMarshaler(): WinRTCollectionProjectionMarshaler =
-            WinRTProjectionMarshaler.hosted(host, mapViewInterfaceId(keyAdapter, valueAdapter))
+            WinRTProjectionMarshaler.hosted(host, mapViewId)
 
-        fun detachReference(): RawAddress = host.detachReference(mapViewInterfaceId(keyAdapter, valueAdapter))
+        fun detachReference(): RawAddress = host.detachReference(mapViewId)
     }
 
     fun <K, V> createMarshaler(
         value: Map<K, V>?,
         keyAdapter: WinRTReferenceValueAdapter<K>,
         valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
     ): WinRTCollectionProjectionMarshaler? {
         if (value == null) {
             return null
         }
-        borrowedProjectionMarshaler(value, mapViewTypeHandle(keyAdapter, valueAdapter))?.let { return it }
-        return ToAbiHelper(value, keyAdapter, valueAdapter).createMarshaler()
+        borrowedProjectionMarshaler(value, mapViewTypeHandle(keyAdapter, valueAdapter, interfaceId))?.let { return it }
+        return ToAbiHelper(value, keyAdapter, valueAdapter, interfaceId).createMarshaler()
     }
 
     fun <K, V> fromManaged(
         value: Map<K, V>?,
         keyAdapter: WinRTReferenceValueAdapter<K>,
         valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
     ): RawAddress =
         if (value == null) {
             PlatformAbi.nullPointer
         } else {
-            borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter))
-                ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
+            borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter, interfaceId))
+                ?: ToAbiHelper(value, keyAdapter, valueAdapter, interfaceId).detachReference()
         }
 
     fun <K, V> fromAbi(
         pointer: RawAddress,
         keyAdapter: WinRTReferenceValueAdapter<K>,
         valueAdapter: WinRTReferenceValueAdapter<V>,
-    ): FromAbiHelper<K, V>? =
-        if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
+        interfaceId: Guid? = null,
+    ): FromAbiHelper<K, V>? {
+        val resolvedInterfaceId = interfaceId ?: mapViewInterfaceId(keyAdapter, valueAdapter)
+        return ComWrappersSupport.createRcwForOwnedInterfaceProjection(
+            pointer = pointer,
+            interfaceId = resolvedInterfaceId,
+            typeHandleFactory = { mapViewTypeHandle(keyAdapter, valueAdapter, resolvedInterfaceId) },
+        ) { ownedPointer, typeHandle ->
             FromAbiHelper(
-                mapView = WinRTMapViewReference(pointer, mapViewInterfaceId(keyAdapter, valueAdapter)),
+                mapView = WinRTMapViewReference(
+                    ownedPointer,
+                    resolvedInterfaceId,
+                ),
                 keyAdapter = keyAdapter,
                 valueAdapter = valueAdapter,
+                primaryTypeHandle = typeHandle,
             )
         }
+    }
 }
 
 object WinRTDictionaryProjection {
@@ -1041,12 +1140,10 @@ object WinRTDictionaryProjection {
         private val map: WinRTMapReference,
         private val keyAdapter: WinRTReferenceValueAdapter<K>,
         private val valueAdapter: WinRTReferenceValueAdapter<V>,
+        override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMutableMap<K, V>(), IWinRTObject, AutoCloseable {
         override val nativeObject: ComObjectReference
             get() = map
-
-        override val primaryTypeHandle: WinRTTypeHandle
-            get() = mapTypeHandle(keyAdapter, valueAdapter)
 
         private val adapter by lazy {
             WinRTMapAdapter(
@@ -1069,14 +1166,35 @@ object WinRTDictionaryProjection {
         override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
             get() = adapter.entries
 
-        override fun put(key: K, value: V): V? = adapter.put(key, value)
+        override fun put(key: K, value: V): V? {
+            val previous = get(key)
+            keyAdapter.withInputAbi(key) { keyAbi ->
+                valueAdapter.withInputAbi(value) { valueAbi ->
+                    map.insert(keyAbi, valueAbi)
+                }
+            }
+            return previous
+        }
 
-        override fun get(key: K): V? = adapter[key]
+        override fun get(key: K): V? =
+            keyAdapter.withInputAbiAndPointerOut(key) { keyAbi, resultOut ->
+                map.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+            }
 
-        override fun remove(key: K): V? = adapter.remove(key)
+        override fun remove(key: K): V? {
+            val previous = get(key)
+            return keyAdapter.withInputAbi(key) { keyAbi ->
+                if (!map.hasKey(keyAbi)) {
+                    null
+                } else {
+                    map.remove(keyAbi)
+                    previous
+                }
+            }
+        }
 
         override fun clear() {
-            adapter.clear()
+            map.clear()
         }
 
         override fun close() {
@@ -1088,17 +1206,19 @@ object WinRTDictionaryProjection {
         private val managed: MutableMap<K, V>,
         private val keyAdapter: WinRTReferenceValueAdapter<K>,
         private val valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
     ) {
+        private val mapId: Guid = interfaceId ?: mapInterfaceId(keyAdapter, valueAdapter)
         private val host = createCollectionHost(
             managedValue = managed,
-            defaultInterfaceId = mapInterfaceId(keyAdapter, valueAdapter),
+            defaultInterfaceId = mapId,
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
                     iteratorFactory = { managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
                 ),
                 WinRTInspectableInterfaceDefinition(
-                    interfaceId = mapInterfaceId(keyAdapter, valueAdapter),
+                            interfaceId = mapId,
                     methods = listOf(
                         WinRTInspectableMethodDefinition(
                             signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
@@ -1171,49 +1291,60 @@ object WinRTDictionaryProjection {
         )
 
         fun createMarshaler(): WinRTCollectionProjectionMarshaler =
-            WinRTProjectionMarshaler.hosted(host, mapInterfaceId(keyAdapter, valueAdapter))
+            WinRTProjectionMarshaler.hosted(host, mapId)
 
-        fun detachReference(): RawAddress = host.detachReference(mapInterfaceId(keyAdapter, valueAdapter))
+        fun detachReference(): RawAddress = host.detachReference(mapId)
     }
 
     fun <K, V> createMarshaler(
         value: MutableMap<K, V>?,
         keyAdapter: WinRTReferenceValueAdapter<K>,
         valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
     ): WinRTCollectionProjectionMarshaler? {
         if (value == null) {
             return null
         }
-        borrowedProjectionMarshaler(value, mapTypeHandle(keyAdapter, valueAdapter))?.let { return it }
-        return ToAbiHelper(value, keyAdapter, valueAdapter).createMarshaler()
+        borrowedProjectionMarshaler(value, mapTypeHandle(keyAdapter, valueAdapter, interfaceId))?.let { return it }
+        return ToAbiHelper(value, keyAdapter, valueAdapter, interfaceId).createMarshaler()
     }
 
     fun <K, V> fromManaged(
         value: MutableMap<K, V>?,
         keyAdapter: WinRTReferenceValueAdapter<K>,
         valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
     ): RawAddress =
         if (value == null) {
             PlatformAbi.nullPointer
         } else {
-            borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter))
-                ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
+            borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter, interfaceId))
+                ?: ToAbiHelper(value, keyAdapter, valueAdapter, interfaceId).detachReference()
         }
 
     fun <K, V> fromAbi(
         pointer: RawAddress,
         keyAdapter: WinRTReferenceValueAdapter<K>,
         valueAdapter: WinRTReferenceValueAdapter<V>,
-    ): FromAbiHelper<K, V>? =
-        if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
+        interfaceId: Guid? = null,
+    ): FromAbiHelper<K, V>? {
+        val resolvedInterfaceId = interfaceId ?: mapInterfaceId(keyAdapter, valueAdapter)
+        return ComWrappersSupport.createRcwForOwnedInterfaceProjection(
+            pointer = pointer,
+            interfaceId = resolvedInterfaceId,
+            typeHandleFactory = { mapTypeHandle(keyAdapter, valueAdapter, resolvedInterfaceId) },
+        ) { ownedPointer, typeHandle ->
             FromAbiHelper(
-                map = WinRTMapReference(pointer, mapInterfaceId(keyAdapter, valueAdapter)),
+                map = WinRTMapReference(
+                    ownedPointer,
+                    resolvedInterfaceId,
+                ),
                 keyAdapter = keyAdapter,
                 valueAdapter = valueAdapter,
+                primaryTypeHandle = typeHandle,
             )
         }
+    }
 }
 
 private fun <T> iterableInterfaceId(adapter: WinRTReferenceValueAdapter<T>): Guid =
@@ -1258,19 +1389,21 @@ private fun <T> vectorTypeHandle(adapter: WinRTReferenceValueAdapter<T>): WinRTT
 private fun <K, V> mapViewTypeHandle(
     keyAdapter: WinRTReferenceValueAdapter<K>,
     valueAdapter: WinRTReferenceValueAdapter<V>,
+    interfaceId: Guid? = null,
 ): WinRTTypeHandle =
     WinRTTypeHandle(
         "kotlin.collections.Map<${keyAdapter.projectedTypeName}, ${valueAdapter.projectedTypeName}>",
-        mapViewInterfaceId(keyAdapter, valueAdapter),
+        interfaceId ?: mapViewInterfaceId(keyAdapter, valueAdapter),
     )
 
 private fun <K, V> mapTypeHandle(
     keyAdapter: WinRTReferenceValueAdapter<K>,
     valueAdapter: WinRTReferenceValueAdapter<V>,
+    interfaceId: Guid? = null,
 ): WinRTTypeHandle =
     WinRTTypeHandle(
         "kotlin.collections.MutableMap<${keyAdapter.projectedTypeName}, ${valueAdapter.projectedTypeName}>",
-        mapInterfaceId(keyAdapter, valueAdapter),
+        interfaceId ?: mapInterfaceId(keyAdapter, valueAdapter),
     )
 
 fun <K, V> winRTKeyValuePairAdapter(
@@ -1335,7 +1468,6 @@ private fun createCollectionHost(
     interfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
 ): WinRTInspectableComObject {
     val definition = InteropRuntimeHooks.augmentInspectableDefinition(
-        value = managedValue,
         definition = WinRTCcwDefinition(
             interfaceDefinitions = interfaceDefinitions,
             defaultInterfaceId = defaultInterfaceId,
@@ -1346,6 +1478,7 @@ private fun createCollectionHost(
         hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
         defaultInterfaceId = definition.defaultInterfaceId,
         managedValue = managedValue,
+        shapeCacheKey = definition,
     )
 }
 

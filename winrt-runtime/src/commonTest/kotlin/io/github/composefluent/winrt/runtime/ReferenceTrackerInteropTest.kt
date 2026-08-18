@@ -77,6 +77,29 @@ class ReferenceTrackerInteropTest {
         }
     }
 
+    @Test
+    fun known_fast_abi_pointer_is_retained_and_inherits_reference_tracker() {
+        FakeReferenceTrackerHost.create().use { host ->
+            val reference = IInspectableReference(host.objectPointer.asRawComPtr(), IID.IInspectable)
+            assertTrue(reference.tryInitializeReferenceTracker())
+
+            val known = IUnknownReference(
+                reference.comPtr.attachKnownPointer(host.objectPointer.asRawComPtr()),
+            )
+
+            assertTrue(known.hasReferenceTracker)
+            assertEquals(1, host.objectAddRefCalls)
+            assertEquals(3, host.trackerAddRefFromSourceCalls)
+
+            known.close()
+
+            assertEquals(1, host.objectReleaseCalls)
+            assertEquals(2, host.trackerReleaseFromSourceCalls)
+
+            reference.close()
+        }
+    }
+
     private class FakeReferenceTrackerHost private constructor(
         private val scope: NativeScope,
         private val callbacks: List<NativeCallbackHandle>,

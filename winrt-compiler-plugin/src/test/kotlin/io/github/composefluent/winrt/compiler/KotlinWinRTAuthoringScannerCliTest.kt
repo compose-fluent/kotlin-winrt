@@ -220,6 +220,45 @@ class KotlinWinRTAuthoringScannerCliTest {
     }
 
     @Test
+    fun resolves_projection_packages_against_winmd_namespace_casing() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-case-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-case-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-case-candidates-", ".tsv")
+        root.resolve("Managed.kt").writeText(
+            """
+            package sample
+
+            import benchmarkcomponent.IBoolProperties
+            import benchmarkcomponent.IIntProperties
+
+            internal class Managed : IIntProperties, IBoolProperties
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            BenchmarkComponent.IBoolProperties	Interface
+            BenchmarkComponent.IIntProperties	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRTAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            "sample\tManaged\tsample.Managed\t\tBenchmarkComponent.IBoolProperties;BenchmarkComponent.IIntProperties\t\tfalse",
+            output.readText().trimEnd(),
+        )
+    }
+
+    @Test
     fun scans_leaf_runtime_class_candidates_through_source_application_base() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-indirect-application-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")

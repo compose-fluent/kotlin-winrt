@@ -450,16 +450,16 @@ internal object ValueBoxingInterop {
     }
 
     internal fun adapterForReferenceInterface(interfaceId: Guid): WinRTValueAdapter<*>? =
-        dynamicAdaptersByNullableIid[interfaceId] ?: builtInAdaptersByNullableIid[interfaceId]
+        builtInAdaptersByNullableIid[interfaceId] ?: dynamicAdaptersByNullableIid[interfaceId]
 
     internal fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRTValueAdapter<*>? =
-        dynamicAdaptersByReferenceArrayIid[interfaceId] ?: builtInAdaptersByReferenceArrayIid[interfaceId]
+        builtInAdaptersByReferenceArrayIid[interfaceId] ?: dynamicAdaptersByReferenceArrayIid[interfaceId]
 
     internal fun adapterForPropertyType(propertyType: PropertyType): WinRTValueAdapter<*>? =
-        dynamicAdaptersByPropertyType[propertyType] ?: builtInAdaptersByPropertyType[propertyType]
+        builtInAdaptersByPropertyType[propertyType] ?: dynamicAdaptersByPropertyType[propertyType]
 
     internal fun adapterForPropertyTypeArray(propertyType: PropertyType): WinRTValueAdapter<*>? =
-        dynamicAdaptersByPropertyTypeArray[propertyType] ?: builtInAdaptersByPropertyTypeArray[propertyType]
+        builtInAdaptersByPropertyTypeArray[propertyType] ?: dynamicAdaptersByPropertyTypeArray[propertyType]
 
     internal fun inspectableArrayAdapter(): WinRTValueAdapter<Any> = objectAdapter
 
@@ -501,10 +501,14 @@ internal object ValueBoxingInterop {
     }
 
     fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
-        WinRTReferenceReference(pointer, interfaceId).use { readReferenceValue(interfaceId, it) }
+        WinRTReferenceReference(pointer, interfaceId, preventReleaseOnDispose = true).use {
+            readReferenceValue(interfaceId, it)
+        }
 
     fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? =
-        WinRTReferenceArrayReference(pointer, interfaceId).use { readReferenceArrayValue(interfaceId, it) }
+        WinRTReferenceArrayReference(pointer, interfaceId, preventReleaseOnDispose = true).use {
+            readReferenceArrayValue(interfaceId, it)
+        }
 
     internal fun readReferenceValue(interfaceId: Guid, reference: WinRTReferenceReference): Any? {
         val adapter = adapterForReferenceInterface(interfaceId)
@@ -551,6 +555,49 @@ internal object ValueBoxingInterop {
         )
     }
 
+    /**
+     * Builds the closed IReference<T> vtable shape without capturing one managed value.
+     *
+     * The shape is reusable for every host of the same WinMD interface.  The current value is
+     * supplied by [WinRTInspectableComObject] at dispatch time, which is the same separation as
+     * CsWinRT's static ABI vtable plus per-instance CCW state.
+     */
+    internal fun createHostReferenceInterfaceDefinition(interfaceId: Guid): WinRTInspectableInterfaceDefinition =
+        WinRTInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = listOf(
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                ) { _, managedValue, rawArgs ->
+                    val destination = rawArgs.singleOrNull() as? RawAddress
+                        ?: throw IllegalStateException("IReference host requires one out-argument.")
+                    writeReferenceValue(interfaceId, requireNotNull(managedValue), destination)
+                    KnownHResults.S_OK.value
+                },
+            ),
+        )
+
+    internal fun writeReferenceValue(
+        interfaceId: Guid,
+        value: Any,
+        destination: RawAddress,
+    ) {
+        val adapter = adapterForReferenceInterface(interfaceId)
+        if (adapter != null) {
+            adapter.writeValue(value, destination)
+            return
+        }
+        val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
+        if (enumDescriptor?.nullableInterfaceId == interfaceId) {
+            PlatformAbi.writeInt32(destination, enumDescriptor.toAbiBits(value))
+            return
+        }
+        throw WinRTInvalidCastException(
+            "Unsupported IReference interface id: $interfaceId",
+            HResult(TYPE_E_TYPEMISMATCH),
+        )
+    }
+
     fun createReferenceArrayInterfaceDefinition(interfaceId: Guid, value: Any): WinRTInspectableInterfaceDefinition {
         val adapter = adapterForReferenceArrayInterface(interfaceId)
             ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
@@ -572,6 +619,43 @@ internal object ValueBoxingInterop {
                 },
             ),
         )
+    }
+
+    /** Builds the value-independent IReferenceArray<T> vtable shape. */
+    internal fun createHostReferenceArrayInterfaceDefinition(interfaceId: Guid): WinRTInspectableInterfaceDefinition =
+        WinRTInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = listOf(
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                ) { _, managedValue, rawArgs ->
+                    if (rawArgs.size != 2) {
+                        throw IllegalStateException("IReferenceArray host requires count and data out-arguments.")
+                    }
+                    writeReferenceArrayValue(
+                        interfaceId = interfaceId,
+                        value = requireNotNull(managedValue),
+                        countOut = rawArgs[0] as RawAddress,
+                        dataOut = rawArgs[1] as RawAddress,
+                    )
+                    KnownHResults.S_OK.value
+                },
+            ),
+        )
+
+    internal fun writeReferenceArrayValue(
+        interfaceId: Guid,
+        value: Any,
+        countOut: RawAddress,
+        dataOut: RawAddress,
+    ) {
+        val adapter = adapterForReferenceArrayInterface(interfaceId)
+            ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
+            ?: throw WinRTInvalidCastException("IReferenceArray host requires an array value.", HResult(TYPE_E_TYPEMISMATCH))
+        val (length, data) = adapter.createTransferredArray(boxedElements)
+        PlatformAbi.writeInt32(countOut, length)
+        PlatformAbi.writePointer(dataOut, data)
     }
 
     fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRTTypeHandle =

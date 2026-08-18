@@ -1769,18 +1769,18 @@ class WinRTMetadataModelTest {
             listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetOverrides"),
             fastAbiClass.interfaceSlots.map { it.interfaceName },
         )
-        assertEquals(listOf(6, 10), fastAbiClass.interfaceSlots.map { it.vtableStartIndex })
-        assertEquals(listOf(4, 2), fastAbiClass.interfaceSlots.map { it.methodCount })
+        assertEquals(listOf(6, 11), fastAbiClass.interfaceSlots.map { it.vtableStartIndex })
+        assertEquals(listOf(5, 2), fastAbiClass.interfaceSlots.map { it.methodCount })
         assertEquals(listOf(0, 0), fastAbiClass.interfaceSlots.map { it.hierarchyOffsetAfterDefault })
-        assertEquals(listOf(10, 12), fastAbiClass.interfaceSlots.map { it.nextVtableStartIndex })
+        assertEquals(listOf(11, 13), fastAbiClass.interfaceSlots.map { it.nextVtableStartIndex })
         assertEquals(listOf("Name", "Mode"), fastAbiClass.propertySlots.map { it.propertyName })
-        assertEquals(listOf(6, 10), fastAbiClass.propertySlots.map { it.vtableStartIndex })
-        assertEquals(listOf(9, 10), fastAbiClass.propertySlots.map { it.getterVtableIndex })
-        assertEquals(listOf(null, 11), fastAbiClass.propertySlots.map { it.setterVtableIndex })
+        assertEquals(listOf(6, 11), fastAbiClass.propertySlots.map { it.vtableStartIndex })
+        assertEquals(listOf(9, 11), fastAbiClass.propertySlots.map { it.getterVtableIndex })
+        assertEquals(listOf(null, 12), fastAbiClass.propertySlots.map { it.setterVtableIndex })
         val derivedFastAbiClass = requireNotNull(helpers.getFastAbiClassForClass(derivedWidget))
-        assertEquals(listOf(6, 11), derivedFastAbiClass.interfaceSlots.map { it.vtableStartIndex })
+        assertEquals(listOf(6, 12), derivedFastAbiClass.interfaceSlots.map { it.vtableStartIndex })
         assertEquals(listOf(1, 0), derivedFastAbiClass.interfaceSlots.map { it.hierarchyOffsetAfterDefault })
-        assertEquals(listOf(11, 13), derivedFastAbiClass.interfaceSlots.map { it.nextVtableStartIndex })
+        assertEquals(listOf(12, 14), derivedFastAbiClass.interfaceSlots.map { it.nextVtableStartIndex })
         assertEquals(true, fastAbiClass.containsGetter("Name"))
         assertEquals(true, fastAbiClass.containsSetter("Mode"))
         assertEquals(false, fastAbiClass.containsSetter("Name"))
@@ -1795,6 +1795,138 @@ class WinRTMetadataModelTest {
         assertEquals("virtual", queryInterface.overridableModifier)
         assertEquals(120_000, helpers.getGcPressureAmount(widget))
         assertEquals("Sample.Foundation.Widget", helpers.getFastAbiClassForInterface(overrides)?.classType?.qualifiedName)
+    }
+
+    @Test
+    fun fast_abi_slots_count_normalized_property_accessors() {
+        val defaultInterface = WinRTTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "IWidget",
+            kind = WinRTTypeKind.Interface,
+            isExclusiveTo = true,
+            properties = listOf(
+                WinRTPropertyDefinition(
+                    name = "Value",
+                    typeName = "Int",
+                    getterMethodName = "get_Value",
+                    getterMethodRowId = 1,
+                ),
+            ),
+        )
+        val widget = WinRTTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "Widget",
+            kind = WinRTTypeKind.RuntimeClass,
+            isFastAbi = true,
+            defaultInterfaceName = defaultInterface.qualifiedName,
+            implementedInterfaces = listOf(
+                WinRTInterfaceImplementationDefinition(defaultInterface.qualifiedName, isDefault = true),
+            ),
+        )
+        val helpers = WinRTMetadataModel(
+            listOf(WinRTNamespace("Sample.FastAbi", listOf(defaultInterface, widget))),
+        ).semanticHelpers()
+
+        val descriptor = requireNotNull(helpers.getFastAbiClassForClass(widget))
+        assertEquals(1, descriptor.interfaceSlots.single().methodCount)
+        assertEquals(
+            7,
+            helpers.objectReferenceSurfaceDescriptor(widget)
+                .objectReferencePlans
+                .single()
+                .defaultInterfaceObjRefVtableSlot,
+        )
+    }
+
+    @Test
+    fun direct_inbound_shapes_accept_only_closed_single_carrier_metadata_categories() {
+        val enumType = WinRTTypeDefinition(
+            namespace = "Sample.CallSites",
+            name = "Status",
+            kind = WinRTTypeKind.Enum,
+            enumUnderlyingType = WinRTIntegralType.Int32,
+        )
+        val interfaceType = WinRTTypeDefinition(
+            namespace = "Sample.CallSites",
+            name = "IWidget",
+            kind = WinRTTypeKind.Interface,
+        )
+        val runtimeClassType = WinRTTypeDefinition(
+            namespace = "Sample.CallSites",
+            name = "Widget",
+            kind = WinRTTypeKind.RuntimeClass,
+        )
+        val model = WinRTMetadataModel(
+            listOf(
+                WinRTNamespace(
+                    "Sample.CallSites",
+                    listOf(
+                        enumType,
+                        interfaceType,
+                        runtimeClassType,
+                        WinRTTypeDefinition("Sample.CallSites", "Point", WinRTTypeKind.Struct),
+                        WinRTTypeDefinition("Sample.CallSites", "Handler", WinRTTypeKind.Delegate),
+                        WinRTTypeDefinition(
+                            "Sample.CallSites",
+                            "IBox`1",
+                            WinRTTypeKind.Interface,
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    "Windows.Foundation",
+                    listOf(WinRTTypeDefinition("Windows.Foundation", "IAsyncAction", WinRTTypeKind.Interface)),
+                ),
+            ),
+        )
+        val helpers = model.semanticHelpers()
+
+        listOf("Int", "System.Int32", "UInt", "System.UInt32", "Boolean", "System.Boolean").forEach { name ->
+            val shape = requireNotNull(
+                helpers.directInboundShapeDescriptor(WinRTTypeRef.fromDisplayName(name), "Sample.CallSites"),
+            )
+            assertEquals(name, WinRTDirectInboundShapeKind.Value, shape.kind)
+        }
+        assertEquals(
+            WinRTDirectInboundShapeKind.Unit,
+            helpers.directInboundShapeDescriptor(WinRTTypeRef.fromDisplayName("System.Void"), "", allowUnit = true)?.kind,
+        )
+        assertEquals(
+            WinRTDirectInboundShapeKind.Enum,
+            helpers.directInboundShapeDescriptor(WinRTTypeRef.named(enumType.qualifiedName), enumType.namespace)?.kind,
+        )
+        assertEquals(
+            WinRTDirectInboundShapeKind.Projection,
+            helpers.directInboundShapeDescriptor(WinRTTypeRef.named(interfaceType.qualifiedName), interfaceType.namespace)?.kind,
+        )
+        assertEquals(
+            WinRTDirectInboundShapeKind.Projection,
+            helpers.directInboundShapeDescriptor(WinRTTypeRef.named(runtimeClassType.qualifiedName), runtimeClassType.namespace)?.kind,
+        )
+
+        val rejected = listOf(
+            WinRTTypeRef.fromDisplayName("String"),
+            WinRTTypeRef.named("Sample.CallSites.Point"),
+            WinRTTypeRef.named("Sample.CallSites.Handler"),
+            WinRTTypeRef.array(WinRTTypeRef.fromDisplayName("Int")),
+            WinRTTypeRef.fromDisplayName("Int").withByRef(),
+            WinRTTypeRef.genericTypeParameter(0),
+            WinRTTypeRef.named("Sample.CallSites.IBox`1", listOf(WinRTTypeRef.fromDisplayName("Int"))),
+            WinRTTypeRef.named("Windows.Foundation.IAsyncAction"),
+            WinRTTypeRef.named("Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs"),
+        )
+        rejected.forEach { type ->
+            assertEquals(
+                type.typeName,
+                null,
+                helpers.directInboundShapeDescriptor(type, "Sample.CallSites"),
+            )
+        }
+        assertEquals(
+            null,
+            helpers.directInboundShapeDescriptor(WinRTTypeRef.fromDisplayName("Unit"), "Sample.CallSites"),
+        )
     }
 
     @Test

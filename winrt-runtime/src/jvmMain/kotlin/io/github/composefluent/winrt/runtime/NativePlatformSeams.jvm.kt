@@ -36,6 +36,24 @@ actual class NativeScope internal constructor(
     }
 }
 
+internal actual class NativeMemoryView internal constructor(
+    internal val segment: MemorySegment,
+) {
+    actual val pointer: RawAddress = segment.asRawAddress()
+
+    actual fun writePointer(offsetBytes: Long, value: RawAddress) {
+        segment.set(ValueLayout.JAVA_LONG, offsetBytes, value.value)
+    }
+
+    actual fun writePointer(offsetBytes: Long, value: NativeMemoryView) {
+        segment.set(ValueLayout.JAVA_LONG, offsetBytes, value.pointer.value)
+    }
+
+    actual fun writeInt64(offsetBytes: Long, value: Long) {
+        segment.set(ValueLayout.JAVA_LONG, offsetBytes, value)
+    }
+}
+
 @PublishedApi
 internal actual class NativeScalarScratchFrame internal constructor(
     @PublishedApi internal val segment: MemorySegment,
@@ -382,6 +400,14 @@ private val nativeHStringReferenceFrames = ThreadLocal.withInitial(::JvmNativeHS
 internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
     nativeHStringReferenceFrames.get().acquire(value)
 
+internal actual inline fun <R> withNativeHStringReferenceAbi(
+    value: String,
+    action: (handle: RawAddress, pointerOut: RawAddress) -> R,
+): R =
+    acquireInitializedNativeHStringReferenceFrame(value).use { frame ->
+        action(frame.handle, frame.transientOut)
+    }
+
 @PublishedApi
 internal actual inline fun winRTPinString(value: String, length: Int): String = value
 
@@ -621,9 +647,30 @@ actual object PlatformAbi {
     actual fun pointerKey(pointer: RawComPtr): Long = pointer.value
 
     actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation {
-        val arena = Arena.ofShared()
-        val pointer = arena.allocate(sizeBytes, alignmentBytes).asRawAddress()
-        return OwnedNativeAllocation(pointer = pointer, onClose = arena::close)
+        require(sizeBytes >= 0L) { "Owned native allocation size cannot be negative: $sizeBytes." }
+        require(alignmentBytes > 0L && alignmentBytes and (alignmentBytes - 1L) == 0L) {
+            "Owned native allocation alignment must be a positive power of two: $alignmentBytes."
+        }
+
+        val visibleSizeBytes = maxOf(sizeBytes, 1L)
+        val allocationSizeBytes = Math.addExact(visibleSizeBytes, alignmentBytes - 1L)
+        val allocationAddress = JvmNativeHeap.allocateZeroed(allocationSizeBytes)
+        if (allocationAddress == 0L) {
+            throw OutOfMemoryError("Unable to allocate $allocationSizeBytes bytes of native memory.")
+        }
+        val alignedAddress = (allocationAddress + alignmentBytes - 1L) and -alignmentBytes
+        val segment = try {
+            MemorySegment.ofAddress(alignedAddress).reinterpret(visibleSizeBytes)
+        } catch (failure: Throwable) {
+            JvmNativeHeap.free(allocationAddress)
+            throw failure
+        }
+        val memory = NativeMemoryView(segment)
+        return OwnedNativeAllocation(
+            pointer = memory.pointer,
+            memory = memory,
+            onClose = { JvmNativeHeap.free(allocationAddress) },
+        )
     }
 
     actual fun zeroBytes(pointer: RawAddress, sizeBytes: Long) {

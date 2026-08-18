@@ -15,17 +15,18 @@ internal object PlatformRuntimeInitialization {
         XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
         WinRTComposableObjectReference.closeRuntimeReferences()
         ComWrappersSupport.clearRuntimeCache()
+        drainDeferredComReleasesForCurrentContext()
         PlatformFinalization.drain()
+        drainDeferredComReleasesForCurrentContext()
         uninitializeComApartment()
     }
 
     fun uninitializeComApartment() {
         if (!PlatformRuntime.isWindows) return
-        try {
-            WinRTPlatformApi.coUninitializeRaw()
-        } finally {
-            PlatformFinalization.drain()
-        }
+        drainDeferredComReleasesForCurrentContext()
+        PlatformFinalization.drain()
+        drainDeferredComReleasesForCurrentContext()
+        WinRTPlatformApi.coUninitializeRaw()
     }
 
     fun initializeWinRT(apartmentType: ApartmentType): HResult {

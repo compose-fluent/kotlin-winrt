@@ -1,4 +1,7 @@
-@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(
+    kotlin.experimental.ExperimentalNativeApi::class,
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+)
 
 package io.github.composefluent.winrt.runtime
 
@@ -58,9 +61,6 @@ internal actual class PlatformLock actual constructor() {
 internal actual class NativeWeakReferenceHandle internal constructor(
     val reference: WeakReferenceReference,
 ) : AutoCloseable {
-    @Suppress("unused")
-    private val cleaner = createCleaner(reference) { it.close() }
-
     actual override fun close() {
         reference.close()
     }

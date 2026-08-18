@@ -2,8 +2,12 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-@Retention(AnnotationRetention.RUNTIME)
+@Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.CLASS)
+annotation class WinRTProjectedInterface
+
+@Retention(AnnotationRetention.RUNTIME)
+@Target(AnnotationTarget.CLASS, AnnotationTarget.PROPERTY_GETTER)
 annotation class WinRTGuid(
     val value: String,
 )
@@ -53,7 +57,12 @@ annotation class WinRTDefaultInterface(
 
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.CLASS)
-annotation class WinRTDelegateType
+annotation class WinRTDelegateType(
+    /** Generic WinRT delegate definition IID before pinterface composition. */
+    val genericInterfaceIid: String = "",
+    /** Fully-qualified runtime adapter which receives a closed descriptor. */
+    val adapterFunction: String = "",
+)
 
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.CLASS)

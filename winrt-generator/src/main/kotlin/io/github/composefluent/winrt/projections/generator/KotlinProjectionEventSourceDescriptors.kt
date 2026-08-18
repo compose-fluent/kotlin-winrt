@@ -39,9 +39,10 @@ internal fun KotlinProjectionPlanner.eventSourceDescriptors(
     model: WinRTMetadataModel,
     plans: List<KotlinTypeProjectionPlan>,
     instantiations: List<WinRTGenericTypeInstantiationDescriptor> = emptyList(),
+    closedGenericPlans: List<KotlinTypeProjectionPlan> = plans,
 ): List<WinRTEventHelperSubclassDescriptor> {
     val helpers = model.semanticHelpers()
-    val plannedTypeNames = plans.mapTo(mutableSetOf()) { plan -> plan.type.qualifiedName }
+    val closedGenericTypeNames = closedGenericPlans.mapTo(mutableSetOf()) { plan -> plan.type.qualifiedName }
     val requiredDescriptorKeys = plans.requiredEventSourceDescriptorKeys()
     val metadataDescriptors = model.namespaces
         .flatMap(WinRTNamespace::types)
@@ -50,7 +51,7 @@ internal fun KotlinProjectionPlanner.eventSourceDescriptors(
         .filterNot { descriptor -> descriptor.eventTypeName.containsOpenGenericType() }
     val closedGenericDescriptors = instantiations
         .asSequence()
-        .filter { instantiation -> instantiation.definitionType?.qualifiedName in plannedTypeNames }
+        .filter { instantiation -> instantiation.definitionType?.qualifiedName in closedGenericTypeNames }
         .flatMap { instantiation ->
             val definition = requireNotNull(instantiation.definitionType)
             helpers.eventHelperSubclassDescriptors(

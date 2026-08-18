@@ -28,7 +28,9 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
+import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.asStableRef
 import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.value
 import platform.windows.FlsAlloc
@@ -46,6 +48,32 @@ import platform.windows.VirtualProtect
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.native.internal.GCUnsafeCall
+
+internal actual fun allocateWin64ExecutableCode(
+    code: ByteArray,
+    description: String,
+): RawAddress {
+    val memory = VirtualAlloc(
+        null,
+        code.size.toULong(),
+        MEM_COMMIT.toUInt() or MEM_RESERVE.toUInt(),
+        PAGE_READWRITE.toUInt(),
+    ) ?: error("VirtualAlloc failed for $description.")
+    val bytes = memory.reinterpret<ByteVar>()
+    code.forEachIndexed { index, value -> bytes[index] = value }
+    memScoped {
+        val oldProtect = alloc<UIntVar>()
+        if (VirtualProtect(memory, code.size.toULong(), PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr) == 0) {
+            VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
+            error("VirtualProtect failed for $description.")
+        }
+        if (FlushInstructionCache(GetCurrentProcess(), memory, code.size.toULong()) == 0) {
+            VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
+            error("FlushInstructionCache failed for $description.")
+        }
+    }
+    return memory.asRawAddress()
+}
 
 actual object ComVtableInvoker {
     actual fun invokePointer(
@@ -301,6 +329,15 @@ actual object ComVtableInvoker {
             callback = callback,
         )
 
+    internal actual fun createRawWordComMethodCallback(
+        signature: ComMethodSignature,
+        callback: ComRawWordCallback,
+    ): NativeCallbackHandle =
+        NativeCallbackRegistry.registerRaw(
+            parameterKinds = listOf(ComAbiValueKind.Pointer) + signature.explicitParameterKinds,
+            callback = callback,
+        )
+
     internal actual fun createRawInt32Callback(
         parameterKinds: List<ComAbiValueKind>,
         callback: (List<Any?>) -> Int,
@@ -323,7 +360,11 @@ private object NativeCallbackRegistry {
         val id = lock.withLock {
             nextId.also { nextId += 1 }
         }
-        val trampoline = Win64ComCallbackTrampoline.allocate(id, parameterKinds.size)
+        val trampoline = Win64ComCallbackTrampoline.allocate(
+            callbackContext = id.toLong(),
+            wordCount = parameterKinds.size,
+            callbackAddress = Win64ComCallbackTrampoline.registeredCallbackAddress(),
+        )
         callbacks[id] = RegisteredNativeCallback(parameterKinds, callback)
         return NativeCallbackHandle(
             pointer = trampoline.pointer,
@@ -334,16 +375,56 @@ private object NativeCallbackRegistry {
         )
     }
 
+    fun registerRaw(
+        parameterKinds: List<ComAbiValueKind>,
+        callback: ComRawWordCallback,
+    ): NativeCallbackHandle {
+        require(parameterKinds.size in 1..maxCallbackWordCount) {
+            "mingw COM callback ABI supports at most $maxCallbackWordCount raw words, got $parameterKinds."
+        }
+        require(parameterKinds.none { it is ComAbiValueKind.Struct }) {
+            "Raw-word callbacks do not materialize by-value struct carriers: $parameterKinds."
+        }
+        val callbackReference = StableRef.create(callback)
+        val trampoline = try {
+            Win64ComCallbackTrampoline.allocate(
+                callbackContext = callbackReference.asCPointer().rawValue.toLong(),
+                wordCount = parameterKinds.size,
+                callbackAddress = Win64ComCallbackTrampoline.directRawWordCallbackAddress(),
+            )
+        } catch (failure: Throwable) {
+            callbackReference.dispose()
+            throw failure
+        }
+        return NativeCallbackHandle(
+            pointer = trampoline.pointer,
+            onClose = {
+                trampoline.close()
+                callbackReference.dispose()
+            },
+        )
+    }
+
     fun invokeRaw(
         id: Int,
-        words: LongArray,
+        arg0: Long,
+        arg1: Long,
+        arg2: Long,
+        arg3: Long,
+        arg4: Long,
+        arg5: Long,
+        arg6: Long,
     ): Int {
         val registered = callbacks[id] ?: return KnownHResults.E_POINTER.value
         PlatformAbi.confinedScope().use { scope ->
             return runCatching {
                 registered.callback(
                     registered.parameterKinds.mapIndexed { index, kind ->
-                        abiWordToCallbackValue(scope, kind, words[index])
+                        abiWordToCallbackValue(
+                            scope,
+                            kind,
+                            rawWordAt(index, arg0, arg1, arg2, arg3, arg4, arg5, arg6),
+                        )
                     },
                 )
             }.getOrElse { error ->
@@ -351,6 +432,26 @@ private object NativeCallbackRegistry {
                 platformHResultFromThrowable(error).value
             }
         }
+    }
+
+    private fun rawWordAt(
+        index: Int,
+        arg0: Long,
+        arg1: Long,
+        arg2: Long,
+        arg3: Long,
+        arg4: Long,
+        arg5: Long,
+        arg6: Long,
+    ): Long = when (index) {
+        0 -> arg0
+        1 -> arg1
+        2 -> arg2
+        3 -> arg3
+        4 -> arg4
+        5 -> arg5
+        6 -> arg6
+        else -> error("Native callback word index $index exceeds the supported arity.")
     }
 
     private fun abiWordToCallbackValue(scope: NativeScope, kind: ComAbiValueKind, word: Long): Any =
@@ -397,10 +498,11 @@ private class Win64ComCallbackTrampoline private constructor(
 
     companion object {
         fun allocate(
-            callbackId: Int,
+            callbackContext: Long,
             wordCount: Int,
+            callbackAddress: Long,
         ): Win64ComCallbackTrampoline {
-            val code = buildCode(callbackId, wordCount)
+            val code = buildCode(callbackContext, wordCount, callbackAddress)
             val memory = VirtualAlloc(
                 null,
                 code.size.toULong(),
@@ -432,8 +534,9 @@ private class Win64ComCallbackTrampoline private constructor(
         }
 
         private fun buildCode(
-            callbackId: Int,
+            callbackContext: Long,
             wordCount: Int,
+            callbackAddress: Long,
         ): ByteArray {
             // Windows x64 ABI only: ARM64 must provide its own trampoline in an ARM64 source set.
             val code = mutableListOf<Byte>()
@@ -460,18 +563,21 @@ private class Win64ComCallbackTrampoline private constructor(
             code.emit(0x4D, 0x89, 0xC1)
             code.emit(0x49, 0x89, 0xD0)
             code.emit(0x48, 0x89, 0xCA)
-            code.emit(0xB9)
-            code.emitInt32(callbackId)
+            code.emit(0x48, 0xB9)
+            code.emitInt64(callbackContext)
             code.emit(0x48, 0xB8)
-            code.emitInt64(universalCallbackAddress())
+            code.emitInt64(callbackAddress)
             code.emit(0xFF, 0xD0)
             code.emit(0x48, 0x83, 0xC4, stackSize)
             code.emit(0xC3)
             return code.toByteArray()
         }
 
-        private fun universalCallbackAddress(): Long =
+        fun registeredCallbackAddress(): Long =
             staticCFunction(::invokeNativeCallbackRaw).rawValue.toLong()
+
+        fun directRawWordCallbackAddress(): Long =
+            staticCFunction(::invokeDirectRawWordCallback).rawValue.toLong()
     }
 }
 
@@ -675,7 +781,29 @@ private fun invokeNativeCallbackRaw(
     arg5: Long,
     arg6: Long,
 ): Int =
-    NativeCallbackRegistry.invokeRaw(callbackId, longArrayOf(arg0, arg1, arg2, arg3, arg4, arg5, arg6))
+    NativeCallbackRegistry.invokeRaw(callbackId, arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+
+private fun invokeDirectRawWordCallback(
+    callbackContext: Long,
+    arg0: Long,
+    arg1: Long,
+    arg2: Long,
+    arg3: Long,
+    arg4: Long,
+    arg5: Long,
+    arg6: Long,
+): Int =
+    try {
+        val callback = callbackContext
+            .toCPointer<COpaque>()
+            ?.asStableRef<ComRawWordCallback>()
+            ?.get()
+            ?: return KnownHResults.E_POINTER.value
+        callback.invoke(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+    } catch (error: Throwable) {
+        platformSetErrorInfo(error)
+        platformHResultFromThrowable(error).value
+    }
 
 private fun MutableList<Byte>.emit(vararg values: Int) {
     values.forEach { value -> add(value.toByte()) }
@@ -880,12 +1008,35 @@ private object Win64ComRecipeThunkCache {
             val current = entries.load()
             current.firstOrNull { entry -> entry.key == key }?.let { entry -> return entry.address }
 
-            val allocated = allocateExecutableCode(buildCode(transport, kinds))
+            val allocated = allocateWin64ExecutableCode(
+                code = buildCode(transport, kinds),
+                description = "a mingw COM recipe thunk",
+            )
             val updated = current + Win64ComRecipeThunkEntry(key, allocated)
             if (entries.compareAndSet(current, updated)) return allocated
 
             VirtualFree(allocated.toOpaquePointer(), 0u, MEM_RELEASE.toUInt())
         }
+    }
+
+    private fun rawWordAt(
+        index: Int,
+        arg0: Long,
+        arg1: Long,
+        arg2: Long,
+        arg3: Long,
+        arg4: Long,
+        arg5: Long,
+        arg6: Long,
+    ): Long = when (index) {
+        0 -> arg0
+        1 -> arg1
+        2 -> arg2
+        3 -> arg3
+        4 -> arg4
+        5 -> arg5
+        6 -> arg6
+        else -> error("Native callback word index $index exceeds the supported arity.")
     }
 
     private fun decodeFloatingPointKinds(
@@ -1028,28 +1179,6 @@ private object Win64ComRecipeThunkCache {
         return code.toByteArray()
     }
 
-    private fun allocateExecutableCode(code: ByteArray): RawAddress {
-        val memory = VirtualAlloc(
-            null,
-            code.size.toULong(),
-            MEM_COMMIT.toUInt() or MEM_RESERVE.toUInt(),
-            PAGE_READWRITE.toUInt(),
-        ) ?: error("VirtualAlloc failed for a mingw COM recipe thunk.")
-        val bytes = memory.reinterpret<ByteVar>()
-        code.forEachIndexed { index, value -> bytes[index] = value }
-        memScoped {
-            val oldProtect = alloc<UIntVar>()
-            if (VirtualProtect(memory, code.size.toULong(), PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr) == 0) {
-                VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-                error("VirtualProtect failed for a mingw COM recipe thunk.")
-            }
-            if (FlushInstructionCache(GetCurrentProcess(), memory, code.size.toULong()) == 0) {
-                VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-                error("FlushInstructionCache failed for a mingw COM recipe thunk.")
-            }
-        }
-        return memory.asRawAddress()
-    }
 }
 
 private fun outgoingStackEnd(argumentCount: Int): Int =

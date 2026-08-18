@@ -32,6 +32,7 @@ import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
 import kotlinx.cinterop.sizeOf
+import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
@@ -44,6 +45,8 @@ import platform.windows.COINIT_APARTMENTTHREADED
 import platform.windows.COINIT_MULTITHREADED
 import platform.windows.FreeLibrary
 import platform.windows.FormatMessageW
+import platform.windows.FlsAlloc
+import platform.windows.FlsSetValue
 import platform.windows.GetLastError
 import platform.windows.GetProcAddress
 import platform.windows.HINSTANCE__
@@ -78,6 +81,25 @@ actual class NativeScope internal constructor(
         }
         allocations.asReversed().forEach { pointer -> nativeHeap.free(pointer.rawValue) }
         allocations.clear()
+    }
+}
+
+internal actual class NativeMemoryView internal constructor(
+    private val rawPointer: RawAddress,
+) {
+    actual val pointer: RawAddress
+        get() = rawPointer
+
+    actual fun writePointer(offsetBytes: Long, value: RawAddress) {
+        PlatformAbi.writePointer(rawPointer, offsetBytes, value)
+    }
+
+    actual fun writePointer(offsetBytes: Long, value: NativeMemoryView) {
+        PlatformAbi.writePointer(rawPointer, offsetBytes, value.pointer)
+    }
+
+    actual fun writeInt64(offsetBytes: Long, value: Long) {
+        PlatformAbi.writeInt64(RawAddress(rawPointer.value + offsetBytes), value)
     }
 }
 
@@ -421,6 +443,162 @@ private object NativeHStringReferenceFrames {
 internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
     NativeHStringReferenceFrames.pool.acquire(value)
 
+internal actual inline fun <R> withNativeHStringReferenceAbi(
+    value: String,
+    action: (handle: RawAddress, pointerOut: RawAddress) -> R,
+): R {
+    val frame = acquireScopedNativeHStringFrame()
+    val length = value.length
+    val pinnedValue = winRTPinString(value, length)
+    val handle = initializeScopedNativeHStringFrame(
+        frame = frame,
+        chars = winRTStringAddress(pinnedValue, length),
+        length = length,
+    )
+    return try {
+        action(handle, RawAddress(frame.value + scopedNativeHStringResultOffsetBytes))
+    } finally {
+        winRTKeepAlive(pinnedValue)
+        releaseScopedNativeHStringFrame(frame)
+    }
+}
+
+@PublishedApi
+internal fun acquireScopedNativeHStringFrame(): RawAddress {
+    val index = ScopedNativeHStringFrames.index
+    val pool = scopedNativeHStringFlsGetValue(index).let { current ->
+        if (current != 0L) current.toCPointer<LongVar>() else createScopedNativeHStringPool(index)
+    } ?: error("Native HSTRING scope has no frame pool.")
+    val depth = pool[scopedNativeHStringPoolDepthWord].toInt()
+    val frame = if (depth < scopedNativeHStringEmbeddedFrameCount) {
+        RawAddress(
+            pool.rawValue.toLong() +
+                (scopedNativeHStringEmbeddedFramesWord + depth * scopedNativeHStringFrameWordCount) *
+                Long.SIZE_BYTES,
+        )
+    } else {
+        val overflowIndex = depth - scopedNativeHStringEmbeddedFrameCount
+        val frames = ensureScopedNativeHStringOverflowCapacity(pool, overflowIndex)
+        val overflowFrame = frames[overflowIndex]
+            ?: nativeHeap.allocArray<LongVar>(scopedNativeHStringFrameWordCount).also { created ->
+            memset(created, 0, scopedNativeHStringFrameSizeBytes.toULong())
+            created[scopedNativeHStringFrameOwnerWord] = pool.rawValue.toLong()
+            frames[overflowIndex] = created.reinterpret<COpaque>()
+        }.reinterpret<COpaque>()
+        RawAddress(overflowFrame.rawValue.toLong())
+    }
+    pool[scopedNativeHStringPoolDepthWord] = (depth + 1).toLong()
+    return frame
+}
+
+@PublishedApi
+internal fun initializeScopedNativeHStringFrame(
+    frame: RawAddress,
+    chars: RawAddress,
+    length: Int,
+): RawAddress {
+    val frameWords = frame.value.toCPointer<LongVar>()
+        ?: error("Native HSTRING scope has no frame storage.")
+    frameWords[scopedNativeHStringFrameResultWord] = 0L
+    if (length == 0) {
+        return RawAddress.Null
+    }
+    frameWords[scopedNativeHStringFrameHeaderWord] =
+        (length.toLong() shl Int.SIZE_BITS) or hStringReferenceFlag.toLong()
+    frameWords[scopedNativeHStringFrameHeaderWord + 1] = 0L
+    frameWords[scopedNativeHStringFrameHeaderWord + 2] = chars.value
+    return RawAddress(frame.value + scopedNativeHStringHeaderOffsetBytes)
+}
+
+@PublishedApi
+internal fun releaseScopedNativeHStringFrame(frame: RawAddress) {
+    val frameWords = frame.value.toCPointer<LongVar>()
+        ?: error("Native HSTRING scope has no frame storage.")
+    val pool = frameWords[scopedNativeHStringFrameOwnerWord].toCPointer<LongVar>()
+        ?: error("Native HSTRING scope has no owning pool.")
+    val depth = pool[scopedNativeHStringPoolDepthWord].toInt()
+    check(depth > 0) { "Native HSTRING scope depth is invalid." }
+    val expectedFrame = if (depth <= scopedNativeHStringEmbeddedFrameCount) {
+        pool.rawValue.toLong() +
+            (scopedNativeHStringEmbeddedFramesWord + (depth - 1) * scopedNativeHStringFrameWordCount) *
+            Long.SIZE_BYTES
+    } else {
+        val frames = pool[scopedNativeHStringPoolOverflowFramesWord]
+            .toCPointer<COpaquePointerVar>()
+            ?: error("Native HSTRING scope has no overflow frame index.")
+        frames[depth - 1 - scopedNativeHStringEmbeddedFrameCount]?.rawValue?.toLong()
+    }
+    check(expectedFrame == frame.value) {
+        "Native HSTRING scopes must close in reverse acquisition order."
+    }
+    pool[scopedNativeHStringPoolDepthWord] = (depth - 1).toLong()
+}
+
+@GCUnsafeCall("FlsGetValue")
+private external fun scopedNativeHStringFlsGetValue(index: UInt): Long
+
+private fun createScopedNativeHStringPool(index: UInt): CPointer<LongVar> {
+    val pool = nativeHeap.allocArray<LongVar>(scopedNativeHStringPoolWordCount)
+    memset(pool, 0, scopedNativeHStringPoolSizeBytes.toULong())
+    repeat(scopedNativeHStringEmbeddedFrameCount) { frameIndex ->
+        pool[
+            scopedNativeHStringEmbeddedFramesWord +
+                frameIndex * scopedNativeHStringFrameWordCount +
+                scopedNativeHStringFrameOwnerWord
+        ] = pool.rawValue.toLong()
+    }
+    if (FlsSetValue(index, pool.reinterpret<COpaque>()) == 0) {
+        nativeHeap.free(pool.rawValue)
+        error("FlsSetValue failed for a Native HSTRING scope pool.")
+    }
+    return pool
+}
+
+private fun ensureScopedNativeHStringOverflowCapacity(
+    pool: CPointer<LongVar>,
+    requiredIndex: Int,
+): CPointer<COpaquePointerVar> {
+    val currentCapacity = pool[scopedNativeHStringPoolOverflowCapacityWord].toInt()
+    val currentFrames = pool[scopedNativeHStringPoolOverflowFramesWord]
+        .toCPointer<COpaquePointerVar>()
+    if (requiredIndex < currentCapacity) {
+        return currentFrames ?: error("Native HSTRING scope has no overflow frame index.")
+    }
+    var newCapacity = maxOf(currentCapacity, scopedNativeHStringInitialOverflowCapacity)
+    while (requiredIndex >= newCapacity) {
+        check(newCapacity <= Int.MAX_VALUE / 2) { "Native HSTRING scope nesting is too deep." }
+        newCapacity *= 2
+    }
+    val newFrames = nativeHeap.allocArray<COpaquePointerVar>(newCapacity)
+    memset(newFrames, 0, (newCapacity * Long.SIZE_BYTES).toULong())
+    if (currentFrames != null) {
+        repeat(currentCapacity) { index -> newFrames[index] = currentFrames[index] }
+        nativeHeap.free(currentFrames.rawValue)
+    }
+    pool[scopedNativeHStringPoolOverflowCapacityWord] = newCapacity.toLong()
+    pool[scopedNativeHStringPoolOverflowFramesWord] = newFrames.rawValue.toLong()
+    return newFrames
+}
+
+private fun releaseScopedNativeHStringPool(storage: COpaquePointer?) {
+    val pool = storage?.reinterpret<LongVar>() ?: return
+    val capacity = pool[scopedNativeHStringPoolOverflowCapacityWord].toInt()
+    val frames = pool[scopedNativeHStringPoolOverflowFramesWord].toCPointer<COpaquePointerVar>()
+    if (frames != null) {
+        repeat(capacity) { index ->
+            frames[index]?.let { frame -> nativeHeap.free(frame.rawValue) }
+        }
+        nativeHeap.free(frames.rawValue)
+    }
+    nativeHeap.free(pool.rawValue)
+}
+
+private object ScopedNativeHStringFrames {
+    val index: UInt = FlsAlloc(staticCFunction(::releaseScopedNativeHStringPool)).also { value ->
+        check(value != UInt.MAX_VALUE) { "FlsAlloc failed for Native HSTRING scope pools." }
+    }
+}
+
 @PublishedApi
 internal actual inline fun winRTPinString(value: String, length: Int): String =
     if (length == 0) value else value.toNativePinnable()
@@ -446,6 +624,23 @@ internal const val hStringLengthOffsetBytes: Long = 4L
 internal const val hStringBufferOffsetBytes: Long = 16L
 private const val hStringReferenceFlag: Int = 1
 private const val hStringInitialFrameSizeBytes: Long = hStringFrameSizeBytes
+private const val scopedNativeHStringPoolDepthWord: Int = 0
+private const val scopedNativeHStringPoolOverflowCapacityWord: Int = 1
+private const val scopedNativeHStringPoolOverflowFramesWord: Int = 2
+private const val scopedNativeHStringEmbeddedFramesWord: Int = 3
+private const val scopedNativeHStringEmbeddedFrameCount: Int = 4
+private const val scopedNativeHStringInitialOverflowCapacity: Int = 4
+private const val scopedNativeHStringFrameOwnerWord: Int = 0
+private const val scopedNativeHStringFrameResultWord: Int = 1
+private const val scopedNativeHStringFrameHeaderWord: Int = 2
+private const val scopedNativeHStringFrameWordCount: Int = 5
+private const val scopedNativeHStringFrameSizeBytes: Int = scopedNativeHStringFrameWordCount * Long.SIZE_BYTES
+private const val scopedNativeHStringPoolWordCount: Int =
+    scopedNativeHStringEmbeddedFramesWord +
+        scopedNativeHStringEmbeddedFrameCount * scopedNativeHStringFrameWordCount
+private const val scopedNativeHStringPoolSizeBytes: Int = scopedNativeHStringPoolWordCount * Long.SIZE_BYTES
+private const val scopedNativeHStringResultOffsetBytes: Long = 8L
+private const val scopedNativeHStringHeaderOffsetBytes: Long = 16L
 
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,
@@ -648,7 +843,11 @@ actual object PlatformAbi {
         val pointer = nativeHeap.allocArray<ByteVar>(sizeBytes.toInt()).reinterpret<COpaque>()
         val raw = pointer.asRawAddress()
         zeroBytes(raw, sizeBytes)
-        return OwnedNativeAllocation(pointer = raw, onClose = { nativeHeap.free(pointer.rawValue) })
+        return OwnedNativeAllocation(
+            pointer = raw,
+            memory = NativeMemoryView(raw),
+            onClose = { nativeHeap.free(pointer.rawValue) },
+        )
     }
 
     actual fun zeroBytes(pointer: RawAddress, sizeBytes: Long) {
@@ -911,10 +1110,10 @@ actual object WinRTPlatformApi {
         queryInterfaceWithReusableScratch(unknown, interfaceId)
 
     actual fun addRefRaw(unknown: RawAddress): UInt =
-        ComVtableInvoker.invoke(unknown.asRawComPtr(), IUnknownVftblSlots.AddRef).toUInt()
+        invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.AddRef)
 
-    actual fun releaseRaw(unknown: RawAddress): UInt =
-        ComVtableInvoker.invoke(unknown.asRawComPtr(), IUnknownVftblSlots.Release).toUInt()
+    actual inline fun releaseRaw(unknown: RawAddress): UInt =
+        invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.Release)
 
     actual fun dllGetActivationFactoryRaw(
         getActivationFactoryProc: RawAddress,
@@ -1214,6 +1413,21 @@ actual object WinRTPlatformApi {
             .firstOrNull { candidate -> Path(candidate).isRegularFile() }
             ?.let(::absolutePath)
             ?: fileName
+}
+
+@Suppress("NOTHING_TO_INLINE")
+@PublishedApi
+internal inline fun invokeUnknownRefCountMethod(
+    unknown: RawAddress,
+    slot: Int,
+): UInt {
+    val objectMemory = unknown.value.toCPointer<COpaquePointerVar>()
+        ?: error("COM object pointer is null.")
+    val vtable = objectMemory.pointed.value ?: error("COM object has a null vtable.")
+    val function = vtable.reinterpret<COpaquePointerVar>()[slot]
+        ?.reinterpret<CFunction<(COpaquePointer?) -> UInt>>()
+        ?: error("COM vtable slot $slot is null.")
+    return function.invoke(objectMemory.reinterpret<COpaque>())
 }
 
 private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"

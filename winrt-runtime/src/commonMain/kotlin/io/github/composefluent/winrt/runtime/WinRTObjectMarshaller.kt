@@ -16,15 +16,45 @@ class WinRTObjectMarshaler internal constructor(
 }
 
 object WinRTObjectMarshaller {
+    /**
+     * Most inbound object callbacks repeat the same borrowed COM identity (notably an event
+     * sender). Keep one weak, lock-free entry so the steady path does not re-enter the general
+     * RCW identity map. The entry is populated only after the normal managed-CCW probe, so a
+     * managed pointer always keeps its existing identity precedence.
+     */
+    @kotlin.concurrent.Volatile
+    private var hotInboundRcw: HotInboundRcw? = null
+
     fun createMarshaler(
         value: Any?,
         declaredReferenceArrayElementType: KClass<*>? = null,
     ): WinRTObjectMarshaler =
         when (value) {
             null -> WinRTObjectMarshaler(PlatformAbi.nullPointer)
+            is WinRTProjectedDelegate -> if (value is IWinRTObject) {
+                ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
+                    ?: createMarshalerCore(value, declaredReferenceArrayElementType)
+            } else {
+                createDelegateMarshaler(value)
+            }
             else -> ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
+                ?: createManagedInspectableLeaseMarshaler(value)
                 ?: createMarshalerCore(value, declaredReferenceArrayElementType)
         }
+
+    /**
+     * Generic object parameters are frequently sent back synchronously from a delegate. When the
+     * object already owns a weak-cache CCW, its inspectable interface is stable for the duration
+     * of the call and the cache can provide the same borrowed lease used by compiler-lowered
+     * projected calls. Keep this probe limited to non-projected values; projected wrappers and
+     * delegates retain their existing unwrapping and identity rules above.
+     */
+    private fun createManagedInspectableLeaseMarshaler(value: Any): WinRTObjectMarshaler? {
+        if (value is IWinRTObject) return null
+        val lease = ComWrappersSupport.tryAcquireCachedCCWCallLease(value, IID.IInspectable)
+            ?: return null
+        return WinRTObjectMarshaler(lease.abi) { lease.close() }
+    }
 
     private fun createMarshalerCore(
         value: Any,
@@ -36,20 +66,42 @@ object WinRTObjectMarshaller {
             is RawComPtr -> WinRTObjectMarshaler(value.asRawAddress())
             is ComObjectReference -> createInspectableMarshaler(value)
             is IWinRTObject -> createInspectableMarshaler(value.nativeObject)
-            else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable, declaredReferenceArrayElementType).let { reference ->
-                WinRTBuiltInProjectionRuntimeHooks.retainProjectedObjectReferenceForMarshaling(reference)
-                WinRTObjectMarshaler(reference.pointer.asRawAddress())
+            else -> ComWrappersSupport.createCCWForObjectForMarshaling(
+                value = value,
+                interfaceId = IID.IInspectable,
+                declaredReferenceArrayElementType = declaredReferenceArrayElementType,
+            ).let { marshaler ->
+                WinRTObjectMarshaler(marshaler.abi, marshaler::close)
             }
         }
 
-    fun fromAbi(pointer: RawAddress): Any? =
+    fun fromAbi(pointer: RawAddress): Any? {
         if (PlatformAbi.isNull(pointer)) {
-            null
-        } else {
-            WinRTInspectableComObject.findManagedValue(pointer)
-                ?: tryProjectBorrowedInspectableValue(pointer)
-                ?: ComWrappersSupport.createRcwForComObject(pointer)
+            return null
         }
+
+        val pointerKey = PlatformAbi.pointerKey(pointer)
+        hotInboundRcw?.let { hot ->
+            if (hot.pointerKey == pointerKey) {
+                hot.reference.get()?.let { cached ->
+                    if (cached !is IWinRTObject || !cached.nativeObject.isDisposed) {
+                        return cached
+                    }
+                }
+            }
+        }
+
+        // Preserve the managed CCW identity probe before creating or reusing an RCW.
+        WinRTInspectableComObject.findManagedValue(pointer)?.let { return it }
+        return ComWrappersSupport.createRcwForComObject(pointer)?.also { rcw ->
+            hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
+        }
+    }
+
+    private class HotInboundRcw(
+        val pointerKey: Long,
+        val reference: PlatformManagedWeakReference<Any>,
+    )
 
     fun fromManaged(
         value: Any?,
@@ -57,6 +109,13 @@ object WinRTObjectMarshaller {
     ): RawAddress =
         when (value) {
             null -> PlatformAbi.nullPointer
+            is WinRTProjectedDelegate -> if (value is IWinRTObject) {
+                ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
+                    reference.asInspectable().useAndGetRef()
+                } ?: fromManagedCore(value, declaredReferenceArrayElementType)
+            } else {
+                fromManagedDelegate(value)
+            }
             else -> ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
                 reference.asInspectable().useAndGetRef()
             } ?: fromManagedCore(value, declaredReferenceArrayElementType)
@@ -114,9 +173,13 @@ internal object ProjectedDelegateCcwCache {
     private val handles = WeakKeyStateMap<WinRTProjectedDelegate, WinRTDelegateHandle>()
 
     fun createReference(value: WinRTProjectedDelegate): WinRTDelegateReference {
-        val handle = getOrCreate(value)
-        return handle.createReference().also {
-            handle.releaseManagedReferenceForNativeOwnership()
+        while (true) {
+            val handle = getOrCreate(value)
+            handle.tryCreateReference()?.let { reference ->
+                handle.releaseManagedReferenceForNativeOwnership()
+                return reference
+            }
+            handles.remove(value, handle)
         }
     }
 
@@ -125,9 +188,9 @@ internal object ProjectedDelegateCcwCache {
             value.createWinRTDelegateHandle().also { handle ->
                 ProjectedDelegateObjectRoots.retain(handle)
                 handle.addCleanupAction {
-                    handles.remove(value)
-                    ProjectedDelegateObjectRoots.release(handle)
                     handle.markClosedAfterNativeCleanup()
+                    handles.remove(value, handle)
+                    ProjectedDelegateObjectRoots.release(handle)
                 }
             }
         }

@@ -54,6 +54,7 @@ import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.isNullable
+import org.jetbrains.kotlin.ir.types.makeNotNull
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.util.defaultType
@@ -120,6 +121,16 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val platformAbiIsNullPointer: IrSimpleFunctionSymbol?,
     private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol?,
     private val iWinRTObjectGetObjectReferenceForType: IrSimpleFunctionSymbol?,
+    private val tryAcquireWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol,
+    private val tryAcquireWinRTManagedProjectionCallLeaseWithState: IrSimpleFunctionSymbol,
+    private val releaseWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol,
+    private val tryBorrowWinRTManagedProjectionAbi: IrSimpleFunctionSymbol,
+    private val tryBorrowWinRTManagedProjectionAbiWithState: IrSimpleFunctionSymbol,
+    private val tryBorrowWinRTManagedInspectableAbi: IrSimpleFunctionSymbol,
+    private val winRTManagedProjectionStateAccessor: IrSimpleFunctionSymbol,
+    private val winRTProjectionMarshaler: IrSimpleFunctionSymbol,
+    private val winRTProjectionMarshalerAbiGetter: IrSimpleFunctionSymbol,
+    private val winRTProjectionMarshalerClose: IrSimpleFunctionSymbol,
     private val winRTKeepAlive: IrSimpleFunctionSymbol,
     private val winRTAbiArrayAllocateInput: IrSimpleFunctionSymbol,
     private val winRTAbiArrayLengthGetter: IrSimpleFunctionSymbol,
@@ -129,6 +140,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val nativeStringMarshallerFromManaged: IrSimpleFunctionSymbol,
     private val nativeStringMarshallerGetAbiHString: IrSimpleFunctionSymbol,
     private val nativeStringMarshallerDisposeAbi: IrSimpleFunctionSymbol,
+    private val winRTProjectionInboundRetainAddress: IrSimpleFunctionSymbol,
     private val winRTPlatformApiReleaseRaw: IrSimpleFunctionSymbol,
     private val winRTPlatformApiCoTaskMemFreeRaw: IrSimpleFunctionSymbol,
     private val hResultConstructor: IrConstructorSymbol,
@@ -202,6 +214,81 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         }
         function.body = builder.irBlockBody { +builder.irReturn(body) }
         return true
+    }
+
+    internal fun decodeDirectInboundValue(
+        builder: DeclarationIrBuilder,
+        recipe: WinRTProjectionCallSiteRecipe,
+        projectedType: IrType,
+        abiValue: IrExpression,
+        pluginContext: IrPluginContext,
+    ): IrExpression? {
+        if (recipe.kind !in DIRECT_INBOUND_LOWERING_RECIPE_KINDS || recipe.abiCarriers.size != 1) return null
+        val carrier = recipe.abiCarriers.single()
+        val normalized = normalizeInboundCarrier(builder, carrier, abiValue) ?: return null
+        val decodedAbi = if (recipe.storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.COM_REFERENCE &&
+            recipe.inboundDecodeConsumesOwnedComReference
+        ) {
+            builder.irCall(winRTProjectionInboundRetainAddress).apply { arguments[0] = normalized }
+        } else {
+            normalized
+        }
+        val slot = WinRTProjectionCallSiteSlot(
+            direction = WinRTProjectionCallSiteSlotDirection.RETURN,
+            ownership = if (recipe.requiresNativeOwnership) {
+                WinRTProjectionCallSiteOwnership.OWNED
+            } else {
+                WinRTProjectionCallSiteOwnership.NONE
+            },
+            recipe = recipe,
+        )
+        return decodeDirectResult(
+            builder = builder,
+            returnType = projectedType,
+            recipe = recipe,
+            storage = OutputStorage(
+                addresses = emptyList(),
+                scalarFrames = emptyList(),
+                structFrame = null,
+                directScalarValue = decodedAbi,
+            ),
+            slot = slot,
+            pluginContext = pluginContext,
+        )
+    }
+
+    internal fun emitDirectInboundResult(
+        builder: DeclarationIrBuilder,
+        function: IrSimpleFunction,
+        recipe: WinRTProjectionCallSiteRecipe,
+        projectedValue: IrExpression,
+        pluginContext: IrPluginContext,
+        publish: (IrExpression) -> IrExpression?,
+    ): IrExpression? {
+        if (recipe.kind !in DIRECT_INBOUND_LOWERING_RECIPE_KINDS || recipe.abiCarriers.size != 1) return null
+        return emitInputRecipe(
+            builder = builder,
+            function = function,
+            recipe = recipe,
+            value = projectedValue,
+            pluginContext = pluginContext,
+            allowNativeDirectHString = false,
+        ) { prepared ->
+            val abiValue = prepared.abiValues.singleOrNull() ?: return@emitInputRecipe null
+            val callerOwnedValue = if (recipe.storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.COM_REFERENCE) {
+                builder.irCall(winRTProjectionInboundRetainAddress).apply { arguments[0] = abiValue }
+            } else {
+                abiValue
+            }
+            val publication = publish(callerOwnedValue) ?: return@emitInputRecipe null
+            builder.irBlock(resultType = function.returnType) {
+                +publication
+                prepared.keepAliveOwners.forEach { owner ->
+                    +builder.irCall(winRTKeepAlive).apply { arguments[0] = owner }
+                }
+                +builder.irInt(0)
+            }
+        }
     }
 
     /**
@@ -809,7 +896,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             WinRTProjectionCallSiteRecipeKind.STRUCT ->
                 emitStructInput(builder, function, recipe, value, pluginContext, continuation)
             WinRTProjectionCallSiteRecipeKind.COM_REFERENCE ->
-                emitComReferenceInput(builder, function, recipe, value, continuation)
+                emitComReferenceInput(builder, function, recipe, value, pluginContext, continuation)
             WinRTProjectionCallSiteRecipeKind.ARRAY ->
                 emitArrayInput(builder, function, recipe, value, pluginContext, continuation)
             WinRTProjectionCallSiteRecipeKind.PROJECTION ->
@@ -1459,6 +1546,19 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     ): IrExpression? {
         val callables = recipe.callables ?: return null
         if (callables.createMarshaler.isNotBlank()) {
+            if (recipe.children.singleOrNull()?.referenceAccess ==
+                WinRTProjectionCallSiteReferenceAccess.MANAGED_INSPECTABLE
+            ) {
+                return emitManagedInspectableFactoryInput(
+                    builder = builder,
+                    function = function,
+                    recipe = recipe,
+                    value = value,
+                    callables = callables,
+                    pluginContext = pluginContext,
+                    continuation = continuation,
+                )
+            }
             return emitFactoryInput(
                 builder,
                 function,
@@ -1511,6 +1611,86 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             allowNativeDirectHString,
             continuation,
         )
+    }
+
+    /**
+     * Lower an inspectable managed-object input as borrow-first/owned-fallback.  The ABI fact is
+     * supplied by generated WinMD metadata; the concrete branch and keep-alive are emitted here so
+     * runtime-owned and module/intrinsic call sites share exactly the same fast path.
+     */
+    private fun emitManagedInspectableFactoryInput(
+        builder: DeclarationIrBuilder,
+        function: IrSimpleFunction,
+        recipe: WinRTProjectionCallSiteRecipe,
+        value: IrExpression,
+        callables: WinRTProjectionCallSiteCallables,
+        pluginContext: IrPluginContext,
+        continuation: (PreparedInput) -> IrExpression?,
+    ): IrExpression? {
+        val platformAbi = platformAbi ?: return null
+        val isNullPointer = platformAbiIsNullPointer ?: return null
+        val nullPointer = platformAbiStaticProperty(builder, platformAbiNullPointerGetter)
+            ?: return null
+        return builder.irBlock(resultType = function.returnType) {
+            val stableValue = irTemporary(
+                value,
+                nameHint = "managedInspectableInput",
+                isMutable = false,
+                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+            )
+
+            fun invokeWith(address: IrExpression, keepAlive: Boolean): IrExpression {
+                val owners = if (keepAlive) listOf(builder.irGet(stableValue)) else emptyList()
+                return continuation(
+                    PreparedInput(
+                        abiValues = listOf(address),
+                        keepAliveOwners = owners,
+                    ),
+                ) ?: abortCallSiteLowering()
+            }
+
+            fun borrowOrFallback(): IrExpression = builder.irBlock(resultType = function.returnType) {
+                val borrowedAbi = irTemporary(
+                    resolver.topLevelCall(
+                        builder,
+                        tryBorrowWinRTManagedInspectableAbi,
+                        listOf(builder.irGet(stableValue)),
+                    ),
+                    nameHint = "borrowedInspectableAbi",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val borrowMiss = builder.irCall(isNullPointer).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = builder.irGet(borrowedAbi)
+                }
+                +builder.irIfThenElse(
+                    type = function.returnType,
+                    condition = borrowMiss,
+                    thenPart = emitFactoryInput(
+                        builder = builder,
+                        function = function,
+                        recipe = recipe,
+                        value = builder.irGet(stableValue),
+                        callables = callables,
+                        pluginContext = pluginContext,
+                        continuation = continuation,
+                    ) ?: abortCallSiteLowering(),
+                    elsePart = invokeWith(builder.irGet(borrowedAbi), keepAlive = true),
+                )
+            }
+
+            if (recipe.nullable) {
+                +builder.irIfNull(
+                    type = function.returnType,
+                    subject = builder.irGet(stableValue),
+                    thenPart = invokeWith(nullPointer, keepAlive = false),
+                    elsePart = borrowOrFallback(),
+                )
+            } else {
+                +borrowOrFallback()
+            }
+        }
     }
 
     private fun emitFactoryInput(
@@ -1879,9 +2059,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     }
 
     /**
-     * Keep the common scalar/reference-free result route as small as the original typed getter
-     * lowering. Native-owned outputs and post-call conversions deliberately stay on the full
-     * transaction path below, where failure cleanup and ownership transfer are explicit.
+     * Keeps single-scalar results on the small typed-getter route. An owned projection may join
+     * only when its exact codec consumes ownership on every exit; all other owned outputs retain
+     * the full transaction below.
      */
     private fun canUseSimpleResultInvocation(
         descriptor: WinRTProjectionCallSiteDescriptor,
@@ -1893,7 +2073,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         }
         if (state.postCalls.isNotEmpty() || state.keepAliveOwners.isNotEmpty()) return false
         if (state.allocatedOutputs.size != 1 || state.allocatedOutputs.single().slot != result.slot) return false
-        if (result.slot.ownership != WinRTProjectionCallSiteOwnership.NONE) {
+        if (result.slot.ownership != WinRTProjectionCallSiteOwnership.NONE &&
+            !result.isSingleConsumingOwnedProjection(descriptor)
+        ) {
             return false
         }
         val storage = result.storage
@@ -1911,6 +2093,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         directInputs: List<WinRTDirectCallInput>,
     ): IrExpression? {
         val result = state.result ?: return null
+        val consumingOwnedProjection = result.isSingleConsumingOwnedProjection(descriptor)
         val instance = builder.irCall(comObjectReferencePointerGetter).apply {
             arguments[0] = builder.irGet(parameters[0])
         }
@@ -1933,14 +2116,52 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 arguments[0] = builder.irGet(parameters[0])
             }
             if (descriptor.hResultPolicy == WinRTProjectionCallSiteHResultPolicy.CHECK) {
-                +builder.irCall(hResultRequireSuccess).apply {
-                    arguments[0] = builder.irCall(hResultConstructor).apply {
-                        arguments[0] = builder.irGet(hResult)
+                val checkedHResult = builder.irCall(hResultConstructor).apply {
+                    arguments[0] = builder.irGet(hResult)
+                }
+                if (consumingOwnedProjection) {
+                    +builder.irIfThen(
+                        type = pluginContext.irBuiltIns.unitType,
+                        condition = resolver.memberCall(
+                            builder,
+                            hResultIsFailureGetter,
+                            checkedHResult,
+                            emptyList(),
+                        ),
+                        thenPart = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                            +(cleanupOwnedRecipe(
+                                builder,
+                                function,
+                                result.slot.recipe,
+                                result.storage,
+                                pluginContext,
+                            ) ?: return null)
+                            +builder.irCall(hResultRequireSuccess).apply {
+                                arguments[0] = builder.irCall(hResultConstructor).apply {
+                                    arguments[0] = builder.irGet(hResult)
+                                }
+                                arguments[1] = builder.irString("WinRT call")
+                            }
+                            +builder.irUnit()
+                        },
+                    )
+                } else {
+                    +builder.irCall(hResultRequireSuccess).apply {
+                        arguments[0] = checkedHResult
+                        arguments[1] = builder.irString("WinRT call")
                     }
-                    arguments[1] = builder.irString("WinRT call")
                 }
             }
-            +(
+            +(if (consumingOwnedProjection) {
+                decodeDirectResult(
+                    builder = builder,
+                    returnType = function.returnType,
+                    recipe = result.slot.recipe,
+                    storage = result.storage,
+                    slot = result.slot,
+                    pluginContext = pluginContext,
+                ) ?: return null
+            } else {
                 decodeResult(
                     builder = builder,
                     function = function,
@@ -1949,9 +2170,18 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     ownedOutputs = emptyList(),
                     pluginContext = pluginContext,
                 ) ?: return null
-            )
+            })
         }
     }
+
+    private fun PreparedResult.isSingleConsumingOwnedProjection(
+        descriptor: WinRTProjectionCallSiteDescriptor,
+    ): Boolean =
+        descriptor.hResultPolicy == WinRTProjectionCallSiteHResultPolicy.CHECK &&
+            slot.ownership == WinRTProjectionCallSiteOwnership.OWNED &&
+            slot.recipe.kind == WinRTProjectionCallSiteRecipeKind.PROJECTION &&
+            slot.recipe.storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.COM_REFERENCE &&
+            slot.recipe.callables?.fromAbiConsumesOwnedReference == true
 
     private fun assembleCallerOutputs(
         builder: DeclarationIrBuilder,
@@ -2692,8 +2922,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         recipe: WinRTProjectionCallSiteRecipe,
         storage: OutputStorage,
     ): IrExpression? {
-        val frame = storage.scalarFrames.singleOrNull() ?: return null
-        val address = builder.irCall(scalarScratchFrameReadPointer).apply { arguments[0] = builder.irGet(frame) }
+        val address = scalarRead(builder, recipe, storage) ?: return null
         return decodeComReferenceAddress(builder, returnType, recipe.referenceAccess, address)
     }
 
@@ -2804,6 +3033,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         function: IrSimpleFunction,
         recipe: WinRTProjectionCallSiteRecipe,
         value: IrExpression,
+        pluginContext: IrPluginContext,
         continuation: (PreparedInput) -> IrExpression?,
     ): IrExpression? = when (recipe.referenceAccess) {
             WinRTProjectionCallSiteReferenceAccess.RAW_ADDRESS ->
@@ -2820,7 +3050,180 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     ),
                 )
             }
-            WinRTProjectionCallSiteReferenceAccess.PROJECTED_INTERFACE,
+            WinRTProjectionCallSiteReferenceAccess.MANAGED_INSPECTABLE -> null
+            WinRTProjectionCallSiteReferenceAccess.PROJECTED_INTERFACE -> builder.irBlock(
+                resultType = function.returnType,
+            ) {
+                val stableValue = irTemporary(
+                    value,
+                    nameHint = "projectedInput",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val typeHandleGetter = recipe.projectedTypeHandleSymbol ?: return null
+                val typeHandleOwner = typeHandleGetter.owner.parent as? IrClass ?: return null
+                val typeHandle = irTemporary(
+                    builder.irCall(typeHandleGetter).apply {
+                        arguments[0] = builder.irGetObject(typeHandleOwner.symbol)
+                    },
+                    nameHint = "projectedTypeHandle",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val marshalerClass = winRTProjectionMarshalerAbiGetter.owner.parent as? IrClass
+                    ?: return null
+                val isNullPointer = platformAbiIsNullPointer ?: return null
+                val platformAbi = platformAbi ?: return null
+                val nullPointer = platformAbiStaticProperty(builder, platformAbiNullPointerGetter)
+                    ?: return null
+                val hasDirectManagedStateAccess = stableValue.type.classOrNull
+                    ?.hasSupertype(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME) == true
+
+                fun invokeWith(address: IrExpression): IrExpression =
+                    continuation(
+                        PreparedInput(
+                            abiValues = listOf(address),
+                            keepAliveOwners = listOf(builder.irGet(stableValue)),
+                        ),
+                    ) ?: abortCallSiteLowering()
+
+                fun invokeWithBorrowedOrOwnedMarshaler(
+                    managedState: IrVariable?,
+                ): IrExpression = builder.irBlock(
+                    resultType = function.returnType,
+                ) {
+                    val borrowedArguments = buildList {
+                        add(builder.irGet(stableValue))
+                        managedState?.let { add(builder.irGet(it)) }
+                        add(builder.irGet(typeHandle))
+                    }
+                    val borrowedAbi = irTemporary(
+                        resolver.topLevelCall(
+                            builder,
+                            if (managedState == null) {
+                                tryBorrowWinRTManagedProjectionAbi
+                            } else {
+                                tryBorrowWinRTManagedProjectionAbiWithState
+                            },
+                            borrowedArguments,
+                        ),
+                        nameHint = "borrowedProjectedAbi",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                    val borrowMiss = builder.irCall(isNullPointer).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = builder.irGet(borrowedAbi)
+                    }
+                    +builder.irIfThenElse(
+                        type = function.returnType,
+                        condition = borrowMiss,
+                        thenPart = builder.irBlock(resultType = function.returnType) {
+                            val marshaler = irTemporary(
+                                resolver.topLevelCall(
+                                    builder,
+                                    winRTProjectionMarshaler,
+                                    listOf(builder.irGet(stableValue), builder.irGet(typeHandle)),
+                                ),
+                                nameHint = "projectedMarshaler",
+                                isMutable = false,
+                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                            )
+                            val marshaledAbi = resolver.memberCall(
+                                builder,
+                                winRTProjectionMarshalerAbiGetter,
+                                builder.irGet(marshaler),
+                                emptyList(),
+                            )
+                            +builder.irTry(
+                                type = function.returnType,
+                                tryResult = invokeWith(marshaledAbi),
+                                catches = emptyList(),
+                                finallyExpression = resolver.memberCall(
+                                    builder,
+                                    winRTProjectionMarshalerClose,
+                                    builder.irGet(marshaler),
+                                    emptyList(),
+                                ),
+                            )
+                        },
+                        elsePart = invokeWith(builder.irGet(borrowedAbi)),
+                    )
+                }
+
+                fun invokeNonNull(): IrExpression = builder.irBlock(resultType = function.returnType) {
+                    fun nonNullManagedValue(): IrExpression =
+                        builder.irAs(builder.irGet(stableValue), stableValue.type.makeNotNull())
+                    val managedState = if (hasDirectManagedStateAccess) {
+                        irTemporary(
+                            resolver.memberCall(
+                                builder,
+                                winRTManagedProjectionStateAccessor,
+                                nonNullManagedValue(),
+                                emptyList(),
+                            ),
+                            nameHint = "managedProjectionState",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                    } else {
+                        null
+                    }
+                    val leaseArguments = buildList {
+                        add(builder.irGet(stableValue))
+                        managedState?.let { add(builder.irGet(it)) }
+                        add(builder.irGet(typeHandle))
+                    }
+                    val callLease = irTemporary(
+                        resolver.topLevelCall(
+                            builder,
+                            if (managedState == null) {
+                                tryAcquireWinRTManagedProjectionCallLease
+                            } else {
+                                tryAcquireWinRTManagedProjectionCallLeaseWithState
+                            },
+                            leaseArguments,
+                        ),
+                        nameHint = "managedProjectedCallLease",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                    fun nonNullLease(): IrExpression =
+                        builder.irAs(builder.irGet(callLease), marshalerClass.defaultType)
+                    val leasedAbi = resolver.memberCall(
+                        builder,
+                        winRTProjectionMarshalerAbiGetter,
+                        nonNullLease(),
+                        emptyList(),
+                    )
+                    +builder.irIfNull(
+                        type = function.returnType,
+                        subject = builder.irGet(callLease),
+                        thenPart = invokeWithBorrowedOrOwnedMarshaler(managedState),
+                        elsePart = builder.irTry(
+                            type = function.returnType,
+                            tryResult = invokeWith(leasedAbi),
+                            catches = emptyList(),
+                            finallyExpression = resolver.topLevelCall(
+                                builder,
+                                releaseWinRTManagedProjectionCallLease,
+                                listOf(nonNullLease(), nonNullManagedValue()),
+                            ),
+                        ),
+                    )
+                }
+
+                +(if (recipe.nullable) {
+                    builder.irIfNull(
+                        type = function.returnType,
+                        subject = builder.irGet(stableValue),
+                        thenPart = invokeWith(nullPointer),
+                        elsePart = invokeNonNull(),
+                    )
+                } else {
+                    invokeNonNull()
+                })
+            }
             WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT -> builder.irBlock(
                 resultType = function.returnType,
             ) {
@@ -2836,26 +3239,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 )
                 fun projectedAddress(): IrExpression {
                     val projectedValue = builder.irAs(builder.irGet(stableValue), receiverType)
-                    val reference = if (
-                        recipe.referenceAccess == WinRTProjectionCallSiteReferenceAccess.PROJECTED_INTERFACE
-                    ) {
-                        val typeHandleGetter = recipe.projectedTypeHandleSymbol ?: abortCallSiteLowering()
-                        val typeHandleOwner = typeHandleGetter.owner.parent as? IrClass
-                            ?: abortCallSiteLowering()
-                        val typeHandle = builder.irCall(typeHandleGetter).apply {
-                            arguments[0] = builder.irGetObject(typeHandleOwner.symbol)
-                        }
-                        val getReference = iWinRTObjectGetObjectReferenceForType
-                            ?: abortCallSiteLowering()
-                        resolver.memberCall(
-                            builder,
-                            getReference,
-                            projectedValue,
-                            listOf(typeHandle),
-                        )
-                    } else {
-                        builder.irCall(nativeObject).apply { arguments[0] = projectedValue }
-                    }
+                    val reference = builder.irCall(nativeObject).apply { arguments[0] = projectedValue }
                     val pointer = builder.irCall(comObjectReferencePointerGetter).apply {
                         arguments[0] = reference
                     }
@@ -2911,6 +3295,27 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             }
         }
         return primitiveSymbols.normalizeCarrier(builder, carrier, value)
+    }
+
+    private fun normalizeInboundCarrier(
+        builder: DeclarationIrBuilder,
+        carrier: WinRTProjectionCallSiteAbiCarrier,
+        value: IrExpression,
+    ): IrExpression? {
+        if (carrier != WinRTProjectionCallSiteAbiCarrier.ADDRESS) {
+            return primitiveSymbols.normalizeCarrier(builder, carrier, value)
+        }
+        if (value.type.classFqName == WINRT_RAW_ADDRESS_FQ_NAME) return value
+        if (value.type.classFqName != KOTLIN_LONG_FQ_NAME) return null
+        val rawAddress = resolver.classSymbol(WINRT_RAW_ADDRESS_FQ_NAME) ?: return null
+        val constructor = rawAddress.singleValueConstructor() ?: return null
+        val valueIndex = constructor.owner.parameters.indexOfFirst { parameter ->
+            parameter.kind == IrParameterKind.Regular
+        }
+        if (valueIndex < 0) return null
+        return builder.irCall(constructor).apply {
+            arguments[valueIndex] = value
+        }
     }
 
     private fun zeroValue(builder: DeclarationIrBuilder, type: IrType): IrExpression? =
@@ -2999,6 +3404,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             val structFrame = resolver.classSymbol(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME)
             val platformAbi = resolver.classSymbol(WINRT_PLATFORM_ABI_FQ_NAME)
             val iWinRTObject = resolver.classSymbol(WINRT_IWINRT_OBJECT_FQ_NAME)
+            val winRTProjectionMarshaler = requiredCallSiteSymbol(
+                "WinRTProjectionMarshaler",
+                resolver.classSymbol(WINRT_PROJECTION_MARSHALER_FQ_NAME),
+            ) ?: return null
             return WinRTCallSiteRecipeLowering(
                 directCallBackend = requiredCallSiteSymbol(
                     "WinRTDirectCallBackend",
@@ -3151,6 +3560,75 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 iWinRTObjectNativeObjectGetter = iWinRTObject?.propertyGetter("nativeObject"),
                 iWinRTObjectGetObjectReferenceForType =
                     iWinRTObject?.functionNamedWithRegularParameterCount("getObjectReferenceForType", 1),
+                tryAcquireWinRTManagedProjectionCallLease = requiredCallSiteSymbol(
+                    "tryAcquireWinRTManagedProjectionCallLease",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "tryAcquireWinRTManagedProjectionCallLease",
+                        2,
+                    ),
+                ) ?: return null,
+                tryAcquireWinRTManagedProjectionCallLeaseWithState = requiredCallSiteSymbol(
+                    "tryAcquireWinRTManagedProjectionCallLease with projected state",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "tryAcquireWinRTManagedProjectionCallLease",
+                        3,
+                    ),
+                ) ?: return null,
+                releaseWinRTManagedProjectionCallLease = requiredCallSiteSymbol(
+                    "releaseWinRTManagedProjectionCallLease",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "releaseWinRTManagedProjectionCallLease",
+                        2,
+                    ),
+                ) ?: return null,
+                tryBorrowWinRTManagedProjectionAbi = requiredCallSiteSymbol(
+                    "tryBorrowWinRTManagedProjectionAbi",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "tryBorrowWinRTManagedProjectionAbi",
+                        2,
+                    ),
+                ) ?: return null,
+                tryBorrowWinRTManagedProjectionAbiWithState = requiredCallSiteSymbol(
+                    "tryBorrowWinRTManagedProjectionAbi with projected state",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "tryBorrowWinRTManagedProjectionAbi",
+                        3,
+                    ),
+                ) ?: return null,
+                tryBorrowWinRTManagedInspectableAbi = requiredCallSiteSymbol(
+                    "tryBorrowWinRTManagedInspectableAbi",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "tryBorrowWinRTManagedInspectableAbi",
+                        1,
+                    ),
+                ) ?: return null,
+                winRTManagedProjectionStateAccessor = requiredCallSiteSymbol(
+                    "WinRTManagedProjectionStateAccess.winRTManagedProjectionState",
+                    resolver.classSymbol(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME)
+                        ?.functionNamedWithRegularParameterCount("winRTManagedProjectionState", 0),
+                ) ?: return null,
+                winRTProjectionMarshaler = requiredCallSiteSymbol(
+                    "winRTProjectionMarshaler",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "winRTProjectionMarshaler",
+                        2,
+                    ),
+                ) ?: return null,
+                winRTProjectionMarshalerAbiGetter = requiredCallSiteSymbol(
+                    "WinRTProjectionMarshaler.abi",
+                    winRTProjectionMarshaler.propertyGetter("abi"),
+                ) ?: return null,
+                winRTProjectionMarshalerClose = requiredCallSiteSymbol(
+                    "WinRTProjectionMarshaler.close",
+                    winRTProjectionMarshaler.functionNamedWithRegularParameterCount("close", 0),
+                ) ?: return null,
                 winRTKeepAlive = requiredCallSiteSymbol(
                     "winRTKeepAlive",
                     resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTKeepAlive", 1),
@@ -3189,6 +3667,14 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 nativeStringMarshallerDisposeAbi = requiredCallSiteSymbol(
                     "NativeStringMarshaller.disposeAbi",
                     resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "disposeAbi", 1),
+                ) ?: return null,
+                winRTProjectionInboundRetainAddress = requiredCallSiteSymbol(
+                    "winRTProjectionInboundRetainAddress",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "winRTProjectionInboundRetainAddress",
+                        1,
+                    ),
                 ) ?: return null,
                 winRTPlatformApiReleaseRaw = requiredCallSiteSymbol(
                     "WinRTPlatformApi.releaseRaw",
@@ -3727,6 +4213,17 @@ private fun IrClassSymbol.rawComPtrConstructor(): IrConstructorSymbol? =
             parameters.drop(1).all { parameter -> parameter.defaultValue != null }
     }?.symbol
 
+private fun IrClassSymbol.hasSupertype(
+    fqName: FqName,
+    visited: MutableSet<IrClassSymbol> = mutableSetOf(),
+): Boolean {
+    if (!visited.add(this)) return false
+    if (owner.fqNameWhenAvailable == fqName) return true
+    return owner.superTypes.any { type ->
+        type.classOrNull?.hasSupertype(fqName, visited) == true
+    }
+}
+
 private val WINRT_RUNTIME_PACKAGE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime")
 private val WINRT_COM_OBJECT_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.ComObjectReference")
 private val WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.NativeScalarScratchFrame")
@@ -3736,6 +4233,9 @@ private val WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME = FqName("io.github.composefl
 private val WINRT_PLATFORM_ABI_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.PlatformAbi")
 private val WINRT_PLATFORM_API_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.WinRTPlatformApi")
 private val WINRT_IWINRT_OBJECT_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.IWinRTObject")
+private val WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.WinRTManagedProjectionStateAccess")
+private val WINRT_PROJECTION_MARSHALER_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.WinRTProjectionMarshaler")
 private val WINRT_IUNKNOWN_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.IUnknownReference")
 private val WINRT_INSPECTABLE_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.InspectableReference")
 private val WINRT_RAW_ADDRESS_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.RawAddress")
@@ -3756,3 +4256,9 @@ private val KOTLIN_ULONG_FQ_NAME = FqName("kotlin.ULong")
 private val KOTLIN_FLOAT_FQ_NAME = FqName("kotlin.Float")
 private val KOTLIN_DOUBLE_FQ_NAME = FqName("kotlin.Double")
 private val KOTLIN_CHAR_FQ_NAME = FqName("kotlin.Char")
+
+private val DIRECT_INBOUND_LOWERING_RECIPE_KINDS = setOf(
+    WinRTProjectionCallSiteRecipeKind.VALUE,
+    WinRTProjectionCallSiteRecipeKind.ENUM,
+    WinRTProjectionCallSiteRecipeKind.PROJECTION,
+)

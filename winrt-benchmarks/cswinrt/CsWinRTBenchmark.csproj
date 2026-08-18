@@ -10,13 +10,30 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Optimize>true</Optimize>
-    <DebugType>embedded</DebugType>
+    <DebugType>portable</DebugType>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <CsWinRTIncludes>BenchmarkComponent</CsWinRTIncludes>
+    <BenchmarkComponentRoot Condition="'$(BenchmarkComponentRoot)' == ''">$(MSBuildThisFileDirectory)..\build\reference-benchmark-component</BenchmarkComponentRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Keep the benchmark on the same public CsWinRT release pinned by the local .cswinrt baseline. -->
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <CsWinRTInputs Include="$(BenchmarkComponentRoot)\BenchmarkComponent.winmd" />
+    <None Include="$(BenchmarkComponentRoot)\BenchmarkComponent.dll" Link="BenchmarkComponent.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\.cswinrt\src\Benchmarks\QueryInterface.cs" Link="Reference\QueryInterface.cs" />
+    <Compile Include="..\..\.cswinrt\src\Benchmarks\EventPerf.cs" Link="Reference\EventPerf.cs" />
+    <Compile Include="..\..\.cswinrt\src\Benchmarks\GuidPerf.cs" Link="Reference\GuidPerf.cs" />
+    <Compile Include="..\..\.cswinrt\src\Benchmarks\ReflectionPerf.cs" Link="Reference\ReflectionPerf.cs" />
+    <Compile Include="..\..\.cswinrt\src\Benchmarks\AsyncPerf.cs" Link="Reference\AsyncPerf.cs" />
+    <Compile Include="..\..\.cswinrt\src\Benchmarks\NonAgileObjectPerf.cs" Link="Reference\NonAgileObjectPerf.cs" />
   </ItemGroup>
 
 </Project>

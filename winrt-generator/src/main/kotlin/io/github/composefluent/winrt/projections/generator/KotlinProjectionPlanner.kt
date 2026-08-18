@@ -310,7 +310,7 @@ class KotlinProjectionPlanner(
             } else {
                 null
             },
-            guidSignatureDescriptor = type.iid?.let { semanticHelpers.guidSignatureDescriptor(type) },
+            guidSignatureDescriptor = semanticHelpers.guidSignatureDescriptor(type),
             interfaceMemberSignatureSetDescriptor = if (type.kind == WinRTTypeKind.Interface) {
                 semanticHelpers.interfaceMemberSignatureSetDescriptor(type)
             } else {
@@ -416,9 +416,6 @@ class KotlinProjectionPlanner(
             .associateBy { descriptor ->
                 descriptor.methodRowId?.let(methodSlotNamesByRowId::get) ?: descriptor.methodName.methodSlotConstantName()
             }
-        val baseSlotCount = type.implementedInterfaces.sumOf { implemented ->
-            interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, mutableSetOf(), abiMemberCountCache)
-        }
         val fastAbiSlotStart = semanticHelpers.getFastAbiClassForInterface(type)
             ?.interfaceSlots
             ?.firstOrNull { slot -> slot.interfaceName == type.qualifiedName }
@@ -436,32 +433,12 @@ class KotlinProjectionPlanner(
                 constantName = constantName,
                 slot = fastAbiSlotStart?.plus(slotIndexByRowId.getValue(member.rowId))
                     ?: descriptor?.slotIndex
-                    ?: 6 + baseSlotCount + slotIndexByRowId.getValue(member.rowId),
+                    // WinRT required interfaces augment the projected surface but remain separate
+                    // COM interfaces. Only local ABI members follow IInspectable's six slots.
+                    ?: 6 + slotIndexByRowId.getValue(member.rowId),
                 descriptor = descriptor,
             )
         }
-    }
-
-    private fun interfaceAbiMemberCount(
-        interfaceName: String,
-        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
-        visiting: MutableSet<String>,
-        abiMemberCountCache: MutableMap<String, Int>,
-    ): Int {
-        abiMemberCountCache[interfaceName]?.let { return it }
-        val type = typesByQualifiedName[interfaceName] ?: return 0
-        if (type.kind != WinRTTypeKind.Interface || !visiting.add(interfaceName)) {
-            return 0
-        }
-        val count = try {
-            type.implementedInterfaces.sumOf { implemented ->
-                interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, visiting, abiMemberCountCache)
-            } + type.localAbiMemberOrders().map(AbiMemberOrder::rowId).distinct().size
-        } finally {
-            visiting.remove(interfaceName)
-        }
-        abiMemberCountCache[interfaceName] = count
-        return count
     }
 
     private fun slotValueOrNull(

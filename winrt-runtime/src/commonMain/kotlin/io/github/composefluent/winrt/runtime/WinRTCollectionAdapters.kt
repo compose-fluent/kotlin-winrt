@@ -91,11 +91,7 @@ class WinRTMapViewAdapter<K, V>(
 
     override fun get(key: K): V? =
         keyMarshaller(key).use { marshaledKey ->
-            if (!mapView.hasKey(marshaledKey.abi)) {
-                null
-            } else {
-                projectOwned(mapView.lookupAbiOrNull(marshaledKey.abi), valueAdapter)
-            }
+            mapView.lookupProjectedOrNull(marshaledKey.abi, valueAdapter)
         }
 
     override fun close() {
@@ -144,11 +140,7 @@ class WinRTMapAdapter<K, V>(
 
     override fun get(key: K): V? =
         keyMarshaller(key).use { marshaledKey ->
-            if (!map.hasKey(marshaledKey.abi)) {
-                null
-            } else {
-                projectOwned(map.lookupAbiOrNull(marshaledKey.abi), valueAdapter)
-            }
+            map.lookupProjectedOrNull(marshaledKey.abi, valueAdapter)
         }
 
     override fun remove(key: K): V? {

@@ -7,6 +7,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.native.ref.createCleaner
 import kotlin.native.ref.WeakReference as NativeWeakReference
+import kotlin.native.identityHashCode
 
 actual class ConcurrentCacheMap<K, V> actual constructor() {
     private val lock = PlatformLock()
@@ -120,91 +121,180 @@ actual class ConcurrentCacheSet<T> actual constructor() {
 
 actual class WeakValueCache<K, V : Any> actual constructor() {
     private val lock = PlatformLock()
-    private val delegate = linkedMapOf<K, NativeWeakReference<V>>()
+    private val delegate = linkedMapOf<K, WeakValueCacheEntry<K, V>>()
+    private val sweepQueue = ArrayDeque<WeakValueCacheEntry<K, V>>()
 
-    actual operator fun get(key: K): V? =
+    actual operator fun get(key: K): V? = reference(key)?.get()
+
+    internal actual fun reference(key: K): WeakValueCacheReference<V>? =
         lock.withLock {
-            val value = delegate[key]?.get()
+            val entry = delegate[key] ?: return@withLock null
+            val value = entry.value.get()
             if (value == null) {
-                delegate.remove(key)
+                if (delegate[key] === entry) {
+                    delegate.remove(key)
+                }
+                null
+            } else {
+                entry
             }
-            value
         }
 
     actual operator fun set(
         key: K,
         value: V,
     ) {
-        lock.withLock {
-            delegate[key] = NativeWeakReference(value)
-        }
+        put(key, value)
     }
+
+    internal actual fun put(
+        key: K,
+        value: V,
+    ): WeakValueCacheReference<V> =
+        lock.withLock {
+            sweepOneEntry()
+            WeakValueCacheEntry(key, value).also { entry ->
+                delegate[key] = entry
+                sweepQueue.addLast(entry)
+            }
+        }
 
     actual fun remove(key: K): V? =
         lock.withLock {
-            delegate.remove(key)?.get()
+            sweepOneEntry()
+            delegate.remove(key)?.value?.get()
         }
 
     actual fun clear() {
         lock.withLock {
             delegate.clear()
+            sweepQueue.clear()
         }
     }
+
+    internal actual val size: Int
+        get() =
+            lock.withLock {
+                sweepAllEntries()
+                delegate.size
+            }
+
+    private fun sweepOneEntry() {
+        if (sweepQueue.isEmpty()) {
+            return
+        }
+        val entry = sweepQueue.removeFirst()
+        if (delegate[entry.key] !== entry) {
+            return
+        }
+        if (entry.value.get() == null) {
+            delegate.remove(entry.key)
+        } else {
+            sweepQueue.addLast(entry)
+        }
+    }
+
+    private fun sweepAllEntries() {
+        val entriesToCheck = sweepQueue.size
+        repeat(entriesToCheck) {
+            sweepOneEntry()
+        }
+    }
+
 }
 
-actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
-    private val lock = PlatformLock()
-    private val delegate = mutableListOf<WeakKeyStateEntry<K, V>>()
+private class WeakValueCacheEntry<K, V : Any>(
+    val key: K,
+    value: V,
+) : WeakValueCacheReference<V> {
+    val value: NativeWeakReference<V> = NativeWeakReference(value)
 
-    actual operator fun get(key: K): V? =
-        lock.withLock {
-            purgeDeadKeys()
-            delegate.firstOrNull { entry -> entry.matches(key) }?.value
+    override fun get(): V? = value.get()
+}
+
+actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
+    private val onValueEvicted: (V) -> Unit,
+) {
+    private val lock = PlatformLock()
+    private val sweepQueue = ArrayDeque<WeakKeyStateEntry<K, V>>()
+    private val core = WeakKeyStateMapCore<K, V>(
+        entryFactory = object : WeakKeyStateEntryFactory<K, V> {
+            override fun create(
+                key: K,
+                value: V,
+                identityHashCode: Int,
+            ): WeakKeyStateEntry<K, V> =
+                NativeWeakKeyStateEntry(key, value, identityHashCode).also(sweepQueue::addLast)
+        },
+        onValueEvicted = onValueEvicted,
+    )
+
+    actual operator fun get(key: K): V? {
+        val identityHashCode = key.identityHashCode()
+        core.fastValue(key, identityHashCode)?.let { return it }
+        return lock.withLock {
+            sweepOneEntry()
+            core.value(key, identityHashCode)
         }
+    }
 
     actual fun getOrPut(
         key: K,
         defaultValue: () -> V,
-    ): V =
-        lock.withLock {
-            purgeDeadKeys()
-            delegate.firstOrNull { entry -> entry.matches(key) }?.value
-                ?: defaultValue().also { value ->
-                    delegate += WeakKeyStateEntry(key, value)
-                }
+    ): V {
+        val identityHashCode = key.identityHashCode()
+        core.fastValue(key, identityHashCode)?.let { return it }
+        return lock.withLock {
+            sweepOneEntry()
+            core.getOrPut(key, identityHashCode, defaultValue)
         }
+    }
 
     actual fun remove(key: K): V? =
         lock.withLock {
-            purgeDeadKeys()
-            val index = delegate.indexOfFirst { entry -> entry.matches(key) }
-            if (index < 0) {
-                null
-            } else {
-                delegate.removeAt(index).value
-            }
+            sweepOneEntry()
+            val identityHashCode = key.identityHashCode()
+            core.remove(key, identityHashCode)
+        }
+
+    actual fun remove(
+        key: K,
+        value: V,
+    ): Boolean =
+        lock.withLock {
+            sweepOneEntry()
+            val identityHashCode = key.identityHashCode()
+            core.remove(key, identityHashCode, value) != null
         }
 
     actual fun clear() {
         lock.withLock {
-            delegate.clear()
+            core.clear()
+            sweepQueue.clear()
         }
     }
 
-    private fun purgeDeadKeys() {
-        delegate.removeAll { entry -> entry.key.get() == null }
+    private fun sweepOneEntry() {
+        if (sweepQueue.isEmpty()) {
+            return
+        }
+        val entry = sweepQueue.removeFirst()
+        if (core.sweep(entry)) {
+            sweepQueue.addLast(entry)
+        }
     }
 }
 
-private class WeakKeyStateEntry<K : Any, V : Any>(
+private class NativeWeakKeyStateEntry<K : Any, V : Any>(
     key: K,
-    val value: V,
-) {
-    val key: NativeWeakReference<K> = NativeWeakReference(key)
-    private val hashCode: Int = key.hashCode()
+    override val value: V,
+    override val identityHashCode: Int,
+) : WeakKeyStateEntry<K, V> {
+    private val key = NativeWeakReference(key)
 
-    fun matches(candidate: K): Boolean =
-        candidate.hashCode() == hashCode && key.get() == candidate
+    override var bucketNext: WeakKeyStateEntry<K, V>? = null
+
+    override fun keyOrNull(): K? = key.get()
 }
 
 actual class SnapshotList<T> actual constructor() {
@@ -248,7 +338,7 @@ actual class FinalizationHook actual constructor() {
 internal actual fun createComPtrFinalizationRegistration(
     @Suppress("UNUSED_PARAMETER") target: Any,
     support: RawComObjectReferenceSupport,
-): Any = createCleaner(support, ::closeComPtrSupport)
+): Any = createCleaner(support, ::closeComPtrSupportFromFinalizer)
 
 internal actual fun closeComPtrFinalizationRegistration(
     @Suppress("UNUSED_PARAMETER") registration: Any,

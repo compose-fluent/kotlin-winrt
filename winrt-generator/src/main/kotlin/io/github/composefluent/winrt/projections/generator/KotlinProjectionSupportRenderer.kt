@@ -4,6 +4,8 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
 import io.github.composefluent.winrt.metadata.WinRTCustomMappedMemberOutputDescriptor
+import io.github.composefluent.winrt.metadata.WinRTDirectInboundShapeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTDirectInboundShapeKind
 import io.github.composefluent.winrt.metadata.WinRTEventDefinition
 import io.github.composefluent.winrt.metadata.WinRTEventHelperSubclassDescriptor
 import io.github.composefluent.winrt.metadata.WinRTEventInvokeDescriptor
@@ -85,6 +87,7 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STAR
@@ -102,14 +105,23 @@ import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
-class KotlinProjectionSupportRenderer {
-    private val typeRenderer = KotlinProjectionRenderer()
+class KotlinProjectionSupportRenderer private constructor(
+    private val typeRenderer: KotlinProjectionRenderer,
+) {
+    constructor() : this(KotlinProjectionRenderer())
+
     private val supportTypeRenderer = KotlinProjectionRenderer(
         useInterfaceProjectionArtifacts = true,
     )
     private val planner = KotlinProjectionPlanner()
     private val eventProjectionHelperTypesPerFile: Int = 96
     private val projectionSupportAnchorShardCount: Int = 16
+
+    internal fun withModulePlatformAbiCalls(
+        calls: KotlinModulePlatformAbiCallSupport?,
+        ownerIdentity: String?,
+    ): KotlinProjectionSupportRenderer =
+        KotlinProjectionSupportRenderer(typeRenderer.withModulePlatformAbiCalls(calls, ownerIdentity))
     private val AUTHORING_ABI_OPERATIONS = listOf(
         "GetAbi",
         "FromAbi",
@@ -254,6 +266,12 @@ class KotlinProjectionSupportRenderer {
             modulePlatformAbiCalls = modulePlatformAbiCalls,
             supportOwnerIdentity = supportOwnerIdentity,
         )
+        withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
+            .renderProjectedInterfaceCcwFactories(
+                entries = plans.projectedInterfaceCcwInputPlans(),
+                semanticHelpers = semanticHelpers,
+                supportOwnerIdentity = supportOwnerIdentity,
+            )
     }
 
     private fun projectionInventory(
@@ -541,7 +559,7 @@ class KotlinProjectionSupportRenderer {
                 },
             )
         }
-        plan.guidSignatureDescriptor?.let { descriptor ->
+        plan.guidSignatureDescriptor?.takeIf { it.guidText != null }?.let { descriptor ->
             row("GUID_SIGNATURE_FRAGMENT", descriptor.signatureFragment)
         }
         plan.interfaceMemberSignatureSetDescriptor?.let { descriptor ->
@@ -667,7 +685,7 @@ class KotlinProjectionSupportRenderer {
         val rows = registrationPlans.joinToString(
             separator = "\n",
             postfix = "\n",
-            prefix = "kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName\tinterfaceIid\n",
+            prefix = "kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName\tinterfaceIid\tguidSignature\n",
         ) { plan ->
             val projectedClassName = projectionClassNameForQualifiedName(plan.type.qualifiedName)
             listOf(
@@ -676,10 +694,11 @@ class KotlinProjectionSupportRenderer {
                 plan.type.kind.name,
                 plan.type.baseTypeName.orEmpty(),
                 projectedClassName
-                    .takeIf { plan.hasGeneratedRuntimeClassMetadataRegistration() }
+                    .takeIf { plan.hasGeneratedProjectionMetadataRegistration() }
                     ?.let { "${it.canonicalName}.Metadata" }
                     .orEmpty(),
                 plan.interfaceIid?.toString().orEmpty(),
+                plan.guidSignatureDescriptor?.signatureFragment.orEmpty(),
             ).joinToString("\t")
         }
         return KotlinProjectionFile(
@@ -707,7 +726,12 @@ class KotlinProjectionSupportRenderer {
         supportOwnerIdentity: String?,
     ): List<KotlinProjectionFile> {
         val ownerSuffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)
-        val eventSourceEntries = planner.eventSourceDescriptors(model, eventOwnerPlans, instantiations)
+        val eventSourceEntries = planner.eventSourceDescriptors(
+            model = model,
+            plans = eventOwnerPlans,
+            instantiations = instantiations,
+            closedGenericPlans = allPlans,
+        )
             .map { descriptor -> descriptor.withSupportOwnerSuffix(ownerSuffix) }
         if (eventSourceEntries.isEmpty()) {
             return emptyList()
@@ -716,6 +740,18 @@ class KotlinProjectionSupportRenderer {
         val typesByQualifiedName = model.namespaces
             .flatMap(WinRTNamespace::types)
             .associateBy(WinRTTypeDefinition::qualifiedName)
+        val sharedInboundCallSites = eventSourceEntries
+            .filter(WinRTEventHelperSubclassDescriptor::usesSharedEventHandlerSource)
+            .distinctBy(WinRTEventHelperSubclassDescriptor::eventTypeName)
+            .sortedBy(WinRTEventHelperSubclassDescriptor::eventTypeName)
+            .mapNotNull { descriptor ->
+                sharedEventHandlerInboundCallSite(
+                    descriptor = descriptor,
+                    typesByQualifiedName = typesByQualifiedName,
+                    supportOwnerIdentity = supportOwnerIdentity,
+                )
+            }
+            .associateBy(SharedEventHandlerInboundCallSite::eventTypeName)
         val helperTypes = buildList {
             eventSourceEntries
             .filterNot { it.usesSharedEventHandlerSource }
@@ -733,16 +769,30 @@ class KotlinProjectionSupportRenderer {
             .toSortedMap(compareBy({ it.first }, { it.second }))
             .values
             .forEach { ownerEntries ->
-                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType, supportOwnerIdentity)?.let(::add)
+                eventSourceOwnerHelperType(
+                    ownerEntries = ownerEntries,
+                    typesByQualifiedName = typesByQualifiedName,
+                    plansByType = plansByType,
+                    supportOwnerIdentity = supportOwnerIdentity,
+                    sharedInboundCallSites = sharedInboundCallSites,
+                )?.let(::add)
             }
         }
-        return helperTypes
+        val helperTypeChunks = helperTypes
             .sortedBy { type -> type.name }
             .chunked(eventProjectionHelperTypesPerFile)
-            .mapIndexed { index, chunk ->
+        val inboundCallSiteChunks = sharedInboundCallSites.values
+            .sortedBy(SharedEventHandlerInboundCallSite::functionName)
+            .map(SharedEventHandlerInboundCallSite::function)
+            .chunked(eventProjectionHelperTypesPerFile)
+        return (0 until maxOf(helperTypeChunks.size, inboundCallSiteChunks.size))
+            .map { index ->
                 val fileName = "${eventProjectionHelperFilePrefix}_${index.toString().padStart(3, '0')}"
                 val fileSpec = supportFileSpec(fileName)
-                    .apply { chunk.forEach(::addType) }
+                    .apply {
+                        inboundCallSiteChunks.getOrNull(index).orEmpty().forEach(::addFunction)
+                        helperTypeChunks.getOrNull(index).orEmpty().forEach(::addType)
+                    }
                     .build()
                 supportFile("$fileName.kt", fileSpec)
             }
@@ -2252,6 +2302,173 @@ class KotlinProjectionSupportRenderer {
             .replace('.', '_')
             .replace('`', '_')
 
+    internal fun renderProjectedInterfaceCcwFactories(
+        entries: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+        supportOwnerIdentity: String?,
+    ): KotlinProjectionFile? {
+        if (entries.isEmpty()) {
+            return null
+        }
+        val className = winRTProjectedInterfaceCcwFactoriesClassName(supportOwnerIdentity)
+        val fileBuilder = supportFileSpec(className.simpleName)
+            .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
+        entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
+            projectedInterfaceInboundCallSiteFunctions(plan, semanticHelpers).forEach(fileBuilder::addFunction)
+            fileBuilder.addType(projectedInterfaceCcwDefinitionHolder(plan, semanticHelpers))
+        }
+        fileBuilder.addType(
+            TypeSpec.objectBuilder(className.simpleName)
+                .addModifiers(KModifier.INTERNAL)
+                .apply {
+                    entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
+                        addFunction(projectedInterfaceCcwRegisterFunction(plan))
+                    }
+                }
+                .build(),
+        )
+        return supportFile("${className.simpleName}.kt", fileBuilder.build())
+    }
+
+    private fun projectedInterfaceCcwDefinitionHolder(
+        plan: KotlinTypeProjectionPlan,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): TypeSpec {
+        val interfaceId = requireNotNull(plan.interfaceIid) {
+            "Projected interface ${plan.type.qualifiedName} requires an IID before rendering static CCW support."
+        }
+        val definition = CodeBlock.builder()
+            .add("%T(\n", WINRT_CCW_DEFINITION_CLASS_NAME)
+            .indent()
+            .add("interfaceDefinitions = listOf(\n")
+            .indent()
+            .add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
+            .indent()
+            .add("interfaceId = %T(%S),\n", GUID_CLASS_NAME, interfaceId.toString())
+            .add(
+                "methods = %L,\n",
+                authoringCcwInterfaceMethodsCode(plan, plan, semanticHelpers, useInboundCallSites = true),
+            )
+            .unindent()
+            .add("),\n")
+            .unindent()
+            .add("),\n")
+            .add("defaultInterfaceId = %T(%S),\n", GUID_CLASS_NAME, interfaceId.toString())
+            .add("runtimeClassName = null,\n")
+            .unindent()
+            .add(")")
+            .build()
+        return TypeSpec.objectBuilder(projectedInterfaceCcwDefinitionHolderName(plan))
+            .addModifiers(KModifier.PRIVATE)
+            .addProperty(
+                PropertySpec.builder("definition", WINRT_CCW_DEFINITION_CLASS_NAME)
+                    .initializer(definition)
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun projectedInterfaceCcwRegisterFunction(plan: KotlinTypeProjectionPlan): FunSpec {
+        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+        return FunSpec.builder(projectedInterfaceCcwRegisterFunctionName(plan.type.qualifiedName))
+            .addCode(
+                "%T.registerStaticCcwDefinition(%T::class, %L.definition)\n",
+                COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                projectedType,
+                projectedInterfaceCcwDefinitionHolderName(plan),
+            )
+            .build()
+    }
+
+    private fun projectedInterfaceInboundCallSiteFunctions(
+        plan: KotlinTypeProjectionPlan,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): List<FunSpec> = plan.instanceMemberBindings
+        .mapNotNull { binding ->
+            directInboundCallSitePlan(binding, plan.type.namespace, semanticHelpers)?.let { callSitePlan ->
+                inboundCallSiteFunction(plan, plan, binding, callSitePlan)
+            }
+        }
+
+    private fun inboundCallSiteFunction(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionInstanceMemberBinding,
+        callSitePlan: DirectInboundCallSitePlan,
+    ): FunSpec {
+        val callPlan = callSitePlan.abiCallPlan
+        val projectedType = projectionClassNameForQualifiedName(runtimeClassPlan.type.qualifiedName)
+        val returnsUnit = callSitePlan.returnShape.kind == WinRTDirectInboundShapeKind.Unit
+        val inboundAnnotation = AnnotationSpec.builder(WINRT_PROJECTION_INBOUND_CALL_SITE_CLASS_NAME)
+            .addMember(
+                "returnAbiType = %S",
+                directInboundCallSiteAbiType(callSitePlan.returnShape, callPlan.returnBinding),
+            )
+            .build()
+        return FunSpec.builder(inboundCallSiteFunctionName(runtimeClassPlan, interfacePlan, binding))
+            .addModifiers(KModifier.PRIVATE)
+            .addAnnotation(inboundAnnotation)
+            .addParameter("value", projectedType)
+            .apply {
+                callPlan.parameterSlots.zip(callSitePlan.parameterShapes).forEachIndexed { index, (slot, shape) ->
+                    val parameter = slot.binding
+                    addParameter(
+                        ParameterSpec.builder(
+                            authoringCcwLocalParameterName(index),
+                            typeRenderer.resolveTypeName(parameter.typeBinding.typeName),
+                        )
+                            .addAnnotation(
+                                AnnotationSpec.builder(WINRT_PROJECTION_PARAMETER_CLASS_NAME)
+                                    .addMember(
+                                        "abiType = %S",
+                                        directInboundCallSiteAbiType(shape, parameter.typeBinding),
+                                    )
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                }
+            }
+            .returns(
+                if (returnsUnit) UNIT else typeRenderer.resolveTypeName(callPlan.returnBinding.typeName),
+            )
+            .addCode(
+                CodeBlock.builder()
+                    .apply {
+                        val invocation = authoringCcwInvocationCode(runtimeClassPlan, interfacePlan.type, binding)
+                        if (returnsUnit) {
+                            add("%L\n", invocation)
+                            add("TODO(%S)\n", "Lowered while compiling the generated WinRT inbound CallSite")
+                        } else {
+                            add(
+                                "return (%L).also { TODO(%S) }\n",
+                                invocation,
+                                "Lowered while compiling the generated WinRT inbound CallSite",
+                            )
+                        }
+                    }
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun projectedInterfaceCcwDefinitionHolderName(plan: KotlinTypeProjectionPlan): String =
+        "ProjectedInterfaceCcwDefinitionHolder_" + plan.type.qualifiedName
+            .replace('.', '_')
+            .replace('`', '_')
+
+    private fun inboundCallSiteFunctionName(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): String = "invokeWinRTInbound_" + listOf(
+        runtimeClassPlan.type.qualifiedName,
+        interfacePlan.type.qualifiedName,
+        binding.bindingName,
+    ).joinToString("_") { identity ->
+        identity.replace('.', '_').replace('`', '_').lowercase()
+    }
+
     private fun renderAuthoringCcwFactories(
         inventory: WinRTMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
@@ -2272,8 +2489,26 @@ class KotlinProjectionSupportRenderer {
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            plan.type.implementedInterfaces
+                .map { implementation -> implementation.interfaceName.substringBefore('<') }
+                .distinct()
+                .sorted()
+                .filterNot(::isRuntimeAppendedAuthoringInterfaceName)
+                .map { interfaceName ->
+                    plansByQualifiedName[interfaceName]
+                        ?: throw IllegalArgumentException(
+                            "Support renderer requires authored runtime class ${plan.type.qualifiedName} CCW interface $interfaceName to have a projection plan before rendering inbound CallSites.",
+                        )
+                }
+                .forEach { interfacePlan ->
+                    interfacePlan.instanceMemberBindings.forEach { binding ->
+                        directInboundCallSitePlan(binding, interfacePlan.type.namespace, semanticHelpers)?.let { callSitePlan ->
+                            fileBuilder.addFunction(inboundCallSiteFunction(plan, interfacePlan, binding, callSitePlan))
+                        }
+                    }
+                }
             fileBuilder.addFunction(authoringCcwQueryInterfaceFunction(plan))
-            fileBuilder.addFunction(authoringCcwDefinitionFunction(plan, plansByQualifiedName))
+            fileBuilder.addFunction(authoringCcwDefinitionFunction(plan, plansByQualifiedName, semanticHelpers))
         }
         fileBuilder.addType(
             TypeSpec.objectBuilder("WinRTAuthoringCcwFactories")
@@ -2287,6 +2522,7 @@ class KotlinProjectionSupportRenderer {
     private fun authoringCcwDefinitionFunction(
         plan: KotlinTypeProjectionPlan,
         plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): FunSpec {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
         val functionName = authoringCcwDefinitionFunctionName(plan)
@@ -2295,7 +2531,7 @@ class KotlinProjectionSupportRenderer {
             .addModifiers(KModifier.PRIVATE)
             .addParameter("value", projectedType)
             .returns(WINRT_CCW_DEFINITION_CLASS_NAME)
-            .addCode(authoringCcwDefinitionCode(plan, defaultInterface, plansByQualifiedName))
+            .addCode(authoringCcwDefinitionCode(plan, defaultInterface, plansByQualifiedName, semanticHelpers))
             .build()
     }
 
@@ -2303,6 +2539,7 @@ class KotlinProjectionSupportRenderer {
         plan: KotlinTypeProjectionPlan,
         defaultInterface: String?,
         plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): CodeBlock {
         val code = CodeBlock.builder()
         code.add("return %T(\n", WINRT_CCW_DEFINITION_CLASS_NAME)
@@ -2323,7 +2560,15 @@ class KotlinProjectionSupportRenderer {
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
-                code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(plan, interfacePlan))
+                code.add(
+                    "methods = %L,\n",
+                    authoringCcwInterfaceMethodsCode(
+                        plan,
+                        interfacePlan,
+                        semanticHelpers,
+                        useInboundCallSites = true,
+                    ),
+                )
                 code.unindent()
                 code.add("),\n")
             }
@@ -2407,6 +2652,8 @@ class KotlinProjectionSupportRenderer {
     private fun authoringCcwInterfaceMethodsCode(
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+        useInboundCallSites: Boolean = false,
     ): CodeBlock {
         if (interfacePlan.instanceMemberBindings.isEmpty()) {
             return CodeBlock.of("emptyList()")
@@ -2433,17 +2680,118 @@ class KotlinProjectionSupportRenderer {
             code.add("%T(\n", WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME)
             code.indent()
             code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
-            code.add("handler = { rawArgs ->\n")
-            code.indent()
-            code.add("%L", authoringCcwMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
-            code.unindent()
-            code.add("},\n")
+            val inboundCallSitePlan = directInboundCallSitePlan(
+                binding,
+                interfacePlan.type.namespace,
+                semanticHelpers,
+            )
+            if (useInboundCallSites && inboundCallSitePlan != null) {
+                code.add(
+                    "abiEntryPoint = %M(::%L),\n",
+                    WINRT_PROJECTION_INBOUND_ENTRY_POINT_FUNCTION_NAME,
+                    inboundCallSiteFunctionName(runtimeClassPlan, interfacePlan, binding),
+                )
+            } else {
+                code.add("managedHandler = { managedValue, rawArgs ->\n")
+                code.indent()
+                code.add(
+                    "val value = managedValue as %T\n",
+                    projectionClassNameForQualifiedName(runtimeClassPlan.type.qualifiedName),
+                )
+                code.add("%L", authoringCcwMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
+                code.unindent()
+                code.add("},\n")
+            }
             code.unindent()
             code.add("),\n")
         }
         code.unindent()
         code.add(")")
         return code.build()
+    }
+
+    private fun directInboundCallSitePlan(
+        binding: KotlinProjectionInstanceMemberBinding,
+        currentNamespace: String,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): DirectInboundCallSitePlan? {
+        if (binding.parameterBindings.any { parameter ->
+                parameter.category != WinRTMetadataParameterCategory.In
+            }
+        ) {
+            return null
+        }
+        val returnShape = semanticHelpers.directInboundShapeDescriptor(
+            type = WinRTTypeRef.fromDisplayName(binding.returnBinding.resolvedTypeName),
+            currentNamespace = currentNamespace,
+            allowUnit = true,
+        ) ?: return null
+        val parameterShapes = binding.parameterBindings.map { parameter ->
+            semanticHelpers.directInboundShapeDescriptor(
+                type = WinRTTypeRef.fromDisplayName(parameter.typeBinding.resolvedTypeName),
+                currentNamespace = currentNamespace,
+            ) ?: return null
+        }
+        val callPlan = typeRenderer.buildAbiCallPlan(binding) ?: return null
+        if (callPlan.parameterSlots.size != parameterShapes.size ||
+            callPlan.parameterSlots.zip(parameterShapes).any { (slot, shape) ->
+                !slot.recipePlan.supportsDirectInboundArgument(shape.kind)
+            }
+        ) {
+            return null
+        }
+        val returnRecipePlan = callPlan.returnRecipePlan
+        if (returnShape.kind == WinRTDirectInboundShapeKind.Unit) {
+            if (returnRecipePlan != null) return null
+        } else if (returnRecipePlan?.supportsDirectInboundResult(returnShape.kind) != true) {
+            return null
+        }
+        return DirectInboundCallSitePlan(
+            abiCallPlan = callPlan,
+            returnShape = returnShape,
+            parameterShapes = parameterShapes,
+        )
+    }
+
+    private data class DirectInboundCallSitePlan(
+        val abiCallPlan: KotlinProjectionAbiCallPlan,
+        val returnShape: WinRTDirectInboundShapeDescriptor,
+        val parameterShapes: List<WinRTDirectInboundShapeDescriptor>,
+    )
+
+    private fun KotlinProjectionCallSiteRecipePlan.supportsDirectInboundArgument(
+        shapeKind: WinRTDirectInboundShapeKind,
+    ): Boolean = recipe.supportsDirectInboundStorage(shapeKind) && outputCodecs.isEmpty()
+
+    private fun KotlinProjectionCallSiteRecipePlan.supportsDirectInboundResult(
+        shapeKind: WinRTDirectInboundShapeKind,
+    ): Boolean = recipe.supportsDirectInboundStorage(shapeKind) &&
+            inputFactory == null &&
+            inputCodec == null &&
+            recipe.callables?.createMarshaler.isNullOrEmpty()
+
+    private fun WinRTProjectionCallSiteRecipe.supportsDirectInboundStorage(
+        shapeKind: WinRTDirectInboundShapeKind,
+    ): Boolean {
+        if (abiCarriers.size != 1) return false
+        return when (shapeKind) {
+            WinRTDirectInboundShapeKind.Value -> kind == WinRTProjectionCallSiteRecipeKind.VALUE
+            WinRTDirectInboundShapeKind.Enum -> kind == WinRTProjectionCallSiteRecipeKind.ENUM
+            WinRTDirectInboundShapeKind.Projection ->
+                kind == WinRTProjectionCallSiteRecipeKind.PROJECTION &&
+                children.singleOrNull()?.kind == WinRTProjectionCallSiteRecipeKind.COM_REFERENCE
+            WinRTDirectInboundShapeKind.Unit -> false
+        }
+    }
+
+    private fun directInboundCallSiteAbiType(
+        shape: WinRTDirectInboundShapeDescriptor,
+        binding: KotlinProjectionAbiTypeBinding,
+    ): String = when (shape.kind) {
+        WinRTDirectInboundShapeKind.Value -> typeRenderer.resolveTypeName(binding.typeName).toString()
+        WinRTDirectInboundShapeKind.Enum,
+        WinRTDirectInboundShapeKind.Projection -> shape.abiTypeName
+        WinRTDirectInboundShapeKind.Unit -> UNIT.toString()
     }
 
     private fun authoredCcwBindingHasMemberBody(
@@ -2497,6 +2845,10 @@ class KotlinProjectionSupportRenderer {
                 )
                 else -> listOf(CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME))
             }
+        } else if (parameter.category == WinRTMetadataParameterCategory.Out ||
+            parameter.category == WinRTMetadataParameterCategory.Ref
+        ) {
+            listOf(CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME))
         } else {
             listOf(authoringCcwAbiValueKindCode(parameter.typeBinding))
         }
@@ -2586,27 +2938,17 @@ class KotlinProjectionSupportRenderer {
         code.add("try {\n")
         code.indent()
         if (binding.bindingName.endsWith("_ADD_SLOT")) {
-            val handlerType = binding.parameterBindings.singleOrNull()?.typeBinding?.resolvedTypeName
-            val handlerClass = handlerType?.let(::projectionClassNameForQualifiedName)
-            if (handlerClass == null) {
+            val handlerParameter = binding.parameterBindings.singleOrNull()
+            if (handlerParameter == null) {
                 code.add("%T.E_INVALIDARG.value\n", KNOWN_HRESULTS_CLASS_NAME)
             } else {
                 code.add(
-                    "val handler = %T.Metadata.fromAbi(rawArgs[0] as %T)\n",
-                    handlerClass,
-                    RAW_ADDRESS_CLASS_NAME,
+                    "val handler = %L\n",
+                    authoringCcwDecodeArgumentCode(handlerParameter, 0),
                 )
-                code.add("if (handler == null) {\n")
-                code.indent()
-                code.add("%T.E_POINTER.value\n", KNOWN_HRESULTS_CLASS_NAME)
-                code.unindent()
-                code.add("} else {\n")
-                code.indent()
                 code.add("val token = value.add%L(handler)\n", event.name)
                 code.add("%T.Metadata.copyTo(token, rawArgs[1] as %T)\n", EVENT_REGISTRATION_TOKEN_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
                 code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
-                code.unindent()
-                code.add("}\n")
             }
         } else {
             code.add("value.remove%L(%T(rawArgs[0] as Long))\n", event.name, EVENT_REGISTRATION_TOKEN_CLASS_NAME)
@@ -2809,10 +3151,16 @@ class KotlinProjectionSupportRenderer {
         parameter: KotlinProjectionAbiParameterBinding,
         rawIndex: Int,
     ): CodeBlock =
-        if (parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
-            authoringCcwDecodeArrayArgumentCode(parameter, rawIndex)
-        } else {
-            authoringCcwDecodeArgumentCode(parameter.typeBinding, rawIndex)
+        when {
+            parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Array ->
+                authoringCcwDecodeArrayArgumentCode(parameter, rawIndex)
+            parameter.category == WinRTMetadataParameterCategory.Out ->
+                CodeBlock.of(
+                    "%T<%T>()",
+                    WINRT_OUT_CLASS_NAME,
+                    typeRenderer.resolveTypeName(parameter.typeBinding.typeName),
+                )
+            else -> authoringCcwDecodeArgumentCode(parameter.typeBinding, rawIndex)
         }
 
     private fun authoringCcwDecodeArgumentCode(
@@ -2853,24 +3201,13 @@ class KotlinProjectionSupportRenderer {
             }
         KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", WINRT_OBJECT_MARSHALLER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.PropertyValue -> CodeBlock.of("%T.tryFromBorrowedAbi(rawArgs[%L] as %T)", WINRT_PROPERTY_VALUE_PROJECTION_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
-        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedInterface ->
+            customObjectAbi(binding)?.let { authoringCcwDecodeCustomObjectArgumentCode(binding, it, index) }
+                ?: authoringCcwDecodeProjectedInterfaceArgumentCode(binding, index)
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
             customObjectAbi(binding)?.let { authoringCcwDecodeCustomObjectArgumentCode(binding, it, index) }
-                ?: CodeBlock.of(
-                    "%T.Metadata.wrap(%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable())",
-                    typeRenderer.resolveTypeName(binding.resolvedTypeName),
-                    IUNKNOWN_REFERENCE_CLASS_NAME,
-                    PLATFORM_ABI_CLASS_NAME,
-                    index,
-                    RAW_ADDRESS_CLASS_NAME,
-                )
-        KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of(
-            "%T.Metadata.fromAbi(rawArgs[%L] as %T) ?: error(%S)",
-            typeRenderer.resolveTypeName(binding.resolvedTypeName),
-            index,
-            RAW_ADDRESS_CLASS_NAME,
-            "Authored delegate argument ${binding.resolvedTypeName} was null.",
-        )
+                ?: authoringCcwDecodeProjectedRuntimeClassArgumentCode(binding, index)
+        KotlinProjectionAbiValueKind.Delegate -> authoringCcwDecodeDelegateArgumentCode(binding, index)
         KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of(
             "%T.fromAbi<%T>(rawArgs[%L] as %T)",
             WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
@@ -2910,6 +3247,75 @@ class KotlinProjectionSupportRenderer {
             RAW_ADDRESS_CLASS_NAME,
         )
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwDecodeProjectedInterfaceArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val helperClass = binding.closedGenericProjectionHelperClassName(typeRenderer.supportOwnerIdentity)
+        val projectedType = typeRenderer.resolveTypeName(binding.resolvedTypeName).copy(nullable = false)
+        val interfaceId = helperClass?.let { CodeBlock.of("%T.TYPE_HANDLE.interfaceId", it) }
+            ?: CodeBlock.of("%T.Metadata.IID", projectedType)
+        val acquiredReference = CodeBlock.of(
+            "%M(rawArgs[%L] as %T, %L)",
+            ACQUIRE_BORROWED_INTERFACE_REFERENCE_FUNCTION_NAME,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+            interfaceId,
+        )
+        val wrapped = helperClass?.let { CodeBlock.of("%T.wrap(requireNotNull(__reference))", it) }
+            ?: CodeBlock.of("%T.Metadata.wrap(requireNotNull(__reference))", projectedType)
+        return CodeBlock.of(
+            "run {\n·val __reference = %L\n·%L\n}",
+            acquiredReference,
+            if (binding.isNullableAbiTypeName) {
+                CodeBlock.of("if (__reference == null) null else %L", wrapped)
+            } else {
+                wrapped
+            },
+        )
+    }
+
+    private fun authoringCcwDecodeProjectedRuntimeClassArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val projectedType = typeRenderer.resolveTypeName(binding.resolvedTypeName).copy(nullable = false)
+        val acquiredReference = CodeBlock.of(
+            "%M(rawArgs[%L] as %T)",
+            ACQUIRE_BORROWED_INSPECTABLE_REFERENCE_FUNCTION_NAME,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+        )
+        return CodeBlock.of(
+            "run {\n·val __reference = %L\n·%L\n}",
+            acquiredReference,
+            if (binding.isNullableAbiTypeName) {
+                CodeBlock.of("if (__reference == null) null else %T.Metadata.wrap(__reference)", projectedType)
+            } else {
+                CodeBlock.of("%T.Metadata.wrap(requireNotNull(__reference))", projectedType)
+            },
+        )
+    }
+
+    private fun authoringCcwDecodeDelegateArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock {
+        val decoded = typeRenderer.delegateFromBorrowedAbiCode(
+            binding = binding,
+            pointerExpression = CodeBlock.of(
+                "rawArgs[%L] as %T",
+                index,
+                RAW_ADDRESS_CLASS_NAME,
+            ),
+        )
+        return if (binding.isNullableAbiTypeName) {
+            decoded
+        } else {
+            CodeBlock.of("%L ?: error(%S)", decoded, "Authored delegate argument ${binding.resolvedTypeName} was null.")
+        }
     }
 
     private fun authoringCcwDecodeReferenceArgumentCode(
@@ -3114,6 +3520,13 @@ class KotlinProjectionSupportRenderer {
         rawIndex: Int,
         valueExpression: String,
     ): CodeBlock? {
+        if (parameter.category == WinRTMetadataParameterCategory.Out) {
+            return authoringCcwWriteReturnCode(
+                parameter.typeBinding,
+                "rawArgs[$rawIndex] as RawAddress",
+                "$valueExpression.value",
+            )
+        }
         if (parameter.typeBinding.kind != KotlinProjectionAbiValueKind.Array ||
             parameter.category != WinRTMetadataParameterCategory.FillArray
         ) {
@@ -3783,10 +4196,19 @@ ${invocation.toString().prependIndent("                        ")}
             .addGeneratedProjectionSuppressions()
             .addFileComment("Deterministic generator handoff for reference %L writer parity.", fileName)
 
-    private fun KotlinTypeProjectionPlan.hasGeneratedRuntimeClassMetadataRegistration(): Boolean =
-        declarationKind == KotlinProjectionDeclarationKind.Class &&
-            KotlinProjectionSpecializationKind.StaticClass !in specializationKinds &&
-            KotlinProjectionSpecializationKind.AttributeClass !in specializationKinds
+    private fun KotlinTypeProjectionPlan.hasGeneratedProjectionMetadataRegistration(): Boolean =
+        when (declarationKind) {
+            KotlinProjectionDeclarationKind.Class ->
+                KotlinProjectionSpecializationKind.StaticClass !in specializationKinds &&
+                    KotlinProjectionSpecializationKind.AttributeClass !in specializationKinds
+            KotlinProjectionDeclarationKind.Enum -> type.enumUnderlyingType != null
+            KotlinProjectionDeclarationKind.Struct -> typeRenderer.renderStructMetadataCompanion(this) != null
+            KotlinProjectionDeclarationKind.Delegate ->
+                type.genericParameterCount == 0 &&
+                    mappedTypeByAbiName(type.qualifiedName)?.runtimeOwnedPublicDeclaration != true &&
+                    delegateInvokeShape?.isSupportedProjectedDelegateShape() == true
+            KotlinProjectionDeclarationKind.Interface -> false
+        }
 
     private fun dataClass(
         className: String,
@@ -3964,20 +4386,74 @@ ${invocation.toString().prependIndent("                        ")}
         invokeArguments: String,
     ): CodeBlock =
         if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
-            CodeBlock.of("snapshotHandlers().forEach { handler -> handler.invoke(%L) }", invokeArguments)
+            CodeBlock.of("forEachHandler { handler -> handler.invoke(%L) }", invokeArguments)
         } else {
             CodeBlock.of(
-                "var __result = %L\nsnapshotHandlers().forEach { handler -> __result = handler.invoke(%L) }\n__result",
+                "var __result = %L\nforEachHandler { handler -> __result = handler.invoke(%L) }\n__result",
                 defaultValueExpression(invokeShape.returnBinding),
                 invokeArguments,
             )
         }
+
+    private fun sharedEventHandlerInboundCallSite(
+        descriptor: WinRTEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+        supportOwnerIdentity: String?,
+    ): SharedEventHandlerInboundCallSite? {
+        val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return null
+        if (invokeShape.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+            invokeShape.parameterBindings.size != 2
+        ) {
+            return null
+        }
+        val inboundParameters = invokeShape.parameterBindings.map { parameter ->
+            typeRenderer.composeDirectInboundCallSiteParameter(parameter.typeBinding) ?: return null
+        }
+        val functionName = sharedEventHandlerInboundCallSiteFunctionName(
+            eventType = descriptor.eventTypeName,
+            supportOwnerIdentity = supportOwnerIdentity,
+        )
+        val parameterNames = listOf("sender", "args")
+        val function = FunSpec.builder(functionName)
+            .addModifiers(KModifier.INTERNAL)
+            .addAnnotation(WINRT_PROJECTION_INBOUND_CALL_SITE_CLASS_NAME)
+            .addParameter(
+                "handler",
+                typeRenderer.resolveTypeName(descriptor.projectedEventTypeName),
+            )
+            .apply {
+                inboundParameters.zip(parameterNames).forEach { (parameter, name) ->
+                    addParameter(
+                        ParameterSpec.builder(name, parameter.projectedType)
+                            .addAnnotation(
+                                AnnotationSpec.builder(WINRT_PROJECTION_PARAMETER_CLASS_NAME)
+                                    .addMember("abiType = %S", parameter.abiType)
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                }
+            }
+            .returns(UNIT)
+            .addCode(
+                "handler.invoke(sender, args)\n" +
+                    "TODO(%S)\n",
+                "Lowered while compiling the generated WinRT event CallSite",
+            )
+            .build()
+        return SharedEventHandlerInboundCallSite(
+            eventTypeName = descriptor.eventTypeName,
+            functionName = functionName,
+            function = function,
+        )
+    }
 
     private fun eventSourceOwnerHelperType(
         ownerEntries: List<WinRTEventHelperSubclassDescriptor>,
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
         supportOwnerIdentity: String?,
+        sharedInboundCallSites: Map<String, SharedEventHandlerInboundCallSite>,
     ): TypeSpec? {
         val firstEntry = ownerEntries.first()
         val builder = TypeSpec.objectBuilder(
@@ -3990,7 +4466,57 @@ ${invocation.toString().prependIndent("                        ")}
             .addModifiers(KModifier.INTERNAL)
         var hasFunctions = false
         ownerEntries.sortedBy(WinRTEventHelperSubclassDescriptor::eventTypeName).forEach { descriptor ->
-            val createEventSource = directEventSourceCreateCode(descriptor, typesByQualifiedName, plansByType) ?: return@forEach
+            val sharedInterfaceIdPropertyName =
+                if (descriptor.usesSharedEventHandlerSource) {
+                    val interfaceId = sharedEventHandlerInterfaceIdCode(
+                        descriptor = descriptor,
+                        typesByQualifiedName = typesByQualifiedName,
+                    )
+                    if (interfaceId != null) {
+                        eventSourceInterfaceIdPropertyName(descriptor).also { propertyName ->
+                            builder.addProperty(
+                                PropertySpec.builder(propertyName, GUID_CLASS_NAME)
+                                    .addModifiers(KModifier.PRIVATE)
+                                    .initializer("%L", interfaceId)
+                                    .build(),
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            val sharedDelegateDescriptorPropertyName =
+                if (descriptor.usesSharedEventHandlerSource && sharedInterfaceIdPropertyName != null) {
+                    val delegateDescriptor = sharedEventHandlerDelegateDescriptorCode(
+                        descriptor = descriptor,
+                        typesByQualifiedName = typesByQualifiedName,
+                        interfaceIdPropertyName = sharedInterfaceIdPropertyName,
+                    )
+                    if (delegateDescriptor != null) {
+                        eventSourceDelegateDescriptorPropertyName(descriptor).also { propertyName ->
+                            builder.addProperty(
+                                PropertySpec.builder(propertyName, WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME)
+                                    .addModifiers(KModifier.PRIVATE)
+                                    .initializer("%L", delegateDescriptor)
+                                    .build(),
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            val createEventSource = directEventSourceCreateCode(
+                descriptor = descriptor,
+                typesByQualifiedName = typesByQualifiedName,
+                plansByType = plansByType,
+                sharedInboundCallSite = sharedInboundCallSites[descriptor.eventTypeName],
+                sharedInterfaceIdPropertyName = sharedInterfaceIdPropertyName,
+                sharedDelegateDescriptorPropertyName = sharedDelegateDescriptorPropertyName,
+            ) ?: return@forEach
             hasFunctions = true
             builder.addFunction(
                 FunSpec.builder(eventSourceCreateFunctionName(descriptor.eventTypeName, descriptor.ownerTypeName))
@@ -4008,9 +4534,18 @@ ${invocation.toString().prependIndent("                        ")}
         descriptor: WinRTEventHelperSubclassDescriptor,
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
+        sharedInboundCallSite: SharedEventHandlerInboundCallSite? = null,
+        sharedInterfaceIdPropertyName: String? = null,
+        sharedDelegateDescriptorPropertyName: String? = null,
     ): CodeBlock? {
         if (descriptor.usesSharedEventHandlerSource) {
-            return directSharedEventHandlerSourceCreateCode(descriptor, typesByQualifiedName)
+            return directSharedEventHandlerSourceCreateCode(
+                descriptor,
+                typesByQualifiedName,
+                sharedInboundCallSite,
+                sharedInterfaceIdPropertyName,
+                sharedDelegateDescriptorPropertyName,
+            )
         }
         val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return null
         if (!invokeShape.isSupportedProjectedDelegateShape() || !invokeShape.supportsEventSourceCallbackWrapping(plansByType)) {
@@ -4022,6 +4557,9 @@ ${invocation.toString().prependIndent("                        ")}
     private fun directSharedEventHandlerSourceCreateCode(
         descriptor: WinRTEventHelperSubclassDescriptor,
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+        inboundCallSite: SharedEventHandlerInboundCallSite?,
+        interfaceIdPropertyName: String? = null,
+        delegateDescriptorPropertyName: String? = null,
     ): CodeBlock? {
         val typeBinding = planner.classifyAbiTypeBinding(
             typeName = descriptor.eventTypeName,
@@ -4033,14 +4571,82 @@ ${invocation.toString().prependIndent("                        ")}
             ?: invokeShape.parameterBindings.getOrNull(1)?.typeBinding
             ?: return null
         val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return null
+        val interfaceIdExpression = interfaceIdPropertyName?.let { CodeBlock.of("%L", it) } ?: interfaceId
         val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
         val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
+        return CodeBlock.builder()
+            .add(
+                "%T<%T>(objectReference = objectReference, interfaceId = %L, argsKind = %L, " +
+                    "vtableIndexForAddHandler = vtableIndexForAddHandler",
+                ClassName("io.github.composefluent.winrt.runtime", "EventHandlerEventSource"),
+                argumentType,
+                interfaceIdExpression,
+                argumentKind,
+            )
+            .apply {
+                delegateDescriptorPropertyName?.let { propertyName ->
+                    add(", delegateDescriptor = %L", propertyName)
+                }
+                inboundCallSite?.let { callSite ->
+                    add(
+                        ", abiEntryPoint = %M(::%L)",
+                        WINRT_PROJECTION_INBOUND_ENTRY_POINT_FUNCTION_NAME,
+                        callSite.functionName,
+                    )
+                }
+            }
+            .add(")")
+            .build()
+    }
+
+    private fun sharedEventHandlerInterfaceIdCode(
+        descriptor: WinRTEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+    ): CodeBlock? {
+        val typeBinding = planner.classifyAbiTypeBinding(
+            typeName = descriptor.eventTypeName,
+            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        if (typeBinding.containsOpenGenericShape()) {
+            return null
+        }
+        val invokeShape = typeBinding.delegateInvokeShape
+            ?.substituteDelegateTypeArguments(typeBinding.typeArguments)
+            ?: return null
+        return typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape)
+    }
+
+    private fun eventSourceInterfaceIdPropertyName(
+        descriptor: WinRTEventHelperSubclassDescriptor,
+    ): String = "EVENT_HANDLER_IID_${eventSourceCreateFunctionName(descriptor.eventTypeName, descriptor.ownerTypeName).removePrefix("createEventSource_").uppercase()}"
+
+    private fun eventSourceDelegateDescriptorPropertyName(
+        descriptor: WinRTEventHelperSubclassDescriptor,
+    ): String = "EVENT_HANDLER_DESCRIPTOR_${eventSourceCreateFunctionName(descriptor.eventTypeName, descriptor.ownerTypeName).removePrefix("createEventSource_").uppercase()}"
+
+    private fun sharedEventHandlerDelegateDescriptorCode(
+        descriptor: WinRTEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+        interfaceIdPropertyName: String,
+    ): CodeBlock? {
+        val typeBinding = planner.classifyAbiTypeBinding(
+            typeName = descriptor.eventTypeName,
+            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        val invokeShape = typeBinding.delegateInvokeShape ?: return null
+        val argumentBinding = typeBinding.typeArguments.singleOrNull()
+            ?: invokeShape.parameterBindings.getOrNull(1)?.typeBinding
+            ?: return null
+        val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
         return CodeBlock.of(
-            "%T<%T>(objectReference = objectReference, interfaceId = %L, argsKind = %L, vtableIndexForAddHandler = vtableIndexForAddHandler)",
-            ClassName("io.github.composefluent.winrt.runtime", "EventHandlerEventSource"),
-            argumentType,
-            interfaceId,
+            "%T(interfaceId = %L, parameterKinds = listOf(%T.OBJECT, %L), returnKind = %T.UNIT)",
+            WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME,
+            interfaceIdPropertyName,
+            WINRT_DELEGATE_VALUE_KIND_CLASS_NAME,
             argumentKind,
+            WINRT_DELEGATE_VALUE_KIND_CLASS_NAME,
         )
     }
 
@@ -4468,6 +5074,31 @@ ${invocation.toString().prependIndent("                        ")}
         const val TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR = "\u001F"
         const val WINDOWS_FOUNDATION_ISTRINGABLE_TYPE_NAME = "Windows.Foundation.IStringable"
     }
+}
+
+private data class SharedEventHandlerInboundCallSite(
+    val eventTypeName: String,
+    val functionName: String,
+    val function: FunSpec,
+)
+
+internal fun List<KotlinTypeProjectionPlan>.projectedInterfaceCcwInputPlans(): List<KotlinTypeProjectionPlan> {
+    val plansByQualifiedName = associateBy { plan -> plan.type.qualifiedName }
+    val inputTypeNames = asSequence()
+        .flatMap { plan ->
+            sequenceOf(
+                plan.instanceMemberBindings.asSequence().flatMap { binding -> binding.parameterBindings.asSequence() },
+                plan.staticMemberBindings.asSequence().flatMap { binding -> binding.parameterBindings.asSequence() },
+            ).flatten()
+        }
+        .map(KotlinProjectionAbiParameterBinding::typeBinding)
+        .filter { binding -> binding.kind == KotlinProjectionAbiValueKind.ProjectedInterface }
+        .map { binding -> binding.resolvedTypeName.substringBefore('<').removeSuffix("?") }
+        .toSet()
+    return inputTypeNames
+        .mapNotNull(plansByQualifiedName::get)
+        .filter { plan -> plan.type.kind == WinRTTypeKind.Interface }
+        .sortedBy { plan -> plan.type.qualifiedName }
 }
 
 private data class AuthoringServerFactoryInterface(

@@ -6,6 +6,7 @@ import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -16,9 +17,28 @@ import windows.foundation.IClosableProjection
 
 class ProjectionRegistryTest {
     @Test
+    fun built_in_runtime_factories_register_once_and_rebuild_after_test_reset() {
+        val closableType = WinRTTypeHandle("Windows.Foundation.IClosable", IID.IDisposable)
+        try {
+            ComWrappersSupport.clearRegistriesForTests()
+            assertNotNull(RcwProjectionFactoryRegistry.resolveRuntimeClassFactory(closableType, runtimeClassName = null))
+
+            RcwProjectionFactoryRegistry.clearForTests()
+            WinRTBuiltInProjectionRuntimeHooks.ensureRegistered()
+            assertNull(RcwProjectionFactoryRegistry.resolveRuntimeClassFactory(closableType, runtimeClassName = null))
+
+            ComWrappersSupport.clearRegistriesForTests()
+            assertNotNull(RcwProjectionFactoryRegistry.resolveRuntimeClassFactory(closableType, runtimeClassName = null))
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
     fun projections_registry_round_trips_custom_mappings_and_runtime_class_defaults() {
         ComWrappersSupport.clearRegistriesForTests()
         registerTestTypeDescriptors()
+        val defaultInterfaceId = Guid("11111111-1111-1111-1111-111111111111")
 
         assertTrue(
             Projections.registerCustomAbiTypeMapping(
@@ -39,6 +59,7 @@ class ProjectionRegistryTest {
             Projections.registerDefaultInterfaceType(
                 runtimeClass = SampleRuntimeClass::class,
                 defaultInterface = SampleDefaultInterface::class,
+                defaultInterfaceId = defaultInterfaceId,
             ),
         )
 
@@ -47,6 +68,7 @@ class ProjectionRegistryTest {
         assertEquals(SampleMappedType::class, Projections.findCustomKClassForAbiTypeName("Contoso.IMappedType"))
         assertEquals("Contoso.IMappedType", Projections.findCustomAbiTypeNameForType(SampleMappedType::class))
         assertEquals(SampleDefaultInterface::class, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(SampleRuntimeClass::class))
+        assertEquals(defaultInterfaceId, GuidGenerator.getIID(SampleRuntimeClass::class))
         assertTrue(Projections.isTypeWindowsRuntimeType(SampleRuntimeClass::class))
         assertFalse(Projections.isTypeWindowsRuntimeType(PlainManagedType::class))
     }
@@ -204,6 +226,40 @@ class ProjectionRegistryTest {
             ParameterizedInterfaceId.createFromSignature("rc(Contoso.SampleRuntimeClass;{11111111-1111-1111-1111-111111111111})"),
             GuidGenerator.createIID(SampleRuntimeClass::class),
         )
+        assertEquals(
+            ParameterizedInterfaceId.createFromSignature(
+                "pinterface({3c2925fe-8519-45c1-aa79-197b6718c1c1};string;" +
+                    "rc(Contoso.SampleRuntimeClass;{11111111-1111-1111-1111-111111111111}))",
+            ),
+            GuidGenerator.createIID(
+                WinRTCollectionInterfaceIds.iMap,
+                String::class,
+                SampleRuntimeClass::class,
+            ),
+        )
+    }
+
+    @Test
+    fun generated_enum_metadata_registers_composed_signature_and_values() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val entries = TestProjectedEnum.entries.toTypedArray()
+
+        assertTrue(
+            Projections.registerEnumType(
+                type = TestProjectedEnum::class,
+                projectedTypeName = "Contoso.Priority",
+                signature = "enum(Contoso.Priority;i4)",
+                abiValue = TestProjectedEnum::abiValue,
+                enumEntries = entries,
+            ),
+        )
+
+        val registered = WinRTTypeRegistry.findByClass(TestProjectedEnum::class)
+            ?: error("Projected enum was not registered.")
+        assertEquals("enum(Contoso.Priority;i4)", GuidGenerator.getSignature(TestProjectedEnum::class))
+        assertEquals(entries.toList(), registered.enumEntries?.toList())
+        assertEquals(2, registered.enumAbiValue?.invoke(TestProjectedEnum.High))
+        assertTrue(registered.isWindowsRuntimeType)
     }
 
     @Test

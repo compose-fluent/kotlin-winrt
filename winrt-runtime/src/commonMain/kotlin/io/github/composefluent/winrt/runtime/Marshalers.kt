@@ -630,7 +630,15 @@ object MarshalDelegate {
     fun getAbi(value: WinRTDelegateReference?): RawAddress = value?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
 
     fun fromAbi(pointer: RawAddress, descriptor: WinRTDelegateDescriptor): WinRTDelegateReference? =
-        WinRTDelegateReference.fromAbi(pointer, descriptor)
+        fromBorrowedAbi(pointer, descriptor)
+
+    fun fromBorrowedAbi(pointer: RawAddress, descriptor: WinRTDelegateDescriptor): WinRTDelegateReference? {
+        if (PlatformAbi.isNull(pointer)) return null
+        return WinRTDelegateReference.fromAbi(
+            retainBorrowedComPointer(PlatformAbi.toRawComPtr(pointer)).asRawAddress(),
+            descriptor,
+        )
+    }
 
     fun fromManaged(value: WinRTDelegateHandle?): RawAddress =
         value?.createReference()?.useAndGetRef() ?: PlatformAbi.nullPointer

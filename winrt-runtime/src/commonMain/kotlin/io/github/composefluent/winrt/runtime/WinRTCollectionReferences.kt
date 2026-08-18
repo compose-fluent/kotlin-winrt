@@ -32,47 +32,55 @@ open class WinRTCollectionReferenceBase(
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer.asRawComPtr(), interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
-    protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? =
-        RawObjectAbiSupport.nullableObjectResult(
-            invoke = { resultOut ->
-                invokeSlot(slot, resultOut)
-            },
-            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
-        )
-
     protected fun invokeNullableAbiMethod(slot: Int): RawAddress? =
         RawObjectAbiSupport.nullableAbiResult { resultOut ->
             invokeSlot(slot, resultOut)
         }
-
-    protected fun invokeNullableObjectMethodWithUInt32Arg(slot: Int, value: UInt): IUnknownReference? =
-        RawObjectAbiSupport.nullableObjectResult(
-            invoke = { resultOut ->
-                invokeSlot(slot, value, resultOut)
-            },
-            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
-        )
 
     protected fun invokeNullableAbiMethodWithUInt32Arg(slot: Int, value: UInt): RawAddress? =
         RawObjectAbiSupport.nullableAbiResult { resultOut ->
             invokeSlot(slot, value, resultOut)
         }
 
-    protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference? =
-        invokeNullableObjectMethodWithObjectArg(slot, value.pointer.asRawAddress())
-
-    protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: RawAddress): IUnknownReference? =
-        RawObjectAbiSupport.nullableObjectResult(
-            invoke = { resultOut ->
-                invokeSlot(slot, value, resultOut)
-            },
-            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
-        )
-
     protected fun invokeNullableAbiMethodWithObjectArg(slot: Int, value: RawAddress): RawAddress? =
         RawObjectAbiSupport.nullableAbiResult { resultOut ->
             invokeSlot(slot, value, resultOut)
         }
+
+    protected fun invokeLookupAbiMethodWithObjectArg(slot: Int, value: RawAddress): RawAddress? =
+        RawObjectAbiSupport.lookupAbiResult { resultOut ->
+            invokeSlot(slot, value, resultOut)
+        }
+
+    protected fun <T> invokeLookupProjectedMethodWithObjectArg(
+        slot: Int,
+        value: RawAddress,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        RawObjectAbiSupport.lookupResult(
+            invoke = { resultOut ->
+                invokeSlot(slot, value, resultOut)
+            },
+            project = { result ->
+                adapter.projectOwnedAbi(result)
+            },
+        )
+
+    protected fun <T> invokeLookupProjectedMethodWithObjectArg(
+        slot: Int,
+        value: RawAddress,
+        resultOut: RawAddress,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        RawObjectAbiSupport.lookupResult(
+            resultOut = resultOut,
+            invoke = { output ->
+                invokeSlot(slot, value, output)
+            },
+            project = { result ->
+                adapter.projectOwnedAbi(result)
+            },
+        )
 
     protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
@@ -168,16 +176,16 @@ open class WinRTKeyValuePairReference(
     preventReleaseOnDispose: Boolean = false,
 ) : WinRTCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun key(): IUnknownReference? =
-        invokeNullableObjectMethod(WinRTCollectionSlots.KeyValuePairKey)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeNullableAbiMethod(WinRTCollectionSlots.KeyValuePairKey)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun keyAbiOrNull(): RawAddress? =
         invokeNullableAbiMethod(WinRTCollectionSlots.KeyValuePairKey)
 
     open fun value(): IUnknownReference? =
-        invokeNullableObjectMethod(WinRTCollectionSlots.KeyValuePairValue)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeNullableAbiMethod(WinRTCollectionSlots.KeyValuePairValue)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun valueAbiOrNull(): RawAddress? =
@@ -218,8 +226,8 @@ open class WinRTIteratorReference(
         )
 
     open fun currentOrNull(): IUnknownReference? =
-        invokeNullableObjectMethod(WinRTCollectionSlots.IteratorCurrent)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeNullableAbiMethod(WinRTCollectionSlots.IteratorCurrent)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun currentAbiOrNull(): RawAddress? =
@@ -265,8 +273,8 @@ open class WinRTVectorViewReference(
             )
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
-        invokeNullableObjectMethodWithUInt32Arg(WinRTCollectionSlots.VectorGetAt, index)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeNullableAbiMethodWithUInt32Arg(WinRTCollectionSlots.VectorGetAt, index)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun getAtAbiOrNull(index: UInt): RawAddress? =
@@ -315,8 +323,8 @@ open class WinRTVectorReference(
             )
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
-        invokeNullableObjectMethodWithUInt32Arg(WinRTCollectionSlots.VectorGetAt, index)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeNullableAbiMethodWithUInt32Arg(WinRTCollectionSlots.VectorGetAt, index)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun getAtAbiOrNull(index: UInt): RawAddress? =
@@ -429,12 +437,34 @@ open class WinRTMapViewReference(
         lookupOrNull(key.pointer.asRawAddress())
 
     open fun lookupOrNull(key: RawAddress): IUnknownReference? =
-        invokeNullableObjectMethodWithObjectArg(WinRTCollectionSlots.MapViewLookup, key)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeLookupAbiMethodWithObjectArg(WinRTCollectionSlots.MapViewLookup, key)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun lookupAbiOrNull(key: RawAddress): RawAddress? =
-        invokeNullableAbiMethodWithObjectArg(WinRTCollectionSlots.MapViewLookup, key)
+        invokeLookupAbiMethodWithObjectArg(WinRTCollectionSlots.MapViewLookup, key)
+
+    internal open fun <T> lookupProjectedOrNull(
+        key: RawAddress,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        invokeLookupProjectedMethodWithObjectArg(
+            WinRTCollectionSlots.MapViewLookup,
+            key,
+            adapter,
+        )
+
+    internal open fun <T> lookupProjectedOrNull(
+        key: RawAddress,
+        resultOut: RawAddress,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        invokeLookupProjectedMethodWithObjectArg(
+            WinRTCollectionSlots.MapViewLookup,
+            key,
+            resultOut,
+            adapter,
+        )
 
     open fun size(): UInt =
         RawAbiResultSupport.uint32Result { resultOut ->
@@ -453,8 +483,8 @@ open class WinRTMapViewReference(
         invokeSplit(WinRTCollectionSlots.MapViewSplit, mapViewInterfaceId)
 
     open fun asIterable(iterableInterfaceId: Guid): WinRTIterableReference =
-        queryInterface(iterableInterfaceId).getOrThrow().let { reference ->
-            createIterableReference(reference.pointer.asRawAddress(), iterableInterfaceId)
+        queryInterface(iterableInterfaceId).getOrThrow().use { reference ->
+            createIterableReference(reference.getRefPointer().asRawAddress(), iterableInterfaceId)
         }
 
     protected open fun createUnknownReference(
@@ -499,12 +529,34 @@ open class WinRTMapReference(
         lookupOrNull(key.pointer.asRawAddress())
 
     open fun lookupOrNull(key: RawAddress): IUnknownReference? =
-        invokeNullableObjectMethodWithObjectArg(WinRTCollectionSlots.MapLookup, key)?.let { reference ->
-            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        invokeLookupAbiMethodWithObjectArg(WinRTCollectionSlots.MapLookup, key)?.let { pointer ->
+            createUnknownReference(pointer, IID.IUnknown)
         }
 
     open fun lookupAbiOrNull(key: RawAddress): RawAddress? =
-        invokeNullableAbiMethodWithObjectArg(WinRTCollectionSlots.MapLookup, key)
+        invokeLookupAbiMethodWithObjectArg(WinRTCollectionSlots.MapLookup, key)
+
+    internal open fun <T> lookupProjectedOrNull(
+        key: RawAddress,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        invokeLookupProjectedMethodWithObjectArg(
+            WinRTCollectionSlots.MapLookup,
+            key,
+            adapter,
+        )
+
+    internal open fun <T> lookupProjectedOrNull(
+        key: RawAddress,
+        resultOut: RawAddress,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        invokeLookupProjectedMethodWithObjectArg(
+            WinRTCollectionSlots.MapLookup,
+            key,
+            resultOut,
+            adapter,
+        )
 
     open fun size(): UInt =
         RawAbiResultSupport.uint32Result { resultOut ->

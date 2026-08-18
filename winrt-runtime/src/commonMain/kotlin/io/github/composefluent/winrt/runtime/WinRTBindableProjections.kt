@@ -621,7 +621,6 @@ private fun createBindableHost(
     interfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
 ): WinRTInspectableComObject {
     val definition = InteropRuntimeHooks.augmentInspectableDefinition(
-        value = managedValue,
         definition = WinRTCcwDefinition(
             interfaceDefinitions = interfaceDefinitions,
             defaultInterfaceId = defaultInterfaceId,
@@ -632,6 +631,7 @@ private fun createBindableHost(
         hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
         defaultInterfaceId = definition.defaultInterfaceId,
         managedValue = managedValue,
+        shapeCacheKey = definition,
     )
 }
 

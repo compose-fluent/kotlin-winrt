@@ -7,8 +7,8 @@ class WinRTCollectionReferenceVtableTest {
     @Test
     fun vector_replace_all_invokes_size_and_items_vtable_shape() {
         ReplaceAllVectorComObject.create().use { host ->
-            val first = ComObjectReference(RawComPtr(0x1010), IID.IUnknown, preventReleaseOnDispose = true)
-            val second = ComObjectReference(RawComPtr(0x2020), IID.IUnknown, preventReleaseOnDispose = true)
+            val first = fakeBorrowedReference(RawComPtr(0x1010))
+            val second = fakeBorrowedReference(RawComPtr(0x2020))
 
             host.reference.replaceAll(listOf(first, second))
 
@@ -58,3 +58,13 @@ class WinRTCollectionReferenceVtableTest {
         }
     }
 }
+
+private fun fakeBorrowedReference(pointer: RawComPtr): ComObjectReference =
+    ComObjectReference(
+        ComPtr.create(
+            raw = pointer,
+            interfaceId = IID.IUnknown,
+            ownershipMode = ComOwnershipMode.Borrowed,
+            trackContext = false,
+        ),
+    )

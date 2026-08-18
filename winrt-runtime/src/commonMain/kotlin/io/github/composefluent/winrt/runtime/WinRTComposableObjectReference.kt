@@ -10,6 +10,7 @@ class WinRTComposableObjectReference internal constructor(
     private val composed: IInspectableReference?,
     val outer: ComObjectReference,
     val isAggregatedReferenceTrackerObject: Boolean,
+    private val outerHost: WinRTInspectableComObject,
     private val cleanup: () -> Unit,
 ) : AutoCloseable {
     private val closed = AtomicInt(0)
@@ -17,6 +18,18 @@ class WinRTComposableObjectReference internal constructor(
     init {
         ActiveComposableObjectReferences.register(this)
     }
+
+    internal fun tryCreateStaticCallLease(
+        interfaceId: Guid,
+        identityVerifiedManagedValue: Any,
+    ): WinRTProjectionMarshaler? {
+        val abi = outerHost.tryAcquireReference(interfaceId, identityVerifiedManagedValue) ?: return null
+        return WinRTProjectionMarshaler.managed(abi, outerHost)
+    }
+
+    @PublishedApi
+    internal fun tryBorrowStaticCallAbi(interfaceId: Guid): RawAddress =
+        outerHost.tryBorrowCachedInterfacePointer(interfaceId)
 
     override fun close() {
         if (!closed.compareAndSet(0, 1)) {

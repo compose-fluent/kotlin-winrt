@@ -1,9 +1,80 @@
 package io.github.composefluent.winrt.runtime
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotSame
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class WinRTCollectionProjectionTest {
+    @Test
+    fun dictionary_from_abi_reuses_closed_interface_identity_and_consumes_duplicate_reference() {
+        ComWrappersSupport.clearRuntimeCache()
+        val adapter = WinRTReferenceValueAdapters.string
+        val interfaceId = mapInterfaceIdFor(adapter, adapter)
+        val abi = WinRTDictionaryProjection.fromManaged(
+            linkedMapOf("existing" to "value"),
+            adapter,
+            adapter,
+        )
+        val owner = IUnknownReference(abi.asRawComPtr(), interfaceId)
+        var projected: WinRTDictionaryProjection.FromAbiHelper<String, String>? = null
+
+        try {
+            val first = requireNotNull(
+                WinRTDictionaryProjection.fromAbi(
+                    owner.getRefPointer().asRawAddress(),
+                    adapter,
+                    adapter,
+                    interfaceId,
+                ),
+            )
+            projected = first
+            val canonicalPointer = PlatformAbi.fromRawComPtr(first.nativeObject.pointer)
+            val retainedReferenceCount = requireNotNull(
+                WinRTInspectableComObject.tryProbeReferenceCount(canonicalPointer),
+            )
+            val duplicatePointer = owner.getRefPointer().asRawAddress()
+            assertEquals(
+                retainedReferenceCount + 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(duplicatePointer),
+            )
+
+            val second = requireNotNull(
+                WinRTDictionaryProjection.fromAbi(
+                    duplicatePointer,
+                    adapter,
+                    adapter,
+                    interfaceId,
+                ),
+            )
+
+            assertSame(first, second)
+            assertEquals(
+                retainedReferenceCount,
+                WinRTInspectableComObject.tryProbeReferenceCount(canonicalPointer),
+            )
+            assertEquals("value", second["existing"])
+
+            first.close()
+            projected = null
+            val replacement = requireNotNull(
+                WinRTDictionaryProjection.fromAbi(
+                    owner.getRefPointer().asRawAddress(),
+                    adapter,
+                    adapter,
+                    interfaceId,
+                ),
+            )
+            projected = replacement
+            assertNotSame(first, replacement)
+            assertEquals("value", replacement["existing"])
+        } finally {
+            projected?.close()
+            owner.close()
+            ComWrappersSupport.clearRuntimeCache()
+        }
+    }
+
     @Test
     fun string_collection_helpers_round_trip_hstring_elements() {
         val adapter = WinRTReferenceValueAdapters.string
@@ -12,7 +83,11 @@ class WinRTCollectionProjectionTest {
         val mapAbi = WinRTDictionaryProjection.fromManaged(map, adapter, adapter)
 
         try {
-            ComObjectReference(iterableAbi.asRawComPtr(), iterableInterfaceIdFor(adapter)).use { owner ->
+            ComObjectReference(
+                iterableAbi.asRawComPtr(),
+                iterableInterfaceIdFor(adapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(
                     owner.pointer,
                     iterableInterfaceIdFor(adapter),
@@ -24,7 +99,11 @@ class WinRTCollectionProjectionTest {
                 }
             }
 
-            ComObjectReference(mapAbi.asRawComPtr(), mapInterfaceIdFor(adapter, adapter)).use { owner ->
+            ComObjectReference(
+                mapAbi.asRawComPtr(),
+                mapInterfaceIdFor(adapter, adapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(
                     owner.pointer,
                     mapInterfaceIdFor(adapter, adapter),
@@ -37,6 +116,8 @@ class WinRTCollectionProjectionTest {
                     )!!.use { projected ->
                         assertTrue(projected.containsKey("existing"))
                         assertEquals("value", projected["existing"])
+                        assertTrue(!projected.containsKey("missing"))
+                        assertEquals(null, projected["missing"])
                         projected["added"] = "new"
                         assertEquals(linkedMapOf("existing" to "value", "added" to "new"), projected.toMap())
                     }
@@ -88,12 +169,16 @@ class WinRTCollectionProjectionTest {
                     WinRTVectorViewReference(borrowed.getRefPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
                         assertEquals(2u, vectorView.size())
                         assertEquals("one", projectBorrowedForTest(vectorView.getAtOrNull(0u), adapter))
-                        val iterable = vectorView.queryInterface(iterableInterfaceIdFor(adapter)).getOrThrow()
-                        WinRTIterableReference(iterable.pointer.asRawAddress(), iterableInterfaceIdFor(adapter)).use { base ->
-                            val iterator = base.first(iteratorInterfaceIdFor(adapter))
-                            iterator.use {
-                                assertTrue(it.hasCurrent())
-                                assertEquals("one", projectBorrowedForTest(it.currentOrNull(), adapter))
+                        vectorView.queryInterface(iterableInterfaceIdFor(adapter)).getOrThrow().use { iterable ->
+                            WinRTIterableReference(
+                                iterable.getRefPointer().asRawAddress(),
+                                iterableInterfaceIdFor(adapter),
+                            ).use { base ->
+                                val iterator = base.first(iteratorInterfaceIdFor(adapter))
+                                iterator.use {
+                                    assertTrue(it.hasCurrent())
+                                    assertEquals("one", projectBorrowedForTest(it.currentOrNull(), adapter))
+                                }
                             }
                         }
                     }
@@ -114,7 +199,11 @@ class WinRTCollectionProjectionTest {
         val iterableAbi = WinRTIterableProjection.fromManaged(listOf<Any?>(null), adapter)
 
         try {
-            ComObjectReference(listAbi.asRawComPtr(), vectorViewInterfaceIdFor(adapter)).use { owner ->
+            ComObjectReference(
+                listAbi.asRawComPtr(),
+                vectorViewInterfaceIdFor(adapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(owner.pointer, vectorViewInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTVectorViewReference(borrowed.getRefPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
                         assertEquals(null, vectorView.getAtOrNull(0u))
@@ -122,7 +211,11 @@ class WinRTCollectionProjectionTest {
                     }
                 }
             }
-            ComObjectReference(iterableAbi.asRawComPtr(), iterableInterfaceIdFor(adapter)).use { owner ->
+            ComObjectReference(
+                iterableAbi.asRawComPtr(),
+                iterableInterfaceIdFor(adapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(owner.pointer, iterableInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTIterableReference(borrowed.getRefPointer().asRawAddress(), iterableInterfaceIdFor(adapter)).use { iterable ->
                         iterable.first(iteratorInterfaceIdFor(adapter)).use { iterator ->
@@ -161,19 +254,29 @@ class WinRTCollectionProjectionTest {
         val key = LabelInspectableBox.create("present").also(allocated::add).reference
 
         try {
-            ComObjectReference(readOnlyAbi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+            ComObjectReference(
+                readOnlyAbi.asRawComPtr(),
+                mapViewInterfaceIdFor(keyAdapter, valueAdapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(owner.pointer, mapViewInterfaceIdFor(keyAdapter, valueAdapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTMapViewReference(borrowed.getRefPointer().asRawAddress(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { mapView ->
                         assertTrue(mapView.hasKey(key))
                         assertEquals(null, mapView.lookupOrNull(key))
+                        assertEquals(null, mapView.lookupOrNull(LabelInspectableBox.create("missing").also(allocated::add).reference))
                     }
                 }
             }
-            ComObjectReference(mutableAbi.asRawComPtr(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+            ComObjectReference(
+                mutableAbi.asRawComPtr(),
+                mapInterfaceIdFor(keyAdapter, valueAdapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(owner.pointer, mapInterfaceIdFor(keyAdapter, valueAdapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTMapReference(borrowed.getRefPointer().asRawAddress(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { map ->
                         assertTrue(map.hasKey(key))
                         assertEquals(null, map.lookupOrNull(key))
+                        assertEquals(null, map.lookupOrNull(LabelInspectableBox.create("missing").also(allocated::add).reference))
                     }
                 }
             }
@@ -197,7 +300,11 @@ class WinRTCollectionProjectionTest {
         val mutableAbi = WinRTDictionaryProjection.fromManaged(mutableManaged, adapter, adapter)
 
         try {
-            ComObjectReference(readOnlyAbi.asRawComPtr(), mapViewInterfaceIdFor(adapter, adapter)).use { owner ->
+            ComObjectReference(
+                readOnlyAbi.asRawComPtr(),
+                mapViewInterfaceIdFor(adapter, adapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(owner.pointer, mapViewInterfaceIdFor(adapter, adapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTMapViewReference(borrowed.getRefPointer().asRawAddress(), mapViewInterfaceIdFor(adapter, adapter)).use { mapView ->
                         assertTrue(mapView.hasKey(PlatformAbi.nullPointer))
@@ -213,7 +320,11 @@ class WinRTCollectionProjectionTest {
                     }
                 }
             }
-            ComObjectReference(mutableAbi.asRawComPtr(), mapInterfaceIdFor(adapter, adapter)).use { owner ->
+            ComObjectReference(
+                mutableAbi.asRawComPtr(),
+                mapInterfaceIdFor(adapter, adapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(owner.pointer, mapInterfaceIdFor(adapter, adapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTDictionaryProjection.fromAbi(
                         borrowed.getRefPointer().asRawAddress(),
@@ -351,7 +462,11 @@ class WinRTCollectionProjectionTest {
         val abi = WinRTReadOnlyDictionaryProjection.fromManaged(managed, keyAdapter, valueAdapter)
 
         try {
-            ComObjectReference(abi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+            ComObjectReference(
+                abi.asRawComPtr(),
+                mapViewInterfaceIdFor(keyAdapter, valueAdapter),
+                preventReleaseOnDispose = true,
+            ).use { owner ->
                 ComObjectReference(
                     owner.pointer,
                     mapViewInterfaceIdFor(keyAdapter, valueAdapter),

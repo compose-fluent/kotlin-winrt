@@ -2051,12 +2051,12 @@ class KotlinWinRTPluginTest {
         Files.writeString(
             registrar,
             """
-            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid
-            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata	
-            windows.foundation.IStringable	Windows.Foundation.IStringable	Interface			
-            windows.applicationmodel.AppExecutionContext	Windows.ApplicationModel.AppExecutionContext	Enum	System.Enum		
-            windows.system.DisplayRequest	Windows.System.DisplayRequest	RuntimeClass	System.Object	windows.system.DisplayRequest.Metadata	
-            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata	
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid	guidSignature
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata		rc(Windows.Foundation.Uri;{11111111-2222-3333-4444-555555555555})
+            windows.foundation.IStringable	Windows.Foundation.IStringable	Interface				{11111111-2222-3333-4444-555555555555}
+            windows.applicationmodel.AppExecutionContext	Windows.ApplicationModel.AppExecutionContext	Enum	System.Enum			enum(Windows.ApplicationModel.AppExecutionContext;i4)
+            windows.system.DisplayRequest	Windows.System.DisplayRequest	RuntimeClass	System.Object	windows.system.DisplayRequest.Metadata		rc(Windows.System.DisplayRequest;{22222222-3333-4444-5555-666666666666})
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata		rc(Windows.Foundation.Uri;{11111111-2222-3333-4444-555555555555})
             """.trimIndent(),
         )
         Files.writeString(
@@ -10509,8 +10509,8 @@ class KotlinWinRTPluginTest {
         Files.writeString(
             registrar,
             """
-            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid
-            sample.IWidget	Sample.IWidget	Interface			33333333-4444-5555-6666-777777777777
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName	interfaceIid	guidSignature
+            sample.IWidget	Sample.IWidget	Interface			33333333-4444-5555-6666-777777777777	{33333333-4444-5555-6666-777777777777}
             """.trimIndent() + "\n",
         )
         val candidate = KotlinWinRTAuthoredTypeCandidate(

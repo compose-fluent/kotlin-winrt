@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
+@PublishedApi
 internal object IUnknownVftblSlots {
     const val QueryInterface = 0
     const val AddRef = 1

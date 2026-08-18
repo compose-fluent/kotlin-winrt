@@ -237,15 +237,24 @@ private val projectionRegistrarHeader = listOf(
     "baseTypeName",
     "metadataClassName",
     "interfaceIid",
+    "guidSignature",
 )
 
-private val legacyProjectionRegistrarHeader = projectionRegistrarHeader.dropLast(1)
+private val interfaceIidProjectionRegistrarHeader = projectionRegistrarHeader.dropLast(1)
+
+private val legacyProjectionRegistrarHeader = interfaceIidProjectionRegistrarHeader.dropLast(1)
+
+private val supportedProjectionRegistrarHeaders = setOf(
+    projectionRegistrarHeader,
+    interfaceIidProjectionRegistrarHeader,
+    legacyProjectionRegistrarHeader,
+)
 
 private fun readProjectionRegistrarProjectedTypeNames(file: File): List<String> {
     val lines = file.readLines()
     val header = lines.firstOrNull()?.split('\t')
         ?: throw GradleException("Projection registrar '${file.absolutePath}' is missing a header.")
-    if (header != projectionRegistrarHeader && header != legacyProjectionRegistrarHeader) {
+    if (header !in supportedProjectionRegistrarHeaders) {
         throw GradleException(
             "Projection registrar '${file.absolutePath}' has malformed header '${lines.first()}'.",
         )
@@ -286,7 +295,7 @@ private fun readProjectionRegistrarInterfaceIids(file: File): Map<String, Guid> 
     val lines = file.readLines()
     val header = lines.firstOrNull()?.split('\t')
         ?: throw GradleException("Projection registrar '${file.absolutePath}' is missing a header.")
-    if (header != projectionRegistrarHeader && header != legacyProjectionRegistrarHeader) {
+    if (header !in supportedProjectionRegistrarHeaders) {
         throw GradleException(
             "Projection registrar '${file.absolutePath}' has malformed header '${lines.first()}'.",
         )

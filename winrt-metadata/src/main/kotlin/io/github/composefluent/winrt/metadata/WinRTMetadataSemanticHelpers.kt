@@ -124,6 +124,25 @@ data class WinRTSemanticValueDescriptor(
     val mappedType: WinRTMappedTypeDescriptor?,
 )
 
+enum class WinRTDirectInboundShapeKind {
+    Unit,
+    Value,
+    Enum,
+    Projection,
+}
+
+/**
+ * WinMD semantics that are sufficient for a compiler-generated direct CCW entry point.
+ * ABI storage, codecs, ownership operations, and platform call mechanics remain downstream
+ * generator and compiler-plugin responsibilities.
+ */
+data class WinRTDirectInboundShapeDescriptor(
+    val kind: WinRTDirectInboundShapeKind,
+    val type: WinRTTypeRef,
+    val abiTypeName: String,
+    val definitionType: WinRTTypeDefinition? = null,
+)
+
 data class WinRTGenericTypeInstantiationDescriptor(
     val type: WinRTTypeRef,
     val definitionType: WinRTTypeDefinition?,
@@ -551,6 +570,58 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
 
     fun getMappedType(type: WinRTTypeRef, currentNamespace: String): WinRTMappedTypeDescriptor? =
         typeClassifier.classify(type, currentNamespace).mappedType
+
+    fun directInboundShapeDescriptor(
+        type: WinRTTypeRef,
+        currentNamespace: String,
+        allowUnit: Boolean = false,
+    ): WinRTDirectInboundShapeDescriptor? {
+        val normalized = type.normalized()
+        if (normalized.isByRef ||
+            normalized.kind != WinRTTypeRefKind.Named ||
+            normalized.typeArguments.isNotEmpty()
+        ) {
+            return null
+        }
+        val classification = typeClassifier.classify(normalized, currentNamespace)
+        if (classification.mappedType != null || classification.specialType != null) return null
+        val definition = classification.definitionType
+        val kind = when (classification.projectionCategory) {
+            WinRTProjectionCategory.Unit ->
+                WinRTDirectInboundShapeKind.Unit.takeIf { allowUnit }
+            WinRTProjectionCategory.Fundamental ->
+                WinRTDirectInboundShapeKind.Value.takeIf {
+                    winRTFundamentalTypeForName(classification.typeName) != WinRTFundamentalType.String
+                }
+            WinRTProjectionCategory.Enum ->
+                WinRTDirectInboundShapeKind.Enum.takeIf {
+                    definition?.let { typeDefinition ->
+                        typeDefinition.kind == WinRTTypeKind.Enum &&
+                            typeDefinition.enumUnderlyingType != null &&
+                            typeDefinition.genericParameterCount == 0
+                    } == true
+                }
+            WinRTProjectionCategory.Interface,
+            WinRTProjectionCategory.RuntimeClass ->
+                WinRTDirectInboundShapeKind.Projection.takeIf {
+                    definition?.let { typeDefinition ->
+                        typeDefinition.kind in setOf(WinRTTypeKind.Interface, WinRTTypeKind.RuntimeClass) &&
+                            typeDefinition.genericParameterCount == 0
+                    } == true && !classification.isProjectionInternal
+                }
+            else -> null
+        } ?: return null
+        val abiTypeName = classification.definitionQualifiedName
+            ?: classification.type.qualifiedName
+            ?: normalized.qualifiedName
+            ?: return null
+        return WinRTDirectInboundShapeDescriptor(
+            kind = kind,
+            type = classification.type,
+            abiTypeName = abiTypeName,
+            definitionType = definition,
+        )
+    }
 
     fun getAttribute(type: WinRTTypeDefinition, attributeTypeName: String): WinRTCustomAttributeDefinition? =
         type.customAttributes.firstOrNull { it.typeName == attributeTypeName }
@@ -2041,7 +2112,10 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     private fun fastAbiInterfaceSlots(closure: WinRTRuntimeClassClosureDescriptor): List<WinRTFastAbiInterfaceSlot> {
         var vtableStartIndex = 6
         return closure.fastAbiInterfaces.mapIndexed { index, interfaceDescriptor ->
-            val methodCount = interfaceDescriptor.definitionType?.methods?.size ?: 0
+            // MethodDef rows include property/event accessors in WinMD. The normalized model also
+            // exposes those accessors through properties/events and may omit them from `methods`,
+            // so count the merged ABI method order rather than only ordinary methods.
+            val methodCount = interfaceDescriptor.definitionType?.let(::methodOrderByName)?.size ?: 0
             val slot = WinRTFastAbiInterfaceSlot(
                 interfaceName = interfaceDescriptor.interfaceName,
                 interfaceType = interfaceDescriptor.interfaceType,

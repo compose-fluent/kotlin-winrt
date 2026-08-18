@@ -18,7 +18,12 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$WindowsSdkVersion,
 
-    [string]$Filter = ""
+    [Parameter(Mandatory = $true)]
+    [string]$BenchmarkComponentRoot,
+
+    [string]$Filter = "",
+
+    [switch]$ListScenarios
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,17 +48,17 @@ $windowsSdkRootCandidates = @(
 
 $windowsSdkMatches = @(
     $windowsSdkRootCandidates | Where-Object {
-        Test-Path -LiteralPath (Join-Path $_ "Include\$WindowsSdkVersion\cppwinrt\winrt\Windows.Data.Json.h") -PathType Leaf
+        Test-Path -LiteralPath (Join-Path $_ "Include\$WindowsSdkVersion\um\windows.h") -PathType Leaf
     }
 )
 if ($windowsSdkMatches.Count -eq 0) {
-    throw "Windows SDK $WindowsSdkVersion with C++/WinRT headers is not installed. Set KOTLIN_WINRT_WINDOWS_SDK_ROOT for a custom SDK location."
+    throw "Windows SDK $WindowsSdkVersion is not installed. Set KOTLIN_WINRT_WINDOWS_SDK_ROOT for a custom SDK location."
 }
 
 $windowsSdkRoot = $windowsSdkMatches[0]
-$cppWinRTHeader = Join-Path $windowsSdkRoot "Include\$WindowsSdkVersion\cppwinrt\winrt\Windows.Data.Json.h"
-if (-not (Test-Path -LiteralPath $cppWinRTHeader -PathType Leaf)) {
-    throw "Windows SDK $WindowsSdkVersion with C++/WinRT headers is not installed. Install that Windows SDK before running benchmarkCppWinRT."
+$windowsHeader = Join-Path $windowsSdkRoot "Include\$WindowsSdkVersion\um\windows.h"
+if (-not (Test-Path -LiteralPath $windowsHeader -PathType Leaf)) {
+    throw "Windows SDK $WindowsSdkVersion is not installed. Install that Windows SDK before running benchmarkCppWinRT."
 }
 
 $vswhereCandidates = @(@(
@@ -102,7 +107,8 @@ $platformToolset = $platformToolsets[0].Name
     /p:Configuration=Release `
     /p:Platform=x64 `
     "/p:PlatformToolset=$platformToolset" `
-    "/p:WindowsTargetPlatformVersion=$WindowsSdkVersion"
+    "/p:WindowsTargetPlatformVersion=$WindowsSdkVersion" `
+    "/p:BenchmarkComponentRoot=$BenchmarkComponentRoot"
 if ($LASTEXITCODE -ne 0) {
     throw "C++/WinRT benchmark build failed with exit code $LASTEXITCODE."
 }
@@ -113,12 +119,22 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "C++/WinRT benchmark executable was not produced at '$executable'."
 }
 
-$runnerArguments = @(
-    "--warmup-rounds", $WarmupRounds,
-    "--measurement-rounds", $MeasurementRounds,
-    "--iterations", $Iterations,
-    "--output", $OutputPath
-)
+$benchmarkComponentDll = Join-Path $BenchmarkComponentRoot "BenchmarkComponent.dll"
+if (-not (Test-Path -LiteralPath $benchmarkComponentDll -PathType Leaf)) {
+    throw "BenchmarkComponent.dll was not produced at '$benchmarkComponentDll'."
+}
+Copy-Item -LiteralPath $benchmarkComponentDll -Destination (Join-Path (Split-Path -Parent $executable) "BenchmarkComponent.dll") -Force
+
+$runnerArguments = if ($ListScenarios) {
+    @("--list-scenarios", "--output", $OutputPath)
+} else {
+    @(
+        "--warmup-rounds", $WarmupRounds,
+        "--measurement-rounds", $MeasurementRounds,
+        "--iterations", $Iterations,
+        "--output", $OutputPath
+    )
+}
 if (-not [string]::IsNullOrWhiteSpace($Filter)) {
     $runnerArguments += @("--filter", $Filter)
 }

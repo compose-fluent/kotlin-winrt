@@ -13,6 +13,11 @@ internal object ComAbiInteropBridge {
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle = ComVtableInvoker.createComMethodCallback(signature, callback)
 
+    fun createRawWordComMethodCallback(
+        signature: ComMethodSignature,
+        callback: ComRawWordCallback,
+    ): NativeCallbackHandle = ComVtableInvoker.createRawWordComMethodCallback(signature, callback)
+
     fun createRawInt32Callback(
         parameterKinds: List<ComAbiValueKind>,
         callback: (List<Any?>) -> Int,

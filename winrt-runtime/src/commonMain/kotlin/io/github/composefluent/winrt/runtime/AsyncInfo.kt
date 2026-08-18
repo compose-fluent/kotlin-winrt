@@ -292,7 +292,6 @@ object AsyncInfo {
         runtimeClassName: String,
     ): WinRTInspectableComObject {
         val definition = InteropRuntimeHooks.augmentInspectableDefinition(
-            value = adapter,
             definition = WinRTCcwDefinition(
                 interfaceDefinitions = interfaceDefinitions,
                 defaultInterfaceId = defaultInterfaceId,
@@ -305,6 +304,7 @@ object AsyncInfo {
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = definition.runtimeClassName,
             managedValue = adapter,
+            shapeCacheKey = definition,
         )
     }
 }

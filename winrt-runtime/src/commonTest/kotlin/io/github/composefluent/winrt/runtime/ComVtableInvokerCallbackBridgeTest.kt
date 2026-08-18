@@ -44,6 +44,36 @@ class ComVtableInvokerCallbackBridgeTest {
     }
 
     @Test
+    fun raw_word_callback_bridge_preserves_pointer_carrier() {
+        PlatformAbi.confinedScope().use { scope ->
+            val argument = PlatformAbi.allocateInt32Slot(scope)
+            var captured = 0L
+            ComAbiInteropBridge.createRawWordComMethodCallback(
+                signature = ComMethodSignature(),
+                callback = ComRawWordCallback { pointerWord, _, _, _, _, _, _ ->
+                    captured = pointerWord
+                    KnownHResults.S_FALSE.value
+                },
+            ).use { handle ->
+                assertEquals(KnownHResults.S_FALSE.value, invokeInt32PointerCallback(handle, argument))
+            }
+            assertEquals(PlatformAbi.pointerKey(argument), captured)
+        }
+    }
+
+    @Test
+    fun raw_word_callback_bridge_maps_failure_to_hresult() {
+        ComAbiInteropBridge.createRawWordComMethodCallback(
+            signature = ComMethodSignature(),
+            callback = ComRawWordCallback { _, _, _, _, _, _, _ ->
+                throw WinRTAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)
+            },
+        ).use { handle ->
+            assertEquals(KnownHResults.E_ACCESSDENIED.value, invokeInt32PointerCallback(handle))
+        }
+    }
+
+    @Test
     fun raw_callback_handle_close_is_idempotent() {
         val handle = ComAbiInteropBridge.createRawInt32Callback(
             parameterKinds = listOf(ComAbiValueKind.Pointer),

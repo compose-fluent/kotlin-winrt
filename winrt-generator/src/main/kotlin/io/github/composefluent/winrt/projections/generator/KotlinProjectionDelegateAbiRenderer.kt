@@ -324,6 +324,8 @@ internal fun KotlinProjectionRenderer.delegateInvokeValueKindCode(typeBinding: K
 internal fun KotlinProjectionRenderer.delegateInvokeBodyCode(
     invokeShape: KotlinProjectionDelegateInvokeShape,
 ): CodeBlock {
+    directDelegateInvokeBodyCode(invokeShape)?.let { return it }
+
     val collectionMarshalerBindings = invokeShape.parameterBindings.mapIndexedNotNull { index, parameterBinding ->
         delegateInvokeCollectionMarshalerCode(index, parameterBinding)
     }
@@ -364,6 +366,75 @@ internal fun KotlinProjectionRenderer.delegateInvokeBodyCode(
         .unindent()
         .add("}\n")
         .build()
+}
+
+private fun KotlinProjectionRenderer.directDelegateInvokeBodyCode(
+    invokeShape: KotlinProjectionDelegateInvokeShape,
+): CodeBlock? =
+    buildAbiCallPlan(
+        returnBinding = invokeShape.returnBinding,
+        parameterBindings = invokeShape.parameterBindings,
+    )?.let { callPlan ->
+        renderInlineAbiInvocation(
+            invokeTargetExpression = "__native",
+            slotExpression = CodeBlock.of("%T.Invoke", WINRT_DELEGATE_VFTBL_SLOTS_CLASS_NAME),
+            callPlan = callPlan,
+        )
+    }
+
+internal fun KotlinProjectionRenderer.staticDelegateFromBorrowedAbiCode(
+    binding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
+): CodeBlock? {
+    val invokeShape = outboundDelegateInvokeShape(binding) ?: return null
+    val invokeBody = directDelegateInvokeBodyCode(invokeShape) ?: return null
+    val interfaceId = delegateInterfaceIdCode(binding, invokeShape) ?: return null
+    val projectedType = runCatching { resolveTypeName(binding.typeName).copy(nullable = false) }.getOrNull()
+        ?: return null
+    val parameters = invokeShape.parameterBindings.joinToString(", ") { parameter ->
+        "${parameter.name.escapeAsKotlinIdentifierIfNeeded()}: ${resolveTypeName(parameter.typeBinding.typeName)}"
+    }
+    val returnType = resolveTypeName(invokeShape.returnBinding.typeName)
+    return CodeBlock.of(
+        """
+        run {
+            val __delegatePointer = %L
+            if (%T.isNull(__delegatePointer)) {
+                null
+            } else {
+                val __delegateInterfaceId = %L
+                val __native = %T(
+                    pointer = %T(
+                        pointer = %T.toRawComPtr(__delegatePointer),
+                        interfaceId = __delegateInterfaceId,
+                        preventReleaseOnDispose = true,
+                    ).use { __borrowed -> __borrowed.getRefPointer() },
+                    interfaceId = __delegateInterfaceId,
+                )
+                object : %T, %T {
+                    override val nativeObject: %T
+                        get() = __native
+
+                    override fun invoke(%L): %T {
+                        %L
+                    }
+                }
+            }
+        }
+        """.trimIndent(),
+        pointerExpression,
+        PLATFORM_ABI_CLASS_NAME,
+        interfaceId,
+        IUNKNOWN_REFERENCE_CLASS_NAME,
+        IUNKNOWN_REFERENCE_CLASS_NAME,
+        PLATFORM_ABI_CLASS_NAME,
+        projectedType,
+        IWINRT_OBJECT_CLASS_NAME,
+        COM_OBJECT_REFERENCE_CLASS_NAME,
+        parameters,
+        returnType,
+        invokeBody,
+    )
 }
 
 private data class DelegateCollectionMarshalerBinding(

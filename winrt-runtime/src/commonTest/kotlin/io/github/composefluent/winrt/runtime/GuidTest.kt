@@ -62,4 +62,15 @@ class GuidTest {
             guid.toLittleEndianBytes(),
         )
     }
+
+    @Test
+    fun network_bytes_construct_the_canonical_guid_without_string_round_trip() {
+        val guid = Guid("00112233-4455-6677-8899-AABBCCDDEEFF")
+
+        val fromNetworkBytes = Guid.fromNetworkBytes(guid.toNetworkBytes())
+
+        assertEquals(guid, fromNetworkBytes)
+        assertEquals(guid.hashCode(), fromNetworkBytes.hashCode())
+        assertEquals("00112233-4455-6677-8899-AABBCCDDEEFF", fromNetworkBytes.value)
+    }
 }

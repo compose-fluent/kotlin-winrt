@@ -156,27 +156,18 @@ internal object EventSourceShutdownRegistry {
         objectReference: ComObjectReference,
     ) : AutoCloseable {
         private val managedReference = PlatformManagedWeakReference(objectReference)
+        private val objectPointerKey = PlatformAbi.pointerKey(objectReference.pointer)
         private val interfaceId = objectReference.interfaceId
-        private val nativeWeakReference =
-            runCatching {
-                objectReference.tryGetWeakReference()
-            }.getOrNull()
 
         fun withResolvedReference(action: (ComObjectReference) -> Unit) {
+            EventSourceCache.resolveTarget(objectPointerKey, interfaceId)?.use(action)?.let { return }
             managedReference.get()?.takeUnless { it.isDisposed }?.let { resolved ->
                 action(resolved)
                 return
             }
-            val resolved =
-                runCatching {
-                    nativeWeakReference?.resolve(interfaceId)
-                }.getOrNull() ?: return
-            resolved.use(action)
         }
 
-        override fun close() {
-            nativeWeakReference?.close()
-        }
+        override fun close() = Unit
     }
 
     private interface Removal {

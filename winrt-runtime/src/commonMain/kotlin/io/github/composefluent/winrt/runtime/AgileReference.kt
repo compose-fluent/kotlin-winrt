@@ -11,9 +11,13 @@ private object GlobalInterfaceTableVftbl {
 }
 
 internal class AgileReferenceInterfaceReference(
-    pointer: RawAddress,
-    interfaceId: Guid = IID.IAgileReference,
-) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
+    comPtr: ComPtr,
+) : IUnknownReference(comPtr) {
+    constructor(
+        pointer: RawAddress,
+        interfaceId: Guid = IID.IAgileReference,
+    ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId, trackContext = false))
+
     fun resolve(interfaceId: Guid): IUnknownReference? =
         PlatformAbi.confinedScope().use { scope ->
             val iidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
@@ -33,9 +37,13 @@ internal class AgileReferenceInterfaceReference(
 }
 
 internal class GlobalInterfaceTableReference(
-    pointer: RawAddress,
-    interfaceId: Guid = IID.IGlobalInterfaceTable,
-) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
+    comPtr: ComPtr,
+) : IUnknownReference(comPtr) {
+    constructor(
+        pointer: RawAddress,
+        interfaceId: Guid = IID.IGlobalInterfaceTable,
+    ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId, trackContext = false))
+
     fun registerInterfaceInGlobal(
         interfacePointer: RawAddress,
         interfaceId: Guid,
@@ -92,25 +100,28 @@ internal class GlobalInterfaceTableReference(
         }
 }
 
-class AgileReference(
-    instance: ComObjectReference?,
+class AgileReference internal constructor(
+    pointer: RawAddress,
 ) : AutoCloseable {
     private val agileReference: AgileReferenceInterfaceReference?
     private val cookie: RawAddress
 
+    constructor(instance: ComObjectReference?) :
+        this(instance?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer)
+
     init {
-        if (instance == null || PlatformAbi.isNull(instance.pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             agileReference = null
             cookie = PlatformAbi.nullPointer
         } else {
-            val result = WinRTPlatformApi.roGetAgileReferenceRaw(instance.pointer.asRawAddress(), IID.IUnknown)
+            val result = WinRTPlatformApi.roGetAgileReferenceRaw(pointer, IID.IUnknown)
             val hResult = HResult(result.hResultValue)
             if (result.isSuccess) {
                 agileReference = AgileReferenceInterfaceReference(result.pointer, IID.IAgileReference)
                 cookie = PlatformAbi.nullPointer
             } else if (hResult == KnownHResults.E_NOTIMPL) {
                 agileReference = null
-                cookie = git().registerInterfaceInGlobal(instance.pointer.asRawAddress(), IID.IUnknown)
+                cookie = git().registerInterfaceInGlobal(pointer, IID.IUnknown)
             } else {
                 throwHResultFailure(hResult, "RoGetAgileReference")
             }
@@ -125,10 +136,13 @@ class AgileReference(
         }
 
     internal fun getReference(typeHandle: WinRTTypeHandle): IUnknownReference? =
+        getReference(typeHandle.interfaceId)
+
+    internal fun getReference(interfaceId: Guid): IUnknownReference? =
         if (PlatformAbi.isNull(cookie)) {
-            agileReference?.resolve(typeHandle.interfaceId)
+            agileReference?.resolve(interfaceId)
         } else {
-            git().getInterfaceFromGlobal(cookie, typeHandle.interfaceId)
+            git().getInterfaceFromGlobal(cookie, interfaceId)
         }
 
     override fun close() {

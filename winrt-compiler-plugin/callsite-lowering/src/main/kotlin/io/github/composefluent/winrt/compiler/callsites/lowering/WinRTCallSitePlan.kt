@@ -37,6 +37,7 @@ internal enum class WinRTProjectionCallSiteReferenceAccess {
     RAW_COM_PTR,
     UNKNOWN_REFERENCE,
     INSPECTABLE_REFERENCE,
+    MANAGED_INSPECTABLE,
     PROJECTED_INTERFACE,
     PROJECTED_OBJECT,
 }
@@ -70,6 +71,8 @@ internal data class WinRTProjectionCallSiteCallables(
     val carrierProperty: String = "",
     val extraCarrierProperties: List<String> = emptyList(),
     val closeMarshaler: String = "close",
+    /** The exact fromAbi signature accepts an owning COM-reference wrapper, not a borrowed address. */
+    val fromAbiConsumesOwnedReference: Boolean = false,
     /** Exact generated IR entry point when overload resolution cannot be represented by name/arity. */
     val fromAbiSymbol: IrSimpleFunctionSymbol? = null,
 ) {
@@ -277,6 +280,10 @@ internal data class WinRTProjectionCallSiteDescriptor(
 internal val WinRTProjectionCallSiteRecipe.storageRecipe: WinRTProjectionCallSiteRecipe
     get() = if (kind == WinRTProjectionCallSiteRecipeKind.PROJECTION) children.single().storageRecipe else this
 
+internal val WinRTProjectionCallSiteRecipe.inboundDecodeConsumesOwnedComReference: Boolean
+    get() = kind == WinRTProjectionCallSiteRecipeKind.PROJECTION &&
+        callables?.fromAbiConsumesOwnedReference == true
+
 internal val WinRTProjectionCallSiteRecipe.requiresNativeOwnership: Boolean
     get() = when (kind) {
         WinRTProjectionCallSiteRecipeKind.HSTRING,
@@ -309,6 +316,8 @@ private fun WinRTProjectionCallSiteRecipe.structuralProjectedKotlinTypeName(): S
                 "io.github.composefluent.winrt.runtime.IUnknownReference"
             WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE ->
                 "io.github.composefluent.winrt.runtime.InspectableReference"
+            WinRTProjectionCallSiteReferenceAccess.MANAGED_INSPECTABLE ->
+                typeSignature.compoundProjectedType()
             WinRTProjectionCallSiteReferenceAccess.PROJECTED_INTERFACE,
             WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT -> typeSignature.compoundProjectedType()
             null -> error("A COM reference requires a typed access strategy.")
@@ -423,6 +432,7 @@ private val INPUT_REFERENCE_ACCESS = setOf(
     WinRTProjectionCallSiteReferenceAccess.RAW_COM_PTR,
     WinRTProjectionCallSiteReferenceAccess.UNKNOWN_REFERENCE,
     WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE,
+    WinRTProjectionCallSiteReferenceAccess.MANAGED_INSPECTABLE,
     WinRTProjectionCallSiteReferenceAccess.PROJECTED_INTERFACE,
     WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
 )

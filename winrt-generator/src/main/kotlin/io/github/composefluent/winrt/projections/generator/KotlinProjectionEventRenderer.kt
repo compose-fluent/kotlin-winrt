@@ -597,7 +597,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
             .addFunction(
                 FunSpec.builder("activate")
                     .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
-                    .addStatement("return _activationFactory.activateInstance()")
+                    .addStatement("return _activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID)")
                     .build(),
             )
             .build()
@@ -1009,9 +1009,24 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .build(),
         )
         if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceWrapper(plan)) {
+            val typeHandleInitializer = if (plan.type.qualifiedName in projectedInterfaceCcwInputTypeNames) {
+                CodeBlock.of(
+                    "%T(%S, IID).also { %T.%L() }",
+                    WINRT_TYPE_HANDLE_CLASS_NAME,
+                    projectedClassName.canonicalName,
+                    winRTProjectedInterfaceCcwFactoriesClassName(supportOwnerIdentity),
+                    projectedInterfaceCcwRegisterFunctionName(plan.type.qualifiedName),
+                )
+            } else {
+                CodeBlock.of(
+                    "%T(%S, IID)",
+                    WINRT_TYPE_HANDLE_CLASS_NAME,
+                    projectedClassName.canonicalName,
+                )
+            }
             builder.addProperty(
                 PropertySpec.builder("TYPE_HANDLE", WINRT_TYPE_HANDLE_CLASS_NAME)
-                    .initializer("%T(%S, IID)", WINRT_TYPE_HANDLE_CLASS_NAME, projectedClassName.canonicalName)
+                    .initializer(typeHandleInitializer)
                     .build(),
             )
         }
@@ -1053,6 +1068,18 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addCode(
                     CodeBlock.of("return acquireInterface(instance, DEFAULT_INTERFACE_IID)\n"),
                 )
+                .build(),
+        )
+    }
+    if (plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
+        KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
+        KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds &&
+        plan.type.genericParameterCount == 0 &&
+        plan.defaultInterfaceIid != null
+    ) {
+        builder.addProperty(
+            PropertySpec.builder("TYPE_HANDLE", WINRT_TYPE_HANDLE_CLASS_NAME)
+                .initializer("%T(TYPE_NAME, DEFAULT_INTERFACE_IID)", WINRT_TYPE_HANDLE_CLASS_NAME)
                 .build(),
         )
     }
@@ -1105,13 +1132,15 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                     plan.defaultInterfaceName
                         ?.takeUnless { defaultInterfaceName -> defaultInterfaceName.contains('<') }
                         ?.let { defaultInterfaceName ->
-                        addCode(
-                            "%T.registerDefaultInterfaceType(%T::class, %T::class)\n",
-                            PROJECTIONS_CLASS_NAME,
-                            projectedClassName,
-                            resolveTypeName(defaultInterfaceName),
-                        )
-                    }
+                            plan.defaultInterfaceIid?.let {
+                                addCode(
+                                    "%T.registerDefaultInterfaceType(%T::class, %T::class, DEFAULT_INTERFACE_IID)\n",
+                                    PROJECTIONS_CLASS_NAME,
+                                    projectedClassName,
+                                    resolveTypeName(defaultInterfaceName),
+                                )
+                            }
+                        }
                 }
                 .build(),
         )
@@ -1293,7 +1322,7 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
             },
         )
     }
-    plan.guidSignatureDescriptor?.let { descriptor ->
+    plan.guidSignatureDescriptor?.takeIf { it.guidText != null }?.let { descriptor ->
         builder.addProperty(
             PropertySpec.builder("GUID_SIGNATURE_FRAGMENT", String::class)
                 .addModifiers(KModifier.INTERNAL, KModifier.CONST)
@@ -1389,6 +1418,15 @@ internal fun eventSourceCreateFunctionName(eventType: String, ownerType: String)
     val digest = MessageDigest.getInstance("SHA-256")
         .digest("$eventType\t$ownerType".toByteArray(StandardCharsets.UTF_8))
     return "createEventSource_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
+}
+
+internal fun sharedEventHandlerInboundCallSiteFunctionName(
+    eventType: String,
+    supportOwnerIdentity: String? = null,
+): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest("${supportOwnerIdentity.orEmpty()}\t$eventType".toByteArray(StandardCharsets.UTF_8))
+    return "invokeEvent_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
 }
 
 internal fun eventSourceOwnerHelperName(

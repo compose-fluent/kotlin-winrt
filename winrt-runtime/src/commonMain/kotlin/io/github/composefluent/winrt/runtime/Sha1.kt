@@ -5,13 +5,20 @@ internal object Sha1 {
     private const val DIGEST_SIZE = 20
 
     fun digest(input: ByteArray): ByteArray {
+        return digest(ByteArray(0), input)
+    }
+
+    fun digest(
+        prefix: ByteArray,
+        input: ByteArray,
+    ): ByteArray {
         var h0 = 0x67452301
         var h1 = 0xEFCDAB89.toInt()
         var h2 = 0x98BADCFE.toInt()
         var h3 = 0x10325476
         var h4 = 0xC3D2E1F0.toInt()
 
-        val padded = pad(input)
+        val padded = pad(prefix, input)
         val words = IntArray(80)
 
         var blockOffset = 0
@@ -36,13 +43,29 @@ internal object Sha1 {
             var e = h4
 
             for (index in 0 until 80) {
-                val (f, k) =
-                    when (index) {
-                        in 0..19 -> ((b and c) or (b.inv() and d)) to 0x5A827999
-                        in 20..39 -> (b xor c xor d) to 0x6ED9EBA1
-                        in 40..59 -> ((b and c) or (b and d) or (c and d)) to 0x8F1BBCDC.toInt()
-                        else -> (b xor c xor d) to 0xCA62C1D6.toInt()
+                val f: Int
+                val k: Int
+                when (index) {
+                    in 0..19 -> {
+                        f = (b and c) or (b.inv() and d)
+                        k = 0x5A827999
                     }
+
+                    in 20..39 -> {
+                        f = b xor c xor d
+                        k = 0x6ED9EBA1
+                    }
+
+                    in 40..59 -> {
+                        f = (b and c) or (b and d) or (c and d)
+                        k = 0x8F1BBCDC.toInt()
+                    }
+
+                    else -> {
+                        f = b xor c xor d
+                        k = 0xCA62C1D6.toInt()
+                    }
+                }
 
                 val temp = rotateLeft(a, 5) + f + e + k + words[index]
                 e = d
@@ -69,16 +92,21 @@ internal object Sha1 {
         }
     }
 
-    private fun pad(input: ByteArray): ByteArray {
-        val bitLength = input.size.toLong() * 8L
-        var paddedSize = input.size + 1 + 8
+    private fun pad(
+        prefix: ByteArray,
+        input: ByteArray,
+    ): ByteArray {
+        val inputSize = prefix.size + input.size
+        val bitLength = inputSize.toLong() * 8L
+        var paddedSize = inputSize + 1 + 8
         while (paddedSize % BLOCK_SIZE != 0) {
             paddedSize += 1
         }
 
         return ByteArray(paddedSize).also { padded ->
-            input.copyInto(padded)
-            padded[input.size] = 0x80.toByte()
+            prefix.copyInto(padded)
+            input.copyInto(padded, destinationOffset = prefix.size)
+            padded[inputSize] = 0x80.toByte()
             for (index in 0 until 8) {
                 padded[padded.lastIndex - index] = (bitLength ushr (index * 8)).toByte()
             }

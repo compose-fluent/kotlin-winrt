@@ -1,6 +1,23 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import windows.foundation.EventRegistrationToken
+
+/**
+ * Immutable handler state published at registration/removal time.
+ *
+ * The one-handler representation is deliberately separate from the ordered list used for
+ * multicast dispatch. Generated and runtime-owned event invokes can therefore call the common
+ * single-handler path without constructing an iterator on every callback.
+ */
+@PublishedApi
+internal class EventSourceHandlerSnapshot<T : Any>(
+    @PublishedApi
+    internal val singleHandler: T? = null,
+    @PublishedApi
+    internal val manyHandlers: List<T>? = null,
+)
 
 /**
  * Kotlin event-state owner corresponding to `.cswinrt/src/WinRT.Runtime/Interop/EventSourceState{TDelegate}.cs`.
@@ -9,6 +26,7 @@ import windows.foundation.EventRegistrationToken
  * `MulticastDelegate` abstraction, so this owner keeps an ordered immutable handler list
  * and lets subclasses expose an event-invoke delegate that iterates over snapshots.
  */
+@OptIn(ExperimentalAtomicApi::class)
 abstract class EventSourceState<T : Any> protected constructor(
     thisPtr: RawAddress,
     private val index: Int,
@@ -18,7 +36,8 @@ abstract class EventSourceState<T : Any> protected constructor(
     private val cacheEntry = WeakReference<Any>(this)
     private val cacheCleanupRegistration = finalizationHook.register(this, CacheCleanup(objectPointerKey, index, cacheEntry)::run)
     private var disposed = false
-    private var handlers: List<T> = emptyList()
+    @PublishedApi
+    internal val handlerSnapshot = AtomicReference(EventSourceHandlerSnapshot<T>())
     private var eventInvokePointer: RawAddress = PlatformAbi.nullPointer
     private var managedReferenceCount = 1u
     private var shutdownRegistration: AutoCloseable? = null
@@ -29,40 +48,94 @@ abstract class EventSourceState<T : Any> protected constructor(
 
     protected abstract fun createEventInvoke(): T
 
-    protected fun snapshotHandlers(): List<T> =
-        lock.withLock {
-            handlers
+    /**
+     * Compatibility view for older hand-written subclasses. New generated/runtime-owned event
+     * invokes use [forEachHandler] so the common one-handler branch remains iterator-free.
+     */
+    protected fun snapshotHandlers(): List<T> {
+        val snapshot = handlerSnapshot.load()
+        snapshot.manyHandlers?.let { return it }
+        snapshot.singleHandler?.let { return listOf(it) }
+        return emptyList()
+    }
+
+    /**
+     * Traverses one immutable event snapshot. The inline body is intentionally shared by
+     * generated intrinsic and runtime-owned call sites so their hot dispatch shape stays equal.
+     */
+    protected inline fun forEachHandler(action: (T) -> Unit) {
+        val snapshot = handlerSnapshot.load()
+        val singleHandler = snapshot.singleHandler
+        if (singleHandler != null) {
+            action(singleHandler)
+            return
         }
+
+        val manyHandlers = snapshot.manyHandlers ?: return
+        val count = manyHandlers.size
+        var handlerIndex = 0
+        while (handlerIndex < count) {
+            action(manyHandlers[handlerIndex])
+            handlerIndex += 1
+        }
+    }
 
     internal fun addHandler(handler: T) {
         lock.withLock {
-            handlers = handlers + handler
+            val current = handlerSnapshot.load()
+            val next =
+                current.singleHandler?.let { singleHandler ->
+                    EventSourceHandlerSnapshot(manyHandlers = listOf(singleHandler, handler))
+                } ?: current.manyHandlers?.let { manyHandlers ->
+                    EventSourceHandlerSnapshot(manyHandlers = manyHandlers + handler)
+                } ?: EventSourceHandlerSnapshot(singleHandler = handler)
+            handlerSnapshot.store(next)
         }
     }
 
     internal fun removeHandler(handler: T): Boolean {
         var removed = false
         lock.withLock {
-            val index = handlers.indexOfLast { it == handler }
-            if (index >= 0) {
-                handlers =
-                    buildList(handlers.size - 1) {
-                        handlers.forEachIndexed { handlerIndex, value ->
-                            if (handlerIndex != index) {
-                                add(value)
-                            }
+            val current = handlerSnapshot.load()
+            val singleHandler = current.singleHandler
+            if (singleHandler != null) {
+                if (singleHandler == handler) {
+                    handlerSnapshot.store(EventSourceHandlerSnapshot())
+                    removed = true
+                }
+            } else {
+                val manyHandlers = current.manyHandlers
+                if (manyHandlers != null) {
+                    val index = manyHandlers.indexOfLast { it == handler }
+                    if (index >= 0) {
+                        if (manyHandlers.size == 2) {
+                            val remaining = if (index == 0) manyHandlers[1] else manyHandlers[0]
+                            handlerSnapshot.store(EventSourceHandlerSnapshot(singleHandler = remaining))
+                        } else {
+                            handlerSnapshot.store(
+                                EventSourceHandlerSnapshot(
+                                    manyHandlers = buildList(manyHandlers.size - 1) {
+                                        manyHandlers.forEachIndexed { handlerIndex, value ->
+                                            if (handlerIndex != index) {
+                                                add(value)
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
                         }
+                        removed = true
                     }
-                removed = true
+                }
             }
         }
         return removed
     }
 
-    internal fun hasHandlers(): Boolean =
-        lock.withLock {
-            handlers.isNotEmpty()
-        }
+    internal fun hasHandlers(): Boolean {
+        val snapshot = handlerSnapshot.load()
+        return snapshot.singleHandler != null || snapshot.manyHandlers?.isNotEmpty() == true
+    }
 
     internal fun getWeakReferenceForCache(): WeakReference<Any> = cacheEntry
 
@@ -125,7 +198,7 @@ abstract class EventSourceState<T : Any> protected constructor(
                     return@withLock null
                 }
                 disposed = true
-                handlers = emptyList()
+                handlerSnapshot.store(EventSourceHandlerSnapshot())
                 EventSourceCache.remove(objectPointerKey, index, cacheEntry)
                 cacheCleanupRegistration.close()
                 eventInvokePointer = PlatformAbi.nullPointer

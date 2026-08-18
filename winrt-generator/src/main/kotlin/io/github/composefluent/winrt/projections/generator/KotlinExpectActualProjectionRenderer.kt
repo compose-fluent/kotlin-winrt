@@ -306,6 +306,7 @@ internal class KotlinExpectActualProjectionRenderer(
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(baseRenderer.resolveTypeName(implemented.interfaceName))
         }
+        builder.addSuperinterface(WINRT_MANAGED_PROJECTION_STATE_ACCESS_CLASS_NAME)
         plan.type.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .forEach { method -> builder.addFunction(baseRenderer.renderInterfaceMethod(method)) }
@@ -441,6 +442,18 @@ internal class KotlinExpectActualProjectionRenderer(
                 .getter(FunSpec.getterBuilder().addCode("return _inner\n").build())
                 .build(),
         )
+        if (plan.type.genericParameterCount == 0 && plan.defaultInterfaceIid != null) {
+            builder.addProperty(
+                PropertySpec.builder("primaryTypeHandle", WINRT_TYPE_HANDLE_CLASS_NAME.copy(nullable = true))
+                    .addModifiers(KModifier.OVERRIDE)
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addCode("return Metadata.TYPE_HANDLE\n")
+                            .build(),
+                    )
+                    .build(),
+            )
+        }
         addJvmRuntimeClassInterfaceForwards(builder, plan, delegatedInterfaceNames = proxyTypesByName.keys)
         builder.addType(baseRenderer.buildMetadataCompanionShell(plan, emptyList(), emptyList(), emptyList()))
         baseRenderer.appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))

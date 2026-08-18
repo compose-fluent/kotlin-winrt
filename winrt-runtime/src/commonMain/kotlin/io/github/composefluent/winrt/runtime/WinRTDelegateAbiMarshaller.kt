@@ -38,6 +38,44 @@ internal object WinRTDelegateAbiMarshaller {
         return decodeArgumentList(descriptor.parameterKinds, abiArguments) { index, _ -> descriptor.parameterStructAdapter(index) }
     }
 
+    internal fun decodeRawWordArgument(
+        kind: WinRTDelegateValueKind,
+        word: Long,
+        adapter: NativeStructAdapter<*>? = null,
+    ): Any? =
+        decodeArgument(
+            kind = kind,
+            abiValue = when (kind) {
+                WinRTDelegateValueKind.OBJECT,
+                WinRTDelegateValueKind.HSTRING,
+                WinRTDelegateValueKind.IUNKNOWN,
+                WinRTDelegateValueKind.IINSPECTABLE,
+                -> RawAddress(word)
+                WinRTDelegateValueKind.BOOLEAN,
+                WinRTDelegateValueKind.INT8,
+                WinRTDelegateValueKind.UINT8,
+                -> word.toByte()
+                WinRTDelegateValueKind.INT16,
+                WinRTDelegateValueKind.UINT16,
+                WinRTDelegateValueKind.CHAR16,
+                -> word.toShort()
+                WinRTDelegateValueKind.INT32,
+                WinRTDelegateValueKind.UINT32,
+                -> word.toInt()
+                WinRTDelegateValueKind.INT64,
+                WinRTDelegateValueKind.UINT64,
+                -> word
+                WinRTDelegateValueKind.FLOAT -> Float.fromBits(word.toInt())
+                WinRTDelegateValueKind.DOUBLE -> Double.fromBits(word)
+                WinRTDelegateValueKind.UNIT -> Unit
+                WinRTDelegateValueKind.GUID,
+                WinRTDelegateValueKind.STRUCT,
+                WinRTDelegateValueKind.UINT8_ARRAY,
+                -> error("Delegate kind $kind does not have a single raw-word callback carrier.")
+            },
+            adapter = adapter,
+        )
+
     fun encodeArguments(
         parameterKinds: List<WinRTDelegateValueKind>,
         abiArguments: List<Any?>,

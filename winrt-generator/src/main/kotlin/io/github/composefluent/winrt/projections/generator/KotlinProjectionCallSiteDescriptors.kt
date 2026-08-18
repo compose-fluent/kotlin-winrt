@@ -159,6 +159,49 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
     )
 }
 
+internal data class KotlinDirectInboundCallSiteParameter(
+    val projectedType: TypeName,
+    val abiType: String,
+)
+
+/**
+ * Composes one borrowed inbound ABI value through the same closed WinMD recipe used for outbound
+ * results. Unsupported or ownership-consuming shapes stay on the runtime compatibility path.
+ */
+internal fun KotlinProjectionRenderer.composeDirectInboundCallSiteParameter(
+    binding: KotlinProjectionAbiTypeBinding,
+    callSiteSupport: KotlinModulePlatformAbiCallSupport? = modulePlatformAbiCalls,
+): KotlinDirectInboundCallSiteParameter? {
+    val recipePlan = runCatching {
+        buildCallSiteRecipe(binding, category = null)
+    }.getOrNull() ?: return null
+    if (recipePlan.outputCodecs.values.any(KotlinProjectionCallSiteOutputCodec::consumesOwnedAbi)) {
+        return null
+    }
+    val recipe = runCatching {
+        materializeOutputCallSiteRecipe(
+            binding = binding,
+            recipePlan = recipePlan,
+            callSiteSupport = callSiteSupport,
+        )
+    }.getOrNull() ?: return null
+    if (recipe.kind !in DIRECT_INBOUND_PARAMETER_RECIPE_KINDS || recipe.abiCarriers.size != 1) {
+        return null
+    }
+    registerCallSiteAbiType(binding, recipe, callSiteSupport)
+    val projectedType = projectedCallSiteType(binding)
+    return KotlinDirectInboundCallSiteParameter(
+        projectedType = projectedType,
+        abiType = binding.callSiteAbiMetadataName(projectedType),
+    )
+}
+
+private val DIRECT_INBOUND_PARAMETER_RECIPE_KINDS = setOf(
+    WinRTProjectionCallSiteRecipeKind.VALUE,
+    WinRTProjectionCallSiteRecipeKind.ENUM,
+    WinRTProjectionCallSiteRecipeKind.PROJECTION,
+)
+
 private fun KotlinProjectionRenderer.registerCallSiteAbiType(
     binding: KotlinProjectionAbiTypeBinding,
     recipe: WinRTProjectionCallSiteRecipe,
@@ -529,6 +572,7 @@ private fun KotlinProjectionRenderer.materializeProjectionOutputCodecs(
             parameters = listOf(KotlinProjectionCallSiteCodecParameter("__abi", codec.parameterType)),
             returnType = codec.returnType,
             body = codec.body,
+            consumesOwnedAbi = codec.consumesOwnedAbi,
         )
         return composed.copy(
             callables = WinRTProjectionCallSiteCallables(

@@ -146,6 +146,25 @@ internal class WinRTProjectionCallSitePlanner(
         )
     }
 
+    /**
+     * Reuses the outbound recipe graph in the inverse ABI direction for one inbound carrier.
+     * Incoming ABI arguments are decoded like outbound results; Kotlin returns are encoded like
+     * outbound inputs.
+     */
+    internal fun directInboundRecipe(
+        type: IrType,
+        abiType: String,
+        usage: RecipeUsage,
+    ): WinRTProjectionCallSiteRecipe? = runCatching {
+        recipeFor(
+            type = type,
+            abiType = abiType,
+            usage = usage,
+        )
+    }.getOrNull()?.takeIf { recipe ->
+        recipe.kind in DIRECT_INBOUND_RECIPE_KINDS && recipe.abiCarriers.size == 1
+    }
+
     private fun recipeFor(
         type: IrType,
         abiType: String = "",
@@ -158,8 +177,9 @@ internal class WinRTProjectionCallSitePlanner(
                 ?: error("cannot canonicalize explicit ABI type '$explicit'")
         }
         val abiTypeName = explicitAbiTypeName ?: projectedName
-        directEnumRecipe(type, projectedName)?.let { return it }
-        if (abiTypeName.removeSuffix("?") == projectedName.removeSuffix("?")) {
+        val directDeclarationIdentity = abiTypeName.matchesProjectedDeclaration(type, projectedName)
+        if (directDeclarationIdentity) {
+            directEnumRecipe(type, projectedName)?.let { return it }
             directStructRecipe(type, projectedName)?.let { return it }
             if (usage == RecipeUsage.INPUT && !hasSpecializedInputCodec(abiTypeName)) {
                 directProjectionInputRecipe(type, projectedName)?.let { return it }
@@ -168,10 +188,10 @@ internal class WinRTProjectionCallSitePlanner(
         if (usage == RecipeUsage.OUTPUT &&
             codecsByAbiType[abiTypeName].orEmpty().none { codec -> codec.role == AbiCodecRole.FROM_ABI }
         ) {
-            if (abiTypeName.removeSuffix("?") == projectedName.removeSuffix("?")) {
+            if (directDeclarationIdentity) {
                 directArrayRecipe(type, abiTypeName, projectedName)?.let { return it }
+                directProjectionOutputRecipe(type, projectedName)?.let { return it }
             }
-            directProjectionOutputRecipe(type, projectedName)?.let { return it }
         }
         val facts = abiTypesByName[abiTypeName]
         if (facts == null) {
@@ -330,6 +350,7 @@ internal class WinRTProjectionCallSitePlanner(
             callables = WinRTProjectionCallSiteCallables(
                 ownerFqName = owner,
                 fromAbi = wrap.name.asString(),
+                fromAbiConsumesOwnedReference = true,
                 fromAbiSymbol = wrap.symbol,
             ),
             children = listOf(storage),
@@ -370,6 +391,24 @@ internal class WinRTProjectionCallSitePlanner(
         type.classOrNull?.owner?.declarations
             ?.filterIsInstance<IrClass>()
             ?.singleOrNull { declaration -> declaration.name.asString() == "Metadata" }
+
+    private fun String.matchesProjectedDeclaration(type: IrType, projectedName: String): Boolean {
+        val abiBaseName = removeSuffix("?")
+        if (abiBaseName == projectedName.removeSuffix("?")) return true
+        val declaredTypeName = metadataClass(type)
+            ?.metadataStringConstant("TYPE_NAME")
+            ?.let(projectedTypes::canonicalize)
+            ?.removeSuffix("?")
+        return declaredTypeName == abiBaseName
+    }
+
+    private fun IrClass.metadataStringConstant(name: String): String? = declarations
+        .filterIsInstance<IrProperty>()
+        .singleOrNull { property -> property.name.asString() == name }
+        ?.backingField
+        ?.initializer
+        ?.expression
+        ?.let { expression -> (expression as? IrConst)?.value as? String }
 
     private fun IrClass.metadataFunction(
         name: String,
@@ -417,11 +456,12 @@ internal class WinRTProjectionCallSitePlanner(
     ): WinRTProjectionCallSiteRecipe? {
         primitiveRecipe(type)?.let { return it }
         val projectedName = projectedTypes.canonicalize(type) ?: return null
-        directEnumRecipe(type, projectedName)?.let { return it }
-        if (abiTypeName.removeSuffix("?") == projectedName.removeSuffix("?")) {
+        val directDeclarationIdentity = abiTypeName.matchesProjectedDeclaration(type, projectedName)
+        if (directDeclarationIdentity) {
+            directEnumRecipe(type, projectedName)?.let { return it }
             directStructRecipe(type, projectedName)?.let { return it }
         }
-        if (abiTypeName.removeSuffix("?") == projectedName.removeSuffix("?")) {
+        if (directDeclarationIdentity) {
             // The outer generated array codec owns input marshaling or output transfer and cleanup.
             // The planner only needs the element's storage shape, which is recoverable from the
             // exact Metadata.wrap declaration without a per-projection codec or ABI metadata holder.
@@ -634,7 +674,16 @@ internal class WinRTProjectionCallSitePlanner(
             kind = WinRTProjectionCallSiteRecipeKind.COM_REFERENCE,
             abiCarriers = listOf(WinRTProjectionCallSiteAbiCarrier.ADDRESS),
             valueCarrier = WinRTProjectionCallSiteAbiCarrier.ADDRESS,
-            referenceAccess = WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
+            referenceAccess = if (
+                usage == RecipeUsage.INPUT && facts.reference == AbiReferenceKind.INSPECTABLE
+            ) {
+                // The WinMD ABI fact is an inspectable carrier, not a projected wrapper.  Keep the
+                // owned factory for cold/unsupported values, but let lowering borrow a cached
+                // managed CCW pointer for the synchronous object-input case.
+                WinRTProjectionCallSiteReferenceAccess.MANAGED_INSPECTABLE
+            } else {
+                WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT
+            },
             nullable = type.isNullable(),
             typeSignature = signature,
         )
@@ -820,7 +869,15 @@ internal class WinRTProjectionCallSitePlanner(
             createMarshaler = createMarshaler?.functionName.orEmpty(),
             carrierProperty = carrierProperty,
             extraCarrierProperties = extraCarrierProperties,
+            fromAbiConsumesOwnedReference = fromAbi?.consumesOwnedAbi == true ||
+                fromAbi?.consumesOwnedComReference() == true,
         )
+    }
+
+    private fun CodecFacts.consumesOwnedComReference(): Boolean {
+        val parameterType = parameterIrTypes.singleOrNull()?.classFqName
+        return parameterType == WINRT_IUNKNOWN_REFERENCE_FQ_NAME ||
+            parameterType == WINRT_INSPECTABLE_REFERENCE_FQ_NAME
     }
 
     private fun exactCodec(
@@ -922,6 +979,7 @@ internal class WinRTProjectionCallSitePlanner(
         val parameters = function.regularParameters()
         val facts = CodecFacts(
             role = annotation.enumArgument("role", AbiCodecRole.TO_ABI),
+            consumesOwnedAbi = annotation.booleanArgument("consumesOwnedAbi"),
             ownerFqName = fqName.parent().asString(),
             functionName = function.name.asString(),
             parameterTypes = parameters.map { parameter ->
@@ -945,10 +1003,16 @@ internal data class PlannedWinRTProjectionCallSite(
 private fun isCallerOwnedResultAnnotation(annotation: IrFunctionAccessExpression): Boolean =
     annotation.type.classFqName?.asString() == WINRT_CALLER_OWNED_RESULT_ANNOTATION_FQ_NAME
 
-private enum class RecipeUsage {
+internal enum class RecipeUsage {
     INPUT,
     OUTPUT,
 }
+
+private val DIRECT_INBOUND_RECIPE_KINDS = setOf(
+    WinRTProjectionCallSiteRecipeKind.VALUE,
+    WinRTProjectionCallSiteRecipeKind.ENUM,
+    WinRTProjectionCallSiteRecipeKind.PROJECTION,
+)
 
 private data class AbiTypeFacts(
     val kind: AbiTypeKind,
@@ -1051,6 +1115,7 @@ private enum class AbiCodecRole {
 
 private data class CodecFacts(
     val role: AbiCodecRole,
+    val consumesOwnedAbi: Boolean,
     val ownerFqName: String,
     val functionName: String,
     val parameterTypes: List<String>,
@@ -1107,6 +1172,12 @@ private fun IrFunctionAccessExpression.intArgument(name: String): Int {
     val argument = namedArgument(name) ?: return 0
     return (argument as? IrConst)?.value as? Int
         ?: error("annotation argument '$name' must be a constant Int")
+}
+
+private fun IrFunctionAccessExpression.booleanArgument(name: String): Boolean {
+    val argument = namedArgument(name) ?: return false
+    return (argument as? IrConst)?.value as? Boolean
+        ?: error("annotation argument '$name' must be a constant Boolean")
 }
 
 private fun IrFunctionAccessExpression.namedArgument(name: String): IrExpression? {

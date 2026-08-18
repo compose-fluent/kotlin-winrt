@@ -33,6 +33,9 @@ internal class WinRTProjectedTypeCanonicalizer(
         val arguments = type.arguments.map { argument ->
             canonicalizeParsedType(argument) ?: return null
         }
+        if (type.classifier == STAR_PROJECTION_CLASSIFIER) {
+            return type.takeIf { arguments.isEmpty() && !type.nullable }
+        }
         val symbol = referenceClassifier(type.classifier)
         val resolved = when (symbol) {
             is IrTypeAliasSymbol -> {
@@ -67,7 +70,8 @@ internal class WinRTProjectedTypeCanonicalizer(
             is IrClassSymbol -> {
                 val fqName = classifier.owner.fqNameWhenAvailable ?: return null
                 val arguments = simple.arguments.map { argument ->
-                    argument.typeOrNull?.let { canonicalizeIrType(it, substitutions) } ?: return null
+                    argument.typeOrNull?.let { canonicalizeIrType(it, substitutions) }
+                        ?: CanonicalProjectedType(STAR_PROJECTION_CLASSIFIER)
                 }
                 CanonicalProjectedType(
                     classifier = canonicalClassName(fqName),
@@ -104,11 +108,29 @@ internal class WinRTProjectedTypeCanonicalizer(
     }
 
     private fun canonicalClassName(fqName: FqName): String =
-        JavaToKotlinClassMap.mapJavaToKotlinIncludingClassMapping(fqName)
+        WINRT_SYSTEM_TYPE_MAPPINGS[fqName.asString()]
+            ?: JavaToKotlinClassMap.mapJavaToKotlinIncludingClassMapping(fqName)
             ?.asSingleFqName()
             ?.asString()
             ?: fqName.asString()
 }
+
+private val WINRT_SYSTEM_TYPE_MAPPINGS = mapOf(
+    "System.Object" to "kotlin.Any",
+    "System.Boolean" to "kotlin.Boolean",
+    "System.Char" to "kotlin.Char",
+    "System.SByte" to "kotlin.Byte",
+    "System.Byte" to "kotlin.UByte",
+    "System.Int16" to "kotlin.Short",
+    "System.UInt16" to "kotlin.UShort",
+    "System.Int32" to "kotlin.Int",
+    "System.UInt32" to "kotlin.UInt",
+    "System.Int64" to "kotlin.Long",
+    "System.UInt64" to "kotlin.ULong",
+    "System.Single" to "kotlin.Float",
+    "System.Double" to "kotlin.Double",
+    "System.String" to "kotlin.String",
+)
 
 private data class CanonicalProjectedType(
     val classifier: String,
@@ -138,6 +160,10 @@ private class ProjectedTypeTextParser(
     }
 
     private fun parseType(): CanonicalProjectedType? {
+        if (text.getOrNull(index) == '*') {
+            index++
+            return CanonicalProjectedType(STAR_PROJECTION_CLASSIFIER)
+        }
         val classifierStart = index
         while (index < text.length && text[index].isProjectedClassifierCharacter()) index++
         if (classifierStart == index) return null
@@ -168,6 +194,8 @@ private class ProjectedTypeTextParser(
 
 private fun Char.isProjectedClassifierCharacter(): Boolean =
     isLetterOrDigit() || this == '_' || this == '.' || this == '$'
+
+private const val STAR_PROJECTION_CLASSIFIER = "*"
 
 internal fun String.canonicalProjectedTypeText(): String {
     val aliases = mapOf(

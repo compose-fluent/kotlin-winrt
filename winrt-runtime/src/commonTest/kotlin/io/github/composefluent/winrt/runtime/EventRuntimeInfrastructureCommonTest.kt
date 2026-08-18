@@ -113,6 +113,61 @@ class EventRuntimeInfrastructureCommonTest {
     }
 
     @Test
+    fun event_source_state_keeps_single_and_multicast_snapshots_stable() {
+        val state = SnapshotTestEventState()
+        val calls = mutableListOf<String>()
+        lateinit var second: (Int) -> Unit
+        val third: (Int) -> Unit = { value -> calls += "third:$value" }
+        val first: (Int) -> Unit = { value ->
+            calls += "first:$value"
+            if (value == 2) {
+                state.removeHandler(second)
+                state.addHandler(third)
+            }
+        }
+        second = { value -> calls += "second:$value" }
+
+        try {
+            state.dispatch(0)
+            assertEquals(emptyList(), calls)
+            assertFalse(state.hasHandlers())
+
+            state.addHandler(first)
+            state.dispatch(1)
+            assertEquals(listOf("first:1"), calls)
+
+            calls.clear()
+            state.addHandler(second)
+            state.dispatch(2)
+            assertEquals(listOf("first:2", "second:2"), calls)
+
+            calls.clear()
+            state.dispatch(3)
+            assertEquals(listOf("first:3", "third:3"), calls)
+
+            state.addHandler(first)
+            assertEquals(true, state.removeHandler(first))
+            val afterDuplicateRemoval = state.currentHandlers()
+            assertEquals(2, afterDuplicateRemoval.size)
+            assertSame(first, afterDuplicateRemoval[0])
+            assertSame(third, afterDuplicateRemoval[1])
+
+            assertEquals(true, state.removeHandler(third))
+            calls.clear()
+            state.dispatch(4)
+            assertEquals(listOf("first:4"), calls)
+
+            assertEquals(true, state.removeHandler(first))
+            assertFalse(state.hasHandlers())
+            calls.clear()
+            state.dispatch(5)
+            assertEquals(emptyList(), calls)
+        } finally {
+            state.close()
+        }
+    }
+
+    @Test
     fun publisher_delegate_release_ends_subscription_without_native_remove() {
         EventSourceCache.clearForTests()
         EventSourceShutdownRegistry.clearForTests()
@@ -180,6 +235,38 @@ class EventRuntimeInfrastructureCommonTest {
             abandoned.nativeDelegate.close()
             owner.close()
             host.close()
+            EventSourceShutdownRegistry.clearForTests()
+        }
+    }
+
+    @Test
+    fun event_handler_delegate_does_not_retain_event_source_or_publisher_wrapper() {
+        EventSourceCache.clearForTests()
+        EventSourceShutdownRegistry.clearForTests()
+
+        val host = WinRTInspectableComObject.inspectableBox("owner", "test.Owner")
+        val owner = host.createPrimaryReference()
+        val abandoned = abandonEventHandlerSubscription(owner)
+        var delegateClosed = false
+
+        try {
+            drainUntilCleared(abandoned.source)
+            drainUntilCleared(abandoned.publisher)
+
+            abandoned.nativeDelegate.invoke(listOf("sender", 23))
+            assertEquals(listOf(23), abandoned.received)
+
+            abandoned.nativeDelegate.close()
+            delegateClosed = true
+            drainUntilCleared(abandoned.handlerCapture)
+            assertNull(EventSourceCache.getState(owner, eventHandlerLifetimeIndex))
+        } finally {
+            if (!delegateClosed) {
+                abandoned.nativeDelegate.close()
+            }
+            owner.close()
+            host.close()
+            EventSourceCache.clearForTests()
             EventSourceShutdownRegistry.clearForTests()
         }
     }
@@ -432,9 +519,22 @@ class EventRuntimeInfrastructureCommonTest {
             object : EventSourceState<(Any?, Int) -> Unit>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
                 override fun createEventInvoke(): (Any?, Int) -> Unit =
                     { sender, value ->
-                        snapshotHandlers().forEach { handler -> handler(sender, value) }
+                        forEachHandler { handler -> handler(sender, value) }
                     }
             }
+    }
+
+    private class SnapshotTestEventState : EventSourceState<(Int) -> Unit>(PlatformAbi.nullPointer, 63) {
+        override fun createEventInvoke(): (Int) -> Unit =
+            { value ->
+                forEachHandler { handler -> handler(value) }
+            }
+
+        fun dispatch(value: Int) {
+            eventInvoke(value)
+        }
+
+        fun currentHandlers(): List<(Int) -> Unit> = snapshotHandlers()
     }
 
     private fun subscribeCapturedHandler(
@@ -486,6 +586,50 @@ class EventRuntimeInfrastructureCommonTest {
         )
     }
 
+    private fun abandonEventHandlerSubscription(owner: ComObjectReference): AbandonedEventHandlerSubscription {
+        val borrowedPublisher =
+            ComObjectReference(
+                pointer = owner.pointer,
+                interfaceId = owner.interfaceId,
+                preventReleaseOnDispose = true,
+            )
+        val publisherReference = PlatformManagedWeakReference(borrowedPublisher)
+        var nativeDelegate: WinRTDelegateReference? = null
+        val received = mutableListOf<Int>()
+        val handlerCapture = HandlerCapture()
+        val handlerCaptureReference = PlatformManagedWeakReference(handlerCapture)
+        val source =
+            EventHandlerEventSource<Int>(
+                objectReference = borrowedPublisher,
+                interfaceId = testEventInterfaceId,
+                argsKind = WinRTDelegateValueKind.INT32,
+                addHandler = { _, handler ->
+                    nativeDelegate =
+                        WinRTDelegateReference.fromAbi(
+                            handler.getRefPointer().asRawAddress(),
+                            testIntEventDescriptor,
+                        )
+                    EventRegistrationToken(0x22334455_00000002)
+                },
+                removeHandler = { _, _ -> },
+                index = eventHandlerLifetimeIndex,
+            )
+        val sourceReference = PlatformManagedWeakReference(source)
+
+        source.subscribe { _, value ->
+            handlerCapture.lastValue = value
+            received += value
+        }
+
+        return AbandonedEventHandlerSubscription(
+            source = sourceReference,
+            publisher = publisherReference,
+            handlerCapture = handlerCaptureReference,
+            nativeDelegate = nativeDelegate!!,
+            received = received,
+        )
+    }
+
     private fun <T : Any> drainUntilCleared(reference: PlatformManagedWeakReference<T>) {
         repeat(10) {
             PlatformFinalization.drain()
@@ -511,6 +655,14 @@ class EventRuntimeInfrastructureCommonTest {
         val removalCapture: PlatformManagedWeakReference<RemovalCapture>,
         val nativeDelegate: WinRTDelegateReference,
         val removals: MutableList<EventRegistrationToken>,
+        val received: MutableList<Int>,
+    )
+
+    private data class AbandonedEventHandlerSubscription(
+        val source: PlatformManagedWeakReference<EventHandlerEventSource<Int>>,
+        val publisher: PlatformManagedWeakReference<ComObjectReference>,
+        val handlerCapture: PlatformManagedWeakReference<HandlerCapture>,
+        val nativeDelegate: WinRTDelegateReference,
         val received: MutableList<Int>,
     )
 
@@ -616,6 +768,7 @@ class EventRuntimeInfrastructureCommonTest {
     companion object {
         private val testEventInterfaceId = Guid("0f0f0f0f-1111-2222-3333-444444444444")
         private val testEventOwnerInterfaceId = Guid("10101010-1111-2222-3333-555555555555")
+        private const val eventHandlerLifetimeIndex = 73
         private val testIntEventDescriptor =
             WinRTDelegateDescriptor(
                 interfaceId = testEventInterfaceId,

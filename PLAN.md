@@ -2,55 +2,89 @@
 
 ## Operating Rules
 
-- [x] Use `.cswinrt/` as the primary behavioral and architectural reference.
-- [x] Preserve dependency order: `winrt-runtime` -> `winrt-metadata` -> `winrt-generator` / `winrt-compiler-plugin` -> `winrt-projections` -> `winrt-authoring` -> `winrt-samples`.
-- [x] Keep runtime mechanics out of generated API-shape policy and keep sample code validation-only.
-- [x] Treat a CallSite as WinMD semantic metadata only: generated declarations expose typed `TODO()` stubs and structured facts, while the IR plugin alone plans marshaling and emits platform code from those facts, exact closed IR types, and declaration-owned ABI facts. Module support must not expand per-closed-type codec implementations or metadata-holder objects.
-- [x] Do not place recursive recipes, ABI carriers, codec/callable names, result factories, transport choices, or other implementation plans in CallSite metadata through Base64, opaque payloads, or sidecars; do not reconstruct them through projected-type or call-family enumeration either.
-- [x] Keep JVM and `mingwX64` contracts equivalent, with platform mechanics isolated in target source sets.
-- [x] Work on Windows with `KOTLIN_WINRT_WINDOWS_SDK_ROOT=D:\Windows Kits\10`; prefer `gradlew.bat` and targeted tests before aggregate gates.
-- [x] Keep Gradle configuration-cache and build-cache compatibility as required behavior. Use `--no-build-cache` only to isolate cache corruption or concurrent-output diagnostics.
-- [x] Preserve unrelated working-tree changes and the local `.gradle-review/`, `.worktrees/`, and `docs/` directories.
-- [x] Commit coherent optimization slices only after explicit user authorization.
+- Use `.cswinrt/` as the primary behavioral and architectural reference.
+- Preserve dependency order: `winrt-runtime` -> `winrt-metadata` -> `winrt-generator` / `winrt-compiler-plugin` -> `winrt-projections` -> `winrt-authoring` -> `winrt-samples`.
+- Keep runtime mechanics out of generated API-shape policy and keep sample code validation-only.
+- Treat a CallSite as WinMD semantic metadata only. Generated declarations expose typed `TODO()` stubs and structured facts; the IR plugin plans marshaling and emits platform code from those facts and exact closed IR types.
+- Do not serialize implementation plans, recursive recipes, ABI carriers, codec names, result factories, or transport choices into CallSite metadata, Base64 payloads, opaque sidecars, or projected-type enumerations.
+- Keep runtime-owned and compiler-expanded intrinsic calls as peer implementations of the same contract. Do not add, remove, or substitute runtime-owned call sites during performance work.
+- Put shared semantics in common code and isolate only platform invocation and memory mechanics in target source sets.
+- Work on Windows with `KOTLIN_WINRT_WINDOWS_SDK_ROOT=D:\Windows Kits\10`; use `gradlew.bat` and targeted validation before aggregate gates.
+- Preserve unrelated working-tree changes. Do not commit without explicit user authorization.
 
 ## Reference Mapping
 
-- [x] `.cswinrt/src/WinRT.Runtime` maps to `winrt-runtime`: ABI primitives, HRESULT/HSTRING ownership, COM lifetime and identity, activation, marshaling, delegates, collections, async, and authoring runtime support.
-- [x] `.cswinrt/src/cswinrt` maps to `winrt-metadata`, `winrt-generator`, and `winrt-compiler-plugin`: WinMD normalization, declaration/member planning, recursive ABI recipes, generated support, and static IR lowering.
-- [x] `.cswinrt/src/Projections` maps to `winrt-projections`; checked-in and prebuilt output must be deterministic products of the generator.
-- [x] `.cswinrt/src/Authoring` maps to `winrt-authoring`: authored metadata, CCW/activation boundaries, hosting, and lifetime contracts.
-- [x] `.cswinrt/src/Samples` maps to `winrt-samples`; tests live with their owning Kotlin modules rather than in a separate top-level test module.
-- [x] Active performance reference points are `.cswinrt/src/cswinrt/code_writers.h` marshaler planning/direct ABI calls and `.cswinrt/src/cswinrt/helpers.h` centralized mapped-type decisions.
+- `.cswinrt/src/WinRT.Runtime` maps to `winrt-runtime`.
+- `.cswinrt/src/cswinrt` maps to `winrt-metadata`, `winrt-generator`, and `winrt-compiler-plugin`.
+- `.cswinrt/src/Projections` maps to `winrt-projections`.
+- `.cswinrt/src/Authoring` maps to `winrt-authoring`.
+- `.cswinrt/src/Samples` maps to `winrt-samples`; tests remain in their owning Kotlin modules.
+- Active performance references are `.cswinrt/src/WinRT.Runtime`, `.cswinrt/src/cswinrt/code_writers.h`, and `.cswinrt/src/cswinrt/helpers.h`.
 
 ## Completed Baseline
 
-- [x] Runtime baseline: ABI primitives, initialization/platform calls, RCW/CCW identity, activation, parameterized IID/signatures, delegates/events, collections, async, restricted error info, weak/agile references, WinUI hooks, and JVM/Native direct vtable calls are implemented in `winrt-runtime`.
-- [x] Metadata baseline: native WinMD loading, SDK/file/directory/NuGet inputs, deterministic normalization, generic substitution, default/implemented interfaces, factories, methods/properties/events, parameter directions, layouts, custom attributes, and fail-closed diagnostics are implemented in `winrt-metadata`.
-- [x] Generator/compiler baseline: declaration and member planning, activation/static/composable surfaces, closed generic interfaces, source additions, owner-scoped support, authoring handoff, deterministic output, and JVM/Native compile gates are implemented.
-- [x] Projection baseline: Windows SDK, Windows.UI.Xaml, Windows App SDK, and WebView2 artifacts use dependency identity and prebuilt/local ownership rules without duplicate projected FQNs.
-- [x] Authoring baseline: TypeDetails, authored WinMD/descriptors/manifests, CCW factories, activation exports, inherited/overridable interfaces, native component/consumer fixtures, arrays, delegates, collections, async, and HRESULT propagation are implemented.
-- [x] Packaging/sample baseline: appx/msix staging, PRI/MRT/resources, dependency payloads, signing/test-install hooks, JVM/Native WinUI hosts, Controls Sample, authored-control validation, and the programmatic WebView2 sample are implemented.
-- [x] Windows COM interop helpers and source additions are implemented and validated; the stale historical commit-handoff task is removed, and coherent work is committed only after explicit user authorization.
+- [x] Implement the runtime foundations: ABI primitives, initialization, COM lifetime and identity, activation, generic IIDs, delegates, events, collections, async, error propagation, weak/agile references, and WinUI hooks.
+- [x] Implement WinMD loading and normalized metadata models for types, members, generics, interfaces, factories, parameter directions, layouts, and attributes.
+- [x] Implement deterministic declaration/member generation, activation and composable surfaces, closed generics, authoring handoff, and JVM/Native compiler lowering.
+- [x] Generate Windows SDK, Windows.UI.Xaml, Windows App SDK, and WebView2 projection artifacts without duplicate projected FQNs.
+- [x] Implement authored metadata, TypeDetails, CCW/activation boundaries, native component/consumer fixtures, and HRESULT propagation.
+- [x] Implement packaging and JVM/Native WinUI sample hosts, including the Controls Sample and WebView2 validation surface.
 
-## Benchmark Optimizations Completed
+## Completed Performance Foundations
 
-- [x] Benchmark parity: `winrt-benchmarks` runs the same six `Windows.Data.Json` scenarios for Kotlin/JVM, Kotlin/Native, CsWinRT, and C++/WinRT with common warmup/measurement rules, checksum validation, and JSON/Markdown reports.
-- [x] Optimizations 01-18: direct fixed-shape vtable dispatch, reusable scalar/struct/HSTRING frames, Native direct typed calls, bulk clearing, stable reference caches, and direct HSTRING header access are shared by runtime-owned and compiler-expanded paths without changing the fixed runtime-owned extraction set.
+- [x] Mirror all 6 families and 97 methods from `.cswinrt/src/Benchmarks` across C++/WinRT, CsWinRT, Kotlin/Native, and Kotlin/JVM with one component, protocol, filter set, warmup policy, and checksum contract.
+- [x] Share fixed-shape vtable dispatch, reusable ABI frames, direct Native calls, stable reference caches, and HSTRING access between runtime-owned and compiler-expanded paths.
+- [x] Centralize RCW/CCW identity, ownership, call leases, escaped-reference promotion, and managed-projection state in common runtime contracts.
+- [x] Restore common generated runtime-class RCW identity and weak-cache cleanup on JVM and `mingwX64`.
+- [x] Use immutable update-time event snapshots and root native callback lifetime in event state.
+- [x] Use the fixed-carrier JVM vtable invoker for `IUnknown::AddRef` and `IUnknown::Release`.
 
 ## Current Focus
 
-- [ ] Performance optimization is in progress: compare Kotlin/JVM, Kotlin/Native, CsWinRT, and C++/WinRT from the same benchmark run; prioritize hot paths shared by runtime-owned and module/call-site lowering; keep artifact-size work and final WinUI validation frozen until performance acceptance closes. <!-- 正在做 -->
+- [ ] Common WinRT dictionary indexer performance is 正在做: keep `Map.get` as one `IMap.Lookup`/`IMapView.Lookup` ABI operation, with common code owning `E_BOUNDS`, nullable success, result ownership, metadata-composed shapes, and RCW identity for both call-site paths.
+  - [x] Cache closed interface views by COM identity and IID without changing projected-object identity or lifetime.
+  - [x] Inline the existing `releaseRaw` contract through the shared `IUnknown` slot table on JVM and `mingwX64` without changing CallSite metadata or runtime-owned membership.
+  - [ ] Profile generated Native `ExistingDictionaryLookup2` and `ExistingDictionaryLookup3` after ABI return to identify remaining allocations, cache probes, wrapper creation, and ownership transitions.
+  - [ ] Implement the next measured optimization in the common runtime contract; keep target code limited to invocation and memory adaptation.
+  - [ ] Run the dictionary acceptance gates and either accept or revert the candidate.
+
+## Next Queue
+
+- [ ] Complete common managed-CCW construction parity with CsWinRT's once-per-type exposed-interface table and module-once TypeDetails registration.
+  - [x] Compose one immutable metadata-driven `WinRTCcwDefinition` per authored type and keep value-dependent factories separate.
+  - [x] Use cached `HeapAlloc`/`HeapFree` entry points for JVM native storage.
+  - [ ] Profile remaining per-instance host allocation, interface-table setup, and lifetime initialization on both targets.
+  - [ ] Remove the next common per-instance cost without retaining managed instances in static caches.
+  - [ ] Run construction, lifetime, compiler, benchmark, and memory gates.
+- [ ] Complete value-reference host construction for `IReference<T>`, `IReferenceArray<T>`, and `IPropertyValue`.
+  - [x] Share immutable metadata-composed closed-value shapes and pass temporary borrowed interface pointers directly to synchronous setters.
+  - [x] Cache exact inbound decode plans while preserving compatibility for unknown external metadata.
+  - [ ] Remove the per-host weak-shape lookup for retained definitions without caching boxed values or changing COM identity.
+  - [ ] Validate scalar, array, enum, struct, delegate, nullable, lifetime, and long-run memory behavior on both targets.
+- [ ] Complete generated delegate RCW performance while preserving owned-return identity, borrowed authoring inputs, and metadata-composed generic IIDs.
+  - [x] Use one weak hot RCW lookup, publish one shared weak-reference handle, cache delegate `IReference<T>` IIDs, and reuse output scratch frames.
+  - [ ] Profile remaining Native nullable/new delegate allocation and cleanup costs with existing-delegate controls.
+  - [ ] Implement only a common ownership-preserving fast path that also works for runtime-only consumers.
+  - [ ] Run identity, compiler, benchmark, and long-run memory gates.
+- [ ] Complete event callback and authored event-accessor performance.
+  - [ ] Validate the existing-managed-object lease probe on `EventPerf.InvokeNativeIntEvent`; accept or revert it from serialized A/B evidence.
+  - [ ] Align authored event raises with `.cswinrt/src/Benchmarks/EventPerf.cs` by using the update-time `EventRegistrationTokenTable` snapshot.
+  - [ ] Validate single-handler and immutable multi-handler snapshots for ordering, duplicate registration, removal, mutation during invoke, and lifetime.
+  - [ ] Carry typed callback context into compiler-lowered callbacks only after the common event semantics are accepted.
 
 ## Deferred
 
-- [ ] Generated projection size reduction: reduce repeated generated class output in prebuilt Windows SDK and Windows App SDK artifacts without changing coordinates, API compatibility, hot paths, or multi-module ownership. Keep frozen until performance acceptance completes.
-- [ ] Final WinUI validation: after performance and artifact-size acceptance, rerun the Controls Sample on JVM and `mingwX64` without moving missing behavior into samples.
-- [x] Broad new runtime, authoring, projection, packaging, and sample features remain frozen while the benchmark/call-site queue is active; regression fixes stay in the earliest owning module.
+- [ ] Reduce generated projection size only after the performance queue is accepted; preserve coordinates, public API, hot paths, and multi-module ownership.
+- [ ] Run the WinUI Controls Sample on JVM and `mingwX64` after performance and size work is complete; do not move missing behavior into samples.
+- [ ] Keep broad runtime, authoring, projection, packaging, and sample features frozen while the performance queue is active.
 
-## Validation Gates
+## Acceptance Gates
 
-- [x] Validate CallSite contract, compiler-plugin integration, generator composition, and absence of serialized implementation payloads for every lowering change.
-- [x] Validate JVM and `mingwX64` runtime tests, generated projection compilation, binary-marker checks, and runtime/projection lowering gates before accepting a performance slice.
-- [x] Validate plugin-free published runtime consumption whenever runtime-owned lowering or published inline bodies change.
-- [x] Require checksum-matched, serialized A/B benchmark evidence before claiming a performance gain.
-- [x] Run `git diff --check` and inspect the exact staged scope before every commit.
+Every active performance slice must pass all applicable gates before completion:
+
+- Targeted and full JVM/`mingwX64` runtime tests.
+- CallSite, compiler-plugin, generator, projection compilation, and direct-lowering checks.
+- Plugin-free published-runtime consumers whenever a public inline or runtime-owned implementation changes.
+- Checksum-matched serialized A/B plus a same-session C++/WinRT, CsWinRT, Kotlin/Native, and Kotlin/JVM comparison.
+- A long-run memory gate for ownership-sensitive paths.
+- `git diff --check` and exact commit-scope inspection.

@@ -186,21 +186,92 @@ internal fun KotlinProjectionRenderer.resolvedReturnClassName(
 private fun String.rawProjectionTypeName(): String =
     trim().removeSuffix("?").substringBefore('<')
 
-private fun KotlinProjectionRenderer.delegateReturnFromAbiCode(
-    returnType: ClassName,
-    returnBinding: KotlinProjectionAbiTypeBinding,
+internal fun KotlinProjectionRenderer.delegateFromBorrowedAbiCode(
+    binding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
 ): CodeBlock {
-    if (returnBinding.typeArguments.isEmpty()) {
-        return CodeBlock.of("%T.Metadata.fromAbi(__resultPointer)", returnType)
+    staticDelegateFromBorrowedAbiCode(binding, pointerExpression)?.let { return it }
+    val delegateType = requireNotNull(projectedClassName(binding)) {
+        "Delegate ${binding.describeAbiKind()} has no renderable projected class."
+    }
+    val invokeShape = requireNotNull(outboundDelegateInvokeShape(binding) ?: binding.delegateInvokeShape) {
+        "Delegate ${binding.describeAbiKind()} has no closed invoke shape."
+    }
+    val interfaceId = requireNotNull(delegateInterfaceIdCode(binding, invokeShape)) {
+        "Delegate ${binding.describeAbiKind()} has no renderable closed interface IID."
     }
     val typeArguments = CodeBlock.builder()
-    returnBinding.typeArguments.forEachIndexed { index, typeArgument ->
+    binding.typeArguments.forEachIndexed { index, typeArgument ->
         if (index > 0) {
             typeArguments.add(", ")
         }
         typeArguments.add("%T", resolveTypeName(typeArgument.typeName))
     }
-    return CodeBlock.of("%T.Metadata.fromAbi<%L>(__resultPointer)", returnType, typeArguments.build())
+    return CodeBlock.of(
+        """
+        run {
+            val __delegatePointer = %L
+            if (%T.isNull(__delegatePointer)) {
+                null
+            } else {
+                val __ownedDelegatePointer = %T(
+                    pointer = %T.toRawComPtr(__delegatePointer),
+                    interfaceId = %L,
+                    preventReleaseOnDispose = true,
+                ).use { __borrowed -> %T.fromRawComPtr(__borrowed.getRefPointer()) }
+                %L
+            }
+        }
+        """.trimIndent(),
+        pointerExpression,
+        PLATFORM_ABI_CLASS_NAME,
+        IUNKNOWN_REFERENCE_CLASS_NAME,
+        PLATFORM_ABI_CLASS_NAME,
+        interfaceId,
+        PLATFORM_ABI_CLASS_NAME,
+        if (binding.typeArguments.isEmpty()) {
+            CodeBlock.of("%T.Metadata.fromAbi(__ownedDelegatePointer)", delegateType)
+        } else {
+            CodeBlock.of(
+                "%T.Metadata.fromAbi<%L>(__ownedDelegatePointer, %L)",
+                delegateType,
+                typeArguments.build(),
+                interfaceId,
+            )
+        },
+    )
+}
+
+internal fun KotlinProjectionRenderer.delegateFromOwnedAbiCode(
+    binding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
+): CodeBlock {
+    val delegateType = requireNotNull(projectedClassName(binding)) {
+        "Delegate ${binding.describeAbiKind()} has no renderable projected class."
+    }
+    if (binding.typeArguments.isEmpty()) {
+        return CodeBlock.of("%T.Metadata.fromAbi(%L)", delegateType, pointerExpression)
+    }
+    val invokeShape = requireNotNull(outboundDelegateInvokeShape(binding)) {
+        "Delegate ${binding.describeAbiKind()} has no closed invoke shape."
+    }
+    val interfaceId = requireNotNull(delegateInterfaceIdCode(binding, invokeShape)) {
+        "Delegate ${binding.describeAbiKind()} has no renderable closed interface IID."
+    }
+    val typeArguments = CodeBlock.builder()
+    binding.typeArguments.forEachIndexed { index, typeArgument ->
+        if (index > 0) {
+            typeArguments.add(", ")
+        }
+        typeArguments.add("%T", resolveTypeName(typeArgument.typeName))
+    }
+    return CodeBlock.of(
+        "%T.Metadata.fromAbi<%L>(%L, %L)",
+        delegateType,
+        typeArguments.build(),
+        pointerExpression,
+        interfaceId,
+    )
 }
 
 internal fun KotlinProjectionRenderer.mappedKeyValuePairReturnReadback(

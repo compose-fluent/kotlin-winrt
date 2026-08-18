@@ -13,5 +13,8 @@ fun main(args: Array<String>) {
         )
         consumeRuntimeOwnedWrappers(reference, slot = 6)
     }
+    if (args.firstOrNull() == "--invoke-managed-call-lease-proof") {
+        consumePublishedManagedCallLease(Any())
+    }
     println("published-runtime-only-consumer")
 }

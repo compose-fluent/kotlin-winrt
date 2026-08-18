@@ -134,25 +134,27 @@ internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
 internal fun KotlinProjectionRenderer.asyncReferenceExpression(
     returnBinding: KotlinProjectionAbiTypeBinding,
     pointerExpression: CodeBlock,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? =
     when (returnBinding.kind) {
         KotlinProjectionAbiValueKind.MappedAsyncAction ->
             CodeBlock.of("%T(%L)", WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME, pointerExpression)
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress ->
-            asyncActionWithProgressExpression(returnBinding, pointerExpression)
+            asyncActionWithProgressExpression(returnBinding, pointerExpression, hoistMetadata)
         KotlinProjectionAbiValueKind.MappedAsyncOperation ->
-            asyncOperationExpression(returnBinding, pointerExpression)
+            asyncOperationExpression(returnBinding, pointerExpression, hoistMetadata)
         KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
-            asyncOperationWithProgressExpression(returnBinding, pointerExpression)
+            asyncOperationWithProgressExpression(returnBinding, pointerExpression, hoistMetadata)
         else -> null
     }
 
 private fun KotlinProjectionRenderer.asyncActionWithProgressExpression(
     returnBinding: KotlinProjectionAbiTypeBinding,
     pointerExpression: CodeBlock,
+    hoistMetadata: Boolean,
 ): CodeBlock? {
     val progressBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding, hoistMetadata) ?: return null
     return CodeBlock.builder()
         .add("%T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(progressBinding.typeName))
         .indent()
@@ -166,11 +168,12 @@ private fun KotlinProjectionRenderer.asyncActionWithProgressExpression(
 private fun KotlinProjectionRenderer.asyncOperationExpression(
     returnBinding: KotlinProjectionAbiTypeBinding,
     pointerExpression: CodeBlock,
+    hoistMetadata: Boolean,
 ): CodeBlock? {
     val resultBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
+    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding, hoistMetadata) ?: return null
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
-    val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
+    val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding, hoistMetadata) ?: return null
     return CodeBlock.builder()
         .add("%T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(resultBinding.typeName))
         .indent()
@@ -190,13 +193,14 @@ private fun KotlinProjectionRenderer.asyncOperationExpression(
 private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
     returnBinding: KotlinProjectionAbiTypeBinding,
     pointerExpression: CodeBlock,
+    hoistMetadata: Boolean,
 ): CodeBlock? {
     val resultBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
     val progressBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
-    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
-    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding, hoistMetadata) ?: return null
+    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding, hoistMetadata) ?: return null
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
-    val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
+    val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding, hoistMetadata) ?: return null
     return CodeBlock.builder()
         .add(
             "%T.operationWithProgress<%T, %T>(\n",
@@ -221,15 +225,17 @@ private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
 
 internal fun KotlinProjectionRenderer.asyncOperationResultTypeSignature(
     resultBinding: KotlinProjectionAbiTypeBinding,
-): CodeBlock? = abiTypeSignature(resultBinding)
+    hoistMetadata: Boolean = false,
+): CodeBlock? = abiTypeSignature(resultBinding, hoistMetadata)
 
 internal fun KotlinProjectionRenderer.referenceReadbackExpression(
     typeBinding: KotlinProjectionAbiTypeBinding,
     projectionClass: ClassName,
     resultOutName: String,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? {
     val projectedType = resolveTypeName(typeBinding.typeName)
-    val interfaceId = referenceInterfaceIdCode(typeBinding) ?: return null
+    val interfaceId = referenceInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
     return CodeBlock.of(
         "%T.fromAbi(%T.readPointer(%L), %L) as %T",
         projectionClass,
@@ -243,41 +249,44 @@ internal fun KotlinProjectionRenderer.referenceReadbackExpression(
 internal fun KotlinProjectionRenderer.referenceReturnReadback(
     typeBinding: KotlinProjectionAbiTypeBinding,
     projectionClass: ClassName,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? =
-    referenceReadbackExpression(typeBinding, projectionClass, "__resultOut")
+    referenceReadbackExpression(typeBinding, projectionClass, "__resultOut", hoistMetadata)
         ?.let { CodeBlock.of("return %L\n", it) }
 
 internal fun KotlinProjectionRenderer.abiTypeSignature(
     binding: KotlinProjectionAbiTypeBinding,
-): CodeBlock? = when (binding.kind) {
+    hoistMetadata: Boolean = false,
+): CodeBlock? {
+    val expression = when (binding.kind) {
     KotlinProjectionAbiValueKind.MappedIterable ->
-        binding.typeArguments.singleOrNull()?.let(::abiTypeSignature)
+        binding.typeArguments.singleOrNull()?.let { abiTypeSignature(it) }
             ?.let { CodeBlock.of("%T.iterableSignature(%L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, it) }
     KotlinProjectionAbiValueKind.MappedVectorView ->
-        binding.typeArguments.singleOrNull()?.let(::abiTypeSignature)
+        binding.typeArguments.singleOrNull()?.let { abiTypeSignature(it) }
             ?.let { CodeBlock.of("%T.vectorViewSignature(%L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, it) }
     KotlinProjectionAbiValueKind.MappedVector ->
-        binding.typeArguments.singleOrNull()?.let(::abiTypeSignature)
+        binding.typeArguments.singleOrNull()?.let { abiTypeSignature(it) }
             ?.let { CodeBlock.of("%T.vectorSignature(%L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, it) }
     KotlinProjectionAbiValueKind.MappedMapView -> {
-        val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
-        val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        val key = binding.typeArguments.getOrNull(0)?.let { abiTypeSignature(it) }
+        val value = binding.typeArguments.getOrNull(1)?.let { abiTypeSignature(it) }
         if (key != null && value != null) CodeBlock.of("%T.mapViewSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
     }
     KotlinProjectionAbiValueKind.MappedMap -> {
-        val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
-        val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        val key = binding.typeArguments.getOrNull(0)?.let { abiTypeSignature(it) }
+        val value = binding.typeArguments.getOrNull(1)?.let { abiTypeSignature(it) }
         if (key != null && value != null) CodeBlock.of("%T.mapSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
     }
     KotlinProjectionAbiValueKind.MappedKeyValuePair -> {
-        val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
-        val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        val key = binding.typeArguments.getOrNull(0)?.let { abiTypeSignature(it) }
+        val value = binding.typeArguments.getOrNull(1)?.let { abiTypeSignature(it) }
         if (key != null && value != null) CodeBlock.of("%T.keyValuePairSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
     }
     KotlinProjectionAbiValueKind.MappedAsyncAction ->
         CodeBlock.of("%T.guid(%T.IAsyncAction)", WINRT_TYPE_SIGNATURE_CLASS_NAME, WINRT_ASYNC_INTERFACE_IDS_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
-        val progress = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        val progress = binding.typeArguments.getOrNull(0)?.let { abiTypeSignature(it) }
         if (progress != null) {
             CodeBlock.of(
                 "%T.parameterizedInterface(%T.IAsyncActionWithProgressGeneric, %L)",
@@ -290,7 +299,7 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
         }
     }
     KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
-        val result = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        val result = binding.typeArguments.getOrNull(0)?.let { abiTypeSignature(it) }
         if (result != null) {
             CodeBlock.of(
                 "%T.parameterizedInterface(%T.IAsyncOperationGeneric, %L)",
@@ -303,8 +312,8 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
         }
     }
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
-        val result = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
-        val progress = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        val result = binding.typeArguments.getOrNull(0)?.let { abiTypeSignature(it) }
+        val progress = binding.typeArguments.getOrNull(1)?.let { abiTypeSignature(it) }
         if (result != null && progress != null) {
             CodeBlock.of(
                 "%T.parameterizedInterface(%T.IAsyncOperationWithProgressGeneric, %L, %L)",
@@ -399,13 +408,70 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
             )
         }
     else -> null
+    }
+    if (!hoistMetadata || expression == null || binding.kind !in MODULE_COMPOSED_SIGNATURE_KINDS) {
+        return expression
+    }
+    return hoistModuleMetadata(
+        identity = binding.moduleMetadataIdentity("type-signature"),
+        type = WINRT_TYPE_SIGNATURE_CLASS_NAME,
+        initializer = expression,
+    )
 }
+
+internal fun KotlinProjectionRenderer.collectionInterfaceIdCode(
+    binding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean = false,
+): CodeBlock? {
+    if (binding.kind !in setOf(
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVectorView,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedMapView,
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedKeyValuePair,
+        )
+    ) {
+        return null
+    }
+    val typeSignature = abiTypeSignature(binding, hoistMetadata) ?: return null
+    val expression = CodeBlock.of(
+        "%T.createFromSignature(%L)",
+        PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+        typeSignature,
+    )
+    if (!hoistMetadata) return expression
+    return hoistModuleMetadata(
+        identity = binding.moduleMetadataIdentity("collection-interface-id"),
+        type = GUID_CLASS_NAME,
+        initializer = expression,
+    )
+}
+
+private val MODULE_COMPOSED_SIGNATURE_KINDS = setOf(
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMapView,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedKeyValuePair,
+    KotlinProjectionAbiValueKind.MappedAsyncAction,
+    KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+    KotlinProjectionAbiValueKind.MappedAsyncOperation,
+    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+    KotlinProjectionAbiValueKind.Reference,
+    KotlinProjectionAbiValueKind.ReferenceArray,
+    KotlinProjectionAbiValueKind.Enum,
+    KotlinProjectionAbiValueKind.Struct,
+    KotlinProjectionAbiValueKind.ProjectedInterface,
+    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+)
 
 internal fun KotlinProjectionRenderer.referenceTypeSignatureCode(
     binding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
     val genericInterfaceId = binding.interfaceId ?: return null
-    val elementSignature = binding.typeArguments.singleOrNull()?.let(::abiTypeSignature) ?: return null
+    val elementSignature = binding.typeArguments.singleOrNull()?.let { abiTypeSignature(it) } ?: return null
     return CodeBlock.of(
         "%T.parameterizedInterface(%T(%S), %L)",
         WINRT_TYPE_SIGNATURE_CLASS_NAME,
@@ -417,15 +483,22 @@ internal fun KotlinProjectionRenderer.referenceTypeSignatureCode(
 
 internal fun KotlinProjectionRenderer.referenceInterfaceIdCode(
     binding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? {
     val genericInterfaceId = binding.interfaceId ?: return null
-    val elementSignature = binding.typeArguments.singleOrNull()?.let(::abiTypeSignature) ?: return null
-    return CodeBlock.of(
+    val elementSignature = binding.typeArguments.singleOrNull()?.let { abiTypeSignature(it) } ?: return null
+    val expression = CodeBlock.of(
         "%T.createFromParameterizedInterface(%T(%S), %L)",
         PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
         GUID_CLASS_NAME,
         genericInterfaceId.toString(),
         elementSignature,
+    )
+    if (!hoistMetadata) return expression
+    return hoistModuleMetadata(
+        identity = binding.moduleMetadataIdentity("parameterized-interface-id"),
+        type = GUID_CLASS_NAME,
+        initializer = expression,
     )
 }
 
@@ -480,6 +553,7 @@ internal fun KotlinProjectionRenderer.abiTypeSignatureForIntegralType(type: WinR
 
 internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? = customObjectAsyncOperationResultReadbackExpression(resultBinding) ?: when (resultBinding.kind) {
     KotlinProjectionAbiValueKind.String ->
         CodeBlock.of(
@@ -524,11 +598,11 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
     KotlinProjectionAbiValueKind.MappedMapView,
     KotlinProjectionAbiValueKind.MappedVector,
     KotlinProjectionAbiValueKind.MappedMap ->
-        asyncMappedCollectionResultReadbackExpression(resultBinding)
+        asyncMappedCollectionResultReadbackExpression(resultBinding, hoistMetadata)
     KotlinProjectionAbiValueKind.Reference ->
-        referenceReadbackExpression(resultBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME, "__operationResultOut")
+        referenceReadbackExpression(resultBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME, "__operationResultOut", hoistMetadata)
     KotlinProjectionAbiValueKind.ReferenceArray ->
-        referenceReadbackExpression(resultBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME, "__operationResultOut")
+        referenceReadbackExpression(resultBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME, "__operationResultOut", hoistMetadata)
     KotlinProjectionAbiValueKind.Object ->
         CodeBlock.of(
             "%T.fromAbi(%T.readPointer(__operationResultOut))",
@@ -646,9 +720,10 @@ internal fun KotlinProjectionRenderer.customObjectAsyncOperationResultReadbackEx
 
 internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? {
     readOnlyCollectionBindingForReturn(resultBinding)?.let { binding ->
-        asyncRuntimeReadOnlyCollectionResultReadback(binding)?.let { return it }
+        asyncRuntimeReadOnlyCollectionResultReadback(binding, hoistMetadata)?.let { return it }
         return CodeBlock.of(
             "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -658,7 +733,7 @@ internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpress
         )
     }
     mutableCollectionBindingForReturn(resultBinding)?.let { binding ->
-        asyncRuntimeMutableCollectionResultReadback(binding)?.let { return it }
+        asyncRuntimeMutableCollectionResultReadback(binding, hoistMetadata)?.let { return it }
         return CodeBlock.of(
             "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -672,10 +747,11 @@ internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpress
 
 private fun KotlinProjectionRenderer.asyncRuntimeReadOnlyCollectionResultReadback(
     binding: KotlinProjectionReadOnlyCollectionBinding,
+    hoistMetadata: Boolean,
 ): CodeBlock? =
     when (binding.kind) {
         KotlinProjectionReadOnlyCollectionKind.Iterable -> {
-            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding), hoistMetadata) ?: return null
             CodeBlock.of(
                 "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L) ?: error(%S)\n}",
                 PLATFORM_ABI_CLASS_NAME,
@@ -685,7 +761,7 @@ private fun KotlinProjectionRenderer.asyncRuntimeReadOnlyCollectionResultReadbac
             )
         }
         KotlinProjectionReadOnlyCollectionKind.VectorView -> {
-            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding), hoistMetadata) ?: return null
             CodeBlock.of(
                 "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L) ?: error(%S)\n}",
                 PLATFORM_ABI_CLASS_NAME,
@@ -695,8 +771,8 @@ private fun KotlinProjectionRenderer.asyncRuntimeReadOnlyCollectionResultReadbac
             )
         }
         KotlinProjectionReadOnlyCollectionKind.MapView -> {
-            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
-            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding), hoistMetadata) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding), hoistMetadata) ?: return null
             CodeBlock.of(
                 "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L, %L) ?: error(%S)\n}",
                 PLATFORM_ABI_CLASS_NAME,
@@ -710,10 +786,11 @@ private fun KotlinProjectionRenderer.asyncRuntimeReadOnlyCollectionResultReadbac
 
 private fun KotlinProjectionRenderer.asyncRuntimeMutableCollectionResultReadback(
     binding: KotlinProjectionMutableCollectionBinding,
+    hoistMetadata: Boolean,
 ): CodeBlock? =
     when (binding.kind) {
         KotlinProjectionMutableCollectionKind.Vector -> {
-            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding), hoistMetadata) ?: return null
             CodeBlock.of(
                 "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L) ?: error(%S)\n}",
                 PLATFORM_ABI_CLASS_NAME,
@@ -723,8 +800,8 @@ private fun KotlinProjectionRenderer.asyncRuntimeMutableCollectionResultReadback
             )
         }
         KotlinProjectionMutableCollectionKind.Map -> {
-            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
-            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding), hoistMetadata) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding), hoistMetadata) ?: return null
             CodeBlock.of(
                 "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L, %L) ?: error(%S)\n}",
                 PLATFORM_ABI_CLASS_NAME,
@@ -989,7 +1066,21 @@ internal fun KotlinProjectionRenderer.mutableCollectionBindingForReturn(
 
 internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     typeBinding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean = false,
 ): CodeBlock? {
+    fun hoistAdapter(
+        projectedType: TypeName,
+        expression: CodeBlock,
+    ): CodeBlock = if (!hoistMetadata) {
+        expression
+    } else {
+        hoistModuleMetadata(
+            identity = typeBinding.moduleMetadataIdentity("reference-adapter"),
+            type = WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME.parameterizedBy(projectedType),
+            initializer = expression,
+        )
+    }
+
     if (typeBinding.kind == KotlinProjectionAbiValueKind.String) {
         return CodeBlock.of("%T.string", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME)
     }
@@ -1000,10 +1091,10 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         return CodeBlock.of("%T.inspectable", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME)
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedIterable && typeBinding.typeArguments.size == 1) {
-        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single()) ?: return null
+        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single(), hoistMetadata = false) ?: return null
         val projectedType = mappedCollectionProjectedType(typeBinding)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L) ?: emptyList() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
@@ -1018,13 +1109,13 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             elementAdapter,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedVectorView && typeBinding.typeArguments.size == 1) {
-        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single()) ?: return null
+        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single(), hoistMetadata = false) ?: return null
         val projectedType = mappedCollectionProjectedType(typeBinding)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L) ?: emptyList() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
@@ -1039,13 +1130,13 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             elementAdapter,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedVector && typeBinding.typeArguments.size == 1) {
-        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single()) ?: return null
+        val elementAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments.single(), hoistMetadata = false) ?: return null
         val projectedType = mappedCollectionProjectedType(typeBinding)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) mutableListOf() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L) ?: mutableListOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
@@ -1060,15 +1151,16 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             elementAdapter,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedMapView && typeBinding.typeArguments.size == 2) {
-        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
-        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
+        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0], hoistMetadata = false) ?: return null
+        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1], hoistMetadata = false) ?: return null
         val projectedType = mappedCollectionProjectedType(typeBinding)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyMap() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L, %L) ?: emptyMap() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L)), %T.createFromSignature(%L)) })",
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        val interfaceId = collectionInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyMap() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L, %L, %L) ?: emptyMap() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L, %L)), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
@@ -1077,22 +1169,25 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             PLATFORM_ABI_CLASS_NAME,
             keyAdapter,
             valueAdapter,
+            interfaceId,
             IUNKNOWN_REFERENCE_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
             keyAdapter,
             valueAdapter,
+            interfaceId,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedMap && typeBinding.typeArguments.size == 2) {
-        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
-        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
+        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0], hoistMetadata = false) ?: return null
+        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1], hoistMetadata = false) ?: return null
         val projectedType = mappedCollectionProjectedType(typeBinding)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) linkedMapOf() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L, %L) ?: linkedMapOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L)), %T.createFromSignature(%L)) })",
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        val interfaceId = collectionInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) linkedMapOf() else %T.fromAbi(%T.fromRawComPtr(reference.pointer), %L, %L, %L) ?: linkedMapOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L, %L)), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
@@ -1101,54 +1196,60 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             PLATFORM_ABI_CLASS_NAME,
             keyAdapter,
             valueAdapter,
+            interfaceId,
             IUNKNOWN_REFERENCE_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
             keyAdapter,
             valueAdapter,
+            interfaceId,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair && typeBinding.typeArguments.size == 2) {
-        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
-        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
-        return CodeBlock.of("%M(%L, %L)", WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME, keyAdapter, valueAdapter)
+        val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0], hoistMetadata = false) ?: return null
+        val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1], hoistMetadata = false) ?: return null
+        val projectedType = mappedCollectionProjectedType(typeBinding)
+        return hoistAdapter(
+            projectedType,
+            CodeBlock.of("%M(%L, %L)", WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME, keyAdapter, valueAdapter),
+        )
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.GuidValue ||
         winRTFundamentalTypeForName(typeBinding.typeName)?.isWinRTValueType == true
     ) {
         val projectedType = resolveTypeName(typeBinding.typeName).copy(nullable = false)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T.valueType(%T::class, %S, %L)",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.Enum) {
         val projectedType = resolveTypeName(typeBinding.typeName).copy(nullable = false)
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T.valueType(%T::class, %S, %L)",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
             projectedType,
             typeBinding.resolvedTypeName,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.Struct) {
         val projectedType = nativeStructClassName(typeBinding) ?: return null
-        val typeSignature = abiTypeSignature(typeBinding) ?: return null
-        return CodeBlock.of(
+        val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T.valueType(%T::class, %S, %L)",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
             projectedType,
             typeBinding.resolvedTypeName,
             typeSignature,
-        )
+        ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.GenericParameter) {
         val projectedType = resolveTypeName(typeBinding.typeName)
@@ -1173,14 +1274,14 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     val projectedClassLiteralType = projectedType.copy(nullable = false)
     val projectedTypeName = typeBinding.resolvedTypeName
     if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
-        return CodeBlock.of(
+        return hoistAdapter(projectedType, CodeBlock.of(
             "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
             projectedClassLiteralType,
             projectedTypeName,
             projectedClassLiteralType,
             projectedType,
-        )
+        ))
     }
     val projector = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedInterface ->
@@ -1200,7 +1301,7 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             CodeBlock.of("%T(it.getRefPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
         else -> return null
     }
-    return CodeBlock.of(
+    return hoistAdapter(projectedType, CodeBlock.of(
         "%T<%T>(projectedTypeName = %S, typeSignature = %T.object_(), projector = { %L }, marshaller = { %L })",
         WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
         projectedType,
@@ -1208,7 +1309,7 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         WINRT_TYPE_SIGNATURE_CLASS_NAME,
         projector,
         marshaller,
-    )
+    ))
 }
 
 private fun KotlinProjectionRenderer.mappedCollectionProjectedType(

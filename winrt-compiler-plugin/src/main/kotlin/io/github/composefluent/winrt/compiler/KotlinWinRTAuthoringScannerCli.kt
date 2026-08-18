@@ -11,6 +11,7 @@ import io.github.composefluent.winrt.compiler.authoring.inheritedOverridableInte
 import io.github.composefluent.winrt.compiler.authoring.projectionPackageToMetadataName
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTType
+import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTTypeByProjectedName
 import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.KtSourceFile
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreApplicationEnvironment
@@ -262,7 +263,7 @@ object KotlinWinRTAuthoringScannerCli {
         winRTTypes: Map<String, IndexedWinRTType>,
         sourceTypeName: String,
     ): IndexedWinRTType =
-        requireNotNull(winRTTypes[projectionPackageToMetadataName(typeName)]) {
+        requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes)) {
             "WinRT authored type $sourceTypeName annotation references unknown WinRT metadata type $typeName."
         }
 

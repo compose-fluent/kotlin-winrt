@@ -12,17 +12,16 @@ internal object StandardDelegates {
         addHandlerSlot: Int,
         handler: ComObjectReference,
     ): EventRegistrationToken =
-        PlatformAbi.confinedScope().use { scope ->
-            val tokenOut = PlatformAbi.allocateBytes(scope, EventRegistrationToken.BYTE_SIZE.toLong())
+        acquireNativeScalarScratchFrame().use { tokenOut ->
             HResult(
                 ComVtableInvoker.invokeArgs(
                     instance = objectReference.pointer,
                     slot = addHandlerSlot,
                     arg0 = handler.pointer.asRawAddress(),
-                    arg1 = tokenOut,
+                    arg1 = tokenOut.pointer,
                 ),
             ).requireSuccess("WinRT event add handler")
-            EventRegistrationToken.fromAbi(tokenOut)
+            EventRegistrationToken.fromAbiValue(tokenOut.readInt64())
         }
 
     fun removeEventHandler(

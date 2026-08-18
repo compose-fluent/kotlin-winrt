@@ -11,6 +11,9 @@ private const val IREFERENCE_ARRAY_GENERIC_INTERFACE = "61C17707-2D65-11E0-9AE8-
  * built-in runtime public model types.
  */
 object WinRTValueBoxingRegistration {
+    private val delegateProjections = ConcurrentCacheMap<KClass<*>, WinRTDelegateBoxingProjection<*>>()
+    private val delegateProjectionsByRuntimeClassName = ConcurrentCacheMap<String, WinRTDelegateBoxingProjection<*>>()
+
     fun <T : Any> registerStruct(
         type: KClass<T>,
         projectedTypeName: String,
@@ -33,6 +36,7 @@ object WinRTValueBoxingRegistration {
             referenceArrayInterfaceId = referenceArrayInterfaceId,
             propertyType = known?.propertyType,
             propertyTypeArray = known?.propertyTypeArray,
+            projectedTypeName = projectedTypeName,
         )
         ValueBoxingMetadata.registerDescriptor(metadata)
         ValueBoxingInterop.registerAdapter(
@@ -57,6 +61,7 @@ object WinRTValueBoxingRegistration {
                 writeTransferredValue = adapter::write,
             ),
         )
+        WinRTValueBoxing.clearRuntimeClassProjectionPlans()
         Projections.registerCustomAbiTypeMapping(
             publicType = type,
             helperType = type,
@@ -71,7 +76,45 @@ object WinRTValueBoxingRegistration {
         )
         arrayType?.let { TypeNameSupport.registerReferenceArrayType(type, it) }
     }
+
+    /**
+     * Registers the generated projection used to decode an `IReference<TDelegate>` value.
+     * The projector consumes the owned delegate pointer returned by `IReference<T>.Value`.
+     */
+    fun <T : Any> registerDelegate(
+        type: KClass<T>,
+        descriptor: WinRTDelegateDescriptor,
+        fromAbi: (RawAddress) -> T?,
+    ) {
+        val projection = WinRTDelegateBoxingProjection(
+            descriptor = descriptor,
+            fromAbi = fromAbi,
+        )
+        val registered = delegateProjections.putIfAbsent(type, projection) ?: projection
+        descriptor.runtimeClassName?.let { runtimeClassName ->
+            delegateProjectionsByRuntimeClassName.putIfAbsent(runtimeClassName, registered)
+        }
+        WinRTValueBoxing.clearRuntimeClassProjectionPlans()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    internal fun findDelegateProjection(type: KClass<*>): WinRTDelegateBoxingProjection<Any>? =
+        delegateProjections[type] as? WinRTDelegateBoxingProjection<Any>
+
+    @Suppress("UNCHECKED_CAST")
+    internal fun findDelegateProjectionByRuntimeClassName(runtimeClassName: String): WinRTDelegateBoxingProjection<Any>? =
+        delegateProjectionsByRuntimeClassName[runtimeClassName] as? WinRTDelegateBoxingProjection<Any>
+
+    internal fun clearDelegateProjectionsForTests() {
+        delegateProjections.clear()
+        delegateProjectionsByRuntimeClassName.clear()
+    }
 }
+
+internal data class WinRTDelegateBoxingProjection<T : Any>(
+    val descriptor: WinRTDelegateDescriptor,
+    val fromAbi: (RawAddress) -> T?,
+)
 
 private data class KnownStructBoxingDescriptor(
     val nullableInterfaceId: Guid,

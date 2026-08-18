@@ -133,40 +133,20 @@ internal object XamlSystemProjectionRuntimeHooks {
 
     fun closeRuntimeCaches() {
         WinUiXamlMetadataProviderCache.close()
-        XamlProjectedObjectValueRoots.close()
     }
-
-    internal fun retainProjectedObjectReferenceForMarshaling(reference: ComObjectReference) {
-        XamlProjectedObjectValueRoots.retain(reference)
-    }
-
-    internal fun retainedProjectedObjectReferenceCountForTests(): Int =
-        XamlProjectedObjectValueRoots.size
 
     internal fun augmentInspectableDefinition(
-        value: Any,
         definition: WinRTCcwDefinition,
     ): WinRTCcwDefinition {
-        if (!FeatureSwitches.enableDefaultCustomTypeMappings) {
+        if (!FeatureSwitches.enableDefaultCustomTypeMappings || !shouldExposeWinUiXamlMetadataProvider(definition)) {
             return definition
         }
-        val withWinUiMetadataProvider = if (shouldExposeWinUiXamlMetadataProvider(definition)) {
-            definition.copy(
-                interfaceDefinitions = definition.interfaceDefinitions + createWinUiXamlMetadataProviderInterfaceDefinition(),
-            )
-        } else {
-            definition
-        }
-        if (withWinUiMetadataProvider.interfaceDefinitions.any { it.interfaceId == IID.IStringable }) {
-            return withWinUiMetadataProvider
-        }
-        return withWinUiMetadataProvider.copy(
-            interfaceDefinitions = withWinUiMetadataProvider.interfaceDefinitions + createStringableInterfaceDefinition(value),
+        return definition.copy(
+            interfaceDefinitions = definition.interfaceDefinitions + winUiXamlMetadataProviderInterfaceDefinition,
         )
     }
 
     internal fun defaultCustomPropertyProviderInterfaceDefinition(
-        value: Any,
         existingInterfaceIds: Set<Guid>,
     ): WinRTInspectableInterfaceDefinition? {
         if (!FeatureSwitches.enableDefaultCustomTypeMappings ||
@@ -175,7 +155,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         ) {
             return null
         }
-        return createCustomPropertyProviderDefinition(value).interfaceDefinitions.singleOrNull()
+        return createCustomPropertyProviderDefinition().interfaceDefinitions.singleOrNull()
     }
 
     private fun shouldExposeWinUiXamlMetadataProvider(definition: WinRTCcwDefinition): Boolean =
@@ -183,25 +163,25 @@ internal object XamlSystemProjectionRuntimeHooks {
             definition.interfaceDefinitions.any { it.interfaceId == WinUiXamlInterfaceIds.IApplicationOverrides } &&
             definition.interfaceDefinitions.none { it.interfaceId == WinUiXamlInterfaceIds.IXamlMetadataProvider }
 
-    private fun createWinUiXamlMetadataProviderInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+    private val winUiXamlMetadataProviderInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = WinUiXamlInterfaceIds.IXamlMetadataProvider,
             methods = listOf(
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { rawArgs ->
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
                     forwardWinUiXamlMetadataProviderCall(
                         slot = WinUiXamlMetadataProviderSlots.GetXamlType,
                         arg0 = rawArgs[0] as RawAddress,
                         arg1 = rawArgs[1] as RawAddress,
                     )
                 },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { rawArgs ->
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
                     forwardWinUiXamlMetadataProviderCall(
                         slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
                         arg0 = rawArgs[0] as RawAddress,
                         arg1 = rawArgs[1] as RawAddress,
                     )
                 },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { rawArgs ->
+                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
                     forwardWinUiXamlMetadataProviderCall(
                         slot = WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions,
                         arg0 = rawArgs[0] as RawAddress,
@@ -369,11 +349,11 @@ internal object XamlSystemProjectionRuntimeHooks {
             createCustomPropertyDefinition(value as ICustomProperty)
         }
         ComWrappersSupport.registerCcwFactory(ICustomPropertyProvider::class) { value ->
-            createCustomPropertyProviderDefinition(value)
+            createCustomPropertyProviderDefinition()
         }
         if (FeatureSwitches.enableICustomPropertyProviderSupport) {
             ComWrappersSupport.registerCcwFactory(WinRTBindableCustomPropertyImplementation::class) { value ->
-                createCustomPropertyProviderDefinition(value)
+                createCustomPropertyProviderDefinition()
             }
         }
         ComWrappersSupport.registerCcwFactory(PropertyChangedEventArgs::class) { value ->
@@ -387,24 +367,6 @@ internal object XamlSystemProjectionRuntimeHooks {
                 createDataErrorsChangedEventArgsDefinition(value as DataErrorsChangedEventArgs)
             }
         }
-    }
-}
-
-private object XamlProjectedObjectValueRoots {
-    private val roots = SnapshotList<ComObjectReference>()
-
-    val size: Int
-        get() = roots.toList().size
-
-    fun retain(reference: ComObjectReference) {
-        // XAML dependency properties can return the same object pointer after the setter call returns.
-        roots.add(reference)
-    }
-
-    fun close() {
-        val retained = roots.toList()
-        roots.clear()
-        retained.forEach { reference -> reference.close() }
     }
 }
 
@@ -1002,7 +964,7 @@ private class CommandCanExecuteChangedEventSource(
         object : EventSourceState<CanExecuteChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): CanExecuteChangedEventHandler =
                 { sender, args ->
-                    snapshotHandlers().forEach { handler -> handler(sender, args) }
+                    forEachHandler { handler -> handler(sender, args) }
                 }
         }
 }
@@ -1032,7 +994,7 @@ private class PropertyChangedEventSource(
         object : EventSourceState<PropertyChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): PropertyChangedEventHandler =
                 { sender, args ->
-                    snapshotHandlers().forEach { handler -> handler(sender, args) }
+                    forEachHandler { handler -> handler(sender, args) }
                 }
         }
 }
@@ -1062,7 +1024,7 @@ private class CollectionChangedEventSource(
         object : EventSourceState<NotifyCollectionChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): NotifyCollectionChangedEventHandler =
                 { sender, args ->
-                    snapshotHandlers().forEach { handler -> handler(sender, args) }
+                    forEachHandler { handler -> handler(sender, args) }
                 }
         }
 }
@@ -1085,7 +1047,7 @@ private class DataErrorsChangedEventSource(
         object : EventSourceState<DataErrorsChangedEventHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): DataErrorsChangedEventHandler =
                 { sender, args ->
-                    snapshotHandlers().forEach { handler -> handler(sender, args) }
+                    forEachHandler { handler -> handler(sender, args) }
                 }
         }
 }
@@ -1309,23 +1271,27 @@ private fun createCustomPropertyDefinition(customProperty: ICustomProperty): Win
         defaultInterfaceId = IID.ICustomProperty,
     )
 
-private fun createCustomPropertyProviderDefinition(source: Any): WinRTCcwDefinition {
-    val provider = explicitOrBindableCustomPropertyProvider(source)
-    return WinRTCcwDefinition(
+private fun createCustomPropertyProviderDefinition(): WinRTCcwDefinition =
+    CustomPropertyProviderDefinitionHolder.definition
+
+private object CustomPropertyProviderDefinitionHolder {
+    val definition = WinRTCcwDefinition(
         interfaceDefinitions = listOf(
             WinRTInspectableInterfaceDefinition(
                 interfaceId = IID.ICustomPropertyProvider,
                 methods = listOf(
                     WinRTInspectableMethodDefinition(
                         signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
-                    ) { rawArgs ->
+                    ) { managedValue, rawArgs ->
+                        val provider = explicitOrBindableCustomPropertyProvider(requireNotNull(managedValue))
                         val property = provider?.getCustomProperty(decodeBorrowedString(rawArgs[0] as RawAddress))
                         (rawArgs[1] as RawAddress).writeReturnedPointer(propertyPointer(property))
                         KnownHResults.S_OK.value
                     },
                     WinRTInspectableMethodDefinition(
                         signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
-                    ) { rawArgs ->
+                    ) { managedValue, rawArgs ->
+                        val provider = explicitOrBindableCustomPropertyProvider(requireNotNull(managedValue))
                         val property = provider?.getIndexedProperty(
                             name = decodeBorrowedString(rawArgs[0] as RawAddress),
                             indexParameterType = TypeProjection.fromAbi(rawArgs[1] as RawAddress),
@@ -1335,7 +1301,9 @@ private fun createCustomPropertyProviderDefinition(source: Any): WinRTCcwDefinit
                     },
                     WinRTInspectableMethodDefinition(
                         signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                    ) { rawArgs ->
+                    ) { managedValue, rawArgs ->
+                        val source = requireNotNull(managedValue)
+                        val provider = explicitOrBindableCustomPropertyProvider(source)
                         writeOptionalHString(
                             provider?.getStringRepresentation() ?: source.toString(),
                             rawArgs[0] as RawAddress,
@@ -1344,7 +1312,9 @@ private fun createCustomPropertyProviderDefinition(source: Any): WinRTCcwDefinit
                     },
                     WinRTInspectableMethodDefinition(
                         signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                    ) { rawArgs ->
+                    ) { managedValue, rawArgs ->
+                        val source = requireNotNull(managedValue)
+                        val provider = explicitOrBindableCustomPropertyProvider(source)
                         TypeProjection.copyTo(provider?.type ?: source::class, rawArgs[0] as RawAddress)
                         KnownHResults.S_OK.value
                     },
@@ -1444,19 +1414,6 @@ private fun createNotifyCollectionChangedEventArgsInterfaceDefinition(
                 signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
                 PlatformAbi.writeInt32(rawArgs[0] as RawAddress, value.oldStartingIndex)
-                KnownHResults.S_OK.value
-            },
-        ),
-    )
-
-private fun createStringableInterfaceDefinition(value: Any): WinRTInspectableInterfaceDefinition =
-    WinRTInspectableInterfaceDefinition(
-        interfaceId = IID.IStringable,
-        methods = listOf(
-            WinRTInspectableMethodDefinition(
-                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-            ) { rawArgs ->
-                writeOptionalHString(value.toString(), rawArgs[0] as RawAddress)
                 KnownHResults.S_OK.value
             },
         ),

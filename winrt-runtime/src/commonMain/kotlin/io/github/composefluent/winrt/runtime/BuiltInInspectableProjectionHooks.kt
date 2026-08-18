@@ -3,12 +3,29 @@ package io.github.composefluent.winrt.runtime
 import windows.foundation.FoundationBuiltInProjectionRuntimeHooks
 
 internal object WinRTBuiltInProjectionRuntimeHooks {
+    private val registrationLock = PlatformLock()
+
+    @kotlin.concurrent.Volatile
+    private var registered = false
+
     fun ensureRegistered() {
-        if (!FeatureSwitches.enableDefaultCustomTypeMappings) {
+        if (registered || !FeatureSwitches.enableDefaultCustomTypeMappings) {
             return
         }
-        XamlSystemProjectionRuntimeHooks.ensureRegistered()
-        FoundationBuiltInProjectionRuntimeHooks.ensureRegistered()
+        registrationLock.withLock {
+            if (registered) {
+                return@withLock
+            }
+            XamlSystemProjectionRuntimeHooks.ensureRegistered()
+            FoundationBuiltInProjectionRuntimeHooks.ensureRegistered()
+            registered = true
+        }
+    }
+
+    fun clearForTests() {
+        registrationLock.withLock {
+            registered = false
+        }
     }
 
     fun tryCreateProjectedReference(
@@ -16,10 +33,6 @@ internal object WinRTBuiltInProjectionRuntimeHooks {
         interfaceId: Guid?,
     ): ComObjectReference? =
         FoundationBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
-
-    fun retainProjectedObjectReferenceForMarshaling(reference: ComObjectReference) {
-        XamlSystemProjectionRuntimeHooks.retainProjectedObjectReferenceForMarshaling(reference)
-    }
 
     fun createSyntheticCcwDefinition(value: Any): WinRTCcwDefinition? =
         platformCreateSyntheticCcwDefinition(value)

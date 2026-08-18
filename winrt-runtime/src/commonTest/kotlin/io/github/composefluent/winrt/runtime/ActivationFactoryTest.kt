@@ -184,6 +184,26 @@ class ActivationFactoryTest {
     }
 
     @Test
+    fun activation_factory_can_query_activated_instance_to_its_default_interface() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        RuntimeScope.initializeMultithreaded().use {
+            val jsonObjectInterfaceId = Guid("064E24DD-29C2-4F83-9AC1-9EE11578BEB3")
+            val factory = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                factory.activateInstance(jsonObjectInterfaceId).use { instance ->
+                    assertEquals(jsonObjectInterfaceId, instance.comPtr.interfaceId)
+                    assertEquals("Windows.Data.Json.JsonObject", instance.getRuntimeClassName())
+                }
+            } finally {
+                factory.close()
+            }
+        }
+    }
+
+    @Test
     fun runtime_class_activation_helper_can_activate_instance() {
         if (!PlatformRuntime.isWindows) {
             return

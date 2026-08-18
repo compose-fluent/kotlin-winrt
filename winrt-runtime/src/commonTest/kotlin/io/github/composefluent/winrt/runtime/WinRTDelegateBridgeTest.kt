@@ -8,6 +8,15 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
+@WinRTProjectionInboundCallSite
+private fun invokeStaticIntEventHandler(
+    handler: (Any?, Int) -> Unit,
+    @WinRTProjectionParameter(abiType = "System.Object") sender: Any?,
+    @WinRTProjectionParameter value: Int,
+): Unit = handler(sender, value).also {
+    TODO("Lowered while compiling the static delegate entry test")
+}
+
 class WinRTDelegateBridgeTest {
     private data class DelegateObjectPayload(val value: String)
 
@@ -446,6 +455,127 @@ class WinRTDelegateBridgeTest {
     }
 
     @Test
+    fun delegate_instances_with_shared_template_invoke_their_own_callbacks() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc543")
+        var firstValue = 0
+        var secondValue = 0
+        val first = WinRTDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRTDelegateValueKind.INT32),
+        ) { arguments ->
+            firstValue = arguments.single() as Int
+        }
+        val second = WinRTDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRTDelegateValueKind.INT32),
+        ) { arguments ->
+            secondValue = arguments.single() as Int
+        }
+
+        first.use { firstHandle ->
+            second.use { secondHandle ->
+                firstHandle.createReference().use { reference ->
+                    reference.invokeAbi(listOf(11)).requireSuccess()
+                }
+                secondHandle.createReference().use { reference ->
+                    reference.invokeAbi(listOf(22)).requireSuccess()
+                }
+            }
+        }
+
+        assertEquals(11, firstValue)
+        assertEquals(22, secondValue)
+    }
+
+    @Test
+    fun delegate_vtable_routes_scalar_invocation_to_raw_word_handler() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc5f0")
+        var captured = 0
+        WinRTDelegateBridge.createUnitDelegateRaw(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
+            callback = { error("Compatibility callback path must not run for scalar delegate carriers.") },
+            rawWordCallback = ComRawWordCallback { senderWord, valueWord, _, _, _, _, _ ->
+                assertEquals(0L, senderWord)
+                captured = valueWord.toInt()
+                KnownHResults.S_OK.value
+            },
+        ).use { handle ->
+            handle.createReference().use { reference ->
+                val signature = WinRTDelegateAbiMarshaller.functionSignature(handle.descriptor)
+                assertEquals(
+                    KnownHResults.S_OK.value,
+                    ComVtableInvoker.invokeGeneric(
+                        instance = reference.pointer,
+                        slot = WinRTDelegateVftblSlots.Invoke,
+                        signature = signature,
+                        args = longArrayOf(0L, 42L),
+                    ),
+                )
+            }
+        }
+        assertEquals(42, captured)
+    }
+
+    @Test
+    fun delegate_vtable_static_entry_recovers_the_exact_managed_target() {
+        val delegateIid = Guid("66d14639-2616-4a28-832b-6f5b24981567")
+        var captured = 0
+        val target: (Any?, Int) -> Unit = { _, value -> captured = value }
+        WinRTDelegateBridge.createUnitDelegateStatic(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
+            managedTarget = target,
+            abiEntryPoint = winRTProjectionInboundEntryPoint(::invokeStaticIntEventHandler),
+            callback = { error("Compatibility callback path must not run for a static delegate entry.") },
+        ).use { handle ->
+            handle.createReference().use { reference ->
+                reference.invokeAbi(listOf(null, 42)).requireSuccess()
+            }
+        }
+
+        assertEquals(42, captured)
+    }
+
+    @Test
+    fun delegate_instances_with_shared_static_template_recover_their_own_managed_targets() {
+        val delegateIid = Guid("66d14639-2616-4a28-832b-6f5b24981568")
+        val entryPoint = winRTProjectionInboundEntryPoint(::invokeStaticIntEventHandler)
+        var firstValue = 0
+        var secondValue = 0
+        val firstTarget: (Any?, Int) -> Unit = { _, value -> firstValue = value }
+        val secondTarget: (Any?, Int) -> Unit = { _, value -> secondValue = value }
+        val first = WinRTDelegateBridge.createUnitDelegateStatic(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
+            managedTarget = firstTarget,
+            abiEntryPoint = entryPoint,
+            callback = { error("Compatibility callback path must not run for a static delegate entry.") },
+        )
+        val second = WinRTDelegateBridge.createUnitDelegateStatic(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.INT32),
+            managedTarget = secondTarget,
+            abiEntryPoint = entryPoint,
+            callback = { error("Compatibility callback path must not run for a static delegate entry.") },
+        )
+
+        first.use { firstHandle ->
+            second.use { secondHandle ->
+                firstHandle.createReference().use { reference ->
+                    reference.invokeAbi(listOf(null, 31)).requireSuccess()
+                }
+                secondHandle.createReference().use { reference ->
+                    reference.invokeAbi(listOf(null, 47)).requireSuccess()
+                }
+            }
+        }
+
+        assertEquals(31, firstValue)
+        assertEquals(47, secondValue)
+    }
+
+    @Test
     fun delegate_argument_uses_full_cswinrt_style_ccw() {
         val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc541")
         val descriptor = WinRTDelegateDescriptor(
@@ -641,6 +771,20 @@ class WinRTDelegateBridgeTest {
         )
 
         assertTrue(signature.render().startsWith("pinterface("))
+    }
+
+    @Test
+    fun delegate_descriptor_caches_closed_reference_interface_id() {
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("b60074f3-125b-534e-8f9c-9769bd3f0f64"),
+            parameterKinds = emptyList(),
+        )
+
+        val referenceInterfaceId = descriptor.referenceInterfaceId
+
+        assertEquals(Guid("dea1e123-12ea-5cb3-b923-abe74e426d9e"), referenceInterfaceId)
+        assertSame(referenceInterfaceId, descriptor.referenceInterfaceId)
+        assertSame(referenceInterfaceId, descriptor.referenceInterfaceId())
     }
 
     @Test

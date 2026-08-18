@@ -1,21 +1,28 @@
 package io.github.composefluent.winrt.runtime
 
-internal expect fun platformCreateInspectableReference(value: Any): ComObjectReference
+internal fun platformCreateInspectableReference(value: Any): ComObjectReference =
+    ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
 
-internal expect fun platformTryProjectBindableInspectable(pointer: RawAddress): Any?
+internal fun platformTryProjectBindableInspectable(pointer: RawAddress): Any? =
+    tryProjectBorrowedInspectableValue(pointer)
 
-internal expect fun platformEnsureInspectableProjectionInteropRegistered()
+internal fun platformEnsureInspectableProjectionInteropRegistered() {
+    ensureProjectionMappingsRegistered()
+    WinRTBuiltInProjectionRuntimeHooks.ensureRegistered()
+}
 
-internal expect fun platformTryProjectInspectable(
+internal fun platformTryProjectInspectable(
     inspectable: IInspectableReference,
     runtimeClassName: String?,
-): Any?
+): Any? = tryProjectInspectableValue(inspectable, runtimeClassName)
 
-internal expect fun platformTryCreateProjectedReference(
+internal fun platformTryCreateProjectedReference(
     value: Any,
     interfaceId: Guid?,
-): ComObjectReference?
+): ComObjectReference? = WinRTBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
 
-internal expect fun platformCreateSyntheticCcwDefinition(value: Any): WinRTCcwDefinition?
+internal fun platformCreateSyntheticCcwDefinition(value: Any): WinRTCcwDefinition? =
+    createSyntheticInspectableCcwDefinition(value)
 
-internal expect fun platformRuntimeClassNameFor(value: Any): String?
+internal fun platformRuntimeClassNameFor(value: Any): String? =
+    defaultInspectableRuntimeClassNameFor(value)

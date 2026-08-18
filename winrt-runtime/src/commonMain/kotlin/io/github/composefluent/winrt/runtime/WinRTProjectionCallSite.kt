@@ -34,6 +34,24 @@ annotation class WinRTProjectionCallSite(
     val returnAbiType: String = "",
 )
 
+/**
+ * Marks a typed projected-interface CCW entry stub. The generated declaration contains the
+ * projected member invocation and WinMD parameter facts; the compiler plugin owns ABI decoding,
+ * result publication, and HRESULT completion.
+ */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+annotation class WinRTProjectionInboundCallSite(
+    val returnAbiType: String = "",
+)
+
+/**
+ * Compiler marker that resolves one semantic inbound CallSite to its statically generated ABI
+ * callback. The function reference is consumed by the compiler plugin and never reaches runtime.
+ */
+fun winRTProjectionInboundEntryPoint(callSite: Any): RawAddress =
+    error("WinRT projected-interface inbound CallSite was not lowered by the compiler plugin: $callSite")
+
 /** Adds WinMD direction or an otherwise ambiguous WinMD ABI type to one typed parameter. */
 @Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.LOCAL_VARIABLE)
 @Retention(AnnotationRetention.BINARY)
@@ -100,6 +118,8 @@ enum class WinRTProjectionAbiCodecRole {
 annotation class WinRTProjectionAbiCodec(
     val role: WinRTProjectionAbiCodecRole,
     val type: String = "",
+    /** FROM_ABI consumes an owned ABI value on both normal and exceptional return. */
+    val consumesOwnedAbi: Boolean = false,
 )
 
 /** Exact WinMD enum-member bits retained on the compatibility getter for use-site folding. */

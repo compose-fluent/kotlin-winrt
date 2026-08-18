@@ -447,6 +447,18 @@ actual object ComVtableInvoker {
         )
     }
 
+    internal actual fun createRawWordComMethodCallback(
+        signature: ComMethodSignature,
+        callback: ComRawWordCallback,
+    ): NativeCallbackHandle =
+        createRawWordCallback(
+            key = CallbackSignature(
+                resultKind = signature.resultKind,
+                parameterKinds = listOf(ComAbiValueKind.Pointer) + signature.explicitParameterKinds,
+            ),
+            callback = callback,
+        )
+
     internal actual fun createRawInt32Callback(
         parameterKinds: List<ComAbiValueKind>,
         callback: (List<Any?>) -> Int,
@@ -554,6 +566,64 @@ actual object ComVtableInvoker {
         )
     }
 
+    private fun createRawWordCallback(
+        key: CallbackSignature,
+        callback: ComRawWordCallback,
+    ): NativeCallbackHandle {
+        require(key.resultKind == ComAbiValueKind.Int32) {
+            "Only int32-return callbacks are supported."
+        }
+        require(key.parameterKinds.size <= 7) {
+            "Raw-word COM callbacks support at most seven carriers, got ${key.parameterKinds}."
+        }
+        require(key.parameterKinds.none { it is ComAbiValueKind.Struct }) {
+            "Raw-word callbacks do not materialize by-value struct carriers: ${key.parameterKinds}."
+        }
+
+        val callbackArena = Arena.ofShared()
+        var target =
+            lookup.findStatic(
+                ComVtableInvoker::class.java,
+                "invokeRawWordCallbackDirect",
+                MethodType.methodType(
+                    Int::class.javaPrimitiveType,
+                    ComRawWordCallback::class.java,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                ),
+            )
+        target = MethodHandles.insertArguments(target, 0, callback)
+        while (target.type().parameterCount() > key.parameterKinds.size) {
+            target = MethodHandles.insertArguments(target, key.parameterKinds.size, 0L)
+        }
+        target = MethodHandles.filterArguments(
+            target,
+            0,
+            *key.parameterKinds.map(::rawWordFilter).toTypedArray(),
+        )
+        val exactHandle = target.asType(
+            MethodType.methodType(
+                Int::class.javaPrimitiveType,
+                key.parameterKinds.map(::carrierClass),
+            ),
+        )
+        return try {
+            val stub = linker.upcallStub(exactHandle, key.asFunctionDescriptor(), callbackArena)
+            NativeCallbackHandle(
+                pointer = stub.asRawAddress(),
+                onClose = callbackArena::close,
+            )
+        } catch (failure: Throwable) {
+            callbackArena.close()
+            throw failure
+        }
+    }
+
     private fun nextCallbackId(): Long {
         while (true) {
             val current = nextCallbackId.load()
@@ -581,6 +651,62 @@ actual object ComVtableInvoker {
             platformHResultFromThrowable(error).value
         }
     }
+
+    @JvmStatic
+    private fun invokeRawWordCallbackDirect(
+        callback: ComRawWordCallback,
+        arg0: Long,
+        arg1: Long,
+        arg2: Long,
+        arg3: Long,
+        arg4: Long,
+        arg5: Long,
+        arg6: Long,
+    ): Int {
+        return try {
+            callback.invoke(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+        } catch (error: Throwable) {
+            platformSetErrorInfo(error)
+            platformHResultFromThrowable(error).value
+        }
+    }
+
+    private fun rawWordFilter(kind: ComAbiValueKind): MethodHandle =
+        when (kind) {
+            ComAbiValueKind.Pointer -> rawWordFilter("rawPointerWord", MemorySegment::class.java)
+            ComAbiValueKind.Int8 -> rawWordFilter("rawInt8Word", Byte::class.javaPrimitiveType!!)
+            ComAbiValueKind.Int16 -> rawWordFilter("rawInt16Word", Short::class.javaPrimitiveType!!)
+            ComAbiValueKind.Int32 -> rawWordFilter("rawInt32Word", Int::class.javaPrimitiveType!!)
+            ComAbiValueKind.Int64 -> MethodHandles.identity(Long::class.javaPrimitiveType!!)
+            ComAbiValueKind.Float -> rawWordFilter("rawFloatWord", Float::class.javaPrimitiveType!!)
+            ComAbiValueKind.Double -> rawWordFilter("rawDoubleWord", Double::class.javaPrimitiveType!!)
+            is ComAbiValueKind.Struct -> error("Struct callbacks use the compatibility callback path.")
+        }
+
+    private fun rawWordFilter(name: String, carrier: Class<*>): MethodHandle =
+        lookup.findStatic(
+            ComVtableInvoker::class.java,
+            name,
+            MethodType.methodType(Long::class.javaPrimitiveType, carrier),
+        )
+
+    @JvmStatic
+    private fun rawPointerWord(value: MemorySegment): Long = value.address()
+
+    @JvmStatic
+    private fun rawInt8Word(value: Byte): Long = value.toLong()
+
+    @JvmStatic
+    private fun rawInt16Word(value: Short): Long = value.toLong()
+
+    @JvmStatic
+    private fun rawInt32Word(value: Int): Long = value.toLong()
+
+    @JvmStatic
+    private fun rawFloatWord(value: Float): Long = value.toRawBits().toLong()
+
+    @JvmStatic
+    private fun rawDoubleWord(value: Double): Long = value.toRawBits()
 }
 
 @PublishedApi

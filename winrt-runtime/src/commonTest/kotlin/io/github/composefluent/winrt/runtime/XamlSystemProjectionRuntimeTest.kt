@@ -28,15 +28,41 @@ class XamlSystemProjectionRuntimeTest {
     }
 
     @Test
-    fun object_marshaler_roots_are_owned_by_xaml_runtime_cache() {
-        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
-        assertEquals(0, XamlSystemProjectionRuntimeHooks.retainedProjectedObjectReferenceCountForTests())
+    fun object_marshaler_reuses_and_balances_temporary_ccw_leases() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val value = PlainBindableTarget("temporary")
+        val first = WinRTObjectMarshaller.createMarshaler(value)
+        val pointer = first.abi
+        val baselineReferenceCount = WinRTInspectableComObject.tryProbeReferenceCount(pointer)
+        first.close()
 
-        WinRTObjectMarshaller.createMarshaler(PlainBindableTarget("rooted")).close()
+        assertEquals(1u, baselineReferenceCount)
+        assertEquals(baselineReferenceCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        repeat(32) {
+            WinRTObjectMarshaller.createMarshaler(value).use { marshaler ->
+                assertEquals(pointer, marshaler.abi)
+                assertEquals(baselineReferenceCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            }
+            assertEquals(baselineReferenceCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+        assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+    }
 
-        assertEquals(1, XamlSystemProjectionRuntimeHooks.retainedProjectedObjectReferenceCountForTests())
-        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
-        assertEquals(0, XamlSystemProjectionRuntimeHooks.retainedProjectedObjectReferenceCountForTests())
+    @Test
+    fun native_addref_outlives_temporary_object_marshaler_and_pins_managed_value() {
+        val escaped = createEscapedObjectMarshalerReference()
+
+        try {
+            repeat(3) {
+                PlatformFinalization.drain()
+                assertNotNull(escaped.value.get())
+                assertEquals(2u, WinRTInspectableComObject.tryProbeReferenceCount(escaped.pointer))
+            }
+        } finally {
+            WinRTPlatformApi.releaseRaw(escaped.pointer)
+            ComWrappersSupport.clearRegistriesForTests()
+        }
     }
 
     @Test
@@ -278,5 +304,21 @@ class XamlSystemProjectionRuntimeTest {
 
     private data class PlainBindableTarget(val label: String) {
         override fun toString(): String = label
+    }
+
+    private data class EscapedObjectMarshalerReference(
+        val value: PlatformManagedWeakReference<PlainBindableTarget>,
+        val pointer: RawAddress,
+    )
+
+    private fun createEscapedObjectMarshalerReference(): EscapedObjectMarshalerReference {
+        ComWrappersSupport.clearRegistriesForTests()
+        val value = PlainBindableTarget("native-owned")
+        val weakValue = PlatformManagedWeakReference(value)
+        val marshaler = WinRTObjectMarshaller.createMarshaler(value)
+        WinRTPlatformApi.addRefRaw(marshaler.abi)
+        return EscapedObjectMarshalerReference(weakValue, marshaler.abi).also {
+            marshaler.close()
+        }
     }
 }

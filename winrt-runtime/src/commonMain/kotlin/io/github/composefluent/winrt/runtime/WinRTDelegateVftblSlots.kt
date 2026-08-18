@@ -1,5 +1,5 @@
 package io.github.composefluent.winrt.runtime
 
-internal object WinRTDelegateVftblSlots {
+object WinRTDelegateVftblSlots {
     const val Invoke = 3
 }

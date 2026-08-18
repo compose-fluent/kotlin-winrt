@@ -53,6 +53,30 @@ class EventRegistrationTokenTableTest {
         assertNotEquals(0, upper32Bits(token))
     }
 
+    @Test
+    fun event_registration_token_table_invokes_an_update_time_snapshot_in_registration_order() {
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val calls = mutableListOf<String>()
+        val first = TestHandler("first")
+        val second = TestHandler("second")
+
+        table.addEventHandler(first)
+        table.addEventHandler(second)
+        table.forEachHandler { handler -> calls += handler.name }
+
+        assertEquals(listOf("first", "second"), calls)
+
+        table.removeEventHandler(EventRegistrationToken())
+        calls.clear()
+        table.forEachHandler { handler -> calls += handler.name }
+        assertEquals(listOf("first", "second"), calls)
+
+        table.removeEventHandler(table.addEventHandler(first))
+        calls.clear()
+        table.forEachHandler { handler -> calls += handler.name }
+        assertEquals(listOf("first", "second"), calls)
+    }
+
     private fun upper32Bits(token: EventRegistrationToken): Int =
         (token.value.toULong() shr 32).toInt()
 

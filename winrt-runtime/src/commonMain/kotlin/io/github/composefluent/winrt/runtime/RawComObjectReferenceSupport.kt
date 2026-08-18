@@ -10,10 +10,18 @@ internal class RawComObjectReferenceSupport(
     val interfaceId: Guid,
     private val preventReleaseOnDispose: Boolean = false,
     val isAggregated: Boolean = false,
+    trackContext: Boolean = true,
+    internal val managedCcwReleaseIdentity: RawAddress = RawAddress.Null,
 ) {
     private val disposed = AtomicInt(0)
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
     private var releaseInitialTrackerSourceOnDispose: Boolean = false
+    private val objectContext =
+        if (trackContext) {
+            ObjectReferenceContext.capture(pointer, interfaceId)
+        } else {
+            null
+        }
 
     val isDisposed: Boolean
         get() = disposed.load() != 0
@@ -23,6 +31,9 @@ internal class RawComObjectReferenceSupport(
 
     val referenceTrackerHandle: RawComPtr
         get() = referenceTrackerPointer
+
+    fun pointerForCurrentContext(): RawComPtr =
+        objectContext?.pointerForCurrentContext() ?: pointer
 
     fun attachReferenceTracker(
         trackerPointer: RawComPtr,
@@ -43,7 +54,7 @@ internal class RawComObjectReferenceSupport(
 
     fun addRef(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
-        val count = WinRTPlatformApi.addRefRaw(pointer.asNativePointer())
+        val count = WinRTPlatformApi.addRefRaw(pointerForCurrentContext().asNativePointer())
         addRefFromTrackerSource(addRefFromTrackerSourceCallback)
         return count
     }
@@ -51,13 +62,14 @@ internal class RawComObjectReferenceSupport(
     fun release(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
         releaseFromTrackerSource(releaseFromTrackerSourceCallback)
-        return WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
+        return WinRTPlatformApi.releaseRaw(pointerForCurrentContext().asNativePointer())
     }
 
     fun getRef(): RawComPtr {
         throwIfDisposed()
-        WinRTPlatformApi.addRefRaw(pointer.asNativePointer())
-        return pointer
+        val currentPointer = pointerForCurrentContext()
+        WinRTPlatformApi.addRefRaw(currentPointer.asNativePointer())
+        return currentPointer
     }
 
     fun <T> tryQueryInterface(
@@ -65,7 +77,7 @@ internal class RawComObjectReferenceSupport(
         wrapReference: (RawComPtr, Guid, RawComPtr, Boolean, Boolean) -> T,
     ): T? {
         throwIfDisposed()
-        val result = WinRTPlatformApi.queryInterfaceRaw(pointer.asNativePointer(), requestedInterfaceId)
+        val result = WinRTPlatformApi.queryInterfaceRaw(pointerForCurrentContext().asNativePointer(), requestedInterfaceId)
         val queriedPointer = result.pointer.asRawComPtr()
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(queriedPointer)) {
             return null
@@ -104,7 +116,7 @@ internal class RawComObjectReferenceSupport(
             return true
         }
 
-        val result = WinRTPlatformApi.queryInterfaceRaw(pointer.asNativePointer(), IID.IReferenceTracker)
+        val result = WinRTPlatformApi.queryInterfaceRaw(pointerForCurrentContext().asNativePointer(), IID.IReferenceTracker)
         val trackerPointer = result.pointer.asRawComPtr()
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(trackerPointer)) {
             return false
@@ -127,9 +139,9 @@ internal class RawComObjectReferenceSupport(
         throwIfDisposed()
         other.throwIfDisposed()
 
-        val thisIdentity = tryQueryIUnknown(pointer) ?: return false
+        val thisIdentity = tryQueryIUnknown(pointerForCurrentContext()) ?: return false
         val otherIdentity = try {
-            tryQueryIUnknown(other.pointer) ?: return false
+            tryQueryIUnknown(other.pointerForCurrentContext()) ?: return false
         } catch (error: Throwable) {
             WinRTPlatformApi.releaseRaw(thisIdentity.asNativePointer())
             throw error
@@ -146,15 +158,33 @@ internal class RawComObjectReferenceSupport(
     fun close(
         releaseFromTrackerSourceCallback: (RawComPtr) -> Unit,
         releaseTrackerPointer: (RawComPtr) -> Unit,
+        deferContextRelease: Boolean = false,
     ) {
         if (disposed.compareAndSet(0, 1)) {
-            try {
+            val release = {
                 if (!preventReleaseOnDispose) {
                     releaseFromTrackerSource(releaseFromTrackerSourceCallback)
-                    WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
+                    if (!tryReleaseManagedCcwReference(managedCcwReleaseIdentity)) {
+                        WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
+                    }
                 }
-            } finally {
                 disposeReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
+            }
+            val context = objectContext
+            if (deferContextRelease && context != null) {
+                context.deferToOriginalContext {
+                    try {
+                        release()
+                    } finally {
+                        context.close()
+                    }
+                }
+            } else {
+                try {
+                    context?.callInOriginalContext(release, release) ?: release()
+                } finally {
+                    context?.close()
+                }
             }
         }
     }

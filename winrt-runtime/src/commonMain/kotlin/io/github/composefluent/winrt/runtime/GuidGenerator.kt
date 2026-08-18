@@ -72,4 +72,23 @@ object GuidGenerator {
             ParameterizedInterfaceId.createFromSignature(signature)
         }
     }
+
+    /**
+     * Kotlin [KClass] does not retain closed generic arguments, so callers provide the WinRT generic
+     * interface definition and its projected argument classes separately.
+     */
+    fun createIID(
+        genericInterface: Guid,
+        vararg typeArguments: KClass<*>,
+    ): Guid = ParameterizedInterfaceId.createFromSignature(
+        buildString {
+            append("pinterface(")
+            append(WinRTTypeSignature.guid(genericInterface).render())
+            typeArguments.forEach { typeArgument ->
+                append(';')
+                append(getSignature(typeArgument))
+            }
+            append(')')
+        },
+    )
 }

@@ -120,7 +120,42 @@ private object MappedAbiIdentityCallSiteFixture {
         TODO("alternate ABI identity fixture")
 }
 
-private interface DirectUnknownProjection {
+private object ManagedInspectableObjectCallSiteFixture {
+    @WinRTProjectionCallSite
+    fun consume(
+        reference: ComObjectReference,
+        slot: Int,
+        @WinRTProjectionParameter(abiType = "System.Object") value: Any?,
+    ): Unit = TODO("managed inspectable object input fixture")
+}
+
+private class ConsumingOwnedProjection(
+    val pointerKey: Long,
+)
+
+@WinRTProjectionAbiType(
+    name = "io.github.composefluent.winrt.runtime.ConsumingOwnedProjection",
+    kind = WinRTProjectionAbiTypeKind.PROJECTION,
+    reference = WinRTProjectionAbiReferenceKind.UNKNOWN,
+)
+private object ConsumingOwnedProjectionCallSiteFixture {
+    @WinRTProjectionAbiCodec(
+        role = WinRTProjectionAbiCodecRole.FROM_ABI,
+        type = "io.github.composefluent.winrt.runtime.ConsumingOwnedProjection",
+        consumesOwnedAbi = true,
+    )
+    fun decodeOwned(abi: RawAddress): ConsumingOwnedProjection = try {
+        ConsumingOwnedProjection(PlatformAbi.pointerKey(abi))
+    } finally {
+        if (!PlatformAbi.isNull(abi)) WinRTPlatformApi.releaseRaw(abi)
+    }
+
+    @WinRTProjectionCallSite
+    fun produce(reference: ComObjectReference, slot: Int): ConsumingOwnedProjection =
+        TODO("consuming owned projection fixture")
+}
+
+private interface DirectUnknownProjection : WinRTManagedProjectionStateAccess {
     companion object Metadata {
         val TYPE_HANDLE: WinRTTypeHandle = WinRTTypeHandle(
             "io.github.composefluent.winrt.runtime.DirectUnknownProjection",
@@ -342,6 +377,31 @@ class WinRTCallSiteLoweringContractTest {
     }
 
     @Test
+    fun consuming_owned_projection_results_skip_the_general_owned_output_transaction() {
+        val bytecode = javap(ConsumingOwnedProjectionCallSiteFixture::class.java.name)
+        val produce = bytecode.methodBytecode("produce")
+
+        assertFalse(bytecode.contains("consuming owned projection fixture"), bytecode)
+        assertTrue(produce.contains("decodeOwned"), produce)
+        assertTrue(produce.contains("iconst_2"), produce)
+        assertTrue(produce.contains("invokeUnknownRefCountMethod"), produce)
+        assertFalse(produce.contains("releaseRaw"), produce)
+        assertFalse(produce.contains("addSuppressed"), produce)
+        assertFalse(produce.contains("java/lang/Throwable"), produce)
+    }
+
+    @Test
+    fun rcw_hot_identity_key_comparison_stays_primitive_and_map_fallback_boxes_once() {
+        val bytecode = javap("io.github.composefluent.winrt.runtime.RcwIdentityCache")
+        val getHot = bytecode.methodBytecode("java.lang.Object getHot(long)")
+        val get = bytecode.methodBytecode("java.lang.Object get(long)")
+
+        assertTrue(getHot.contains("lcmp"), getHot)
+        assertFalse(getHot.contains("java/lang/Long.valueOf"), getHot)
+        assertEquals(1, get.countOccurrences("java/lang/Long.valueOf"), get)
+    }
+
+    @Test
     fun plain_primitive_arrays_lower_to_contiguous_typed_loops_without_array_codecs() {
         val bytecode = javap(DirectPrimitiveArrayCallSiteFixture::class.java.name)
         assertFalse(bytecode.contains("direct primitive array input fixture"))
@@ -445,19 +505,27 @@ class WinRTCallSiteLoweringContractTest {
     }
 
     @Test
-    fun plain_projection_inputs_read_iwinrtobject_directly_without_module_codecs() {
+    fun plain_projection_inputs_use_common_call_lease_without_module_codecs() {
         val bytecode = javap(DirectProjectionOutputCallSiteFixture::class.java.name)
         assertFalse(bytecode.contains("direct interface projection input fixture"))
         assertFalse(bytecode.contains("direct nullable runtime-class projection input fixture"))
 
         val nonNull = bytecode.methodBytecode("consumeInterface")
         assertTrue(nonNull.contains("Metadata.getTYPE_HANDLE"), nonNull)
-        assertTrue(nonNull.contains("IWinRTObject.getObjectReferenceForType"), nonNull)
+        assertTrue(nonNull.contains("WinRTManagedProjectionStateAccess.winRTManagedProjectionState"), nonNull)
+        assertFalse(nonNull.contains("WinRTManagedProjectionStateOwner"), nonNull)
+        assertTrue(nonNull.contains("WinRTManagedProjectionAbiSource.tryAcquireCallLease"), nonNull)
+        assertTrue(nonNull.contains("WinRTManagedProjectionAbiSource.\"tryBorrowAbi-"), nonNull)
+        assertTrue(nonNull.contains("ComWrappersSupport.tryAcquireCachedCCWCallLease"), nonNull)
+        assertTrue(nonNull.contains("PlatformManagedComReferenceCounter.load"), nonNull)
+        assertTrue(nonNull.contains("ManagedComHostState.completeBorrowedCallStateTransition"), nonNull)
+        assertFalse(nonNull.contains("ManagedComHostState.endBorrowedCall"), nonNull)
         assertTrue(nonNull.contains("ComObjectReference.getComPtr"), nonNull)
         assertTrue(nonNull.contains("ComPtr.getSupport"), nonNull)
         assertTrue(nonNull.contains("RawComObjectReferenceSupport.isDisposed"), nonNull)
         assertTrue(nonNull.contains("ComPtr.\"getRaw-"), nonNull)
         assertFalse(nonNull.contains("ComPtr.\"getPointer-"), nonNull)
+        assertFalse(nonNull.contains("IWinRTObject.getObjectReferenceForType"), nonNull)
         assertFalse(nonNull.contains("IWinRTObject.getNativeObject"), nonNull)
         assertFalse(nonNull.contains("codec_toAbi_"), nonNull)
 
@@ -482,6 +550,25 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(consume.contains("toAbi"), consume)
         assertFalse(consume.contains("getObjectReferenceForType"), consume)
         assertFalse(consume.contains("getNativeObject"), consume)
+    }
+
+    @Test
+    fun managed_inspectable_inputs_borrow_cached_ccw_with_owned_fallback_and_keep_alive() {
+        val bytecode = javap(ManagedInspectableObjectCallSiteFixture::class.java.name)
+        assertFalse(bytecode.contains("managed inspectable object input fixture"), bytecode)
+
+        val consume = bytecode.methodBytecode("consume")
+        val stateBorrow = consume.indexOf("WinRTManagedProjectionAbiSource.\"tryBorrowAbi-")
+        val ownedFallback = consume.indexOf("BorrowedObjectCodec.createMarshaler")
+        assertTrue(stateBorrow >= 0, consume)
+        assertTrue(ownedFallback > stateBorrow, consume)
+        assertTrue(
+            consume.contains("ComWrappersSupport.\"tryBorrowCachedCCWForObjectForMarshaling-"),
+            consume,
+        )
+        assertTrue(consume.contains("java/lang/ref/Reference.reachabilityFence:(Ljava/lang/Object;)V"), consume)
+        assertFalse(consume.contains("tryAcquireCachedCCWCallLease"), consume)
+        assertFalse(consume.contains("completeBorrowedCallStateTransition"), consume)
     }
 
     @Test

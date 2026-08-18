@@ -16,10 +16,16 @@ object WinRTReferenceProjection {
         if (value == null) {
             return null
         }
+        if (WinRTValueBoxing.isDirectReferenceValue(value, interfaceId)) {
+            return WinRTProjectionMarshaler.hosted(
+                host = createReferenceMarshalerHost(interfaceId, value),
+                interfaceId = interfaceId,
+            )
+        }
         val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
         borrowedProjectionMarshaler(value, typeHandle)?.let { return it }
         return WinRTProjectionMarshaler.hosted(
-            host = createReferenceHost(interfaceId, value),
+            host = createReferenceMarshalerHost(interfaceId, value),
             interfaceId = interfaceId,
         )
     }
@@ -30,16 +36,12 @@ object WinRTReferenceProjection {
     ): RawAddress =
         if (value == null) {
             PlatformAbi.nullPointer
+        } else if (WinRTValueBoxing.isDirectReferenceValue(value, interfaceId)) {
+            createReferenceHost(interfaceId, value).detachReference(interfaceId)
         } else {
             val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
             borrowedProjectionAbi(value, typeHandle)
-                ?: run {
-                    val host = createReferenceHost(interfaceId, value)
-                    ManagedReferenceHostSupport.detachReference(
-                        createReference = { host.createReference(interfaceId).pointer.asRawAddress() },
-                        releaseManagedReference = host::releaseManagedReference,
-                    )
-                }
+                ?: createReferenceHost(interfaceId, value).detachReference(interfaceId)
         }
 
     fun fromAbi(
@@ -68,7 +70,14 @@ object WinRTReferenceProjectionInterop {
                 arg0 = resultOut,
             )
             HResult(hr).requireSuccess()
-            WinRTReferenceProjection.fromAbi(PlatformAbi.readPointer(resultOut), interfaceId) as T
+            val result = PlatformAbi.readPointer(resultOut)
+            try {
+                WinRTReferenceProjection.fromAbi(result, interfaceId) as T
+            } finally {
+                if (!PlatformAbi.isNull(result)) {
+                    IUnknownReference(result.asRawComPtr()).close()
+                }
+            }
         }
 
     fun setReferenceValue(
@@ -77,13 +86,43 @@ object WinRTReferenceProjectionInterop {
         value: Any?,
         interfaceId: Guid,
     ) {
-        WinRTReferenceProjection.createMarshaler(value, interfaceId).use { valueAbi ->
+        if (value == null) {
             val hr = ComVtableInvoker.invokeArgs(
                 instance = reference.pointer,
                 slot = slot,
-                arg0 = valueAbi?.abi ?: PlatformAbi.nullPointer,
+                arg0 = PlatformAbi.nullPointer,
             )
             HResult(hr).requireSuccess()
+            return
+        }
+
+        // A property setter consumes this ABI pointer synchronously.  Keep the temporary CCW
+        // alive for the call, but do not manufacture an owned ComObjectReference only to pass
+        // the pointer across the same stack frame.  If the callee retains the argument it must
+        // AddRef it, which keeps the host alive after the temporary baseline is released here.
+        if (!WinRTValueBoxing.isDirectReferenceValue(value, interfaceId)) {
+            val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
+            borrowedProjectionAbi(value, typeHandle)?.let { borrowedAbi ->
+                val hr = ComVtableInvoker.invokeArgs(
+                    instance = reference.pointer,
+                    slot = slot,
+                    arg0 = borrowedAbi,
+                )
+                HResult(hr).requireSuccess()
+                return
+            }
+        }
+
+        val host = createReferenceMarshalerHost(interfaceId, value)
+        try {
+            val hr = ComVtableInvoker.invokeArgs(
+                instance = reference.pointer,
+                slot = slot,
+                arg0 = host.borrowCachedInterfacePointer(interfaceId),
+            )
+            HResult(hr).requireSuccess()
+        } finally {
+            host.close()
         }
     }
 }
@@ -97,7 +136,7 @@ object WinRTReferenceArrayProjection {
             return null
         }
         return WinRTProjectionMarshaler.hosted(
-            host = createReferenceArrayHost(interfaceId, value),
+            host = createReferenceArrayMarshalerHost(interfaceId, value),
             interfaceId = interfaceId,
         )
     }
@@ -109,11 +148,7 @@ object WinRTReferenceArrayProjection {
         if (value == null) {
             PlatformAbi.nullPointer
         } else {
-            val host = createReferenceArrayHost(interfaceId, value)
-            ManagedReferenceHostSupport.detachReference(
-                createReference = { host.createReference(interfaceId).pointer.asRawAddress() },
-                releaseManagedReference = host::releaseManagedReference,
-            )
+            createReferenceArrayHost(interfaceId, value).detachReference(interfaceId)
         }
 
     fun fromAbi(
@@ -124,8 +159,9 @@ object WinRTReferenceArrayProjection {
             null
         } else {
             ValueBoxingInterop.readReferenceArrayValue(interfaceId, pointer)
-        }
+    }
 }
+
 
 object WinRTPropertyValueProjection {
     fun createMarshaler(value: Any?): WinRTProjectionMarshaler? {

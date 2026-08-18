@@ -5,27 +5,28 @@
 - Kotlin/JVM through `kotlin-winrt`
 - Kotlin/Native `mingwX64` through `kotlin-winrt`
 - .NET 8 through CsWinRT 2.2.0
-- Native C++ through the C++/WinRT headers in Windows SDK 10.0.26100.0
+- Native C++ through C++/WinRT 2.0.201113.7
 
 The module belongs to the validation layer. It does not define runtime contracts or generator policy.
 
 ## Reference Mapping
 
-The harness follows `.cswinrt/src/Benchmarks/Program.cs` for x64 Release execution and repeated warmup/measurement jobs, and `.cswinrt/src/Benchmarks/QueryInterface.cs` for activation, default-interface, non-default-interface, scalar, string, and object-return coverage. A shared harness replaces BenchmarkDotNet so C++/WinRT executes the identical sampling protocol.
+The source of truth is `.cswinrt/src/Benchmarks`. The module mirrors all 97 benchmark methods from its six benchmark families without substituting another WinRT workload:
 
-All runners use `Windows.Data.Json`, which is implemented by Windows itself. This avoids registration and deployment differences from a custom component and keeps the comparison focused on projection, interface lookup, marshaling, and wrapper costs.
+| Reference family | Scenarios |
+| --- | ---: |
+| `QueryInterfacePerf` | 27 |
+| `EventPerf` | 14 |
+| `ReflectionPerf` | 39 |
+| `GuidPerf` | 11 |
+| `AsyncPerf` | 4 |
+| `NonAgileObjectPerf` | 2 |
 
-| Scenario | Timed operation |
-| --- | --- |
-| `activate_json_object` | Activate `JsonObject` and read `IJsonValue.ValueType` |
-| `get_value_type` | Read a non-default interface scalar property on an existing object |
-| `get_array_number_at` | Read a Double through an expanded scalar-result call on an existing array |
-| `get_named_boolean` | Marshal an HSTRING input and return a Boolean |
-| `get_named_string` | Marshal an HSTRING input and return an HSTRING |
-| `stringify` | Invoke `IJsonValue.Stringify` and return an HSTRING |
-| `parse_get_named_number` | Invoke a static factory, wrap the returned object, and read a Double |
+All four runners use the `BenchmarkComponent` built from TestWinRT commit `aa4edcd52542cfe036473d008d3f66c8a220d59d`. Scenario names, setup and cleanup, timed operations, async completion, and checksums follow the corresponding C# benchmark methods. A shared serialized harness gives Kotlin/JVM, Kotlin/Native, CsWinRT, and C++/WinRT the same warmup and measurement protocol. JSONL is only the result transport format.
 
-Every scenario validates a deterministic checksum before warmup. The report generator refuses to compare runners when their scenario sets, iteration parameters, or checksums differ.
+Every scenario validates a deterministic single-operation checksum before warmup. Each runner then calibrates that scenario toward an approximately 5 ms batch, capped at 100,000 operations. Warmup treats `warmupRounds` as a shared minimum and continues until it has covered at least 100,000 operations and 500 ms, or one second for a slow scenario, followed by five settling batches. This keeps JIT tier transitions and process ramp-up out of the measurement window without forcing slow scenarios through 100,000 calls. Results record the actual warmup rounds and operations. The report generator refuses to compare runners when their scenario sets, shared protocol parameters, or normalized checksums differ.
+
+The `benchmarkCatalogParity` gate derives the authoritative catalog directly from the `[MemoryDiagnoser]` classes and `[Benchmark]` methods in `.cswinrt/src/Benchmarks`, then compares it with the catalogs exported by all four built runners. A renamed, missing, extra, or duplicated scenario fails the gate.
 
 Gradle finishes the Kotlin build prerequisites before timing and serializes the four runner processes. This keeps project-parallel builds or another benchmark runner from competing with the active measurement.
 
@@ -54,16 +55,17 @@ Focused runners are also available:
 .\gradlew.bat :winrt-benchmarks:benchmarkKotlinNative
 .\gradlew.bat :winrt-benchmarks:benchmarkCsWinRT
 .\gradlew.bat :winrt-benchmarks:benchmarkCppWinRT
+.\gradlew.bat :winrt-benchmarks:benchmarkCatalogParity
 ```
 
-Use Gradle properties to tune a run without changing the shared protocol:
+Use Gradle properties to tune a run without changing the shared protocol. `warmupRounds` and `iterations` are minimums, not fixed counts:
 
 ```powershell
 .\gradlew.bat `
   '--project-prop=kotlinWinRT.benchmarks.warmupRounds=8' `
   '--project-prop=kotlinWinRT.benchmarks.measurementRounds=25' `
-  '--project-prop=kotlinWinRT.benchmarks.iterations=20000' `
-  '--project-prop=kotlinWinRT.benchmarks.filter=get_value_type,get_named_string' `
+  '--project-prop=kotlinWinRT.benchmarks.iterations=1' `
+  '--project-prop=kotlinWinRT.benchmarks.filter=QueryInterfacePerf.QueryDefaultInterface,ReflectionPerf.ExecuteMarshalingForString' `
   :winrt-benchmarks:benchmarkAll
 ```
 

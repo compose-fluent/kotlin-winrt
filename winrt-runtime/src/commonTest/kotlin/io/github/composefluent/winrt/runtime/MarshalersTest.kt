@@ -77,7 +77,7 @@ class MarshalersTest {
         try {
             ComObjectReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { reference ->
                 reference.queryInterface(descriptor.referenceInterfaceId()).getOrThrow().use { delegateReferenceValue ->
-                    PlatformAbi.confinedScope().use { scope ->
+                    val returnedDelegatePointer = PlatformAbi.confinedScope().use { scope ->
                         val valueOut = PlatformAbi.allocatePointerSlot(scope)
                         val hr = ComVtableInvoker.invokeArgs(
                             instance = delegateReferenceValue.pointer,
@@ -85,9 +85,15 @@ class MarshalersTest {
                             arg0 = valueOut,
                         )
                         HResult(hr).requireSuccess()
-                        WinRTDelegateReference(PlatformAbi.readPointer(valueOut), descriptor).use { delegateReference ->
-                            delegateReference.invoke(emptyList())
-                        }
+                        PlatformAbi.readPointer(valueOut)
+                    }
+                    repeat(3) {
+                        PlatformFinalization.drain()
+                        val pressure = List(128) { ByteArray(1024) }
+                        assertEquals(128, pressure.size)
+                    }
+                    WinRTDelegateReference(returnedDelegatePointer, descriptor).use { delegateReference ->
+                        delegateReference.invoke(emptyList())
                     }
                 }
             }
@@ -160,7 +166,7 @@ class MarshalersTest {
             assertEquals(1, createCount)
             assertEquals(PlatformAbi.pointerKey(firstAbi), PlatformAbi.pointerKey(secondAbi))
 
-            WinRTDelegateReference(firstAbi, descriptor).use { delegateReference ->
+            requireNotNull(MarshalDelegate.fromAbi(firstAbi, descriptor)).use { delegateReference ->
                 delegateReference.invoke(emptyList())
             }
             assertEquals(1, callCount)

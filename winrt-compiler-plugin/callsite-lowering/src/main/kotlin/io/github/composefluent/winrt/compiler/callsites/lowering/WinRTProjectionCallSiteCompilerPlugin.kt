@@ -10,9 +10,9 @@ import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteP
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteResultKind
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionParameterMetadata
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteHResultPolicy
+import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
-import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
 import org.jetbrains.kotlin.backend.common.ir.inline
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
@@ -107,7 +107,11 @@ class WinRTProjectionCallSiteIrGenerationExtension : IrGenerationExtension {
 fun lowerWinRTProjectionCallSites(
     moduleFragment: IrModuleFragment,
     pluginContext: IrPluginContext,
+    guidSignaturesByKotlinClass: Map<String, String> = emptyMap(),
 ) {
+    lowerWinRTManagedProjectionStateOwners(moduleFragment, pluginContext)
+    lowerWinRTGuidGeneratorCalls(moduleFragment, pluginContext, guidSignaturesByKotlinClass)
+    lowerWinRTGenericDelegateSamReferences(moduleFragment, pluginContext, guidSignaturesByKotlinClass)
     lowerWinRTEnumConstantReads(moduleFragment, pluginContext)
     val annotatedFunctions = mutableListOf<Pair<IrSimpleFunction, IrFunctionAccessExpression>>()
     val inlineCallSites = mutableListOf<InlineProjectionCallSite>()
@@ -150,6 +154,8 @@ fun lowerWinRTProjectionCallSites(
             }
         },
     )
+    lowerWinRTProjectionInboundCallSites(moduleFragment, pluginContext)
+
     if (annotatedFunctions.isEmpty() && inlineCallSites.isEmpty()) return
 
     val projectedTypes = WinRTProjectedTypeCanonicalizer(pluginContext)
@@ -530,6 +536,23 @@ private fun validateCallSiteFunction(
 
 private fun IrSimpleFunction.hasTodoPlaceholder(): Boolean = body?.hasTodoPlaceholder() == true
 
+private fun IrSimpleFunction.countTodoPlaceholders(): Int {
+    var count = 0
+    body?.acceptChildrenVoid(
+        object : IrVisitorVoid() {
+            override fun visitElement(element: IrElement) {
+                element.acceptChildrenVoid(this)
+            }
+
+            override fun visitCall(expression: IrCall) {
+                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") count += 1
+                super.visitCall(expression)
+            }
+        },
+    )
+    return count
+}
+
 private fun IrElement.hasTodoPlaceholder(): Boolean {
     if (this is IrCall && symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") return true
     var found = false
@@ -623,5 +646,6 @@ private val KOTLIN_ULONG_FQ_NAME = FqName("kotlin.ULong")
 private val KOTLIN_FLOAT_FQ_NAME = FqName("kotlin.Float")
 private val KOTLIN_DOUBLE_FQ_NAME = FqName("kotlin.Double")
 private val KOTLIN_STRING_FQ_NAME = FqName("kotlin.String")
+
 private const val INLINE_CALL_SITE_ARGUMENT_PREFIX = "__winrtCallSiteArgument"
 private const val INLINE_CALL_SITE_RESULT_NAME = "__winrtCallSiteResult"

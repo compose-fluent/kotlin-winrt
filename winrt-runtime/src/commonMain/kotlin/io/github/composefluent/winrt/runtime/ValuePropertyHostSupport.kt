@@ -1,23 +1,18 @@
 package io.github.composefluent.winrt.runtime
 
 internal fun createPropertyValueHost(value: Any): WinRTInspectableComObject {
-    val definition = InteropRuntimeHooks.augmentInspectableDefinition(
-        value = value,
-        definition = WinRTCcwDefinition(
-            interfaceDefinitions = listOf(
-                createPropertyValueInterfaceDefinition(value),
-            ),
+    val propertyType = WinRTValueBoxing.propertyTypeOf(value)
+    val definition = cachedValueHostDefinition(
+        key = ValueHostShapeKey(
+            kind = ValueHostShapeKind.PROPERTY_VALUE,
             defaultInterfaceId = IID.IPropertyValue,
+            propertyType = propertyType,
             runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForValue(value),
         ),
-    )
-    return WinRTInspectableComObject(
-        interfaceDefinitions = definition.interfaceDefinitions,
-        hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
-        defaultInterfaceId = definition.defaultInterfaceId,
-        runtimeClassName = definition.runtimeClassName,
-        managedValue = value,
-    )
+    ) {
+        listOf(createHostPropertyValueInterfaceDefinition(propertyType))
+    }
+    return createValueHost(value, definition, augmentRuntimeInterfaces = true)
 }
 
 internal fun createPropertyValueInterfaceDefinition(
@@ -26,12 +21,33 @@ internal fun createPropertyValueInterfaceDefinition(
 ): WinRTInspectableInterfaceDefinition =
     WinRTInspectableInterfaceDefinition(
         interfaceId = IID.IPropertyValue,
-        methods = buildPropertyValueMethods(value, propertyType),
+        methods = buildPropertyValueMethods(
+            value = value,
+            propertyType = propertyType,
+            readHostManagedValue = false,
+        ),
+    )
+
+/**
+ * Builds the closed delegate's IPropertyValue surface without capturing one delegate instance.
+ * The value is supplied by [WinRTInspectableComObject] at dispatch time.
+ */
+internal fun createHostPropertyValueInterfaceDefinition(
+    propertyType: PropertyType = PropertyType.OtherType,
+): WinRTInspectableInterfaceDefinition =
+    WinRTInspectableInterfaceDefinition(
+        interfaceId = IID.IPropertyValue,
+        methods = buildPropertyValueMethods(
+            value = null,
+            propertyType = propertyType,
+            readHostManagedValue = true,
+        ),
     )
 
 private fun buildPropertyValueMethods(
-    value: Any,
+    value: Any?,
     propertyType: PropertyType,
+    readHostManagedValue: Boolean,
 ): List<WinRTInspectableMethodDefinition> {
     val scalarGetters =
         listOf(
@@ -76,45 +92,87 @@ private fun buildPropertyValueMethods(
             PropertyType.SizeArray,
             PropertyType.RectArray,
         )
+    fun scalarMethod(action: (Any, RawAddress) -> Unit): WinRTInspectableMethodDefinition =
+        if (readHostManagedValue) {
+            WinRTInspectableMethodDefinition(
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+            ) { managedValue, rawArgs ->
+                action(requireNotNull(managedValue), rawArgs[0] as RawAddress)
+                KnownHResults.S_OK.value
+            }
+        } else {
+            WinRTInspectableMethodDefinition(
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+            ) { rawArgs ->
+                action(requireNotNull(value), rawArgs[0] as RawAddress)
+                KnownHResults.S_OK.value
+            }
+        }
+
+    fun arrayMethod(action: (Any, RawAddress, RawAddress) -> Unit): WinRTInspectableMethodDefinition =
+        if (readHostManagedValue) {
+            WinRTInspectableMethodDefinition(
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+            ) { managedValue, rawArgs ->
+                action(
+                    requireNotNull(managedValue),
+                    rawArgs[0] as RawAddress,
+                    rawArgs[1] as RawAddress,
+                )
+                KnownHResults.S_OK.value
+            }
+        } else {
+            WinRTInspectableMethodDefinition(
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+            ) { rawArgs ->
+                action(
+                    requireNotNull(value),
+                    rawArgs[0] as RawAddress,
+                    rawArgs[1] as RawAddress,
+                )
+                KnownHResults.S_OK.value
+            }
+        }
+
     return buildList {
         add(
-            WinRTInspectableMethodDefinition(
-                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-            ) { rawArgs ->
-                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, propertyType.code)
-                KnownHResults.S_OK.value
-            },
-        )
-        add(
-            WinRTInspectableMethodDefinition(
-                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-            ) { rawArgs ->
-                PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (WinRTValueBoxing.isNumericScalar(value)) 1 else 0)
-                KnownHResults.S_OK.value
-            },
-        )
-        scalarGetters.forEach { propertyType ->
-            add(
+            if (readHostManagedValue) {
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                ) { _, rawArgs ->
+                    PlatformAbi.writeInt32(rawArgs[0] as RawAddress, propertyType.code)
+                    KnownHResults.S_OK.value
+                }
+            } else {
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                 ) { rawArgs ->
-                    ValueBoxingInterop.writePropertyValue(propertyType, value, rawArgs[0] as RawAddress)
+                    PlatformAbi.writeInt32(rawArgs[0] as RawAddress, propertyType.code)
                     KnownHResults.S_OK.value
+                }
+            },
+        )
+        add(
+            scalarMethod { managedValue, resultOut ->
+                PlatformAbi.writeInt8(resultOut, if (WinRTValueBoxing.isNumericScalar(managedValue)) 1 else 0)
+            },
+        )
+        scalarGetters.forEach { getterType ->
+            add(
+                scalarMethod { managedValue, resultOut ->
+                    ValueBoxingInterop.writePropertyValue(getterType, managedValue, resultOut)
                 },
             )
         }
-        arrayGetters.forEach { propertyType ->
+        arrayGetters.forEach { getterType ->
             add(
-                WinRTInspectableMethodDefinition(
-                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
-                ) { rawArgs ->
+                arrayMethod { managedValue, countOut, dataOut ->
                     ValueBoxingInterop.writePropertyValueArray(
-                        propertyType,
-                        value,
-                        rawArgs[0] as RawAddress,
-                        rawArgs[1] as RawAddress,
+                        getterType,
+                        managedValue,
+                        countOut,
+                        dataOut,
                     )
-                    KnownHResults.S_OK.value
                 },
             )
         }

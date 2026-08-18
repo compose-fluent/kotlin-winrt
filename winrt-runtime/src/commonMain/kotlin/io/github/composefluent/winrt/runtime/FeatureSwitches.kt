@@ -1,5 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+
 /**
  * Shared runtime configuration switches corresponding to
  * `.cswinrt/src/WinRT.Runtime/Configuration/FeatureSwitches.cs`.
@@ -24,6 +27,8 @@ internal object FeatureSwitches {
 
     private val cachedResults = ConcurrentCacheMap<String, Int>()
     private val testOverrides = ConcurrentCacheMap<String, Int>()
+    @OptIn(ExperimentalAtomicApi::class)
+    private val traceCcwState = AtomicInt(0)
 
     val enableDynamicObjectsSupport: Boolean
         get() = getConfigurationValue(EnableDynamicObjectsSupportPropertyName, defaultValue = true)
@@ -55,9 +60,21 @@ internal object FeatureSwitches {
     val suppressCustomPropertyNotSupportedException: Boolean
         get() = getConfigurationValue(SuppressCustomPropertyNotSupportedExceptionPropertyName, defaultValue = false)
 
+    @OptIn(ExperimentalAtomicApi::class)
     val traceCcw: Boolean
-        get() = getConfigurationValue(TraceCcwPropertyName, defaultValue = false)
+        get() {
+            val cachedState = traceCcwState.load()
+            if (cachedState != 0) {
+                return stateToBoolean(cachedState)
+            }
+            val resolvedState = booleanState(
+                getConfigurationValue(TraceCcwPropertyName, defaultValue = false),
+            )
+            traceCcwState.compareAndSet(expectedValue = 0, newValue = resolvedState)
+            return stateToBoolean(resolvedState)
+        }
 
+    @OptIn(ExperimentalAtomicApi::class)
     internal fun overrideForTests(
         propertyName: String,
         value: Boolean?,
@@ -68,11 +85,16 @@ internal object FeatureSwitches {
             testOverrides[propertyName] = booleanState(value)
         }
         cachedResults.remove(propertyName)
+        if (propertyName == TraceCcwPropertyName) {
+            traceCcwState.store(0)
+        }
     }
 
+    @OptIn(ExperimentalAtomicApi::class)
     internal fun clearForTests() {
         cachedResults.clear()
         testOverrides.clear()
+        traceCcwState.store(0)
     }
 
     private fun getConfigurationValue(

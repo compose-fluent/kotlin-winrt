@@ -24,6 +24,43 @@ internal object RawObjectAbiSupport {
             return if (PlatformAbi.isNull(pointer)) null else pointer
         }
 
+    fun lookupAbiResult(
+        invoke: (RawAddress) -> Int,
+    ): RawAddress? =
+        lookupResult(invoke) { pointer ->
+            pointer.takeUnless(PlatformAbi::isNull)
+        }
+
+    /**
+     * Runs an ABI dictionary lookup and invokes [project] only when the key was found.
+     *
+     * [IMap.Lookup] and [IMapView.Lookup] report a missing key with E_BOUNDS, while a
+     * successful lookup is allowed to return a null ABI value. Keeping the success callback
+     * separate from the nullable ABI value preserves that distinction without allocating a
+     * result wrapper on the hot path.
+     */
+    internal inline fun <T> lookupResult(
+        invoke: (RawAddress) -> Int,
+        project: (RawAddress) -> T,
+    ): T? =
+        acquireNativeScalarScratchFrame(clear = true).use { frame ->
+            lookupResult(frame.pointer, invoke, project)
+        }
+
+    internal inline fun <T> lookupResult(
+        resultOut: RawAddress,
+        invoke: (RawAddress) -> Int,
+        project: (RawAddress) -> T,
+    ): T? {
+        val hResult = invoke(resultOut)
+        return if (hResult == KnownHResults.E_BOUNDS.value) {
+            null
+        } else {
+            WinRTPlatformApi.checkSucceededRaw(hResult)
+            project(PlatformAbi.readPointer(resultOut))
+        }
+    }
+
     fun indexOfResult(
         invoke: (indexOut: RawAddress, foundOut: RawAddress) -> Int,
     ): Pair<Boolean, UInt> =

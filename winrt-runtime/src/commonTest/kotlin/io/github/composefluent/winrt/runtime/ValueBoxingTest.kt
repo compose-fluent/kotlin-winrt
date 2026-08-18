@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -92,6 +93,60 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun runtime_class_name_projection_uses_closed_metadata_plans() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+        registerProjectedPointBoxing()
+        registerEnumDescriptors()
+        ComWrappersSupport.registerProjectionAssembly(TestPriority::class)
+
+        assertEquals(
+            42,
+            projectBoxedValueByRuntimeClassName(
+                value = 42,
+                expectedRuntimeClassName = WinRTReferenceTypeNames.boxedReference("Int32"),
+            ),
+        )
+        assertEquals(
+            listOf("alpha", "beta"),
+            (projectBoxedValueByRuntimeClassName(
+                value = arrayOf("alpha", "beta"),
+                expectedRuntimeClassName = WinRTReferenceTypeNames.boxedReferenceArray("String"),
+            ) as Array<*>).toList(),
+        )
+        assertEquals(
+            ProjectedPoint(1.5f, 2.5f),
+            projectBoxedValueByRuntimeClassName(
+                value = ProjectedPoint(1.5f, 2.5f),
+                expectedRuntimeClassName = WinRTReferenceTypeNames.boxedReference("Windows.Foundation.Point"),
+            ),
+        )
+        assertEquals(
+            TestPriority.High,
+            projectBoxedValueByRuntimeClassName(
+                value = TestPriority.High,
+                expectedRuntimeClassName = WinRTReferenceTypeNames.boxedReference("Contoso.Priority"),
+            ),
+        )
+    }
+
+    @Test
+    fun runtime_class_name_projection_skips_non_boxed_inspectables_and_retains_unknown_boxed_fallback() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertNull(projectSyntheticNullableInt("Contoso.NotABoxedValue"))
+        assertEquals(
+            99,
+            projectSyntheticNullableInt(WinRTReferenceTypeNames.boxedReference("Contoso.UnknownValue")),
+        )
+    }
+
+    @Test
     fun heterogeneous_reference_arrays_use_inspectable_metadata_regardless_of_order() {
         ComWrappersSupport.clearRegistriesForTests()
 
@@ -158,29 +213,31 @@ class ValueBoxingTest {
         ComWrappersSupport.clearRegistriesForTests()
         registerProjectedPointBoxing()
 
-        assertEquals(42, WinRTReferenceProjection.fromAbi(WinRTReferenceProjection.fromManaged(42, IID.NullableInt), IID.NullableInt))
-        assertEquals(
-            12.seconds,
-            WinRTReferenceProjection.fromAbi(
-                WinRTReferenceProjection.fromManaged(12.seconds, IID.NullableTimeSpan),
-                IID.NullableTimeSpan,
-            ),
-        )
-        assertEquals(
-            ProjectedPoint(7f, 8f),
-            WinRTReferenceProjection.fromAbi(
-                WinRTReferenceProjection.fromManaged(ProjectedPoint(7f, 8f), IID.IReferenceOfPoint),
-                IID.IReferenceOfPoint,
-            ),
-        )
+        assertReferenceRoundTrip(42, IID.NullableInt)
+        assertReferenceRoundTrip(12.seconds, IID.NullableTimeSpan)
+        assertReferenceRoundTrip(ProjectedPoint(7f, 8f), IID.IReferenceOfPoint)
 
         val points = arrayOf(ProjectedPoint(1f, 2f), ProjectedPoint(3f, 4f))
-        val projectedPoints =
-            WinRTReferenceArrayProjection.fromAbi(
-                WinRTReferenceArrayProjection.fromManaged(points, IID.IReferenceArrayOfPoint),
-                IID.IReferenceArrayOfPoint,
-            ) ?: error("Projected array should not be null.")
-        assertEquals(points.toList(), projectedPoints.toList())
+        val pointer = WinRTReferenceArrayProjection.fromManaged(points, IID.IReferenceArrayOfPoint)
+        try {
+            val projectedPoints = WinRTReferenceArrayProjection.fromAbi(pointer, IID.IReferenceArrayOfPoint)
+                ?: error("Projected array should not be null.")
+            assertEquals(points.toList(), projectedPoints.toList())
+        } finally {
+            IUnknownReference(pointer.asRawComPtr(), IID.IReferenceArrayOfPoint).close()
+        }
+    }
+
+    private fun <T> assertReferenceRoundTrip(
+        value: T,
+        interfaceId: Guid,
+    ) {
+        val pointer = WinRTReferenceProjection.fromManaged(value, interfaceId)
+        try {
+            assertEquals(value, WinRTReferenceProjection.fromAbi(pointer, interfaceId))
+        } finally {
+            IUnknownReference(pointer.asRawComPtr(), interfaceId).close()
+        }
     }
 
     @Test
@@ -303,6 +360,62 @@ class ValueBoxingTest {
         } finally {
             IUnknownReference(arrayPointer.asRawComPtr(), IID.IReferenceArrayOfString).close()
         }
+    }
+
+    @Test
+    fun temporary_reference_marshaler_reads_value_and_releases_lean_host() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val marshaler = requireNotNull(
+            WinRTReferenceProjection.createMarshaler(42, IID.NullableInt),
+        )
+        val pointer = marshaler.abi
+        try {
+            assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            IUnknownReference(
+                pointer.asRawComPtr(),
+                IID.NullableInt,
+                preventReleaseOnDispose = true,
+            ).use { reference ->
+                assertTrue(reference.queryInterface(IID.IPropertyValue).isFailure)
+            }
+            assertEquals(42, WinRTReferenceProjection.fromAbi(pointer, IID.NullableInt))
+        } finally {
+            marshaler.close()
+        }
+        assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+    }
+
+    @Test
+    fun temporary_reference_array_marshaler_reads_value_and_releases_lean_host() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val expected = arrayOf("one", "two")
+        val marshaler = requireNotNull(
+            WinRTReferenceArrayProjection.createMarshaler(expected, IID.IReferenceArrayOfString),
+        )
+        val pointer = marshaler.abi
+        try {
+            assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            IUnknownReference(
+                pointer.asRawComPtr(),
+                IID.IReferenceArrayOfString,
+                preventReleaseOnDispose = true,
+            ).use { reference ->
+                assertTrue(reference.queryInterface(IID.IPropertyValue).isFailure)
+            }
+            val actual = WinRTReferenceArrayProjection.fromAbi(pointer, IID.IReferenceArrayOfString)
+            assertEquals(expected.toList(), actual?.toList())
+        } finally {
+            marshaler.close()
+        }
+        assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
     }
 
     @Test
@@ -476,6 +589,56 @@ class ValueBoxingTest {
         }
     }
 
+    @Test
+    fun generated_delegate_registration_projects_boxed_delegate_reference() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999995"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+            runtimeClassName = "Contoso.ProvideInt",
+        )
+        WinRTValueBoxingRegistration.registerDelegate(
+            type = TestProvideInt::class,
+            descriptor = descriptor,
+        ) { pointer ->
+            val native = WinRTDelegateReference.fromAbi(pointer, descriptor) ?: return@registerDelegate null
+            object : TestProvideInt, IWinRTObject {
+                override val nativeObject: ComObjectReference
+                    get() = native
+
+                override fun createWinRTDelegateHandle(): WinRTDelegateHandle =
+                    error("A native delegate projection does not create a managed delegate handle.")
+
+                override fun invoke(): Int = native.invoke(emptyList()) as Int
+            }
+        }
+
+        val handle = WinRTDelegateBridge.createDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = descriptor.parameterKinds,
+            returnKind = descriptor.returnKind,
+            runtimeClassName = descriptor.runtimeClassName,
+        ) { 37 }
+        try {
+            handle.createReference().use { delegateReference ->
+                delegateReference.asInspectable().use { inspectable ->
+                    val projected = WinRTValueBoxing.tryProjectInspectableForRuntimeClassName(
+                        inspectable,
+                        WinRTReferenceTypeNames.boxedReference(requireNotNull(descriptor.runtimeClassName)),
+                    ) as TestProvideInt
+                    try {
+                        assertEquals(37, projected())
+                    } finally {
+                        (projected as IWinRTObject).nativeObject.close()
+                    }
+                }
+            }
+        } finally {
+            handle.close()
+        }
+    }
+
     private fun assertInspectableGetIids(
         pointer: RawAddress,
         interfaceId: Guid,
@@ -509,6 +672,39 @@ class ValueBoxingTest {
                     WinRTPlatformApi.coTaskMemFreeRaw(ids)
                 }
             }
+        }
+    }
+
+    private fun projectBoxedValueByRuntimeClassName(
+        value: Any,
+        expectedRuntimeClassName: String,
+    ): Any? {
+        val pointer = ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
+        return try {
+            IInspectableReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->
+                val runtimeClassName = requireNotNull(inspectable.getRuntimeClassName())
+                assertEquals(expectedRuntimeClassName, runtimeClassName)
+                WinRTValueBoxing.tryProjectInspectableForRuntimeClassName(inspectable, runtimeClassName)
+            }
+        } finally {
+            IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
+        }
+    }
+
+    private fun projectSyntheticNullableInt(runtimeClassName: String): Any? {
+        val host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(ValueBoxingInterop.createReferenceInterfaceDefinition(IID.NullableInt, 99)),
+            defaultInterfaceId = IID.NullableInt,
+            runtimeClassName = runtimeClassName,
+        )
+        val reference = host.createReference(IID.IInspectable)
+        return try {
+            reference.asInspectable().use { inspectable ->
+                tryProjectInspectableValue(inspectable, runtimeClassName)
+            }
+        } finally {
+            reference.close()
+            host.close()
         }
     }
 
@@ -554,6 +750,10 @@ class ValueBoxingTest {
         override fun close() {
             closed = true
         }
+    }
+
+    private interface TestProvideInt : WinRTProjectedDelegate {
+        operator fun invoke(): Int
     }
 
     private enum class TestPriority(

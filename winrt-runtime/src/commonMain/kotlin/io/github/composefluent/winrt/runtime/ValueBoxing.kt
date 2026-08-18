@@ -2,7 +2,57 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
+internal const val WINRT_PROPERTY_VALUE_RUNTIME_CLASS_NAME = "Windows.Foundation.PropertyValue"
+
 internal object WinRTValueBoxing {
+    private sealed interface RuntimeClassProjectionPlan {
+        fun project(inspectable: IInspectableReference): Any?
+    }
+
+    private object PropertyValuePlan : RuntimeClassProjectionPlan {
+        override fun project(inspectable: IInspectableReference): Any? =
+            WinRTPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asRawAddress())
+    }
+
+    private data class ReferencePlan(
+        val interfaceId: Guid,
+        val enumMetadata: WinRTEnumBoxingMetadata? = null,
+        val delegateProjection: WinRTDelegateBoxingProjection<Any>? = null,
+    ) : RuntimeClassProjectionPlan {
+        override fun project(inspectable: IInspectableReference): Any? =
+            queryInspectableReference(inspectable, interfaceId)?.use { reference ->
+                when {
+                    delegateProjection != null -> readDelegateReferenceValue(reference, delegateProjection)
+                    enumMetadata != null ->
+                        readEnumReferenceValue(
+                            WinRTReferenceReference(
+                                reference.pointer.asRawAddress(),
+                                interfaceId,
+                                preventReleaseOnDispose = true,
+                            ),
+                            enumMetadata,
+                        )
+                    else -> ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer.asRawAddress())
+                }
+            }
+    }
+
+    private data class ReferenceArrayPlan(
+        val interfaceId: Guid,
+    ) : RuntimeClassProjectionPlan {
+        override fun project(inspectable: IInspectableReference): Any? =
+            queryInspectableReference(inspectable, interfaceId)?.use { reference ->
+                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer.asRawAddress())
+            }
+    }
+
+    /**
+     * The runtime class name is the closed WinRT metadata key for a boxed value.  Cache the
+     * resulting ABI plan once so steady-state unboxing does not repeat type-name resolution,
+     * enum/delegate classification, or descriptor scans.
+     */
+    private val runtimeClassProjectionPlans = ConcurrentCacheMap<String, RuntimeClassProjectionPlan>()
+
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
         ValueBoxingMetadata.boxedRuntimeClassNameForType(type)
 
@@ -16,6 +66,30 @@ internal object WinRTValueBoxing {
 
     fun boxedRuntimeClassNameForReferenceArrayElementType(elementType: KClass<*>): String? =
         ValueBoxingMetadata.boxedRuntimeClassNameForReferenceArrayElementType(elementType)
+
+    internal fun isBoxedRuntimeClassName(runtimeClassName: String): Boolean =
+        runtimeClassName == WINRT_PROPERTY_VALUE_RUNTIME_CLASS_NAME ||
+            WinRTReferenceTypeNames.parseReferenceElement(runtimeClassName) != null ||
+            WinRTReferenceTypeNames.parseReferenceArrayElement(runtimeClassName) != null
+
+    /**
+     * Attempts the exact closed-value projection selected by [runtimeClassName].  A null plan is
+     * intentionally not cached: generated metadata may be registered after an early miss.
+     */
+    internal fun tryProjectInspectableForRuntimeClassName(
+        inspectable: IInspectableReference,
+        runtimeClassName: String,
+    ): Any? {
+        val plan = runtimeClassProjectionPlans[runtimeClassName]
+            ?: buildRuntimeClassProjectionPlan(runtimeClassName)?.also { candidate ->
+                runtimeClassProjectionPlans.putIfAbsent(runtimeClassName, candidate)
+            }
+        return plan?.project(inspectable)
+    }
+
+    internal fun clearRuntimeClassProjectionPlans() {
+        runtimeClassProjectionPlans.clear()
+    }
 
     fun isPropertyValueCompatible(
         value: Any,
@@ -52,6 +126,19 @@ internal object WinRTValueBoxing {
     fun propertyTypeForReferenceArrayInterface(interfaceId: Guid): PropertyType? =
         ValueBoxingMetadata.propertyTypeForReferenceArrayInterface(interfaceId)
 
+    fun propertyTypeForReferenceInterface(interfaceId: Guid): PropertyType? =
+        ValueBoxingMetadata.propertyTypeForReferenceInterface(interfaceId)
+
+    fun boxedRuntimeClassNameForReferenceInterface(interfaceId: Guid): String? =
+        ValueBoxingMetadata.boxedRuntimeClassNameForReferenceInterface(interfaceId)
+
+    fun isDirectReferenceValue(
+        value: Any,
+        interfaceId: Guid,
+    ): Boolean =
+        ValueBoxingInterop.adapterForReferenceInterface(interfaceId)
+            ?.projectedClass == value::class
+
     fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
         ValueBoxingInterop.readReferenceValue(interfaceId, pointer)
 
@@ -67,6 +154,12 @@ internal object WinRTValueBoxing {
     }
 
     fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? {
+        WinRTValueBoxingRegistration.findDelegateProjection(projectedType)?.let { projection ->
+            return queryInspectableReference(inspectable, projection.descriptor.referenceInterfaceId)?.use { reference ->
+                readDelegateReferenceValue(reference, projection)
+            }
+        }
+
         ValueBoxingMetadata.enumMetadataForClass(projectedType)?.let { descriptor ->
             return queryInspectableReference(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
                 readEnumReferenceValue(
@@ -114,6 +207,45 @@ internal object WinRTValueBoxing {
             }
         }
 
+    private fun buildRuntimeClassProjectionPlan(runtimeClassName: String): RuntimeClassProjectionPlan? {
+        if (runtimeClassName == WINRT_PROPERTY_VALUE_RUNTIME_CLASS_NAME) {
+            return PropertyValuePlan
+        }
+
+        WinRTReferenceTypeNames.parseReferenceElement(runtimeClassName)?.let { elementTypeName ->
+            WinRTValueBoxingRegistration.findDelegateProjectionByRuntimeClassName(elementTypeName)?.let { projection ->
+                return ReferencePlan(
+                    interfaceId = projection.descriptor.referenceInterfaceId,
+                    delegateProjection = projection,
+                )
+            }
+
+            val enumType = TypeNameSupport.findKClassByNameCached(elementTypeName)
+            enumType?.let { type ->
+                ValueBoxingMetadata.enumMetadataForClass(type)?.let { descriptor ->
+                    return ReferencePlan(
+                        interfaceId = descriptor.nullableInterfaceId,
+                        enumMetadata = descriptor,
+                    )
+                }
+            }
+
+            ValueBoxingMetadata.descriptorForProjectedTypeName(elementTypeName)?.nullableInterfaceId?.let { interfaceId ->
+                return ReferencePlan(interfaceId = interfaceId)
+            }
+            return null
+        }
+
+        WinRTReferenceTypeNames.parseReferenceArrayElement(runtimeClassName)?.let { elementTypeName ->
+            ValueBoxingMetadata.descriptorForProjectedTypeName(elementTypeName)?.referenceArrayInterfaceId?.let { interfaceId ->
+                return ReferenceArrayPlan(interfaceId = interfaceId)
+            }
+            return null
+        }
+
+        return null
+    }
+
     private fun queryInspectableReference(
         inspectable: IInspectableReference,
         interfaceId: Guid,
@@ -123,11 +255,20 @@ internal object WinRTValueBoxing {
         reference: WinRTReferenceReference,
         descriptor: WinRTEnumBoxingMetadata,
     ): Any =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt32Slot(scope)
+        acquireNativeScalarScratchFrame().use { resultOut ->
             reference.comPtr.throwIfDisposed()
             val hr = ComVtableInvoker.invokeArgs(reference.comPtr.raw, 6, resultOut)
             WinRTPlatformApi.checkSucceededRaw(hr)
-            descriptor.fromAbiBits(PlatformAbi.readInt32(resultOut))
+            descriptor.fromAbiBits(resultOut.readInt32())
+        }
+
+    private fun readDelegateReferenceValue(
+        reference: ComObjectReference,
+        projection: WinRTDelegateBoxingProjection<Any>,
+    ): Any? =
+        acquireNativeScalarScratchFrame().use { resultOut ->
+            val hr = ComVtableInvoker.invokeArgs(reference.comPtr.raw, 6, resultOut)
+            WinRTPlatformApi.checkSucceededRaw(hr)
+            projection.fromAbi(resultOut.readPointer())
         }
 }

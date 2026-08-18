@@ -10,11 +10,14 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRTDirectInboundShapeDescriptor
+import io.github.composefluent.winrt.metadata.WinRTDirectInboundShapeKind
 import io.github.composefluent.winrt.metadata.WinRTEventDefinition
 import io.github.composefluent.winrt.metadata.WinRTFundamentalType
 import io.github.composefluent.winrt.metadata.WinRTIntegralType
@@ -59,6 +62,12 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         ClassName("io.github.composefluent.winrt.runtime", "WinRTInspectableInterfaceDefinition")
     private val winRTInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRTInspectableMethodDefinition")
+    private val winRTProjectionInboundCallSiteType =
+        ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionInboundCallSite")
+    private val winRTProjectionParameterType =
+        ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionParameter")
+    private val winRTProjectionInboundEntryPointMember =
+        MemberName("io.github.composefluent.winrt.runtime", "winRTProjectionInboundEntryPoint")
     private val winRTCollectionInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRTCollectionInterfaceIds")
     private val winRTProjectedDelegateType = ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectedDelegate")
     private val winRTAsyncInterfaceIdsType = ClassName("io.github.composefluent.winrt.runtime", "WinRTAsyncInterfaceIds")
@@ -323,20 +332,55 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         authoredRuntimeClassNames: Set<String>,
     ): FileSpec {
         val typeDetailsName = detailsObjectName(candidate)
-        return FileSpec.builder(candidate.packageName, typeDetailsName)
+        val file = FileSpec.builder(candidate.packageName, typeDetailsName)
             .addAnnotation(generatedAuthoringTypeDetailsSuppressAnnotation())
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
+        interfaces.forEach { descriptor ->
+            val dispatchTarget = authoredDispatchTarget(candidate, descriptor.definition, typesByName, semanticHelpers)
+            descriptor.definition.authoredVtableMethods()
+                .mapNotNull { method ->
+                    directInboundCallSitePlan(
+                        vtableMethod = method,
+                        currentNamespace = descriptor.definition.namespace,
+                        semanticHelpers = semanticHelpers,
+                        authoredRuntimeClassNames = authoredRuntimeClassNames,
+                    )?.let { plan -> method to plan }
+                }
+                .forEach { (method, plan) ->
+                    file.addFunction(
+                        renderDirectInboundCallSite(
+                            candidate = candidate,
+                            interfaceType = descriptor.definition,
+                            vtableMethod = method,
+                            dispatchTarget = dispatchTarget,
+                            plan = plan,
+                            semanticHelpers = semanticHelpers,
+                        ),
+                    )
+                }
+        }
+        return file
             .addType(
                 TypeSpec.objectBuilder(typeDetailsName)
-                    .addFunction(renderRegister(candidate))
+                    .addProperty(renderCcwDefinition())
+                    .addProperty(renderRegistrationToken())
                     .addFunction(renderCreateCcwDefinition(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames))
+                    .addFunction(renderRegisterOnce(candidate))
+                    .addFunction(renderRegister())
                     .build(),
             )
             .build()
     }
 
-    private fun renderRegister(candidate: KotlinWinRTAuthoredTypeCandidate): FunSpec =
-        FunSpec.builder("register")
+    private fun renderRegistrationToken(): PropertySpec =
+        PropertySpec.builder("registrationToken", Unit::class.asClassName())
+            .addModifiers(KModifier.PRIVATE)
+            .initializer("registerOnce()")
+            .build()
+
+    private fun renderRegisterOnce(candidate: KotlinWinRTAuthoredTypeCandidate): FunSpec =
+        FunSpec.builder("registerOnce")
+            .addModifiers(KModifier.PRIVATE)
             .addStatement(
                 "%T.registerAuthoredRuntimeClassType(%T::class, %S)",
                 projectionsType,
@@ -350,11 +394,23 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                 "ABI.${candidate.sourceTypeName}",
             )
             .addStatement(
-                "%T.registerAuthoringTypeDetailsFactory(%T::class, ::createCcwDefinition)",
+                "%T.registerStaticCcwDefinition(%T::class, ccwDefinition)",
                 comWrappersSupportType,
                 sourceClassName(candidate),
             )
             .build()
+
+    private fun renderRegister(): FunSpec =
+        FunSpec.builder("register")
+            .addStatement("registrationToken")
+            .build()
+
+    private fun renderCcwDefinition(): PropertySpec {
+        return PropertySpec.builder("ccwDefinition", winRTCcwDefinitionType)
+            .addModifiers(KModifier.PRIVATE)
+            .initializer("createCcwDefinition()")
+            .build()
+    }
 
     private fun renderCreateCcwDefinition(
         candidate: KotlinWinRTAuthoredTypeCandidate,
@@ -365,7 +421,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
     ): FunSpec {
         val defaultInterface = interfaces.first()
         return FunSpec.builder("createCcwDefinition")
-            .addParameter(ParameterSpec.builder("value", ANY).build())
+            .addModifiers(KModifier.PRIVATE)
             .returns(winRTCcwDefinitionType)
             .addCode(
                 CodeBlock.builder()
@@ -396,19 +452,28 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         FileSpec.builder(authoringTypeDetailsRegistrarPackage, registrarName)
             .addType(
                 TypeSpec.objectBuilder(registrarName)
-                    .addFunction(renderRegistrarRegister(candidates))
+                    .addProperty(renderRegistrarRegistrationToken())
+                    .addFunction(renderRegistrarRegisterOnce(candidates))
+                    .addFunction(renderRegister())
                     .build(),
             )
             .build()
 
-    private fun renderRegistrarRegister(candidates: List<KotlinWinRTAuthoredTypeCandidate>): FunSpec {
+    private fun renderRegistrarRegistrationToken(): PropertySpec =
+        PropertySpec.builder("registrationToken", Unit::class.asClassName())
+            .addModifiers(KModifier.PRIVATE)
+            .initializer("registerOnce()")
+            .build()
+
+    private fun renderRegistrarRegisterOnce(candidates: List<KotlinWinRTAuthoredTypeCandidate>): FunSpec {
         val code = CodeBlock.builder()
         candidates
             .sortedBy { candidate -> candidate.sourceTypeName }
             .forEach { candidate ->
                 code.addStatement("%T.register()", ClassName(candidate.packageName, detailsObjectName(candidate)))
             }
-        return FunSpec.builder("register")
+        return FunSpec.builder("registerOnce")
+            .addModifiers(KModifier.PRIVATE)
             .addCode(code.build())
             .build()
     }
@@ -468,10 +533,30 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         val dispatchMethodName = dispatchTarget.methodName(method)
         val receiveArrayParameter = method.receiveArrayResultParameter()
         validateAuthoredArrayParameterSupport(method, receiveArrayParameter)
+        val directInboundCallSitePlan = directInboundCallSitePlan(
+            vtableMethod = vtableMethod,
+            currentNamespace = interfaceType.namespace,
+            semanticHelpers = semanticHelpers,
+            authoredRuntimeClassNames = authoredRuntimeClassNames,
+        )
+        if (directInboundCallSitePlan != null) {
+            return CodeBlock.builder()
+                .add("%T(\n", winRTInspectableMethodDefinitionType)
+                .indent()
+                .add("signature = %L,\n", renderSignature(method, typesByName, semanticHelpers))
+                .add(
+                    "abiEntryPoint = %M(::%L),\n",
+                    winRTProjectionInboundEntryPointMember,
+                    directInboundCallSiteFunctionName(interfaceType, vtableMethod),
+                )
+                .unindent()
+                .add(")")
+                .build()
+        }
         val projectedParameterIndexes = method.parameters.indices.filter { index -> method.parameters[index] != receiveArrayParameter }
         val bridgeArguments = projectedParameterIndexes.joinToString(", ") { index -> "__arg$index" }
         return CodeBlock.builder()
-            .add("%T(%L) { rawArgs ->\n", winRTInspectableMethodDefinitionType, renderSignature(method, typesByName, semanticHelpers))
+            .add("%T(%L) { value, rawArgs ->\n", winRTInspectableMethodDefinitionType, renderSignature(method, typesByName, semanticHelpers))
             .indent()
             .add("try {\n")
             .indent()
@@ -571,6 +656,147 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             .add("}")
             .build()
     }
+
+    private fun renderDirectInboundCallSite(
+        candidate: KotlinWinRTAuthoredTypeCandidate,
+        interfaceType: WinRTTypeDefinition,
+        vtableMethod: AuthoredVtableMethod,
+        dispatchTarget: AuthoringDispatchTarget,
+        plan: DirectInboundCallSitePlan,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): FunSpec {
+        val method = vtableMethod.method
+        val dispatchMethodName = dispatchTarget.methodName(method)
+        val arguments = method.parameters.indices.joinToString(", ") { index -> "__arg$index" }
+        val returnsUnit = plan.returnShape.kind == WinRTDirectInboundShapeKind.Unit
+        val returnType = directInboundProjectedTypeName(plan.returnShape, semanticHelpers)
+        return FunSpec.builder(directInboundCallSiteFunctionName(interfaceType, vtableMethod))
+            .addModifiers(KModifier.PRIVATE)
+            .addAnnotation(
+                AnnotationSpec.builder(winRTProjectionInboundCallSiteType)
+                    .addMember(
+                        "returnAbiType = %S",
+                        directInboundCallSiteAbiType(plan.returnShape, semanticHelpers),
+                    )
+                    .build(),
+            )
+            .addParameter("value", sourceClassName(candidate))
+            .apply {
+                plan.parameterShapes.forEachIndexed { index, shape ->
+                    addParameter(
+                        ParameterSpec.builder(
+                            "__arg$index",
+                            directInboundProjectedTypeName(shape, semanticHelpers),
+                        )
+                            .addAnnotation(
+                                AnnotationSpec.builder(winRTProjectionParameterType)
+                                    .addMember(
+                                        "abiType = %S",
+                                        directInboundCallSiteAbiType(shape, semanticHelpers),
+                                    )
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                }
+            }
+            .returns(returnType)
+            .addCode(
+                CodeBlock.builder()
+                    .apply {
+                        val invocation = renderDispatchInvocation(
+                            vtableMethod = vtableMethod,
+                            dispatchTarget = dispatchTarget,
+                            dispatchMethodName = dispatchMethodName,
+                            bridgeArguments = arguments,
+                        )
+                        if (returnsUnit) {
+                            add("%L\n", invocation)
+                            add("TODO(%S)\n", "Lowered while compiling the authored WinRT inbound CallSite")
+                        } else {
+                            add(
+                                "return (%L).also { TODO(%S) }\n",
+                                invocation,
+                                "Lowered while compiling the authored WinRT inbound CallSite",
+                            )
+                        }
+                    }
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun directInboundCallSitePlan(
+        vtableMethod: AuthoredVtableMethod,
+        currentNamespace: String,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+        authoredRuntimeClassNames: Set<String>,
+    ): DirectInboundCallSitePlan? {
+        val method = vtableMethod.method
+        if (method.receiveArrayResultParameter() != null) return null
+        if (method.parameters.any { parameter ->
+                parameter.direction != WinRTParameterDirection.In ||
+                    parameter.typeIsByRef ||
+                    parameter.isOutParameter
+            }
+        ) {
+            return null
+        }
+        val returnShape = semanticHelpers.directInboundShapeDescriptor(
+            type = method.returnType,
+            currentNamespace = currentNamespace,
+            allowUnit = true,
+        )?.takeUnless { shape -> shape.referencesAuthoredRuntimeClass(authoredRuntimeClassNames) }
+            ?: return null
+        val parameterShapes = method.parameters.map { parameter ->
+            semanticHelpers.directInboundShapeDescriptor(
+                type = parameter.type,
+                currentNamespace = currentNamespace,
+            )?.takeUnless { shape -> shape.referencesAuthoredRuntimeClass(authoredRuntimeClassNames) }
+                ?: return null
+        }
+        return DirectInboundCallSitePlan(returnShape, parameterShapes)
+    }
+
+    private fun WinRTDirectInboundShapeDescriptor.referencesAuthoredRuntimeClass(
+        authoredRuntimeClassNames: Set<String>,
+    ): Boolean = kind == WinRTDirectInboundShapeKind.Projection &&
+        definitionType?.kind == WinRTTypeKind.RuntimeClass &&
+        abiTypeName in authoredRuntimeClassNames
+
+    private data class DirectInboundCallSitePlan(
+        val returnShape: WinRTDirectInboundShapeDescriptor,
+        val parameterShapes: List<WinRTDirectInboundShapeDescriptor>,
+    )
+
+    private fun directInboundProjectedTypeName(
+        shape: WinRTDirectInboundShapeDescriptor,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): TypeName = when (shape.kind) {
+        WinRTDirectInboundShapeKind.Unit -> Unit::class.asClassName()
+        WinRTDirectInboundShapeKind.Value ->
+            requireNotNull(fundamentalProjectedTypeName(shape.abiTypeName)) {
+                "Direct authored inbound value '${shape.abiTypeName}' has no Kotlin scalar projection."
+            }
+        WinRTDirectInboundShapeKind.Enum,
+        WinRTDirectInboundShapeKind.Projection -> projectionClassName(shape.abiTypeName, semanticHelpers)
+    }
+
+    private fun directInboundCallSiteAbiType(
+        shape: WinRTDirectInboundShapeDescriptor,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): String = when (shape.kind) {
+        WinRTDirectInboundShapeKind.Value -> directInboundProjectedTypeName(shape, semanticHelpers).toString()
+        WinRTDirectInboundShapeKind.Enum,
+        WinRTDirectInboundShapeKind.Projection -> shape.abiTypeName
+        WinRTDirectInboundShapeKind.Unit -> Unit::class.asClassName().toString()
+    }
+
+    private fun directInboundCallSiteFunctionName(
+        interfaceType: WinRTTypeDefinition,
+        vtableMethod: AuthoredVtableMethod,
+    ): String = "invokeWinRTInbound_" + interfaceType.qualifiedName
+        .replace('.', '_') + "_" + vtableMethod.method.authoringSignatureKey().hashCode().toUInt().toString(16)
 
     private fun renderDispatchInvocation(
         vtableMethod: AuthoredVtableMethod,

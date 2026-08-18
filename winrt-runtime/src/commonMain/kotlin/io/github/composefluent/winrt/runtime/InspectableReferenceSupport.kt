@@ -2,6 +2,19 @@ package io.github.composefluent.winrt.runtime
 
 internal object ActivationFactoryReferenceSupport {
     fun activateInstance(comPtr: ComPtr): IInspectableReference =
+        activateInstance(comPtr, IID.IInspectable, requireQueryInterface = false)
+
+    fun activateInstance(
+        comPtr: ComPtr,
+        interfaceId: Guid,
+    ): IInspectableReference =
+        activateInstance(comPtr, interfaceId, requireQueryInterface = true)
+
+    private fun activateInstance(
+        comPtr: ComPtr,
+        interfaceId: Guid,
+        requireQueryInterface: Boolean,
+    ): IInspectableReference =
         acquireNativeScalarScratchFrame().use { resultOut ->
             comPtr.throwIfDisposed()
             val hResult = ComVtableInvoker.invokeArgs(
@@ -11,13 +24,31 @@ internal object ActivationFactoryReferenceSupport {
             )
             winRTKeepAlive(comPtr)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            InspectableReference(
-                ComPtr.create(
-                    resultOut.readPointer().asRawComPtr(),
-                    IID.IInspectable,
-                ),
-            ).also { it.tryInitializeReferenceTracker() }
+            val activatedPointer = resultOut.readPointer()
+            if (!requireQueryInterface) {
+                return@use wrapActivatedInstance(activatedPointer, interfaceId)
+            }
+
+            // Mirrors CsWinRT's generated ActivateInstanceUnsafe(factory, defaultInterfaceIid) path.
+            try {
+                val queryResult = WinRTPlatformApi.queryInterfaceRaw(activatedPointer, interfaceId)
+                WinRTPlatformApi.checkSucceededRaw(queryResult.hResultValue)
+                wrapActivatedInstance(queryResult.pointer, interfaceId)
+            } finally {
+                WinRTPlatformApi.releaseRaw(activatedPointer)
+            }
         }
+
+    private fun wrapActivatedInstance(
+        pointer: RawAddress,
+        interfaceId: Guid,
+    ): IInspectableReference =
+        InspectableReference(
+            ComPtr.create(
+                pointer.asRawComPtr(),
+                interfaceId,
+            ),
+        ).also { it.tryInitializeReferenceTracker() }
 }
 
 internal object InspectableReferenceSupport {
@@ -25,9 +56,8 @@ internal object InspectableReferenceSupport {
         noThrow: Boolean,
         invokeGetRuntimeClassName: (RawAddress) -> Int,
     ): String? =
-        PlatformAbi.confinedScope().use { scope ->
-            val hStringOut = PlatformAbi.allocatePointerSlot(scope)
-            val hResult = invokeGetRuntimeClassName(hStringOut)
+        acquireNativeScalarScratchFrame().use { hStringOut ->
+            val hResult = invokeGetRuntimeClassName(hStringOut.pointer)
             if (HResult(hResult).isFailure) {
                 if (noThrow) {
                     return null
@@ -35,7 +65,7 @@ internal object InspectableReferenceSupport {
                 WinRTPlatformApi.checkSucceededRaw(hResult)
             }
 
-            val handle = PlatformAbi.readPointer(hStringOut)
+            val handle = hStringOut.readPointer()
             if (PlatformAbi.isNull(handle)) {
                 return null
             }

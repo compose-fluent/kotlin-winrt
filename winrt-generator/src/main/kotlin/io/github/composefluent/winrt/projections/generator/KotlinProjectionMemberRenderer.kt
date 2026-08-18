@@ -116,6 +116,9 @@ internal fun KotlinProjectionRenderer.applyCommonTypeShape(
     emitKotlinSealed: Boolean = true,
 ) {
     builder.addModifiers(renderVisibility(plan.visibility))
+    if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface) {
+        builder.addAnnotation(WINRT_PROJECTED_INTERFACE_CLASS_NAME)
+    }
     repeat(plan.type.genericParameterCount) { index ->
         builder.addTypeVariable(TypeVariableName("T$index"))
     }

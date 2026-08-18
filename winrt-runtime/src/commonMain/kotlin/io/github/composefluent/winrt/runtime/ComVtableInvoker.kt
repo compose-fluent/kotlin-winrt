@@ -1,5 +1,18 @@
 package io.github.composefluent.winrt.runtime
 
+/** Fixed-carrier callback surface used by compiler-lowered projected-interface CCW entries. */
+internal fun interface ComRawWordCallback {
+    fun invoke(
+        arg0: Long,
+        arg1: Long,
+        arg2: Long,
+        arg3: Long,
+        arg4: Long,
+        arg5: Long,
+        arg6: Long,
+    ): Int
+}
+
 expect object ComVtableInvoker {
     fun invokePointer(
         instance: RawComPtr,
@@ -211,16 +224,18 @@ expect object ComVtableInvoker {
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle
 
+    internal fun createRawWordComMethodCallback(
+        signature: ComMethodSignature,
+        callback: ComRawWordCallback,
+    ): NativeCallbackHandle
+
     internal fun createRawInt32Callback(
         parameterKinds: List<ComAbiValueKind>,
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle
 }
 
-/**
- * Internal fixed-carrier entry points used by generated Native call sites. They keep the
- * public invoker surface stable while allowing the Native actuals to inline the vtable load.
- */
+/** Fixed-carrier entry points used by handwritten runtime code and compiler-lowered call sites. */
 @PublishedApi
 internal expect inline fun winRTDirectInvokeHResultAddress(
     instance: RawComPtr,

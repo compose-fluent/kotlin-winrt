@@ -73,6 +73,33 @@ internal expect class NativeHStringReferenceFrame : AutoCloseable {
 internal expect fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame
 
 /**
+ * Borrows a Windows HSTRING reference and a pointer-sized output slot for one synchronous ABI call.
+ * The target owns the backing storage and must keep [value] alive until [action] returns.
+ */
+internal expect inline fun <R> withNativeHStringReferenceAbi(
+    value: String,
+    action: (handle: RawAddress, pointerOut: RawAddress) -> R,
+): R
+
+/**
+ * An allocation-backed view used by runtime-owned construction paths.
+ *
+ * The common runtime keeps the ABI address as the public currency, while a target may retain a
+ * native allocation view so repeated setup/teardown writes do not rebuild a platform wrapper for
+ * the same owned memory. JVM stores the original FFM MemorySegment; mingwX64 stores the pointer
+ * and delegates to its existing ABI seam.
+ */
+internal expect class NativeMemoryView {
+    val pointer: RawAddress
+
+    fun writePointer(offsetBytes: Long, value: RawAddress)
+
+    fun writePointer(offsetBytes: Long, value: NativeMemoryView)
+
+    fun writeInt64(offsetBytes: Long, value: Long)
+}
+
+/**
  * Low-level string views used by compiler-lowered direct HSTRING call sites. The returned
  * string is the lifetime owner for [winRTStringAddress]; lowering keeps it alive through the
  * native call with [winRTKeepAlive].
@@ -90,8 +117,9 @@ internal expect inline fun winRTStringLength(value: String): Int
  * A native allocation whose backing memory is owned and can be freed by closing this handle.
  * This is used when transferring ownership of heap allocations (e.g. array marshalling).
  */
-class OwnedNativeAllocation(
+class OwnedNativeAllocation internal constructor(
     val pointer: RawAddress,
+    internal val memory: NativeMemoryView,
     private val onClose: () -> Unit,
 ) : AutoCloseable {
     override fun close() {
@@ -201,9 +229,9 @@ expect object PlatformAbi {
     fun pointerKey(pointer: RawComPtr): Long
 
     /**
-     * Allocates [sizeBytes] bytes in a shared scope that is returned as an [AutoCloseable].
-     * Closing the returned scope frees the backing memory.  Use this when you need to
-     * transfer ownership of a heap allocation (e.g. array marshalling).
+     * Allocates [sizeBytes] bytes of zeroed, cross-thread native memory.
+     * Closing the returned owner frees the backing memory. Use this when ownership of a heap
+     * allocation must outlive one confined ABI call (e.g. CCWs and array marshalling).
      */
     fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation
 
@@ -248,7 +276,7 @@ expect object WinRTPlatformApi {
 
     fun addRefRaw(unknown: RawAddress): UInt
 
-    fun releaseRaw(unknown: RawAddress): UInt
+    inline fun releaseRaw(unknown: RawAddress): UInt
 
     fun dllGetActivationFactoryRaw(getActivationFactoryProc: RawAddress, runtimeClassId: RawAddress): NativePointerResult
 
