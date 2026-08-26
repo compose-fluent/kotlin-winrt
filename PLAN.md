@@ -44,6 +44,12 @@
 
 ## Current Focus
 
+- [x] 关闭全量 Windows SDK JVM 编译的第二个瓶颈：按 `.cswinrt/src/cswinrt/code_writers.h` 收回强制 inline 与重复 wrapper 状态后，同输入 422 个生成文件为 32,568,878 字节、721,873 个非空行，`override inline`、生成的 `nativeObject`/`primaryTypeHandle` override、`_innerStorage`、managed-state 继承和注册壳全部为 0。不增加 4 GiB 堆限制的 clean JVM SDK gate 在 `24m58s` 通过 58 个任务，回到约 30 分钟的历史窗口；同一生成契约的 `mingwX64` gate 在 `7m50s` 通过 65 个任务。两次运行的 User/Machine `PATH` 都未变。
+- [x] 完成 P7 投影继承修复：匹配 `.cswinrt/src/cswinrt/code_writers.h`，生成接口只保留元数据继承，422 个 Windows SDK 源文件中的 `WinRTManagedProjectionStateAccess` 引用从 5,750 降为 0；compiler plugin 继续通过 `@WinRTProjectedInterface` 发现真实 managed implementation 并注入 `WinRTManagedProjectionStateOwner`，compiled sibling ABI 恢复排除当前模块。generator/compiler-plugin 共 57 个任务通过，真实 SDK 生成在 `10m56s` 完成，未新增 runner、脚本或测试套件。
+- [x] 证实 P7 仍有独立的全 SDK 后端规模瓶颈：原增量编译在 45 分钟硬上限仍未完成，clean 编译复现相同的 88-class/满 old-generation 状态，排除陈旧增量缓存；直方图主要包含约 548 MB `byte[]`、311 MB `Object[]`、260 MB `int[]`、216 MB PSI start marker、166 MB ASM symbol entry 与 132 MB ASM label。
+- [x] 归档 2026-08-26 全量四 runner benchmark：四个 runner 均为 6 family/97 scenario、schema 3、`5/15/1`，场景与 checksum 全部一致；测量保存在 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)，剩余顺序保存在 [PERFORMANCE_OPTIMIZATION_PLAN.md](PERFORMANCE_OPTIMIZATION_PLAN.md)。
+- [ ] 正在做：完成 P8 共享运行时剩余项：先用同一生成物重跑四 runner/97 场景矩阵，再依次处理 event/delegate CCW、native-object weak reference/first-use projection、list/object marshaling；JVM 是每个共享候选的回归门，只允许最终 FFI/raw-memory/TLS/symbol/callback adapter 保留 target-specific mechanics。字典复合行按内部 100/1,000 次 lookup 归一化，yielded async 与已拒绝的 completed-async shortcut 不重新投入。
+
 - [x] Complete the remaining high-absolute-cost Native performance review from the 2026-08-25 97-scenario matrix without splitting JVM and `mingwX64` semantics; P0-P6 are closed and no performance candidate remains active.
   - [x] Repeat the existing dictionary, event controls, list, first-use QI, `SetUri`, and immediate async scenarios five times on one unchanged artifact with the existing `5/15/1` protocol; restore both official Kotlin JSONL catalogs at 97 rows with matching checksums and record the compact result in [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md).
   - [x] Attribute the apparent final-matrix dictionary/async regressions to cross-process movement rather than a lost common optimization: Native 100/1,000-lookup controls converge near `334/331 ns` per lookup, `Lookup2` is faster than the final matrix, and Native immediate async is neutral or faster.

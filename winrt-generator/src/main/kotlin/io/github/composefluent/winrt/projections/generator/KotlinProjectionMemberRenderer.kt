@@ -386,11 +386,6 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(modifiers)
-        .apply {
-            if (objectShape == null && plan.canInlineRuntimeClassProjectionMethod(binding)) {
-                addModifiers(KModifier.INLINE)
-            }
-        }
         .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .apply {
@@ -422,64 +417,6 @@ internal fun KotlinProjectionRenderer.matchingMethodBinding(
     return candidates.firstOrNull { candidate ->
         candidate.returnBinding == returnBinding && candidate.parameterBindings == parameterBindings
     } ?: candidates.firstOrNull()
-}
-
-internal fun KotlinProjectionRenderer.hasInlineRuntimeClassProjectionMembers(
-    plan: KotlinTypeProjectionPlan,
-): Boolean {
-    val hasInlineMethod = plan.type.methods
-        .asSequence()
-        .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
-        .filter { method -> runtimeObjectMethodShape(method) == null }
-        .mapNotNull { method -> matchingMethodBinding(plan, method) }
-        .any(plan::canInlineRuntimeClassProjectionMethod)
-    if (hasInlineMethod) {
-        return true
-    }
-    val hasInlineBoundPropertyAccessor = plan.type.properties
-        .asSequence()
-        .filterNot(WinRTPropertyDefinition::isStatic)
-        .flatMap { property ->
-            sequenceOf(
-                "${property.name.uppercase()}_GETTER_SLOT",
-                "${property.name.uppercase()}_SETTER_SLOT",
-            )
-        }
-        .mapNotNull { bindingName ->
-            plan.instanceMemberBindings.firstOrNull { binding -> binding.bindingName == bindingName }
-        }
-        .any(plan::canInlineRuntimeClassProjectionMethod)
-    return hasInlineBoundPropertyAccessor || hasInlineRequiredForwardPropertyAccessor(plan)
-}
-
-private fun KotlinProjectionRenderer.hasInlineRequiredForwardPropertyAccessor(
-    plan: KotlinTypeProjectionPlan,
-): Boolean {
-    if (plan.type.kind != WinRTTypeKind.RuntimeClass || plan.requiresOpenRuntimeClassShell()) {
-        return false
-    }
-    val existingPropertyNames = plan.type.properties
-        .asSequence()
-        .filterNot(WinRTPropertyDefinition::isStatic)
-        .map { property -> property.name.replaceFirstChar(Char::lowercase) }
-        .toSet()
-    val suppressedMemberNames = mappedCollectionMemberNames(plan)
-    return plan.type.implementedInterfaces
-        .asSequence()
-        .filterNot { implemented -> isRuntimeClassDelegatedInterface(plan, implemented.interfaceName) }
-        .flatMap { implemented ->
-            collectRequiredForwardInterfaceTypes(implemented.interfaceName, plan, mutableSetOf()).asSequence()
-        }
-        .filterNot { requiredInterface -> isRuntimeOwnedMappedTypeName(requiredInterface.interfaceName) }
-        .filter { requiredInterface -> plan.canInlineRuntimeClassProjectionAccessor(requiredInterface.interfaceName) }
-        .any { requiredInterface ->
-            requiredInterface.type.properties.any { property ->
-                !property.isStatic &&
-                    property.name.replaceFirstChar(Char::lowercase) !in existingPropertyNames &&
-                    !(requiredInterface.isMappedCollectionOrIteratorInterface && property.name in suppressedMemberNames) &&
-                    (property.hasNativeProjectionGetterAccessor() || property.hasNativeProjectionSetterAccessor())
-            }
-        }
 }
 
 internal fun WinRTMethodDefinition.projectedRuntimeClassMethodName(
@@ -640,11 +577,6 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
-            .apply {
-                if (plan.canInlineRuntimeClassProjectionMethod(getterBinding)) {
-                    addModifiers(KModifier.INLINE)
-                }
-            }
             .addCode("%L\n", getterInvocation)
             .build(),
     )
@@ -664,11 +596,6 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         )
         builder.setter(
             FunSpec.setterBuilder()
-                .apply {
-                    if (setterBinding != null && plan.canInlineRuntimeClassProjectionMethod(setterBinding)) {
-                        addModifiers(KModifier.INLINE)
-                    }
-                }
                 .addParameter("value", resolveTypeName(propertyTypeName))
                 .addCode(
                     "%L\n",
@@ -740,27 +667,6 @@ internal fun runtimeClassMemberModifiers(
             listOf(KModifier.PROTECTED)
         else -> listOf(KModifier.OVERRIDE)
     }
-}
-
-internal fun KotlinTypeProjectionPlan.canInlineRuntimeClassProjectionMethod(
-    binding: KotlinProjectionInstanceMemberBinding,
-): Boolean =
-    canInlineRuntimeClassProjectionAccessor(binding.ownerInterfaceQualifiedName) &&
-        runtimeClassMemberModifiers(this, binding) == listOf(KModifier.OVERRIDE)
-
-internal fun KotlinTypeProjectionPlan.canInlineRuntimeClassProjectionAccessor(
-    ownerInterfaceName: String,
-): Boolean {
-    if (requiresOpenRuntimeClassShell()) {
-        return false
-    }
-    val rawOwnerInterfaceName = ownerInterfaceName.substringBefore('<').removeSuffix("?")
-    val descriptor = classMemberMergeDescriptor
-        ?.interfaceDescriptors
-        ?.firstOrNull { candidate ->
-            candidate.interfaceTypeName.substringBefore('<').removeSuffix("?") == rawOwnerInterfaceName
-        }
-    return descriptor?.isOverridableInterface != true && descriptor?.isProtectedInterface != true
 }
 
 internal fun authoringInvokeBridgeName(method: WinRTMethodDefinition): String =
@@ -1135,11 +1041,6 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         ) ?: return null
         builder.getter(
             FunSpec.getterBuilder()
-                .apply {
-                    if (plan.canInlineRuntimeClassProjectionAccessor(getter.ownerInterfaceName)) {
-                        addModifiers(KModifier.INLINE)
-                    }
-                }
                 .addCode("%L\n", invocation)
                 .build(),
         )
@@ -1166,11 +1067,6 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         ) ?: return null
         builder.setter(
             FunSpec.setterBuilder()
-                .apply {
-                    if (plan.canInlineRuntimeClassProjectionAccessor(setter.ownerInterfaceName)) {
-                        addModifiers(KModifier.INLINE)
-                    }
-                }
                 .addParameter("value", propertyType)
                 .addCode("%L\n", invocation)
                 .build(),

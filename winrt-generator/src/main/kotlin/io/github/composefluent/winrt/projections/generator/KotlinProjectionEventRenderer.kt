@@ -759,8 +759,8 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                         "if (this::class == %T::class) {\n",
                         projectedClassName,
                     )
-                    constructor.addStatement("    _innerStorage = ComposableFactory.%L(%L)", factoryCreateFunctionName(method), arguments)
-                    constructor.addStatement("    %T.registerComposableWrapper(this, _inner)", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+                    constructor.addStatement("    nativeObject = ComposableFactory.%L(%L)", factoryCreateFunctionName(method), arguments)
+                    constructor.addStatement("    %T.registerComposableWrapper(this, nativeObject)", COM_WRAPPERS_SUPPORT_CLASS_NAME)
                     constructor.addCode("} else {\n")
                     constructor.addStatement("    %T.ensureInitialized()", WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME)
                     constructor.addStatement(
@@ -769,7 +769,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                         CodeBlock.of("Metadata.DEFAULT_INTERFACE_IID"),
                         if (arguments.isBlank()) "" else ", $arguments",
                     )
-                    constructor.addStatement("    _innerStorage = requireNotNull(_composableReference).instance")
+                    constructor.addStatement("    nativeObject = requireNotNull(_composableReference).instance")
                     constructor.addCode("}\n")
                     constructor.build()
                 }
@@ -1096,18 +1096,17 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     if (plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
         KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
         KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds) {
-        builder.addFunction(
-            FunSpec.builder("register")
-                .addModifiers(KModifier.INTERNAL)
-                .addCode(
+        builder.addInitializerBlock(
+            CodeBlock.builder()
+                .add(
                     "%T.ensureInitialized()\n",
                     WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
                 )
-                .addCode(
+                .add(
                     "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
                 )
-                .addCode(
+                .add(
                     "%T.registerCustomAbiTypeMapping(%T::class, %T::class, TYPE_NAME, isRuntimeClass = true)\n",
                     PROJECTIONS_CLASS_NAME,
                     projectedClassName,
@@ -1127,13 +1126,13 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                             }
                             ?: abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName, plan.type.namespace))
                         if (defaultInterfaceSignature != null) {
-                            addCode(
+                            add(
                                 "%T.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE, %L.render())\n",
                                 PROJECTIONS_CLASS_NAME,
                                 defaultInterfaceSignature,
                             )
                         } else {
-                            addCode(
+                            add(
                                 "%T.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE)\n",
                                 PROJECTIONS_CLASS_NAME,
                             )
@@ -1143,7 +1142,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                         ?.takeUnless { defaultInterfaceName -> defaultInterfaceName.contains('<') }
                         ?.let { defaultInterfaceName ->
                             plan.defaultInterfaceIid?.let {
-                                addCode(
+                                add(
                                     "%T.registerDefaultInterfaceType(%T::class, %T::class, DEFAULT_INTERFACE_IID)\n",
                                     PROJECTIONS_CLASS_NAME,
                                     projectedClassName,
@@ -1179,7 +1178,6 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addCode("return wrap(instance.asInspectable())\n")
                 .build(),
         )
-        builder.addInitializerBlock(CodeBlock.of("register()\n"))
     }
     if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceWrapper(plan)) {
         builder.addFunction(

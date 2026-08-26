@@ -170,7 +170,6 @@ internal fun KotlinProjectionRenderer.addMutableCollectionDelegateSupport(
             .addModifiers(KModifier.PRIVATE)
             .getter(
                 FunSpec.getterBuilder()
-                    .addModifiers(KModifier.INLINE)
                     .addCode("return %L ?: %L()\n", cacheName, makeName)
                     .build(),
             )
@@ -600,7 +599,6 @@ internal fun KotlinProjectionRenderer.addReadOnlyCollectionDelegateSupport(
             .addModifiers(KModifier.PRIVATE)
             .getter(
                 FunSpec.getterBuilder()
-                    .addModifiers(KModifier.INLINE)
                     .addCode("return %L ?: %L()\n", cacheName, makeName)
                     .build(),
             )

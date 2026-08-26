@@ -90,10 +90,12 @@ class WinRTManagedProjectionState {
 }
 
 /**
- * Common projected-interface hook for object-owned managed CCW state.
+ * Implementation hook for object-owned managed CCW state.
  *
- * Generated interfaces inherit this contract once. Native wrappers and manual implementations use
- * the null default, while compiler-injected managed implementations override it with stable state.
+ * The compiler injects [WinRTManagedProjectionStateOwner] into managed implementations of
+ * projected interfaces. Keeping this hook out of every generated interface avoids a shared
+ * default method across the complete projection hierarchy; specialized manual implementations can
+ * still opt into the null default when direct state access is useful.
  */
 interface WinRTManagedProjectionStateAccess {
     fun winRTManagedProjectionState(): WinRTManagedProjectionState? = null

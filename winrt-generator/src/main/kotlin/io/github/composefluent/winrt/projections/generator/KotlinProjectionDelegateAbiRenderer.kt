@@ -410,10 +410,7 @@ internal fun KotlinProjectionRenderer.staticDelegateFromBorrowedAbiCode(
                     ).use { __borrowed -> __borrowed.getRefPointer() },
                     interfaceId = __delegateInterfaceId,
                 )
-                object : %T, %T {
-                    override val nativeObject: %T
-                        get() = __native
-
+                object : %T<%T>(__native, null), %T {
                     override fun invoke(%L): %T {
                         %L
                     }
@@ -427,9 +424,9 @@ internal fun KotlinProjectionRenderer.staticDelegateFromBorrowedAbiCode(
         IUNKNOWN_REFERENCE_CLASS_NAME,
         IUNKNOWN_REFERENCE_CLASS_NAME,
         PLATFORM_ABI_CLASS_NAME,
+        WINRT_OBJECT_BASE_CLASS_NAME,
+        IUNKNOWN_REFERENCE_CLASS_NAME,
         projectedType,
-        IWINRT_OBJECT_CLASS_NAME,
-        COM_OBJECT_REFERENCE_CLASS_NAME,
         parameters,
         returnType,
         invokeBody,

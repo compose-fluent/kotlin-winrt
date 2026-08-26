@@ -36,6 +36,7 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ActivationFactoryReference
 import io.github.composefluent.winrt.runtime.ComAbiValueKind
@@ -52,6 +53,7 @@ import io.github.composefluent.winrt.runtime.HString
 import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.IWinRTObject
+import io.github.composefluent.winrt.runtime.WinRTObjectBase
 import io.github.composefluent.winrt.runtime.WinRTOut
 import io.github.composefluent.winrt.runtime.KnownHResults
 import io.github.composefluent.winrt.runtime.Marshaler
@@ -99,7 +101,6 @@ import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTProjectedInterface
-import io.github.composefluent.winrt.runtime.WinRTManagedProjectionStateAccess
 import io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
@@ -321,6 +322,7 @@ internal val WINRT_PLATFORM_API_CLASS_NAME = WinRTPlatformApi::class.asClassName
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRTSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRTTypeSignature::class.asClassName()
 internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRTTypeHandle::class.asClassName()
+internal val WINRT_OBJECT_BASE_CLASS_NAME = WinRTObjectBase::class.asClassName()
 internal val WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME = WinRTValueBoxingRegistration::class.asClassName()
 internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRTDelegateBridge::class.asClassName()
 internal val WINRT_DELEGATE_ARGUMENT_MARSHALER_CLASS_NAME = WinRTDelegateArgumentMarshaler::class.asClassName()
@@ -408,10 +410,12 @@ internal val WINRT_EXPERIMENTAL_CLASS_NAME = WinRTExperimental::class.asClassNam
 internal val WINRT_OVERLOAD_CLASS_NAME = WinRTOverload::class.asClassName()
 internal val WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME = WinRTSupportedOSPlatform::class.asClassName()
 internal val WINRT_PROJECTED_INTERFACE_CLASS_NAME = WinRTProjectedInterface::class.asClassName()
-internal val WINRT_MANAGED_PROJECTION_STATE_ACCESS_CLASS_NAME = WinRTManagedProjectionStateAccess::class.asClassName()
 internal val KOTLIN_UBYTE_CLASS_NAME = ClassName("kotlin", "UByte")
 internal val KOTLIN_UINT_CLASS_NAME = ClassName("kotlin", "UInt")
 internal val KOTLIN_ULONG_CLASS_NAME = ClassName("kotlin", "ULong")
+
+internal val KotlinTypeProjectionPlan.runtimeClassBaseTypeName: String?
+    get() = type.baseTypeName?.takeUnless(::isWinRTObjectTypeName)
 internal val KOTLIN_USHORT_CLASS_NAME = ClassName("kotlin", "UShort")
 
 internal typealias SpecialTypeResolver = (List<TypeName>) -> TypeName

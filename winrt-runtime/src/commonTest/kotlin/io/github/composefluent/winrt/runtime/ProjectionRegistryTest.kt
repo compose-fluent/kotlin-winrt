@@ -263,6 +263,40 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun generated_enum_contracts_preserve_open_signed_and_unsigned_abi_values() {
+        ComWrappersSupport.clearRegistriesForTests()
+        try {
+            Projections.registerInt32EnumType(
+                type = TestProjectedInt32Enum::class,
+                projectedTypeName = "Contoso.SignedPriority",
+                signature = "enum(Contoso.SignedPriority;i4)",
+                enumEntries = emptyArray(),
+            )
+            Projections.registerUInt32EnumType(
+                type = TestProjectedUInt32Enum::class,
+                projectedTypeName = "Contoso.UnsignedPriority",
+                signature = "enum(Contoso.UnsignedPriority;u4)",
+                enumEntries = emptyArray(),
+            )
+
+            assertEquals(
+                -7,
+                WinRTTypeRegistry.findByClass(TestProjectedInt32Enum::class)
+                    ?.enumAbiValue
+                    ?.invoke(TestProjectedInt32Enum(-7)),
+            )
+            assertEquals(
+                -1,
+                WinRTTypeRegistry.findByClass(TestProjectedUInt32Enum::class)
+                    ?.enumAbiValue
+                    ?.invoke(TestProjectedUInt32Enum(UInt.MAX_VALUE)),
+            )
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
     fun guid_generator_uses_registered_default_interface_signature_when_kclass_cannot_represent_it() {
         ComWrappersSupport.clearRegistriesForTests()
         WinRTTypeRegistry.register<SampleGenericRuntimeClass>(
@@ -448,6 +482,16 @@ class ProjectionRegistryTest {
         Low(0),
         High(2),
     }
+
+    @JvmInline
+    private value class TestProjectedInt32Enum(
+        override val abiValue: Int,
+    ) : WinRTInt32EnumValue
+
+    @JvmInline
+    private value class TestProjectedUInt32Enum(
+        override val abiValue: UInt,
+    ) : WinRTUInt32EnumValue
 
     private fun registerTestTypeDescriptors() {
         WinRTTypeRegistry.register<SampleDefaultInterface>(

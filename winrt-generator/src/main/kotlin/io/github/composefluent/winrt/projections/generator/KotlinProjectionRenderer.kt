@@ -84,6 +84,8 @@ import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference
 import io.github.composefluent.winrt.runtime.WinRTDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRTEvent
+import io.github.composefluent.winrt.runtime.WinRTInt32EnumValue
+import io.github.composefluent.winrt.runtime.WinRTUInt32EnumValue
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.BOOLEAN
@@ -181,7 +183,6 @@ class KotlinProjectionRenderer(
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
-        builder.addSuperinterface(WINRT_MANAGED_PROJECTION_STATE_ACCESS_CLASS_NAME)
         plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).forEach { builder.addFunction(renderInterfaceMethod(it)) }
         plan.type.properties.filterNot { it.isStatic }.filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
             val getterResolution = property
@@ -242,6 +243,10 @@ class KotlinProjectionRenderer(
         genericTypeArguments: List<KotlinProjectionAbiTypeBinding>,
         primaryTypeHandleExpression: CodeBlock?,
     ): TypeSpec {
+        val nativeProjectionTypeHandle = primaryTypeHandleExpression ?: when {
+            plan.interfaceIid == null -> CodeBlock.of("null")
+            else -> CodeBlock.of("Metadata.TYPE_HANDLE")
+        }
         val mutableCollectionBindings = plan.mutableCollectionBindings.map { binding ->
             binding.substituteGenericTypeArguments(genericTypeArguments)
         }
@@ -256,31 +261,9 @@ class KotlinProjectionRenderer(
                     .build(),
             )
             .addSuperinterface(projectedType)
-            .addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
-            .addProperty(
-                PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
-                    .addModifiers(KModifier.OVERRIDE)
-                    .initializer("nativeObject")
-                    .build(),
-            )
-            .addProperty(
-                PropertySpec.builder("primaryTypeHandle", WINRT_TYPE_HANDLE_CLASS_NAME.copy(nullable = true))
-                    .addModifiers(KModifier.OVERRIDE)
-                    .getter(
-                        FunSpec.getterBuilder()
-                            .apply {
-                                if (primaryTypeHandleExpression != null) {
-                                    addCode("return %L\n", primaryTypeHandleExpression)
-                                } else if (plan.interfaceIid == null) {
-                                    addCode("return null\n")
-                                } else {
-                                    addCode("return Metadata.TYPE_HANDLE\n")
-                                }
-                            }
-                            .build(),
-                    )
-                    .build(),
-            )
+            .superclass(WINRT_OBJECT_BASE_CLASS_NAME.parameterizedBy(IUNKNOWN_REFERENCE_CLASS_NAME))
+            .addSuperclassConstructorParameter("nativeObject")
+            .addSuperclassConstructorParameter(nativeProjectionTypeHandle)
         if (genericTypeArguments.isEmpty()) {
             repeat(plan.type.genericParameterCount) { index ->
                 builder.addTypeVariable(TypeVariableName("T$index"))
@@ -1131,6 +1114,13 @@ class KotlinProjectionRenderer(
 
     internal fun renderRuntimeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
+        val hasPrimaryTypeHandle = plan.type.genericParameterCount == 0 && plan.defaultInterfaceIid != null
+        val primaryTypeHandleExpression = if (hasPrimaryTypeHandle) {
+            CodeBlock.of("Metadata.TYPE_HANDLE")
+        } else {
+            CodeBlock.of("null")
+        }
+        val runtimeClassBaseTypeName = plan.runtimeClassBaseTypeName
         applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
         if (plan.requiresOpenRuntimeClassShell()) {
             builder.addModifiers(KModifier.OPEN)
@@ -1148,21 +1138,23 @@ class KotlinProjectionRenderer(
         if (supportsDerivedComposableConstruction) {
             builder.addSuperinterface(WINRT_COMPOSABLE_OBJECT_CLASS_NAME)
         }
-        plan.runtimeClassBaseTypeName?.let { baseTypeName ->
-            builder.superclass(resolveTypeName(baseTypeName))
+        if (runtimeClassBaseTypeName != null) {
+            builder.superclass(resolveTypeName(runtimeClassBaseTypeName))
             if (!supportsDerivedComposableConstruction) {
                 builder.addSuperclassConstructorParameter("_inner")
                 builder.addSuperclassConstructorParameter("kotlin.Unit")
             }
+            if (hasPrimaryTypeHandle) {
+                builder.addInitializerBlock(CodeBlock.of("primaryTypeHandle = Metadata.TYPE_HANDLE\n"))
+            }
+        } else {
+            builder.superclass(WINRT_OBJECT_BASE_CLASS_NAME.parameterizedBy(IINSPECTABLE_REFERENCE_CLASS_NAME))
+            if (!supportsDerivedComposableConstruction) {
+                builder.addSuperclassConstructorParameter("_inner")
+                builder.addSuperclassConstructorParameter(primaryTypeHandleExpression)
+            }
         }
         if (supportsDerivedComposableConstruction) {
-            builder.addProperty(
-                PropertySpec.builder("_innerStorage", IINSPECTABLE_REFERENCE_CLASS_NAME.copy(nullable = true))
-                    .addModifiers(KModifier.PRIVATE)
-                    .mutable(true)
-                    .initializer("null")
-                    .build(),
-            )
             builder.addProperty(
                 PropertySpec.builder("_composableReference", WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
                     .addModifiers(KModifier.PRIVATE)
@@ -1180,27 +1172,15 @@ class KotlinProjectionRenderer(
                     )
                     .build(),
             )
-            builder.addProperty(
-                PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
-                    .addModifiers(KModifier.PRIVATE)
-                    .getter(
-                        FunSpec.getterBuilder()
-                            .addStatement("_innerStorage?.let { return it }")
-                            .addStatement("return nativeObject.asInspectable()")
-                            .build(),
-                    )
-                    .build(),
-            )
             builder.addFunction(
                 constructorBuilder
                     .apply {
-                        plan.runtimeClassBaseTypeName?.let {
+                        runtimeClassBaseTypeName?.let {
                             callSuperConstructor("_inner", "kotlin.Unit")
-                        }
+                        } ?: callSuperConstructor(CodeBlock.of("_inner"), primaryTypeHandleExpression)
                     }
-                    .addStatement("this._innerStorage = _inner")
                     .addCode("if (this::class == %T::class) {\n", projectionClassName(plan.type.qualifiedName))
-                    .addStatement("    %T.registerRuntimeClassWrapper(this, _inner)", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+                    .addStatement("    %T.registerRuntimeClassWrapper(this, nativeObject)", COM_WRAPPERS_SUPPORT_CLASS_NAME)
                     .addCode("}\n")
                     .build(),
             )
@@ -1209,54 +1189,14 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PROTECTED)
                     .addParameter("__derivedComposed", DERIVED_COMPOSED_CLASS_NAME)
                     .apply {
-                        plan.runtimeClassBaseTypeName?.let {
+                        runtimeClassBaseTypeName?.let {
                             callSuperConstructor("__derivedComposed")
-                        }
+                        } ?: callSuperConstructor(CodeBlock.of("null"), primaryTypeHandleExpression)
                     }
                     .build(),
             )
         } else {
             builder.primaryConstructor(constructorBuilder.build())
-            builder.addProperty(
-                PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
-                    .apply {
-                        if (hasInlineRuntimeClassProjectionMembers(plan)) {
-                            addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                            addModifiers(KModifier.INTERNAL)
-                        } else {
-                            addModifiers(KModifier.PRIVATE)
-                        }
-                    }
-                    .initializer("_inner")
-                    .build(),
-            )
-        }
-        builder.addProperty(
-                PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
-                .addModifiers(KModifier.OVERRIDE)
-                .apply {
-                    if (plan.requiresOpenRuntimeClassShell()) {
-                        addModifiers(KModifier.OPEN)
-                    }
-                }
-                .getter(
-                    FunSpec.getterBuilder()
-                        .addCode("return _inner\n")
-                        .build(),
-                )
-                .build(),
-        )
-        if (plan.type.genericParameterCount == 0 && plan.defaultInterfaceIid != null) {
-            builder.addProperty(
-                PropertySpec.builder("primaryTypeHandle", WINRT_TYPE_HANDLE_CLASS_NAME.copy(nullable = true))
-                    .addModifiers(KModifier.OVERRIDE)
-                    .getter(
-                        FunSpec.getterBuilder()
-                            .addCode("return Metadata.TYPE_HANDLE\n")
-                            .build(),
-                    )
-                    .build(),
-            )
         }
         addFastAbiDefaultInterfaceResolver(builder, plan)
         builder.addProperty(
@@ -1277,18 +1217,18 @@ class KotlinProjectionRenderer(
         )
         if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds && !supportsDerivedComposableConstruction) {
             builder.addInitializerBlock(
-                CodeBlock.of("%T.registerComposableWrapper(this, _inner)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME),
+                CodeBlock.of("%T.registerComposableWrapper(this, nativeObject)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME),
             )
         } else if (!supportsDerivedComposableConstruction) {
             builder.addInitializerBlock(
                 if (plan.requiresOpenRuntimeClassShell()) {
                     CodeBlock.of(
-                        "if (this::class == %T::class) {\n    %T.registerRuntimeClassWrapper(this, _inner)\n}\n",
+                        "if (this::class == %T::class) {\n    %T.registerRuntimeClassWrapper(this, nativeObject)\n}\n",
                         projectionClassName(plan.type.qualifiedName),
                         COM_WRAPPERS_SUPPORT_CLASS_NAME,
                     )
                 } else {
-                    CodeBlock.of("%T.registerRuntimeClassWrapper(this, _inner)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+                    CodeBlock.of("%T.registerRuntimeClassWrapper(this, nativeObject)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
                 },
             )
         }
@@ -1310,18 +1250,10 @@ class KotlinProjectionRenderer(
             if (defaultObjectReferencePlan?.usesInner == true) {
                 builder.addProperty(
                     PropertySpec.builder("_defaultInterface", COM_OBJECT_REFERENCE_CLASS_NAME)
-                        .apply {
-                            if (hasInlineRuntimeClassProjectionMembers(plan)) {
-                                addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                                addModifiers(KModifier.INTERNAL)
-                            } else {
-                                addModifiers(KModifier.PRIVATE)
-                            }
-                        }
+                        .addModifiers(KModifier.PRIVATE)
                         .getter(
                             FunSpec.getterBuilder()
-                                .addModifiers(KModifier.INLINE)
-                                .addCode("return _inner\n")
+                                .addCode("return nativeObject\n")
                                 .build(),
                         )
                         .build(),
@@ -1344,13 +1276,12 @@ class KotlinProjectionRenderer(
                             runtimeClassObjectReferenceCacheInitializer(
                                 defaultObjectReferencePlan,
                                 plan.typesByQualifiedName,
-                                "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
+                                "Metadata.acquireInterface(nativeObject, %T.Metadata.IID)",
                                 projectionClassName(defaultObjectReferencePlan.interfaceName.substringBefore('<')),
                             )
                         } else {
-                            runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName, "Metadata.acquireDefaultInterface(_inner)")
+                            runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName, "Metadata.acquireDefaultInterface(nativeObject)")
                         },
-                    publishedForInline = hasInlineRuntimeClassProjectionMembers(plan),
                 )
             }
         }
@@ -1364,9 +1295,9 @@ class KotlinProjectionRenderer(
                 val objectReferencePlan = objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]
                 val acquireExpression =
                     if (plan.composableFactoryBindings.isNotEmpty() && plan.isOverridableRuntimeClassInterface(binding.qualifiedName)) {
-                        "Metadata.acquireInterface(winRTComposableObjectReference?.inner ?: _inner, %T.Metadata.IID)"
+                        "Metadata.acquireInterface(winRTComposableObjectReference?.inner ?: nativeObject, %T.Metadata.IID)"
                     } else {
-                        "Metadata.acquireInterface(_inner, %T.Metadata.IID)"
+                        "Metadata.acquireInterface(nativeObject, %T.Metadata.IID)"
                     }
                 builder.addObjectReferenceCacheProperty(
                     name = "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
@@ -1377,7 +1308,6 @@ class KotlinProjectionRenderer(
                         acquireExpression,
                         projectionClassName(binding.qualifiedName.substringBefore('<')),
                     ),
-                    publishedForInline = hasInlineRuntimeClassProjectionMembers(plan),
                 )
         }
         requiredInterfaceCacheBindings(plan)
@@ -1389,11 +1319,10 @@ class KotlinProjectionRenderer(
                     type = IUNKNOWN_REFERENCE_CLASS_NAME,
                     createReference = CodeBlock.builder()
                         .addStatement(
-                            "Metadata.acquireInterface(_inner, %L)",
+                            "Metadata.acquireInterface(nativeObject, %L)",
                             runtimeClassInterfaceIdCode(binding.qualifiedName, plan),
                         )
                         .build(),
-                    publishedForInline = hasInlineRuntimeClassProjectionMembers(plan),
                 )
             }
         addRuntimeClassCollectionInterfaceCaches(builder, plan)
@@ -1480,7 +1409,6 @@ class KotlinProjectionRenderer(
                 else -> Unit
             }
         }
-        builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
         if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
             builder.addFunction(
                 FunSpec.constructorBuilder()
@@ -1578,7 +1506,7 @@ class KotlinProjectionRenderer(
             builder.addFunction(
                 FunSpec.builder("close")
                     .addModifiers(KModifier.OVERRIDE)
-                    .addCode("%T(_inner).close()\n", WINRT_CLOSABLE_OBJECT_CLASS_NAME)
+                    .addCode("%T(nativeObject).close()\n", WINRT_CLOSABLE_OBJECT_CLASS_NAME)
                     .build(),
             )
         }
@@ -1672,7 +1600,7 @@ class KotlinProjectionRenderer(
                 ) {
                     val rawInterfaceType = projectionClassName(target.rawInterfaceName)
                     CodeBlock.of(
-                        "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
+                        "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(nativeObject, %T.Metadata.IID)) }",
                         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
                         rawInterfaceType,
                         rawInterfaceType,
@@ -1688,14 +1616,7 @@ class KotlinProjectionRenderer(
                 }
                 builder.addProperty(
                     PropertySpec.builder(target.projectionPropertyName, resolveTypeName(target.interfaceName))
-                        .apply {
-                            if (hasInlineRuntimeClassProjectionMembers(plan)) {
-                                addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                                addModifiers(KModifier.INTERNAL)
-                            } else {
-                                addModifiers(KModifier.PRIVATE)
-                            }
-                        }
+                        .addModifiers(KModifier.PRIVATE)
                         .delegate(initializer)
                         .build(),
                 )
@@ -1750,11 +1671,6 @@ class KotlinProjectionRenderer(
             .addProjectedAttributeAnnotations(binding.projectedAttributes)
             .addMethodGenericParameters(method, objectShape)
             .addModifiers(modifiers)
-            .apply {
-                if (objectShape == null && plan.canInlineRuntimeClassProjectionMethod(binding)) {
-                    addModifiers(KModifier.INLINE)
-                }
-            }
             .addParameters(parameterSpecs)
             .returns(returns)
             .apply {
@@ -1793,11 +1709,6 @@ class KotlinProjectionRenderer(
             .addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
             .getter(
                 FunSpec.getterBuilder()
-                    .apply {
-                        if (plan.canInlineRuntimeClassProjectionMethod(getterBinding)) {
-                            addModifiers(KModifier.INLINE)
-                        }
-                    }
                     .addCode("return %L.%N\n", target.projectionPropertyName, propertyName)
                     .build(),
             )
@@ -1812,11 +1723,6 @@ class KotlinProjectionRenderer(
                 ?: return null
             builder.setter(
                 FunSpec.setterBuilder()
-                    .apply {
-                        if (plan.canInlineRuntimeClassProjectionMethod(setterBinding)) {
-                            addModifiers(KModifier.INLINE)
-                        }
-                    }
                     .addParameter("value", resolveTypeName(propertyTypeName))
                     .addCode("%L.%N=value\n", setterTarget.projectionPropertyName, propertyName)
                     .build(),
@@ -1987,10 +1893,6 @@ class KotlinProjectionRenderer(
         return slot >= interfaceSlot.vtableStartIndex &&
             slot < interfaceSlot.vtableStartIndex + interfaceSlot.methodCount
     }
-
-    private val KotlinTypeProjectionPlan.runtimeClassBaseTypeName: String?
-        get() = type.baseTypeName
-            ?.takeUnless(::isWinRTObjectTypeName)
 
     private fun KotlinTypeProjectionPlan.isPublicRuntimeClassInterface(interfaceName: String): Boolean {
         val rawName = interfaceName.substringBefore('<').removeSuffix("?")
@@ -2259,7 +2161,7 @@ class KotlinProjectionRenderer(
                         "lazy(%T.PUBLICATION) { %T.fromAbi(%L) }",
                         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
                         WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME,
-                        "_inner",
+                        "nativeObject",
                     ),
                 )
                 .build(),
@@ -2306,7 +2208,7 @@ class KotlinProjectionRenderer(
                         "lazy(%T.PUBLICATION) { %T.fromAbi(%L) }",
                         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
                         WINRT_PROPERTY_CHANGED_NOTIFIER_PROJECTION_CLASS_NAME,
-                        "_inner",
+                        "nativeObject",
                     ),
                 )
                 .build(),
@@ -2587,19 +2489,18 @@ class KotlinProjectionRenderer(
                 type = IUNKNOWN_REFERENCE_CLASS_NAME,
                 createReference = CodeBlock.builder()
                     .addStatement(
-                        "Metadata.acquireInterface(_inner, %L)",
+                        "Metadata.acquireInterface(nativeObject, %L)",
                         runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                     )
                     .build(),
-                publishedForInline = hasInlineRuntimeClassProjectionMembers(plan),
             )
         }
         instanceMemberOwnerCacheBindings.forEach { binding ->
             val acquisitionTarget =
                 if (plan.composableFactoryBindings.isNotEmpty() && plan.isOverridableRuntimeClassInterface(binding.slotInterfaceName)) {
-                    CodeBlock.of("winRTComposableObjectReference?.inner ?: _inner")
+                    CodeBlock.of("winRTComposableObjectReference?.inner ?: nativeObject")
                 } else {
-                    CodeBlock.of("_inner")
+                    CodeBlock.of("nativeObject")
                 }
             builder.addObjectReferenceCacheProperty(
                 name = binding.ownerCachePropertyName,
@@ -2611,7 +2512,6 @@ class KotlinProjectionRenderer(
                         runtimeClassInterfaceIdCode(binding.ownerInterfaceName, plan),
                     )
                     .build(),
-                publishedForInline = hasInlineRuntimeClassProjectionMembers(plan),
             )
         }
     }
@@ -2747,6 +2647,9 @@ class KotlinProjectionRenderer(
         return TypeSpec.classBuilder(plan.type.name)
             .addAnnotation(JVM_INLINE_CLASS_NAME)
             .addModifiers(KModifier.VALUE)
+            .apply {
+                enumAbiValueInterface(underlyingType)?.let { addSuperinterface(it) }
+            }
             .primaryConstructor(
                 FunSpec.constructorBuilder()
                     .addParameter("abiValue", abiTypeName)
@@ -2754,6 +2657,11 @@ class KotlinProjectionRenderer(
             )
             .addProperty(
                 PropertySpec.builder("abiValue", abiTypeName)
+                    .apply {
+                        if (enumAbiValueInterface(underlyingType) != null) {
+                            addModifiers(KModifier.OVERRIDE)
+                        }
+                    }
                     .initializer("abiValue")
                     .build(),
             )
@@ -2785,8 +2693,7 @@ class KotlinProjectionRenderer(
                                 )
                             }
                         }
-                        .addInitializerBlock(CodeBlock.of("register()\n"))
-                        .addFunction(renderEnumRegistration(plan, underlyingType))
+                        .addInitializerBlock(renderEnumRegistration(plan, underlyingType))
                         .addFunction(
                             FunSpec.builder("fromAbi")
                                 .addParameter("abiValue", abiTypeName)
@@ -2811,6 +2718,7 @@ class KotlinProjectionRenderer(
         TypeSpec.classBuilder(plan.type.name)
             .addAnnotation(JVM_INLINE_CLASS_NAME)
             .addModifiers(KModifier.VALUE)
+            .addSuperinterface(WinRTUInt32EnumValue::class.asClassName())
             .primaryConstructor(
                 FunSpec.constructorBuilder()
                     .addParameter("abiValue", KOTLIN_UINT_CLASS_NAME)
@@ -2818,6 +2726,7 @@ class KotlinProjectionRenderer(
             )
             .addProperty(
                 PropertySpec.builder("abiValue", KOTLIN_UINT_CLASS_NAME)
+                    .addModifiers(KModifier.OVERRIDE)
                     .initializer("abiValue")
                     .build(),
             )
@@ -2878,8 +2787,7 @@ class KotlinProjectionRenderer(
                                 )
                             }
                         }
-                        .addInitializerBlock(CodeBlock.of("register()\n"))
-                        .addFunction(renderEnumRegistration(plan, WinRTIntegralType.UInt32))
+                        .addInitializerBlock(renderEnumRegistration(plan, WinRTIntegralType.UInt32))
                         .addFunction(
                             FunSpec.builder("fromAbi")
                                 .addParameter("abiValue", KOTLIN_UINT_CLASS_NAME)
@@ -2902,7 +2810,7 @@ class KotlinProjectionRenderer(
     private fun renderEnumRegistration(
         plan: KotlinTypeProjectionPlan,
         underlyingType: WinRTIntegralType,
-    ): FunSpec {
+    ): CodeBlock {
         val enumType = resolveTypeName(plan.type.qualifiedName)
         val enumEntries = if (plan.type.enumMembers.isEmpty()) {
             CodeBlock.of("emptyArray<%T>()", enumType)
@@ -2918,26 +2826,37 @@ class KotlinProjectionRenderer(
                 .add(")")
                 .build()
         }
-        return FunSpec.builder("register")
-            .addModifiers(KModifier.INTERNAL)
-            .addCode(
-                CodeBlock.builder()
-                    .add("%T.registerEnumType(\n", PROJECTIONS_CLASS_NAME)
-                    .indent()
-                    .add("type = %T::class,\n", enumType)
-                    .add("projectedTypeName = %S,\n", plan.type.qualifiedName)
-                    .add(
-                        "signature = %S,\n",
-                        "enum(${plan.type.qualifiedName};${underlyingType.guidSignatureFragment()})",
-                    )
-                    .add("abiValue = { value -> value.abiValue.toInt() },\n")
-                    .add("enumEntries = %L,\n", enumEntries)
-                    .unindent()
-                    .add(")\n")
-                    .build(),
+        val registrationFunction = when (underlyingType) {
+            WinRTIntegralType.Int32 -> "registerInt32EnumType"
+            WinRTIntegralType.UInt32 -> "registerUInt32EnumType"
+            else -> "registerEnumType"
+        }
+        return CodeBlock.builder()
+            .add("%T.%L(\n", PROJECTIONS_CLASS_NAME, registrationFunction)
+            .indent()
+            .add("type = %T::class,\n", enumType)
+            .add("projectedTypeName = %S,\n", plan.type.qualifiedName)
+            .add(
+                "signature = %S,\n",
+                "enum(${plan.type.qualifiedName};${underlyingType.guidSignatureFragment()})",
             )
+            .apply {
+                if (enumAbiValueInterface(underlyingType) == null) {
+                    add("abiValue = { value -> value.abiValue.toInt() },\n")
+                }
+            }
+            .add("enumEntries = %L,\n", enumEntries)
+            .unindent()
+            .add(")\n")
             .build()
     }
+
+    private fun enumAbiValueInterface(underlyingType: WinRTIntegralType): TypeName? =
+        when (underlyingType) {
+            WinRTIntegralType.Int32 -> WinRTInt32EnumValue::class.asClassName()
+            WinRTIntegralType.UInt32 -> WinRTUInt32EnumValue::class.asClassName()
+            else -> null
+        }
 
     internal fun renderStruct(plan: KotlinTypeProjectionPlan): TypeSpec =
         TypeSpec.classBuilder(plan.type.name)
@@ -3011,21 +2930,15 @@ class KotlinProjectionRenderer(
                     )
                     .build(),
             )
-            .addInitializerBlock(CodeBlock.of("register()\n"))
-            .addFunction(
-                FunSpec.builder("register")
-                    .addModifiers(KModifier.INTERNAL)
-                    .addCode(
-                        CodeBlock.builder()
-                            .addStatement(
-                                "%T.registerStruct(%T::class, %S, %S, this, emptyArray<%T>()::class)",
-                                WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME,
-                                resolveTypeName(plan.type.qualifiedName),
-                                plan.type.qualifiedName,
-                                nativeStructGuidSignature(plan) ?: error("Struct ${plan.type.qualifiedName} is missing a WinRT GUID signature."),
-                                resolveTypeName(plan.type.qualifiedName),
-                            )
-                            .build(),
+            .addInitializerBlock(
+                CodeBlock.builder()
+                    .addStatement(
+                        "%T.registerStruct(%T::class, %S, %S, this, emptyArray<%T>()::class)",
+                        WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME,
+                        resolveTypeName(plan.type.qualifiedName),
+                        plan.type.qualifiedName,
+                        nativeStructGuidSignature(plan) ?: error("Struct ${plan.type.qualifiedName} is missing a WinRT GUID signature."),
+                        resolveTypeName(plan.type.qualifiedName),
                     )
                     .build(),
             )
@@ -3531,7 +3444,7 @@ class KotlinProjectionRenderer(
                     "Generator requires runtime class object-reference cache for ${objectReferencePlan.interfaceName} to have a renderable type signature before interface cache rendering.",
                 )
             body.addStatement(
-                "Metadata.acquireInterface(_inner, %T.createFromSignature(%L))",
+                "Metadata.acquireInterface(nativeObject, %T.createFromSignature(%L))",
                 PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
                 signature,
             )
@@ -3570,12 +3483,12 @@ class KotlinProjectionRenderer(
                     if (hierarchyDepth > 0) {
                         beginControlFlow("if (hierarchyIndex < %L)", hierarchyDepth)
                         addStatement(
-                            "return _inner.getDefaultInterfaceObjectReference(%L + hierarchyIndex)",
+                            "return nativeObject.getDefaultInterfaceObjectReference(%L + hierarchyIndex)",
                             defaultSlot.vtableStartIndex + defaultSlot.methodCount,
                         )
                         endControlFlow()
                     }
-                    addStatement("return _inner")
+                    addStatement("return nativeObject")
                 }
                 .build(),
         )
@@ -3585,20 +3498,12 @@ class KotlinProjectionRenderer(
         name: String,
         type: TypeName,
         createReference: CodeBlock,
-        publishedForInline: Boolean = false,
     ) {
         val cacheName = "${name}Cache"
         val makeName = "${name}Make"
         addProperty(
             PropertySpec.builder(cacheName, type.copy(nullable = true))
-                .apply {
-                    if (publishedForInline) {
-                        addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                        addModifiers(KModifier.INTERNAL)
-                    } else {
-                        addModifiers(KModifier.PRIVATE)
-                    }
-                }
+                .addModifiers(KModifier.PRIVATE)
                 .mutable(true)
                 .addAnnotation(KOTLIN_VOLATILE_CLASS_NAME)
                 .initializer("null")
@@ -3606,14 +3511,7 @@ class KotlinProjectionRenderer(
         )
         addFunction(
             FunSpec.builder(makeName)
-                .apply {
-                    if (publishedForInline) {
-                        addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                        addModifiers(KModifier.INTERNAL)
-                    } else {
-                        addModifiers(KModifier.PRIVATE)
-                    }
-                }
+                .addModifiers(KModifier.PRIVATE)
                 .returns(type)
                 .addCode(
                     CodeBlock.builder()
@@ -3639,17 +3537,9 @@ class KotlinProjectionRenderer(
         )
         addProperty(
             PropertySpec.builder(name, type)
-                .apply {
-                    if (publishedForInline) {
-                        addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                        addModifiers(KModifier.INTERNAL)
-                    } else {
-                        addModifiers(KModifier.PRIVATE)
-                    }
-                }
+                .addModifiers(KModifier.PRIVATE)
                 .getter(
                     FunSpec.getterBuilder()
-                        .addModifiers(KModifier.INLINE)
                         .addCode(
                             CodeBlock.builder()
                                 .add(
@@ -3899,23 +3789,16 @@ class KotlinProjectionRenderer(
                 CodeBlock.of(
                     """
                     val __native = %T.fromOwnedReference(reference, DESCRIPTOR)
-                    return object : %T, %T {
-                        override val nativeObject: %T
-                            get() = __native
-
-                        override val primaryTypeHandle: %T
-                            get() = typeHandle
-
+                    return object : %T<%T>(__native, typeHandle), %T {
                         override fun invoke(%L): %T {
                             %L
                         }
                     }
                     """.trimIndent() + "\n",
                     WINRT_DELEGATE_REFERENCE_CLASS_NAME,
+                    WINRT_OBJECT_BASE_CLASS_NAME,
+                    WINRT_DELEGATE_REFERENCE_CLASS_NAME,
                     projectedType,
-                    IWINRT_OBJECT_CLASS_NAME,
-                    COM_OBJECT_REFERENCE_CLASS_NAME,
-                    WINRT_TYPE_HANDLE_CLASS_NAME,
                     invokeMethod.parameters.joinToString(", ") { "${it.name}: ${resolveTypeName(it.typeName)}" },
                     resolveTypeName(invokeMethod.returnTypeName),
                     delegateInvokeBodyCode(invokeShape),

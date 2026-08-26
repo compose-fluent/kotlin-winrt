@@ -1037,6 +1037,7 @@ internal class WinRTProjectionCallSitePlanner(
                         val symbol = symbolProvider.getClassLikeSymbolByClassId(classId)
                             as? FirRegularClassSymbol
                         symbol != null &&
+                            symbol.moduleData !== moduleData &&
                             moduleData.canSeeInternalsOf(symbol.moduleData) &&
                             symbol.containsGeneratedAbiMetadata(module.session)
                     }
@@ -1051,6 +1052,7 @@ internal class WinRTProjectionCallSitePlanner(
                     .filter { callableId ->
                         symbolProvider.getTopLevelFunctionSymbols(packageName, callableId.callableName)
                             .any { symbol ->
+                                symbol.moduleData !== moduleData &&
                                 moduleData.canSeeInternalsOf(symbol.moduleData) &&
                                     symbol.hasGeneratedAbiMetadata()
                             }
@@ -1081,7 +1083,9 @@ internal class WinRTProjectionCallSitePlanner(
                     .getContributedDescriptors(DescriptorKindFilter.ALL) { true }
                     .asSequence()
                     .filter { descriptor ->
-                        DescriptorUtils.getContainingModuleOrNull(descriptor) in metadataModules
+                        DescriptorUtils.getContainingModuleOrNull(descriptor)?.let { owner ->
+                            owner !== module && owner in metadataModules
+                        } == true
                     }
                     .filter { descriptor -> descriptor.containsGeneratedAbiMetadata() }
                     .forEach { descriptor ->

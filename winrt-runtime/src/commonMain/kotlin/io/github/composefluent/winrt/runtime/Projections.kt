@@ -2,6 +2,14 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
+interface WinRTInt32EnumValue {
+    val abiValue: Int
+}
+
+interface WinRTUInt32EnumValue {
+    val abiValue: UInt
+}
+
 /**
  * Shared projection/type-mapping registry corresponding to `.cswinrt/src/WinRT.Runtime/Projections.cs`.
  */
@@ -107,6 +115,34 @@ object Projections {
             existing.signature != signature ||
             existing.enumAbiValue == null
     }
+
+    fun <T : Any> registerInt32EnumType(
+        type: KClass<T>,
+        projectedTypeName: String,
+        signature: String,
+        enumEntries: Array<T>,
+    ): Boolean =
+        registerEnumType(
+            type = type,
+            projectedTypeName = projectedTypeName,
+            signature = signature,
+            abiValue = { value -> (value as WinRTInt32EnumValue).abiValue },
+            enumEntries = enumEntries,
+        )
+
+    fun <T : Any> registerUInt32EnumType(
+        type: KClass<T>,
+        projectedTypeName: String,
+        signature: String,
+        enumEntries: Array<T>,
+    ): Boolean =
+        registerEnumType(
+            type = type,
+            projectedTypeName = projectedTypeName,
+            signature = signature,
+            abiValue = { value -> (value as WinRTUInt32EnumValue).abiValue.toInt() },
+            enumEntries = enumEntries,
+        )
 
     fun registerDefaultInterfaceType(
         runtimeClass: KClass<*>,

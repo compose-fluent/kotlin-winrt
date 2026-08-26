@@ -56,6 +56,21 @@ interface IWinRTObject {
         )
 }
 
+abstract class WinRTObjectBase<T : ComObjectReference>(
+    nativeObject: T?,
+    primaryTypeHandle: WinRTTypeHandle?,
+) : IWinRTObject {
+    final override lateinit var nativeObject: T
+        protected set
+
+    final override var primaryTypeHandle: WinRTTypeHandle? = primaryTypeHandle
+        protected set
+
+    init {
+        nativeObject?.let { this.nativeObject = it }
+    }
+}
+
 private val winRTObjectSupport =
     WinRTObjectSupport<IWinRTObject, ComObjectReference> { reference ->
         reference.close()

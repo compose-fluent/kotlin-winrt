@@ -306,7 +306,6 @@ internal class KotlinExpectActualProjectionRenderer(
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(baseRenderer.resolveTypeName(implemented.interfaceName))
         }
-        builder.addSuperinterface(WINRT_MANAGED_PROJECTION_STATE_ACCESS_CLASS_NAME)
         plan.type.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .forEach { method -> builder.addFunction(baseRenderer.renderInterfaceMethod(method)) }
@@ -404,6 +403,8 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun renderJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val builder = TypeSpec.classBuilder(plan.type.name)
             .addModifiers(KModifier.ACTUAL)
+        val hasPrimaryTypeHandle = plan.type.genericParameterCount == 0 && plan.defaultInterfaceIid != null
+        val runtimeClassBaseTypeName = plan.runtimeClassBaseTypeName
         baseRenderer.applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
         val proxyTypesByName = publicRuntimeClassInterfaceProxyTypes(plan).associateBy { it.qualifiedName }
         publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
@@ -412,7 +413,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 builder.addSuperinterface(
                     typeName,
                     CodeBlock.of(
-                        "%T.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID))",
+                        "%T.wrap(Metadata.acquireInterface(nativeObject, %T.Metadata.IID))",
                         jvmInterfaceProjectionSupportClassName(plan, interfaceType),
                         typeName,
                     ),
@@ -421,7 +422,20 @@ internal class KotlinExpectActualProjectionRenderer(
                 builder.addSuperinterface(typeName)
             }
         }
-        builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
+        if (runtimeClassBaseTypeName != null) {
+            builder.superclass(baseRenderer.resolveTypeName(runtimeClassBaseTypeName))
+            builder.addSuperclassConstructorParameter("_inner")
+            builder.addSuperclassConstructorParameter("kotlin.Unit")
+            if (hasPrimaryTypeHandle) {
+                builder.addInitializerBlock(CodeBlock.of("primaryTypeHandle = Metadata.TYPE_HANDLE\n"))
+            }
+        } else {
+            builder.superclass(WINRT_OBJECT_BASE_CLASS_NAME.parameterizedBy(IINSPECTABLE_REFERENCE_CLASS_NAME))
+            builder.addSuperclassConstructorParameter("_inner")
+            builder.addSuperclassConstructorParameter(
+                if (hasPrimaryTypeHandle) CodeBlock.of("Metadata.TYPE_HANDLE") else CodeBlock.of("null"),
+            )
+        }
         builder.primaryConstructor(
             FunSpec.constructorBuilder()
                 .addModifiers(KModifier.ACTUAL)
@@ -430,30 +444,6 @@ internal class KotlinExpectActualProjectionRenderer(
                 .addParameter("__winrtWrapper", UNIT)
                 .build(),
         )
-        builder.addProperty(
-            PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
-                .addModifiers(KModifier.PRIVATE)
-                .initializer("_inner")
-                .build(),
-        )
-        builder.addProperty(
-            PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
-                .addModifiers(KModifier.OVERRIDE)
-                .getter(FunSpec.getterBuilder().addCode("return _inner\n").build())
-                .build(),
-        )
-        if (plan.type.genericParameterCount == 0 && plan.defaultInterfaceIid != null) {
-            builder.addProperty(
-                PropertySpec.builder("primaryTypeHandle", WINRT_TYPE_HANDLE_CLASS_NAME.copy(nullable = true))
-                    .addModifiers(KModifier.OVERRIDE)
-                    .getter(
-                        FunSpec.getterBuilder()
-                            .addCode("return Metadata.TYPE_HANDLE\n")
-                            .build(),
-                    )
-                    .build(),
-            )
-        }
         addJvmRuntimeClassInterfaceForwards(builder, plan, delegatedInterfaceNames = proxyTypesByName.keys)
         builder.addType(baseRenderer.buildMetadataCompanionShell(plan, emptyList(), emptyList(), emptyList()))
         baseRenderer.appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
@@ -478,7 +468,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { %T.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
+                            "lazy(%T.PUBLICATION) { %T.wrap(Metadata.acquireInterface(nativeObject, %T.Metadata.IID)) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
                             jvmInterfaceProjectionSupportClassName(plan, interfaceType),
                             baseRenderer.resolveTypeName(interfaceType.qualifiedName),
@@ -595,6 +585,11 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun renderJvmInterfaceNativeProjection(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val primaryTypeHandleExpression = if (plan.interfaceIid == null) {
+            CodeBlock.of("null")
+        } else {
+            CodeBlock.of("%T.Metadata.TYPE_HANDLE", ClassName(plan.packageName, plan.type.name))
+        }
         val builder = TypeSpec.classBuilder("NativeProjection")
             .addModifiers(KModifier.PRIVATE)
             .primaryConstructor(
@@ -603,29 +598,9 @@ internal class KotlinExpectActualProjectionRenderer(
                     .build(),
             )
             .addSuperinterface(ClassName(plan.packageName, plan.type.name))
-            .addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
-            .addProperty(
-                PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
-                    .addModifiers(KModifier.OVERRIDE)
-                    .initializer("nativeObject")
-                    .build(),
-            )
-            .addProperty(
-                PropertySpec.builder("primaryTypeHandle", WINRT_TYPE_HANDLE_CLASS_NAME.copy(nullable = true))
-                    .addModifiers(KModifier.OVERRIDE)
-                    .getter(
-                        FunSpec.getterBuilder()
-                            .apply {
-                                if (plan.interfaceIid == null) {
-                                    addCode("return null\n")
-                                } else {
-                                    addCode("return %T.Metadata.TYPE_HANDLE\n", ClassName(plan.packageName, plan.type.name))
-                                }
-                            }
-                            .build(),
-                    )
-                    .build(),
-            )
+            .superclass(WINRT_OBJECT_BASE_CLASS_NAME.parameterizedBy(IUNKNOWN_REFERENCE_CLASS_NAME))
+            .addSuperclassConstructorParameter("nativeObject")
+            .addSuperclassConstructorParameter(primaryTypeHandleExpression)
 
         val emittedMethods = mutableSetOf<String>()
         val emittedProperties = mutableSetOf<String>()

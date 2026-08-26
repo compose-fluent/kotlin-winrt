@@ -64,9 +64,9 @@ internal fun mergeCcwDefinitions(definitions: List<WinRTCcwDefinition>): WinRTCc
 }
 
 class SingleInterfaceOptimizedObject(
-    override val primaryTypeHandle: WinRTTypeHandle,
-    override val nativeObject: ComObjectReference,
-) : IWinRTObject {
+    primaryTypeHandle: WinRTTypeHandle,
+    nativeObject: ComObjectReference,
+) : WinRTObjectBase<ComObjectReference>(nativeObject, primaryTypeHandle) {
     override val hasUnwrappableNativeObject: Boolean
         get() = false
 }
