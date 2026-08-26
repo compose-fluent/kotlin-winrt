@@ -174,6 +174,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             """
             import org.gradle.api.artifacts.ProjectDependency
             import io.github.composefluent.winrt.build.ValidatePrebuiltProjectionOutputTask
+            import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
             plugins {
                 id("org.jetbrains.kotlin.multiplatform")
@@ -212,6 +213,14 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                 ).get()
                 check(auditTask.maxTotalClassBytes.get() == 150_000_000L) {
                     "Expected the full prebuilt projection class budget, found: ${'$'}{auditTask.maxTotalClassBytes.get()}"
+                }
+                val jvmCompilerArguments = tasks.named<KotlinJvmCompile>("compileKotlinJvm")
+                    .get()
+                    .compilerOptions
+                    .freeCompilerArgs
+                    .get()
+                check("-Xno-source-debug-extension" in jvmCompilerArguments) {
+                    "Expected prebuilt projection JVM compilation to omit SourceDebugExtension, found: ${'$'}jvmCompilerArguments"
                 }
                 check(tasks.findByName("validatePrebuiltProjectionPublication") != null)
                 val checkTask = tasks.named("check").get()

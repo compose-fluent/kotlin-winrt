@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeC
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.compiler.authoring.projectionTypeIndexRecordForSourceType
 import io.github.composefluent.winrt.metadata.WinRTIntegralType
+import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRTNamespace
@@ -321,6 +322,20 @@ class KotlinWinRTCompilerPluginTest {
                     parameters = listOf(WinRTParameterDefinition("value", "String")),
                     methodRowId = 12,
                 ),
+                WinRTMethodDefinition(
+                    name = "LoadAsync",
+                    returnTypeName = "Sample.CallSites.WidgetOperation",
+                    parameters = listOf(WinRTParameterDefinition("count", "UInt")),
+                    methodRowId = 13,
+                ),
+                WinRTMethodDefinition(
+                    name = "ConsumeGenericHandler",
+                    returnTypeName = "Unit",
+                    parameters = listOf(
+                        WinRTParameterDefinition("value", "Sample.CallSites.GenericHandler<String>"),
+                    ),
+                    methodRowId = 14,
+                ),
             ),
         )
         val plainInterface = WinRTTypeDefinition(
@@ -354,6 +369,44 @@ class KotlinWinRTCompilerPluginTest {
                             kind = WinRTTypeKind.Delegate,
                             iid = Guid("11111111-2222-3333-4444-555555555552"),
                             methods = listOf(WinRTMethodDefinition("Invoke", "Unit")),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.CallSites",
+                            name = "GenericHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555554"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRTParameterDefinition("value", "T0")),
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.CallSites",
+                            name = "WidgetOperation",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IAsyncOperation",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            genericParameterCount = 1,
                         ),
                     ),
                 ),
@@ -392,7 +445,7 @@ class KotlinWinRTCompilerPluginTest {
 
         val contents = output.resolve("sample/WinRT_Owner_TypeDetails.kt").toFile().readText()
         assertEquals(
-            4,
+            5,
             Regex("abiEntryPoint\\s*=\\s*winRTProjectionInboundEntryPoint").findAll(contents).count(),
         )
         assertTrue(contents, contents.contains("returnAbiType = \"kotlin.Int\""))
@@ -405,7 +458,12 @@ class KotlinWinRTCompilerPluginTest {
             assertTrue(identity, contents.contains("returnAbiType = \"$identity\""))
             assertTrue(identity, contents.contains("abiType = \"$identity\""))
         }
-        listOf("consumeAuthored(__arg0)", "consumeHandler(__arg0)", "consumeString(__arg0)").forEach { invocation ->
+        listOf(
+            "consumeAuthored(__arg0)",
+            "consumeHandler(__arg0)",
+            "consumeString(__arg0)",
+            "consumeGenericHandler(__arg0)",
+        ).forEach { invocation ->
             val invocationIndex = contents.indexOf(invocation)
             assertTrue(invocation, invocationIndex >= 0)
             val methodStart = contents.lastIndexOf("WinRTInspectableMethodDefinition(", invocationIndex)
@@ -416,6 +474,25 @@ class KotlinWinRTCompilerPluginTest {
         assertTrue(contents, contents.contains("WinRTObjectMarshaller.fromAbi(rawArgs[0] as RawAddress) as AuthoredPeer"))
         assertFalse(contents, contents.contains("returnAbiType = \"sample.AuthoredPeer\""))
         assertFalse(contents, contents.contains("abiType = \"sample.AuthoredPeer\""))
+        // Mirrors code_writers.h: a runtime class crosses the ABI through its default interface.
+        assertTrue(
+            contents,
+            contents.contains(
+                "@WinRTProjectionInboundCallSite(returnAbiType = \"Windows.Foundation.IAsyncOperation<UInt>\")",
+            ),
+        )
+        assertFalse(contents, contents.contains("returnAbiType = \"Sample.CallSites.WidgetOperation\""))
+        assertTrue(contents, contents.contains("WinRTAsyncOperationReference<UInt> ="))
+        assertTrue(contents, contents.contains("(value as Owner).loadAsync(__arg0)"))
+        assertTrue(contents, contents.contains("GenericHandler.Metadata.fromAbi<String>("))
+        assertTrue(contents, contents.contains("ParameterizedInterfaceId.createFromSignature("))
+        assertTrue(
+            contents,
+            contents.contains(
+                "WinRTTypeSignature.parameterizedInterface(Guid(\"11111111-2222-3333-4444-555555555554\")",
+            ),
+        )
+        assertTrue(contents, contents.contains("WinRTTypeSignature.string()"))
     }
 
     @Test

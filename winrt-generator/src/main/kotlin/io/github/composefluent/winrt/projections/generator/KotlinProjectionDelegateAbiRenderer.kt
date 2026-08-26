@@ -37,7 +37,6 @@ import io.github.composefluent.winrt.metadata.winRTEventHandlerKindForTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
-import io.github.composefluent.winrt.runtime.Guid
 import io.github.composefluent.winrt.runtime.HResult
 import io.github.composefluent.winrt.runtime.HString
 import io.github.composefluent.winrt.runtime.IUnknownReference

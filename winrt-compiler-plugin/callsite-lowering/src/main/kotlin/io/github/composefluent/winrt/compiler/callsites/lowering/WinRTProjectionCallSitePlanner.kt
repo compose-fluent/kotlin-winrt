@@ -1,4 +1,9 @@
-@file:Suppress("DEPRECATION")
+@file:Suppress("DEPRECATION", "DEPRECATION_ERROR")
+@file:OptIn(
+    org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,
+    org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI::class,
+    org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class,
+)
 
 package io.github.composefluent.winrt.compiler.callsites.lowering
 
@@ -9,9 +14,22 @@ import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteH
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteMetadata
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteParameterDirection
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteResultKind
+import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
+import org.jetbrains.kotlin.descriptors.SimpleFunctionDescriptor
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.canSeeInternalsOf
+import org.jetbrains.kotlin.fir.declarations.processAllDeclarations
+import org.jetbrains.kotlin.fir.descriptors.FirModuleDescriptor
+import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
+import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
+import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
@@ -29,18 +47,23 @@ import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 
 /** Builds private lowering recipes from typed IR and generated ABI metadata. */
 internal class WinRTProjectionCallSitePlanner(
     moduleFragment: IrModuleFragment,
+    pluginContext: IrPluginContext,
     private val projectedTypes: WinRTProjectedTypeCanonicalizer,
 ) {
     private val abiTypesByName = linkedMapOf<String, AbiTypeFacts>()
     private val codecsByAbiType = linkedMapOf<String, MutableList<CodecFacts>>()
 
     init {
-        indexGeneratedAbiMetadata(moduleFragment)
+        indexGeneratedAbiMetadata(moduleFragment, pluginContext)
     }
 
     fun plan(
@@ -184,6 +207,9 @@ internal class WinRTProjectionCallSitePlanner(
             if (usage == RecipeUsage.INPUT && !hasSpecializedInputCodec(abiTypeName)) {
                 directProjectionInputRecipe(type, projectedName)?.let { return it }
             }
+        }
+        if (usage == RecipeUsage.INPUT && !hasSpecializedInputCodec(abiTypeName)) {
+            directAsyncReferenceInputRecipe(type, abiTypeName, projectedName)?.let { return it }
         }
         if (usage == RecipeUsage.OUTPUT &&
             codecsByAbiType[abiTypeName].orEmpty().none { codec -> codec.role == AbiCodecRole.FROM_ABI }
@@ -385,6 +411,53 @@ internal class WinRTProjectionCallSitePlanner(
             projectedTypeHandleSymbol = typeHandle,
         )
         return projection.copy(children = listOf(storage))
+    }
+
+    /**
+     * Async references are mapped Kotlin wrappers around parameterized WinRT interfaces.  Most
+     * generated call sites have a closed codec, but an authored inbound result can be the only
+     * input use of a closed async shape, leaving only the generated FROM_ABI codec in the module
+     * support shard.  Reuse the common runtime pointer adapter for that input instead of emitting
+     * a target-specific codec or requiring a synthetic generated declaration.
+     */
+    private fun directAsyncReferenceInputRecipe(
+        type: IrType,
+        abiTypeName: String,
+        projectedName: String,
+    ): WinRTProjectionCallSiteRecipe? {
+        val typeName = type.classFqName?.asString() ?: return null
+        val asyncAbiPrefix = when (typeName) {
+            WINRT_ASYNC_ACTION_REFERENCE_FQ_NAME -> "Windows.Foundation.IAsyncAction"
+            WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_FQ_NAME ->
+                "Windows.Foundation.IAsyncActionWithProgress<"
+            WINRT_ASYNC_OPERATION_REFERENCE_FQ_NAME -> "Windows.Foundation.IAsyncOperation<"
+            WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_FQ_NAME ->
+                "Windows.Foundation.IAsyncOperationWithProgress<"
+            else -> return null
+        }
+        if (asyncAbiPrefix.endsWith('<')) {
+            if (!abiTypeName.startsWith(asyncAbiPrefix) || !abiTypeName.endsWith('>')) return null
+        } else if (abiTypeName != asyncAbiPrefix) {
+            return null
+        }
+        val signature = AbiTypeKind.COM_REFERENCE.typeSignature(projectedName)
+        val storage = referenceRecipe(
+            access = WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
+            signature = signature,
+            nullable = type.isNullable(),
+        )
+        return WinRTProjectionCallSiteRecipe(
+            kind = WinRTProjectionCallSiteRecipeKind.PROJECTION,
+            abiCarriers = storage.abiCarriers,
+            valueCarrier = storage.valueCarrier,
+            nullable = type.isNullable(),
+            callables = WinRTProjectionCallSiteCallables(
+                ownerFqName = WINRT_ASYNC_PROJECTION_INTEROP_FQ_NAME,
+                toAbi = "toAbi",
+            ),
+            children = listOf(storage),
+            typeSignature = signature,
+        )
     }
 
     private fun metadataClass(type: IrType): IrClass? =
@@ -916,32 +989,231 @@ internal class WinRTProjectionCallSitePlanner(
         else -> WinRTProjectionCallSiteOwnership.OWNED
     }
 
-    private fun indexGeneratedAbiMetadata(moduleFragment: IrModuleFragment) {
-        moduleFragment.acceptChildrenVoid(
-            object : IrVisitorVoid() {
-                override fun visitElement(element: IrElement) {
-                    element.acceptChildrenVoid(this)
-                }
-
-                override fun visitClass(declaration: IrClass) {
-                    declaration.annotations.singleOrNull { annotation ->
-                        annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
-                    }?.let(::indexAbiType)
-                    super.visitClass(declaration)
-                }
-
-                override fun visitSimpleFunction(declaration: IrSimpleFunction) {
-                    declaration.annotations.singleOrNull { annotation ->
-                        annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
-                    }?.let(::indexAbiType)
-                    declaration.annotations.singleOrNull { annotation ->
-                        annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_CODEC_ANNOTATION_FQ_NAME
-                    }?.let { annotation -> indexCodec(declaration, annotation) }
-                    super.visitSimpleFunction(declaration)
-                }
-            },
-        )
+    private fun indexGeneratedAbiMetadata(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+    ) {
+        val visitor = generatedAbiMetadataVisitor()
+        moduleFragment.acceptChildrenVoid(visitor)
+        indexCompiledPackageSiblings(moduleFragment, pluginContext, visitor)
     }
+
+    /**
+     * Incremental JVM compilation may provide only dirty platform files in the IR fragment while
+     * their common-source-set ABI helpers remain as compiled friend-module declarations. Recover
+     * those annotated siblings through the frontend symbol index, then feed their real IR symbols
+     * into the same registry used for a full compilation.
+     */
+    private fun indexCompiledPackageSiblings(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        visitor: IrVisitorVoid,
+    ) {
+        if (pluginContext.afterK2) {
+            indexFirPackageSiblings(moduleFragment, pluginContext, visitor)
+        } else {
+            indexDescriptorPackageSiblings(moduleFragment, pluginContext, visitor)
+        }
+    }
+
+    private fun indexFirPackageSiblings(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        visitor: IrVisitorVoid,
+    ) {
+        val module = pluginContext.moduleDescriptor as? FirModuleDescriptor
+            ?: error("K2 WinRT lowering requires a FIR module descriptor")
+        val moduleData = module.moduleData
+        val symbolProvider = module.session.symbolProvider
+        val symbolNames = symbolProvider.symbolNamesProvider
+        moduleFragment.files
+            .groupBy { file -> file.packageFqName }
+            .forEach { (packageName, lookupFiles) ->
+                symbolNames.getTopLevelClassifierNamesInPackage(packageName)
+                    .orEmpty()
+                    .asSequence()
+                    .map { name -> ClassId(packageName, name) }
+                    .filter { classId ->
+                        val symbol = symbolProvider.getClassLikeSymbolByClassId(classId)
+                            as? FirRegularClassSymbol
+                        symbol != null &&
+                            moduleData.canSeeInternalsOf(symbol.moduleData) &&
+                            symbol.containsGeneratedAbiMetadata(module.session)
+                    }
+                    .forEach { classId ->
+                        indexCompiledClass(classId, lookupFiles, pluginContext, visitor)
+                    }
+
+                symbolNames.getTopLevelCallableNamesInPackage(packageName)
+                    .orEmpty()
+                    .asSequence()
+                    .map { name -> CallableId(packageName, name) }
+                    .filter { callableId ->
+                        symbolProvider.getTopLevelFunctionSymbols(packageName, callableId.callableName)
+                            .any { symbol ->
+                                moduleData.canSeeInternalsOf(symbol.moduleData) &&
+                                    symbol.hasGeneratedAbiMetadata()
+                            }
+                    }
+                    .forEach { callableId ->
+                        indexCompiledFunctions(callableId, lookupFiles, pluginContext, visitor)
+                    }
+            }
+    }
+
+    private fun indexDescriptorPackageSiblings(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        visitor: IrVisitorVoid,
+    ) {
+        val module = pluginContext.moduleDescriptor
+        val metadataModules = linkedSetOf(module).apply {
+            addAll(module.allExpectedByModules)
+            module.allDependencyModules.filterTo(this) { dependency ->
+                dependency === module || module.shouldSeeInternalsOf(dependency)
+            }
+        }
+        moduleFragment.files
+            .groupBy { file -> file.packageFqName }
+            .forEach { (packageName, lookupFiles) ->
+                module.getPackage(packageName)
+                    .memberScope
+                    .getContributedDescriptors(DescriptorKindFilter.ALL) { true }
+                    .asSequence()
+                    .filter { descriptor ->
+                        DescriptorUtils.getContainingModuleOrNull(descriptor) in metadataModules
+                    }
+                    .filter { descriptor -> descriptor.containsGeneratedAbiMetadata() }
+                    .forEach { descriptor ->
+                        indexCompiledDescriptor(descriptor, lookupFiles, pluginContext, visitor)
+                    }
+            }
+    }
+
+    private fun indexCompiledClass(
+        classId: ClassId,
+        lookupFiles: List<IrFile>,
+        pluginContext: IrPluginContext,
+        visitor: IrVisitorVoid,
+    ) {
+        var declaration: IrClass? = null
+        lookupFiles.forEach { file ->
+            pluginContext.finderForSource(file).findClass(classId)?.owner?.let { resolved ->
+                if (declaration == null) declaration = resolved
+            }
+        }
+        declaration?.let(visitor::visitClass)
+    }
+
+    private fun indexCompiledFunctions(
+        callableId: CallableId,
+        lookupFiles: List<IrFile>,
+        pluginContext: IrPluginContext,
+        visitor: IrVisitorVoid,
+    ) {
+        val declarations = linkedSetOf<IrSimpleFunction>()
+        lookupFiles.forEach { file ->
+            pluginContext.finderForSource(file)
+                .findFunctions(callableId)
+                .mapTo(declarations) { symbol -> symbol.owner }
+        }
+        declarations
+            .filter { declaration -> declaration.hasGeneratedAbiMetadata() }
+            .forEach(visitor::visitSimpleFunction)
+    }
+
+    private fun indexCompiledDescriptor(
+        descriptor: DeclarationDescriptor,
+        lookupFiles: List<IrFile>,
+        pluginContext: IrPluginContext,
+        visitor: IrVisitorVoid,
+    ) {
+        when (descriptor) {
+            is ClassDescriptor -> {
+                val classId = runCatching { DescriptorUtils.getClassIdForNonLocalClass(descriptor) }.getOrNull()
+                    ?: return
+                val declaration = pluginContext.referenceClass(classId)?.owner ?: return
+                lookupFiles.forEach { file -> pluginContext.recordLookup(declaration, file) }
+                visitor.visitClass(declaration)
+            }
+
+            is SimpleFunctionDescriptor -> {
+                val packageName = (descriptor.containingDeclaration as? PackageFragmentDescriptor)?.fqName
+                    ?: return
+                pluginContext.referenceFunctions(CallableId(packageName, descriptor.name))
+                    .map { symbol -> symbol.owner }
+                    .filter { declaration -> declaration.hasGeneratedAbiMetadata() }
+                    .forEach { declaration ->
+                        lookupFiles.forEach { file -> pluginContext.recordLookup(declaration, file) }
+                        visitor.visitSimpleFunction(declaration)
+                    }
+            }
+        }
+    }
+
+    private fun generatedAbiMetadataVisitor(): IrVisitorVoid =
+        object : IrVisitorVoid() {
+            override fun visitElement(element: IrElement) {
+                element.acceptChildrenVoid(this)
+            }
+
+            override fun visitClass(declaration: IrClass) {
+                declaration.annotations.singleOrNull { annotation ->
+                    annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
+                }?.let(::indexAbiType)
+                super.visitClass(declaration)
+            }
+
+            override fun visitSimpleFunction(declaration: IrSimpleFunction) {
+                declaration.annotations.singleOrNull { annotation ->
+                    annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
+                }?.let(::indexAbiType)
+                declaration.annotations.singleOrNull { annotation ->
+                    annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_CODEC_ANNOTATION_FQ_NAME
+                }?.let { annotation -> indexCodec(declaration, annotation) }
+                super.visitSimpleFunction(declaration)
+            }
+        }
+
+    private fun DeclarationDescriptor.containsGeneratedAbiMetadata(): Boolean {
+        if (annotations.hasAnnotation(WINRT_PROJECTION_ABI_TYPE_FQ_NAME) ||
+            annotations.hasAnnotation(WINRT_PROJECTION_ABI_CODEC_FQ_NAME)
+        ) {
+            return true
+        }
+        if (this !is ClassDescriptor) return false
+        return unsubstitutedMemberScope
+            .getContributedDescriptors(DescriptorKindFilter.ALL) { true }
+            .asSequence()
+            .filter { member -> member.containingDeclaration == this }
+            .any { member -> member.containsGeneratedAbiMetadata() }
+    }
+
+    private fun FirRegularClassSymbol.containsGeneratedAbiMetadata(session: FirSession): Boolean {
+        if (hasGeneratedAbiMetadata()) return true
+        var containsMetadata = false
+        processAllDeclarations(session) { declaration ->
+            if (!containsMetadata) {
+                containsMetadata = declaration.hasGeneratedAbiMetadata() ||
+                    (declaration as? FirRegularClassSymbol)
+                        ?.containsGeneratedAbiMetadata(session) == true
+            }
+        }
+        return containsMetadata
+    }
+
+    private fun FirBasedSymbol<*>.hasGeneratedAbiMetadata(): Boolean =
+        resolvedAnnotationClassIds.any { annotationClassId ->
+            annotationClassId == WINRT_PROJECTION_ABI_TYPE_CLASS_ID ||
+                annotationClassId == WINRT_PROJECTION_ABI_CODEC_CLASS_ID
+        }
+
+    private fun IrSimpleFunction.hasGeneratedAbiMetadata(): Boolean =
+        annotations.any { annotation ->
+            annotation.type.classFqName?.let { name ->
+                name == WINRT_PROJECTION_ABI_TYPE_FQ_NAME || name == WINRT_PROJECTION_ABI_CODEC_FQ_NAME
+            } == true
+        }
 
 
     private fun abiTypeFacts(annotation: IrFunctionAccessExpression): Pair<String, AbiTypeFacts> {
@@ -991,7 +1263,12 @@ internal class WinRTProjectionCallSitePlanner(
                 ?: error("generated ABI codec $fqName has an open return type"),
             returnIrType = function.returnType,
         )
-        codecsByAbiType.getOrPut(abiTypeName, ::mutableListOf) += facts
+        val codecs = codecsByAbiType.getOrPut(abiTypeName, ::mutableListOf)
+        val existing = codecs.singleOrNull { codec -> codec.hasSameDeclarationAs(facts) }
+        require(existing == null || existing.hasSameContractAs(facts)) {
+            "conflicting generated ABI codec metadata for $fqName"
+        }
+        if (existing == null) codecs += facts
     }
 }
 
@@ -1122,7 +1399,16 @@ private data class CodecFacts(
     val parameterIrTypes: List<IrType>,
     val returnType: String,
     val returnIrType: IrType,
-)
+) {
+    fun hasSameDeclarationAs(other: CodecFacts): Boolean =
+        ownerFqName == other.ownerFqName &&
+            functionName == other.functionName &&
+            parameterTypes == other.parameterTypes &&
+            returnType == other.returnType
+
+    fun hasSameContractAs(other: CodecFacts): Boolean =
+        role == other.role && consumesOwnedAbi == other.consumesOwnedAbi
+}
 
 private fun WinRTProjectionCallSiteParameterDirection.loweringDirection(): WinRTProjectionCallSiteSlotDirection =
     when (this) {
@@ -1194,6 +1480,16 @@ private val WINRT_IUNKNOWN_REFERENCE_FQ_NAME = FqName("io.github.composefluent.w
 private val WINRT_INSPECTABLE_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.InspectableReference")
 private val WINRT_COM_OBJECT_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.ComObjectReference")
 private val WINRT_ABI_ARRAY_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.WinRTAbiArray")
+private const val WINRT_ASYNC_ACTION_REFERENCE_FQ_NAME =
+    "io.github.composefluent.winrt.runtime.WinRTAsyncActionReference"
+private const val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_FQ_NAME =
+    "io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference"
+private const val WINRT_ASYNC_OPERATION_REFERENCE_FQ_NAME =
+    "io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference"
+private const val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_FQ_NAME =
+    "io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference"
+private const val WINRT_ASYNC_PROJECTION_INTEROP_FQ_NAME =
+    "io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop"
 private val KOTLIN_UNIT_FQ_NAME = FqName("kotlin.Unit")
 private val KOTLIN_ARRAY_FQ_NAME = FqName("kotlin.Array")
 private val KOTLIN_BOOLEAN_FQ_NAME = FqName("kotlin.Boolean")
@@ -1209,3 +1505,7 @@ private val KOTLIN_FLOAT_FQ_NAME = FqName("kotlin.Float")
 private val KOTLIN_DOUBLE_FQ_NAME = FqName("kotlin.Double")
 private val KOTLIN_CHAR_FQ_NAME = FqName("kotlin.Char")
 private val KOTLIN_STRING_FQ_NAME = FqName("kotlin.String")
+private val WINRT_PROJECTION_ABI_TYPE_FQ_NAME = FqName(WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME)
+private val WINRT_PROJECTION_ABI_CODEC_FQ_NAME = FqName(WINRT_PROJECTION_ABI_CODEC_ANNOTATION_FQ_NAME)
+private val WINRT_PROJECTION_ABI_TYPE_CLASS_ID = ClassId.topLevel(WINRT_PROJECTION_ABI_TYPE_FQ_NAME)
+private val WINRT_PROJECTION_ABI_CODEC_CLASS_ID = ClassId.topLevel(WINRT_PROJECTION_ABI_CODEC_FQ_NAME)

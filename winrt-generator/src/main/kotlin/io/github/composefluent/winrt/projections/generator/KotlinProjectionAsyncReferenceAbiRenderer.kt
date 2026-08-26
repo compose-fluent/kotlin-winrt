@@ -60,6 +60,7 @@ import io.github.composefluent.winrt.runtime.WinRTListProjection
 import io.github.composefluent.winrt.runtime.WinRTAsyncActionReference
 import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference
 import io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressVftblSlots
+import io.github.composefluent.winrt.runtime.WinRTAsyncInterfaceIds
 import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
 import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference
 import io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressVftblSlots
@@ -154,12 +155,45 @@ private fun KotlinProjectionRenderer.asyncActionWithProgressExpression(
     hoistMetadata: Boolean,
 ): CodeBlock? {
     val progressBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding, hoistMetadata) ?: return null
+    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+    val progressGuidSignature = progressBinding.guidSignature
     return CodeBlock.builder()
         .add("%T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(progressBinding.typeName))
         .indent()
         .add("pointer = %L,\n", pointerExpression)
-        .add("progressSignature = %L,\n", progressTypeSignature)
+        .apply {
+            if (hoistMetadata && progressGuidSignature != null) {
+                add(
+                    "interfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "interface-id",
+                        WinRTAsyncInterfaceIds.IAsyncActionWithProgressGeneric,
+                        progressGuidSignature,
+                    ),
+                )
+                add(
+                    "progressHandlerInterfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "progress-handler-interface-id",
+                        WinRTAsyncInterfaceIds.AsyncActionProgressHandlerGeneric,
+                        progressGuidSignature,
+                    ),
+                )
+                add(
+                    "completedHandlerInterfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "completed-handler-interface-id",
+                        WinRTAsyncInterfaceIds.AsyncActionWithProgressCompletedHandlerGeneric,
+                        progressGuidSignature,
+                    ),
+                )
+            } else {
+                add("progressSignature = %L,\n", progressTypeSignature)
+            }
+        }
         .unindent()
         .add(")")
         .build()
@@ -171,14 +205,38 @@ private fun KotlinProjectionRenderer.asyncOperationExpression(
     hoistMetadata: Boolean,
 ): CodeBlock? {
     val resultBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding, hoistMetadata) ?: return null
+    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
+    val resultGuidSignature = resultBinding.guidSignature
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding, hoistMetadata) ?: return null
     return CodeBlock.builder()
         .add("%T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(resultBinding.typeName))
         .indent()
         .add("pointer = %L,\n", pointerExpression)
-        .add("resultSignature = %L,\n", resultTypeSignature)
+        .apply {
+            if (hoistMetadata && resultGuidSignature != null) {
+                add(
+                    "interfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "interface-id",
+                        WinRTAsyncInterfaceIds.IAsyncOperationGeneric,
+                        resultGuidSignature,
+                    ),
+                )
+                add(
+                    "completedHandlerInterfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "completed-handler-interface-id",
+                        WinRTAsyncInterfaceIds.AsyncOperationCompletedHandlerGeneric,
+                        resultGuidSignature,
+                    ),
+                )
+            } else {
+                add("resultSignature = %L,\n", resultTypeSignature)
+            }
+        }
         .add("resultOut = { __operationScope -> %L },\n", resultOutAllocation)
         .add("resultReader = { __operationResultOut ->\n")
         .indent()
@@ -197,8 +255,10 @@ private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
 ): CodeBlock? {
     val resultBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
     val progressBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
-    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding, hoistMetadata) ?: return null
-    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding, hoistMetadata) ?: return null
+    val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
+    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+    val resultGuidSignature = resultBinding.guidSignature
+    val progressGuidSignature = progressBinding.guidSignature
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding, hoistMetadata) ?: return null
     return CodeBlock.builder()
@@ -210,8 +270,43 @@ private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
         )
         .indent()
         .add("pointer = %L,\n", pointerExpression)
-        .add("resultSignature = %L,\n", resultTypeSignature)
-        .add("progressSignature = %L,\n", progressTypeSignature)
+        .apply {
+            if (hoistMetadata && resultGuidSignature != null && progressGuidSignature != null) {
+                add(
+                    "interfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "interface-id",
+                        WinRTAsyncInterfaceIds.IAsyncOperationWithProgressGeneric,
+                        resultGuidSignature,
+                        progressGuidSignature,
+                    ),
+                )
+                add(
+                    "progressHandlerInterfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "progress-handler-interface-id",
+                        WinRTAsyncInterfaceIds.AsyncOperationProgressHandlerGeneric,
+                        resultGuidSignature,
+                        progressGuidSignature,
+                    ),
+                )
+                add(
+                    "completedHandlerInterfaceId = %L,\n",
+                    hoistAsyncInterfaceId(
+                        returnBinding,
+                        "completed-handler-interface-id",
+                        WinRTAsyncInterfaceIds.AsyncOperationWithProgressCompletedHandlerGeneric,
+                        resultGuidSignature,
+                        progressGuidSignature,
+                    ),
+                )
+            } else {
+                add("resultSignature = %L,\n", resultTypeSignature)
+                add("progressSignature = %L,\n", progressTypeSignature)
+            }
+        }
         .add("resultOut = { __operationScope -> %L },\n", resultOutAllocation)
         .add("resultReader = { __operationResultOut ->\n")
         .indent()
@@ -221,6 +316,26 @@ private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
         .unindent()
         .add(")")
         .build()
+}
+
+private fun KotlinProjectionRenderer.hoistAsyncInterfaceId(
+    binding: KotlinProjectionAbiTypeBinding,
+    role: String,
+    genericInterfaceId: Guid,
+    vararg argumentSignatures: String,
+): CodeBlock {
+    val signature = buildString {
+        append("pinterface(")
+        append(WinRTTypeSignature.guid(genericInterfaceId).render())
+        argumentSignatures.forEach { argument -> append(';').append(argument) }
+        append(')')
+    }
+    val interfaceId = ParameterizedInterfaceId.createFromSignature(signature)
+    return hoistModuleMetadata(
+        identity = binding.moduleMetadataIdentity("async-$role"),
+        type = GUID_CLASS_NAME,
+        initializer = CodeBlock.of("%T(%S)", GUID_CLASS_NAME, interfaceId.toString()),
+    )
 }
 
 internal fun KotlinProjectionRenderer.asyncOperationResultTypeSignature(
@@ -1275,10 +1390,9 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     val projectedTypeName = typeBinding.resolvedTypeName
     if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
         return hoistAdapter(projectedType, CodeBlock.of(
-            "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
+            "%T.runtimeClass(%T::class, %T.Metadata.TYPE_HANDLE) { %T.Metadata.wrap(it) }",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
             projectedClassLiteralType,
-            projectedTypeName,
             projectedClassLiteralType,
             projectedType,
         ))

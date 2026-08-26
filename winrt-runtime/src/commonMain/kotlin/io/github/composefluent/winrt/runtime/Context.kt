@@ -203,6 +203,7 @@ internal class ObjectReferenceContext private constructor(
     private val token: RawAddress,
     private val originalPointer: RawComPtr,
     private val interfaceId: Guid,
+    private val callsAreFreeThreaded: Boolean,
 ) : AutoCloseable {
     private val currentContextReferences = ConcurrentCacheMap<Long, IUnknownReference>()
     private val agileReferenceLock = PlatformLock()
@@ -210,6 +211,9 @@ internal class ObjectReferenceContext private constructor(
     private var agileReference: AgileReference? = null
 
     fun pointerForCurrentContext(): RawComPtr {
+        if (callsAreFreeThreaded) {
+            return originalPointer
+        }
         val currentToken = Context.getContextToken()
         if (PlatformAbi.pointerKey(currentToken) == PlatformAbi.pointerKey(token)) {
             return originalPointer
@@ -279,12 +283,30 @@ internal class ObjectReferenceContext private constructor(
             if (ComThreadingSupport.isFreeThreaded(pointer)) {
                 return null
             }
+            return capture(pointer, interfaceId, callsAreFreeThreaded = false)
+        }
+
+        /**
+         * CsWinRT delegates agile tracker lifetime to CLR ComWrappers. Kotlin keeps calls agile but
+         * returns final release to the creating apartment because it has no CLR tracker manager.
+         */
+        fun captureForReferenceTrackerRelease(
+            pointer: RawComPtr,
+            interfaceId: Guid,
+        ): ObjectReferenceContext? = capture(pointer, interfaceId, callsAreFreeThreaded = true)
+
+        private fun capture(
+            pointer: RawComPtr,
+            interfaceId: Guid,
+            callsAreFreeThreaded: Boolean,
+        ): ObjectReferenceContext? {
             val captured = Context.tryCapture() ?: return null
             return ObjectReferenceContext(
                 callback = captured.callback,
                 token = captured.token,
                 originalPointer = pointer,
                 interfaceId = interfaceId,
+                callsAreFreeThreaded = callsAreFreeThreaded,
             )
         }
     }

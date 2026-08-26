@@ -39,6 +39,9 @@ class WinRTDelegateHandle internal constructor(
     internal fun tryCreateReference(): WinRTDelegateReference? =
         if (closed.load() == 0) comObject.tryCreateReference() else null
 
+    internal fun tryAcquireMarshalingReference(): RawAddress? =
+        if (closed.load() == 0) comObject.tryAcquireMarshalingReference() else null
+
     internal fun releaseManagedReferenceForNativeOwnership() {
         if (managedReferenceReleased.compareAndSet(0, 1)) {
             releaseAction()

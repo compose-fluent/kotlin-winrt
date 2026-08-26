@@ -119,11 +119,13 @@ class KotlinProjectionRenderer(
     internal val modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
     internal val supportOwnerIdentity: String? = null,
     internal val projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
+    internal val guidSignatureHelpers: WinRTMetadataSemanticHelpers? = null,
 ) {
     internal fun withModulePlatformAbiCalls(
         calls: KotlinModulePlatformAbiCallSupport?,
         ownerIdentity: String? = supportOwnerIdentity,
         useInterfaceProjectionArtifacts: Boolean = this.useInterfaceProjectionArtifacts,
+        guidSignatureHelpers: WinRTMetadataSemanticHelpers? = this.guidSignatureHelpers,
     ): KotlinProjectionRenderer = KotlinProjectionRenderer(
         useInterfaceProjectionArtifacts = useInterfaceProjectionArtifacts,
         suppressProjectedMemberSlotConstants = suppressProjectedMemberSlotConstants,
@@ -133,6 +135,7 @@ class KotlinProjectionRenderer(
         modulePlatformAbiCalls = calls,
         supportOwnerIdentity = ownerIdentity,
         projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+        guidSignatureHelpers = guidSignatureHelpers,
     )
 
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
@@ -1111,7 +1114,10 @@ class KotlinProjectionRenderer(
         typesByQualifiedName: Map<String, WinRTTypeDefinition> = emptyMap(),
         currentNamespace: String? = null,
     ): KotlinProjectionAbiTypeBinding =
-        KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects).classifyAbiTypeBinding(
+        KotlinProjectionPlanner(
+            useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects,
+            guidSignatureHelpers = guidSignatureHelpers,
+        ).classifyAbiTypeBinding(
             typeName = redirectedAbiTypeExpression(typeName),
             currentNamespace = currentNamespace.orEmpty(),
             typesByQualifiedName = typesByQualifiedName,

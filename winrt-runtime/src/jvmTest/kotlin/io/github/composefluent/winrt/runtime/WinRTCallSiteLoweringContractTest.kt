@@ -239,6 +239,24 @@ private object DirectProjectionOutputCallSiteFixture {
     ): Unit = TODO("direct nullable runtime-class projection input fixture")
 
     @WinRTProjectionCallSite
+    fun consumeFiveInterfaces(
+        reference: ComObjectReference,
+        slot: Int,
+        first: DirectUnknownProjection,
+        second: DirectUnknownProjection,
+        third: DirectUnknownProjection,
+        fourth: DirectUnknownProjection,
+        fifth: DirectUnknownProjection,
+    ): Unit = TODO("five direct interface projection inputs fixture")
+
+    @WinRTProjectionCallSite
+    fun consumeNullableInterface(
+        reference: ComObjectReference,
+        slot: Int,
+        value: DirectUnknownProjection?,
+    ): Unit = TODO("direct nullable interface projection input fixture")
+
+    @WinRTProjectionCallSite
     fun nonNullInterface(reference: ComObjectReference, slot: Int): DirectUnknownProjection =
         TODO("direct non-null interface projection fixture")
 
@@ -509,6 +527,8 @@ class WinRTCallSiteLoweringContractTest {
         val bytecode = javap(DirectProjectionOutputCallSiteFixture::class.java.name)
         assertFalse(bytecode.contains("direct interface projection input fixture"))
         assertFalse(bytecode.contains("direct nullable runtime-class projection input fixture"))
+        assertFalse(bytecode.contains("five direct interface projection inputs fixture"))
+        assertFalse(bytecode.contains("direct nullable interface projection input fixture"))
 
         val nonNull = bytecode.methodBytecode("consumeInterface")
         assertTrue(nonNull.contains("Metadata.getTYPE_HANDLE"), nonNull)
@@ -539,6 +559,17 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(nullable.contains("ifnonnull") || nullable.contains("ifnull"), nullable)
         assertFalse(nullable.contains("IWinRTObject.getObjectReferenceForType"), nullable)
         assertFalse(nullable.contains("codec_toAbi_"), nullable)
+
+        val fiveInterfaces = bytecode.methodBytecode("consumeFiveInterfaces")
+        assertEquals(5, fiveInterfaces.countOccurrences("Metadata.getTYPE_HANDLE"), fiveInterfaces)
+        assertEquals(1, fiveInterfaces.countOccurrences("MethodHandle.invokeExact"), fiveInterfaces)
+        assertFalse(fiveInterfaces.contains("codec_toAbi_"), fiveInterfaces)
+
+        val nullableInterface = bytecode.methodBytecode("consumeNullableInterface")
+        assertTrue(nullableInterface.contains("Metadata.getTYPE_HANDLE"), nullableInterface)
+        assertTrue(nullableInterface.contains("ifnonnull") || nullableInterface.contains("ifnull"), nullableInterface)
+        assertEquals(1, nullableInterface.countOccurrences("MethodHandle.invokeExact"), nullableInterface)
+        assertFalse(nullableInterface.contains("codec_toAbi_"), nullableInterface)
     }
 
     @Test

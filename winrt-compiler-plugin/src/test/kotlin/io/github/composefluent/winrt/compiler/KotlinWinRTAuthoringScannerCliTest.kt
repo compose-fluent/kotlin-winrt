@@ -916,6 +916,7 @@ class KotlinWinRTAuthoringScannerCliTest {
             import io.github.composefluent.winrt.runtime.PlatformAbi
             import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
             import io.github.composefluent.winrt.runtime.WinRTAsyncResultWriter
+            import io.github.composefluent.winrt.runtime.WinRTOut
             import io.github.composefluent.winrt.runtime.WinRTTypeSignature
             import windows.data.json.JsonArray
             import windows.data.json.JsonObject
@@ -966,7 +967,11 @@ class KotlinWinRTAuthoringScannerCliTest {
                 companion object {
                     fun parse(input: String): NativeJsonValueThing = NativeJsonValueThing(input)
 
-                    fun tryParse(input: String, result: JsonValue): Boolean = input.isNotEmpty() && result.getString().isNotEmpty()
+                    fun tryParse(input: String, result: WinRTOut<JsonValue>): Boolean {
+                        if (input.isEmpty()) return false
+                        result.value = JsonValue.createStringValue(input)
+                        return true
+                    }
 
                     fun createBooleanValue(input: Boolean): NativeJsonValueThing = NativeJsonValueThing(input.toString())
 
@@ -1150,7 +1155,7 @@ class KotlinWinRTAuthoringScannerCliTest {
 
     @Test
     fun scans_native_component_fixture_authored_runtime_class_annotations() {
-        val root = Path.of("..", "winrt-authoring", "native-component-fixture", "src", "commonMain", "kotlin")
+        val root = Path.of("..", "winrt-authoring", "native-component-fixture", "src", "winuiMain", "kotlin")
             .toAbsolutePath()
             .normalize()
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")

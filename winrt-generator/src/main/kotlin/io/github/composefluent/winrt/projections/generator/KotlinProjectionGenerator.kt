@@ -143,19 +143,24 @@ class KotlinProjectionGenerator(
 
     fun generate(model: WinRTMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
-        val semanticHelpers = normalizedModel.semanticHelpers()
         val plans = planner.plan(normalizedModel, projectionContext)
-        validateGeneratorContracts(normalizedModel, plans)
+        val semanticHelpers = normalizedModel.semanticHelpers()
+        validateGeneratorContracts(normalizedModel, plans, semanticHelpers)
         val renderedPlans = plans.filterNot { plan ->
             plan.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
         val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
-        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(normalizedModel, renderedPlans)
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(
+            model = normalizedModel,
+            plans = renderedPlans,
+            semanticHelpers = semanticHelpers,
+        )
         val projectionRenderer = projectionFileRenderer(
             modulePlatformAbiCalls = modulePlatformAbiCalls,
             projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
                 .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
+            semanticHelpers = semanticHelpers,
         )
         val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
         val projectedInterfaceCcwFiles = listOfNotNull(
@@ -171,18 +176,24 @@ class KotlinProjectionGenerator(
             val closedGenericFiles = closedGenericProjectionFiles(
                 model = normalizedModel,
                 plans = plans,
+                semanticHelpers = semanticHelpers,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
             )
             return projectionFiles + projectedInterfaceCcwFiles + closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
         }
-        return projectionFiles + projectedInterfaceCcwFiles + supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
+        return projectionFiles + projectedInterfaceCcwFiles + supportFiles(
+            model = normalizedModel,
+            plans = plans,
+            semanticHelpers = semanticHelpers,
+            modulePlatformAbiCalls = modulePlatformAbiCalls,
+        )
     }
 
     fun generateTo(model: WinRTMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
-        val semanticHelpers = normalizedModel.semanticHelpers()
         val plans = planner.plan(normalizedModel, projectionContext)
-        validateGeneratorContracts(normalizedModel, plans)
+        val semanticHelpers = normalizedModel.semanticHelpers()
+        validateGeneratorContracts(normalizedModel, plans, semanticHelpers)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
         val renderedPlans = if (groupProjectionFilesByPackageOnWrite) {
             plans.map(KotlinTypeProjectionPlan::withoutRenderedProjectedAttributes)
@@ -194,12 +205,18 @@ class KotlinProjectionGenerator(
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
         val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
-        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(normalizedModel, projectionPlans, renderedPlans)
+        val modulePlatformAbiCalls = modulePlatformAbiCallSupport(
+            model = normalizedModel,
+            plans = projectionPlans,
+            semanticHelpers = semanticHelpers,
+            renderedPlans = renderedPlans,
+        )
         val projectionRenderer = projectionFileRenderer(
             plans = renderedPlans,
             modulePlatformAbiCalls = modulePlatformAbiCalls,
             projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
                 .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
+            semanticHelpers = semanticHelpers,
         )
         val projectionFiles = projectionPlans
             .flatMap(projectionRenderer::render)
@@ -220,11 +237,17 @@ class KotlinProjectionGenerator(
                 ),
         )
         val files = projectionFiles + projectedInterfaceCcwFiles + if (emitSupportFiles) {
-            supportFiles(normalizedModel, plans, modulePlatformAbiCalls)
+            supportFiles(
+                model = normalizedModel,
+                plans = plans,
+                semanticHelpers = semanticHelpers,
+                modulePlatformAbiCalls = modulePlatformAbiCalls,
+            )
         } else {
             val closedGenericFiles = closedGenericProjectionFiles(
                 model = normalizedModel,
                 plans = plans,
+                semanticHelpers = semanticHelpers,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
             )
             closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
@@ -235,13 +258,14 @@ class KotlinProjectionGenerator(
     private fun closedGenericProjectionFiles(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     ): List<KotlinProjectionFile> =
         renderClosedGenericProjectionHelpers(
             planner = planner,
             model = model,
             plans = plans,
-            instantiations = model.semanticHelpers().genericInstantiationWorklist(projectionContext).pending,
+            instantiations = semanticHelpers.genericInstantiationWorklist(projectionContext).pending,
             modulePlatformAbiCalls = modulePlatformAbiCalls,
             supportOwnerIdentity = supportOwnerIdentity,
         )
@@ -365,20 +389,21 @@ class KotlinProjectionGenerator(
     private fun validateGeneratorContracts(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ) {
         if (generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm) {
             return
         }
         validateEventAccessorPairContracts(plans)
-        validateAuthoredCcwBindingContracts(model, plans)
-        validateAuthoringActivationFactorySupportContracts(model, plans)
+        validateAuthoredCcwBindingContracts(model, plans, semanticHelpers)
+        validateAuthoringActivationFactorySupportContracts(model, plans, semanticHelpers)
         plans.forEach { plan ->
             plan.type.events.filter { event -> shouldValidateEventAbiContracts(plan, event) }.forEach { event ->
                 validateEventDelegateContract(plan, event)
             }
         }
         validateEventAccessorBindingContracts(plans)
-        validateEventSourceHelperContracts(model, plans)
+        validateEventSourceHelperContracts(model, plans, semanticHelpers)
         val runtimeClassStaticInterfaceNames = plans
             .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass }
             .flatMap { plan -> plan.staticInterfaceNames }
@@ -525,13 +550,19 @@ class KotlinProjectionGenerator(
     private fun validateEventSourceHelperContracts(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ) {
         val typesByQualifiedName = model.namespaces
             .flatMap(WinRTNamespace::types)
             .associateBy(WinRTTypeDefinition::qualifiedName)
         val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
-        val genericInstantiations = model.semanticHelpers().genericInstantiationWorklist(projectionContext).pending
-        val descriptorsByOwnerAndEvent = planner.eventSourceDescriptors(model, plans, genericInstantiations)
+        val genericInstantiations = semanticHelpers.genericInstantiationWorklist(projectionContext).pending
+        val descriptorsByOwnerAndEvent = planner.eventSourceDescriptors(
+            model = model,
+            helpers = semanticHelpers,
+            plans = plans,
+            instantiations = genericInstantiations,
+        )
             .associateBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
         plans.forEach { plan ->
             validateRuntimeClassEventSourceHelperContracts(plan, descriptorsByOwnerAndEvent, typesByQualifiedName, plansByType)
@@ -682,6 +713,7 @@ class KotlinProjectionGenerator(
     private fun validateAuthoredCcwBindingContracts(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ) {
         if (!projectionContext.component) {
             return
@@ -693,7 +725,7 @@ class KotlinProjectionGenerator(
             return
         }
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
-        val supportPlansByQualifiedName = supportPlansByQualifiedName(model, plans)
+        val supportPlansByQualifiedName = supportPlansByQualifiedName(model, plans, semanticHelpers)
         plans
             .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
             .forEach { authoredPlan ->
@@ -713,6 +745,7 @@ class KotlinProjectionGenerator(
     private fun validateAuthoringActivationFactorySupportContracts(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ) {
         if (!projectionContext.component) {
             return
@@ -723,7 +756,6 @@ class KotlinProjectionGenerator(
         if (authoredTypeNames.isEmpty()) {
             return
         }
-        val semanticHelpers = model.semanticHelpers()
         plans
             .filter { plan -> plan.type.kind == WinRTTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
             .filterNot { plan -> semanticHelpers.isStatic(plan.type) }
@@ -1769,6 +1801,7 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>? = null,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
         projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): KotlinProjectionFileRenderer =
         when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
@@ -1778,6 +1811,7 @@ class KotlinProjectionGenerator(
                         plan,
                         modulePlatformAbiCalls,
                         projectedInterfaceCcwInputTypeNames,
+                        semanticHelpers,
                     ).render(plan),
                 )
             }
@@ -1788,6 +1822,7 @@ class KotlinProjectionGenerator(
                         plan,
                         modulePlatformAbiCalls,
                         projectedInterfaceCcwInputTypeNames,
+                        semanticHelpers,
                     ),
                 ).render(plan)
             }
@@ -1798,6 +1833,7 @@ class KotlinProjectionGenerator(
         currentPlan: KotlinTypeProjectionPlan? = null,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
         projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
@@ -1813,6 +1849,7 @@ class KotlinProjectionGenerator(
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 supportOwnerIdentity = supportOwnerIdentity,
                 projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                guidSignatureHelpers = semanticHelpers,
             )
         } else {
             renderer.withModulePlatformAbiCalls(
@@ -1821,6 +1858,7 @@ class KotlinProjectionGenerator(
                 useInterfaceProjectionArtifacts =
                     renderer.useInterfaceProjectionArtifacts ||
                         generationLayout == KotlinProjectionGenerationLayout.ExpectActualJvm,
+                guidSignatureHelpers = semanticHelpers,
             ).let { configured ->
                 KotlinProjectionRenderer(
                     useInterfaceProjectionArtifacts = configured.useInterfaceProjectionArtifacts,
@@ -1831,6 +1869,7 @@ class KotlinProjectionGenerator(
                     modulePlatformAbiCalls = configured.modulePlatformAbiCalls,
                     supportOwnerIdentity = configured.supportOwnerIdentity,
                     projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                    guidSignatureHelpers = configured.guidSignatureHelpers,
                 )
             }
         }
@@ -1860,28 +1899,30 @@ class KotlinProjectionGenerator(
     private fun supportFiles(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     ): List<KotlinProjectionFile> {
-        val supportPlans = plans + supportPlansByQualifiedName(model, plans).values
+        val supportPlans = plans + supportPlansByQualifiedName(model, plans, semanticHelpers).values
         val supportRendererFiles = supportRenderer
             .withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
-            .render(
-            model,
-            supportPlans.distinctBy { it.type.qualifiedName },
-            projectionContext,
-            emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
-            excludedProjectionTypeNames = authoredProjectedTypeNames(model),
-            authoredRuntimeClassNames = authoredRuntimeClassNames,
-            authoringHostExportsClassName = authoringHostExportsClassName,
-            authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
-            authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
-            emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
-            eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
-            namespaceAdditionsClassName = namespaceAdditionsClassName,
-            supportOwnerIdentity = supportOwnerIdentity,
-            excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
-            modulePlatformAbiCalls = modulePlatformAbiCalls,
-        )
+            .renderWithSemanticHelpers(
+                model = model,
+                plans = supportPlans.distinctBy { it.type.qualifiedName },
+                context = projectionContext,
+                emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
+                excludedProjectionTypeNames = authoredProjectedTypeNames(model),
+                authoredRuntimeClassNames = authoredRuntimeClassNames,
+                authoringHostExportsClassName = authoringHostExportsClassName,
+                authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
+                authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
+                emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
+                eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
+                namespaceAdditionsClassName = namespaceAdditionsClassName,
+                supportOwnerIdentity = supportOwnerIdentity,
+                excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
+                modulePlatformAbiCalls = modulePlatformAbiCalls,
+                semanticHelpers = semanticHelpers,
+            )
         val files = when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> supportRendererFiles
             KotlinProjectionGenerationLayout.ExpectActualJvm -> supportRendererFiles.map { file ->
@@ -1898,9 +1939,9 @@ class KotlinProjectionGenerator(
     private fun supportPlansByQualifiedName(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): Map<String, KotlinTypeProjectionPlan> {
         val plannedTypeNames = plans.mapTo(mutableSetOf()) { it.type.qualifiedName }
-        val semanticHelpers = model.semanticHelpers()
         val typesByQualifiedName = model.namespaces
             .flatMap(WinRTNamespace::types)
             .associateBy(WinRTTypeDefinition::qualifiedName)
@@ -1919,6 +1960,7 @@ class KotlinProjectionGenerator(
     private fun modulePlatformAbiCallSupport(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
         renderedPlans: List<KotlinTypeProjectionPlan> = plans,
     ): KotlinModulePlatformAbiCallSupport? {
         val abiSupportShardCount = if (plans.size >= LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD) {
@@ -1939,11 +1981,16 @@ class KotlinProjectionGenerator(
             enabledCalls = emptySet(),
             abiSupportShardCount = abiSupportShardCount,
         )
-        val collectorRenderer = projectionFileRenderer(renderedPlans, collector)
+        val collectorRenderer = projectionFileRenderer(
+            plans = renderedPlans,
+            modulePlatformAbiCalls = collector,
+            semanticHelpers = semanticHelpers,
+        )
         plans.forEach { plan -> collectorRenderer.render(plan) }
         supportRenderer.collectModulePlatformAbiCalls(
             model = model,
-            plans = (renderedPlans + supportPlansByQualifiedName(model, renderedPlans).values)
+            semanticHelpers = semanticHelpers,
+            plans = (renderedPlans + supportPlansByQualifiedName(model, renderedPlans, semanticHelpers).values)
                 .distinctBy { plan -> plan.type.qualifiedName },
             context = projectionContext,
             excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,

@@ -158,10 +158,45 @@ class KotlinProjectionSupportRenderer private constructor(
         supportOwnerIdentity: String? = null,
         excludedSourceAdditionTypeNames: Set<String> = emptySet(),
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
+    ): List<KotlinProjectionFile> = renderWithSemanticHelpers(
+        model = model,
+        plans = plans,
+        context = context,
+        emitProjectionRegistrar = emitProjectionRegistrar,
+        excludedProjectionTypeNames = excludedProjectionTypeNames,
+        authoredRuntimeClassNames = authoredRuntimeClassNames,
+        authoringHostExportsClassName = authoringHostExportsClassName,
+        authoringServerActivationFactoriesClassName = authoringServerActivationFactoriesClassName,
+        authoringModuleActivationFactoryPlanClassName = authoringModuleActivationFactoryPlanClassName,
+        emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
+        eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
+        namespaceAdditionsClassName = namespaceAdditionsClassName,
+        supportOwnerIdentity = supportOwnerIdentity,
+        excludedSourceAdditionTypeNames = excludedSourceAdditionTypeNames,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
+        semanticHelpers = model.semanticHelpers(),
+    )
+
+    internal fun renderWithSemanticHelpers(
+        model: WinRTMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+        context: WinRTMetadataProjectionContext,
+        emitProjectionRegistrar: Boolean,
+        excludedProjectionTypeNames: Set<String>,
+        authoredRuntimeClassNames: Set<String>,
+        authoringHostExportsClassName: ClassName,
+        authoringServerActivationFactoriesClassName: ClassName,
+        authoringModuleActivationFactoryPlanClassName: ClassName,
+        emitJvmAuthoringHostExports: Boolean,
+        eventProjectionHelperFilePrefix: String,
+        namespaceAdditionsClassName: ClassName,
+        supportOwnerIdentity: String?,
+        excludedSourceAdditionTypeNames: Set<String>,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): List<KotlinProjectionFile> {
         val inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames)
         validateAuthoringMetadataProjectionPlans(inventory, plans)
-        val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWorklist = semanticHelpers.genericInstantiationWorklist(context)
         val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
         return buildList {
@@ -204,7 +239,13 @@ class KotlinProjectionSupportRenderer private constructor(
                     authoredRuntimeClassNames,
                     emitJvmAddressWrappers = emitJvmAuthoringHostExports,
                 ),
-                renderAuthoringCcwFactories(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+                renderAuthoringCcwFactories(
+                    inventory,
+                    plans,
+                    semanticHelpers,
+                    authoredRuntimeClassNames,
+                    supportOwnerIdentity,
+                ),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
                 renderSourceAdditionCompilerInput(inventory),
             ).forEach(::add)
@@ -240,12 +281,14 @@ class KotlinProjectionSupportRenderer private constructor(
                 instantiations = genericInstantiationWorklist.pending,
                 eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
                 supportOwnerIdentity = supportOwnerIdentity,
+                semanticHelpers = semanticHelpers,
             ))
         }
     }
 
     internal fun collectModulePlatformAbiCalls(
         model: WinRTMetadataModel,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
         plans: List<KotlinTypeProjectionPlan>,
         context: WinRTMetadataProjectionContext,
         excludedSourceAdditionTypeNames: Set<String>,
@@ -257,7 +300,6 @@ class KotlinProjectionSupportRenderer private constructor(
             inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames),
             modulePlatformAbiCalls = modulePlatformAbiCalls,
         )
-        val semanticHelpers = model.semanticHelpers()
         renderClosedGenericProjectionHelpers(
             planner = planner,
             model = model,
@@ -724,10 +766,12 @@ class KotlinProjectionSupportRenderer private constructor(
         instantiations: List<io.github.composefluent.winrt.metadata.WinRTGenericTypeInstantiationDescriptor>,
         eventProjectionHelperFilePrefix: String,
         supportOwnerIdentity: String?,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): List<KotlinProjectionFile> {
         val ownerSuffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)
         val eventSourceEntries = planner.eventSourceDescriptors(
             model = model,
+            helpers = semanticHelpers,
             plans = eventOwnerPlans,
             instantiations = instantiations,
             closedGenericPlans = allPlans,
@@ -1863,8 +1907,23 @@ class KotlinProjectionSupportRenderer private constructor(
         }
         val invocation = authoringServerFactoryInvocationCode(projectedType, method, binding, receiveArrayParameterName, kind)
         val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
+        fun addPostInvocationParameterWrites() {
+            binding.parameterBindings.forEachIndexed { index, parameter ->
+                if (parameter.name == receiveArrayParameterName ||
+                    (kind == AuthoringServerFactoryInterfaceKind.Composable && index >= binding.parameterBindings.size - 2)
+                ) {
+                    return@forEachIndexed
+                }
+                authoringCcwPostInvocationParameterCode(
+                    parameter = parameter,
+                    rawIndex = authoringCcwParameterRawIndex(binding.parameterBindings, index),
+                    valueExpression = authoringCcwLocalParameterName(index),
+                )?.let { postInvocation -> code.add("%L\n", postInvocation) }
+            }
+        }
         if (kind == AuthoringServerFactoryInterfaceKind.Composable) {
             code.add("val __result = %L\n", invocation)
+            addPostInvocationParameterWrites()
             val innerRawIndex = authoringCcwParameterRawIndex(binding.parameterBindings, binding.parameterBindings.lastIndex)
             val instanceRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
             code.add(
@@ -1878,9 +1937,11 @@ class KotlinProjectionSupportRenderer private constructor(
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
+            addPostInvocationParameterWrites()
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else {
             code.add("val __result = %L\n", invocation)
+            addPostInvocationParameterWrites()
             val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
             code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
@@ -2315,14 +2376,16 @@ class KotlinProjectionSupportRenderer private constructor(
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
         entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
             projectedInterfaceInboundCallSiteFunctions(plan, semanticHelpers).forEach(fileBuilder::addFunction)
-            fileBuilder.addType(projectedInterfaceCcwDefinitionHolder(plan, semanticHelpers))
+            fileBuilder.addType(
+                projectedInterfaceCcwDefinitionHolder(plan, semanticHelpers, supportOwnerIdentity),
+            )
         }
         fileBuilder.addType(
             TypeSpec.objectBuilder(className.simpleName)
                 .addModifiers(KModifier.INTERNAL)
                 .apply {
                     entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
-                        addFunction(projectedInterfaceCcwRegisterFunction(plan))
+                        addFunction(projectedInterfaceCcwRegisterFunction(plan, supportOwnerIdentity))
                     }
                 }
                 .build(),
@@ -2333,6 +2396,7 @@ class KotlinProjectionSupportRenderer private constructor(
     private fun projectedInterfaceCcwDefinitionHolder(
         plan: KotlinTypeProjectionPlan,
         semanticHelpers: WinRTMetadataSemanticHelpers,
+        supportOwnerIdentity: String?,
     ): TypeSpec {
         val interfaceId = requireNotNull(plan.interfaceIid) {
             "Projected interface ${plan.type.qualifiedName} requires an IID before rendering static CCW support."
@@ -2347,7 +2411,12 @@ class KotlinProjectionSupportRenderer private constructor(
             .add("interfaceId = %T(%S),\n", GUID_CLASS_NAME, interfaceId.toString())
             .add(
                 "methods = %L,\n",
-                authoringCcwInterfaceMethodsCode(plan, plan, semanticHelpers, useInboundCallSites = true),
+                authoringCcwInterfaceMethodsCode(
+                    plan,
+                    plan,
+                    semanticHelpers,
+                    useInboundCallSites = true,
+                ),
             )
             .unindent()
             .add("),\n")
@@ -2358,8 +2427,9 @@ class KotlinProjectionSupportRenderer private constructor(
             .unindent()
             .add(")")
             .build()
-        return TypeSpec.objectBuilder(projectedInterfaceCcwDefinitionHolderName(plan))
+        val holder = TypeSpec.objectBuilder(projectedInterfaceCcwDefinitionHolderName(plan, supportOwnerIdentity))
             .addModifiers(KModifier.PRIVATE)
+        return holder
             .addProperty(
                 PropertySpec.builder("definition", WINRT_CCW_DEFINITION_CLASS_NAME)
                     .initializer(definition)
@@ -2368,14 +2438,17 @@ class KotlinProjectionSupportRenderer private constructor(
             .build()
     }
 
-    private fun projectedInterfaceCcwRegisterFunction(plan: KotlinTypeProjectionPlan): FunSpec {
+    private fun projectedInterfaceCcwRegisterFunction(
+        plan: KotlinTypeProjectionPlan,
+        supportOwnerIdentity: String?,
+    ): FunSpec {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
         return FunSpec.builder(projectedInterfaceCcwRegisterFunctionName(plan.type.qualifiedName))
             .addCode(
                 "%T.registerStaticCcwDefinition(%T::class, %L.definition)\n",
                 COM_WRAPPERS_SUPPORT_CLASS_NAME,
                 projectedType,
-                projectedInterfaceCcwDefinitionHolderName(plan),
+                projectedInterfaceCcwDefinitionHolderName(plan, supportOwnerIdentity),
             )
             .build()
     }
@@ -2386,7 +2459,7 @@ class KotlinProjectionSupportRenderer private constructor(
     ): List<FunSpec> = plan.instanceMemberBindings
         .mapNotNull { binding ->
             directInboundCallSitePlan(binding, plan.type.namespace, semanticHelpers)?.let { callSitePlan ->
-                inboundCallSiteFunction(plan, plan, binding, callSitePlan)
+                inboundCallSiteFunction(plan, plan, binding, callSitePlan, semanticHelpers)
             }
         }
 
@@ -2395,6 +2468,7 @@ class KotlinProjectionSupportRenderer private constructor(
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
         callSitePlan: DirectInboundCallSitePlan,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): FunSpec {
         val callPlan = callSitePlan.abiCallPlan
         val projectedType = projectionClassNameForQualifiedName(runtimeClassPlan.type.qualifiedName)
@@ -2415,7 +2489,7 @@ class KotlinProjectionSupportRenderer private constructor(
                     addParameter(
                         ParameterSpec.builder(
                             authoringCcwLocalParameterName(index),
-                            typeRenderer.resolveTypeName(parameter.typeBinding.typeName),
+                            directInboundCallSiteProjectedType(shape, parameter.typeBinding),
                         )
                             .addAnnotation(
                                 AnnotationSpec.builder(WINRT_PROJECTION_PARAMETER_CLASS_NAME)
@@ -2430,12 +2504,20 @@ class KotlinProjectionSupportRenderer private constructor(
                 }
             }
             .returns(
-                if (returnsUnit) UNIT else typeRenderer.resolveTypeName(callPlan.returnBinding.typeName),
+                if (returnsUnit) UNIT else directInboundCallSiteProjectedType(
+                    callSitePlan.returnShape,
+                    callPlan.returnBinding,
+                ),
             )
             .addCode(
                 CodeBlock.builder()
                     .apply {
-                        val invocation = authoringCcwInvocationCode(runtimeClassPlan, interfacePlan.type, binding)
+                        val invocation = authoringCcwInvocationCode(
+                            runtimeClassPlan,
+                            interfacePlan.type,
+                            binding,
+                            semanticHelpers,
+                        )
                         if (returnsUnit) {
                             add("%L\n", invocation)
                             add("TODO(%S)\n", "Lowered while compiling the generated WinRT inbound CallSite")
@@ -2452,10 +2534,17 @@ class KotlinProjectionSupportRenderer private constructor(
             .build()
     }
 
-    private fun projectedInterfaceCcwDefinitionHolderName(plan: KotlinTypeProjectionPlan): String =
-        "ProjectedInterfaceCcwDefinitionHolder_" + plan.type.qualifiedName
-            .replace('.', '_')
-            .replace('`', '_')
+    private fun projectedInterfaceCcwDefinitionHolderName(
+        plan: KotlinTypeProjectionPlan,
+        supportOwnerIdentity: String?,
+    ): String = buildString {
+        append("ProjectedInterfaceCcwDefinitionHolder_")
+        append(plan.type.qualifiedName.replace('.', '_').replace('`', '_'))
+        winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)?.let { ownerSuffix ->
+            append('_')
+            append(ownerSuffix)
+        }
+    }
 
     private fun inboundCallSiteFunctionName(
         runtimeClassPlan: KotlinTypeProjectionPlan,
@@ -2474,6 +2563,7 @@ class KotlinProjectionSupportRenderer private constructor(
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
         authoredRuntimeClassNames: Set<String>,
+        supportOwnerIdentity: String?,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
@@ -2503,35 +2593,58 @@ class KotlinProjectionSupportRenderer private constructor(
                 .forEach { interfacePlan ->
                     interfacePlan.instanceMemberBindings.forEach { binding ->
                         directInboundCallSitePlan(binding, interfacePlan.type.namespace, semanticHelpers)?.let { callSitePlan ->
-                            fileBuilder.addFunction(inboundCallSiteFunction(plan, interfacePlan, binding, callSitePlan))
+                            fileBuilder.addFunction(
+                                inboundCallSiteFunction(
+                                    plan,
+                                    interfacePlan,
+                                    binding,
+                                    callSitePlan,
+                                    semanticHelpers,
+                                ),
+                            )
                         }
                     }
-                }
+            }
             fileBuilder.addFunction(authoringCcwQueryInterfaceFunction(plan))
-            fileBuilder.addFunction(authoringCcwDefinitionFunction(plan, plansByQualifiedName, semanticHelpers))
+            fileBuilder.addType(
+                authoringCcwDefinitionHolder(
+                    plan,
+                    plansByQualifiedName,
+                    semanticHelpers,
+                    supportOwnerIdentity,
+                ),
+            )
         }
         fileBuilder.addType(
             TypeSpec.objectBuilder("WinRTAuthoringCcwFactories")
                 .addModifiers(KModifier.INTERNAL)
-                .addFunction(authoringCcwFactoryRegisterFunction(entries))
+                .addFunction(authoringCcwFactoryRegisterFunction(entries, supportOwnerIdentity))
                 .build(),
         )
         return supportFile("WinRTAuthoringCcwFactories.kt", fileBuilder.build())
     }
 
-    private fun authoringCcwDefinitionFunction(
+    private fun authoringCcwDefinitionHolder(
         plan: KotlinTypeProjectionPlan,
         plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
-    ): FunSpec {
-        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
-        val functionName = authoringCcwDefinitionFunctionName(plan)
+        supportOwnerIdentity: String?,
+    ): TypeSpec {
         val defaultInterface = plan.defaultInterfaceName
-        return FunSpec.builder(functionName)
+        return TypeSpec.objectBuilder(authoringCcwDefinitionHolderName(plan, supportOwnerIdentity))
             .addModifiers(KModifier.PRIVATE)
-            .addParameter("value", projectedType)
-            .returns(WINRT_CCW_DEFINITION_CLASS_NAME)
-            .addCode(authoringCcwDefinitionCode(plan, defaultInterface, plansByQualifiedName, semanticHelpers))
+            .addProperty(
+                PropertySpec.builder("definition", WINRT_CCW_DEFINITION_CLASS_NAME)
+                    .initializer(
+                        authoringCcwDefinitionCode(
+                            plan,
+                            defaultInterface,
+                            plansByQualifiedName,
+                            semanticHelpers,
+                        ),
+                    )
+                    .build(),
+            )
             .build()
     }
 
@@ -2542,7 +2655,7 @@ class KotlinProjectionSupportRenderer private constructor(
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): CodeBlock {
         val code = CodeBlock.builder()
-        code.add("return %T(\n", WINRT_CCW_DEFINITION_CLASS_NAME)
+        code.add("%T(\n", WINRT_CCW_DEFINITION_CLASS_NAME)
         code.indent()
         code.add("interfaceDefinitions = listOf(\n")
         code.indent()
@@ -2692,13 +2805,23 @@ class KotlinProjectionSupportRenderer private constructor(
                     inboundCallSiteFunctionName(runtimeClassPlan, interfacePlan, binding),
                 )
             } else {
+                val event = authoringCcwEventForBinding(interfacePlan.type, binding)
                 code.add("managedHandler = { managedValue, rawArgs ->\n")
                 code.indent()
                 code.add(
                     "val value = managedValue as %T\n",
                     projectionClassNameForQualifiedName(runtimeClassPlan.type.qualifiedName),
                 )
-                code.add("%L", authoringCcwMethodHandlerCode(runtimeClassPlan, interfacePlan, binding))
+                code.add(
+                    "%L",
+                    authoringCcwMethodHandlerCode(
+                        runtimeClassPlan = runtimeClassPlan,
+                        interfacePlan = interfacePlan,
+                        binding = binding,
+                        event = event,
+                        semanticHelpers = semanticHelpers,
+                    ),
+                )
                 code.unindent()
                 code.add("},\n")
             }
@@ -2793,6 +2916,13 @@ class KotlinProjectionSupportRenderer private constructor(
         WinRTDirectInboundShapeKind.Projection -> shape.abiTypeName
         WinRTDirectInboundShapeKind.Unit -> UNIT.toString()
     }
+
+    private fun directInboundCallSiteProjectedType(
+        shape: WinRTDirectInboundShapeDescriptor,
+        binding: KotlinProjectionAbiTypeBinding,
+    ): TypeName =
+        typeRenderer.resolveTypeName(shape.projectedType.typeName)
+            .copy(nullable = binding.isNullableAbiTypeName)
 
     private fun authoredCcwBindingHasMemberBody(
         interfaceType: WinRTTypeDefinition,
@@ -2912,16 +3042,13 @@ class KotlinProjectionSupportRenderer private constructor(
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
+        event: WinRTEventDefinition?,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): CodeBlock {
-        val interfaceType = interfacePlan.type
-        val event = interfaceType.events.firstOrNull { event ->
-            binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
-                binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
-        }
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
         } else if (authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
-            authoringCcwOrdinaryMemberHandlerCode(runtimeClassPlan, interfacePlan, binding)
+            authoringCcwOrdinaryMemberHandlerCode(runtimeClassPlan, interfacePlan, binding, semanticHelpers)
         } else {
             val reason = authoredCcwBindingUnsupportedReason(typeRenderer, interfacePlan.type, binding)
                 ?: "unsupported authored ABI shape"
@@ -2944,7 +3071,10 @@ class KotlinProjectionSupportRenderer private constructor(
             } else {
                 code.add(
                     "val handler = %L\n",
-                    authoringCcwDecodeArgumentCode(handlerParameter, 0),
+                    authoringCcwDecodeDelegateArgumentCode(
+                        binding = handlerParameter.typeBinding,
+                        index = 0,
+                    ),
                 )
                 code.add("val token = value.add%L(handler)\n", event.name)
                 code.add("%T.Metadata.copyTo(token, rawArgs[1] as %T)\n", EVENT_REGISTRATION_TOKEN_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
@@ -2968,6 +3098,7 @@ class KotlinProjectionSupportRenderer private constructor(
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): CodeBlock {
         val interfaceType = interfacePlan.type
         val receiveArrayParameterName = authoringCcwReceiveArrayReturnParameter(interfaceType, binding)?.name
@@ -2984,7 +3115,7 @@ class KotlinProjectionSupportRenderer private constructor(
                 authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
-        val invocation = authoringCcwInvocationCode(runtimeClassPlan, interfaceType, binding)
+        val invocation = authoringCcwInvocationCode(runtimeClassPlan, interfaceType, binding, semanticHelpers)
         val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
         if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
@@ -3063,19 +3194,28 @@ class KotlinProjectionSupportRenderer private constructor(
         runtimeClassPlan: KotlinTypeProjectionPlan,
         interfaceType: WinRTTypeDefinition,
         binding: KotlinProjectionInstanceMemberBinding,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
     ): CodeBlock {
         interfaceType.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.let { method ->
                 val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
-                val targetMethodName = if (runtimeClassPlan.requiresAuthoringInvokeBridge(binding.slotInterfaceQualifiedName)) {
+                val requiresAuthoringInvokeBridge =
+                    runtimeClassPlan.requiresAuthoringInvokeBridge(binding.slotInterfaceQualifiedName)
+                val targetMethodName = if (requiresAuthoringInvokeBridge) {
                     authoringInvokeBridgeName(method)
                 } else {
                     method.projectedMethodName()
                 }
+                val target = authoringCcwInvocationTargetCode(
+                    runtimeClassPlan = runtimeClassPlan,
+                    interfaceType = interfaceType,
+                    requiresAuthoringInvokeBridge = requiresAuthoringInvokeBridge,
+                    semanticHelpers = semanticHelpers,
+                )
                 return CodeBlock.builder()
-                    .add("value.%L(", targetMethodName)
+                    .add("%L.%L(", target, targetMethodName)
                     .apply {
                         binding.parameterBindings
                             .withIndex()
@@ -3103,6 +3243,24 @@ class KotlinProjectionSupportRenderer private constructor(
             }
         }
         return CodeBlock.of("error(%S)", "No authored member body for ${interfaceType.qualifiedName}.${binding.bindingName}")
+    }
+
+    private fun authoringCcwInvocationTargetCode(
+        runtimeClassPlan: KotlinTypeProjectionPlan,
+        interfaceType: WinRTTypeDefinition,
+        requiresAuthoringInvokeBridge: Boolean,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): CodeBlock {
+        if (!requiresAuthoringInvokeBridge) {
+            return CodeBlock.of("value")
+        }
+        val bridgeOwner = semanticHelpers.getExclusiveToType(interfaceType)
+            ?.takeUnless { owner -> owner.qualifiedName == runtimeClassPlan.type.qualifiedName }
+            ?: return CodeBlock.of("value")
+        return CodeBlock.of(
+            "(value as %T)",
+            projectionClassNameForQualifiedName(bridgeOwner.qualifiedName),
+        )
     }
 
     private fun KotlinTypeProjectionPlan.requiresAuthoringInvokeBridge(interfaceName: String): Boolean {
@@ -3316,6 +3474,14 @@ class KotlinProjectionSupportRenderer private constructor(
         } else {
             CodeBlock.of("%L ?: error(%S)", decoded, "Authored delegate argument ${binding.resolvedTypeName} was null.")
         }
+    }
+
+    private fun authoringCcwEventForBinding(
+        interfaceType: WinRTTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): WinRTEventDefinition? = interfaceType.events.firstOrNull { event ->
+        binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
+            binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
     }
 
     private fun authoringCcwDecodeReferenceArgumentCode(
@@ -3891,29 +4057,42 @@ class KotlinProjectionSupportRenderer private constructor(
         )
     }
 
-    private fun authoringCcwFactoryRegisterFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
+    private fun authoringCcwFactoryRegisterFunction(
+        entries: List<KotlinTypeProjectionPlan>,
+        supportOwnerIdentity: String?,
+    ): FunSpec {
         val code = CodeBlock.builder()
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
             code.add(
-                "%T.registerCcwFactory(%T::class) { value ->\n",
+                "%T.registerStaticCcwDefinition(\n",
                 COM_WRAPPERS_SUPPORT_CLASS_NAME,
-                projectedType,
             )
             code.indent()
-            code.add("%L(value as %T)\n", authoringCcwDefinitionFunctionName(plan), projectedType)
+            code.add(
+                "%T::class,\n%L.definition,\n",
+                projectedType,
+                authoringCcwDefinitionHolderName(plan, supportOwnerIdentity),
+            )
             code.unindent()
-            code.add("}\n")
+            code.add(")\n")
         }
         return FunSpec.builder("register")
             .addCode(code.build())
             .build()
     }
 
-    private fun authoringCcwDefinitionFunctionName(plan: KotlinTypeProjectionPlan): String =
-        "createCcwDefinitionFor" + plan.type.qualifiedName
-            .replace(".", "_")
-            .replace("`", "_")
+    private fun authoringCcwDefinitionHolderName(
+        plan: KotlinTypeProjectionPlan,
+        supportOwnerIdentity: String?,
+    ): String = buildString {
+        append("AuthoredTypeCcwDefinitionHolder_")
+        append(plan.type.qualifiedName.replace('.', '_').replace('`', '_'))
+        winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)?.let { ownerSuffix ->
+            append('_')
+            append(ownerSuffix)
+        }
+    }
 
     private fun authoringCcwQueryInterfaceFunctionName(plan: KotlinTypeProjectionPlan): String =
         "queryInterfaceFor" + plan.type.qualifiedName

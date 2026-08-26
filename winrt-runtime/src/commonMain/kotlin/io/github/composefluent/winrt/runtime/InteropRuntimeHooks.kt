@@ -170,6 +170,31 @@ internal object InteropRuntimeHooks {
             ),
         )
 
+    private val managedWeakReferenceDefinition =
+        WinRTCcwDefinition(
+            interfaceDefinitions = listOf(
+                WinRTInspectableInterfaceDefinition(
+                    interfaceId = IID.IWeakReference,
+                    baseKind = WinRTComInterfaceBaseKind.IUnknown,
+                    methods = listOf(
+                        WinRTInspectableMethodDefinition(
+                            signature = ComMethodSignatures.HResult_Ptr_Ptr,
+                        ) { managedValue, rawArgs ->
+                            val state = requireNotNull(managedValue) as ManagedWeakReferenceState
+                            val requestedInterfaceId = PlatformAbi.readGuid(rawArgs[0] as RawAddress)
+                            val resultOut = rawArgs[1] as RawAddress
+                            PlatformAbi.writePointer(
+                                resultOut,
+                                state.resolve(requestedInterfaceId),
+                            )
+                            KnownHResults.S_OK.value
+                        },
+                    ),
+                ),
+            ),
+            defaultInterfaceId = IID.IWeakReference,
+        )
+
     private val marshalInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IMarshal,
@@ -295,26 +320,10 @@ internal object InteropRuntimeHooks {
     private fun createManagedWeakReferencePointer(target: Any): RawAddress {
         val state = ManagedWeakReferenceState(target)
         val host = WinRTInspectableComObject(
-            interfaceDefinitions = listOf(
-                WinRTInspectableInterfaceDefinition(
-                    interfaceId = IID.IWeakReference,
-                    baseKind = WinRTComInterfaceBaseKind.IUnknown,
-                    methods = listOf(
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignatures.HResult_Ptr_Ptr,
-                        ) { rawArgs ->
-                            val requestedInterfaceId = PlatformAbi.readGuid(rawArgs[0] as RawAddress)
-                            val resultOut = rawArgs[1] as RawAddress
-                            PlatformAbi.writePointer(
-                                resultOut,
-                                state.resolve(requestedInterfaceId),
-                            )
-                            KnownHResults.S_OK.value
-                        },
-                    ),
-                ),
-            ),
+            interfaceDefinitions = managedWeakReferenceDefinition.interfaceDefinitions,
+            defaultInterfaceId = managedWeakReferenceDefinition.defaultInterfaceId,
             managedValue = state,
+            shapeCacheKey = managedWeakReferenceDefinition,
         )
         return host.detachReference(IID.IWeakReference)
     }

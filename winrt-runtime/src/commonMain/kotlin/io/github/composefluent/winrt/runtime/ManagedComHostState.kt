@@ -32,7 +32,7 @@ internal class ManagedComHostState(
 ) {
     constructor(cleanup: () -> Unit) : this(cleanup, PermanentlyPinnedManagedComRootReference)
 
-    private val cleanedUp = AtomicInt(0)
+    private val cleanupPublicationState = AtomicInt(managedComHostOpenState)
 
     @PublishedApi
     internal val baselineReleased = AtomicInt(0)
@@ -346,12 +346,80 @@ internal class ManagedComHostState(
         referenceCount.detach(objectMemory, objectMemoryView, objectMemoryOffsetBytes)
     }
 
+    internal fun tryBeginInboundCachePublication(): Boolean {
+        while (true) {
+            val state = cleanupPublicationState.load()
+            if (state == managedComHostClosedState) {
+                return false
+            }
+            check(state in managedComHostOpenState until Int.MAX_VALUE) {
+                "Managed COM host publication count is invalid: $state."
+            }
+            val publishingState = if (state == managedComHostOpenState) {
+                managedComHostPublishedState + 1
+            } else {
+                state + 1
+            }
+            if (cleanupPublicationState.compareAndSet(state, publishingState)) {
+                return true
+            }
+        }
+    }
+
+    internal fun endInboundCachePublication() {
+        while (true) {
+            val state = cleanupPublicationState.load()
+            check(state > managedComHostPublishedState) {
+                "Managed COM host publication count is invalid: $state."
+            }
+            if (cleanupPublicationState.compareAndSet(state, state - 1)) {
+                return
+            }
+        }
+    }
+
     private fun cleanupOnce() {
-        if (cleanedUp.compareAndSet(0, 1)) {
+        if (
+            cleanupPublicationState.compareAndSet(
+                managedComHostOpenState,
+                managedComHostClosedState,
+            )
+        ) {
             try {
                 cleanup()
             } finally {
                 referenceCount.close()
+            }
+            return
+        }
+
+        cleanupPublishedOnce()
+    }
+
+    private fun cleanupPublishedOnce() {
+        while (true) {
+            val state = cleanupPublicationState.load()
+            if (state == managedComHostClosedState) {
+                return
+            }
+            if (state != managedComHostPublishedState) {
+                continue
+            }
+            if (
+                cleanupPublicationState.compareAndSet(
+                    managedComHostPublishedState,
+                    managedComHostClosedState,
+                )
+            ) {
+                if (rootReference is ManagedComInboundBinding) {
+                    clearManagedComInboundHotEntry(rootReference)
+                }
+                try {
+                    cleanup()
+                } finally {
+                    referenceCount.close()
+                }
+                return
             }
         }
     }
@@ -363,6 +431,10 @@ internal class ManagedComHostState(
         ).coerceAtLeast(0)
 
 }
+
+private const val managedComHostOpenState = 0
+private const val managedComHostPublishedState = 1
+private const val managedComHostClosedState = -1
 
 private fun Long.isBorrowReadyReferenceCount(): Boolean =
     this and managedComBorrowReadyReferenceFlag != 0L

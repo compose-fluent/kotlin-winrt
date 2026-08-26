@@ -1950,6 +1950,7 @@ class WinRTMetadataLoaderTest {
         val processBuilder = ProcessBuilder(command)
             .directory(workingDirectory.toFile())
             .redirectErrorStream(true)
+        processBuilder.environment()["DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"] = "0"
         if (isWindows()) {
             processBuilder.environment()["APPDATA"] = workingDirectory.resolve(".appdata").createDirectories().toString()
             processBuilder.environment()["DOTNET_CLI_HOME"] = workingDirectory.resolve(".dotnet-home").createDirectories().toString()

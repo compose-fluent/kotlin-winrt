@@ -9,7 +9,6 @@ import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTTypeRef
 import io.github.composefluent.winrt.metadata.WinRTTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
-import io.github.composefluent.winrt.metadata.semanticHelpers
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -37,11 +36,11 @@ internal fun KotlinTypeProjectionPlan.boundInstanceEventSource(
 
 internal fun KotlinProjectionPlanner.eventSourceDescriptors(
     model: WinRTMetadataModel,
+    helpers: WinRTMetadataSemanticHelpers,
     plans: List<KotlinTypeProjectionPlan>,
     instantiations: List<WinRTGenericTypeInstantiationDescriptor> = emptyList(),
     closedGenericPlans: List<KotlinTypeProjectionPlan> = plans,
 ): List<WinRTEventHelperSubclassDescriptor> {
-    val helpers = model.semanticHelpers()
     val closedGenericTypeNames = closedGenericPlans.mapTo(mutableSetOf()) { plan -> plan.type.qualifiedName }
     val requiredDescriptorKeys = plans.requiredEventSourceDescriptorKeys()
     val metadataDescriptors = model.namespaces
@@ -79,7 +78,7 @@ internal fun KotlinProjectionPlanner.eventSourceDescriptors(
 private fun String.containsOpenGenericType(): Boolean =
     WinRTTypeRef.fromDisplayName(this).normalized().containsOpenGenericType()
 
-private fun WinRTTypeRef.containsOpenGenericType(): Boolean =
+internal fun WinRTTypeRef.containsOpenGenericType(): Boolean =
     kind == WinRTTypeRefKind.GenericTypeParameter ||
         kind == WinRTTypeRefKind.MethodTypeParameter ||
         typeArguments.any(WinRTTypeRef::containsOpenGenericType) ||

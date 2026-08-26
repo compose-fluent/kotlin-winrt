@@ -29,6 +29,7 @@ internal object TypeProjection {
         if (value == null) {
             return TypeAbi()
         }
+        val intrinsic = WinRTTypeClassifier.classify(value)
         val kind =
             when {
                 value == KClass::class -> WinRTTypeKind.Metadata
@@ -40,7 +41,7 @@ internal object TypeProjection {
             if (kind == WinRTTypeKind.Custom) {
                 value.qualifiedName ?: value.simpleName ?: "<anonymous>"
             } else {
-                TypeNameSupport.getNameForType(value)
+                intrinsic?.canonicalRuntimeName ?: TypeNameSupport.getNameForType(value)
             }
         return TypeAbi(
             name = NativeStringMarshaller.fromManaged(typeName)?.handle ?: PlatformAbi.nullPointer,

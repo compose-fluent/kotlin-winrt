@@ -6,11 +6,12 @@ import io.github.composefluent.winrt.runtime.EventRegistrationTokenTable
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference
 import io.github.composefluent.winrt.runtime.WinRTAsyncResultWriter
+import io.github.composefluent.winrt.runtime.WinRTOut
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
-import windows.data.json.JsonArray
-import windows.data.json.JsonObject
-import windows.data.json.JsonValue
-import windows.data.json.JsonValueType
+import windows.`data`.json.JsonArray
+import windows.`data`.json.JsonObject
+import windows.`data`.json.JsonValue
+import windows.`data`.json.JsonValueType
 import windows.foundation.EventRegistrationToken
 import windows.foundation.collections.MapChangedEventHandler
 import windows.storage.streams.ByteOrder
@@ -57,7 +58,11 @@ class NativeJsonValueThing private constructor(
     companion object {
         fun parse(input: String): NativeJsonValueThing = NativeJsonValueThing(input)
 
-        fun tryParse(input: String, result: JsonValue): Boolean = input.isNotEmpty() && result.getString().isNotEmpty()
+        fun tryParse(input: String, result: WinRTOut<JsonValue>): Boolean {
+            if (input.isEmpty()) return false
+            result.value = JsonValue.createStringValue(input)
+            return true
+        }
 
         fun createBooleanValue(input: Boolean): NativeJsonValueThing = NativeJsonValueThing(input.toString())
 

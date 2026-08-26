@@ -140,6 +140,7 @@ data class WinRTDirectInboundShapeDescriptor(
     val kind: WinRTDirectInboundShapeKind,
     val type: WinRTTypeRef,
     val abiTypeName: String,
+    val projectedType: WinRTTypeRef = type,
     val definitionType: WinRTTypeDefinition? = null,
 )
 
@@ -611,7 +612,9 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
                 }
             else -> null
         } ?: return null
-        val abiTypeName = classification.definitionQualifiedName
+        val defaultAsyncInterface = definition?.let(::getDefaultAsyncInterface)
+        val abiTypeName = defaultAsyncInterface?.typeName
+            ?: classification.definitionQualifiedName
             ?: classification.type.qualifiedName
             ?: normalized.qualifiedName
             ?: return null
@@ -619,6 +622,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             kind = kind,
             type = classification.type,
             abiTypeName = abiTypeName,
+            projectedType = defaultAsyncInterface ?: classification.type,
             definitionType = definition,
         )
     }
@@ -917,6 +921,15 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         val defaultInterface = getDefaultInterface(type)
             ?: throw IllegalArgumentException("Class does not have a default interface: ${type.qualifiedName}")
         return typeSemanticsResolver.resolve(defaultInterface, type.namespace, type.genericParameters)
+    }
+
+    fun getDefaultAsyncInterface(type: WinRTTypeDefinition): WinRTTypeRef? {
+        if (type.kind != WinRTTypeKind.RuntimeClass) return null
+        return getDefaultInterface(type)
+            ?.normalized()
+            ?.takeIf { defaultInterface ->
+                defaultInterface.qualifiedName in defaultAsyncInterfaceTypeNames
+            }
     }
 
     fun getPropertyMethods(property: WinRTPropertyDefinition): WinRTPropertyAccessorDescriptor =
@@ -2452,6 +2465,12 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     }
 
     companion object {
+        private val defaultAsyncInterfaceTypeNames = setOf(
+            "Windows.Foundation.IAsyncAction",
+            "Windows.Foundation.IAsyncActionWithProgress",
+            "Windows.Foundation.IAsyncOperation",
+            "Windows.Foundation.IAsyncOperationWithProgress",
+        )
         private const val SYSTEM_FLAGS_ATTRIBUTE = "System.FlagsAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO_ATTRIBUTE = "Windows.Foundation.Metadata.ExclusiveToAttribute"
         private const val INSPECTABLE_METHOD_COUNT = 6

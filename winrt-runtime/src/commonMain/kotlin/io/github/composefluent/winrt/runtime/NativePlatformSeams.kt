@@ -72,14 +72,45 @@ internal expect class NativeHStringReferenceFrame : AutoCloseable {
 
 internal expect fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame
 
+internal expect inline fun acquireScopedNativeHStringReferenceFrame(
+    value: String,
+    length: Int,
+): RawAddress
+
+internal expect inline fun scopedNativeHStringReferenceHandle(
+    frame: RawAddress,
+    length: Int,
+): RawAddress
+
+internal expect inline fun scopedNativeHStringReferenceOut(frame: RawAddress): RawAddress
+
+internal expect inline fun releaseScopedNativeHStringReferenceFrame(frame: RawAddress)
+
+internal fun interface RawAddressPairAction<R> {
+    fun invoke(first: RawAddress, second: RawAddress): R
+}
+
 /**
  * Borrows a Windows HSTRING reference and a pointer-sized output slot for one synchronous ABI call.
- * The target owns the backing storage and must keep [value] alive until [action] returns.
+ * Common code owns the call lifetime; targets only adapt storage, pinning, and raw addresses.
  */
-internal expect inline fun <R> withNativeHStringReferenceAbi(
+internal inline fun <R> withNativeHStringReferenceAbi(
     value: String,
-    action: (handle: RawAddress, pointerOut: RawAddress) -> R,
-): R
+    action: RawAddressPairAction<R>,
+): R {
+    val length = winRTStringLength(value)
+    val pinnedValue = winRTPinString(value, length)
+    val frame = acquireScopedNativeHStringReferenceFrame(pinnedValue, length)
+    return try {
+        action.invoke(
+            scopedNativeHStringReferenceHandle(frame, length),
+            scopedNativeHStringReferenceOut(frame),
+        )
+    } finally {
+        winRTKeepAlive(pinnedValue)
+        releaseScopedNativeHStringReferenceFrame(frame)
+    }
+}
 
 /**
  * An allocation-backed view used by runtime-owned construction paths.

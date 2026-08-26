@@ -500,15 +500,38 @@ internal object ValueBoxingInterop {
         PlatformAbi.writePointer(dataOut, data)
     }
 
-    fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
-        WinRTReferenceReference(pointer, interfaceId, preventReleaseOnDispose = true).use {
-            readReferenceValue(interfaceId, it)
+    fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? {
+        val adapter = adapterForReferenceInterface(interfaceId)
+            ?: throw WinRTInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        return PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateBytes(scope, adapter.abiLayout.byteSize, adapter.abiLayout.byteAlignment)
+            val hr = ComVtableInvoker.invokeArgs(pointer.asRawComPtr(), 6, resultOut)
+            WinRTPlatformApi.checkSucceededRaw(hr)
+            try {
+                adapter.readValue(resultOut)
+            } finally {
+                adapter.disposeValue(resultOut)
+            }
         }
+    }
 
-    fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? =
-        WinRTReferenceArrayReference(pointer, interfaceId, preventReleaseOnDispose = true).use {
-            readReferenceArrayValue(interfaceId, it)
+    fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? {
+        val adapter = adapterForReferenceArrayInterface(interfaceId)
+            ?: throw WinRTInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        return PlatformAbi.confinedScope().use { scope ->
+            val countOut = PlatformAbi.allocateInt32Slot(scope)
+            val dataOut = PlatformAbi.allocatePointerSlot(scope)
+            val hr = ComVtableInvoker.invokeArgs(pointer.asRawComPtr(), 6, countOut, dataOut)
+            WinRTPlatformApi.checkSucceededRaw(hr)
+            val length = PlatformAbi.readInt32(countOut)
+            val data = PlatformAbi.readPointer(dataOut)
+            try {
+                adapter.readOwnedArray(length, data)
+            } finally {
+                adapter.disposeOwnedArray(length, data)
+            }
         }
+    }
 
     internal fun readReferenceValue(interfaceId: Guid, reference: WinRTReferenceReference): Any? {
         val adapter = adapterForReferenceInterface(interfaceId)

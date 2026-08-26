@@ -292,10 +292,25 @@ object WinRTAsyncProjectionInterop {
         resultOut: (NativeScope) -> RawAddress,
         resultReader: (RawAddress) -> T,
     ): WinRTAsyncOperationReference<T> =
-        WinRTAsyncOperationReference(
+        operation(
             pointer = pointer,
             interfaceId = WinRTAsyncOperationReference.interfaceId(resultSignature),
             completedHandlerInterfaceId = WinRTAsyncOperationReference.completedHandlerInterfaceId(resultSignature),
+            resultOut = resultOut,
+            resultReader = resultReader,
+        )
+
+    fun <T> operation(
+        pointer: RawAddress,
+        interfaceId: Guid,
+        completedHandlerInterfaceId: Guid,
+        resultOut: (NativeScope) -> RawAddress,
+        resultReader: (RawAddress) -> T,
+    ): WinRTAsyncOperationReference<T> =
+        WinRTAsyncOperationReference(
+            pointer = pointer,
+            interfaceId = interfaceId,
+            completedHandlerInterfaceId = completedHandlerInterfaceId,
             resultReader = { operation ->
                 PlatformAbi.confinedScope().use { scope ->
                     val operationResultOut = resultOut(scope)
@@ -317,11 +332,28 @@ object WinRTAsyncProjectionInterop {
         resultOut: (NativeScope) -> RawAddress,
         resultReader: (RawAddress) -> T,
     ): WinRTAsyncOperationWithProgressReference<T, TProgress> =
-        WinRTAsyncOperationWithProgressReference(
+        operationWithProgress(
             pointer = pointer,
             interfaceId = WinRTAsyncOperationWithProgressReference.interfaceId(resultSignature, progressSignature),
             progressHandlerInterfaceId = WinRTAsyncOperationWithProgressReference.progressHandlerInterfaceId(resultSignature, progressSignature),
             completedHandlerInterfaceId = WinRTAsyncOperationWithProgressReference.completedHandlerInterfaceId(resultSignature, progressSignature),
+            resultOut = resultOut,
+            resultReader = resultReader,
+        )
+
+    fun <T, TProgress> operationWithProgress(
+        pointer: RawAddress,
+        interfaceId: Guid,
+        progressHandlerInterfaceId: Guid,
+        completedHandlerInterfaceId: Guid,
+        resultOut: (NativeScope) -> RawAddress,
+        resultReader: (RawAddress) -> T,
+    ): WinRTAsyncOperationWithProgressReference<T, TProgress> =
+        WinRTAsyncOperationWithProgressReference(
+            pointer = pointer,
+            interfaceId = interfaceId,
+            progressHandlerInterfaceId = progressHandlerInterfaceId,
+            completedHandlerInterfaceId = completedHandlerInterfaceId,
             resultReader = { operation ->
                 PlatformAbi.confinedScope().use { scope ->
                     val operationResultOut = resultOut(scope)
@@ -340,11 +372,24 @@ object WinRTAsyncProjectionInterop {
         pointer: RawAddress,
         progressSignature: WinRTTypeSignature,
     ): WinRTAsyncActionWithProgressReference<TProgress> =
-        WinRTAsyncActionWithProgressReference(
+        actionWithProgress(
             pointer = pointer,
             interfaceId = WinRTAsyncActionWithProgressReference.interfaceId(progressSignature),
             progressHandlerInterfaceId = WinRTAsyncActionWithProgressReference.progressHandlerInterfaceId(progressSignature),
             completedHandlerInterfaceId = WinRTAsyncActionWithProgressReference.completedHandlerInterfaceId(progressSignature),
+        )
+
+    fun <TProgress> actionWithProgress(
+        pointer: RawAddress,
+        interfaceId: Guid,
+        progressHandlerInterfaceId: Guid,
+        completedHandlerInterfaceId: Guid,
+    ): WinRTAsyncActionWithProgressReference<TProgress> =
+        WinRTAsyncActionWithProgressReference(
+            pointer = pointer,
+            interfaceId = interfaceId,
+            progressHandlerInterfaceId = progressHandlerInterfaceId,
+            completedHandlerInterfaceId = completedHandlerInterfaceId,
         )
 }
 

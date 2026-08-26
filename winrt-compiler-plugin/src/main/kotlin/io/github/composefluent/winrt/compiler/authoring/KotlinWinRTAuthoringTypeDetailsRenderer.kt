@@ -354,6 +354,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                             vtableMethod = method,
                             dispatchTarget = dispatchTarget,
                             plan = plan,
+                            typesByName = typesByName,
                             semanticHelpers = semanticHelpers,
                         ),
                     )
@@ -663,20 +664,21 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         vtableMethod: AuthoredVtableMethod,
         dispatchTarget: AuthoringDispatchTarget,
         plan: DirectInboundCallSitePlan,
+        typesByName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): FunSpec {
         val method = vtableMethod.method
         val dispatchMethodName = dispatchTarget.methodName(method)
         val arguments = method.parameters.indices.joinToString(", ") { index -> "__arg$index" }
         val returnsUnit = plan.returnShape.kind == WinRTDirectInboundShapeKind.Unit
-        val returnType = directInboundProjectedTypeName(plan.returnShape, semanticHelpers)
+        val returnType = directInboundProjectedTypeName(plan.returnShape, typesByName, semanticHelpers)
         return FunSpec.builder(directInboundCallSiteFunctionName(interfaceType, vtableMethod))
             .addModifiers(KModifier.PRIVATE)
             .addAnnotation(
                 AnnotationSpec.builder(winRTProjectionInboundCallSiteType)
                     .addMember(
                         "returnAbiType = %S",
-                        directInboundCallSiteAbiType(plan.returnShape, semanticHelpers),
+                        directInboundCallSiteAbiType(plan.returnShape, typesByName, semanticHelpers),
                     )
                     .build(),
             )
@@ -686,13 +688,13 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                     addParameter(
                         ParameterSpec.builder(
                             "__arg$index",
-                            directInboundProjectedTypeName(shape, semanticHelpers),
+                            directInboundProjectedTypeName(shape, typesByName, semanticHelpers),
                         )
                             .addAnnotation(
                                 AnnotationSpec.builder(winRTProjectionParameterType)
                                     .addMember(
                                         "abiType = %S",
-                                        directInboundCallSiteAbiType(shape, semanticHelpers),
+                                        directInboundCallSiteAbiType(shape, typesByName, semanticHelpers),
                                     )
                                     .build(),
                             )
@@ -761,8 +763,10 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
     private fun WinRTDirectInboundShapeDescriptor.referencesAuthoredRuntimeClass(
         authoredRuntimeClassNames: Set<String>,
     ): Boolean = kind == WinRTDirectInboundShapeKind.Projection &&
-        definitionType?.kind == WinRTTypeKind.RuntimeClass &&
-        abiTypeName in authoredRuntimeClassNames
+        definitionType?.let { definition ->
+            definition.kind == WinRTTypeKind.RuntimeClass &&
+                definition.qualifiedName in authoredRuntimeClassNames
+        } == true
 
     private data class DirectInboundCallSitePlan(
         val returnShape: WinRTDirectInboundShapeDescriptor,
@@ -771,22 +775,27 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
 
     private fun directInboundProjectedTypeName(
         shape: WinRTDirectInboundShapeDescriptor,
+        typesByName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
-    ): TypeName = when (shape.kind) {
-        WinRTDirectInboundShapeKind.Unit -> Unit::class.asClassName()
-        WinRTDirectInboundShapeKind.Value ->
-            requireNotNull(fundamentalProjectedTypeName(shape.abiTypeName)) {
-                "Direct authored inbound value '${shape.abiTypeName}' has no Kotlin scalar projection."
-            }
-        WinRTDirectInboundShapeKind.Enum,
-        WinRTDirectInboundShapeKind.Projection -> projectionClassName(shape.abiTypeName, semanticHelpers)
+    ): TypeName {
+        renderAsyncProjectedType(shape.projectedType, typesByName, semanticHelpers)?.let { return it }
+        return when (shape.kind) {
+            WinRTDirectInboundShapeKind.Unit -> Unit::class.asClassName()
+            WinRTDirectInboundShapeKind.Value ->
+                requireNotNull(fundamentalProjectedTypeName(shape.abiTypeName)) {
+                    "Direct authored inbound value '${shape.abiTypeName}' has no Kotlin scalar projection."
+                }
+            WinRTDirectInboundShapeKind.Enum,
+            WinRTDirectInboundShapeKind.Projection -> projectionClassName(shape.abiTypeName, semanticHelpers)
+        }
     }
 
     private fun directInboundCallSiteAbiType(
         shape: WinRTDirectInboundShapeDescriptor,
+        typesByName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): String = when (shape.kind) {
-        WinRTDirectInboundShapeKind.Value -> directInboundProjectedTypeName(shape, semanticHelpers).toString()
+        WinRTDirectInboundShapeKind.Value -> directInboundProjectedTypeName(shape, typesByName, semanticHelpers).toString()
         WinRTDirectInboundShapeKind.Enum,
         WinRTDirectInboundShapeKind.Projection -> shape.abiTypeName
         WinRTDirectInboundShapeKind.Unit -> Unit::class.asClassName().toString()
@@ -1485,11 +1494,13 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", delegateType, rawArg, rawAddressType)
         } else {
             CodeBlock.of(
-                "%T.Metadata.fromAbi<%L>(%L as %T)",
+                "%T.Metadata.fromAbi<%L>(%L as %T, %T.createFromSignature(%L))",
                 delegateType,
                 projectedTypeArguments.map { CodeBlock.of("%T", it) }.joinToCodeString(),
                 rawArg,
                 rawAddressType,
+                parameterizedInterfaceIdType,
+                renderWinRTTypeSignature(parameterType, typesByName),
             )
         }
         return CodeBlock.of("%L ?: error(%S)", fromAbi, "WINRT_E_NULL_ABI_DELEGATE_PARAMETER")
@@ -2122,7 +2133,8 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                 projectionClassName(elementTypeName, semanticHelpers),
                 projectionClassName(elementTypeName, semanticHelpers),
             )
-            WinRTTypeKind.Interface -> {
+            WinRTTypeKind.Interface,
+            WinRTTypeKind.Delegate -> {
                 val iid = elementDefinition.iid
                     ?: throw IllegalArgumentException(
                         "Authored WinRT override ${method.name} returns interface collection element '$elementTypeName' without IID metadata.",
@@ -2379,7 +2391,8 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         val definition = typesByName[typeName]
             ?: throw IllegalArgumentException("Authored WinRT collection element type '$typeName' has no metadata signature.")
         return when (definition.kind) {
-            WinRTTypeKind.Interface -> {
+            WinRTTypeKind.Interface,
+            WinRTTypeKind.Delegate -> {
                 if (type.typeArguments.isEmpty()) {
                     CodeBlock.of("%T.object_()", winRTTypeSignatureType)
                 } else {

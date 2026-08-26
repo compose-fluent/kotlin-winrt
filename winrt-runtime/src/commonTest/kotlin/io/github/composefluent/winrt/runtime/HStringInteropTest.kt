@@ -146,6 +146,24 @@ class HStringInteropTest {
     }
 
     @Test
+    fun scoped_hstring_reference_abi_releases_and_clears_storage_when_action_throws() {
+        var failedOut = 0L
+        assertFailsWith<IllegalStateException> {
+            withNativeHStringReferenceAbi("failed") { handle, pointerOut ->
+                failedOut = PlatformAbi.pointerKey(pointerOut)
+                PlatformAbi.writePointer(pointerOut, handle)
+                error("expected failure")
+            }
+        }
+
+        withNativeHStringReferenceAbi("recovered") { handle, pointerOut ->
+            assertEquals(failedOut, PlatformAbi.pointerKey(pointerOut))
+            assertEquals(0L, PlatformAbi.pointerKey(PlatformAbi.readPointer(pointerOut)))
+            assertEquals("recovered", NativeStringMarshaller.fromAbi(handle))
+        }
+    }
+
+    @Test
     fun scoped_hstring_reference_abi_preserves_inputs_beyond_embedded_frame_depth() {
         val activeHandles = mutableSetOf<Long>()
         val activeOutputs = mutableSetOf<Long>()

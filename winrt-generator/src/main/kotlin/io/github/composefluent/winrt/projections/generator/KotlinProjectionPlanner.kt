@@ -116,6 +116,7 @@ import kotlin.io.path.extension
 class KotlinProjectionPlanner(
     private val validator: KotlinProjectionContractValidator = KotlinProjectionContractValidator(),
     private val useWinAppSdkTypeRedirects: Boolean = false,
+    private val guidSignatureHelpers: WinRTMetadataSemanticHelpers? = null,
 ) {
     fun plan(
         model: WinRTMetadataModel,
@@ -140,12 +141,11 @@ class KotlinProjectionPlanner(
             val abiSlotBindingCache = mutableMapOf<String, List<KotlinProjectionAbiSlotBinding>>()
             val abiMemberCountCache = mutableMapOf<String, Int>()
             normalized.namespaces.flatMap {
-                val namespacePlanner =
-                    if (!useWinAppSdkTypeRedirects && it.requiresWinAppSdkTypeRedirects()) {
-                        KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects = true)
-                    } else {
-                        this
-                    }
+                val namespacePlanner = KotlinProjectionPlanner(
+                    validator = validator,
+                    useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects || it.requiresWinAppSdkTypeRedirects(),
+                    guidSignatureHelpers = semanticHelpers,
+                )
                 namespacePlanner.planNamespace(
                     namespace = it,
                     interfaceIidsByName = interfaceIidsByName,
@@ -172,8 +172,13 @@ class KotlinProjectionPlanner(
     ): List<KotlinTypeProjectionPlan> =
         namespace.normalized().let { normalizedNamespace ->
             val helpers = semanticHelpers ?: WinRTMetadataModel(listOf(normalizedNamespace)).semanticHelpers()
+            val planner = if (guidSignatureHelpers === helpers) {
+                this
+            } else {
+                KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects, helpers)
+            }
             normalizedNamespace.types.mapNotNull { type ->
-                planType(
+                planner.planType(
                     type,
                     interfaceIidsByName,
                     typesByQualifiedName,
@@ -190,7 +195,7 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): KotlinTypeProjectionPlan? =
-        planType(
+        KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects, semanticHelpers).planType(
             type = type,
             interfaceIidsByName = typesByQualifiedName
                 .asSequence()
@@ -1633,6 +1638,9 @@ class KotlinProjectionPlanner(
             abiSize = resolvedType?.abiSize,
             abiAlignment = resolvedType?.abiAlignment,
             interfaceId = interfaceId,
+            guidSignature = guidSignatureHelpers
+                ?.parameterizedGuidSignatureFragment(normalizedType, currentNamespace)
+                ?.takeIf(String::isNotBlank),
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             delegateInvokeShape = delegateInvokeShape,
             typeArguments = typeArguments,

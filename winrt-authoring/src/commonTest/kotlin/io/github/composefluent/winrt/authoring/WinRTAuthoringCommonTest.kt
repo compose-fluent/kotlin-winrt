@@ -23,6 +23,46 @@ import kotlin.test.fail
 
 class WinRTAuthoringCommonTest {
     @Test
+    fun authoredTypeStaticDefinitionDispatchesToEachCurrentHostValue() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("a0a0a0a0-1111-2222-3333-444444444444")
+        assertTrue(
+            WinRTAuthoring.registerType<InstanceValueComponent>(
+                WinRTAuthoredTypeDefinition(
+                    runtimeClassName = "Sample.Authoring.InstanceValueComponent",
+                    defaultInterfaceId = interfaceId,
+                    interfaces = listOf(
+                        WinRTAuthoredInterfaceDefinition(
+                            interfaceId = interfaceId,
+                            methods = listOf(
+                                WinRTAuthoredMethodDefinition(
+                                    ComMethodSignature.of(ComAbiValueKind.Pointer),
+                                ) { args ->
+                                    PlatformAbi.writeInt32(args.single() as RawAddress, value)
+                                    KnownHResults.S_OK.value
+                                },
+                            ),
+                            isDefault = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        ComWrappersSupport.createCCWForObject(InstanceValueComponent(11), interfaceId).use { first ->
+            ComWrappersSupport.createCCWForObject(InstanceValueComponent(29), interfaceId).use { second ->
+                PlatformAbi.confinedScope().use { scope ->
+                    val result = PlatformAbi.allocateInt32Slot(scope)
+                    assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(first.pointer, 6, result))
+                    assertEquals(11, PlatformAbi.readInt32(result))
+                    assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(second.pointer, 6, result))
+                    assertEquals(29, PlatformAbi.readInt32(result))
+                }
+            }
+        }
+    }
+
+    @Test
     fun authoredActivationFactoryCreatesDefaultInstanceThroughActivationFactory() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("aaaaaaaa-1111-2222-3333-444444444444")
@@ -563,6 +603,8 @@ class WinRTAuthoringCommonTest {
     private class FallbackActivatedComponent
 
     private class HostActivatedComponent
+
+    private data class InstanceValueComponent(val value: Int)
 
     private object EmptyHostExportsOne : WinRTAuthoringHostExports {
         override fun registerActivationFactories() = Unit

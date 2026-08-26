@@ -11,6 +11,7 @@ import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.provider.Provider
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.w3c.dom.Element
 
 class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
@@ -29,6 +30,12 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         val compileOnlyConfiguration = project.configurations.named(COMMON_MAIN_COMPILE_ONLY_CONFIGURATION)
         val apiConfiguration = project.configurations.named(COMMON_MAIN_API_CONFIGURATION)
         val publishedArtifactName = project.extensions.getByType(BasePluginExtension::class.java).archivesName
+
+        project.tasks.withType(KotlinJvmCompile::class.java).configureEach(
+            Action<KotlinJvmCompile> {
+                compilerOptions.freeCompilerArgs.add(NO_SOURCE_DEBUG_EXTENSION_ARGUMENT)
+            },
+        )
 
         val verifyJvmCallSiteLowering = project.tasks.register(
             JVM_CALL_SITE_VERIFICATION_TASK_NAME,
@@ -241,6 +248,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         const val JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteDirectLowering"
         const val MINGW_CALL_SITE_VERIFICATION_TASK_NAME = "verifyMingwX64ProjectionCallSiteLowering"
         const val MODULE_CALL_SITE_PLACEHOLDER = "Lowered while compiling the generated WinRT module"
+        const val NO_SOURCE_DEBUG_EXTENSION_ARGUMENT = "-Xno-source-debug-extension"
         val DIRECT_CALL_SITE_FORBIDDEN_MARKERS = setOf(
             "confinedScope",
             "allocateBytes",

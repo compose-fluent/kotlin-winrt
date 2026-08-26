@@ -1383,6 +1383,7 @@ data class KotlinProjectionAbiTypeBinding(
     val abiSize: Int? = null,
     val abiAlignment: Int? = null,
     val interfaceId: Guid? = null,
+    val guidSignature: String? = null,
     val enumUnderlyingType: WinRTIntegralType? = null,
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val typeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
@@ -1425,6 +1426,7 @@ internal fun KotlinProjectionAbiTypeBinding.substituteGenericTypeArguments(
         resolvedTypeName = substituteClosedGenericTypeName(resolvedTypeName, substitutedTypeArguments) { argument ->
             argument.resolvedTypeName
         },
+        guidSignature = null,
         delegateInvokeShape = substitutedInvokeShape,
         typeArguments = substitutedTypeArguments,
         structFieldBindings = substitutedStructFields,

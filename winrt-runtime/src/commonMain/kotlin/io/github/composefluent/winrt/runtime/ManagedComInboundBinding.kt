@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package io.github.composefluent.winrt.runtime
+
+import kotlin.concurrent.atomics.AtomicReference
 
 /**
  * Common managed state reached from every ABI interface exposed by one CCW.
@@ -12,6 +16,7 @@ internal class ManagedComInboundBinding(
     internal val host: WinRTInspectableComObject,
     value: Any?,
     internal val weak: Boolean,
+    canonicalObjectMemory: RawAddress,
 ) : ManagedComRootReference {
     @PublishedApi
     internal val weakReference = value
@@ -23,8 +28,24 @@ internal class ManagedComInboundBinding(
     internal var strongValue = value.takeUnless { weak }
         private set
 
+    private val platformHandle =
+        platformCreateManagedComInboundBindingHandle(this, canonicalObjectMemory)
+
     @PublishedApi
     internal inline fun get(): Any? = strongValue ?: weakReference?.get()
+
+    @PublishedApi
+    internal fun publishHotEntry(thisWord: Long): Boolean {
+        if (!host.state.tryBeginInboundCachePublication()) {
+            return false
+        }
+        try {
+            managedComInboundHotEntry.store(ManagedComInboundHotEntry(thisWord, this))
+        } finally {
+            host.state.endInboundCachePublication()
+        }
+        return true
+    }
 
     private fun pin(): Boolean {
         if (!weak || strongValue != null) {
@@ -56,8 +77,61 @@ internal class ManagedComInboundBinding(
     override fun tryPin(knownManagedValue: Any?): Boolean =
         if (knownManagedValue == null) pin() else pinKnownValue(knownManagedValue)
 
+    internal fun attach(
+        objectMemory: RawAddress,
+        objectMemoryView: NativeMemoryView? = null,
+        objectMemoryOffsetBytes: Long = 0L,
+    ) {
+        if (objectMemoryView != null) {
+            objectMemoryView.writePointer(
+                objectMemoryOffsetBytes + managedComInboundBindingSlot * Long.SIZE_BYTES.toLong(),
+                platformHandle,
+            )
+        } else {
+            PlatformAbi.writePointerAt(objectMemory, managedComInboundBindingSlot, platformHandle)
+        }
+    }
+
+    internal fun detach(
+        objectMemory: RawAddress,
+        objectMemoryView: NativeMemoryView? = null,
+        objectMemoryOffsetBytes: Long = 0L,
+    ) {
+        if (objectMemoryView != null) {
+            objectMemoryView.writePointer(
+                objectMemoryOffsetBytes + managedComInboundBindingSlot * Long.SIZE_BYTES.toLong(),
+                PlatformAbi.nullPointer,
+            )
+        } else {
+            PlatformAbi.writePointerAt(
+                objectMemory,
+                managedComInboundBindingSlot,
+                PlatformAbi.nullPointer,
+            )
+        }
+    }
+
     internal fun close() {
         weakReference?.close()
+        platformDisposeManagedComInboundBindingHandle(this, platformHandle)
+    }
+}
+
+@PublishedApi
+internal class ManagedComInboundHotEntry(
+    @PublishedApi internal val thisWord: Long,
+    @PublishedApi internal val binding: ManagedComInboundBinding,
+)
+
+@PublishedApi
+internal val managedComInboundHotEntry = AtomicReference<ManagedComInboundHotEntry?>(null)
+
+internal fun clearManagedComInboundHotEntry(binding: ManagedComInboundBinding) {
+    while (true) {
+        val hot = managedComInboundHotEntry.load() ?: return
+        if (hot.binding !== binding || managedComInboundHotEntry.compareAndSet(hot, null)) {
+            return
+        }
     }
 }
 
@@ -75,24 +149,15 @@ internal expect class PlatformManagedComInboundWeakReference(value: Any) : AutoC
     override fun close()
 }
 
-internal expect class ManagedComInboundBindingHandle(
+internal expect fun platformCreateManagedComInboundBindingHandle(
     binding: ManagedComInboundBinding,
     canonicalObjectMemory: RawAddress,
-) : AutoCloseable {
-    fun attach(
-        objectMemory: RawAddress,
-        objectMemoryView: NativeMemoryView? = null,
-        objectMemoryOffsetBytes: Long = 0L,
-    )
+): RawAddress
 
-    fun detach(
-        objectMemory: RawAddress,
-        objectMemoryView: NativeMemoryView? = null,
-        objectMemoryOffsetBytes: Long = 0L,
-    )
-
-    override fun close()
-}
+internal expect fun platformDisposeManagedComInboundBindingHandle(
+    binding: ManagedComInboundBinding,
+    platformHandle: RawAddress,
+)
 
 internal expect fun platformCreateInspectableQueryInterfaceCallback(): NativeCallbackHandle
 
@@ -102,19 +167,26 @@ internal expect fun platformCreateInspectableReleaseCallback(): NativeCallbackHa
 
 @PublishedApi
 internal inline fun winRTProjectionInboundManagedValue(thisWord: Long): Any? {
-    return platformWinRTProjectionInboundManagedValue(thisWord)
+    return winRTProjectionInboundBinding(thisWord)?.get()
 }
 
 /**
  * Recovers the common inbound binding carried by a managed CCW interface pointer.
  *
- * Native reads the binding handle embedded in the CCW object, matching
- * `ComInterfaceDispatch.GetInstance`; JVM uses its platform registry because a Java
- * reference cannot be stored as a directly dereferenceable native pointer.
+ * The common exact-pointer hot entry mirrors the direct managed-instance recovery performed by
+ * `ComInterfaceDispatch.GetInstance`. On a miss, Native reads the binding handle embedded in the
+ * CCW object while JVM resolves the canonical pointer through its platform registry.
  */
 @PublishedApi
-internal inline fun winRTProjectionInboundBinding(thisWord: Long): ManagedComInboundBinding? =
-    platformWinRTProjectionInboundBinding(thisWord)
+internal inline fun winRTProjectionInboundBinding(thisWord: Long): ManagedComInboundBinding? {
+    if (thisWord == 0L) return null
+    val hot = managedComInboundHotEntry.load()
+    if (hot != null && hot.thisWord == thisWord) {
+        return hot.binding
+    }
+    val binding = platformWinRTProjectionInboundBinding(thisWord) ?: return null
+    return if (binding.publishHotEntry(thisWord)) binding else null
+}
 
 /** Converts one borrowed inbound COM pointer into the owned reference consumed by projection code. */
 @PublishedApi
@@ -124,9 +196,6 @@ internal inline fun winRTProjectionInboundRetainAddress(address: RawAddress): Ra
     }
     return address
 }
-
-@PublishedApi
-internal expect inline fun platformWinRTProjectionInboundManagedValue(thisWord: Long): Any?
 
 @PublishedApi
 internal expect inline fun platformWinRTProjectionInboundBinding(thisWord: Long): ManagedComInboundBinding?
@@ -144,7 +213,7 @@ internal fun tryReleaseManagedCcwReference(canonicalObjectMemory: RawAddress): B
     if (PlatformAbi.isNull(canonicalObjectMemory)) {
         return false
     }
-    val binding = winRTProjectionInboundBinding(canonicalObjectMemory.value) ?: return false
+    val binding = platformWinRTProjectionInboundBinding(canonicalObjectMemory.value) ?: return false
     binding.host.releaseKnownLocalReference()
     return true
 }

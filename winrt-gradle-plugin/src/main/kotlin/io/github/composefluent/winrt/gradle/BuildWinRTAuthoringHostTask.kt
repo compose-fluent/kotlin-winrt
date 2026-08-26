@@ -111,6 +111,7 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
             "/I${sdk.includeRoot.resolve("shared")}",
             "/I${sdk.includeRoot.resolve("um")}",
             "/I${sdk.includeRoot.resolve("ucrt")}",
+            "/I${sdk.includeRoot.resolve("winrt")}",
             "/link",
             "/NOLOGO",
             "/DLL",

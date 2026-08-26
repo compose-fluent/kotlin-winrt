@@ -4,6 +4,7 @@ import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -262,6 +263,47 @@ class ValueBoxingTest {
             }
         } finally {
             IUnknownReference(arrayPointer.asRawComPtr(), IID.IInspectable).close()
+        }
+    }
+
+    @Test
+    fun synthetic_boxed_ccw_definitions_are_cached_by_value_free_shape() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val firstScalar = requireNotNull(createSyntheticValueCcwDefinition(1_000))
+        val secondScalar = requireNotNull(createSyntheticValueCcwDefinition(2_000))
+        assertSame(firstScalar, secondScalar)
+        assertTrue(firstScalar.supportsWeakManagedValue)
+        assertSame(augmentCcwDefinition(firstScalar), augmentCcwDefinition(secondScalar))
+
+        val firstArray = requireNotNull(createSyntheticValueCcwDefinition(arrayOf("one")))
+        val secondArray = requireNotNull(createSyntheticValueCcwDefinition(arrayOf("two")))
+        assertSame(firstArray, secondArray)
+        assertTrue(firstArray.supportsWeakManagedValue)
+        assertSame(augmentCcwDefinition(firstArray), augmentCcwDefinition(secondArray))
+    }
+
+    @Test
+    fun shape_cached_boxed_ccws_read_each_host_managed_value() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+        ComWrappersSupport.clearRegistriesForTests()
+        val marshaler = Marshaler.inspectableAny()
+        val firstScalarAbi = marshaler.fromManaged(1_000) as RawAddress
+        val secondScalarAbi = marshaler.fromManaged(2_000) as RawAddress
+        val firstArrayAbi = marshaler.fromManaged(arrayOf("one")) as RawAddress
+        val secondArrayAbi = marshaler.fromManaged(arrayOf("two")) as RawAddress
+        try {
+            assertEquals(1_000, marshaler.fromAbi(firstScalarAbi))
+            assertEquals(2_000, marshaler.fromAbi(secondScalarAbi))
+            assertEquals(listOf("one"), (marshaler.fromAbi(firstArrayAbi) as Array<*>).toList())
+            assertEquals(listOf("two"), (marshaler.fromAbi(secondArrayAbi) as Array<*>).toList())
+        } finally {
+            marshaler.disposeAbi(secondArrayAbi)
+            marshaler.disposeAbi(firstArrayAbi)
+            marshaler.disposeAbi(secondScalarAbi)
+            marshaler.disposeAbi(firstScalarAbi)
         }
     }
 

@@ -87,6 +87,7 @@ internal fun lowerWinRTProjectionInboundCallSites(
 
     val planner = WinRTProjectionCallSitePlanner(
         moduleFragment,
+        pluginContext,
         WinRTProjectedTypeCanonicalizer(pluginContext),
     )
     val recipeLowering = runCatching {

@@ -15,8 +15,9 @@ internal class RawComObjectReferenceSupport(
 ) {
     private val disposed = AtomicInt(0)
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
-    private var releaseInitialTrackerSourceOnDispose: Boolean = false
-    private val objectContext =
+    private var referenceTrackerRegistrationKey: Long = 0L
+    private var releaseTrackerSourceOnDispose: Boolean = false
+    private var objectContext =
         if (trackContext) {
             ObjectReferenceContext.capture(pointer, interfaceId)
         } else {
@@ -37,19 +38,25 @@ internal class RawComObjectReferenceSupport(
 
     fun attachReferenceTracker(
         trackerPointer: RawComPtr,
-        addRefFromTrackerSource: Boolean,
+        addRefForObjectReference: Boolean,
+        releaseTrackerSourceOnDispose: Boolean,
         retainTrackerPointer: (RawComPtr) -> Unit,
         addRefFromTrackerSourceCallback: (RawComPtr) -> Unit,
     ) {
         if (hasReferenceTracker) {
             return
         }
+        if (objectContext == null) {
+            objectContext = ObjectReferenceContext.captureForReferenceTrackerRelease(pointer, interfaceId)
+        }
+        referenceTrackerRegistrationKey = ReferenceTrackerManager.attach(trackerPointer)
         referenceTrackerPointer = trackerPointer
         retainTrackerPointer(trackerPointer)
-        if (addRefFromTrackerSource) {
+        addRefFromTrackerSourceCallback(trackerPointer)
+        if (addRefForObjectReference) {
             addRefFromTrackerSourceCallback(trackerPointer)
-            releaseInitialTrackerSourceOnDispose = true
         }
+        this.releaseTrackerSourceOnDispose = releaseTrackerSourceOnDispose
     }
 
     fun addRef(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
@@ -74,6 +81,7 @@ internal class RawComObjectReferenceSupport(
 
     fun <T> tryQueryInterface(
         requestedInterfaceId: Guid,
+        addRefFromTrackerSourceCallback: (RawComPtr) -> Unit,
         wrapReference: (RawComPtr, Guid, RawComPtr, Boolean, Boolean) -> T,
     ): T? {
         throwIfDisposed()
@@ -86,6 +94,7 @@ internal class RawComObjectReferenceSupport(
         if (isAggregated) {
             WinRTPlatformApi.releaseRaw(result.pointer)
         }
+        addRefFromTrackerSource(addRefFromTrackerSourceCallback)
         return wrapReference(
             queriedPointer,
             requestedInterfaceId,
@@ -97,10 +106,11 @@ internal class RawComObjectReferenceSupport(
 
     fun <T> queryInterface(
         requestedInterfaceId: Guid,
+        addRefFromTrackerSourceCallback: (RawComPtr) -> Unit,
         wrapReference: (RawComPtr, Guid, RawComPtr, Boolean, Boolean) -> T,
     ): Result<T> =
         runCatching {
-            tryQueryInterface(requestedInterfaceId, wrapReference)
+            tryQueryInterface(requestedInterfaceId, addRefFromTrackerSourceCallback, wrapReference)
                 ?: throw WinRTUnsupportedOperationException(
                     "QueryInterface failed for $requestedInterfaceId with ${KnownHResults.E_NOINTERFACE}",
                     KnownHResults.E_NOINTERFACE,
@@ -125,7 +135,8 @@ internal class RawComObjectReferenceSupport(
         try {
             attachReferenceTracker(
                 trackerPointer = trackerPointer,
-                addRefFromTrackerSource = addRefFromTrackerSource,
+                addRefForObjectReference = addRefFromTrackerSource,
+                releaseTrackerSourceOnDispose = addRefFromTrackerSource,
                 retainTrackerPointer = retainTrackerPointer,
                 addRefFromTrackerSourceCallback = addRefFromTrackerSourceCallback,
             )
@@ -161,30 +172,32 @@ internal class RawComObjectReferenceSupport(
         deferContextRelease: Boolean = false,
     ) {
         if (disposed.compareAndSet(0, 1)) {
-            val release = {
+            val context = objectContext
+            val releaseReferences = {
                 if (!preventReleaseOnDispose) {
                     releaseFromTrackerSource(releaseFromTrackerSourceCallback)
                     if (!tryReleaseManagedCcwReference(managedCcwReleaseIdentity)) {
                         WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
                     }
                 }
-                disposeReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
+                releaseReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
             }
-            val context = objectContext
-            if (deferContextRelease && context != null) {
-                context.deferToOriginalContext {
-                    try {
-                        release()
-                    } finally {
-                        context.close()
-                    }
-                }
-            } else {
+            val releaseReferencesAndContext = {
                 try {
-                    context?.callInOriginalContext(release, release) ?: release()
+                    context?.callInOriginalContext(releaseReferences, releaseReferences) ?: releaseReferences()
                 } finally {
                     context?.close()
                 }
+            }
+            val disconnectAndRelease = {
+                if (!detachReferenceTracker(releaseReferencesAndContext)) {
+                    releaseReferencesAndContext()
+                }
+            }
+            if (deferContextRelease && context != null) {
+                context.deferToOriginalContext(disconnectAndRelease)
+            } else {
+                context?.callInOriginalContext(disconnectAndRelease, disconnectAndRelease) ?: disconnectAndRelease()
             }
         }
     }
@@ -207,19 +220,28 @@ internal class RawComObjectReferenceSupport(
         }
     }
 
-    private fun disposeReferenceTracker(
+    private fun detachReferenceTracker(disconnectedRelease: () -> Unit): Boolean {
+        if (!hasReferenceTracker) {
+            return false
+        }
+        val registrationKey = referenceTrackerRegistrationKey
+        referenceTrackerRegistrationKey = 0L
+        return ReferenceTrackerManager.detach(registrationKey, disconnectedRelease)
+    }
+
+    private fun releaseReferenceTracker(
         releaseFromTrackerSourceCallback: (RawComPtr) -> Unit,
         releaseTrackerPointer: (RawComPtr) -> Unit,
     ) {
         if (!hasReferenceTracker) {
             return
         }
-        if (releaseInitialTrackerSourceOnDispose) {
+        if (releaseTrackerSourceOnDispose) {
             releaseFromTrackerSource(releaseFromTrackerSourceCallback)
         }
         releaseTrackerPointer(referenceTrackerPointer)
         referenceTrackerPointer = PlatformAbi.nullComPtr
-        releaseInitialTrackerSourceOnDispose = false
+        releaseTrackerSourceOnDispose = false
     }
 
     private fun tryQueryIUnknown(target: RawComPtr): RawComPtr? {

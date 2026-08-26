@@ -18,10 +18,12 @@ import io.github.composefluent.winrt.metadata.WinRTIntegralType
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTParameterDefinition
+import io.github.composefluent.winrt.metadata.WinRTParameterDirection
 import io.github.composefluent.winrt.metadata.WinRTPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
@@ -509,10 +511,203 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
             .contents
 
-        assertTrue(ccwFactories, ccwFactories.contains("createCcwDefinitionForSample_Foundation_Widget"))
+        assertTrue(
+            ccwFactories,
+            ccwFactories.contains("AuthoredTypeCcwDefinitionHolder_Sample_Foundation_Widget"),
+        )
         assertTrue(ccwFactories, ccwFactories.contains("IWidget.Metadata.IID"))
-        assertFalse(ccwFactories, ccwFactories.contains("createCcwDefinitionForWindows_Sample_RuntimeOnly"))
+        assertFalse(
+            ccwFactories,
+            ccwFactories.contains("AuthoredTypeCcwDefinitionHolder_Windows_Sample_RuntimeOnly"),
+        )
         assertFalse(ccwFactories, ccwFactories.contains("IRuntimeOnly.Metadata.IID"))
+    }
+
+    @Test
+    fun authoring_ccw_projects_async_runtime_class_returns_through_their_default_interface() {
+        val asyncOperationIid = Guid("11111111-2222-3333-4444-555555555570")
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IAsyncOperation",
+                            kind = WinRTTypeKind.Interface,
+                            iid = asyncOperationIid,
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "Windows.Storage.Streams",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Storage.Streams",
+                            name = "IDataReader",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "LoadAsync",
+                                    returnTypeName = "Windows.Storage.Streams.DataReaderLoadOperation",
+                                    parameters = listOf(WinRTParameterDefinition("count", "UInt")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Storage.Streams",
+                            name = "DataReaderLoadOperation",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
+                    name = "sample",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "sample",
+                            name = "NativeDataReaderThing",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Storage.Streams.IDataReader",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Storage.Streams.IDataReader",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
+            suppressedProjectionTypeNames = setOf("sample.NativeDataReaderThing"),
+            authoredRuntimeClassNames = setOf("sample.NativeDataReaderThing"),
+        ).generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(
+            ccwFactories,
+            ccwFactories.contains(
+                "@WinRTProjectionInboundCallSite(returnAbiType = \"Windows.Foundation.IAsyncOperation<UInt>\")",
+            ),
+        )
+        assertTrue(ccwFactories, ccwFactories.contains("WinRTAsyncOperationReference<UInt> ="))
+        assertTrue(ccwFactories, ccwFactories.contains("value.loadAsync(__arg0)"))
+        assertFalse(ccwFactories, ccwFactories.contains("): DataReaderLoadOperation ="))
+    }
+
+    @Test
+    fun authoring_ccw_routes_inherited_override_bridges_through_exclusive_base_owner() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IControl",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IControlOverrides",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                WinRTCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(
+                                        WinRTCustomAttributeValue.TypeValue("Sample.UI.Control"),
+                                    ),
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "OnPulse",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Control",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IControl",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IControl",
+                                    isDefault = true,
+                                ),
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IControlOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IDerivedControl",
+                            kind = WinRTTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555573"),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "DerivedControl",
+                            kind = WinRTTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.UI.Control",
+                            defaultInterfaceName = "Sample.UI.IDerivedControl",
+                            implementedInterfaces = listOf(
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IDerivedControl",
+                                    isDefault = true,
+                                ),
+                                WinRTInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IControlOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
+            suppressedProjectionTypeNames = setOf("Sample.UI.DerivedControl"),
+            authoredRuntimeClassNames = setOf("Sample.UI.DerivedControl"),
+        ).generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(
+            ccwFactories,
+            ccwFactories.contains("(value as Control).__winrtAuthoringInvokeOnPulse()"),
+        )
+        assertFalse(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeOnPulse()"))
+        assertTrue(
+            ccwFactories,
+            ccwFactories.contains("ComWrappersSupport.registerStaticCcwDefinition("),
+        )
     }
 
     @Test
@@ -1515,7 +1710,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(jvm, jvm.contains("public actual interface IWidget"))
         assertTrue(jvm, jvm.contains("private class NativeProjection"))
         assertTrue(jvm, jvm.contains("override fun receiveNames(): Array<String>"))
-        assertTrue(jvm, jvm.contains("return kotlin.run {"))
+        assertTrue(jvm, jvm.contains("return(kotlin.run {"))
         assertTrue(jvm, jvm.projectionCallSiteCount() > 0)
         assertTrue(jvm, jvm.normalizedSource().contains("val __winrtCallSiteResult: Array<String> = TODO("))
         listOf("JvmAbi", "FunctionDescriptor", "Linker.nativeLinker()", "ComVtableInvoker").forEach { forbidden ->
@@ -5142,7 +5337,12 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(ccwFactories, ccwFactories.contains("ComAbiValueKind.Struct(NativeAbiLayout.TYPE_NAME)"))
-        assertTrue(ccwFactories, ccwFactories.contains("WinRTSystemProjectionMarshalers.typeNameFromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(
+            ccwFactories,
+            ccwFactories.normalizedSource().contains(
+                "WinRTSystemProjectionMarshalers.typeNameFromAbi(rawArgs[0] as RawAddress)",
+            ),
+        )
         assertFalse(ccwFactories, ccwFactories.contains("Unsupported authored ABI struct argument Struct(Windows.UI.Xaml.Interop.TypeName)"))
         assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
     }
@@ -5213,7 +5413,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(ccwFactories, ccwFactories.contains("WinRTListProjection.fromManaged(__result"))
         assertTrue(ccwFactories, ccwFactories.contains("WinRTReferenceValueAdapters.runtimeClass(WidgetItem::class"))
-        assertTrue(ccwFactories, ccwFactories.contains("WidgetItem.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(ccwFactories, ccwFactories.contains("WidgetItem.Metadata.TYPE_HANDLE"))
         assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[0] as RawAddress"))
         assertFalse(ccwFactories, ccwFactories.contains("collection Vector(Sample.Foundation.WidgetItem) uses unsupported authored ABI shape"))
         assertFalse(ccwFactories, ccwFactories.contains("unsupportedAuthoringAbi"))
@@ -5293,7 +5493,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeGetValueByIndex(__arg0)"))
         assertTrue(ccwFactories, ccwFactories.contains("winRTKeyValuePairAdapter(WinRTReferenceValueAdapters.string"))
         assertTrue(ccwFactories, ccwFactories.contains("WinRTReferenceValueAdapters.runtimeClass(ResourceCandidate::class"))
-        assertTrue(ccwFactories, ccwFactories.contains("ResourceCandidate.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(ccwFactories, ccwFactories.contains("ResourceCandidate.Metadata.TYPE_HANDLE"))
         assertTrue(ccwFactories, ccwFactories.contains("createOutputMarshaler(__result).use"))
         assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
         assertFalse(ccwFactories, ccwFactories.contains("return KeyValuePair(String,Sample.Foundation.ResourceCandidate) uses unsupported authored ABI shape"))
@@ -5703,7 +5903,12 @@ class KotlinProjectionGeneratorTest {
         assertFalse(filesByName.containsKey("IPropertyValue.kt"))
         assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
         assertTrue(ccwFactories, ccwFactories.contains("ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer)"))
-        assertTrue(ccwFactories, ccwFactories.contains("WinRTPropertyValueProjection.tryFromBorrowedAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(
+            ccwFactories,
+            ccwFactories.normalizedSource().contains(
+                "WinRTPropertyValueProjection.tryFromBorrowedAbi(rawArgs[0] as RawAddress)",
+            ),
+        )
         assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeNormalize(__arg0)"))
         assertTrue(ccwFactories, ccwFactories.contains("WinRTPropertyValueProjection.fromManaged(__result)"))
         assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
@@ -5767,7 +5972,12 @@ class KotlinProjectionGeneratorTest {
         val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
 
         assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
-        assertTrue(ccwFactories, ccwFactories.contains("WinRTSystemProjectionMarshalers.objectFromAbi(rawArgs[0] as RawAddress"))
+        assertTrue(
+            ccwFactories,
+            ccwFactories.normalizedSource().contains(
+                "WinRTSystemProjectionMarshalers.objectFromAbi(rawArgs[0] as RawAddress",
+            ),
+        )
         assertTrue(ccwFactories, ccwFactories.contains("value.__winrtAuthoringInvokeNormalizeCommand(__arg0)"))
         assertTrue(ccwFactories, ccwFactories.contains("createObjectReference(__result"))
         assertTrue(ccwFactories, ccwFactories.contains("E5AF3542-CA67-4081-995B-709DD13792DF"))
@@ -6176,6 +6386,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
+        assertTrue(widgetContents.contains("private val _factoryInterface: IUnknownReference ="))
+        assertTrue(
+            widgetContents.normalizedSource().contains(
+                "io.github.composefluent.winrt.runtime.ActivationFactory.get(RUNTIME_CLASS, FACTORY_INTERFACE_IID)",
+            ),
+        )
         assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(widgetContents.contains("io.github.composefluent.winrt.runtime.ActivationFactory.get(RUNTIME_CLASS,"))
         assertTrue(widgetContents.contains("fun activate(): IInspectableReference"))
@@ -9166,7 +9382,7 @@ class KotlinProjectionGeneratorTest {
             ),
         )
         assertTrue(widgetContents, normalizedWidget.contains("val __winrtCallSiteResult: IInspectableReference = TODO("))
-        assertTrue(widgetContents.contains("ComObjectReference = acquire()"))
+        assertTrue(widgetContents.contains("ComObjectReference = _factoryInterface"))
         assertTrue(colorContents, colorContents.contains("kind = WinRTProjectionAbiTypeKind.STRUCT"))
         assertTrue(colorContents, colorContents.contains("size = 4"))
         assertTrue(colorContents, colorContents.contains("alignment = 1"))
@@ -9174,7 +9390,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(widgetContents.contains("it.asInspectable()"))
         assertTrue(
             widgetContents,
-            Regex("""return\s+kotlin\.run\s+\{""").containsMatchIn(widgetContents),
+            Regex("""return\(kotlin\.run\s+\{""").containsMatchIn(widgetContents),
         )
         assertTrue(widgetContents.contains("WidgetKind = kind"))
         assertTrue(widgetContents.contains("Color = color"))
@@ -10602,6 +10818,46 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_keeps_zero_parameter_delegate_return_expression_attached_to_return() {
+        // Mirrors .cswinrt/src/cswinrt/code_writers.h delegate invocation: a non-void result is
+        // returned from the one generated ABI call even when formatting wraps a long call owner.
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "CreateDefaultValueCallback",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "System.Object",
+                                    parameters = emptyList(),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(supportOwnerIdentity = "windows-app-sdk.dll")
+            .generate(model)
+            .single { it.relativePath.substringAfterLast('/') == "CreateDefaultValueCallback.kt" }
+            .contents
+
+        assertTrue(contents, contents.contains("override fun invoke(): Any?"))
+        assertTrue(contents, contents.contains("return("))
+        assertFalse(
+            contents,
+            Regex("""return[ \t]*\R""").containsMatchIn(contents),
+        )
+    }
+
+    @Test
     fun generator_decodes_delegate_runtime_class_callback_parameters_as_inspectable_references() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_delegate -> write_managed_method_call:
         // ABI delegate parameters are marshaled according to their signature before invoking the projected delegate.
@@ -11583,6 +11839,28 @@ class KotlinProjectionGeneratorTest {
         val model = WinRTMetadataModel(
             namespaces = listOf(
                 WinRTNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("C50898F6-C536-5F47-8583-8B2C2438A13B"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("sender", "System.Object"),
+                                        WinRTParameterDefinition("args", "T0"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRTNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
                         WinRTTypeDefinition(
@@ -11619,6 +11897,16 @@ class KotlinProjectionGeneratorTest {
                                         WinRTParameterDefinition("handler", "Sample.Foundation.ChangedHandler"),
                                     ),
                                     methodRowId = 7,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRTEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 8,
+                                    removeMethodRowId = 9,
                                 ),
                             ),
                         ),
@@ -11664,6 +11952,20 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
+        val callbackInterface = model.namespaces
+            .single { namespace -> namespace.name == "Sample.Foundation" }
+            .types
+            .single { type -> type.name == "ICallback" }
+        val eventDescriptor = WinRTMetadataSemanticHelpers(model)
+            .eventHelperSubclassDescriptors(callbackInterface)
+            .single()
+        val eventHandlerIntInterfaceId = ParameterizedInterfaceId.createFromParameterizedInterface(
+            Guid("C50898F6-C536-5F47-8583-8B2C2438A13B"),
+            WinRTTypeSignature.int32(),
+        )
+        assertEquals("Windows.Foundation.EventHandler<Int>", eventDescriptor.eventTypeName)
+        assertEquals(eventHandlerIntInterfaceId, eventDescriptor.interfaceId)
+
         val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { file -> file.relativePath.substringAfterLast('/') }
@@ -11676,6 +11978,8 @@ class KotlinProjectionGeneratorTest {
                 "WinRTProjectedInterfaceCcwFactories.register_Sample_Foundation_ICallback()",
             ),
         )
+        assertTrue(callback, callback.contains(".also({"))
+        assertFalse(callback, Regex("""\.also\s*\R\s*\{""").containsMatchIn(callback))
         assertTrue(ccwFactories, ccwFactories.contains("ComWrappersSupport.registerStaticCcwDefinition(ICallback::class"))
         assertTrue(
             ccwFactories,
@@ -11723,9 +12027,46 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories, setHandlerMethod.contains("val value = managedValue as ICallback"))
         assertFalse(ccwFactories, setHandlerMethod.contains("abiEntryPoint"))
         assertTrue(ccwFactories, ccwFactories.contains("WinRTDelegateVftblSlots.Invoke"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.addChanged(handler)"))
+        assertTrue(ccwFactories, ccwFactories.contains("managedHandler = { managedValue, rawArgs ->"))
+        assertTrue(
+            ccwFactories,
+            normalizedCcwFactories.contains(
+                "val __delegateInterfaceId = ParameterizedInterfaceId.createFromParameterizedInterface(",
+            ),
+        )
+        assertTrue(ccwFactories, ccwFactories.contains("Guid(\"C50898F6-C536-5F47-8583-8B2C2438A13B\")"))
+        assertFalse(ccwFactories, ccwFactories.contains("Guid.fromAbiWords("))
+        assertFalse(ccwFactories, ccwFactories.contains("Guid(\"$eventHandlerIntInterfaceId\")"))
+        assertFalse(ccwFactories, ccwFactories.contains("private object __ClosedDelegateInterfaceId_"))
+        assertFalse(ccwFactories, ccwFactories.contains("private val __closedDelegateInterfaceId_changed_add_slot"))
+        assertFalse(
+            ccwFactories,
+            ccwFactories.contains("val __delegateInterfaceId = Guid(\"$eventHandlerIntInterfaceId\")"),
+        )
+        assertFalse(ccwFactories, ccwFactories.contains(".let { __closedDelegateInterfaceId"))
         assertFalse(ccwFactories, ccwFactories.contains("__native.invoke(listOf("))
         assertFalse(ccwFactories, ccwFactories.contains("IUnused::class"))
         assertFalse(ccwFactories, ccwFactories.contains("IEvents"))
+
+        val scopedHolderNames = listOf("sample-lib.jar", "sample-app.jar").map { owner ->
+            val scopedFactories = KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                supportOwnerIdentity = owner,
+            )
+                .generate(model)
+                .single { file -> file.relativePath.substringAfterLast('/').startsWith("WinRTProjectedInterfaceCcwFactories_") }
+                .contents
+            requireNotNull(
+                Regex("private object (ProjectedInterfaceCcwDefinitionHolder_[A-Za-z0-9_]+)")
+                    .find(scopedFactories)
+                    ?.groupValues
+                    ?.get(1),
+            )
+        }
+        assertEquals(2, scopedHolderNames.toSet().size)
+        assertTrue(scopedHolderNames[0], scopedHolderNames[0].endsWith("_sample_lib_jar"))
+        assertTrue(scopedHolderNames[1], scopedHolderNames[1].endsWith("_sample_app_jar"))
     }
 
     @Test
@@ -13279,18 +13620,24 @@ class KotlinProjectionGeneratorTest {
             typeName = "Microsoft.UI.Xaml.Media.SystemBackdrop",
             getterMethodName = "get_SystemBackdrop",
             setterMethodName = "put_SystemBackdrop",
+            getterMethodRowId = 6,
+            setterMethodRowId = 7,
         )
         val clipProperty = WinRTPropertyDefinition(
             name = "Clip",
             typeName = "Microsoft.UI.Xaml.Media.RectangleGeometry",
             getterMethodName = "get_Clip",
             setterMethodName = "put_Clip",
+            getterMethodRowId = 6,
+            setterMethodRowId = 7,
         )
         val contentProperty = WinRTPropertyDefinition(
             name = "Content",
             typeName = "System.Object",
             getterMethodName = "get_Content",
             setterMethodName = "put_Content",
+            getterMethodRowId = 6,
+            setterMethodRowId = 7,
         )
         val model = WinRTMetadataModel(
             namespaces = listOf(
@@ -13337,6 +13684,16 @@ class KotlinProjectionGeneratorTest {
                             name = "IWindow",
                             kind = WinRTTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555582"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "SetOptions",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("options", "Microsoft.UI.Xaml.IWindow2"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
                         ),
                         WinRTTypeDefinition(
                             namespace = "Microsoft.UI.Xaml",
@@ -13465,6 +13822,34 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contentPropertySource, contentPropertySource.normalizedSource().contains("val __winrtCallSiteResult: kotlin.Any? = TODO("))
         assertTrue(contentPropertySource, contentPropertySource.normalizedSource().contains("val __winrtCallSiteArgument2: kotlin.Any? = value"))
         assertFalse(contentPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
+
+        val projectedInterfaceCcwFactories = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .single { file -> file.relativePath.endsWith("WinRTProjectedInterfaceCcwFactories.kt") }
+            .contents
+        val normalizedCcwFactories = projectedInterfaceCcwFactories.normalizedSource()
+        assertTrue(
+            projectedInterfaceCcwFactories,
+            normalizedCcwFactories.contains("SystemBackdrop? = (value.systemBackdrop).also"),
+        )
+        assertTrue(
+            projectedInterfaceCcwFactories,
+            normalizedCcwFactories.contains(
+                "@WinRTProjectionParameter(abiType = \"Microsoft.UI.Xaml.Media.SystemBackdrop\") __arg0: SystemBackdrop?",
+            ),
+        )
+        assertFalse(
+            projectedInterfaceCcwFactories,
+            projectedInterfaceCcwFactories.contains(
+                "returnAbiType = \"Microsoft.UI.Xaml.Media.SystemBackdrop?\"",
+            ),
+        )
+        assertFalse(
+            projectedInterfaceCcwFactories,
+            projectedInterfaceCcwFactories.contains(
+                "abiType = \"Microsoft.UI.Xaml.Media.SystemBackdrop?\"",
+            ),
+        )
     }
 
     @Test
@@ -15824,7 +16209,18 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val generated = KotlinProjectionGenerator().generate(model)
+        val asyncStringBinding = KotlinProjectionPlanner()
+            .plan(model)
+            .single { plan -> plan.type.name == "IWidget" }
+            .instanceMemberBindings
+            .map(KotlinProjectionInstanceMemberBinding::returnBinding)
+            .single { binding ->
+                binding.kind == KotlinProjectionAbiValueKind.MappedAsyncOperation &&
+                    binding.typeArguments.singleOrNull()?.kind == KotlinProjectionAbiValueKind.String
+            }
+        assertEquals("string", asyncStringBinding.typeArguments.single().guidSignature)
+
+        val generated = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
         val filesByPath = generated.associateBy { it.relativePath }
         val interfaceContents = filesByPath
             .getValue("sample/foundation/IWidget.kt")
@@ -15857,6 +16253,20 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, normalizedInterface.contains("val __winrtCallSiteResult: WinRTAsyncOperationReference<String> = TODO("))
         assertTrue(supportContents, supportContents.contains("WinRTAsyncProjectionInterop.operation"))
         assertTrue(supportContents, supportContents.contains("WinRTAsyncProjectionInterop.toAbi"))
+        assertTrue(supportContents, supportContents.contains("interfaceId ="))
+        assertTrue(supportContents, supportContents.contains("progressHandlerInterfaceId ="))
+        assertTrue(supportContents, supportContents.contains("completedHandlerInterfaceId ="))
+        assertFalse(supportContents, supportContents.contains("resultSignature ="))
+        assertFalse(supportContents, supportContents.contains("progressSignature ="))
+        assertFalse(
+            supportContents,
+            Regex("internal val metadata_[a-f0-9]+: Guid =\\s*WinRTAsync").containsMatchIn(supportContents),
+        )
+        assertTrue(
+            supportContents,
+            Regex("internal val metadata_[a-f0-9]+: Guid =\\s*Guid\\(\\\"[A-F0-9-]+\\\"\\)")
+                .containsMatchIn(supportContents),
+        )
         assertTrue(supportContents, supportContents.contains("role = WinRTProjectionAbiCodecRole.FROM_ABI"))
         assertTrue(supportContents, supportContents.contains("role = WinRTProjectionAbiCodecRole.TO_ABI"))
         assertFalse(interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
@@ -18189,6 +18599,21 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                     methodRowId = 14,
                                 ),
+                                WinRTMethodDefinition(
+                                    name = "TryDescribe",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRTParameterDefinition("prefix", "String"),
+                                        WinRTParameterDefinition(
+                                            name = "description",
+                                            typeName = "String",
+                                            direction = WinRTParameterDirection.Out,
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                    methodRowId = 16,
+                                ),
                             ),
                         ),
                     ),
@@ -18749,7 +19174,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetActivationEntry.contains("activatableFactoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetFactory\")"))
         assertTrue(widgetActivationEntry.contains("staticFactoryInterfaceNames = listOf(\"Sample.Foundation.IWidgetStatics\")"))
         assertTrue(widgetActivationEntry.contains("activatableFactoryMemberNames = listOf(\"Sample.Foundation.IWidgetFactory.CreateInstance\")"))
-        assertTrue(widgetActivationEntry.contains("staticFactoryMemberNames = listOf(\"Sample.Foundation.IWidgetStatics.Describe\")"))
+        val staticFactoryMemberNames = widgetActivationEntry
+            .substringAfter("staticFactoryMemberNames =")
+            .substringBefore("composableFactoryMemberNames =")
+        assertTrue(staticFactoryMemberNames.contains("\"Sample.Foundation.IWidgetStatics.Describe\""))
+        assertTrue(staticFactoryMemberNames.contains("\"Sample.Foundation.IWidgetStatics.TryDescribe\""))
         assertTrue(widgetActivationEntry.contains("composableFactoryMemberNames ="))
         assertTrue(widgetActivationEntry.contains("\"Sample.Foundation.IComposableWidgetFactory.CreateInstance\""))
         assertTrue(widgetActivationEntry.contains("makeMethod = \"MarshalInspectable.CreateMarshaler2(IID.IActivationFactory).Detach\""))
@@ -18789,6 +19218,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(serverActivationFactories.contains("WinRTInspectableMethodDefinition"))
         assertTrue(serverActivationFactories.contains("val __result = Widget("))
         assertTrue(serverActivationFactories.contains("val __result = Widget.describe(__arg0)"))
+        assertTrue(serverActivationFactories.contains("val __arg1 = WinRTOut<String>()"))
+        assertTrue(serverActivationFactories.contains("val __result = Widget.tryDescribe(__arg0, __arg1)"))
+        val normalizedServerActivationFactories = serverActivationFactories.replace(Regex("\\s+"), " ")
+        assertTrue(
+            serverActivationFactories,
+            normalizedServerActivationFactories.contains(
+                "PlatformAbi.writePointer(rawArgs[1] as RawAddress, HString.create(__arg1.value).handle)",
+            ),
+        )
         assertTrue(serverActivationFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress, PlatformAbi.nullPointer)"))
         assertTrue(serverActivationFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
         assertTrue(serverActivationFactories.contains("Guid(\"11111111-2222-3333-4444-555555555553\")"))
@@ -18836,6 +19274,17 @@ class KotlinProjectionGeneratorTest {
         assertTrue(scopedHostExports.contains("\"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports_sample_component_jar\""))
         assertTrue(scopedHostExports.contains("WinRTAuthoringServerActivationFactories_sample_component_jar.register()"))
         assertFalse(scopedHostFilesByName.containsKey("WinRTAuthoringHostExports.kt"))
+        val scopedCcwFactories = scopedHostFilesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        assertTrue(
+            scopedCcwFactories.contains(
+                "private object AuthoredTypeCcwDefinitionHolder_Sample_Foundation_Widget_sample_component_jar",
+            ),
+        )
+        assertTrue(
+            scopedCcwFactories.contains(
+                "AuthoredTypeCcwDefinitionHolder_Sample_Foundation_Widget_sample_component_jar.definition",
+            ),
+        )
         val nativeCommonFilesByName = KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
@@ -18855,8 +19304,16 @@ class KotlinProjectionGeneratorTest {
         assertFalse(nativeCommonHostExports.contains("@JvmStatic"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         assertTrue(ccwFactories.contains("object WinRTAuthoringCcwFactories"))
-        assertTrue(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class)"))
-        assertTrue(ccwFactories.contains("createCcwDefinitionForSample_Foundation_Widget(value as Widget)"))
+        assertTrue(ccwFactories.contains("ComWrappersSupport.registerStaticCcwDefinition("))
+        assertTrue(ccwFactories.contains("Widget::class"))
+        assertTrue(
+            ccwFactories.contains("private object AuthoredTypeCcwDefinitionHolder_Sample_Foundation_Widget"),
+        )
+        assertTrue(
+            ccwFactories.contains("AuthoredTypeCcwDefinitionHolder_Sample_Foundation_Widget.definition"),
+        )
+        assertFalse(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class"))
+        assertFalse(ccwFactories.contains("createCcwDefinitionForSample_Foundation_Widget"))
         assertTrue(ccwFactories.contains("queryInterfaceFallback = { obj, requestedInterfaceId ->"))
         assertTrue(ccwFactories.contains("queryInterfaceForSample_Foundation_Widget(obj, requestedInterfaceId)"))
         assertFalse(ccwFactories.contains("queryInterfaceForSample_Foundation_Widget(obj as Widget, requestedInterfaceId)"))
@@ -18873,8 +19330,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("val value = managedValue as Widget"))
         assertTrue(ccwFactories.contains("signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer)"))
         assertTrue(ccwFactories.contains("val __arg0 = WinRTObjectMarshaller.fromAbi(rawArgs[0] as RawAddress)"))
-        val widgetCcwDefinition = ccwFactories.substringAfter("createCcwDefinitionForSample_Foundation_Widget(")
-            .substringBefore("private fun queryInterfaceForSample_Foundation_Widget")
+        val widgetCcwDefinition = ccwFactories
+            .substringAfter("private object AuthoredTypeCcwDefinitionHolder_Sample_Foundation_Widget")
+            .substringBefore("internal object WinRTAuthoringCcwFactories")
         assertFalse(widgetCcwDefinition.contains("value.echoObject(__arg0)"))
         assertTrue(widgetCcwDefinition.contains("value.__winrtAuthoringInvokeEchoObject(__arg0)"))
         assertTrue(ccwFactories.contains("WinRTObjectMarshaller.createMarshaler(__result).use"))
@@ -18923,7 +19381,11 @@ class KotlinProjectionGeneratorTest {
         assertFalse(ccwFactories.contains("Authored ReceiveArray parameter"))
         assertFalse(ccwFactories.contains("value.receiveNamesThenSuffix("))
         assertFalse(ccwFactories.contains("value.receiveTwoNameArrays("))
-        assertTrue(ccwFactories.contains("WinRTGenericParameterProjection.fromAbi<M0>(rawArgs[0] as RawAddress)"))
+        assertTrue(
+            ccwFactories.normalizedSource().contains(
+                "WinRTGenericParameterProjection.fromAbi<M0>(rawArgs[0] as RawAddress)",
+            ),
+        )
         assertTrue(ccwFactories.contains("value.roundTripGeneric(__arg0)"))
         assertTrue(ccwFactories.contains("WinRTGenericParameterProjection.createReference(__result).use"))
         assertTrue(ccwFactories.contains("__returnReference?.getRefPointer()"))
@@ -21835,8 +22297,8 @@ class KotlinProjectionGeneratorTest {
         assertFalse(interfaceContents, interfaceContents.contains("WinRTReferenceValueAdapters.runtimeClass("))
         assertTrue(supportContents, supportContents.contains("WinRTReferenceValueAdapters.runtimeClass("))
         assertTrue(supportContents, supportContents.contains("Widget::class"))
-        assertTrue(supportContents, supportContents.contains("\"Sample.Foundation.Widget\""))
-        assertTrue(supportContents, supportContents.contains("Widget.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(supportContents, supportContents.contains("Widget.Metadata.TYPE_HANDLE"))
+        assertFalse(supportContents, supportContents.contains("Widget::class, \"Sample.Foundation.Widget\""))
         assertTrue(supportContents, supportContents.contains("Widget.Metadata.wrap(it)"))
     }
 

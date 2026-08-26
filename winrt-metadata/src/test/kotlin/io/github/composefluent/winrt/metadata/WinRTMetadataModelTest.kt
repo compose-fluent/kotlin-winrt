@@ -1856,6 +1856,18 @@ class WinRTMetadataModelTest {
             name = "Widget",
             kind = WinRTTypeKind.RuntimeClass,
         )
+        val asyncRuntimeClassType = WinRTTypeDefinition(
+            namespace = "Sample.CallSites",
+            name = "WidgetOperation",
+            kind = WinRTTypeKind.RuntimeClass,
+            defaultInterfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+            implementedInterfaces = listOf(
+                WinRTInterfaceImplementationDefinition(
+                    interfaceName = "Windows.Foundation.IAsyncOperation<UInt>",
+                    isDefault = true,
+                ),
+            ),
+        )
         val model = WinRTMetadataModel(
             listOf(
                 WinRTNamespace(
@@ -1864,6 +1876,7 @@ class WinRTMetadataModelTest {
                         enumType,
                         interfaceType,
                         runtimeClassType,
+                        asyncRuntimeClassType,
                         WinRTTypeDefinition("Sample.CallSites", "Point", WinRTTypeKind.Struct),
                         WinRTTypeDefinition("Sample.CallSites", "Handler", WinRTTypeKind.Delegate),
                         WinRTTypeDefinition(
@@ -1876,7 +1889,15 @@ class WinRTMetadataModelTest {
                 ),
                 WinRTNamespace(
                     "Windows.Foundation",
-                    listOf(WinRTTypeDefinition("Windows.Foundation", "IAsyncAction", WinRTTypeKind.Interface)),
+                    listOf(
+                        WinRTTypeDefinition("Windows.Foundation", "IAsyncAction", WinRTTypeKind.Interface),
+                        WinRTTypeDefinition(
+                            "Windows.Foundation",
+                            "IAsyncOperation",
+                            WinRTTypeKind.Interface,
+                            genericParameterCount = 1,
+                        ),
+                    ),
                 ),
             ),
         )
@@ -1904,6 +1925,16 @@ class WinRTMetadataModelTest {
             WinRTDirectInboundShapeKind.Projection,
             helpers.directInboundShapeDescriptor(WinRTTypeRef.named(runtimeClassType.qualifiedName), runtimeClassType.namespace)?.kind,
         )
+        val asyncRuntimeClassShape = requireNotNull(
+            helpers.directInboundShapeDescriptor(
+                WinRTTypeRef.named(asyncRuntimeClassType.qualifiedName),
+                asyncRuntimeClassType.namespace,
+            ),
+        )
+        assertEquals(WinRTDirectInboundShapeKind.Projection, asyncRuntimeClassShape.kind)
+        assertEquals("Windows.Foundation.IAsyncOperation<UInt>", asyncRuntimeClassShape.abiTypeName)
+        assertEquals("Windows.Foundation.IAsyncOperation<UInt>", asyncRuntimeClassShape.projectedType.typeName)
+        assertEquals(asyncRuntimeClassShape.projectedType, helpers.getDefaultAsyncInterface(asyncRuntimeClassType))
 
         val rejected = listOf(
             WinRTTypeRef.fromDisplayName("String"),

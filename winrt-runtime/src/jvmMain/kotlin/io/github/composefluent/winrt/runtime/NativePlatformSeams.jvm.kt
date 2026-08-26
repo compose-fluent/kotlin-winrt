@@ -378,6 +378,18 @@ private class JvmNativeHStringReferenceFramePool {
         return frame
     }
 
+    fun release(frameAddress: RawAddress) {
+        val frame = when {
+            depth == 1 -> primaryFrame
+            depth > 1 -> nestedFrames[depth - 2]
+            else -> null
+        }
+        check(frame != null && frame.transientOut == frameAddress) {
+            "Native HSTRING reference frames must close in reverse acquisition order."
+        }
+        frame.close()
+    }
+
     private fun createFrame(): NativeHStringReferenceFrame =
         NativeHStringReferenceFrame(release = ::release)
 
@@ -400,13 +412,36 @@ private val nativeHStringReferenceFrames = ThreadLocal.withInitial(::JvmNativeHS
 internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
     nativeHStringReferenceFrames.get().acquire(value)
 
-internal actual inline fun <R> withNativeHStringReferenceAbi(
+internal actual inline fun acquireScopedNativeHStringReferenceFrame(
     value: String,
-    action: (handle: RawAddress, pointerOut: RawAddress) -> R,
-): R =
-    acquireInitializedNativeHStringReferenceFrame(value).use { frame ->
-        action(frame.handle, frame.transientOut)
+    length: Int,
+): RawAddress {
+    val frame = acquireNativeHStringReferenceFrame(value)
+    try {
+        frame.initializeReference(length)
+        return frame.transientOut
+    } catch (error: Throwable) {
+        frame.close()
+        throw error
     }
+}
+
+internal actual inline fun scopedNativeHStringReferenceHandle(
+    frame: RawAddress,
+    length: Int,
+): RawAddress =
+    if (length == 0) RawAddress.Null else RawAddress(frame.value + hStringHeaderOffsetBytes)
+
+internal actual inline fun scopedNativeHStringReferenceOut(frame: RawAddress): RawAddress = frame
+
+internal actual inline fun releaseScopedNativeHStringReferenceFrame(frame: RawAddress) {
+    releaseJvmScopedNativeHStringReferenceFrame(frame)
+}
+
+@PublishedApi
+internal fun releaseJvmScopedNativeHStringReferenceFrame(frame: RawAddress) {
+    nativeHStringReferenceFrames.get().release(frame)
+}
 
 @PublishedApi
 internal actual inline fun winRTPinString(value: String, length: Int): String = value

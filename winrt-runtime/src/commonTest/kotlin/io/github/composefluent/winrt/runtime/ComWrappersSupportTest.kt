@@ -813,6 +813,25 @@ class ComWrappersSupportTest {
             )
         }
         val managed = TestComposableManagedType("tracked")
+        var managerHostWasSet = false
+        val managerHost = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRTInspectableInterfaceDefinition(
+                    interfaceId = IID.IReferenceTrackerManager,
+                    baseKind = WinRTComInterfaceBaseKind.IUnknown,
+                    methods = listOf(
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Int32) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr) {
+                            managerHostWasSet = true
+                            KnownHResults.S_OK.value
+                        },
+                    ),
+                ),
+            ),
+            defaultInterfaceId = IID.IReferenceTrackerManager,
+        )
         val instanceHost = WinRTInspectableComObject(
             interfaceDefinitions = listOf(
                 WinRTInspectableInterfaceDefinition(
@@ -827,7 +846,24 @@ class ComWrappersSupportTest {
             hiddenInterfaceDefinitions = listOf(
                 WinRTInspectableInterfaceDefinition(
                     interfaceId = IID.IReferenceTracker,
-                    methods = List(9) { WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { 1 } },
+                    baseKind = WinRTComInterfaceBaseKind.IUnknown,
+                    methods = listOf(
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr) { arguments ->
+                            managerHost.createReference(IID.IReferenceTrackerManager).use { managerReference ->
+                                PlatformAbi.writePointer(
+                                    arguments.single() as RawAddress,
+                                    PlatformAbi.fromRawComPtr(managerReference.getRefPointer()),
+                                )
+                            }
+                            KnownHResults.S_OK.value
+                        },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                        WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
+                    ),
                 ),
             ),
             defaultInterfaceId = defaultInterfaceId,
@@ -835,20 +871,27 @@ class ComWrappersSupportTest {
         )
         var returnedInstancePointerKey: Long? = null
 
-        ComWrappersSupport.createComposableCCWForObject(
-            value = managed,
-            outerInterfaceId = null,
-            instanceInterfaceId = defaultInterfaceId,
-        ) { _, innerOut, instanceOut ->
-            PlatformAbi.writePointer(innerOut, PlatformAbi.nullPointer)
-            val returnedInstancePointer = instanceHost.detachReference(IID.IInspectable)
-            returnedInstancePointerKey = PlatformAbi.pointerKey(returnedInstancePointer)
-            PlatformAbi.writePointer(instanceOut, returnedInstancePointer)
-            KnownHResults.S_OK.value
-        }.use { composed ->
-            assertEquals(defaultInterfaceId, composed.instance.interfaceId)
-            assertNotEquals(returnedInstancePointerKey, PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(composed.instance.pointer)))
-            assertTrue(composed.instance.hasReferenceTracker)
+        try {
+            ComWrappersSupport.createComposableCCWForObject(
+                value = managed,
+                outerInterfaceId = null,
+                instanceInterfaceId = defaultInterfaceId,
+            ) { _, innerOut, instanceOut ->
+                PlatformAbi.writePointer(innerOut, PlatformAbi.nullPointer)
+                val returnedInstancePointer = instanceHost.detachReference(IID.IInspectable)
+                returnedInstancePointerKey = PlatformAbi.pointerKey(returnedInstancePointer)
+                PlatformAbi.writePointer(instanceOut, returnedInstancePointer)
+                KnownHResults.S_OK.value
+            }.use { composed ->
+                assertEquals(defaultInterfaceId, composed.instance.interfaceId)
+                assertNotEquals(returnedInstancePointerKey, PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(composed.instance.pointer)))
+                assertTrue(composed.instance.hasReferenceTracker)
+                assertTrue(managerHostWasSet)
+            }
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+            instanceHost.close()
+            managerHost.close()
         }
     }
 

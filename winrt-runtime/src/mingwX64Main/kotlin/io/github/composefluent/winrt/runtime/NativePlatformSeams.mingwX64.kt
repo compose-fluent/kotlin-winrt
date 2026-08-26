@@ -443,24 +443,35 @@ private object NativeHStringReferenceFrames {
 internal actual fun acquireNativeHStringReferenceFrame(value: String): NativeHStringReferenceFrame =
     NativeHStringReferenceFrames.pool.acquire(value)
 
-internal actual inline fun <R> withNativeHStringReferenceAbi(
+internal actual inline fun acquireScopedNativeHStringReferenceFrame(
     value: String,
-    action: (handle: RawAddress, pointerOut: RawAddress) -> R,
-): R {
+    length: Int,
+): RawAddress {
     val frame = acquireScopedNativeHStringFrame()
-    val length = value.length
-    val pinnedValue = winRTPinString(value, length)
-    val handle = initializeScopedNativeHStringFrame(
-        frame = frame,
-        chars = winRTStringAddress(pinnedValue, length),
-        length = length,
-    )
     return try {
-        action(handle, RawAddress(frame.value + scopedNativeHStringResultOffsetBytes))
-    } finally {
-        winRTKeepAlive(pinnedValue)
+        initializeScopedNativeHStringFrame(
+            frame = frame,
+            chars = winRTStringAddress(value, length),
+            length = length,
+        )
+        frame
+    } catch (error: Throwable) {
         releaseScopedNativeHStringFrame(frame)
+        throw error
     }
+}
+
+internal actual inline fun scopedNativeHStringReferenceHandle(
+    frame: RawAddress,
+    length: Int,
+): RawAddress =
+    if (length == 0) RawAddress.Null else RawAddress(frame.value + scopedNativeHStringHeaderOffsetBytes)
+
+internal actual inline fun scopedNativeHStringReferenceOut(frame: RawAddress): RawAddress =
+    RawAddress(frame.value + scopedNativeHStringResultOffsetBytes)
+
+internal actual inline fun releaseScopedNativeHStringReferenceFrame(frame: RawAddress) {
+    releaseScopedNativeHStringFrame(frame)
 }
 
 @PublishedApi

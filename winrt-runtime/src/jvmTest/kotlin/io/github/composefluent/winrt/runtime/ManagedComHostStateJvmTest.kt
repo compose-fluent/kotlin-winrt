@@ -12,6 +12,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 class ManagedComHostStateJvmTest {
     @Test
@@ -69,6 +70,46 @@ class ManagedComHostStateJvmTest {
         }
 
         assertEquals(initialBindingCount, managedComInboundBindings.size)
+    }
+
+    @Test
+    @OptIn(ExperimentalAtomicApi::class)
+    fun concurrent_publish_cannot_restore_a_closed_hot_binding() {
+        val host = WinRTInspectableComObject.inspectableBox(Any())
+        val pointer = host.borrowCachedInterfacePointer(IID.IInspectable)
+        val binding = checkNotNull(winRTProjectionInboundBinding(pointer.value))
+        val start = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        val publishers = List(6) {
+            thread(start = true) {
+                try {
+                    assertTrue(start.await(5, TimeUnit.SECONDS))
+                    repeat(10_000) {
+                        binding.publishHotEntry(pointer.value)
+                        Thread.yield()
+                    }
+                } catch (error: Throwable) {
+                    failure.compareAndSet(null, error)
+                }
+            }
+        }
+        val closer = thread(start = true) {
+            try {
+                assertTrue(start.await(5, TimeUnit.SECONDS))
+                host.close()
+            } catch (error: Throwable) {
+                failure.compareAndSet(null, error)
+            }
+        }
+
+        start.countDown()
+        publishers.forEach(Thread::join)
+        closer.join()
+        failure.get()?.let { throw it }
+
+        assertFalse(binding.publishHotEntry(pointer.value))
+        assertTrue(managedComInboundHotEntry.load()?.binding !== binding)
+        host.close()
     }
 
     @Test

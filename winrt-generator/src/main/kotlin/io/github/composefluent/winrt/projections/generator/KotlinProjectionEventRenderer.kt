@@ -579,6 +579,15 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                             .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                             .build(),
                     )
+                    addProperty(
+                        PropertySpec.builder("_factoryInterface", IUNKNOWN_REFERENCE_CLASS_NAME)
+                            .addModifiers(KModifier.PRIVATE)
+                            .initializer(
+                                "%T.get(RUNTIME_CLASS, FACTORY_INTERFACE_IID)",
+                                ACTIVATION_FACTORY_CLASS_NAME,
+                            )
+                            .build(),
+                    )
                 }
                 renderActivationFactoryCreateFunctions(plan).forEach(::addFunction)
             }
@@ -802,7 +811,8 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
                 suppressHResultCheck = method.isNoException,
             )
             val invocation = renderInlineAbiInvocation(
-                invokeTargetExpression = "acquire()",
+                invokeTargetExpression =
+                    if (plan.activatableFactoryInterfaceIid != null) "_factoryInterface" else "acquire()",
                 slotExpression = metadataSlotExpression(factoryType.qualifiedName, method.abiSlotConstantName(factoryType.methods)),
                 callPlan = callPlan,
             )
@@ -1011,7 +1021,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceWrapper(plan)) {
             val typeHandleInitializer = if (plan.type.qualifiedName in projectedInterfaceCcwInputTypeNames) {
                 CodeBlock.of(
-                    "%T(%S, IID).also { %T.%L() }",
+                    "%T(%S, IID).also({ %T.%L() })",
                     WINRT_TYPE_HANDLE_CLASS_NAME,
                     projectedClassName.canonicalName,
                     winRTProjectedInterfaceCcwFactoriesClassName(supportOwnerIdentity),

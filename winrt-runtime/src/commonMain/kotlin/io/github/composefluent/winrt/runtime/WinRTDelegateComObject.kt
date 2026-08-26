@@ -24,6 +24,9 @@ internal class WinRTDelegateComObject(
             WinRTDelegateReference(reference.comPtr, descriptor)
         }
 
+    internal fun tryAcquireMarshalingReference(): RawAddress? =
+        host.tryAcquireReference(descriptor.interfaceId, managedTarget)
+
     fun releaseManagedReference() {
         host.releaseManagedReference()
     }

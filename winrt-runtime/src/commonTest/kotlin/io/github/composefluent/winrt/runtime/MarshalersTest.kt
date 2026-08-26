@@ -243,6 +243,68 @@ class MarshalersTest {
     }
 
     @Test
+    fun delegate_argument_marshaler_releases_unescaped_call_reference() {
+        ComWrappersSupport.clearRegistriesForTests()
+        var createCount = 0
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999995"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.UNIT,
+        )
+        val projected = object : WinRTProjectedDelegate {
+            override fun createWinRTDelegateHandle(): WinRTDelegateHandle {
+                createCount += 1
+                return WinRTDelegateBridge.createUnitDelegate(
+                    iid = descriptor.interfaceId,
+                    parameterKinds = emptyList(),
+                ) {
+                }
+            }
+        }
+
+        WinRTDelegateBridge.createProjectedDelegateArgument(projected).close()
+        WinRTDelegateBridge.createProjectedDelegateArgument(projected).close()
+
+        assertEquals(2, createCount)
+        ComWrappersSupport.clearRegistriesForTests()
+    }
+
+    @Test
+    fun delegate_argument_marshaler_preserves_native_escape_after_call() {
+        ComWrappersSupport.clearRegistriesForTests()
+        var createCount = 0
+        var callCount = 0
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999996"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.UNIT,
+        )
+        val projected = object : WinRTProjectedDelegate {
+            override fun createWinRTDelegateHandle(): WinRTDelegateHandle {
+                createCount += 1
+                return WinRTDelegateBridge.createUnitDelegate(
+                    iid = descriptor.interfaceId,
+                    parameterKinds = emptyList(),
+                ) {
+                    callCount += 1
+                }
+            }
+        }
+
+        val marshaler = WinRTDelegateBridge.createProjectedDelegateArgument(projected)
+        WinRTPlatformApi.addRefRaw(marshaler.abi)
+        val escaped = WinRTDelegateReference(marshaler.abi, descriptor)
+        marshaler.close()
+        escaped.use { it.invoke(emptyList()) }
+
+        assertEquals(1, callCount)
+        assertEquals(1, createCount)
+        WinRTDelegateBridge.createProjectedDelegateArgument(projected).close()
+        assertEquals(2, createCount)
+        ComWrappersSupport.clearRegistriesForTests()
+    }
+
+    @Test
     fun projected_delegate_argument_marshaler_accepts_null() {
         WinRTDelegateBridge.createProjectedDelegateArgument(null).use { marshaler ->
             assertTrue(PlatformAbi.isNull(marshaler.abi))

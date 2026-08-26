@@ -128,6 +128,7 @@ class WinRTCollectionInteropTest {
             ).add(null)
 
             assertEquals(listOf(13 to PlatformAbi.nullPointer), vector.appendSlots)
+            assertTrue(vector.uintSlots.isEmpty())
         }
     }
 

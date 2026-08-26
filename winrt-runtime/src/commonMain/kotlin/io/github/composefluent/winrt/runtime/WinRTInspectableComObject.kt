@@ -123,7 +123,7 @@ internal class WinRTInspectableComObject(
     private val ccwShape = shapeCacheKey?.let(::cachedShape)
         ?: ManagedCcwShape.create(interfaceDefinitions, hiddenInterfaceDefinitions, defaultInterfaceId)
     private val referencesAreAgile = ccwShape.referencesAreAgile
-    private val primaryInterfaceId = ccwShape.primaryInterfaceId
+    internal val primaryInterfaceId = ccwShape.primaryInterfaceId
     private val initialQueryInterfaceTableEntryCount = ccwShape.queryInterfaceTableShape.entryCount
     private val interfaceObjectMemorySizeBytes = ccwShape.interfaceObjectMemorySizeBytes
     private val referenceCounterStorageOffsetBytes = interfaceObjectMemorySizeBytes
@@ -139,9 +139,10 @@ internal class WinRTInspectableComObject(
         hostOwnedMemory.pointer.value + referenceCounterStorageOffsetBytes,
     )
     private val canonicalObjectMemory = interfaceObjectPointer(ccwShape.primaryInterfaceIndex)
-    private val inboundBinding = ManagedComInboundBinding(this, managedValue, weakManagedValue)
-    private val inboundBindingHandle = ManagedComInboundBindingHandle(
-        binding = inboundBinding,
+    private val inboundBinding = ManagedComInboundBinding(
+        host = this,
+        value = managedValue,
+        weak = weakManagedValue,
         canonicalObjectMemory = canonicalObjectMemory,
     )
     @PublishedApi
@@ -181,7 +182,7 @@ internal class WinRTInspectableComObject(
                 objectMemoryOffsetBytes,
                 RawAddress(ccwShape.vtablePointerValues[index]),
             )
-            inboundBindingHandle.attach(
+            inboundBinding.attach(
                 objectMemory = objectMemory,
                 objectMemoryView = hostOwnedMemory.memory,
                 objectMemoryOffsetBytes = objectMemoryOffsetBytes,
@@ -630,7 +631,7 @@ internal class WinRTInspectableComObject(
         while (index < ccwShape.interfaceCount) {
             val objectMemoryOffsetBytes = index * managedComInterfaceObjectSizeBytes
             val objectMemory = interfaceObjectPointer(index)
-            inboundBindingHandle.detach(
+            inboundBinding.detach(
                 objectMemory = objectMemory,
                 objectMemoryView = hostOwnedMemory.memory,
                 objectMemoryOffsetBytes = objectMemoryOffsetBytes,
@@ -639,7 +640,6 @@ internal class WinRTInspectableComObject(
         }
         queryInterfaceTablePublisher?.close()
         inboundBinding.close()
-        inboundBindingHandle.close()
         hostOwnedMemory.close()
         cleanupAction?.invoke()
     }
@@ -794,7 +794,6 @@ internal class WinRTInspectableComObject(
             managedComInterfaceObjectPointerCount * NativeAbiLayout.ADDRESS.byteSize
         private val externalAliasRegistry = ConcurrentCacheMap<Long, ManagedComInboundBinding>()
         private val externalPointerAliasCount = AtomicInt(0)
-        private val shapeCache = WeakKeyStateMap<WinRTCcwDefinition, ManagedCcwShape>()
 
         private fun cachedShape(definition: WinRTCcwDefinition): ManagedCcwShape {
             @Suppress("UNCHECKED_CAST")

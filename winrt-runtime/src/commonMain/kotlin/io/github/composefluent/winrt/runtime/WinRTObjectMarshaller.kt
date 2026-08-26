@@ -172,6 +172,28 @@ object WinRTObjectMarshaller {
 internal object ProjectedDelegateCcwCache {
     private val handles = WeakKeyStateMap<WinRTProjectedDelegate, WinRTDelegateHandle>()
 
+    /**
+     * Acquires the raw reference owned only for one synchronous ABI call. This is the Kotlin
+     * equivalent of CsWinRT's `ObjectReferenceValue`: deterministic marshaling does not need a
+     * context-capturing object-reference wrapper, while a callee that retains the pointer must
+     * still AddRef it before the call returns.
+     */
+    fun acquireMarshalingReference(value: WinRTProjectedDelegate): RawAddress {
+        while (true) {
+            val handle = getOrCreate(value)
+            handle.tryAcquireMarshalingReference()?.let { reference ->
+                try {
+                    handle.releaseManagedReferenceForNativeOwnership()
+                } catch (failure: Throwable) {
+                    WinRTPlatformApi.releaseRaw(reference)
+                    throw failure
+                }
+                return reference
+            }
+            handles.remove(value, handle)
+        }
+    }
+
     fun createReference(value: WinRTProjectedDelegate): WinRTDelegateReference {
         while (true) {
             val handle = getOrCreate(value)

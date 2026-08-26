@@ -77,6 +77,17 @@ private object NativeDirectArrayCallSiteCompileFixture {
     ): Unit = TODO("native direct projection input fixture")
 
     @WinRTProjectionCallSite
+    fun consumeFiveProjections(
+        reference: ComObjectReference,
+        slot: Int,
+        first: NativeDirectUnknownProjection,
+        second: NativeDirectUnknownProjection,
+        third: NativeDirectUnknownProjection,
+        fourth: NativeDirectUnknownProjection,
+        fifth: NativeDirectUnknownProjection,
+    ): Unit = TODO("native five direct projection inputs fixture")
+
+    @WinRTProjectionCallSite
     fun produceProjection(reference: ComObjectReference, slot: Int): NativeDirectUnknownProjection =
         TODO("native direct projection output fixture")
 }

@@ -28,6 +28,13 @@ kotlin {
     mingwX64()
 }
 
+tasks.named<io.github.composefluent.winrt.build.ValidatePrebuiltProjectionOutputTask>(
+    "auditGeneratedWinRTProjectionOutput",
+) {
+    // The complete 10.0.26100.0 surface is about 169.6 MB without duplicate SMAP annotations.
+    maxTotalClassBytes.set(172_000_000L)
+}
+
 winRT {
     windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
     namespace("Windows")

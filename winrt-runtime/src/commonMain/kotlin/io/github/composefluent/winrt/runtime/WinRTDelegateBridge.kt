@@ -211,7 +211,8 @@ object WinRTDelegateBridge {
         }
         return WinRTDelegateArgumentMarshaler(
             handle = null,
-            reference = ProjectedDelegateCcwCache.createReference(delegate),
+            reference = null,
+            callScopedOwnedAbi = ProjectedDelegateCcwCache.acquireMarshalingReference(delegate),
         )
     }
 }
@@ -235,12 +236,23 @@ fun createWinRTDelegateDescriptor(
 class WinRTDelegateArgumentMarshaler internal constructor(
     private val handle: WinRTDelegateHandle?,
     private val reference: ComObjectReference?,
+    callScopedOwnedAbi: RawAddress = PlatformAbi.nullPointer,
 ) : AutoCloseable {
+    private var callScopedOwnedAbi = callScopedOwnedAbi
+
     val abi: RawAddress =
-        reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
+        reference?.pointer?.asRawAddress() ?: callScopedOwnedAbi
 
     override fun close() {
-        reference?.close()
-        handle?.close()
+        try {
+            reference?.close()
+            val ownedAbi = callScopedOwnedAbi
+            callScopedOwnedAbi = PlatformAbi.nullPointer
+            if (!PlatformAbi.isNull(ownedAbi)) {
+                WinRTPlatformApi.releaseRaw(ownedAbi)
+            }
+        } finally {
+            handle?.close()
+        }
     }
 }

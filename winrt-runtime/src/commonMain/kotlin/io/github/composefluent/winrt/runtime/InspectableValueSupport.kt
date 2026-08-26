@@ -6,28 +6,52 @@ internal fun createSyntheticValueCcwDefinition(
     value: Any,
     declaredReferenceArrayElementType: KClass<*>? = null,
 ): WinRTCcwDefinition? {
-    val interfaceDefinitions =
-        buildList {
-            if (WinRTValueBoxing.isPropertyValueCompatible(value, declaredReferenceArrayElementType)) {
-                add(createPropertyValueInterfaceDefinition(value, WinRTValueBoxing.propertyTypeOf(value, declaredReferenceArrayElementType)))
-            }
-            WinRTValueBoxing.createReferenceArrayInterfaceDefinition(value, declaredReferenceArrayElementType)?.let(::add)
-                ?: WinRTValueBoxing.createReferenceInterfaceDefinition(value)?.let(::add)
+    val propertyType =
+        if (WinRTValueBoxing.isPropertyValueCompatible(value, declaredReferenceArrayElementType)) {
+            WinRTValueBoxing.propertyTypeOf(value, declaredReferenceArrayElementType)
+        } else {
+            null
         }
-    if (interfaceDefinitions.isEmpty()) {
+    val referenceArrayInterfaceId =
+        ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value, declaredReferenceArrayElementType)
+    val referenceInterfaceId =
+        if (referenceArrayInterfaceId == null) {
+            ValueBoxingMetadata.referenceInterfaceIdForValue(value)
+        } else {
+            null
+        }
+    val valueInterfaceId = referenceArrayInterfaceId ?: referenceInterfaceId
+    if (propertyType == null && valueInterfaceId == null) {
         return null
     }
-    val defaultInterfaceId =
-        if (interfaceDefinitions.any { it.interfaceId == IID.IPropertyValue }) {
-            IID.IPropertyValue
-        } else {
-            interfaceDefinitions.first().interfaceId
+    val defaultInterfaceId = if (propertyType != null) IID.IPropertyValue else requireNotNull(valueInterfaceId)
+    val shapeKind =
+        when {
+            referenceArrayInterfaceId != null -> ValueHostShapeKind.REFERENCE_ARRAY
+            referenceInterfaceId != null -> ValueHostShapeKind.REFERENCE
+            else -> ValueHostShapeKind.PROPERTY_VALUE
         }
-    return WinRTCcwDefinition(
-        interfaceDefinitions = interfaceDefinitions,
-        defaultInterfaceId = defaultInterfaceId,
-        runtimeClassName = WinRTValueBoxing.boxedRuntimeClassNameForValue(value, declaredReferenceArrayElementType),
-    )
+    val runtimeClassName =
+        WinRTValueBoxing.boxedRuntimeClassNameForValue(value, declaredReferenceArrayElementType)
+    return cachedValueHostDefinition(
+        key = ValueHostShapeKey(
+            kind = shapeKind,
+            defaultInterfaceId = defaultInterfaceId,
+            valueInterfaceId = valueInterfaceId,
+            propertyType = propertyType,
+            runtimeClassName = runtimeClassName,
+            includePropertyValueInterface = propertyType != null,
+        ),
+    ) {
+        buildList {
+            propertyType?.let { add(createHostPropertyValueInterfaceDefinition(it)) }
+            referenceArrayInterfaceId?.let {
+                add(ValueBoxingInterop.createHostReferenceArrayInterfaceDefinition(it))
+            } ?: referenceInterfaceId?.let {
+                add(ValueBoxingInterop.createHostReferenceInterfaceDefinition(it))
+            }
+        }
+    }
 }
 
 internal fun createSyntheticInspectableCcwDefinition(

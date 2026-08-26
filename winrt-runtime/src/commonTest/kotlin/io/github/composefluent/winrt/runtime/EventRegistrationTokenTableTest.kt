@@ -1,13 +1,16 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import windows.foundation.EventRegistrationToken
 
+@OptIn(ExperimentalAtomicApi::class)
 class EventRegistrationTokenTableTest {
     @Test
     fun event_registration_token_uses_registered_winrt_struct_mapping() {
@@ -75,6 +78,86 @@ class EventRegistrationTokenTableTest {
         calls.clear()
         table.forEachHandler { handler -> calls += handler.name }
         assertEquals(listOf("first", "second"), calls)
+    }
+
+    @Test
+    fun event_registration_token_table_uses_the_single_handler_snapshot() {
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val handler = TestHandler("single")
+        val calls = mutableListOf<String>()
+
+        table.addEventHandler(handler)
+        val snapshot = table.handlerSnapshot.load()
+        table.forEachHandler { calls += it.name }
+
+        assertSame(handler, snapshot.singleHandler)
+        assertNull(snapshot.manyHandlers)
+        assertEquals(listOf("single"), calls)
+    }
+
+    @Test
+    fun duplicate_registrations_are_invoked_and_removed_independently() {
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val handler = TestHandler("duplicate")
+        val firstToken = table.addEventHandler(handler)
+        val secondToken = table.addEventHandler(handler)
+
+        val initialCalls = mutableListOf<String>()
+        table.forEachHandler { initialCalls += it.name }
+        assertEquals(listOf("duplicate", "duplicate"), initialCalls)
+
+        assertSame(handler, table.removeEventHandler(firstToken))
+        val remainingCalls = mutableListOf<String>()
+        table.forEachHandler { remainingCalls += it.name }
+        assertEquals(listOf("duplicate"), remainingCalls)
+
+        assertSame(handler, table.removeEventHandler(secondToken))
+        var invoked = false
+        table.forEachHandler { invoked = true }
+        assertFalse(invoked)
+    }
+
+    @Test
+    fun mutation_during_invoke_only_changes_the_next_snapshot() {
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val first = TestHandler("first")
+        val second = TestHandler("second")
+        val third = TestHandler("third")
+        table.addEventHandler(first)
+        val secondToken = table.addEventHandler(second)
+        val firstCalls = mutableListOf<String>()
+
+        table.forEachHandler { handler ->
+            firstCalls += handler.name
+            if (handler === first) {
+                assertSame(second, table.removeEventHandler(secondToken))
+                table.addEventHandler(third)
+            }
+        }
+
+        assertEquals(listOf("first", "second"), firstCalls)
+        val nextCalls = mutableListOf<String>()
+        table.forEachHandler { nextCalls += it.name }
+        assertEquals(listOf("first", "third"), nextCalls)
+    }
+
+    @Test
+    fun removing_handlers_publishes_a_snapshot_without_their_references() {
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val first = TestHandler("first")
+        val second = TestHandler("second")
+        val firstToken = table.addEventHandler(first)
+        val secondToken = table.addEventHandler(second)
+
+        assertSame(first, table.removeEventHandler(firstToken))
+        val remainingSnapshot = table.handlerSnapshot.load()
+        assertSame(second, remainingSnapshot.singleHandler)
+        assertNull(remainingSnapshot.manyHandlers)
+
+        assertSame(second, table.removeEventHandler(secondToken))
+        val emptySnapshot = table.handlerSnapshot.load()
+        assertNull(emptySnapshot.singleHandler)
+        assertNull(emptySnapshot.manyHandlers)
     }
 
     private fun upper32Bits(token: EventRegistrationToken): Int =

@@ -3078,82 +3078,36 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     ?: return null
                 val hasDirectManagedStateAccess = stableValue.type.classOrNull
                     ?.hasSupertype(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME) == true
+                val marshalerType = marshalerClass.defaultType
+                val nullableMarshalerType = marshalerType.makeNullable()
+                val address = irTemporary(
+                    nullPointer,
+                    nameHint = "projectedAbi",
+                    isMutable = true,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val callLease = irTemporary(
+                    builder.irNull(nullableMarshalerType),
+                    nameHint = "managedProjectedCallLease",
+                    isMutable = true,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val ownedMarshaler = irTemporary(
+                    builder.irNull(nullableMarshalerType),
+                    nameHint = "ownedProjectedMarshaler",
+                    isMutable = true,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
 
-                fun invokeWith(address: IrExpression): IrExpression =
-                    continuation(
-                        PreparedInput(
-                            abiValues = listOf(address),
-                            keepAliveOwners = listOf(builder.irGet(stableValue)),
-                        ),
-                    ) ?: abortCallSiteLowering()
+                fun nonNullManagedValue(): IrExpression =
+                    builder.irAs(builder.irGet(stableValue), stableValue.type.makeNotNull())
 
-                fun invokeWithBorrowedOrOwnedMarshaler(
-                    managedState: IrVariable?,
-                ): IrExpression = builder.irBlock(
-                    resultType = function.returnType,
+                fun nonNullMarshaler(variable: IrVariable): IrExpression =
+                    builder.irAs(builder.irGet(variable), marshalerType)
+
+                fun prepareNonNullInput(): IrExpression = builder.irBlock(
+                    resultType = pluginContext.irBuiltIns.unitType,
                 ) {
-                    val borrowedArguments = buildList {
-                        add(builder.irGet(stableValue))
-                        managedState?.let { add(builder.irGet(it)) }
-                        add(builder.irGet(typeHandle))
-                    }
-                    val borrowedAbi = irTemporary(
-                        resolver.topLevelCall(
-                            builder,
-                            if (managedState == null) {
-                                tryBorrowWinRTManagedProjectionAbi
-                            } else {
-                                tryBorrowWinRTManagedProjectionAbiWithState
-                            },
-                            borrowedArguments,
-                        ),
-                        nameHint = "borrowedProjectedAbi",
-                        isMutable = false,
-                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                    )
-                    val borrowMiss = builder.irCall(isNullPointer).apply {
-                        arguments[0] = builder.irGetObject(platformAbi)
-                        arguments[1] = builder.irGet(borrowedAbi)
-                    }
-                    +builder.irIfThenElse(
-                        type = function.returnType,
-                        condition = borrowMiss,
-                        thenPart = builder.irBlock(resultType = function.returnType) {
-                            val marshaler = irTemporary(
-                                resolver.topLevelCall(
-                                    builder,
-                                    winRTProjectionMarshaler,
-                                    listOf(builder.irGet(stableValue), builder.irGet(typeHandle)),
-                                ),
-                                nameHint = "projectedMarshaler",
-                                isMutable = false,
-                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                            )
-                            val marshaledAbi = resolver.memberCall(
-                                builder,
-                                winRTProjectionMarshalerAbiGetter,
-                                builder.irGet(marshaler),
-                                emptyList(),
-                            )
-                            +builder.irTry(
-                                type = function.returnType,
-                                tryResult = invokeWith(marshaledAbi),
-                                catches = emptyList(),
-                                finallyExpression = resolver.memberCall(
-                                    builder,
-                                    winRTProjectionMarshalerClose,
-                                    builder.irGet(marshaler),
-                                    emptyList(),
-                                ),
-                            )
-                        },
-                        elsePart = invokeWith(builder.irGet(borrowedAbi)),
-                    )
-                }
-
-                fun invokeNonNull(): IrExpression = builder.irBlock(resultType = function.returnType) {
-                    fun nonNullManagedValue(): IrExpression =
-                        builder.irAs(builder.irGet(stableValue), stableValue.type.makeNotNull())
                     val managedState = if (hasDirectManagedStateAccess) {
                         irTemporary(
                             resolver.memberCall(
@@ -3174,7 +3128,8 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                         managedState?.let { add(builder.irGet(it)) }
                         add(builder.irGet(typeHandle))
                     }
-                    val callLease = irTemporary(
+                    +builder.irSet(
+                        callLease.symbol,
                         resolver.topLevelCall(
                             builder,
                             if (managedState == null) {
@@ -3184,45 +3139,118 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                             },
                             leaseArguments,
                         ),
-                        nameHint = "managedProjectedCallLease",
-                        isMutable = false,
-                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                    )
-                    fun nonNullLease(): IrExpression =
-                        builder.irAs(builder.irGet(callLease), marshalerClass.defaultType)
-                    val leasedAbi = resolver.memberCall(
-                        builder,
-                        winRTProjectionMarshalerAbiGetter,
-                        nonNullLease(),
-                        emptyList(),
                     )
                     +builder.irIfNull(
-                        type = function.returnType,
+                        type = pluginContext.irBuiltIns.unitType,
                         subject = builder.irGet(callLease),
-                        thenPart = invokeWithBorrowedOrOwnedMarshaler(managedState),
-                        elsePart = builder.irTry(
-                            type = function.returnType,
-                            tryResult = invokeWith(leasedAbi),
-                            catches = emptyList(),
-                            finallyExpression = resolver.topLevelCall(
+                        thenPart = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                            val borrowedArguments = buildList {
+                                add(builder.irGet(stableValue))
+                                managedState?.let { add(builder.irGet(it)) }
+                                add(builder.irGet(typeHandle))
+                            }
+                            val borrowedAbi = irTemporary(
+                                resolver.topLevelCall(
+                                    builder,
+                                    if (managedState == null) {
+                                        tryBorrowWinRTManagedProjectionAbi
+                                    } else {
+                                        tryBorrowWinRTManagedProjectionAbiWithState
+                                    },
+                                    borrowedArguments,
+                                ),
+                                nameHint = "borrowedProjectedAbi",
+                                isMutable = false,
+                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                            )
+                            val borrowMiss = builder.irCall(isNullPointer).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(borrowedAbi)
+                            }
+                            +builder.irIfThenElse(
+                                type = pluginContext.irBuiltIns.unitType,
+                                condition = borrowMiss,
+                                thenPart = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                    val marshaler = irTemporary(
+                                        resolver.topLevelCall(
+                                            builder,
+                                            winRTProjectionMarshaler,
+                                            listOf(builder.irGet(stableValue), builder.irGet(typeHandle)),
+                                        ),
+                                        nameHint = "projectedMarshaler",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    +builder.irSet(ownedMarshaler.symbol, builder.irGet(marshaler))
+                                    +builder.irSet(
+                                        address.symbol,
+                                        resolver.memberCall(
+                                            builder,
+                                            winRTProjectionMarshalerAbiGetter,
+                                            builder.irGet(marshaler),
+                                            emptyList(),
+                                        ),
+                                    )
+                                },
+                                elsePart = builder.irSet(address.symbol, builder.irGet(borrowedAbi)),
+                            )
+                        },
+                        elsePart = builder.irSet(
+                            address.symbol,
+                            resolver.memberCall(
                                 builder,
-                                releaseWinRTManagedProjectionCallLease,
-                                listOf(nonNullLease(), nonNullManagedValue()),
+                                winRTProjectionMarshalerAbiGetter,
+                                nonNullMarshaler(callLease),
+                                emptyList(),
                             ),
                         ),
                     )
                 }
 
-                +(if (recipe.nullable) {
+                val preparation = if (recipe.nullable) {
                     builder.irIfNull(
-                        type = function.returnType,
+                        type = pluginContext.irBuiltIns.unitType,
                         subject = builder.irGet(stableValue),
-                        thenPart = invokeWith(nullPointer),
-                        elsePart = invokeNonNull(),
+                        thenPart = builder.irUnit(),
+                        elsePart = prepareNonNullInput(),
                     )
                 } else {
-                    invokeNonNull()
-                })
+                    prepareNonNullInput()
+                }
+                val downstream = continuation(
+                    PreparedInput(
+                        abiValues = listOf(builder.irGet(address)),
+                        keepAliveOwners = listOf(builder.irGet(stableValue)),
+                    ),
+                ) ?: abortCallSiteLowering()
+                +builder.irTry(
+                    type = function.returnType,
+                    tryResult = builder.irBlock(resultType = function.returnType) {
+                        +preparation
+                        +downstream
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irIfNull(
+                        type = pluginContext.irBuiltIns.unitType,
+                        subject = builder.irGet(callLease),
+                        thenPart = builder.irIfNull(
+                            type = pluginContext.irBuiltIns.unitType,
+                            subject = builder.irGet(ownedMarshaler),
+                            thenPart = builder.irUnit(),
+                            elsePart = resolver.memberCall(
+                                builder,
+                                winRTProjectionMarshalerClose,
+                                nonNullMarshaler(ownedMarshaler),
+                                emptyList(),
+                            ),
+                        ),
+                        elsePart = resolver.topLevelCall(
+                            builder,
+                            releaseWinRTManagedProjectionCallLease,
+                            listOf(nonNullMarshaler(callLease), nonNullManagedValue()),
+                        ),
+                    ),
+                )
             }
             WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT -> builder.irBlock(
                 resultType = function.returnType,

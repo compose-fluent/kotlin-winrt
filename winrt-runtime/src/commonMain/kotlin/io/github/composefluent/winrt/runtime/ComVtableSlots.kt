@@ -31,4 +31,26 @@ object ReferenceTrackerVftblSlots {
 internal object ReferenceTrackerTargetVftblSlots {
     const val AddRefFromReferenceTracker = 3
     const val ReleaseFromReferenceTracker = 4
+    const val Peg = 5
+    const val Unpeg = 6
+}
+
+internal object ReferenceTrackerManagerVftblSlots {
+    const val ReferenceTrackingStarted = 3
+    const val FindTrackerTargetsCompleted = 4
+    const val ReferenceTrackingCompleted = 5
+    const val SetReferenceTrackerHost = 6
+}
+
+internal object ReferenceTrackerHostVftblSlots {
+    const val DisconnectUnusedReferenceSources = 3
+    const val ReleaseDisconnectedReferenceSources = 4
+    const val NotifyEndOfReferenceTrackingOnThread = 5
+    const val GetTrackerTarget = 6
+    const val AddMemoryPressure = 7
+    const val RemoveMemoryPressure = 8
+}
+
+internal object FindReferenceTargetsCallbackVftblSlots {
+    const val FoundTrackerTarget = 3
 }

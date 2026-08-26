@@ -51,6 +51,14 @@ open class WinRTReferenceValueAdapter<T>(
             }
         }
 
+    internal open fun <R> withInputAbiAndPointerOutRaw(
+        value: T,
+        action: RawAddressPairAction<R>,
+    ): R =
+        withInputAbiAndPointerOut(value) { inputAbi, resultOut ->
+            action.invoke(inputAbi, resultOut)
+        }
+
     open fun createOutputMarshaler(value: T): WinRTObjectMarshaler =
         marshaller(value).let { reference ->
             WinRTObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
@@ -123,6 +131,13 @@ object WinRTReferenceValueAdapters {
             override fun <R> withInputAbiAndPointerOut(
                 value: String,
                 action: (inputAbi: RawAddress, resultOut: RawAddress) -> R,
+            ): R = withNativeHStringReferenceAbi(value) { inputAbi, resultOut ->
+                action(inputAbi, resultOut)
+            }
+
+            override fun <R> withInputAbiAndPointerOutRaw(
+                value: String,
+                action: RawAddressPairAction<R>,
             ): R = withNativeHStringReferenceAbi(value, action)
 
             override fun createOutputMarshaler(value: String): WinRTObjectMarshaler {
@@ -216,10 +231,23 @@ object WinRTReferenceValueAdapters {
         projectedTypeName: String,
         defaultInterfaceId: Guid,
         fallbackProjector: (IInspectableReference) -> T,
+    ): WinRTReferenceValueAdapter<T> =
+        runtimeClass(
+            projectedType = projectedType,
+            typeHandle = WinRTTypeHandle(projectedTypeName, defaultInterfaceId),
+            fallbackProjector = fallbackProjector,
+        )
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> runtimeClass(
+        projectedType: KClass<T>,
+        typeHandle: WinRTTypeHandle,
+        fallbackProjector: (IInspectableReference) -> T,
     ): WinRTReferenceValueAdapter<T> {
         // Collection ABI results are owned. Keep the statically known type and factory with
         // the adapter so the hot path does not rebuild either descriptor or projector closure.
-        val typeHandle = WinRTTypeHandle(projectedTypeName, defaultInterfaceId)
+        val projectedTypeName = typeHandle.projectedTypeName
+        val defaultInterfaceId = typeHandle.interfaceId
         return object : WinRTReferenceValueAdapter<T>(
             projectedTypeName = projectedTypeName,
             typeSignature = WinRTTypeSignature.object_(),
@@ -233,7 +261,7 @@ object WinRTReferenceValueAdapters {
                 try {
                     val projected = ComWrappersSupport.createRcwForComObject(
                         inspectable.pointer.asRawAddress(),
-                        WinRTTypeHandle(projectedTypeName, defaultInterfaceId),
+                        typeHandle,
                     ) ?: run {
                         transferredToFallback = true
                         fallbackProjector(inspectable)
@@ -764,6 +792,8 @@ object WinRTListProjection {
 
         override fun set(index: Int, element: T): T = adapter.set(index, element)
 
+        override fun add(element: T): Boolean = adapter.add(element)
+
         override fun add(index: Int, element: T) {
             adapter.add(index, element)
         }
@@ -976,6 +1006,10 @@ object WinRTReadOnlyDictionaryProjection {
         private val valueAdapter: WinRTReferenceValueAdapter<V>,
         override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMap<K, V>(), IWinRTObject, AutoCloseable {
+        private val lookupAction = RawAddressPairAction<V?> { keyAbi, resultOut ->
+            mapView.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+        }
+
         override val nativeObject: ComObjectReference
             get() = mapView
 
@@ -1003,10 +1037,7 @@ object WinRTReadOnlyDictionaryProjection {
                 mapView.hasKey(keyAbi)
             }
 
-        override fun get(key: K): V? =
-            keyAdapter.withInputAbiAndPointerOut(key) { keyAbi, resultOut ->
-                mapView.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
-            }
+        override fun get(key: K): V? = keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
 
         override fun close() {
             mapView.close()
@@ -1142,6 +1173,10 @@ object WinRTDictionaryProjection {
         private val valueAdapter: WinRTReferenceValueAdapter<V>,
         override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMutableMap<K, V>(), IWinRTObject, AutoCloseable {
+        private val lookupAction = RawAddressPairAction<V?> { keyAbi, resultOut ->
+            map.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+        }
+
         override val nativeObject: ComObjectReference
             get() = map
 
@@ -1176,10 +1211,7 @@ object WinRTDictionaryProjection {
             return previous
         }
 
-        override fun get(key: K): V? =
-            keyAdapter.withInputAbiAndPointerOut(key) { keyAbi, resultOut ->
-                map.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
-            }
+        override fun get(key: K): V? = keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
 
         override fun remove(key: K): V? {
             val previous = get(key)

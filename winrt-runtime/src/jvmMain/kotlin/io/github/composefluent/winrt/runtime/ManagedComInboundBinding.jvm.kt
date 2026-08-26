@@ -13,55 +13,18 @@ internal actual class PlatformManagedComInboundWeakReference actual constructor(
     actual override fun close() = Unit
 }
 
-internal actual class ManagedComInboundBindingHandle actual constructor(
-    private val binding: ManagedComInboundBinding,
-    private val canonicalObjectMemory: RawAddress,
-) : AutoCloseable {
-    init {
-        managedComInboundBindings[canonicalObjectMemory.value] = binding
-    }
+internal actual fun platformCreateManagedComInboundBindingHandle(
+    binding: ManagedComInboundBinding,
+    canonicalObjectMemory: RawAddress,
+): RawAddress = canonicalObjectMemory.also {
+    managedComInboundBindings[canonicalObjectMemory.value] = binding
+}
 
-    actual fun attach(
-        objectMemory: RawAddress,
-        objectMemoryView: NativeMemoryView?,
-        objectMemoryOffsetBytes: Long,
-    ) {
-        if (objectMemoryView != null) {
-            objectMemoryView.writePointer(
-                objectMemoryOffsetBytes + managedComInboundBindingSlot * Long.SIZE_BYTES.toLong(),
-                canonicalObjectMemory,
-            )
-        } else {
-            PlatformAbi.writePointerAt(
-                objectMemory,
-                managedComInboundBindingSlot,
-                canonicalObjectMemory,
-            )
-        }
-    }
-
-    actual fun detach(
-        objectMemory: RawAddress,
-        objectMemoryView: NativeMemoryView?,
-        objectMemoryOffsetBytes: Long,
-    ) {
-        if (objectMemoryView != null) {
-            objectMemoryView.writePointer(
-                objectMemoryOffsetBytes + managedComInboundBindingSlot * Long.SIZE_BYTES.toLong(),
-                PlatformAbi.nullPointer,
-            )
-        } else {
-            PlatformAbi.writePointerAt(
-                objectMemory,
-                managedComInboundBindingSlot,
-                PlatformAbi.nullPointer,
-            )
-        }
-    }
-
-    actual override fun close() {
-        managedComInboundBindings.remove(canonicalObjectMemory.value, binding)
-    }
+internal actual fun platformDisposeManagedComInboundBindingHandle(
+    binding: ManagedComInboundBinding,
+    platformHandle: RawAddress,
+) {
+    managedComInboundBindings.remove(platformHandle.value, binding)
 }
 
 internal actual fun platformCreateInspectableQueryInterfaceCallback(): NativeCallbackHandle =
@@ -104,12 +67,6 @@ internal actual fun platformCreateInspectableReleaseCallback(): NativeCallbackHa
             )
         },
     )
-
-@PublishedApi
-internal actual inline fun platformWinRTProjectionInboundManagedValue(
-    thisWord: Long,
-): Any? =
-    platformWinRTProjectionInboundBinding(thisWord)?.get()
 
 @PublishedApi
 internal actual inline fun platformWinRTProjectionInboundBinding(

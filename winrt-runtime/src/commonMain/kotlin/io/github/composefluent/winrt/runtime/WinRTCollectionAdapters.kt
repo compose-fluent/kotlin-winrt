@@ -43,6 +43,13 @@ class WinRTVectorListAdapter<T>(
         return previous
     }
 
+    override fun add(element: T): Boolean {
+        elementMarshaller(element).use { marshaler ->
+            vector.append(marshaler.abi)
+        }
+        return true
+    }
+
     override fun add(index: Int, element: T) {
         require(index >= 0) { "index must be non-negative." }
         elementMarshaller(element).use { marshaler ->

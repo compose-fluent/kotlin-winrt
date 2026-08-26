@@ -27,7 +27,7 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
             if (invocation.plan.returnType == UNIT) {
                 add("%L\n", expression)
             } else {
-                add("return %L\n", expression)
+                add("return(%L)\n", expression)
             }
         }
         .build()

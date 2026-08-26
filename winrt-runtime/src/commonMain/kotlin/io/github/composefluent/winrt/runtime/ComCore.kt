@@ -7,11 +7,7 @@ internal enum class ComOwnershipMode {
 
 @PublishedApi
 internal class ComPtr private constructor(
-    private val originalRaw: RawComPtr,
-    val interfaceId: Guid,
-    val ownershipMode: ComOwnershipMode,
     referenceTrackerPointer: RawComPtr,
-    isAggregated: Boolean,
     @PublishedApi internal val support: RawComObjectReferenceSupport,
 ) : AutoCloseable {
     @PublishedApi
@@ -28,7 +24,8 @@ internal class ComPtr private constructor(
         if (!PlatformAbi.isNull(referenceTrackerPointer)) {
             support.attachReferenceTracker(
                 trackerPointer = referenceTrackerPointer,
-                addRefFromTrackerSource = true,
+                addRefForObjectReference = false,
+                releaseTrackerSourceOnDispose = true,
                 retainTrackerPointer = ::invokeIUnknownAddRefOnPointer,
                 addRefFromTrackerSourceCallback = ::invokeReferenceTrackerAddRefOnPointer,
             )
@@ -37,6 +34,9 @@ internal class ComPtr private constructor(
 
     val pointer: RawComPtr
         get() = raw
+
+    val interfaceId: Guid
+        get() = support.interfaceId
 
     /** Combines the lifetime check and raw-pointer load for generated hot call sites. */
     @Suppress("NOTHING_TO_INLINE")
@@ -99,10 +99,18 @@ internal class ComPtr private constructor(
     }
 
     fun tryQueryInterface(requestedInterfaceId: Guid): ComPtr? =
-        support.tryQueryInterface(requestedInterfaceId, ::wrapQueriedReference)
+        support.tryQueryInterface(
+            requestedInterfaceId,
+            ::invokeReferenceTrackerAddRefOnPointer,
+            ::wrapQueriedReference,
+        )
 
     fun queryInterface(requestedInterfaceId: Guid): Result<ComPtr> =
-        support.queryInterface(requestedInterfaceId, ::wrapQueriedReference)
+        support.queryInterface(
+            requestedInterfaceId,
+            ::invokeReferenceTrackerAddRefOnPointer,
+            ::wrapQueriedReference,
+        )
 
     fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean =
         support.tryInitializeReferenceTracker(
@@ -175,11 +183,7 @@ internal class ComPtr private constructor(
                 managedCcwReleaseIdentity = managedCcwReleaseIdentity,
             )
             return ComPtr(
-                originalRaw = raw,
-                interfaceId = interfaceId,
-                ownershipMode = ownershipMode,
                 referenceTrackerPointer = referenceTrackerPointer,
-                isAggregated = isAggregated,
                 support = support,
             )
         }

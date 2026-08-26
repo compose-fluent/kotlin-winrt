@@ -35,9 +35,9 @@ data class WinRTAuthoredTypeDefinition<T : Any>(
         }
     }
 
-    internal fun toRuntimeDefinition(value: T): WinRTCcwDefinition =
+    internal fun toRuntimeDefinition(): WinRTCcwDefinition =
         WinRTCcwDefinition(
-            interfaceDefinitions = interfaces.map { it.toRuntimeDefinition(value) },
+            interfaceDefinitions = interfaces.map(WinRTAuthoredInterfaceDefinition<T>::toRuntimeDefinition),
             defaultInterfaceId = defaultInterfaceId,
             runtimeClassName = runtimeClassName,
         )
@@ -56,6 +56,13 @@ data class WinRTAuthoredInterfaceDefinition<T : Any>(
             methods = methods.map { it.toRuntimeDefinition(value) },
             baseKind = baseKind,
         )
+
+    internal fun toRuntimeDefinition(): WinRTInspectableInterfaceDefinition =
+        WinRTInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = methods.map(WinRTAuthoredMethodDefinition<T>::toRuntimeDefinition),
+            baseKind = baseKind,
+        )
 }
 
 data class WinRTAuthoredMethodDefinition<T : Any>(
@@ -64,6 +71,12 @@ data class WinRTAuthoredMethodDefinition<T : Any>(
 ) {
     internal fun toRuntimeDefinition(value: T): WinRTInspectableMethodDefinition =
         WinRTInspectableMethodDefinition(signature) { args -> value.handler(args) }
+
+    internal fun toRuntimeDefinition(): WinRTInspectableMethodDefinition =
+        WinRTInspectableMethodDefinition(signature) { managedValue, args ->
+            @Suppress("UNCHECKED_CAST")
+            (managedValue as T).handler(args)
+        }
 }
 
 data class WinRTAuthoredActivationFactoryDefinition<T : Any>(
@@ -164,9 +177,10 @@ object WinRTAuthoring {
         implementationType: KClass<*>,
         definition: WinRTAuthoredTypeDefinition<Any>,
     ): Boolean =
-        ComWrappersSupport.registerCcwFactory(implementationType) { value ->
-            definition.toRuntimeDefinition(value)
-        }
+        ComWrappersSupport.registerStaticCcwDefinition(
+            implementationType,
+            definition.toRuntimeDefinition(),
+        )
 
     @Suppress("UNCHECKED_CAST")
     inline fun <reified T : Any> registerType(
