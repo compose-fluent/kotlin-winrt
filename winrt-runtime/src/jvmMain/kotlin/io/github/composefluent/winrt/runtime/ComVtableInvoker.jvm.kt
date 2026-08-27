@@ -440,7 +440,7 @@ actual object ComVtableInvoker {
         signature: ComMethodSignature,
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle {
-        val callbackKinds = listOf(ComAbiValueKind.Pointer) + signature.explicitParameterKinds
+        val callbackKinds = signature.callbackParameterKinds()
         return createCallback(
             key = CallbackSignature(signature.resultKind, callbackKinds),
             callback = callback,
@@ -454,7 +454,7 @@ actual object ComVtableInvoker {
         createRawWordCallback(
             key = CallbackSignature(
                 resultKind = signature.resultKind,
-                parameterKinds = listOf(ComAbiValueKind.Pointer) + signature.explicitParameterKinds,
+                parameterKinds = signature.callbackParameterKinds(),
             ),
             callback = callback,
         )

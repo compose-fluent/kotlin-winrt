@@ -41,8 +41,6 @@ import kotlin.native.concurrent.ThreadLocal
 import kotlin.native.internal.GCUnsafeCall
 import platform.posix.getenv
 import platform.posix.memset
-import platform.windows.COINIT_APARTMENTTHREADED
-import platform.windows.COINIT_MULTITHREADED
 import platform.windows.FreeLibrary
 import platform.windows.FormatMessageW
 import platform.windows.FlsAlloc
@@ -611,18 +609,7 @@ internal actual inline fun winRTStringAddress(value: String, length: Int): RawAd
         RawAddress(value.nativeAddressOf(0).rawValue.toLong())
     }
 
-@PublishedApi
-internal actual inline fun winRTStringLength(value: String): Int = value.length
-
-private const val hStringHeaderOffsetBytes: Long = 8L
-private const val hStringHeaderSizeBytes: Long = 24L
 private const val hStringFrameSizeBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
-@PublishedApi
-internal const val hStringLengthOffsetBytes: Long = 4L
-
-@PublishedApi
-internal const val hStringBufferOffsetBytes: Long = 16L
-private const val hStringReferenceFlag: Int = 1
 private const val hStringInitialFrameSizeBytes: Long = hStringFrameSizeBytes
 private const val scopedNativeHStringPoolDepthWord: Int = 0
 private const val scopedNativeHStringPoolOverflowCapacityWord: Int = 1
@@ -668,8 +655,6 @@ actual object PlatformAbi {
     actual val nullPointer: RawAddress = RawAddress.Null
     actual val nullComPtr: RawComPtr = RawComPtr.Null
 
-    actual val hStringHeaderSizeBytes: Long = 24L
-
     actual fun confinedScope(): NativeScope = NativeScope(ownsAllocations = true)
 
     actual fun sharedScope(): NativeScope = NativeScope(ownsAllocations = false)
@@ -677,10 +662,6 @@ actual object PlatformAbi {
     actual fun isNull(pointer: RawAddress): Boolean = pointer.value == 0L
 
     actual fun isNull(pointer: RawComPtr): Boolean = pointer.value == 0L
-
-    actual fun samePointer(first: RawAddress, second: RawAddress): Boolean = first.value == second.value
-
-    actual fun samePointer(first: RawComPtr, second: RawComPtr): Boolean = first.value == second.value
 
     actual fun toRawComPtr(pointer: RawAddress): RawComPtr = pointer.asRawComPtr()
 
@@ -835,10 +816,6 @@ actual object PlatformAbi {
         return word
     }
 
-    actual fun pointerKey(pointer: RawAddress): Long = pointer.value
-
-    actual fun pointerKey(pointer: RawComPtr): Long = pointer.value
-
     actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation {
         val pointer = nativeHeap.allocArray<ByteVar>(sizeBytes.toInt()).reinterpret<COpaque>()
         val raw = pointer.asRawAddress()
@@ -953,9 +930,6 @@ private fun RawAddress.writeBytes(values: ByteArray) {
 }
 
 actual object WinRTPlatformApi {
-    private const val roInitSingleThreaded = 0
-    private const val roInitMultithreaded = 1
-
     private val combaseModule by lazy {
         LoadLibraryA("combase.dll")
     }
@@ -1144,11 +1118,8 @@ actual object WinRTPlatformApi {
         }
 
     actual fun coInitializeExRaw(apartmentType: ApartmentType): Int {
-        val flags = when (apartmentType) {
-            ApartmentType.SingleThreaded -> COINIT_APARTMENTTHREADED
-            ApartmentType.MultiThreaded -> COINIT_MULTITHREADED
-        }
-        return coInitializeExProc?.invoke(null, flags) ?: KnownHResults.E_NOTIMPL.value
+        return coInitializeExProc?.invoke(null, apartmentType.coInitializeFlags.toUInt())
+            ?: KnownHResults.E_NOTIMPL.value
     }
 
     actual fun coUninitializeRaw() {
@@ -1156,11 +1127,7 @@ actual object WinRTPlatformApi {
     }
 
     actual fun roInitializeRaw(apartmentType: ApartmentType): Int {
-        val initType = when (apartmentType) {
-            ApartmentType.SingleThreaded -> roInitSingleThreaded
-            ApartmentType.MultiThreaded -> roInitMultithreaded
-        }
-        return roInitializeProc?.invoke(initType) ?: KnownHResults.E_NOTIMPL.value
+        return roInitializeProc?.invoke(apartmentType.roInitializeType) ?: KnownHResults.E_NOTIMPL.value
     }
 
     actual fun roUninitializeRaw() {
@@ -1400,13 +1367,6 @@ actual object WinRTPlatformApi {
 
     actual fun lastErrorAsHResultRaw(): Int =
         ExceptionHelpers.hResultFromWin32(GetLastError().toInt()).value
-
-    actual fun checkSucceededRaw(result: Int) {
-        val hResult = HResult(result)
-        if (hResult.isFailure) {
-            throw WinRTExceptionTranslator.exceptionFor(hResult)
-        }
-    }
 
     actual fun resolveModulePathRaw(fileName: String): String =
         nativeRuntimeAssetCandidates(fileName)

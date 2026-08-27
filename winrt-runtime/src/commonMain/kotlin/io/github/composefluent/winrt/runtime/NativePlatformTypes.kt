@@ -25,6 +25,18 @@ enum class ApartmentType {
     MultiThreaded,
 }
 
+internal val ApartmentType.coInitializeFlags: Int
+    get() = when (this) {
+        ApartmentType.SingleThreaded -> 0x2
+        ApartmentType.MultiThreaded -> 0x0
+    }
+
+internal val ApartmentType.roInitializeType: Int
+    get() = when (this) {
+        ApartmentType.SingleThreaded -> 0
+        ApartmentType.MultiThreaded -> 1
+    }
+
 data class NativePointerResult(
     val hResultValue: Int,
     val pointer: RawAddress,

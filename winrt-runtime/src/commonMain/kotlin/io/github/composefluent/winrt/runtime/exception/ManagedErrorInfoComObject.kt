@@ -15,6 +15,7 @@ import io.github.composefluent.winrt.runtime.ManagedComHostState
 import io.github.composefluent.winrt.runtime.ManagedReferenceHostSupport
 import io.github.composefluent.winrt.runtime.NativeCallbackHandle
 import io.github.composefluent.winrt.runtime.PlatformAbi
+import io.github.composefluent.winrt.runtime.pointerKey
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException

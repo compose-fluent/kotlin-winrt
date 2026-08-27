@@ -20,3 +20,7 @@ data class ComMethodSignature(
         ): ComMethodSignature = ComMethodSignature(explicitParameterKinds.toList())
     }
 }
+
+@Suppress("NOTHING_TO_INLINE")
+internal inline fun ComMethodSignature.callbackParameterKinds(): List<ComAbiValueKind> =
+    listOf(ComAbiValueKind.Pointer) + explicitParameterKinds

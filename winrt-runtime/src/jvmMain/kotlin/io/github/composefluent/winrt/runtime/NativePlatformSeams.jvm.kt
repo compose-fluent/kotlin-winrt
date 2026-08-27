@@ -438,16 +438,8 @@ internal actual inline fun winRTPinString(value: String, length: Int): String = 
 @PublishedApi
 internal actual inline fun winRTStringAddress(value: String, length: Int): RawAddress = RawAddress.Null
 
-@PublishedApi
-internal actual inline fun winRTStringLength(value: String): Int = value.length
-
-private const val hStringHeaderOffsetBytes: Long = 8L
-private const val hStringHeaderSizeBytes: Long = 24L
 private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
 private const val hStringFlagsOffsetBytes: Long = 0L
-private const val hStringLengthOffsetBytes: Long = 4L
-private const val hStringBufferOffsetBytes: Long = 16L
-private const val hStringReferenceFlag: Int = 1
 private const val hStringInitialFrameSizeBytes: Long = 64L
 private const val hStringInitialCharCapacity: Int = 16
 
@@ -475,9 +467,6 @@ actual object PlatformAbi {
     actual val nullComPtr: RawComPtr
         get() = RawComPtr.Null
 
-    actual val hStringHeaderSizeBytes: Long
-        get() = 24L
-
     actual fun confinedScope(): NativeScope =
         Arena.ofConfined().let { arena ->
             NativeScope(arena = arena, onClose = arena::close)
@@ -488,10 +477,6 @@ actual object PlatformAbi {
     actual fun isNull(pointer: RawAddress): Boolean = pointer.value == 0L
 
     actual fun isNull(pointer: RawComPtr): Boolean = pointer.value == 0L
-
-    actual fun samePointer(first: RawAddress, second: RawAddress): Boolean = first.value == second.value
-
-    actual fun samePointer(first: RawComPtr, second: RawComPtr): Boolean = first.value == second.value
 
     actual fun toRawComPtr(pointer: RawAddress): RawComPtr = pointer.asRawComPtr()
 
@@ -665,10 +650,6 @@ actual object PlatformAbi {
 
     actual fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long =
         address.value
-
-    actual fun pointerKey(pointer: RawAddress): Long = pointer.value
-
-    actual fun pointerKey(pointer: RawComPtr): Long = pointer.value
 
     actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation {
         require(sizeBytes >= 0L) { "Owned native allocation size cannot be negative: $sizeBytes." }

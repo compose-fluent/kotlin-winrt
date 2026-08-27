@@ -136,11 +136,6 @@ object WinRTWindowsAppSdkDeployment {
         }
     }
 
-    private fun Path.parentPath(): Path? {
-        val text = toString().trimEnd('\\', '/')
-        val index = maxOf(text.lastIndexOf('\\'), text.lastIndexOf('/'))
-        return if (index <= 0) null else Path(text.substring(0, index))
-    }
 }
 
 internal expect fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path?

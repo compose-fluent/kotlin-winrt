@@ -12,6 +12,7 @@ import io.github.composefluent.winrt.runtime.KnownHResults
 import io.github.composefluent.winrt.runtime.Projections
 import io.github.composefluent.winrt.runtime.WinRTGuid
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+import io.github.composefluent.winrt.runtime.checkSucceededRaw
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
 import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException
 

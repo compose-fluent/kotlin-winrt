@@ -4232,6 +4232,7 @@ ${invocation.toString().prependIndent("                        ")}
         import io.github.composefluent.winrt.runtime.RawAddress
         import io.github.composefluent.winrt.runtime.WinRTNativeExportInvoker
         import io.github.composefluent.winrt.runtime.WinRTPlatformApi
+        import io.github.composefluent.winrt.runtime.checkSucceededRaw
 
         public object Win32Interop {
             public fun getWindowIdFromWindow(hwnd: RawAddress): WindowId =

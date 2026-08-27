@@ -150,7 +150,7 @@ internal expect inline fun winRTPinString(value: String, length: Int): String
 internal expect inline fun winRTStringAddress(value: String, length: Int): RawAddress
 
 @PublishedApi
-internal expect inline fun winRTStringLength(value: String): Int
+internal inline fun winRTStringLength(value: String): Int = value.length
 
 /**
  * A native allocation whose backing memory is owned and can be freed by closing this handle.
@@ -172,11 +172,24 @@ expect class NativeCallbackHandle : AutoCloseable {
     override fun close()
 }
 
+@PublishedApi
+internal const val hStringHeaderOffsetBytes: Long = 8L
+
+@PublishedApi
+internal const val hStringHeaderSizeBytes: Long = 24L
+
+@PublishedApi
+internal const val hStringLengthOffsetBytes: Long = 4L
+
+@PublishedApi
+internal const val hStringBufferOffsetBytes: Long = 16L
+
+@PublishedApi
+internal const val hStringReferenceFlag: Int = 1
+
 expect object PlatformAbi {
     val nullPointer: RawAddress
     val nullComPtr: RawComPtr
-
-    val hStringHeaderSizeBytes: Long
 
     fun confinedScope(): NativeScope
 
@@ -184,9 +197,6 @@ expect object PlatformAbi {
 
     fun isNull(pointer: RawAddress): Boolean
     fun isNull(pointer: RawComPtr): Boolean
-
-    fun samePointer(first: RawAddress, second: RawAddress): Boolean
-    fun samePointer(first: RawComPtr, second: RawComPtr): Boolean
 
     fun toRawComPtr(pointer: RawAddress): RawComPtr
 
@@ -264,9 +274,6 @@ expect object PlatformAbi {
 
     fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long
 
-    fun pointerKey(pointer: RawAddress): Long
-    fun pointerKey(pointer: RawComPtr): Long
-
     /**
      * Allocates [sizeBytes] bytes of zeroed, cross-thread native memory.
      * Closing the returned owner frees the backing memory. Use this when ownership of a heap
@@ -277,6 +284,22 @@ expect object PlatformAbi {
     /** Fills [sizeBytes] bytes starting at [pointer] with zeros. */
     fun zeroBytes(pointer: RawAddress, sizeBytes: Long)
 }
+
+@Suppress("NOTHING_TO_INLINE")
+inline val PlatformAbi.hStringHeaderSizeBytes: Long
+    get() = io.github.composefluent.winrt.runtime.hStringHeaderSizeBytes
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun PlatformAbi.samePointer(first: RawAddress, second: RawAddress): Boolean = first.value == second.value
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun PlatformAbi.samePointer(first: RawComPtr, second: RawComPtr): Boolean = first.value == second.value
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun PlatformAbi.pointerKey(pointer: RawAddress): Long = pointer.value
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun PlatformAbi.pointerKey(pointer: RawComPtr): Long = pointer.value
 
 private const val queryInterfaceScratchSizeBytes = Guid.BYTE_SIZE + Long.SIZE_BYTES
 
@@ -390,7 +413,10 @@ expect object WinRTPlatformApi {
 
     fun lastErrorAsHResultRaw(): Int
 
-    fun checkSucceededRaw(result: Int)
-
     fun resolveModulePathRaw(fileName: String): String
+}
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun WinRTPlatformApi.checkSucceededRaw(result: Int) {
+    HResult(result).requireSuccess()
 }

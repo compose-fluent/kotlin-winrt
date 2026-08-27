@@ -17,10 +17,6 @@ import java.nio.file.Path
  * instead of routing them through wrapper types.
  */
 actual object WinRTPlatformApi {
-    private const val coinitApartmentThreaded = 0x2
-    private const val coinitMultithreaded = 0x0
-    private const val roInitSingleThreaded = 0
-    private const val roInitMultithreaded = 1
     private const val loadLibrarySearchSystem32 = 0x00000800
     private const val getModuleHandleExFlagFromAddress = 0x00000004
     private const val memCommit = 0x00001000
@@ -629,10 +625,6 @@ actual object WinRTPlatformApi {
     actual fun lastErrorAsHResultRaw(): Int =
         lastErrorAsHResult().value
 
-    actual fun checkSucceededRaw(result: Int) {
-        checkSucceeded(result)
-    }
-
     actual fun resolveModulePathRaw(fileName: String): String =
         resolveModulePath(fileName)
 
@@ -661,10 +653,7 @@ actual object WinRTPlatformApi {
 
     fun coInitializeEx(apartmentType: ApartmentType): HResult {
         ensureWindows()
-        val flags = when (apartmentType) {
-            ApartmentType.SingleThreaded -> coinitApartmentThreaded
-            ApartmentType.MultiThreaded -> coinitMultithreaded
-        }
+        val flags = apartmentType.coInitializeFlags
         return HResult(coInitializeExHandle.invokeWithArguments(MemorySegment.NULL, flags) as Int)
     }
 
@@ -675,10 +664,7 @@ actual object WinRTPlatformApi {
 
     fun roInitialize(apartmentType: ApartmentType): HResult {
         ensureWindows()
-        val initType = when (apartmentType) {
-            ApartmentType.SingleThreaded -> roInitSingleThreaded
-            ApartmentType.MultiThreaded -> roInitMultithreaded
-        }
+        val initType = apartmentType.roInitializeType
         return HResult(roInitializeHandle.invokeWithArguments(initType) as Int)
     }
 

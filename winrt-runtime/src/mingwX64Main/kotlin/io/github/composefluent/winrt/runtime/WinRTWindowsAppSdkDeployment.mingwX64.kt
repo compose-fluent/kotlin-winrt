@@ -150,10 +150,4 @@ private fun RawAddress.asBootstrapShutdown(): CPointer<CFunction<() -> Unit>> =
 private fun COpaquePointer?.asRawAddress(): RawAddress =
     RawAddress(this?.rawValue?.toLong() ?: 0L)
 
-private fun Path.parentPath(): Path? {
-    val text = toString().trimEnd('\\', '/')
-    val index = maxOf(text.lastIndexOf('\\'), text.lastIndexOf('/'))
-    return if (index <= 0) null else Path(text.substring(0, index))
-}
-
 private const val runtimeAssetsRootEnvironmentVariableName = "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"

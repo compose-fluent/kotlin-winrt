@@ -26,6 +26,12 @@ internal fun Path.canonicalString(): String =
 /** Resolves a string path to its canonical absolute form when possible. */
 internal fun absolutePath(path: String): String = Path(path).canonicalString()
 
+internal fun Path.parentPath(): Path? {
+    val text = toString().trimEnd('\\', '/')
+    val index = maxOf(text.lastIndexOf('\\'), text.lastIndexOf('/'))
+    return if (index <= 0) null else Path(text.substring(0, index))
+}
+
 /** Reads the entire file as a UTF-8 string. */
 internal fun Path.readText(): String =
     SystemFileSystem.source(this).buffered().use { it.readString() }

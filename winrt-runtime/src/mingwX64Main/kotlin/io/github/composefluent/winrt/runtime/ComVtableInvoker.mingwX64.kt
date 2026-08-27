@@ -325,7 +325,7 @@ actual object ComVtableInvoker {
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle =
         NativeCallbackRegistry.register(
-            parameterKinds = listOf(ComAbiValueKind.Pointer) + signature.explicitParameterKinds,
+            parameterKinds = signature.callbackParameterKinds(),
             callback = callback,
         )
 
@@ -334,7 +334,7 @@ actual object ComVtableInvoker {
         callback: ComRawWordCallback,
     ): NativeCallbackHandle =
         NativeCallbackRegistry.registerRaw(
-            parameterKinds = listOf(ComAbiValueKind.Pointer) + signature.explicitParameterKinds,
+            parameterKinds = signature.callbackParameterKinds(),
             callback = callback,
         )
 
