@@ -44,6 +44,16 @@
 
 ## Current Focus
 
+- [x] 拒绝 P17 Native HSTRING scope FLS lookup memoization：`FlsGetValue` 返回的是当前 fiber 的 FLS 值，而 `@ThreadLocal` 只按线程保存指针；fiber 切换后缓存可能指向另一 fiber 的 pool，存在错误读写和 FLS destructor 生命周期冲突风险。候选未进入 benchmark，代码已撤回；剩余 Native 字典差异归因于必须保留的 fiber/TLS/FFI 结构性成本，详见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
+- [x] 完成本轮剩余候选筛选：现有 97 场景归因中未发现同时满足 fiber-local 生命周期、ownership、ABI 调用次数和双 target 语义约束的可证明单变量优化；不修改生产代码、不新增 benchmark 文件，后续候选继续遵守现有 `5/15/1` 固定产物门槛。
+
+- [x] 完成并拒绝 P16-B cloned-reference direct construction 单变量隔离：QI 与 activation 保持 P15，只替换 `cloneComReference` 使用的 raw-pointer overload；JVM tests/lowering 在 `3m11s` 通过，字节码确认 raw-pointer 直接构造且 `ComPtr` overload 仍调用 `Function1.invoke`。固定 JVM JAR 五对共 30 行协议与 checksum 均正常，但 `DefaultObjectParameters` 和 custom-object marshaling 两个 primary 都仅 `2/5` 胜，未达到 `4/5`，因此跳过 Native 并恢复生产源码。详细证据写入 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
+- [x] 完成并拒绝 P16-A queried-reference direct construction：只替换成功 QI 后的 `ComPtr` wrapper 高阶分派，activation 与 clone 保持 P15；JVM runtime tests/lowering 通过，字节码确认专用 helper 直接构造。固定 JVM JAR 五对共 30 行 checksum 均为 `1`，但 `DynamicCast` 仅 `2/5` 胜且配对中位变化 `+5.63%`，两个伴随场景仅 `3/5`、`2/5`，因此未构建 Native，生产 QI 改动已恢复。
+
+- [x] 完成并拒绝组合 P16 COM wrapper generic-dispatch elimination：候选同时替换 QI、activation factory 与 clone 三条 common 构造路径；JVM tests、JVM/Native production/lowering 和 candidate artifacts 全部通过，字节码确认 helper 内无 `Function`/`invokeinterface`。固定产物双 target 五对交替 `5/15/1` 共 60 行均保持 checksum `1`，但 JVM `DynamicCast` 为 `0/5` 胜，其余五个 target/scenario 均仅 `2/5`，未达到 `4/5` 门槛，生产源码已恢复。详细证据写入 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
 - [x] 完成 P15 第二批 JVM/`mingwX64` runtime target 分歧收敛：将 `RawAddress`/`RawComPtr` 纯值 identity/key、Windows HSTRING ABI 常量、`String.length`、HRESULT success policy、COM callback `this` 参数 shape、apartment ABI 数值映射与通用 `Path.parentPath` 归还 common ownership；compiler plugin 以 `PlatformAbi` 成员符号注入的 `isNull`/`toRawComPtr`/`fromRawComPtr` 与 null sentinel 继续保留 target member，`consumeOwnedHString` 也保留 target leaf，避免改变 lowered IR、公开成员 ABI 或增加 Native 调用层。两端 `actual` 声明行均从 271 降至 264；JVM runtime tests、generator tests、JVM/Native production compile、两套 runtime call-site lowering、Native klibrary 与 published-runtime isolated consumer gate 全部通过，User/Machine `PATH` 前后哈希一致。保持现有分配数、FFI 次数和 hot-path branch，未新增 runner、scenario、script、测试或结果文件。
 
 - [x] 完成并拒绝 P14-A TypeName setter ABI wrapper elimination：候选只让 common `TypeProjection.copyTo` 复用同一 name/kind 分类并直接写 ABI scratch，消除 setter 的临时 `TypeAbi`，未改 getter、cache、invalidation、HSTRING ownership 或 target seam。JVM runtime tests、JVM/Native production/klibrary 与 lowering gates 通过，字节码确认 setter 不再构造 wrapper；固定产物五对 `5/15/1` A/B 的 checksum 全为 `1`，但 Native `SetWinRTType`/`SetNonWinRTType` 仅 `1/5`/`2/5` 胜，JVM `SetPrimitiveType`/`SetNonWinRTType` 仅 `3/5`/`2/5` 胜，未改 getter controls 也不稳定，因此未达到双目标 `4/5` 门槛，生产代码已恢复。未新增 runner、scenario、script、test 或 result file；证据写入 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
