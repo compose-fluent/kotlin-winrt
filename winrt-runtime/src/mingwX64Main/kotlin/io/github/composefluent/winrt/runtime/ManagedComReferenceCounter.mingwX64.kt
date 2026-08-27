@@ -67,25 +67,6 @@ internal actual class PlatformManagedComReferenceCounter actual constructor(
         }
     }
 
-    actual fun detach(
-        objectMemory: RawAddress,
-        objectMemoryView: NativeMemoryView?,
-        objectMemoryOffsetBytes: Long,
-    ) {
-        if (objectMemoryView != null) {
-            objectMemoryView.writePointer(
-                objectMemoryOffsetBytes + managedComReferenceCounterSlot * Long.SIZE_BYTES.toLong(),
-                PlatformAbi.nullPointer,
-            )
-        } else {
-            PlatformAbi.writePointerAt(
-                objectMemory,
-                managedComReferenceCounterSlot,
-                PlatformAbi.nullPointer,
-            )
-        }
-    }
-
     actual override fun close() {
         val pointer = storage ?: return
         storage = null

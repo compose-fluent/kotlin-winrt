@@ -2,20 +2,10 @@ package io.github.composefluent.winrt.runtime
 
 import kotlinx.io.files.Path
 
-internal actual object WinUiXamlMetadataProviderRuntimeAssets {
-    actual fun loadProviderRuntimeClassNames(): List<String> =
-        loadRuntimeClassNames(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName)
-}
-
-private fun loadRuntimeClassNames(fileName: String): List<String> {
+internal actual fun platformLoadWinUiXamlMetadataProviderRuntimeClassNameLines(fileName: String): List<String> {
     val manifest = Path(WinRTPlatformApi.resolveModulePathRaw(fileName))
     if (!manifest.isRegularFile()) {
         return emptyList()
     }
-    return manifest.readText()
-        .lineSequence()
-        .map(String::trim)
-        .filter { it.isNotEmpty() && !it.startsWith("#") }
-        .distinct()
-        .toList()
+    return manifest.readText().lineSequence().toList()
 }

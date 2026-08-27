@@ -34,12 +34,6 @@ internal expect fun acquireNativeScalarScratchFrame(clear: Boolean = true): Nati
 internal expect class NativeStructScratchFrame : AutoCloseable {
     val pointer: RawAddress
 
-    fun <T> read(adapter: NativeStructAdapter<T>): T
-
-    fun <T> write(value: T, adapter: NativeStructAdapter<T>)
-
-    fun disposeAbi(adapter: NativeStructAdapter<*>)
-
     fun readInt8Carrier(): Byte
 
     fun readInt16Carrier(): Short
@@ -49,6 +43,20 @@ internal expect class NativeStructScratchFrame : AutoCloseable {
     fun readInt64Carrier(): Long
 
     override fun close()
+}
+
+internal fun <T> NativeStructScratchFrame.read(adapter: NativeStructAdapter<T>): T =
+    adapter.read(pointer)
+
+internal fun <T> NativeStructScratchFrame.write(
+    value: T,
+    adapter: NativeStructAdapter<T>,
+) {
+    adapter.write(value, pointer)
+}
+
+internal fun NativeStructScratchFrame.disposeAbi(adapter: NativeStructAdapter<*>) {
+    adapter.disposeAbi(pointer)
 }
 
 @PublishedApi

@@ -25,11 +25,24 @@ internal expect class PlatformManagedComReferenceCounter(
         objectMemoryOffsetBytes: Long = 0L,
     )
 
-    fun detach(
-        objectMemory: RawAddress,
-        objectMemoryView: NativeMemoryView? = null,
-        objectMemoryOffsetBytes: Long = 0L,
-    )
-
     override fun close()
+}
+
+internal fun PlatformManagedComReferenceCounter.detach(
+    objectMemory: RawAddress,
+    objectMemoryView: NativeMemoryView? = null,
+    objectMemoryOffsetBytes: Long = 0L,
+) {
+    if (objectMemoryView != null) {
+        objectMemoryView.writePointer(
+            objectMemoryOffsetBytes + managedComReferenceCounterSlot * Long.SIZE_BYTES.toLong(),
+            PlatformAbi.nullPointer,
+        )
+    } else {
+        PlatformAbi.writePointerAt(
+            objectMemory,
+            managedComReferenceCounterSlot,
+            PlatformAbi.nullPointer,
+        )
+    }
 }

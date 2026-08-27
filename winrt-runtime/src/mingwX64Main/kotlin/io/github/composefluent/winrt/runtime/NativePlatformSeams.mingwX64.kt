@@ -245,17 +245,6 @@ internal actual class NativeStructScratchFrame internal constructor(
         return this
     }
 
-    actual fun <T> read(adapter: NativeStructAdapter<T>): T =
-        adapter.read(pointer)
-
-    actual fun <T> write(value: T, adapter: NativeStructAdapter<T>) {
-        adapter.write(value, pointer)
-    }
-
-    actual fun disposeAbi(adapter: NativeStructAdapter<*>) {
-        adapter.disposeAbi(pointer)
-    }
-
     actual fun readInt8Carrier(): Byte =
         checkNotNull(allocation).reinterpret<ByteVar>().pointed.value
 

@@ -296,16 +296,34 @@ expect class WeakKeyStateMap<K : Any, V : Any>(
     fun clear()
 }
 
-expect class SnapshotList<T>() {
-    fun add(value: T)
+class SnapshotList<T> {
+    private val lock = PlatformLock()
+    private val delegate = mutableListOf<T>()
 
-    fun remove(value: T): Boolean
+    fun add(value: T) {
+        lock.withLock {
+            delegate += value
+        }
+    }
 
-    fun clear()
+    fun remove(value: T): Boolean =
+        lock.withLock {
+            delegate.remove(value)
+        }
 
-    fun <R : Any> firstNotNullOfOrNull(transform: (T) -> R?): R?
+    fun clear() {
+        lock.withLock {
+            delegate.clear()
+        }
+    }
 
-    fun toList(): List<T>
+    fun <R : Any> firstNotNullOfOrNull(transform: (T) -> R?): R? =
+        toList().firstNotNullOfOrNull(transform)
+
+    fun toList(): List<T> =
+        lock.withLock {
+            delegate.toList()
+        }
 }
 
 operator fun <T> SnapshotList<T>.plusAssign(value: T) {

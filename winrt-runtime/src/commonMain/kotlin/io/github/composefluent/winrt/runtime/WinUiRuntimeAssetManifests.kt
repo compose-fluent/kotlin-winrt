@@ -4,6 +4,15 @@ object WinUiRuntimeAssetManifests {
     const val xamlMetadataProvidersFileName: String = "kotlin-winrt-xaml-metadata-providers.txt"
 }
 
-internal expect object WinUiXamlMetadataProviderRuntimeAssets {
-    fun loadProviderRuntimeClassNames(): List<String>
+internal object WinUiXamlMetadataProviderRuntimeAssets {
+    fun loadProviderRuntimeClassNames(): List<String> =
+        platformLoadWinUiXamlMetadataProviderRuntimeClassNameLines(
+            WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName,
+        ).asSequence()
+            .map(String::trim)
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .distinct()
+            .toList()
 }
+
+internal expect fun platformLoadWinUiXamlMetadataProviderRuntimeClassNameLines(fileName: String): List<String>

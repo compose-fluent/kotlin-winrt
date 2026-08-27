@@ -58,8 +58,15 @@ internal expect class PlatformLock() {
     fun enter()
 
     fun exit()
+}
 
-    fun <R> withLock(block: () -> R): R
+internal inline fun <R> PlatformLock.withLock(block: () -> R): R {
+    enter()
+    try {
+        return block()
+    } finally {
+        exit()
+    }
 }
 
 internal class NativeWeakReferenceHandle internal constructor(

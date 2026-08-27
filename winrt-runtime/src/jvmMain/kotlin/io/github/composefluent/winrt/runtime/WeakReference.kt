@@ -22,13 +22,4 @@ internal actual class PlatformLock actual constructor() {
     actual fun exit() {
         lock.unlock()
     }
-
-    actual fun <R> withLock(block: () -> R): R {
-        enter()
-        try {
-            return block()
-        } finally {
-            exit()
-        }
-    }
 }

@@ -297,36 +297,6 @@ private class NativeWeakKeyStateEntry<K : Any, V : Any>(
     override fun keyOrNull(): K? = key.get()
 }
 
-actual class SnapshotList<T> actual constructor() {
-    private val lock = PlatformLock()
-    private val delegate = mutableListOf<T>()
-
-    actual fun add(value: T) {
-        lock.withLock {
-            delegate += value
-        }
-    }
-
-    actual fun remove(value: T): Boolean =
-        lock.withLock {
-            delegate.remove(value)
-        }
-
-    actual fun clear() {
-        lock.withLock {
-            delegate.clear()
-        }
-    }
-
-    actual fun <R : Any> firstNotNullOfOrNull(transform: (T) -> R?): R? =
-        toList().firstNotNullOfOrNull(transform)
-
-    actual fun toList(): List<T> =
-        lock.withLock {
-            delegate.toList()
-        }
-}
-
 actual class FinalizationHook actual constructor() {
     @Suppress("UNUSED_PARAMETER")
     actual fun register(
