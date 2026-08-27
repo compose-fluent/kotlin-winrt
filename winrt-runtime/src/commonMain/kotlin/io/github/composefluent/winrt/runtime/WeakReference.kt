@@ -62,12 +62,33 @@ internal expect class PlatformLock() {
     fun <R> withLock(block: () -> R): R
 }
 
-internal expect class NativeWeakReferenceHandle : AutoCloseable {
-    override fun close()
+internal class NativeWeakReferenceHandle internal constructor(
+    internal val reference: WeakReferenceReference,
+) : AutoCloseable {
+    override fun close() {
+        reference.close()
+    }
 }
 
-internal expect object WeakReferenceInterop {
-    fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle?
+internal object WeakReferenceInterop {
+    fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle? {
+        val winrtObject = target as? IWinRTObject
+        if (winrtObject?.hasUnwrappableNativeObject == true) {
+            return try {
+                winrtObject.nativeObject.tryGetWeakReference()?.let(::NativeWeakReferenceHandle)
+            } finally {
+                winRTKeepAlive(target)
+            }
+        }
 
-    fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any?
+        val unwrapped = ComWrappersSupport.tryUnwrapObject(target) ?: return null
+        return unwrapped.use { reference ->
+            reference.tryGetWeakReference()?.let(::NativeWeakReferenceHandle)
+        }
+    }
+
+    fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
+        reference.reference.resolve(IID.IUnknown)?.use { resolved ->
+            ComWrappersSupport.createRcwForComObject(resolved.pointer.asRawAddress())
+        }
 }
