@@ -44,6 +44,18 @@
 
 ## Current Focus
 
+- [x] 拒绝并撤回 P22 compiler-owned closed delegate IID scalar lowering：对应 `.cswinrt/src/WinRT.Runtime/GuidGenerator.cs` 的 type-owned `PIID` 与 `.cswinrt/src/cswinrt/code_writers.h` 的 delegate ABI 消费边界；试验期间 metadata/generator 保持唯一的 WinRT 类型分类与 canonical signature ownership，compiler 仅折叠常量字符串并让 common runtime 消费 ABI words，未引入 JVM/`mingwX64` 分支。generator、compiler-plugin、JVM runtime/lowering、`compileKotlinMingwX64` 与 Native lowering gate 均通过，但固定产物双 target 五对交替共 100 行虽全部保持 schema `3`、`5/15/1` 和 checksum `1`，JVM construction/single-add 仅 `3/5`，Native construction 仅 `2/5`；composite rows 的改善不足以满足逐场景 `4/5` 和 control 无回退门槛，生产代码与测试已恢复原有 common `Guid` 路径。详细结果见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)，原始工件仅保留在 `C:\Users\Sanlorng\AppData\Local\Temp\kw22-p22-final-ab-20260829`。
+
+- [x] 完成并拒绝 P20 common event token-state consolidation：候选对应 `.cswinrt/src/WinRT.Runtime/EventRegistrationTokenTable{T}.cs`，把 lock/map/snapshot 收敛为同一份 common immutable CAS state，并完成双 target 行为验证、固定产物 A/B 与四 runner 全量候选矩阵。Native 构造/注册方向改善，但 JVM 已注册事件的 invoke 与 add-then-invoke 控制稳定回退，未通过 shared dual-target gate；生产代码与测试已恢复原有 common `PlatformLock` + token map + update-time handler snapshot，不拆 JVM/mingw policy。详细证据见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
+- [x] 完成并拒绝 P21 authored CCW 宿主内存免清零候选：对照 `.cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs`，只让 common `WinRTInspectableComObject` 的每实例 host block 跳过分配时清零，保留 boxing、独立 QI table、对象布局、引用计数和生命周期语义；JVM tests、JVM/Native production compile 与 lowering gate 通过。固定 baseline/candidate 5 对双 target A/B 共 100 行均为 schema `3`、`5/15/1`、checksum `1`，但 Native construction/single-add/add-invoke 仅 `1/5`、`1/5`、`2/5` 胜且配对中位回退 `+5.07%/+6.51%/+4.15%`，JVM 也存在稳定控制回退，因此候选已撤回。前置候选未通过，未继续叠加类型注册热解析变量；未新增 runner、scenario、script、test 或 tracked result，详细证据见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
+- [x] 完成 2026-08-28 全量四 runner benchmark：C++/WinRT、CsWinRT、Kotlin/Native、Kotlin/JVM 均为同一组 `97/97` 场景、schema `3`、`5/15/1`，跨 runner checksum 全部一致；运行只使用进程级 `KOTLIN_WINRT_WINDOWS_SDK_ROOT`，未改 User/Machine `PATH`，未新增 runner、scenario、脚本、测试或 tracked result。详细数据见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
+- [x] 完成并拒绝 P19 Native lazy-lock 单变量候选：同产物五次基线复测将 authored CCW 构造稳定在约 `13.88 us`，首次/第二次 add 增量约 `10.07/12.57 us`，否定全量矩阵跨场景相减的 `30/1 us` 表象。固定 baseline/candidate 的 5 对交替 A/B 共 40 行，schema `3`、`5/15/1`、checksum `1` 全部有效；构造 primary `4/5` 胜、配对中位改善 `14.52%`，但双 add 控制仅 `1/5` 胜、配对中位回退 `18.48%`，因此候选已撤回，保留原 mingw eager `CRITICAL_SECTION`/Cleaner。未新增 runner、scenario、脚本或测试；详细证据见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
+
+- [x] 拒绝 P18 Native callback handle close guard：`mingwX64` 的 `NativeCallbackHandle` 原子关闭候选未通过固定产物 `5/15/1` 的方向门槛，已撤回并保留 `PlatformLock` 的生命周期/并发语义；详细汇总见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)，原始 JSONL 仅保留在本地临时目录 `C:\Users\Sanlorng\AppData\Local\Temp\kotlin-winrt-native-callback-ab-20260828`，未新增 runner、scenario、脚本或测试。
+
 - [x] 拒绝 P17 Native HSTRING scope FLS lookup memoization：`FlsGetValue` 返回的是当前 fiber 的 FLS 值，而 `@ThreadLocal` 只按线程保存指针；fiber 切换后缓存可能指向另一 fiber 的 pool，存在错误读写和 FLS destructor 生命周期冲突风险。候选未进入 benchmark，代码已撤回；剩余 Native 字典差异归因于必须保留的 fiber/TLS/FFI 结构性成本，详见 [BENCHMARK_RESULTS_2026-08-23.md](BENCHMARK_RESULTS_2026-08-23.md)。
 
 - [x] 完成本轮剩余候选筛选：现有 97 场景归因中未发现同时满足 fiber-local 生命周期、ownership、ABI 调用次数和双 target 语义约束的可证明单变量优化；不修改生产代码、不新增 benchmark 文件，后续候选继续遵守现有 `5/15/1` 固定产物门槛。
