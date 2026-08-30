@@ -147,6 +147,12 @@
   [`0.9569`, `1.1472`], and add-remove was `4/6`, `0.9367`
   [`0.8497`, `1.0326`]. Restore P22 and skip JVM/final timing because the
   construction interval crosses `1.0` and first-add does not preserve direction.
+- [x] Reject P35 physical-`IUnknown` removal after the fixed six-pair native
+  screen. `NativeIntEventOverhead` won `4/6`, paired median `-1.01%`, geometric
+  mean ratio `0.9901` with 95% CI `[0.9427, 1.0397]`; first-add won `4/6`,
+  `-1.22%`, `0.9779` `[0.9193, 1.0403]`; add-remove won `2/6`, `+1.37%`,
+  `1.0159` `[0.9624, 1.0723]`. All intervals cross `1.0`, and add-remove moves
+  in the wrong direction, so restore the P22 production shape.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
