@@ -79,11 +79,50 @@
     add/remove loop accumulates transient wrappers before explicit GC; both hit
     watchdog limits and cannot distinguish a P22 leak. P22 adds no retained
     holder or cache, and ownership-sensitive runtime tests pass.
-- [ ] Profile the next Native authored-CCW construction hotspot before selecting
-  P28 implementation work. Start with `NativeIntEventOverhead` as the primary
-  and first-add rows as controls; require a call-chain attribution shared with
-  JVM where applicable. Keep P19-P25 candidates frozen unless a fresh profile
-  selects one exact cost.
+- [x] Reject P28 managed authored-CCW identity publication convergence. The
+  post-entry Native stack proved that `WeakKeyStateMap.getOrPut` contains the
+  timed construction path, but not that its identity lookup is an exclusive
+  cost. A fixed-artifact six-pair Native screen gave construction `3/6`, ratio
+  `0.9877` [`0.9262`, `1.0533`]; first-add and add-remove each won only `1/6` at
+  approximately `1.02x`. Restore the P22 weak-cache path and skip JVM/final
+  timing because the priority target already failed the large-effect gate.
+- [x] Complete P29 exclusive Native authored-CCW construction attribution,
+  mapped to `.cswinrt/src/WinRT.Runtime/ComWrappersSupport.net5.cs` and
+  `DefaultComWrappers.ComputeVtables`. On the frozen P22 artifact,
+  `createCachedCcwHost` executes 7,603 instructions and its
+  `WinRTInspectableComObject` construction executes 6,994; the post-host cache,
+  marshaler, and QI tail is only 2,604 instructions at the same four-level trace
+  depth versus 22,741 for host construction plus that tail. Vtable creation,
+  weak lifecycle registration, and allocation are not dominant. The selected
+  exclusive cost is 80 repeated tiny calls while initializing the ten physical
+  interface objects: query-table words, table/vtable/binding/counter slots, and
+  interface-object address calculation.
+- [x] Reject P29 common-owned allocation-backed CCW initialization lowering.
+  Inlining the existing `NativeMemoryView` calls and common interface-object
+  address calculation reduced Native constructor instructions from 6,994 to
+  6,070 and direct calls from 96 to 85, but the clean fixed-artifact six-pair
+  Native screen gave construction `4/6`, ratio `1.0026` [`0.9343`, `1.0758`].
+  First-add was `3/6`, `0.9986` [`0.9382`, `1.0629`], and add-remove was `4/6`,
+  `0.9766` [`0.9338`, `1.0213`]; every interval crosses `1.0`. A narrower
+  mingwX64 typed-pointer trial was structurally worse at 7,872 instructions and
+  125 calls because cinterop pointer conversions remained calls. Restore P22
+  and skip JVM/final timing because the Native priority gate failed.
+- [x] Complete P30 Native wall-clock stack attribution on the frozen P22
+  `NativeIntEventOverhead` executable. A 500 Hz primary-thread sample contains
+  5,970 valid RIPs: `NtDelayExecution` and `NtWaitForMultipleObjects` account for
+  `20.00%` and `14.74%`. Timed-thread conditional stacks map both waits to
+  Kotlin/Native GC safepoints, reached respectively through fresh
+  `WinRTProjectionMarshaler` construction and `ComPtr` Cleaner registration;
+  weak CCW-cache sweep/read symbols account for another material sampled share.
+  This explains why P29's local instruction reduction was wall-clock neutral.
+- [x] Reject P31 common scalar owned-projection input transfer. The unchanged
+  Native six-pair screen showed a real construction improvement: `6/6`, ratio
+  `0.8997` [`0.8546`, `0.9473`]. The required JVM gate did not confirm the
+  construction effect (`8/12`, `0.8726` [`0.7205`, `1.0568`]) and independently
+  proved an add-remove regression (`2/12`, `1.2603` [`1.0711`, `1.4830`]).
+  Restore P22 production code and skip the remaining Native final pairs because
+  a shared candidate cannot be retained with a repeatable JVM control
+  regression.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
