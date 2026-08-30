@@ -176,6 +176,15 @@
   did not reproduce the effect: `3/6`, ratio `0.9018` `[0.6650, 1.2228]`, with
   only a `-1.36%` paired median. Restore P22 production code; keep the profile
   and raw A/B evidence local, and add no benchmark scenario, runner, or script.
+- [x] Reject P38 direct standard-event operator subscriptions after profile-first
+  attribution against `.cswinrt/src/WinRT.Runtime/Interop/EventSource*.cs`.
+  Native put `63.8%` below the two adds and JVM put `48.3%` there, but removing
+  the synthetic token maps did not reproduce a retainable dual-target effect.
+  The fixed six-pair JVM main row won `4/6`, ratio `0.9528` with 95% CI
+  `[0.8274, 1.0971]`; Native won `5/6`, ratio `0.9901` `[0.9702, 1.0105]`, while
+  the Native single-add row regressed in all six pairs at ratio `1.0312`
+  `[1.0206, 1.0420]`. Restore P22, skip the twelve-pair and lifetime gates, and
+  add no benchmark scenario, runner, script, or target-specific path.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
