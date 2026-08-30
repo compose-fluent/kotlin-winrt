@@ -170,13 +170,58 @@ internal class ComPtr private constructor(
             isAggregated: Boolean = false,
             trackContext: Boolean = true,
             managedCcwReleaseIdentity: RawAddress = RawAddress.Null,
+        ): ComPtr = create(
+            raw = raw,
+            interfaceIdLowBits = interfaceId.abiLowBits,
+            interfaceIdHighBits = interfaceId.abiHighBits,
+            knownInterfaceId = interfaceId,
+            ownershipMode = ownershipMode,
+            referenceTrackerPointer = referenceTrackerPointer,
+            isAggregated = isAggregated,
+            trackContext = trackContext,
+            managedCcwReleaseIdentity = managedCcwReleaseIdentity,
+        )
+
+        internal fun create(
+            raw: RawComPtr,
+            interfaceIdLowBits: Long,
+            interfaceIdHighBits: Long,
+            ownershipMode: ComOwnershipMode = ComOwnershipMode.Owned,
+            referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr,
+            isAggregated: Boolean = false,
+            trackContext: Boolean = true,
+            managedCcwReleaseIdentity: RawAddress = RawAddress.Null,
+        ): ComPtr = create(
+            raw = raw,
+            interfaceIdLowBits = interfaceIdLowBits,
+            interfaceIdHighBits = interfaceIdHighBits,
+            knownInterfaceId = null,
+            ownershipMode = ownershipMode,
+            referenceTrackerPointer = referenceTrackerPointer,
+            isAggregated = isAggregated,
+            trackContext = trackContext,
+            managedCcwReleaseIdentity = managedCcwReleaseIdentity,
+        )
+
+        private fun create(
+            raw: RawComPtr,
+            interfaceIdLowBits: Long,
+            interfaceIdHighBits: Long,
+            knownInterfaceId: Guid?,
+            ownershipMode: ComOwnershipMode,
+            referenceTrackerPointer: RawComPtr,
+            isAggregated: Boolean,
+            trackContext: Boolean,
+            managedCcwReleaseIdentity: RawAddress,
         ): ComPtr {
             require(!PlatformAbi.isNull(raw)) {
                 "COM object reference cannot wrap a null pointer."
             }
             val support = RawComObjectReferenceSupport(
                 pointer = raw,
-                interfaceId = interfaceId,
+                interfaceIdLowBits = interfaceIdLowBits,
+                interfaceIdHighBits = interfaceIdHighBits,
+                knownInterfaceId = knownInterfaceId,
                 preventReleaseOnDispose = ownershipMode == ComOwnershipMode.Borrowed,
                 isAggregated = isAggregated,
                 trackContext = trackContext,
@@ -187,7 +232,6 @@ internal class ComPtr private constructor(
                 support = support,
             )
         }
-
     }
 }
 

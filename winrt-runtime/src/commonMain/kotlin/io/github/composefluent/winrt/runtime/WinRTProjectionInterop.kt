@@ -135,6 +135,22 @@ fun acquireBorrowedInterfaceReference(
     )
 }
 
+@PublishedApi
+internal fun acquireBorrowedInterfaceReference(
+    pointer: RawAddress,
+    interfaceIdLowBits: Long,
+    interfaceIdHighBits: Long,
+): IUnknownReference? {
+    if (PlatformAbi.isNull(pointer)) return null
+    return IUnknownReference(
+        ComPtr.create(
+            raw = retainBorrowedComPointer(PlatformAbi.toRawComPtr(pointer)),
+            interfaceIdLowBits = interfaceIdLowBits,
+            interfaceIdHighBits = interfaceIdHighBits,
+        ),
+    )
+}
+
 fun acquireBorrowedInspectableReference(pointer: RawAddress): IInspectableReference? {
     if (PlatformAbi.isNull(pointer)) return null
     return IUnknownReference(

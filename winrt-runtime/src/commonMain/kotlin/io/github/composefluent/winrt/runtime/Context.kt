@@ -202,7 +202,9 @@ internal class ObjectReferenceContext private constructor(
     private val callback: ContextCallbackReference,
     private val token: RawAddress,
     private val originalPointer: RawComPtr,
-    private val interfaceId: Guid,
+    private val interfaceIdLowBits: Long,
+    private val interfaceIdHighBits: Long,
+    private val knownInterfaceId: Guid?,
     private val callsAreFreeThreaded: Boolean,
 ) : AutoCloseable {
     private val currentContextReferences = ConcurrentCacheMap<Long, IUnknownReference>()
@@ -221,7 +223,7 @@ internal class ObjectReferenceContext private constructor(
 
         val contextKey = PlatformAbi.pointerKey(currentToken)
         currentContextReferences[contextKey]?.let { return it.pointer }
-        val resolved = getAgileReference()?.getReference(interfaceId) ?: return originalPointer
+        val resolved = getAgileReference()?.getReference(interfaceId()) ?: return originalPointer
         val existing = currentContextReferences.putIfAbsent(contextKey, resolved)
         if (existing != null) {
             resolved.close()
@@ -275,15 +277,26 @@ internal class ObjectReferenceContext private constructor(
             agileReference
         }
 
+    private fun interfaceId(): Guid =
+        knownInterfaceId ?: Guid.fromAbiWords(interfaceIdLowBits, interfaceIdHighBits)
+
     companion object {
         fun capture(
             pointer: RawComPtr,
-            interfaceId: Guid,
+            interfaceIdLowBits: Long,
+            interfaceIdHighBits: Long,
+            knownInterfaceId: Guid?,
         ): ObjectReferenceContext? {
             if (ComThreadingSupport.isFreeThreaded(pointer)) {
                 return null
             }
-            return capture(pointer, interfaceId, callsAreFreeThreaded = false)
+            return capture(
+                pointer = pointer,
+                interfaceIdLowBits = interfaceIdLowBits,
+                interfaceIdHighBits = interfaceIdHighBits,
+                knownInterfaceId = knownInterfaceId,
+                callsAreFreeThreaded = false,
+            )
         }
 
         /**
@@ -292,12 +305,22 @@ internal class ObjectReferenceContext private constructor(
          */
         fun captureForReferenceTrackerRelease(
             pointer: RawComPtr,
-            interfaceId: Guid,
-        ): ObjectReferenceContext? = capture(pointer, interfaceId, callsAreFreeThreaded = true)
+            interfaceIdLowBits: Long,
+            interfaceIdHighBits: Long,
+            knownInterfaceId: Guid?,
+        ): ObjectReferenceContext? = capture(
+            pointer = pointer,
+            interfaceIdLowBits = interfaceIdLowBits,
+            interfaceIdHighBits = interfaceIdHighBits,
+            knownInterfaceId = knownInterfaceId,
+            callsAreFreeThreaded = true,
+        )
 
         private fun capture(
             pointer: RawComPtr,
-            interfaceId: Guid,
+            interfaceIdLowBits: Long,
+            interfaceIdHighBits: Long,
+            knownInterfaceId: Guid?,
             callsAreFreeThreaded: Boolean,
         ): ObjectReferenceContext? {
             val captured = Context.tryCapture() ?: return null
@@ -305,7 +328,9 @@ internal class ObjectReferenceContext private constructor(
                 callback = captured.callback,
                 token = captured.token,
                 originalPointer = pointer,
-                interfaceId = interfaceId,
+                interfaceIdLowBits = interfaceIdLowBits,
+                interfaceIdHighBits = interfaceIdHighBits,
+                knownInterfaceId = knownInterfaceId,
                 callsAreFreeThreaded = callsAreFreeThreaded,
             )
         }

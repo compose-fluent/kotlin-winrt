@@ -155,6 +155,15 @@ internal fun KotlinProjectionRenderer.delegateInterfaceIdCode(
     if (typeBinding.typeArguments.isEmpty()) {
         return CodeBlock.of("%T(%S)", GUID_CLASS_NAME, delegateIid.toString())
     }
+    typeBinding.guidSignature
+        ?.takeIf { typeBinding.hasClosedGuidSignature() }
+        ?.let { signature ->
+            return CodeBlock.of(
+                "%T.createFromSignature(%S)",
+                PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+                signature,
+            )
+        }
     val argumentSignatures = typeBinding.typeArguments.map { typeArgument ->
         abiTypeSignature(typeArgument) ?: return null
     }
@@ -367,6 +376,12 @@ internal fun KotlinProjectionRenderer.delegateInvokeBodyCode(
         .build()
 }
 
+private fun KotlinProjectionAbiTypeBinding.hasClosedGuidSignature(): Boolean =
+    kind != KotlinProjectionAbiValueKind.GenericParameter &&
+        !guidSignature.isNullOrBlank() &&
+        typeArguments.all(KotlinProjectionAbiTypeBinding::hasClosedGuidSignature) &&
+        structFieldBindings.all(KotlinProjectionAbiTypeBinding::hasClosedGuidSignature)
+
 private fun KotlinProjectionRenderer.directDelegateInvokeBodyCode(
     invokeShape: KotlinProjectionDelegateInvokeShape,
 ): CodeBlock? =
@@ -401,15 +416,10 @@ internal fun KotlinProjectionRenderer.staticDelegateFromBorrowedAbiCode(
             if (%T.isNull(__delegatePointer)) {
                 null
             } else {
-                val __delegateInterfaceId = %L
-                val __native = %T(
-                    pointer = %T(
-                        pointer = %T.toRawComPtr(__delegatePointer),
-                        interfaceId = __delegateInterfaceId,
-                        preventReleaseOnDispose = true,
-                    ).use { __borrowed -> __borrowed.getRefPointer() },
-                    interfaceId = __delegateInterfaceId,
-                )
+                val __native = requireNotNull(%M(
+                    pointer = __delegatePointer,
+                    interfaceId = %L,
+                ))
                 object : %T<%T>(__native, null), %T {
                     override fun invoke(%L): %T {
                         %L
@@ -420,10 +430,8 @@ internal fun KotlinProjectionRenderer.staticDelegateFromBorrowedAbiCode(
         """.trimIndent(),
         pointerExpression,
         PLATFORM_ABI_CLASS_NAME,
+        ACQUIRE_BORROWED_INTERFACE_REFERENCE_FUNCTION_NAME,
         interfaceId,
-        IUNKNOWN_REFERENCE_CLASS_NAME,
-        IUNKNOWN_REFERENCE_CLASS_NAME,
-        PLATFORM_ABI_CLASS_NAME,
         WINRT_OBJECT_BASE_CLASS_NAME,
         IUNKNOWN_REFERENCE_CLASS_NAME,
         projectedType,

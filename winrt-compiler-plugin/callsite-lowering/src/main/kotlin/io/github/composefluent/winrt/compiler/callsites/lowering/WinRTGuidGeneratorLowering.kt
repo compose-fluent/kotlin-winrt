@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.builders.declarations.buildField
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irGetField
+import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
@@ -34,6 +35,8 @@ import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.FqName
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
@@ -49,6 +52,10 @@ internal fun lowerWinRTGuidGeneratorCalls(
         object : IrElementTransformerVoidWithContext() {
             override fun visitCall(expression: IrCall): IrExpression {
                 val call = super.visitCall(expression) as IrCall
+                val currentScopeSymbol = currentScope?.scope?.scopeOwnerSymbol
+                if (currentScopeSymbol != null) {
+                    lowerClosedBorrowedInterfaceReference(call, pluginContext, currentScopeSymbol)?.let { return it }
+                }
                 val owner = call.symbol.owner
                 if (owner.parentClassOrNull?.fqNameWhenAvailable?.asString() != GUID_GENERATOR_FQ_NAME) {
                     return call
@@ -61,7 +68,7 @@ internal fun lowerWinRTGuidGeneratorCalls(
                     "getIID", "getGuid" -> resolveGetIid(arguments, guidSignaturesByKotlinClass)
                     else -> null
                 } ?: return call
-                val scope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                val scope = currentScopeSymbol ?: return call
                 val file = (scope.owner as? IrDeclaration)?.parent?.containingFile() ?: return call
                 val constructor = call.type.classOrNull?.owner?.constructors
                     ?.singleOrNull { candidate ->
@@ -106,6 +113,66 @@ internal fun lowerWinRTGuidGeneratorCalls(
             }
         },
     )
+}
+
+private fun lowerClosedBorrowedInterfaceReference(
+    call: IrCall,
+    pluginContext: IrPluginContext,
+    scope: org.jetbrains.kotlin.ir.symbols.IrSymbol,
+): IrExpression? {
+    val owner = call.symbol.owner
+    if (owner.fqNameWhenAvailable?.asString() != ACQUIRE_BORROWED_INTERFACE_REFERENCE_FQ_NAME) return null
+    if (owner.regularParameterTypeNames() != listOf(RAW_ADDRESS_FQ_NAME, GUID_FQ_NAME)) return null
+    val callArguments = call.regularArguments()
+    if (callArguments.size != 2) return null
+
+    val interfaceIdCall = callArguments[1] as? IrCall ?: return null
+    val interfaceIdOwner = interfaceIdCall.symbol.owner
+    if (interfaceIdOwner.parentClassOrNull?.fqNameWhenAvailable?.asString() != PARAMETERIZED_INTERFACE_ID_FQ_NAME ||
+        interfaceIdOwner.name.asString() != "createFromSignature" ||
+        interfaceIdOwner.regularParameterTypeNames() != listOf(KOTLIN_STRING_FQ_NAME)
+    ) {
+        return null
+    }
+    val signature = interfaceIdCall.regularArguments().singleOrNull()?.stringConstant() ?: return null
+    val (interfaceIdLowBits, interfaceIdHighBits) = guidAbiWords(guidForSignature(signature))
+
+    val file = (scope.owner as? IrDeclaration)?.parent?.containingFile() ?: return null
+    val scalarOverload = pluginContext.finderForSource(file)
+        .findFunctions(ACQUIRE_BORROWED_INTERFACE_REFERENCE_CALLABLE_ID)
+        .singleOrNull { function ->
+            function.owner.regularParameterTypeNames() ==
+                listOf(RAW_ADDRESS_FQ_NAME, KOTLIN_LONG_FQ_NAME, KOTLIN_LONG_FQ_NAME)
+        }
+        ?: return null
+    val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+    val scalarParameters = scalarOverload.owner.parameters.withIndex()
+        .filter { (_, parameter) -> parameter.kind == IrParameterKind.Regular }
+    return builder.irCall(scalarOverload).apply {
+        arguments[scalarParameters[0].index] = callArguments[0]
+        arguments[scalarParameters[1].index] = builder.irLong(interfaceIdLowBits)
+        arguments[scalarParameters[2].index] = builder.irLong(interfaceIdHighBits)
+    }
+}
+
+private fun org.jetbrains.kotlin.ir.declarations.IrSimpleFunction.regularParameterTypeNames(): List<String?> =
+    parameters
+        .filter { parameter -> parameter.kind == IrParameterKind.Regular }
+        .map { parameter -> parameter.type.classFqName?.asString() }
+
+private fun IrCall.regularArguments(): List<IrExpression> =
+    symbol.owner.parameters.mapIndexedNotNull { index, parameter ->
+        arguments.getOrNull(index)?.takeIf { parameter.kind == IrParameterKind.Regular }
+    }
+
+private fun guidAbiWords(guid: String): Pair<Long, Long> {
+    val uuid = UUID.fromString(guid)
+    val mostSignificantBits = uuid.mostSignificantBits
+    val data1 = (mostSignificantBits ushr 32) and 0xffff_ffffL
+    val data2 = (mostSignificantBits ushr 16) and 0xffffL
+    val data3 = mostSignificantBits and 0xffffL
+    return (data1 or (data2 shl 32) or (data3 shl 48)) to
+        java.lang.Long.reverseBytes(uuid.leastSignificantBits)
 }
 
 private fun resolveCreateIid(
@@ -222,6 +289,12 @@ private tailrec fun IrDeclarationParent.containingFile(): IrFile? = when (this) 
 
 private const val GUID_GENERATOR_FQ_NAME = "io.github.composefluent.winrt.runtime.GuidGenerator"
 private const val GUID_FQ_NAME = "io.github.composefluent.winrt.runtime.Guid"
+private const val RAW_ADDRESS_FQ_NAME = "io.github.composefluent.winrt.runtime.RawAddress"
+private const val PARAMETERIZED_INTERFACE_ID_FQ_NAME = "io.github.composefluent.winrt.runtime.ParameterizedInterfaceId"
+private const val ACQUIRE_BORROWED_INTERFACE_REFERENCE_FQ_NAME =
+    "io.github.composefluent.winrt.runtime.acquireBorrowedInterfaceReference"
+private const val KOTLIN_STRING_FQ_NAME = "kotlin.String"
+private const val KOTLIN_LONG_FQ_NAME = "kotlin.Long"
 private const val WINRT_GUID_ANNOTATION_FQ_NAME = "io.github.composefluent.winrt.runtime.WinRTGuid"
 private const val HEX_DIGITS = "0123456789ABCDEF"
 
@@ -230,4 +303,9 @@ private val PINTERFACE_NAMESPACE_BYTES = byteArrayOf(
     0x7B, 0x73, 0x42, 0xC0.toByte(),
     0xAB.toByte(), 0xAE.toByte(), 0x87.toByte(), 0x8B.toByte(),
     0x1E, 0x16, 0xAD.toByte(), 0xEE.toByte(),
+)
+
+private val ACQUIRE_BORROWED_INTERFACE_REFERENCE_CALLABLE_ID = CallableId(
+    FqName("io.github.composefluent.winrt.runtime"),
+    Name.identifier("acquireBorrowedInterfaceReference"),
 )

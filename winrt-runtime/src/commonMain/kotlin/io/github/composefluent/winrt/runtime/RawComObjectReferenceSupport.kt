@@ -7,7 +7,9 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 @PublishedApi
 internal class RawComObjectReferenceSupport(
     private val pointer: RawComPtr,
-    val interfaceId: Guid,
+    private val interfaceIdLowBits: Long,
+    private val interfaceIdHighBits: Long,
+    private val knownInterfaceId: Guid?,
     private val preventReleaseOnDispose: Boolean = false,
     val isAggregated: Boolean = false,
     trackContext: Boolean = true,
@@ -19,10 +21,18 @@ internal class RawComObjectReferenceSupport(
     private var releaseTrackerSourceOnDispose: Boolean = false
     private var objectContext =
         if (trackContext) {
-            ObjectReferenceContext.capture(pointer, interfaceId)
+            ObjectReferenceContext.capture(
+                pointer = pointer,
+                interfaceIdLowBits = interfaceIdLowBits,
+                interfaceIdHighBits = interfaceIdHighBits,
+                knownInterfaceId = knownInterfaceId,
+            )
         } else {
             null
         }
+
+    val interfaceId: Guid
+        get() = knownInterfaceId ?: Guid.fromAbiWords(interfaceIdLowBits, interfaceIdHighBits)
 
     val isDisposed: Boolean
         get() = disposed.load() != 0
@@ -47,7 +57,12 @@ internal class RawComObjectReferenceSupport(
             return
         }
         if (objectContext == null) {
-            objectContext = ObjectReferenceContext.captureForReferenceTrackerRelease(pointer, interfaceId)
+            objectContext = ObjectReferenceContext.captureForReferenceTrackerRelease(
+                pointer = pointer,
+                interfaceIdLowBits = interfaceIdLowBits,
+                interfaceIdHighBits = interfaceIdHighBits,
+                knownInterfaceId = knownInterfaceId,
+            )
         }
         referenceTrackerRegistrationKey = ReferenceTrackerManager.attach(trackerPointer)
         referenceTrackerPointer = trackerPointer

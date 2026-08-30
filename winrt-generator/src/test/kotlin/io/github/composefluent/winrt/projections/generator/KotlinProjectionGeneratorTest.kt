@@ -11107,7 +11107,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             callSiteSupport,
             callSiteSupport.normalizedSource().contains(
-                "GenericHandler.Metadata.fromAbi<String>(__abi, ParameterizedInterfaceId.createFromParameterizedInterface(Guid(\"22222222-2222-2222-2222-222222222222\"), WinRTTypeSignature.string()))",
+                "GenericHandler.Metadata.fromAbi<String>(__abi, ParameterizedInterfaceId.createFromSignature(\"pinterface({22222222-2222-2222-2222-222222222222};string)\"))",
             ),
         )
         assertFalse(sourceContents, sourceContents.contains("fun setHandler(handler: GenericHandler<String>) = error(\"WinRT ABI binding is unavailable\")"))
@@ -11124,7 +11124,6 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRTTypeKind.Delegate,
-                            iid = Guid("22222222-2222-2222-2222-222222222223"),
                             methods = listOf(
                                 WinRTMethodDefinition(
                                     name = "Invoke",
@@ -12052,10 +12051,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             ccwFactories,
             normalizedCcwFactories.contains(
-                "val __delegateInterfaceId = ParameterizedInterfaceId.createFromParameterizedInterface(",
+                "interfaceId = ParameterizedInterfaceId.createFromSignature(\"pinterface({c50898f6-c536-5f47-8583-8b2c2438a13b};i4)\")",
             ),
         )
-        assertTrue(ccwFactories, ccwFactories.contains("Guid(\"C50898F6-C536-5F47-8583-8B2C2438A13B\")"))
+        assertTrue(ccwFactories, ccwFactories.contains("acquireBorrowedInterfaceReference("))
+        assertFalse(ccwFactories, ccwFactories.contains("val __delegateInterfaceId ="))
         assertFalse(ccwFactories, ccwFactories.contains("Guid.fromAbiWords("))
         assertFalse(ccwFactories, ccwFactories.contains("Guid(\"$eventHandlerIntInterfaceId\")"))
         assertFalse(ccwFactories, ccwFactories.contains("private object __ClosedDelegateInterfaceId_"))
@@ -19362,8 +19362,9 @@ class KotlinProjectionGeneratorTest {
         assertFalse(widgetCcwDefinition.contains("value.roundTripPoint(__arg0)"))
         assertTrue(widgetCcwDefinition.contains("value.__winrtAuthoringInvokeRoundTripPoint(__arg0)"))
         assertTrue(ccwFactories.contains("WidgetPoint.Metadata.copyTo(__result"))
-        assertTrue(ccwFactories.contains("preventReleaseOnDispose = true"))
-        assertTrue(ccwFactories.contains(".use { __borrowed -> __borrowed.getRefPointer() }"))
+        assertTrue(ccwFactories.contains("acquireBorrowedInterfaceReference("))
+        assertFalse(ccwFactories.contains("preventReleaseOnDispose = true"))
+        assertFalse(ccwFactories.contains(".use { __borrowed -> __borrowed.getRefPointer() }"))
         assertTrue(ccwFactories.contains("WinRTObjectBase<IUnknownReference>(__native, null)"))
         assertFalse(ccwFactories.contains("override val nativeObject"))
         assertTrue(ccwFactories.contains("WinRTDelegateVftblSlots.Invoke"))

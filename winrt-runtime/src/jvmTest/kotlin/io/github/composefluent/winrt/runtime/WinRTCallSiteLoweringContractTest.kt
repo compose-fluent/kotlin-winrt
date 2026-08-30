@@ -53,6 +53,16 @@ private object EnumConstantReadFixture {
     fun uintValue(): Int = UIntEnumConstantFixture.All.abiValue.toInt()
 }
 
+private object ClosedDelegateInterfaceIdFixture {
+    fun acquire(pointer: RawAddress): IUnknownReference? =
+        acquireBorrowedInterfaceReference(
+            pointer,
+            ParameterizedInterfaceId.createFromSignature(
+                "pinterface({c50898f6-c536-5f47-8583-8b2c2438a13b};i4)",
+            ),
+        )
+}
+
 @WinRTProjectionAbiType(
     name = "kotlin.Array<kotlin.Int>",
     kind = WinRTProjectionAbiTypeKind.ARRAY,
@@ -371,6 +381,17 @@ private object DirectStructArrayCallSiteFixture {
 }
 
 class WinRTCallSiteLoweringContractTest {
+    @Test
+    fun closed_delegate_signature_is_lowered_to_common_iid_words() {
+        val bytecode = javap(ClosedDelegateInterfaceIdFixture::class.java.name)
+            .methodBytecode("acquire")
+
+        assertTrue(bytecode.contains("acquireBorrowedInterfaceReference"), bytecode)
+        assertTrue(bytecode.countOccurrences("ldc2_w") >= 2, bytecode)
+        assertFalse(bytecode.contains("ParameterizedInterfaceId"), bytecode)
+        assertFalse(bytecode.contains("createFromSignature"), bytecode)
+    }
+
     @Test
     fun annotated_enum_constant_getters_fold_from_exact_value_class_carriers() {
         val bytecode = javap(EnumConstantReadFixture::class.java.name)

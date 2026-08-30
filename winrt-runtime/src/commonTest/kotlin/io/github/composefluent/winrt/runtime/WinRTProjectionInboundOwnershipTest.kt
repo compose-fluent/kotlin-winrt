@@ -95,6 +95,36 @@ private fun consumeBorrowedObject(
 
 class WinRTProjectionInboundOwnershipTest {
     @Test
+    fun constant_signature_borrowed_reference_preserves_iid_and_owned_lifetime() {
+        val expectedInterfaceId = ParameterizedInterfaceId.createFromSignature(
+            "pinterface({c50898f6-c536-5f47-8583-8b2c2438a13b};i4)",
+        )
+        WinRTInspectableComObject.inspectableBox(Any()).use { host ->
+            host.createPrimaryReference().use { owner ->
+                val pointer = owner.pointer.asRawAddress()
+                val before = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                val acquired = requireNotNull(
+                    acquireBorrowedInterfaceReference(
+                        pointer,
+                        ParameterizedInterfaceId.createFromSignature(
+                            "pinterface({c50898f6-c536-5f47-8583-8b2c2438a13b};i4)",
+                        ),
+                    ),
+                )
+
+                acquired.use { reference ->
+                    assertEquals(expectedInterfaceId, reference.interfaceId)
+                    assertEquals(
+                        before + 1u,
+                        checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer)),
+                    )
+                }
+                assertEquals(before, checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer)))
+            }
+        }
+    }
+
+    @Test
     fun registered_external_alias_preserves_managed_identity() {
         val managedValue = Any()
         PlatformAbi.confinedScope().use { scope ->
