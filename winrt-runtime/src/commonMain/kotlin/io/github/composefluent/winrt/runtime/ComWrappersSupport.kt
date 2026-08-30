@@ -540,6 +540,23 @@ object ComWrappersSupport {
         IInspectableReference(instance.getRefPointer(), defaultInterfaceId)
             .also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
 
+    fun attachComposableFactoryResult(
+        result: WinRTComposableFactoryResult,
+        defaultInterfaceId: Guid,
+    ): IInspectableReference {
+        val instance = IInspectableReference(result.instance, defaultInterfaceId)
+        return try {
+            val inner = PlatformAbi.fromRawComPtr(result.inner)
+            if (!PlatformAbi.isNull(inner)) {
+                WinRTPlatformApi.releaseRaw(inner)
+            }
+            instance.also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
+        } catch (error: Throwable) {
+            instance.close()
+            throw error
+        }
+    }
+
     fun registerComposableWrapper(
         value: Any,
         instance: IInspectableReference,

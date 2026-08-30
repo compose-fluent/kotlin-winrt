@@ -191,6 +191,17 @@
   [`0.8719`, `1.0835`], failing both the direction and confidence requirements.
   Restore P22, skip lifecycle/full gates, and add no scenario, script, or
   target-specific path.
+- [x] P40 consumes caller-owned composable factory results once, mapping CsWinRT
+  `ObjectReference.Attach`/raw inner release into common runtime ownership. The
+  fixed `40/60/5000` 12-pair gate retained it: JVM FastABI first-call won
+  `12/12` at ratio `0.8324` [`0.7996`, `0.8665`], and Native won `12/12` at
+  `0.6314` [`0.6152`, `0.6480`]; all four steady/default-first controls kept CIs
+  across `1.0`. The 21-million-call lifecycle gate kept checksum parity with JVM
+  tail growth `+1.66 MiB` and Native peak/tail growth `35.58/+4.79 MiB`. Full
+  four-runner validation passed `97/97` scenario/schema/checksum parity; the six
+  FastABI first-call scenarios now span JVM `0.668x-1.212x` versus CsWinRT and
+  Native `36.902x-75.158x` versus C++/WinRT. No target branch, benchmark
+  scenario, runner, or script was added.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and

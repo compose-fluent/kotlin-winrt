@@ -48,6 +48,31 @@ class ReferenceTrackerInteropTest {
     }
 
     @Test
+    fun composable_factory_result_attaches_instance_and_releases_inner_once() {
+        FakeReferenceTrackerHost.create().use { instanceHost ->
+            FakeReferenceTrackerHost.create().use { innerHost ->
+                val reference = ComWrappersSupport.attachComposableFactoryResult(
+                    WinRTComposableFactoryResult(
+                        inner = innerHost.objectPointer.asRawComPtr(),
+                        instance = instanceHost.objectPointer.asRawComPtr(),
+                    ),
+                    IID.IInspectable,
+                )
+
+                assertTrue(reference.hasReferenceTracker)
+                assertEquals(IID.IInspectable, reference.interfaceId)
+                assertEquals(0, innerHost.objectAddRefCalls)
+                assertEquals(1, innerHost.objectReleaseCalls)
+                assertEquals(1, instanceHost.trackerAddRefFromSourceCalls)
+
+                reference.close()
+                instanceHost.releaseDisconnectedReferenceSources()
+                assertEquals(1, instanceHost.objectReleaseCalls)
+            }
+        }
+    }
+
+    @Test
     fun disconnect_queues_release_before_synchronous_host_callback() {
         FakeReferenceTrackerHost.create().use { host ->
             val reference = IInspectableReference(host.objectPointer.asRawComPtr(), IID.IInspectable)

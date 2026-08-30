@@ -962,18 +962,10 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         .add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
         .add("val __baseInterface = %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
         .add("val __factoryResult = %L\n", call)
-        .add("val __resultRef = %T(__factoryResult.instance)\n", IUNKNOWN_REFERENCE_CLASS_NAME)
-        .add("return __resultRef.use {\n")
-        .indent()
-        .add("val __innerAddress = %T.fromRawComPtr(__factoryResult.inner)\n", PLATFORM_ABI_CLASS_NAME)
         .add(
-            "if (!%T.isNull(__innerAddress)) %T(__factoryResult.inner).close()\n",
-            PLATFORM_ABI_CLASS_NAME,
-            IUNKNOWN_REFERENCE_CLASS_NAME,
+            "return %T.attachComposableFactoryResult(__factoryResult, DEFAULT_INTERFACE_IID)\n",
+            COM_WRAPPERS_SUPPORT_CLASS_NAME,
         )
-        .add("%T.initializeComposableReference(it, DEFAULT_INTERFACE_IID)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
-        .unindent()
-        .add("}\n")
         .build()
 }
 
