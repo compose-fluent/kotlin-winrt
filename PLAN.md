@@ -136,6 +136,17 @@
   First-add was `5/6`, `0.9865` [`0.9419`, `1.0332`], and add-remove was `6/6`,
   `0.9509` [`0.8813`, `1.0260`]. Restore P22 and skip JVM/final timing because
   P31's construction effect did not reproduce.
+- [x] Reject P34 common lazy `WinRTEvent` registration storage. Fresh P22
+  timed-thread stacks and exact-image disassembly show every `ManagedEvents()`
+  eagerly constructs four empty handler/token maps through its two `WinRTEvent`
+  fields before any subscription. The `.cswinrt` event-source first-use state
+  ownership model was tested by allocating those maps on the first add only, while
+  keeping token-table, duplicate/LIFO removal, ABI, lifetime, and JVM/`mingwX64`
+  sequencing unchanged. The fixed P22 Native screen gave construction `5/6`,
+  ratio `0.9608` [`0.8764`, `1.0534`]; first-add was `2/6`, `1.0477`
+  [`0.9569`, `1.1472`], and add-remove was `4/6`, `0.9367`
+  [`0.8497`, `1.0326`]. Restore P22 and skip JVM/final timing because the
+  construction interval crosses `1.0` and first-add does not preserve direction.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
