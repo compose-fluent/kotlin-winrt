@@ -185,6 +185,12 @@
   the Native single-add row regressed in all six pairs at ratio `1.0312`
   `[1.0206, 1.0420]`. Restore P22, skip the twelve-pair and lifetime gates, and
   add no benchmark scenario, runner, script, or target-specific path.
+- [x] Reject P39 identical-key RCW publication suppression after profile-first
+  attribution and the fixed 12-pair gate. Native FastABI first-call won `12/12`
+  at ratio `0.8272` [`0.7989`, `0.8565`], but JVM won only `7/12` at `0.9719`
+  [`0.8719`, `1.0835`], failing both the direction and confidence requirements.
+  Restore P22, skip lifecycle/full gates, and add no scenario, script, or
+  target-specific path.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
