@@ -123,6 +123,19 @@
   Restore P22 production code and skip the remaining Native final pairs because
   a shared candidate cannot be retained with a repeatable JVM control
   regression.
+- [x] Reject P32 compiler-owned raw carrier with the unchanged P22 generic
+  detach path. Native construction reached only `4/6`, ratio `0.9755`
+  [`0.8889`, `1.0706`]; first-add was `4/6`, `0.9832`
+  [`0.8739`, `1.1062`], and add-remove was `3/6`, `1.0433`
+  [`0.9848`, `1.1053`]. Restore P22 and skip JVM because the priority row lost
+  P31's large effect.
+- [x] Reject P33 compiler-only direct-host raw acquisition. The specialized cold
+  fallback kept generic detach and cached/borrowed paths unchanged and passed all
+  64 JVM ownership/lowering tests plus the Native release link, but Native
+  construction reached only `3/6`, ratio `0.9737` [`0.8971`, `1.0568`].
+  First-add was `5/6`, `0.9865` [`0.9419`, `1.0332`], and add-remove was `6/6`,
+  `0.9509` [`0.8813`, `1.0260`]. Restore P22 and skip JVM/final timing because
+  P31's construction effect did not reproduce.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
