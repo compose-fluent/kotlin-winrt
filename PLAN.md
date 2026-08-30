@@ -169,6 +169,13 @@
   median `988 ns`, no more than single-add's `1014 ns`, and its interval crosses
   `1.0`; restore P22 and skip JVM/final gates because the target large-effect
   hypothesis did not reproduce.
+- [x] Reject P37 common CCW memory-template initialization. Exact Native
+  profiling justified replacing repeated vtable/IID writes with one shape-owned
+  bulk copy, and the fixed six-pair Native gate improved delegate marshaling
+  `5/6`, ratio `0.8946` with 95% CI `[0.8152, 0.9818]`. The required JVM gate
+  did not reproduce the effect: `3/6`, ratio `0.9018` `[0.6650, 1.2228]`, with
+  only a `-1.36%` paired median. Restore P22 production code; keep the profile
+  and raw A/B evidence local, and add no benchmark scenario, runner, or script.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
