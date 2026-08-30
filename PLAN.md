@@ -153,6 +153,22 @@
   `-1.22%`, `0.9779` `[0.9193, 1.0403]`; add-remove won `2/6`, `+1.37%`,
   `1.0159` `[0.9624, 1.0723]`. All intervals cross `1.0`, and add-remove moves
   in the wrong direction, so restore the P22 production shape.
+- [x] Reject P36 raw call-scoped standard-event delegate references after
+  profile-first attribution and the fixed Native screen. A 500 Hz timed-thread
+  comparison on the frozen P22 artifact found each standard first subscription
+  constructing `WinRTDelegateReference` -> `ComPtr` -> Cleaner around the
+  synchronous add, while `.cswinrt/src/WinRT.Runtime/Interop/EventSource{TDelegate}.cs`
+  uses a stack `ObjectReferenceValue`. The common candidate reused the existing
+  raw marshaling reference only for standard-vtable adds and kept custom
+  callbacks, reference tracking, ABI calls, publication, and ownership order
+  unchanged. With the same P22 executable/component input and six alternating
+  `40/15/5000` pairs, single-add won `5/6`, paired median `-3.766%`, geometric
+  mean ratio `0.96310` with 95% CI `[0.93017, 0.99718]`; the target multi-add
+  row won `5/6`, `-1.949%`, `0.97546` `[0.93441, 1.01831]`; construction control
+  won `4/6`, `-1.171%`, `0.99533` `[0.97586, 1.01518]`. Multi-add saved a
+  median `988 ns`, no more than single-add's `1014 ns`, and its interval crosses
+  `1.0`; restore P22 and skip JVM/final gates because the target large-effect
+  hypothesis did not reproduce.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
