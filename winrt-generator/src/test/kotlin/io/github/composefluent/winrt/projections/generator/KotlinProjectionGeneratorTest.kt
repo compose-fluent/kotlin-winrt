@@ -6421,6 +6421,14 @@ class KotlinProjectionGeneratorTest {
         assertFalse(composableFactoryContents.contains("FACTORY_INTERFACE_IID"))
         assertFalse(composableFactoryContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(composableFactoryContents.contains("val IWIDGETFACTORY_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
+        assertTrue(composableFactoryContents.contains("private val _iWidgetFactory: IUnknownReference by"))
+        assertTrue(composableFactoryContents.contains("lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(
+            Regex("""ActivationFactory\.get\(\s*Metadata\.TYPE_NAME,\s*IWIDGETFACTORY_IID,?\s*\)""")
+                .containsMatchIn(composableFactoryContents),
+        )
+        assertTrue(composableFactoryContents.contains("val __factory = _iWidgetFactory"))
+        assertFalse(composableFactoryContents.contains("fun acquire(factoryInterfaceIid: Guid)"))
         assertTrue(widgetContents.contains("fun createInstance(): IInspectableReference"))
         assertTrue(widgetContents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
         assertTrue(widgetContents.contains("attachComposableFactoryResult(__factoryResult,"))
@@ -17276,8 +17284,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("internal fun createWithName(name: String)"))
         assertTrue(contents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
         assertTrue(contents.contains("IWidgetNamedFactory.Metadata.CREATEWITHNAME_SLOT"))
-        assertTrue(contents.contains("val __factory = acquire(IWIDGETFACTORY_IID)"))
-        assertTrue(contents.contains("val __factory = acquire(IWIDGETNAMEDFACTORY_IID)"))
+        assertTrue(contents.contains("private val _iWidgetFactory: IUnknownReference by"))
+        assertTrue(contents.contains("private val _iWidgetNamedFactory: IUnknownReference by"))
+        assertTrue(contents.contains("val __factory = _iWidgetFactory"))
+        assertTrue(contents.contains("val __factory = _iWidgetNamedFactory"))
+        assertFalse(contents.contains("fun acquire(factoryInterfaceIid: Guid)"))
     }
 
     @Test

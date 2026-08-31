@@ -685,10 +685,27 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                 }
                 plan.composableFactoryBindings.forEach { factory ->
                     factory.iid?.let { iid ->
+                        val iidConstantName = composableFactoryIidConstantName(factory)
                         addProperty(
-                            PropertySpec.builder(composableFactoryIidConstantName(factory), GUID_CLASS_NAME)
+                            PropertySpec.builder(iidConstantName, GUID_CLASS_NAME)
                                 .addModifiers(KModifier.INTERNAL)
                                 .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                                .build(),
+                        )
+                        addProperty(
+                            PropertySpec.builder(
+                                composableFactoryCachePropertyName(factory),
+                                IUNKNOWN_REFERENCE_CLASS_NAME,
+                            )
+                                .addModifiers(KModifier.PRIVATE)
+                                .delegate(
+                                    CodeBlock.of(
+                                        "lazy(%T.PUBLICATION) { %T.get(Metadata.TYPE_NAME, %L) }",
+                                        LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                                        ACTIVATION_FACTORY_CLASS_NAME,
+                                        iidConstantName,
+                                    ),
+                                )
                                 .build(),
                         )
                     }
@@ -696,19 +713,6 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                 renderComposableFactoryCreateFunctions(plan).forEach(::addFunction)
                 renderDerivedComposableFactoryCreateFunctions(plan).forEach(::addFunction)
             }
-            .addFunction(
-                FunSpec.builder("acquire")
-                    .addModifiers(KModifier.INTERNAL)
-                    .addParameter("factoryInterfaceIid", GUID_CLASS_NAME)
-                    .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
-                    .addCode(
-                        CodeBlock.of(
-                            "return %T.get(Metadata.TYPE_NAME, factoryInterfaceIid)\n",
-                            ACTIVATION_FACTORY_CLASS_NAME,
-                        ),
-                    )
-                    .build(),
-            )
             .build()
 }
 
@@ -912,7 +916,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
         invocation = invocation,
     )
     return CodeBlock.builder()
-        .add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
+        .add("val __factory = %L\n", composableFactoryCachePropertyName(factory))
         .add(
             "return %T.createComposableCCWForObject(value, outerInterfaceId, DEFAULT_INTERFACE_IID) { __baseInterface ->\n",
             COM_WRAPPERS_SUPPORT_CLASS_NAME,
@@ -959,7 +963,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         invocation = invocation,
     )
     return CodeBlock.builder()
-        .add("val __factory = acquire(%L)\n", composableFactoryIidConstantName(factory))
+        .add("val __factory = %L\n", composableFactoryCachePropertyName(factory))
         .add("val __baseInterface = %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
         .add("val __factoryResult = %L\n", call)
         .add(
@@ -988,6 +992,17 @@ private fun composableFactoryIidConstantName(factory: KotlinProjectionComposable
         prefix = "",
         identifier = factory.qualifiedName.substringAfterLast('.').substringBefore('<').uppercase(),
         suffix = "_IID",
+    )
+
+private fun composableFactoryCachePropertyName(factory: KotlinProjectionComposableFactoryBinding): String =
+    generatedLocalIdentifier(
+        prefix = "_",
+        identifier =
+            factory.qualifiedName
+                .substringAfterLast('.')
+                .substringBefore('<')
+                .replaceFirstChar(Char::lowercase),
+        suffix = "",
     )
 
 internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(

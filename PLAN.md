@@ -202,6 +202,41 @@
   FastABI first-call scenarios now span JVM `0.668x-1.212x` versus CsWinRT and
   Native `36.902x-75.158x` versus C++/WinRT. No target branch, benchmark
   scenario, runner, or script was added.
+- [x] Reject P41 after testing the allocation-free reference-tracker QI carrier.
+  It removed the `NativePointerResult` allocation but expanded the Native
+  tracker function from `0x830` to `0xB90` bytes and its stack frame from
+  `0x168` to `0x208` bytes. In the fixed Native `40/60/5000` screen, the
+  primary first-call FastABI scenario won only `3/6` pairs at `1.0622x` with
+  95% CI `[0.9515, 1.1858]`; restore P40 and do not retry this carrier shape.
+- [x] Reject P42 identical-key RCW publication suppression on top of P40. Exact
+  machine code removed only the second `RcwIdentityCache.set` when direct and
+  canonical keys matched, but the fixed Native six-pair screen did not reproduce
+  P39's stable effect: FastABI first-call won `4/6` at `0.8988` with 95% CI
+  `[0.7418, 1.0890]`; steady FastABI was neutral at `0.9938`
+  `[0.9552, 1.0340]`, and ordinary construction was too variable to attribute.
+  Restore P40 and do not extend the failed screen adaptively.
+- [x] P44 caches each generated composable-factory reference at its
+  owning projected type, matching CsWinRT's static `IObjectReference` factory
+  ownership. Reuse the same common reference from ordinary and derived
+  construction so Native removes one per-call `ComPtr`/Cleaner/tracker-QI/RCW
+  publication chain without a target branch, runtime map, or benchmark change.
+  The fixed `40/60/5000` gate retained it: Native won `12/12` at ratio `0.8857`
+  with 95% CI `[0.8646, 0.9073]`; JVM measured `1.0116`
+  `[0.9706, 1.0544]` with no repeatable regression. Full generator tests, JVM
+  production execution, and the Native release link passed with matching
+  inputs and checksums.
+- [ ] P45 正在做: profile the retained P44 Native FastABI first-call path and
+  attribute the remaining cached-reference read, factory ABI call, result
+  ownership/attach, RCW publication, and final interface access before selecting
+  another common candidate. Do not infer the next optimization from source
+  inspection or add a target split, benchmark scenario, runner, or script.
+- [x] Complete P43 profile-first attribution on the retained P40 Native FastABI
+  first-call path. A 20,000-sample exact-image profile, conditional stacks, and
+  4,096-call counts agree that every construction creates two `ComPtr`/Cleaner
+  and RCW-publication chains; one entire chain belongs to the transient
+  composable factory reference before the component ABI call. The final getter
+  is negligible, so P44 targets the upstream factory owner rather than another
+  source-selected micro-path.
 - [x] Complete P26 identical-artifact calibration and retire the adaptive
   `5/15/1`, five-pair acceptance gate. P19-P25 remain reverted; their old
   timing effects are inconclusive. P22 is the only candidate promoted and
