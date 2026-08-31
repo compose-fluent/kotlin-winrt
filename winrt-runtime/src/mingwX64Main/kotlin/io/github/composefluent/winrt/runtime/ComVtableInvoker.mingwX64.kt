@@ -16,6 +16,7 @@ import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.UIntVar
+import kotlinx.cinterop.Vector128
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.get
@@ -643,6 +644,38 @@ internal actual inline fun winRTDirectInvokeHResultInt32Address(
     arg0,
     winRTDirectRawAddressToOpaquePointer(arg1),
 )
+
+internal actual inline fun <R> winRTDirectInvokeHStringPointerResult(
+    instance: RawComPtr,
+    slot: Int,
+    value: String,
+    crossinline consume: (hResult: Int, result: RawAddress) -> R,
+): R {
+    val length = winRTStringLength(value)
+    val pinnedValue = winRTPinString(value, length)
+    return try {
+        val result = WinRTHStringPointerResultThunk.function.invoke(
+            instance.value,
+            slot.toLong(),
+            winRTStringAddress(pinnedValue, length).value,
+            length.toLong(),
+        )
+        consume(result.getIntAt(2), RawAddress(result.getLongAt(0)))
+    } finally {
+        winRTKeepAlive(pinnedValue)
+    }
+}
+
+internal typealias HStringPointerResultRecipeThunk =
+    CFunction<(Long, Long, Long, Long) -> Vector128>
+
+internal object WinRTHStringPointerResultThunk {
+    val function: CPointer<HStringPointerResultRecipeThunk> =
+        winRTCreateWideScalarResultRecipeThunk(inputCount = 1, floatingPointKinds = 3L)
+            .value
+            .toCPointer<HStringPointerResultRecipeThunk>()
+            ?: error("mingw HSTRING pointer-result recipe thunk is null.")
+}
 
 @PublishedApi
 internal actual fun winRTCreateHResultRecipeThunk(

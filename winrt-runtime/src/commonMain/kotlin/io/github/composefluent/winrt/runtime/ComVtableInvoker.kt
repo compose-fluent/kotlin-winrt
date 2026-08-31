@@ -268,6 +268,17 @@ internal expect inline fun winRTDirectInvokeHResultInt32Address(
 ): Int
 
 /**
+ * Invokes one borrowed HSTRING input with a pointer result without exposing target scratch storage.
+ * Native keeps both temporaries on the recipe-thunk stack; JVM adapts the same contract to FFM.
+ */
+internal expect inline fun <R> winRTDirectInvokeHStringPointerResult(
+    instance: RawComPtr,
+    slot: Int,
+    value: String,
+    crossinline consume: (hResult: Int, result: RawAddress) -> R,
+): R
+
+/**
  * Native-only recipe thunk factories. [floatingPointKinds] uses two bits per input carrier:
  * zero for an integer/address word, one for Float, and two for Double. The compiler stores the
  * returned entry point in a call-site-owner field, so recipe lookup and thunk construction never

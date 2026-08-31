@@ -740,6 +740,16 @@ internal actual inline fun winRTDirectInvokeHResultInt32Address(
     arg1: RawAddress,
 ): Int = ComVtableInvoker.invokeArgs(instance, slot, arg0, arg1)
 
+internal actual inline fun <R> winRTDirectInvokeHStringPointerResult(
+    instance: RawComPtr,
+    slot: Int,
+    value: String,
+    crossinline consume: (hResult: Int, result: RawAddress) -> R,
+): R = withNativeHStringReferenceAbi(value) { inputAbi, resultOut ->
+    val hResult = ComVtableInvoker.invokeArgs(instance, slot, inputAbi, resultOut)
+    consume(hResult, PlatformAbi.readPointer(resultOut))
+}
+
 @PublishedApi
 internal actual fun winRTCreateHResultRecipeThunk(
     inputCount: Int,

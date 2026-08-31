@@ -53,13 +53,21 @@ internal object RawObjectAbiSupport {
         project: (RawAddress) -> T,
     ): T? {
         val hResult = invoke(resultOut)
-        return if (hResult == KnownHResults.E_BOUNDS.value) {
+        if (hResult == KnownHResults.E_BOUNDS.value) return null
+        return lookupResult(hResult, PlatformAbi.readPointer(resultOut), project)
+    }
+
+    internal inline fun <T> lookupResult(
+        hResult: Int,
+        result: RawAddress,
+        project: (RawAddress) -> T,
+    ): T? =
+        if (hResult == KnownHResults.E_BOUNDS.value) {
             null
         } else {
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            project(PlatformAbi.readPointer(resultOut))
+            project(result)
         }
-    }
 
     fun indexOfResult(
         invoke: (indexOut: RawAddress, foundOut: RawAddress) -> Int,

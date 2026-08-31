@@ -82,6 +82,19 @@ open class WinRTCollectionReferenceBase(
             },
         )
 
+    protected fun <T> invokeLookupProjectedMethodWithHStringArg(
+        slot: Int,
+        value: String,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? {
+        val instance = comPtr.checkedPointer()
+        return winRTDirectInvokeHStringPointerResult(instance, slot, value) { hResult, result ->
+            RawObjectAbiSupport.lookupResult(hResult, result) { pointer ->
+                adapter.projectOwnedAbi(pointer)
+            }
+        }
+    }
+
     protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
             invokeSlot(slot, value.pointer.asRawAddress(), indexOut, foundOut)
@@ -455,6 +468,16 @@ open class WinRTMapViewReference(
         )
 
     internal open fun <T> lookupProjectedOrNull(
+        key: String,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        invokeLookupProjectedMethodWithHStringArg(
+            WinRTCollectionSlots.MapViewLookup,
+            key,
+            adapter,
+        )
+
+    internal open fun <T> lookupProjectedOrNull(
         key: RawAddress,
         resultOut: RawAddress,
         adapter: WinRTReferenceValueAdapter<T>,
@@ -541,6 +564,16 @@ open class WinRTMapReference(
         adapter: WinRTReferenceValueAdapter<T>,
     ): T? =
         invokeLookupProjectedMethodWithObjectArg(
+            WinRTCollectionSlots.MapLookup,
+            key,
+            adapter,
+        )
+
+    internal open fun <T> lookupProjectedOrNull(
+        key: String,
+        adapter: WinRTReferenceValueAdapter<T>,
+    ): T? =
+        invokeLookupProjectedMethodWithHStringArg(
             WinRTCollectionSlots.MapLookup,
             key,
             adapter,

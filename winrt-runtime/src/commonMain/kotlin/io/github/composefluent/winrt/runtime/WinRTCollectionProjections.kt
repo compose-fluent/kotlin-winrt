@@ -59,6 +59,8 @@ open class WinRTReferenceValueAdapter<T>(
             action.invoke(inputAbi, resultOut)
         }
 
+    internal open fun asDirectHStringInputOrNull(value: T): String? = null
+
     open fun createOutputMarshaler(value: T): WinRTObjectMarshaler =
         marshaller(value).let { reference ->
             WinRTObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
@@ -112,6 +114,8 @@ object WinRTReferenceValueAdapters {
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, IID.NullableString) },
         ) {
             override val abiValueIsComReference: Boolean = false
+
+            override fun asDirectHStringInputOrNull(value: String): String = value
 
             override fun createInputMarshaler(value: String): WinRTObjectMarshaler {
                 val marshaler = NativeStringMarshaller.createMarshaler(value)
@@ -1037,7 +1041,14 @@ object WinRTReadOnlyDictionaryProjection {
                 mapView.hasKey(keyAbi)
             }
 
-        override fun get(key: K): V? = keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
+        override fun get(key: K): V? {
+            val directHString = keyAdapter.asDirectHStringInputOrNull(key)
+            return if (directHString == null) {
+                keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
+            } else {
+                mapView.lookupProjectedOrNull(directHString, valueAdapter)
+            }
+        }
 
         override fun close() {
             mapView.close()
@@ -1211,7 +1222,14 @@ object WinRTDictionaryProjection {
             return previous
         }
 
-        override fun get(key: K): V? = keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
+        override fun get(key: K): V? {
+            val directHString = keyAdapter.asDirectHStringInputOrNull(key)
+            return if (directHString == null) {
+                keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
+            } else {
+                map.lookupProjectedOrNull(directHString, valueAdapter)
+            }
+        }
 
         override fun remove(key: K): V? {
             val previous = get(key)

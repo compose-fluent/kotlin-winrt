@@ -289,6 +289,75 @@
   checksums. Restore P44; key-token/current-entry cleanup remains slower and more
   variable even when all 4,647 replacement sweeps are removed, so retire this
   combined scheduling shape rather than layering another queue policy on it.
+- [x] Complete P52 profile-driven `ComPtr` owner-allocation experiment and reject
+  it on the fixed P44 Native FastABI gate. Exact P44 machine-code/debugger counts
+  showed three `ComPtr.create` allocation sites per construction, so the trial
+  made `ComPtr` an inline carrier and anchored finalization on the owning
+  `ComObjectReference` without changing ABI or explicit-close sequencing. The
+  immutable release image passed checksum smoke but won only 4/12 strict AB/BA
+  pairs at 40 warmup rounds, 60 measurement rounds, and 5,000 iterations; its
+  P52/P44 geometric-mean median ratio was `1.021868` with 95% CI
+  `[0.980962, 1.064481]`. Restore P44: eliminating this visible allocation does
+  not produce a reproducible end-to-end win and must not be retained on source
+  inspection alone.
+- [x] Complete P53 profile-driven managed-TLS scratch-pool experiment and reject
+  it on the fixed P44 Native FastABI gate. The trial replaced the scalar/struct
+  `@ThreadLocal` owners with one Windows FLS-owned per-fiber record while keeping
+  the common scratch and ABI contracts unchanged. The release image passed
+  checksum smoke and exited cleanly, but won only `8/12` strict AB/BA pairs at
+  40 warmup rounds, 60 measurement rounds, and 5,000 iterations. Its P53/P44
+  geometric-mean ratio was `0.984448` with 95% CI `[0.948158, 1.022126]`; the
+  paired median improved `2.850%`, but neither the `10/12` direction gate nor the
+  confidence gate passed. Restore P44: the profiled TLS cluster is real, but FLS
+  plus `StableRef` ownership does not remove it with reproducible end-to-end gain.
+- [x] Complete P54 profile-driven Native dictionary HSTRING call convergence and
+  retain it on the fixed P44 Native gate. A 20,000-RIP profile of
+  `ExistingDictionaryLookupCached` completed with zero failures and attributed
+  `9.19%` of samples to scoped HSTRING acquire/release plus `21.08%` to adjacent
+  pthread TLS/spin/emulated-TLS work. String-key `IMap`/`IMapView` lookup now uses
+  the existing Native wide-scalar recipe thunk so `HSTRING_HEADER` and pointer
+  result stay on its stack, matching `.cswinrt/src/WinRT.Runtime/Marshalers.cs`
+  `MarshalString.Pinnable`; String classification, lookup/result policy, and
+  non-String behavior remain common, while JVM keeps its FFM adapter. Immutable
+  candidate `4EB06605E2D5CF09EA150F11555835486A7495B74649247189840C9269875ED5`
+  passed checksum smoke and won `12/12` alternating P54/P44 pairs at 40 warmup
+  rounds, 60 measurement rounds, and 5,000 iterations. Its geometric-mean ratio
+  was `0.504990`, paired median `0.503454`, and bootstrap 95% CI
+  `[0.501155, 0.510447]`, a reproducible `49.50%` reduction. JVM dictionary
+  projection tests and Native dictionary/recipe-thunk focused suites passed; a
+  missing common-test `JvmInline` import exposed by Native compilation was fixed
+  without adding coverage or production scaffolding.
+- [x] Complete P55 profile-driven owned-RCW hot/cold path experiment and reject
+  it before timing. An exact-image
+  20,000-RIP profile of the retained P54 `ExistingDictionaryLookupCached` path
+  completed with zero sampling failures: `67.61%` of samples were in the Native
+  executable, and `ComWrappersSupport.createRcwForOwnedComObject` was the largest
+  Kotlin-owned exclusive region at `18.00%`. Address-level control-flow mapping
+  shows the benchmark repeatedly hits the direct-pointer weak identity entry and
+  does not enter `rcwCacheKey` or RCW creation, yet each hit still carries the
+  generic slow path's `0x288` stack frame and lock/exception state. The common
+  cold-helper trial preserved the `.cswinrt/src/WinRT.Runtime/ComWrappersSupport.net5.cs`
+  identity contract and passed JVM/Native compilation plus release linking, but
+  exact candidate machine-code inspection showed LLVM inlined the helper back
+  into the caller: the function grew from about `0x13A0` to `0x14C0`, with no
+  independent cold symbol. Restore P54 without running a benchmark gate; this
+  source-only split does not change the measured hot path and must not be timed
+  as if it were an optimization.
+- [x] Complete P56 profile-driven Native owned-RCW release adaptation and reject
+  it on the fixed P54 Native gate. The exact P54 dictionary profile attributed
+  `711/20,000` RIP samples (`3.56%`) to the inlined
+  `WinRTPlatformApi.releaseRaw` path after a validated weak-cache hit, so the
+  trial reused the existing zero-input Win64 recipe thunk without changing the
+  common ownership call or JVM actual. Exact-image inspection confirmed that
+  `createRcwForOwnedComObject` shrank from `0x13A0` to `0xD70` bytes and its
+  stack frame from `0x288` to `0x198`, while the initialized hot path called the
+  cached thunk directly. The candidate passed checksum smoke but won only
+  `8/12` strict AB/BA pairs at 40 warmup rounds, 60 measurement rounds, and
+  5,000 iterations. Its P56/P54 geometric-mean ratio was `0.992945`, paired
+  median `0.989493`, and bootstrap 95% CI `[0.984789, 1.001269]`. Restore P54:
+  removing this visible Native pointer adaptation does not produce a
+  reproducible end-to-end win, and its `3.56%` profile share is too small to be
+  the next major Native/C++ gap-closing theme.
 - [x] Complete P43 profile-first attribution on the retained P40 Native FastABI
   first-call path. A 20,000-sample exact-image profile, conditional stacks, and
   4,096-call counts agree that every construction creates two `ComPtr`/Cleaner

@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.projections.support.FallbackIndexedRuntimeClass
 import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
+import kotlin.jvm.JvmInline
 import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
