@@ -358,6 +358,31 @@
   removing this visible Native pointer adaptation does not produce a
   reproducible end-to-end win, and its `3.56%` profile share is too small to be
   the next major Native/C++ gap-closing theme.
+- [x] Complete P57: move the common owned runtime-class RCW hot-cache probe to the
+  adapter boundary so cache hits consume the ABI-owned reference without entering
+  the generic creation state machine; retain the generic second probe for races,
+  and merge the adjacent collection disposed check with pointer acquisition. The
+  exact Native machine code keeps the generic creator and its `0x288` slow-state
+  frame off the hit path; the fixed P54 gate wins `12/12` at ratio `0.80413` with
+  95% CI `[0.79845, 0.80988]`. The complete JVM/Native runtime gate passed, and
+  all four existing dictionary controls won `4/4` paired screens with reductions
+  between `14.41%` and `26.84%`.
+- [x] Complete P58: move exact typed-RCW hot-hit lifetime and primary-type
+  validation into the common `RcwIdentityCache` entry that already owns the weak
+  identity probe. Generated `WinRTObjectBase` wrappers should no longer return a
+  managed `nativeObject` on every hit merely to read the disposed flag; non-base
+  implementations and type mismatches retain the existing generic path. Exact
+  Native machine code removes the second getter/TLS chain; the complete
+  JVM/Native runtime gate passes, and the frozen P57 gate wins `12/12` at ratio
+  `0.882077`, a `11.79%` reduction, with 95% CI `[0.861359, 0.904233]`.
+- [x] Complete P59: remove the next profile-confirmed Native root-frame boundary
+  without changing common cache semantics. One target inline read seam keeps
+  the JVM interface read while `mingwX64` directly reads the sole entry's native
+  weak reference. Exact machine code eliminates the indirect
+  `WeakValueCacheEntry.get` call, the complete JVM/Native runtime gate passes,
+  and the frozen P58 gate wins `11/12` at ratio `0.885928`, an `11.41%`
+  reduction, with paired bootstrap 95% CI `[0.861958, 0.918723]`; no benchmark
+  scenario, runner, script, strong reference, or target-only cache was added.
 - [x] Complete P43 profile-first attribution on the retained P40 Native FastABI
   first-call path. A 20,000-sample exact-image profile, conditional stacks, and
   4,096-call counts agree that every construction creates two `ComPtr`/Cleaner

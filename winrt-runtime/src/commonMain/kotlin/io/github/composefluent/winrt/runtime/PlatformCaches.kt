@@ -53,6 +53,9 @@ internal interface WeakValueCacheReference<out V : Any> {
     fun get(): V?
 }
 
+/** Reads a cache-owned weak reference at a target hot path without changing its lifetime semantics. */
+internal expect inline fun <V : Any> WeakValueCacheReference<V>.getHotValue(): V?
+
 expect class WeakValueCache<K, V : Any>() {
     operator fun get(key: K): V?
 

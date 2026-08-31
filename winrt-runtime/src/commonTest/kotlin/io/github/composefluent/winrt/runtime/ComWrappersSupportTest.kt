@@ -174,6 +174,25 @@ class ComWrappersSupportTest {
             val retainedReferenceCount = requireNotNull(
                 WinRTInspectableComObject.tryProbeReferenceCount(canonicalPointer),
             )
+            val hotProbePointer = detachDelegateReference()
+            assertEquals(
+                retainedReferenceCount + 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(hotProbePointer),
+            )
+
+            val hotProbe = requireNotNull(
+                ComWrappersSupport.tryConsumeCachedRcwForOwnedComObject<TestDelegateWrapper>(
+                    pointer = hotProbePointer,
+                    staticallyDeterminedType = typeHandle,
+                ),
+            )
+
+            assertSame(first, hotProbe)
+            assertEquals(
+                retainedReferenceCount,
+                WinRTInspectableComObject.tryProbeReferenceCount(canonicalPointer),
+            )
+
             val duplicatePointer = detachDelegateReference()
             assertEquals(
                 retainedReferenceCount + 1u,

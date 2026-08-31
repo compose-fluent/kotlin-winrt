@@ -310,8 +310,12 @@ object WinRTReferenceValueAdapters {
                 }
             }
 
-            override fun projectOwnedAbi(pointer: RawAddress): T =
-                ComWrappersSupport.createRcwForOwnedComObject(
+            override fun projectOwnedAbi(pointer: RawAddress): T {
+                ComWrappersSupport.tryConsumeCachedRcwForOwnedComObject<T>(
+                    pointer = pointer,
+                    staticallyDeterminedType = typeHandle,
+                )?.let { return it }
+                return ComWrappersSupport.createRcwForOwnedComObject(
                     pointer = pointer,
                     staticallyDeterminedType = typeHandle,
                     factory = ownedFactory,

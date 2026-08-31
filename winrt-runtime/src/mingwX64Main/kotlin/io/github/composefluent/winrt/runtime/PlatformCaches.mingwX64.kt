@@ -203,7 +203,7 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
 
 }
 
-private class WeakValueCacheEntry<K, V : Any>(
+internal class WeakValueCacheEntry<K, V : Any>(
     val key: K,
     value: V,
 ) : WeakValueCacheReference<V> {
@@ -211,6 +211,10 @@ private class WeakValueCacheEntry<K, V : Any>(
 
     override fun get(): V? = value.get()
 }
+
+@Suppress("UNCHECKED_CAST")
+internal actual inline fun <V : Any> WeakValueCacheReference<V>.getHotValue(): V? =
+    (this as WeakValueCacheEntry<*, V>).value.get()
 
 actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
     private val onValueEvicted: (V) -> Unit,

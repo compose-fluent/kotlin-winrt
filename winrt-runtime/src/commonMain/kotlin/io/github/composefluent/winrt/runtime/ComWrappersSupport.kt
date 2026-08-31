@@ -362,6 +362,26 @@ object ComWrappersSupport {
     }
 
     /**
+     * Consumes an ABI-owned pointer only when its statically typed RCW is already cached.
+     * A caller that observes a miss still owns [pointer] and must use the full creation path.
+     */
+    @Suppress("UNCHECKED_CAST")
+    internal fun <T : Any> tryConsumeCachedRcwForOwnedComObject(
+        pointer: RawAddress,
+        staticallyDeterminedType: WinRTTypeHandle,
+    ): T? {
+        if (PlatformAbi.isNull(pointer)) {
+            return null
+        }
+        val cached = findHotCachedRcw(
+            PlatformAbi.pointerKey(pointer),
+            staticallyDeterminedType,
+        ) ?: return null
+        WinRTPlatformApi.releaseRaw(pointer)
+        return cached as T
+    }
+
+    /**
      * Projects an ABI-owned closed interface while preserving identity for that exact
      * parameterized interface. Different closed interfaces on the same COM identity keep
      * independent Kotlin views because Kotlin cannot add CsWinRT-style dynamic interfaces
@@ -479,7 +499,15 @@ object ComWrappersSupport {
     private inline fun findHotCachedRcw(
         pointerKey: Long,
         staticallyDeterminedType: WinRTTypeHandle? = null,
-    ): Any? = validateCachedRcw(pointerKey, rcwCache.getHot(pointerKey), staticallyDeterminedType)
+    ): Any? {
+        val hotEntry = rcwCache.getHotEntry(pointerKey) ?: return null
+        return validateCachedRcw(
+            pointerKey = pointerKey,
+            cached = hotEntry.reference.getHotValue(),
+            staticallyDeterminedType = staticallyDeterminedType,
+            hotEntry = hotEntry,
+        )
+    }
 
     private inline fun findCachedRcw(
         pointerKey: Long,
@@ -490,8 +518,29 @@ object ComWrappersSupport {
         pointerKey: Long,
         cached: Any?,
         staticallyDeterminedType: WinRTTypeHandle?,
+        hotEntry: RcwIdentityCacheEntry? = null,
     ): Any? {
         cached ?: return null
+        val cachedNativeObjectSupport = hotEntry?.nativeObjectSupport
+        if (cachedNativeObjectSupport != null) {
+            if (cachedNativeObjectSupport.isDisposed) {
+                rcwCache.remove(pointerKey)
+                return null
+            }
+            val primaryTypeHandle = hotEntry.primaryTypeHandle
+            if (
+                staticallyDeterminedType == null ||
+                primaryTypeHandle === staticallyDeterminedType ||
+                primaryTypeHandle == staticallyDeterminedType
+            ) {
+                return cached
+            }
+            return if ((cached as IWinRTObject).isInterfaceImplemented(staticallyDeterminedType, false)) {
+                cached
+            } else {
+                null
+            }
+        }
         val winRTObject = cached as? IWinRTObject
         if (winRTObject == null) {
             return if (staticallyDeterminedType == null) cached else null
@@ -1455,19 +1504,19 @@ private class RcwIdentityCache {
     private val entries = WeakValueCache<Long, Any>()
     private val hotEntry = AtomicReference<RcwIdentityCacheEntry?>(null)
 
-    fun getHot(pointerKey: Long): Any? {
+    fun getHotEntry(pointerKey: Long): RcwIdentityCacheEntry? {
         val hot = hotEntry.load()
         if (hot != null && hot.pointerKey == pointerKey) {
-            return hot.reference.get()
+            return hot
         }
         return null
     }
 
     operator fun get(pointerKey: Long): Any? {
-        getHot(pointerKey)?.let { return it }
+        getHotEntry(pointerKey)?.reference?.get()?.let { return it }
         val reference = entries.reference(pointerKey) ?: return null
-        return reference.get()?.also {
-            hotEntry.store(RcwIdentityCacheEntry(pointerKey, reference))
+        return reference.get()?.also { value ->
+            hotEntry.store(RcwIdentityCacheEntry(pointerKey, reference, value))
         }
     }
 
@@ -1476,7 +1525,7 @@ private class RcwIdentityCache {
         value: Any,
     ) {
         val reference = entries.put(pointerKey, value)
-        hotEntry.store(RcwIdentityCacheEntry(pointerKey, reference))
+        hotEntry.store(RcwIdentityCacheEntry(pointerKey, reference, value))
     }
 
     fun remove(pointerKey: Long): Any? {
@@ -1498,8 +1547,17 @@ private class RcwIdentityCache {
 
 private class RcwIdentityCacheEntry(
     val pointerKey: Long,
-    @Suppress("unused") val reference: WeakValueCacheReference<Any>,
+    val reference: WeakValueCacheReference<Any>,
+    value: Any,
 ) {
+    val nativeObjectSupport: RawComObjectReferenceSupport?
+    val primaryTypeHandle: WinRTTypeHandle?
+
+    init {
+        val winRTObjectBase = value as? WinRTObjectBase<*>
+        nativeObjectSupport = winRTObjectBase?.nativeObject?.comPtr?.support
+        primaryTypeHandle = winRTObjectBase?.primaryTypeHandle
+    }
 }
 
 @OptIn(ExperimentalAtomicApi::class)

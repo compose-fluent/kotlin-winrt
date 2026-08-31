@@ -127,6 +127,8 @@ private class WeakValueCacheEntry<K, V : Any>(
     referenceQueue: ReferenceQueue<V>,
 ) : WeakReference<V>(value, referenceQueue), WeakValueCacheReference<V>
 
+internal actual inline fun <V : Any> WeakValueCacheReference<V>.getHotValue(): V? = get()
+
 actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
     private val onValueEvicted: (V) -> Unit,
 ) {
