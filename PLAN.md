@@ -280,6 +280,15 @@
   `[1.178714, 1.244616]`, paired-median regression `+19.639%`, with matching
   checksums. Stop the last pair, restore P44, and do not retry key-token queue
   compaction or infer throughput from allocation reduction alone.
+- [x] Reject P51 after making Native weak-cache cleanup follow map growth instead
+  of every publication. The candidate reduced the exact batch from 8,192 sweeps
+  to the 3,545 new-key puts, skipped replacement queue appends, and reduced each
+  entry from four to three allocator units. Its fixed P44 `40/60/5000` gate still
+  won only `3/12`: geometric-mean ratio `1.049220`, 95% CI
+  `[0.985019, 1.117604]`, paired-median regression `+10.254%`, and matching
+  checksums. Restore P44; key-token/current-entry cleanup remains slower and more
+  variable even when all 4,647 replacement sweeps are removed, so retire this
+  combined scheduling shape rather than layering another queue policy on it.
 - [x] Complete P43 profile-first attribution on the retained P40 Native FastABI
   first-call path. A 20,000-sample exact-image profile, conditional stacks, and
   4,096-call counts agree that every construction creates two `ComPtr`/Cleaner
