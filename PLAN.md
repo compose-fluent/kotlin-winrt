@@ -225,11 +225,61 @@
   `[0.9706, 1.0544]` with no repeatable regression. Full generator tests, JVM
   production execution, and the Native release link passed with matching
   inputs and checksums.
-- [ ] P45 正在做: profile the retained P44 Native FastABI first-call path and
-  attribute the remaining cached-reference read, factory ABI call, result
-  ownership/attach, RCW publication, and final interface access before selecting
-  another common candidate. Do not infer the next optimization from source
-  inspection or add a target split, benchmark scenario, runner, or script.
+- [x] Complete P45 profile-first attribution on the retained P44 Native FastABI
+  first-call path. Exact 4,096-call counts show one cached factory read, factory
+  ABI call, result attach, `ComPtr`/Cleaner/tracker/register chain, and final
+  getter per construction, but two RCW publications and therefore two
+  `WeakValueCache.put`/`sweepOneEntry` calls. In a 20,000-sample exact-image
+  profile, Native `HashMap.findKey`/`addKey` and weak-cache sweeping account for
+  the largest remaining controllable share; the factory ABI call, result attach,
+  tracker initialization, and final getter are individually small. Select the
+  next candidate from the measured double-publication cache path, not source
+  inspection, and keep the P44 executable as its fixed baseline.
+- [x] Reject P46 after reusing each common weak-value entry directly as the RCW
+  hot entry. The concrete common `expect`/platform `actual` entry removed both
+  hot-wrapper types, reduced the Native executable by 2,560 bytes, shrank
+  `RcwIdentityCache.set` from `0x210` to `0x190` bytes and its allocator calls
+  from two to one, and kept the inlined `get` smaller than P44 (`0x2E0` versus
+  `0x310`). The fixed Native `40/60/5000` 12-pair AB/BA gate nevertheless won
+  only `3/12`: geometric-mean ratio `1.017423` with 95% CI
+  `[0.982616, 1.053462]` and paired-median regression `+3.071%`. Restore P44;
+  source/allocation and machine-code reductions alone do not justify retention,
+  and do not retry weak-entry hot reuse in another target shape.
+- [x] Complete P47 caller-and-key attribution for the two retained P44
+  `RcwIdentityCache.set` calls. A CDB capture after the exact FastABI scenario
+  entry shows both calls use the same pointer key and originate from adjacent
+  calls in `registerObjectForInterface`: the direct-pointer and canonical-pointer
+  alias publications, not separate result-attachment and final-wrapper owners.
+  Removing the second publication would therefore retry the already rejected P42
+  same-key suppression candidate; keep both common publications and do not revisit
+  that shape under a Native target split.
+- [x] Reject P48 before timing because Kotlin/Native lowers `linkedMapOf` and
+  `hashMapOf` at this call site to the same `HashMap(Int)` construction. P44 and
+  the rebuilt candidate have identical executable size and byte-identical
+  `WeakValueCache` constructor, `put`, `reference`, and `sweepOneEntry` machine
+  code, including identical symbol addresses and sizes. The different whole-file
+  hash is only a relink artifact, not a hot-path change; restore the source and do
+  not spend the fixed benchmark gate on a code-identical candidate.
+- [x] Reject P49 after replacing Native `sweepOneEntry` map validation with an
+  entry-current marker. Debugger counters over 8,192 completed P44 FastABI
+  first-call sweeps found 2,485 stale (`30.33%`), 4,685 current-live (`57.19%`),
+  and 1,022 current-cleared (`12.48%`) entries. The candidate removed
+  `HashMap.findKey` from every nonempty sweep and shrank `sweepOneEntry` from
+  `0x1E0` to `0x170`, but enlarged each entry allocation from four to five
+  allocator units. The unchanged Native `40/60/5000` 12-pair gate won only
+  `6/12`: geometric-mean ratio `0.982641`, 95% CI `[0.947186, 1.019424]`, paired
+  median `-1.423%`, and matching checksums. Restore P44; lookup removal does not
+  justify a larger per-publication entry.
+- [x] Reject P50 after replacing duplicate Native weak-cache queue entries with
+  one key token per current map entry. The entry allocation fell from four to
+  three allocator units and replacement puts skipped `ArrayDeque.addLast`, but
+  every sweep then reached the current entry and paid for its weak-reference read
+  and live requeue instead of cheaply rejecting stale replacement entries. The
+  fixed P44 `40/60/5000` gate lost its first 11 pairs (`0/11`), making the required
+  `10/12` impossible: geometric-mean ratio `1.211217`, 95% CI
+  `[1.178714, 1.244616]`, paired-median regression `+19.639%`, with matching
+  checksums. Stop the last pair, restore P44, and do not retry key-token queue
+  compaction or infer throughput from allocation reduction alone.
 - [x] Complete P43 profile-first attribution on the retained P40 Native FastABI
   first-call path. A 20,000-sample exact-image profile, conditional stacks, and
   4,096-call counts agree that every construction creates two `ComPtr`/Cleaner
