@@ -7478,6 +7478,31 @@ class KotlinProjectionGeneratorTest {
         assertEquals(0, supportContents.projectionCallSiteCount())
         assertTrue(supportContents, supportContents.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
         assertTrue(supportContents, supportContents.contains("role = WinRTProjectionAbiCodecRole.FROM_ABI"))
+        val normalizedSupport = supportContents.normalizedSource()
+        assertTrue(
+            supportContents,
+            Regex(
+                "internal val (metadata_[a-f0-9]+): WinRTListProjection\\.Descriptor<String> " +
+                    "get\\(\\) = Metadata_[a-f0-9]+\\.descriptor",
+            ).containsMatchIn(normalizedSupport),
+        )
+        assertTrue(
+            supportContents,
+            Regex(
+                "private object Metadata_[a-f0-9]+ \\{ public val descriptor: " +
+                    "WinRTListProjection\\.Descriptor<String> = " +
+                    "WinRTListProjection\\.descriptor\\(WinRTReferenceValueAdapters\\.string\\)",
+            ).containsMatchIn(normalizedSupport),
+        )
+        assertTrue(
+            supportContents,
+            Regex("WinRTListProjection\\.fromAbi\\(__abi, WinRTModulePlatformAbiCall\\.metadata_[a-f0-9]+\\)")
+                .containsMatchIn(normalizedSupport),
+        )
+        assertFalse(
+            supportContents,
+            normalizedSupport.contains("WinRTListProjection.fromAbi(__abi, WinRTReferenceValueAdapters.string)"),
+        )
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))

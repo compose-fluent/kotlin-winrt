@@ -158,23 +158,32 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
             val owner = adapter.runtimeProjectionClassName
                 ?: error("Mapped WinMD input '${binding.typeName}' has no static factory owner.")
             val arguments = buildList {
-                if (adapter.inputUsesParameterizedInterfaceId) {
-                    add(referenceInterfaceIdCode(binding, hoistMetadata = true)
-                        ?: error("Mapped WinMD input '${binding.typeName}' has no parameterized IID."))
-                } else {
-                    require(binding.typeArguments.size == adapter.inputTypeArgumentAdapterCount) {
-                        "Mapped WinMD input '${binding.typeName}' expected " +
-                            "${adapter.inputTypeArgumentAdapterCount} closed adapter arguments."
+                when {
+                    binding.kind == KotlinProjectionAbiValueKind.MappedVector -> {
+                        add(mutableListProjectionDescriptorCode(binding, hoistMetadata = true)
+                            ?: error("Mapped WinMD input '${binding.typeName}' has no closed vector descriptor."))
                     }
-                    binding.typeArguments.forEach { argument ->
-                        add(collectionReferenceAdapterCode(argument, hoistMetadata = true)
-                            ?: error("Mapped WinMD input '${binding.typeName}' has an unbound argument adapter."))
+
+                    adapter.inputUsesParameterizedInterfaceId -> {
+                        add(referenceInterfaceIdCode(binding, hoistMetadata = true)
+                            ?: error("Mapped WinMD input '${binding.typeName}' has no parameterized IID."))
                     }
-                    if (binding.kind == KotlinProjectionAbiValueKind.MappedMapView ||
-                        binding.kind == KotlinProjectionAbiValueKind.MappedMap
-                    ) {
-                        add(collectionInterfaceIdCode(binding, hoistMetadata = true)
-                            ?: error("Mapped WinMD input '${binding.typeName}' has no collection IID."))
+
+                    else -> {
+                        require(binding.typeArguments.size == adapter.inputTypeArgumentAdapterCount) {
+                            "Mapped WinMD input '${binding.typeName}' expected " +
+                                "${adapter.inputTypeArgumentAdapterCount} closed adapter arguments."
+                        }
+                        binding.typeArguments.forEach { argument ->
+                            add(collectionReferenceAdapterCode(argument, hoistMetadata = true)
+                                ?: error("Mapped WinMD input '${binding.typeName}' has an unbound argument adapter."))
+                        }
+                        if (binding.kind == KotlinProjectionAbiValueKind.MappedMapView ||
+                            binding.kind == KotlinProjectionAbiValueKind.MappedMap
+                        ) {
+                            add(collectionInterfaceIdCode(binding, hoistMetadata = true)
+                                ?: error("Mapped WinMD input '${binding.typeName}' has no collection IID."))
+                        }
                     }
                 }
             }
@@ -871,10 +880,17 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
     require(binding.typeArguments.size == adapter.inputTypeArgumentAdapterCount) {
         "Mapped WinMD output '${binding.typeName}' expected ${adapter.inputTypeArgumentAdapterCount} closed adapters."
     }
-    val arguments = binding.typeArguments.map { argument ->
-        collectionReferenceAdapterCode(argument, hoistMetadata = true)
-            ?: error("Mapped WinMD output '${binding.typeName}' has an unbound argument adapter.")
-    }.toMutableList()
+    val arguments = if (binding.kind == KotlinProjectionAbiValueKind.MappedVector) {
+        mutableListOf(
+            mutableListProjectionDescriptorCode(binding, hoistMetadata = true)
+                ?: error("Mapped WinMD output '${binding.typeName}' has no closed vector descriptor."),
+        )
+    } else {
+        binding.typeArguments.map { argument ->
+            collectionReferenceAdapterCode(argument, hoistMetadata = true)
+                ?: error("Mapped WinMD output '${binding.typeName}' has an unbound argument adapter.")
+        }.toMutableList()
+    }
     if (binding.kind == KotlinProjectionAbiValueKind.MappedMapView ||
         binding.kind == KotlinProjectionAbiValueKind.MappedMap
     ) {

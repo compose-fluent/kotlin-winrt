@@ -1426,6 +1426,27 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     ))
 }
 
+internal fun KotlinProjectionRenderer.mutableListProjectionDescriptorCode(
+    typeBinding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean = false,
+): CodeBlock? {
+    if (typeBinding.kind != KotlinProjectionAbiValueKind.MappedVector || typeBinding.typeArguments.size != 1) {
+        return null
+    }
+    val elementBinding = typeBinding.typeArguments.single()
+    val elementAdapter = collectionReferenceAdapterCode(elementBinding, hoistMetadata) ?: return null
+    val expression = CodeBlock.of("%T.descriptor(%L)", WINRT_LIST_PROJECTION_CLASS_NAME, elementAdapter)
+    if (!hoistMetadata) return expression
+    return hoistModuleMetadata(
+        identity = typeBinding.moduleMetadataIdentity("mutable-list-projection-descriptor"),
+        type = WINRT_LIST_PROJECTION_DESCRIPTOR_CLASS_NAME.parameterizedBy(
+            mappedCollectionArgumentProjectedType(elementBinding),
+        ),
+        initializer = expression,
+        deferredInitialization = true,
+    )
+}
+
 private fun KotlinProjectionRenderer.mappedCollectionProjectedType(
     typeBinding: KotlinProjectionAbiTypeBinding,
 ): TypeName {

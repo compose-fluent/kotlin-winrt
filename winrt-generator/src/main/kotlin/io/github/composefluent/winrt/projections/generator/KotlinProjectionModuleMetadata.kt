@@ -12,7 +12,13 @@ internal fun KotlinProjectionRenderer.hoistModuleMetadata(
     identity: String,
     type: TypeName,
     initializer: CodeBlock,
-): CodeBlock = modulePlatformAbiCalls?.registerMetadataExpression(identity, type, initializer) ?: initializer
+    deferredInitialization: Boolean = false,
+): CodeBlock = modulePlatformAbiCalls?.registerMetadataExpression(
+    identity = identity,
+    type = type,
+    initializer = initializer,
+    deferredInitialization = deferredInitialization,
+) ?: initializer
 
 internal fun KotlinProjectionAbiTypeBinding.moduleMetadataIdentity(prefix: String): String =
     "$prefix|${canonicalCallSiteTypeSignature()}"

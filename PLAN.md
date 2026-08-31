@@ -383,6 +383,22 @@
   and the frozen P58 gate wins `11/12` at ratio `0.885928`, an `11.41%`
   reduction, with paired bootstrap 95% CI `[0.861958, 0.918723]`; no benchmark
   scenario, runner, script, strong reference, or target-only cache was added.
+- [x] Complete P60: align closed `IVector<T>` descriptor ownership with
+  `.cswinrt/src/WinRT.Runtime/Projections/IList.net5.cs` and `GuidGenerator.cs`.
+  `winrt-runtime` exposes one common descriptor contract while the generated
+  closed `IVector<T>` module owner retains its signature, PIID, Kotlin type
+  handle, element adapter, and owned-result factory. Generated List
+  `createMarshaler`/`fromManaged`/`fromAbi` paths must reuse that descriptor on
+  JVM and Native without adding state to every reference adapter. Each closed
+  descriptor is initialized behind its own generated holder so touching an
+  unrelated module codec does not initialize all vector descriptors.
+  The JVM/generator/Native runtime gates and Native release link pass. The
+  independent-holder candidate wins the fixed `40/60/5000` Native gate `12/12`
+  at geometric-mean ratio `0.468638`, a `53.14%` reduction, with 95% CI
+  `[0.460393, 0.477030]`. Unchanged `CreateListGuid` and `GetExistingUri`
+  controls have ratios `0.987222` and `1.001604`, respectively, with both 95%
+  intervals crossing `1`; no benchmark scenario, runner, script, target-specific
+  IID map, or repository result artifact was added.
 - [x] Complete P43 profile-first attribution on the retained P40 Native FastABI
   first-call path. A 20,000-sample exact-image profile, conditional stacks, and
   4,096-call counts agree that every construction creates two `ComPtr`/Cleaner

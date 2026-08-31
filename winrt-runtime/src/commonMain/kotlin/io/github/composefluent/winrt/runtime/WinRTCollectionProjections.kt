@@ -323,6 +323,7 @@ object WinRTReferenceValueAdapters {
                     "Expected non-null $projectedTypeName value.",
                     HResult(TYPE_E_TYPEMISMATCH),
                 )
+            }
         }
     }
 
@@ -773,6 +774,30 @@ object WinRTReadOnlyListProjection {
 }
 
 object WinRTListProjection {
+    class Descriptor<T> internal constructor(
+        internal val elementAdapter: WinRTReferenceValueAdapter<T>,
+    ) {
+        internal val typeSignature: WinRTTypeSignature =
+            WinRTCollectionInterfaceIds.vectorSignature(elementAdapter.typeSignature)
+        internal val interfaceId: Guid = ParameterizedInterfaceId.createFromSignature(typeSignature)
+        internal val typeHandle = WinRTTypeHandle(
+            "kotlin.collections.MutableList<${elementAdapter.projectedTypeName}>",
+            interfaceId,
+        )
+        internal val typeHandleFactory: () -> WinRTTypeHandle = { typeHandle }
+        internal val ownedFactory: (RawAddress, WinRTTypeHandle) -> FromAbiHelper<T> =
+            { ownedPointer, primaryTypeHandle ->
+                FromAbiHelper(
+                    vector = WinRTVectorReference(ownedPointer, interfaceId),
+                    elementAdapter = elementAdapter,
+                    primaryTypeHandle = primaryTypeHandle,
+                )
+            }
+    }
+
+    fun <T> descriptor(elementAdapter: WinRTReferenceValueAdapter<T>): Descriptor<T> =
+        Descriptor(elementAdapter)
+
     class FromAbiHelper<T> internal constructor(
         private val vector: WinRTVectorReference,
         private val elementAdapter: WinRTReferenceValueAdapter<T>,
@@ -819,18 +844,19 @@ object WinRTListProjection {
 
     internal class ToAbiHelper<T>(
         private val managed: MutableList<T>,
-        private val elementAdapter: WinRTReferenceValueAdapter<T>,
+        private val descriptor: Descriptor<T>,
     ) {
+        private val elementAdapter = descriptor.elementAdapter
         private val host = createCollectionHost(
             managedValue = managed,
-            defaultInterfaceId = vectorInterfaceId(elementAdapter),
+            defaultInterfaceId = descriptor.interfaceId,
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = elementAdapter,
                     iteratorFactory = { managed.iterator() },
                 ),
                 WinRTInspectableInterfaceDefinition(
-                    interfaceId = vectorInterfaceId(elementAdapter),
+                    interfaceId = descriptor.interfaceId,
                     methods = listOf(
                         WinRTInspectableMethodDefinition(
                             signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
@@ -961,49 +987,59 @@ object WinRTListProjection {
         )
 
         fun createMarshaler(): WinRTCollectionProjectionMarshaler =
-            WinRTProjectionMarshaler.hosted(host, vectorInterfaceId(elementAdapter))
+            WinRTProjectionMarshaler.hosted(host, descriptor.interfaceId)
 
-        fun detachReference(): RawAddress = host.detachReference(vectorInterfaceId(elementAdapter))
+        fun detachReference(): RawAddress = host.detachReference(descriptor.interfaceId)
     }
 
     fun <T> createMarshaler(
         value: MutableList<T>?,
         elementAdapter: WinRTReferenceValueAdapter<T>,
+    ): WinRTCollectionProjectionMarshaler? =
+        createMarshaler(value, descriptor(elementAdapter))
+
+    fun <T> createMarshaler(
+        value: MutableList<T>?,
+        descriptor: Descriptor<T>,
     ): WinRTCollectionProjectionMarshaler? {
         if (value == null) {
             return null
         }
-        borrowedProjectionMarshaler(value, vectorTypeHandle(elementAdapter))?.let { return it }
-        return ToAbiHelper(value, elementAdapter).createMarshaler()
+        borrowedProjectionMarshaler(value, descriptor.typeHandle)?.let { return it }
+        return ToAbiHelper(value, descriptor).createMarshaler()
     }
 
     fun <T> fromManaged(
         value: MutableList<T>?,
         elementAdapter: WinRTReferenceValueAdapter<T>,
+    ): RawAddress = fromManaged(value, descriptor(elementAdapter))
+
+    fun <T> fromManaged(
+        value: MutableList<T>?,
+        descriptor: Descriptor<T>,
     ): RawAddress =
         if (value == null) {
             PlatformAbi.nullPointer
         } else {
-            borrowedProjectionAbi(value, vectorTypeHandle(elementAdapter))
-                ?: ToAbiHelper(value, elementAdapter).detachReference()
+            borrowedProjectionAbi(value, descriptor.typeHandle)
+                ?: ToAbiHelper(value, descriptor).detachReference()
         }
 
     fun <T> fromAbi(
         pointer: RawAddress,
         elementAdapter: WinRTReferenceValueAdapter<T>,
+    ): FromAbiHelper<T>? = fromAbi(pointer, descriptor(elementAdapter))
+
+    fun <T> fromAbi(
+        pointer: RawAddress,
+        descriptor: Descriptor<T>,
     ): FromAbiHelper<T>? {
-        val interfaceId = vectorInterfaceId(elementAdapter)
         return ComWrappersSupport.createRcwForOwnedInterfaceProjection(
             pointer = pointer,
-            interfaceId = interfaceId,
-            typeHandleFactory = { vectorTypeHandle(elementAdapter) },
-        ) { ownedPointer, typeHandle ->
-            FromAbiHelper(
-                vector = WinRTVectorReference(ownedPointer, interfaceId),
-                elementAdapter = elementAdapter,
-                primaryTypeHandle = typeHandle,
-            )
-        }
+            interfaceId = descriptor.interfaceId,
+            typeHandleFactory = descriptor.typeHandleFactory,
+            factory = descriptor.ownedFactory,
+        )
     }
 }
 
@@ -1410,9 +1446,6 @@ private fun <T> iteratorInterfaceId(adapter: WinRTReferenceValueAdapter<T>): Gui
 private fun <T> vectorViewInterfaceId(adapter: WinRTReferenceValueAdapter<T>): Guid =
     WinRTCollectionInterfaceIds.vectorView(adapter.typeSignature)
 
-private fun <T> vectorInterfaceId(adapter: WinRTReferenceValueAdapter<T>): Guid =
-    WinRTCollectionInterfaceIds.vector(adapter.typeSignature)
-
 private fun <K, V> mapViewInterfaceId(
     keyAdapter: WinRTReferenceValueAdapter<K>,
     valueAdapter: WinRTReferenceValueAdapter<V>,
@@ -1436,9 +1469,6 @@ private fun <T> iteratorTypeHandle(adapter: WinRTReferenceValueAdapter<T>): WinR
 
 private fun <T> vectorViewTypeHandle(adapter: WinRTReferenceValueAdapter<T>): WinRTTypeHandle =
     WinRTTypeHandle("kotlin.collections.List<${adapter.projectedTypeName}>", vectorViewInterfaceId(adapter))
-
-private fun <T> vectorTypeHandle(adapter: WinRTReferenceValueAdapter<T>): WinRTTypeHandle =
-    WinRTTypeHandle("kotlin.collections.MutableList<${adapter.projectedTypeName}>", vectorInterfaceId(adapter))
 
 private fun <K, V> mapViewTypeHandle(
     keyAdapter: WinRTReferenceValueAdapter<K>,

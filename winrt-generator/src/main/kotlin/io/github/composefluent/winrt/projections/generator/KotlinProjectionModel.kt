@@ -273,6 +273,7 @@ internal val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRTDictionaryProjection:
 internal val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRTIterableProjection::class.asClassName()
 internal val WINRT_ITERATOR_PROJECTION_CLASS_NAME = WinRTIteratorProjection::class.asClassName()
 internal val WINRT_LIST_PROJECTION_CLASS_NAME = WinRTListProjection::class.asClassName()
+internal val WINRT_LIST_PROJECTION_DESCRIPTOR_CLASS_NAME = WINRT_LIST_PROJECTION_CLASS_NAME.nestedClass("Descriptor")
 internal val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRTAsyncActionReference::class.asClassName()
 internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRTAsyncActionWithProgressReference::class.asClassName()
 internal val WINRT_ASYNC_ACTION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRTAsyncActionWithProgressVftblSlots::class.asClassName()

@@ -123,6 +123,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         identity: String,
         type: TypeName,
         initializer: CodeBlock,
+        deferredInitialization: Boolean = false,
     ): CodeBlock {
         if (!emitSupportFile) return initializer
         val owner = metadataSupportClassName(identity)
@@ -133,6 +134,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             owner = owner,
             type = type,
             initializer = initializer,
+            deferredInitialization = deferredInitialization,
         )
         metadata[name]?.let { existing ->
             require(existing.hasSameImplementation(value)) {
@@ -262,6 +264,9 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             .apply {
                 renderedMetadata
                     .forEach { value -> addProperty(renderMetadata(value)) }
+                renderedMetadata
+                    .filter(KotlinProjectionModuleMetadata::deferredInitialization)
+                    .forEach { value -> addType(renderDeferredMetadataHolder(value)) }
                 renderedAbiTypes
                     .filter { metadata -> metadata.abiTypeName !in abiTypeCodecNames }
                     .sortedBy(KotlinProjectionAbiTypeMetadata::abiTypeName)
@@ -310,11 +315,30 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         return ClassName(className.packageName, "${className.simpleName}_Abi_$bucket")
     }
 
-    private fun renderMetadata(metadata: KotlinProjectionModuleMetadata): PropertySpec =
-        PropertySpec.builder(metadata.name, metadata.type)
+    private fun renderMetadata(metadata: KotlinProjectionModuleMetadata): PropertySpec {
+        val property = PropertySpec.builder(metadata.name, metadata.type)
             .addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
             .addModifiers(KModifier.INTERNAL)
-            .initializer(metadata.initializer)
+        if (metadata.deferredInitialization) {
+            property.getter(
+                FunSpec.getterBuilder()
+                    .addStatement("return %L.descriptor", metadata.holderName)
+                    .build(),
+            )
+        } else {
+            property.initializer(metadata.initializer)
+        }
+        return property.build()
+    }
+
+    private fun renderDeferredMetadataHolder(metadata: KotlinProjectionModuleMetadata): TypeSpec =
+        TypeSpec.objectBuilder(metadata.holderName)
+            .addModifiers(KModifier.PRIVATE)
+            .addProperty(
+                PropertySpec.builder("descriptor", metadata.type)
+                    .initializer(metadata.initializer)
+                    .build(),
+            )
             .build()
 
     /**
@@ -584,12 +608,17 @@ private data class KotlinProjectionModuleMetadata(
     val owner: ClassName,
     val type: TypeName,
     val initializer: CodeBlock,
+    val deferredInitialization: Boolean,
 ) {
+    val holderName: String
+        get() = "Metadata_${name.removePrefix("metadata_")}"
+
     fun hasSameImplementation(other: KotlinProjectionModuleMetadata): Boolean =
         identity == other.identity &&
             owner == other.owner &&
             type == other.type &&
-            initializer.toString() == other.initializer.toString()
+            initializer.toString() == other.initializer.toString() &&
+            deferredInitialization == other.deferredInitialization
 }
 
 private data class KotlinProjectionCallSiteCodecIdentity(
