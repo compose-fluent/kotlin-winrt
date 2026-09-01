@@ -209,12 +209,22 @@ class KotlinProjectionCallSiteDescriptorsTest {
 
         val objectParameter = renderer.composeDirectInboundCallSiteParameter(objectBinding)
         val intParameter = renderer.composeDirectInboundCallSiteParameter(intBinding)
+        renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan("sample.getObject", objectBinding, emptyList()),
+            support,
+        )
+        val supportContents = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
+            .joinToString("\n") { file -> file.contents }
 
         assertNotNull(objectParameter)
         assertEquals("System.Object", objectParameter?.abiType)
         assertNotNull(intParameter)
         assertEquals("kotlin.Int", intParameter?.abiType)
         assertNull(renderer.composeDirectInboundCallSiteParameter(vectorViewBinding))
+        assertTrue(supportContents.contains("role = WinRTProjectionAbiCodecRole.FROM_BORROWED_ABI"))
+        assertTrue(supportContents.contains("WinRTObjectMarshaller.fromAbi(__abi)"))
+        assertTrue(supportContents.contains("role = WinRTProjectionAbiCodecRole.FROM_ABI"))
+        assertTrue(supportContents.contains("WinRTObjectMarshaller.fromOwnedAbi(__abi)"))
     }
 
     @Test

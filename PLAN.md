@@ -44,6 +44,29 @@
 
 ## Current Focus
 
+- [x] Implement P61 owned `System.Object` return decoding in the common RCW and
+  call-site codec path. Follow `.cswinrt/src/WinRT.Runtime` ownership:
+  consume ABI-owned `IInspectable*` returns on cache hits and transfer them on
+  cold construction, while preserving borrowed delegate/event inputs. The
+  measured Native path now probes the direct RCW cache before managed-CCW
+  identity lookup; canonical-key resolution remains deferred to the existing
+  miss path.
+- [x] Validate the new focused JVM ownership/lifecycle regressions and
+  `:winrt-runtime:compileKotlinMingwX64`; do not repeat already-passed
+  generator/lowering checks in this pass.
+- [x] Run the unchanged official P61 benchmark controls using the existing
+  executable and fixed 97-scenario inputs. Six alternating fixed-workload Native
+  pairs improved `0.89725x` candidate/baseline (`10.28%`, 95% interval
+  `[0.84696, 0.95053]`); the JVM control was `0.97880x` with no material
+  regression signal. The complete matrix retained 6 families and 97 scenarios
+  across all four runners with zero checksum mismatches. A fresh adaptive
+  rerun remained checksum-clean at Native/C++ `20.5517x` and JVM/CsWinRT
+  `0.7067x`; treat that spread as diagnostic variance, not an acceptance gate.
+  Keep event/delegate work frozen until new Native-only evidence appears.
+- [x] Guard the P58 RCW hot-entry metadata snapshot and cache validation against
+  constructor-lifecycle `WinRTObjectBase` instances that intentionally start with
+  `super(null)`. The guard now treats an uninitialized base as a cache miss without
+  touching its `lateinit nativeObject`, while retaining the initialized snapshot fast path.
 - [x] Complete P27 scenario-isolated profile-first attribution. JVM JFR and
   Native profile/machine-code evidence locate the removable first authored-event
   admission cost in repeated closed-delegate `WinRTTypeSignature`,

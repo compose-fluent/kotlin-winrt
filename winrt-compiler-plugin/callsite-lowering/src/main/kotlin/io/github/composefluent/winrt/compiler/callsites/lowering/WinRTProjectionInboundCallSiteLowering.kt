@@ -308,7 +308,7 @@ private fun planDirectInboundCallSite(
             recipe = planner.directInboundRecipe(
                 type = parameter.type,
                 abiType = parameterMetadata.stringArgument("abiType"),
-                usage = RecipeUsage.OUTPUT,
+                usage = RecipeUsage.BORROWED_OUTPUT,
             ) ?: return null,
         )
     }

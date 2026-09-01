@@ -107,6 +107,8 @@ annotation class WinRTProjectionAbiType(
 enum class WinRTProjectionAbiCodecRole {
     TO_ABI,
     FROM_ABI,
+    /** Decodes a borrowed inbound ABI value without taking ownership of its reference. */
+    FROM_BORROWED_ABI,
     CREATE_MARSHALER,
     COPY_TO_ABI,
     COPY_FROM_ABI,

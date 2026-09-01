@@ -16959,6 +16959,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(supportContents, supportContents.contains("reference = WinRTProjectionAbiReferenceKind.INSPECTABLE"))
         assertTrue(supportContents, supportContents.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
         assertTrue(supportContents, supportContents.contains("role = WinRTProjectionAbiCodecRole.FROM_ABI"))
+        assertTrue(supportContents, supportContents.contains("WinRTObjectMarshaller.fromOwnedAbi(__abi)"))
+        assertTrue(supportContents, supportContents.contains("consumesOwnedAbi = true"))
         assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
         assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
     }

@@ -736,6 +736,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         callSiteAdapter = KotlinProjectionMappedCallSiteAdapter(
             runtimeProjectionClassName = WINRT_OBJECT_MARSHALLER_CLASS_NAME,
             fromAbiFunctionName = "fromAbi",
+            outputFromAbiFunctionName = "fromOwnedAbi",
             createMarshalerFunctionName = "createMarshaler",
             inputFactoryReturnType = ClassName("io.github.composefluent.winrt.runtime", "WinRTObjectMarshaler"),
         ),

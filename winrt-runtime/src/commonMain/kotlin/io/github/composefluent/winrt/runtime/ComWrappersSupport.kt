@@ -302,6 +302,105 @@ object ComWrappersSupport {
     }
 
     /**
+     * Projects an ABI-owned inspectable pointer when the projected type is only `System.Object`.
+     * The ABI reference is consumed on cache hits and transferred to the resulting inspectable
+     * wrapper on the cold path, so object returns do not create a borrowed wrapper followed by a
+     * second identity-owning RCW.
+     */
+    fun createRcwForOwnedComObject(
+        pointer: RawAddress,
+        tryUseCache: Boolean = true,
+    ): Any? {
+        platformEnsureInspectableProjectionInteropRegistered()
+        if (PlatformAbi.isNull(pointer)) {
+            return null
+        }
+
+        val directPointerKey = PlatformAbi.pointerKey(pointer)
+        if (tryUseCache) {
+            findCachedRcw(directPointerKey)?.let { cached ->
+                WinRTPlatformApi.releaseRaw(pointer)
+                return cached
+            }
+        }
+
+        val pointerKey = rcwCacheKey(pointer)
+        if (tryUseCache) {
+            findCachedRcw(pointerKey)?.let { cached ->
+                if (directPointerKey != pointerKey) {
+                    rcwCache[directPointerKey] = cached
+                }
+                WinRTPlatformApi.releaseRaw(pointer)
+                return cached
+            }
+        }
+
+        return rcwSlowStateCreationLock.withLock {
+            if (tryUseCache) {
+                val cached = findCachedRcw(pointerKey)
+                    ?: if (directPointerKey != pointerKey) {
+                        findCachedRcw(directPointerKey)
+                    } else {
+                        null
+                    }
+                cached?.let {
+                    if (directPointerKey != pointerKey) {
+                        rcwCache[pointerKey] = cached
+                        rcwCache[directPointerKey] = cached
+                    }
+                    WinRTPlatformApi.releaseRaw(pointer)
+                    return@withLock cached
+                }
+            }
+
+            val inspectable = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+            var ownershipTransferred = false
+            try {
+                val runtimeClassName = inspectable.tryGetRuntimeClassName()
+                RcwProjectionFactoryRegistry.resolveRuntimeClassFactory(null, runtimeClassName)?.let { factory ->
+                    val rcw = factory(inspectable)
+                    ownershipTransferred = true
+                    if (tryUseCache) {
+                        rcwCache[pointerKey] = rcw
+                        if (directPointerKey != pointerKey) {
+                            rcwCache[directPointerKey] = rcw
+                        }
+                    }
+                    return@withLock rcw
+                }
+                platformTryProjectInspectable(inspectable, runtimeClassName)?.let { projectedValue ->
+                    try {
+                        inspectable.close()
+                    } finally {
+                        ownershipTransferred = true
+                    }
+                    if (tryUseCache) {
+                        rcwCache[pointerKey] = projectedValue
+                        if (directPointerKey != pointerKey) {
+                            rcwCache[directPointerKey] = projectedValue
+                        }
+                    }
+                    return@withLock projectedValue
+                }
+
+                ownershipTransferred = true
+                if (tryUseCache) {
+                    rcwCache[pointerKey] = inspectable
+                    if (directPointerKey != pointerKey) {
+                        rcwCache[directPointerKey] = inspectable
+                    }
+                }
+                inspectable
+            } catch (error: Throwable) {
+                if (!ownershipTransferred && !inspectable.isDisposed) {
+                    inspectable.close()
+                }
+                throw error
+            }
+        }
+    }
+
+    /**
      * Projects an ABI-owned COM pointer and transfers that ownership to the resulting RCW.
      * A cache hit consumes the duplicate ABI reference without constructing another [ComPtr].
      */
@@ -379,6 +478,23 @@ object ComWrappersSupport {
         ) ?: return null
         WinRTPlatformApi.releaseRaw(pointer)
         return cached as T
+    }
+
+    /**
+     * Consumes an ABI-owned object pointer when its direct identity is already cached.
+     *
+     * The untyped `System.Object` path cannot validate a projected interface type, but it can
+     * still use the same identity cache contract as the full owned-RCW path.  Keep this probe to
+     * the direct pointer key: resolving the canonical `IUnknown` key on a miss would reintroduce
+     * the QI cost that the caller is trying to defer until after the managed-CCW identity probe.
+     */
+    internal fun tryConsumeCachedRcwForOwnedComObject(pointer: RawAddress): Any? {
+        if (PlatformAbi.isNull(pointer)) {
+            return null
+        }
+        val cached = findCachedRcw(PlatformAbi.pointerKey(pointer)) ?: return null
+        WinRTPlatformApi.releaseRaw(pointer)
+        return cached
     }
 
     /**
@@ -545,7 +661,13 @@ object ComWrappersSupport {
         if (winRTObject == null) {
             return if (staticallyDeterminedType == null) cached else null
         }
-        if (winRTObject.nativeObject.isDisposed) {
+        val winRTObjectBase = winRTObject as? WinRTObjectBase<*>
+        val nativeObject = if (winRTObjectBase != null) {
+            winRTObjectBase.tryGetInitializedNativeObject() ?: return null
+        } else {
+            winRTObject.nativeObject
+        }
+        if (nativeObject.isDisposed) {
             rcwCache.remove(pointerKey)
             return null
         }
@@ -1555,7 +1677,7 @@ private class RcwIdentityCacheEntry(
 
     init {
         val winRTObjectBase = value as? WinRTObjectBase<*>
-        nativeObjectSupport = winRTObjectBase?.nativeObject?.comPtr?.support
+        nativeObjectSupport = winRTObjectBase?.tryGetInitializedNativeObject()?.comPtr?.support
         primaryTypeHandle = winRTObjectBase?.primaryTypeHandle
     }
 }

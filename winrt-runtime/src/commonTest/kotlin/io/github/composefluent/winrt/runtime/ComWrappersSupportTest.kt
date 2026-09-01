@@ -7,6 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -134,6 +135,122 @@ class ComWrappersSupportTest {
         assertEquals(1, created.size)
         assertEquals("test.RuntimeClass", first.nativeObject.asInspectable().use { it.getRuntimeClassName() })
         first.nativeObject.close()
+    }
+
+    @Test
+    fun owned_untyped_rcw_transfers_cold_reference_and_consumes_cache_hit() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = null,
+            runtimeClassName = "test.UnregisteredOwnedObject",
+        )
+        val firstPointer = host.ownedInspectablePointer()
+        val firstReferenceCount = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(firstPointer))
+        val first = requireNotNull(ComWrappersSupport.createRcwForOwnedComObject(firstPointer)) as IWinRTObject
+
+        try {
+            assertEquals(
+                firstReferenceCount,
+                WinRTInspectableComObject.tryProbeReferenceCount(first.nativeObject.pointer.asRawAddress()),
+            )
+
+            val duplicatePointer = host.ownedInspectablePointer()
+            val beforeCacheHit = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(duplicatePointer))
+            val second = ComWrappersSupport.createRcwForOwnedComObject(duplicatePointer)
+
+            assertSame(first, second)
+            assertEquals(
+                beforeCacheHit - 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(first.nativeObject.pointer.asRawAddress()),
+            )
+        } finally {
+            first.nativeObject.close()
+            host.close()
+            assertNull(WinRTInspectableComObject.tryProbeReferenceCount(firstPointer))
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun owned_object_marshaller_consumes_cached_rcw_reference() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = null,
+            runtimeClassName = "test.CachedOwnedObject",
+        )
+        val firstPointer = host.ownedInspectablePointer()
+        val first = requireNotNull(
+            ComWrappersSupport.createRcwForOwnedComObject(firstPointer),
+        ) as IWinRTObject
+
+        try {
+            val duplicatePointer = host.ownedInspectablePointer()
+            val beforeCacheHit = checkNotNull(
+                WinRTInspectableComObject.tryProbeReferenceCount(duplicatePointer),
+            )
+
+            assertSame(first, WinRTObjectMarshaller.fromOwnedAbi(duplicatePointer))
+            assertEquals(
+                beforeCacheHit - 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(first.nativeObject.pointer.asRawAddress()),
+            )
+        } finally {
+            first.nativeObject.close()
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun owned_object_marshaller_returns_managed_ccw_identity_and_consumes_reference() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val managed = Any()
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = managed,
+            runtimeClassName = "test.ManagedOwnedObject",
+        )
+        val pointer = host.ownedInspectablePointer()
+        val before = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+
+        try {
+            assertSame(managed, WinRTObjectMarshaller.fromOwnedAbi(pointer))
+            assertEquals(
+                before - 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(pointer),
+            )
+        } finally {
+            host.close()
+            assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun owned_untyped_rcw_releases_reference_when_runtime_factory_fails() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = null,
+            runtimeClassName = "test.ThrowingOwnedObject",
+        )
+        ComWrappersSupport.registerRuntimeClassFactory("test.ThrowingOwnedObject") {
+            error("synthetic owned RCW failure")
+        }
+        val pointer = host.ownedInspectablePointer()
+        val before = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+
+        try {
+            assertFailsWith<IllegalStateException> {
+                ComWrappersSupport.createRcwForOwnedComObject(pointer)
+            }
+            assertEquals(
+                before - 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(pointer),
+            )
+        } finally {
+            host.close()
+            assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            ComWrappersSupport.clearRegistriesForTests()
+        }
     }
 
     @Test
@@ -265,6 +382,38 @@ class ComWrappersSupportTest {
             assertFalse(wrapper.nativeObject.isDisposed)
         } finally {
             wrapper.nativeObject.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun registering_uninitialized_winrt_object_does_not_read_lateinit_native_object() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val typeHandle = WinRTTypeHandle(
+            "test.DelayedNativeObject",
+            IID.IInspectable,
+        )
+        val host = WinRTInspectableComObject.inspectableBox("payload")
+        val pointer = host.detachReference(IID.IInspectable)
+        val delayed = DelayedNativeObject(typeHandle)
+        val delayedReference = IInspectableReference(
+            host.detachReference(IID.IInspectable).asRawComPtr(),
+            IID.IInspectable,
+        )
+
+        try {
+            // Composable construction can publish the object before its late-init native reference.
+            ComWrappersSupport.registerObjectForComInterface(delayed, pointer)
+            delayed.initialize(delayedReference)
+
+            assertSame(
+                delayed,
+                ComWrappersSupport.findObject(pointer, DelayedNativeObject::class),
+            )
+        } finally {
+            delayedReference.close()
+            WinRTPlatformApi.releaseRaw(pointer)
+            host.close()
             ComWrappersSupport.clearRegistriesForTests()
         }
     }
@@ -1463,6 +1612,14 @@ class ComWrappersSupportTest {
             get() = composableReference
     }
 
+    private class DelayedNativeObject(
+        primaryTypeHandle: WinRTTypeHandle,
+    ) : WinRTObjectBase<IInspectableReference>(null, primaryTypeHandle) {
+        fun initialize(reference: IInspectableReference) {
+            nativeObject = reference
+        }
+    }
+
     private class ProjectedInspectableObject(
         pointer: RawAddress,
     ) : IWinRTObject {
@@ -1544,3 +1701,8 @@ class ComWrappersSupportTest {
 
     private interface UnregisteredProjectedInterface
 }
+
+private fun WinRTInspectableComObject.ownedInspectablePointer(): RawAddress =
+    createReference(IID.IInspectable).use { reference ->
+        PlatformAbi.fromRawComPtr(reference.getRefPointer())
+    }

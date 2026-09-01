@@ -211,9 +211,7 @@ internal class WinRTProjectionCallSitePlanner(
         if (usage == RecipeUsage.INPUT && !hasSpecializedInputCodec(abiTypeName)) {
             directAsyncReferenceInputRecipe(type, abiTypeName, projectedName)?.let { return it }
         }
-        if (usage == RecipeUsage.OUTPUT &&
-            codecsByAbiType[abiTypeName].orEmpty().none { codec -> codec.role == AbiCodecRole.FROM_ABI }
-        ) {
+        if (usage.isOutputDecode() && !hasOutputDecodeCodec(abiTypeName, usage)) {
             if (directDeclarationIdentity) {
                 directArrayRecipe(type, abiTypeName, projectedName)?.let { return it }
                 directProjectionOutputRecipe(type, projectedName)?.let { return it }
@@ -247,6 +245,20 @@ internal class WinRTProjectionCallSitePlanner(
         codecsByAbiType[abiTypeName].orEmpty().any { codec ->
             codec.role == AbiCodecRole.TO_ABI || codec.role == AbiCodecRole.CREATE_MARSHALER
         }
+
+    private fun hasOutputDecodeCodec(
+        abiTypeName: String,
+        usage: RecipeUsage,
+    ): Boolean = when (usage) {
+        RecipeUsage.OUTPUT -> codecsByAbiType[abiTypeName].orEmpty().any { codec ->
+            codec.role == AbiCodecRole.FROM_ABI
+        }
+        RecipeUsage.BORROWED_OUTPUT -> codecsByAbiType[abiTypeName].orEmpty().any { codec ->
+            codec.role == AbiCodecRole.FROM_BORROWED_ABI ||
+                codec.role == AbiCodecRole.FROM_ABI && !codec.consumesOwnedAbi
+        }
+        RecipeUsage.INPUT -> false
+    }
 
     /**
      * Enum Metadata is already a generated, typed ABI codec. Resolve it from the exact IR enum
@@ -728,8 +740,18 @@ internal class WinRTProjectionCallSitePlanner(
         val toAbi = exactCodec(abiTypeName, projectedName, AbiCodecRole.TO_ABI) { codec ->
             codec.parameterTypes == listOf(projectedName)
         }
-        val fromAbi = exactCodec(abiTypeName, projectedName, AbiCodecRole.FROM_ABI) { codec ->
-            codec.returnType == projectedName
+        val fromAbi = when (usage) {
+            RecipeUsage.BORROWED_OUTPUT -> exactCodec(
+                abiTypeName,
+                projectedName,
+                AbiCodecRole.FROM_BORROWED_ABI,
+            ) { codec -> codec.returnType == projectedName }
+                ?: exactCodec(abiTypeName, projectedName, AbiCodecRole.FROM_ABI) { codec ->
+                    codec.returnType == projectedName && !codec.consumesOwnedAbi
+                }
+            else -> exactCodec(abiTypeName, projectedName, AbiCodecRole.FROM_ABI) { codec ->
+                codec.returnType == projectedName
+            }
         }
         val create = exactCodec(abiTypeName, projectedName, AbiCodecRole.CREATE_MARSHALER) { codec ->
             codec.parameterTypes == listOf(projectedName)
@@ -737,8 +759,8 @@ internal class WinRTProjectionCallSitePlanner(
         val copyFrom = exactCodec(abiTypeName, projectedName, AbiCodecRole.COPY_FROM_ABI) { codec ->
             codec.parameterTypes.size == 2 && codec.parameterTypes[1] == projectedName
         }
-        require(usage == RecipeUsage.OUTPUT && fromAbi != null ||
-            usage != RecipeUsage.OUTPUT && (toAbi != null || create != null)
+        require(usage.isOutputDecode() && fromAbi != null ||
+            !usage.isOutputDecode() && (toAbi != null || create != null)
         ) {
             "$projectedName has no typed ${usage.name.lowercase()} projection codec"
         }
@@ -1287,7 +1309,11 @@ private fun isCallerOwnedResultAnnotation(annotation: IrFunctionAccessExpression
 internal enum class RecipeUsage {
     INPUT,
     OUTPUT,
+    BORROWED_OUTPUT,
 }
+
+private fun RecipeUsage.isOutputDecode(): Boolean =
+    this == RecipeUsage.OUTPUT || this == RecipeUsage.BORROWED_OUTPUT
 
 private val DIRECT_INBOUND_RECIPE_KINDS = setOf(
     WinRTProjectionCallSiteRecipeKind.VALUE,
@@ -1388,6 +1414,7 @@ private enum class AbiReferenceKind {
 private enum class AbiCodecRole {
     TO_ABI,
     FROM_ABI,
+    FROM_BORROWED_ABI,
     CREATE_MARSHALER,
     COPY_TO_ABI,
     COPY_FROM_ABI,

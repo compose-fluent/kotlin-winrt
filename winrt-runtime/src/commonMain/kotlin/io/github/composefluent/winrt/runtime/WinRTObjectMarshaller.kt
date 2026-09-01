@@ -25,6 +25,13 @@ object WinRTObjectMarshaller {
     @kotlin.concurrent.Volatile
     private var hotInboundRcw: HotInboundRcw? = null
 
+    private fun isLiveCachedValue(value: Any): Boolean =
+        when (value) {
+            is WinRTObjectBase<*> -> value.tryGetInitializedNativeObject()?.isDisposed == false
+            is IWinRTObject -> !value.nativeObject.isDisposed
+            else -> true
+        }
+
     fun createMarshaler(
         value: Any?,
         declaredReferenceArrayElementType: KClass<*>? = null,
@@ -84,7 +91,7 @@ object WinRTObjectMarshaller {
         hotInboundRcw?.let { hot ->
             if (hot.pointerKey == pointerKey) {
                 hot.reference.get()?.let { cached ->
-                    if (cached !is IWinRTObject || !cached.nativeObject.isDisposed) {
+                    if (isLiveCachedValue(cached)) {
                         return cached
                     }
                 }
@@ -94,6 +101,42 @@ object WinRTObjectMarshaller {
         // Preserve the managed CCW identity probe before creating or reusing an RCW.
         WinRTInspectableComObject.findManagedValue(pointer)?.let { return it }
         return ComWrappersSupport.createRcwForComObject(pointer)?.also { rcw ->
+            hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
+        }
+    }
+
+    /**
+     * Decodes an ABI-owned `System.Object` result and consumes its reference exactly once.
+     * Borrowed callback/event arguments must continue using [fromAbi].
+     */
+    fun fromOwnedAbi(pointer: RawAddress): Any? {
+        if (PlatformAbi.isNull(pointer)) {
+            return null
+        }
+
+        val pointerKey = PlatformAbi.pointerKey(pointer)
+        hotInboundRcw?.let { hot ->
+            if (hot.pointerKey == pointerKey) {
+                hot.reference.get()?.let { cached ->
+                    if (isLiveCachedValue(cached)) {
+                        WinRTPlatformApi.releaseRaw(pointer)
+                        return cached
+                    }
+                }
+            }
+        }
+
+        // A native object returned repeatedly by an owned System.Object slot normally already has
+        // an RCW identity. Consume the duplicate ABI reference before probing the managed CCW
+        // registry; the latter is only needed when the direct cache misses.
+        ComWrappersSupport.tryConsumeCachedRcwForOwnedComObject(pointer)?.let { return it }
+
+        // Preserve the managed CCW identity probe before creating or reusing an RCW.
+        WinRTInspectableComObject.findManagedValue(pointer)?.let { managed ->
+            WinRTPlatformApi.releaseRaw(pointer)
+            return managed
+        }
+        return ComWrappersSupport.createRcwForOwnedComObject(pointer)?.also { rcw ->
             hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
         }
     }

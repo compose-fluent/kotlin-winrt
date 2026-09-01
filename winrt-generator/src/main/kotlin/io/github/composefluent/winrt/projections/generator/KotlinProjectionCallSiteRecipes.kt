@@ -65,6 +65,8 @@ internal data class KotlinProjectionCallSiteOutputCodec(
     val body: CodeBlock,
     /** The codec expects an owned COM value and therefore cannot decode a borrowed inbound argument. */
     val consumesOwnedAbi: Boolean,
+    /** Optional decode body for an inbound ABI argument whose reference is borrowed. */
+    val borrowedBody: CodeBlock? = null,
 )
 
 /** Ordinary inline array elements are fully recoverable from the closed IR element declaration. */
@@ -756,13 +758,32 @@ internal fun KotlinProjectionRenderer.buildProjectionOutputCodec(
         "Projection '${recipe.typeSignature}' must compose one COM-reference ABI child."
     }
     val returnType = resolveTypeName(binding.typeName)
+    val consumesOwnedAbi = projectionOutputCodecConsumesOwnedAbi(binding)
     return KotlinProjectionCallSiteOutputCodec(
         abiTypeName = binding.callSiteAbiMetadataName(returnType),
         parameterType = RAW_ADDRESS_CLASS_NAME,
         returnType = returnType,
-        body = renderProjectionOutputCodecBody(binding, recipe, returnType),
-        consumesOwnedAbi = projectionOutputCodecConsumesOwnedAbi(binding),
+        body = renderProjectionOutputCodecBody(binding, recipe, returnType, owned = true),
+        consumesOwnedAbi = consumesOwnedAbi,
+        borrowedBody = if (projectionOutputCodecSupportsBorrowedAbi(binding)) {
+            renderProjectionOutputCodecBody(binding, recipe, returnType, owned = false)
+        } else {
+            null
+        },
     )
+}
+
+private fun KotlinProjectionRenderer.projectionOutputCodecSupportsBorrowedAbi(
+    binding: KotlinProjectionAbiTypeBinding,
+): Boolean {
+    val adapter = mappedCallSiteAdapter(binding) ?: return false
+    // Mapped collection/reference helpers consume their pointer even when their names match. The
+    // object and property-value adapters are the explicit borrowed counterparts of their owned
+    // output functions, so only adapters with a distinct output symbol opt into this contract.
+    return !adapter.usesClosedGenericHelper &&
+        !adapter.outputUsesAsyncExpression &&
+        !adapter.outputConsumesAbi &&
+        adapter.outputFromAbiFunctionName != adapter.fromAbiFunctionName
 }
 
 private fun KotlinProjectionRenderer.projectionOutputCodecConsumesOwnedAbi(
@@ -776,8 +797,8 @@ private fun KotlinProjectionRenderer.projectionOutputCodecConsumesOwnedAbi(
     ) {
         return true
     }
-    // Object projection is explicitly borrowed: WinRTObjectMarshaller resolves identity without
-    // consuming the incoming reference. Other mapped wrappers retain ownership of their ABI view.
+    // Object input/callback decoding remains borrowed, while the output adapter above selects
+    // WinRTObjectMarshaller.fromOwnedAbi for ABI-owned System.Object results.
     return binding.kind != KotlinProjectionAbiValueKind.Object
 }
 
@@ -785,6 +806,7 @@ private fun KotlinProjectionRenderer.renderProjectionOutputCodecBody(
     binding: KotlinProjectionAbiTypeBinding,
     recipe: WinRTProjectionCallSiteRecipe,
     returnType: TypeName,
+    owned: Boolean,
 ): CodeBlock {
     customObjectAbi(binding)?.let { customAbi ->
         val projectedClass = returnType.copy(nullable = false)
@@ -804,7 +826,7 @@ private fun KotlinProjectionRenderer.renderProjectionOutputCodecBody(
             .build()
     }
     mappedCallSiteAdapter(binding)?.let { adapter ->
-        return renderMappedProjectionOutputCodec(binding, recipe, returnType, adapter)
+        return renderMappedProjectionOutputCodec(binding, recipe, returnType, adapter, owned)
     }
     return when (binding.kind) {
         KotlinProjectionAbiValueKind.ProjectedInterface ->
@@ -826,6 +848,7 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
     recipe: WinRTProjectionCallSiteRecipe,
     returnType: TypeName,
     adapter: KotlinProjectionMappedCallSiteAdapter,
+    owned: Boolean,
 ): CodeBlock {
     if (adapter.outputUsesAsyncExpression) {
         val expression = asyncReferenceExpression(binding, CodeBlock.of("__abi"), hoistMetadata = true)
@@ -856,7 +879,7 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
             .build()
     }
 
-    if (adapter.outputConsumesAbi) {
+    if (owned && adapter.outputConsumesAbi) {
         val interfaceId = referenceInterfaceIdCode(binding, hoistMetadata = true)
             ?: error("Closed mapped projection '${binding.typeName}' has no parameterized IID.")
         return CodeBlock.builder()
@@ -898,7 +921,7 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
             ?: error("Mapped WinMD output '${binding.typeName}' has no collection IID.")
     }
     val expression = CodeBlock.builder()
-        .add("%T.%L(__abi", owner, adapter.outputFromAbiFunctionName)
+        .add("%T.%L(__abi", owner, if (owned) adapter.outputFromAbiFunctionName else adapter.fromAbiFunctionName)
         .apply { arguments.forEach { argument -> add(", %L", argument) } }
         .add(")")
         .build()

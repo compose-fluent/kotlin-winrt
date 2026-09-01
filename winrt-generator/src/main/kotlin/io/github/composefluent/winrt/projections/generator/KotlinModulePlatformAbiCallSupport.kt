@@ -645,6 +645,7 @@ private data class KotlinProjectionCallSiteCodecIdentity(
 internal enum class KotlinProjectionAbiCodecRole {
     TO_ABI,
     FROM_ABI,
+    FROM_BORROWED_ABI,
     CREATE_MARSHALER,
     COPY_TO_ABI,
     COPY_FROM_ABI,

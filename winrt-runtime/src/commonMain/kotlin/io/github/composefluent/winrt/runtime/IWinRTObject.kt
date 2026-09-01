@@ -63,6 +63,14 @@ abstract class WinRTObjectBase<T : ComObjectReference>(
     final override lateinit var nativeObject: T
         protected set
 
+    /**
+     * Composable constructors may publish their identity before assigning the native reference.
+     * Cache metadata must be able to observe that lifecycle state without triggering the lateinit
+     * getter; callers fall back to the regular IWinRTObject validation until it is initialized.
+     */
+    internal fun tryGetInitializedNativeObject(): T? =
+        if (this::nativeObject.isInitialized) nativeObject else null
+
     final override var primaryTypeHandle: WinRTTypeHandle? = primaryTypeHandle
         protected set
 

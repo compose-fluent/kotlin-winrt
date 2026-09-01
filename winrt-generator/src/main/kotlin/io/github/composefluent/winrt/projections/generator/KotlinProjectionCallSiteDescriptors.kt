@@ -175,14 +175,12 @@ internal fun KotlinProjectionRenderer.composeDirectInboundCallSiteParameter(
     val recipePlan = runCatching {
         buildCallSiteRecipe(binding, category = null)
     }.getOrNull() ?: return null
-    if (recipePlan.outputCodecs.values.any(KotlinProjectionCallSiteOutputCodec::consumesOwnedAbi)) {
-        return null
-    }
     val recipe = runCatching {
         materializeOutputCallSiteRecipe(
             binding = binding,
             recipePlan = recipePlan,
             callSiteSupport = callSiteSupport,
+            borrowed = true,
         )
     }.getOrNull() ?: return null
     if (recipe.kind !in DIRECT_INBOUND_PARAMETER_RECIPE_KINDS || recipe.abiCarriers.size != 1) {
@@ -373,11 +371,13 @@ private fun KotlinProjectionRenderer.materializeOutputCallSiteRecipe(
     binding: KotlinProjectionAbiTypeBinding,
     recipePlan: KotlinProjectionCallSiteRecipePlan,
     callSiteSupport: KotlinModulePlatformAbiCallSupport?,
+    borrowed: Boolean = false,
 ): WinRTProjectionCallSiteRecipe {
     val recipe = materializeProjectionOutputCodecs(
         binding = binding,
         recipePlan = recipePlan,
         callSiteSupport = callSiteSupport,
+        borrowed = borrowed,
     ).let { materialized ->
         materializeDirectTypeCodecs(binding, materialized, callSiteSupport)
     }
@@ -549,6 +549,7 @@ private fun KotlinProjectionRenderer.materializeProjectionOutputCodecs(
     binding: KotlinProjectionAbiTypeBinding,
     recipePlan: KotlinProjectionCallSiteRecipePlan,
     callSiteSupport: KotlinModulePlatformAbiCallSupport?,
+    borrowed: Boolean,
 ): WinRTProjectionCallSiteRecipe {
     if (recipePlan.outputCodecs.isEmpty()) return recipePlan.recipe
     val support = callSiteSupport
@@ -564,15 +565,26 @@ private fun KotlinProjectionRenderer.materializeProjectionOutputCodecs(
         require(recipe.kind == WinRTProjectionCallSiteRecipeKind.PROJECTION) {
             "Only a projection recipe may own a closed output codec: '${recipe.typeSignature}'."
         }
+        val body = if (borrowed) {
+            codec.borrowedBody
+                ?: binding.failCallSitePlan("has no borrowed inbound decode codec")
+        } else {
+            codec.body
+        }
+        val role = if (borrowed) {
+            KotlinProjectionAbiCodecRole.FROM_BORROWED_ABI
+        } else {
+            KotlinProjectionAbiCodecRole.FROM_ABI
+        }
         val functionName = support.registerCodec(
-            operation = "fromAbi",
-            role = KotlinProjectionAbiCodecRole.FROM_ABI,
+            operation = if (borrowed) "fromBorrowedAbi" else "fromAbi",
+            role = role,
             abiTypeName = codec.abiTypeName,
             signature = recipe.typeSignature,
             parameters = listOf(KotlinProjectionCallSiteCodecParameter("__abi", codec.parameterType)),
             returnType = codec.returnType,
-            body = codec.body,
-            consumesOwnedAbi = codec.consumesOwnedAbi,
+            body = body,
+            consumesOwnedAbi = if (borrowed) false else codec.consumesOwnedAbi,
         )
         return composed.copy(
             callables = WinRTProjectionCallSiteCallables(
