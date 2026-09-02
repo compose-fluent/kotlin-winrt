@@ -51,6 +51,25 @@ object WinRTDelegateBridge {
         rawWordCallback = null,
     )
 
+    /**
+     * Creates a delegate whose Invoke slot is a compiler-generated static ABI entry point.
+     *
+     * The entry point recovers [managedTarget] from the CCW binding, so no per-instance
+     * compatibility callback or argument-list closure is needed on the Native hot path. The
+     * descriptor remains the single source of ABI shape and ownership metadata.
+     */
+    fun createDelegateStatic(
+        descriptor: WinRTDelegateDescriptor,
+        managedTarget: Any,
+        abiEntryPoint: RawAddress,
+    ): WinRTDelegateHandle = createDelegateCore(
+        descriptor = descriptor,
+        callback = staticEntryCompatibilityCallback,
+        managedTarget = managedTarget,
+        abiEntryPoint = abiEntryPoint,
+        rawWordCallback = null,
+    )
+
     internal fun createUnitDelegateRaw(
         iid: Guid,
         parameterKinds: List<WinRTDelegateValueKind>,

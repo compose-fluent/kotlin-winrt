@@ -17,6 +17,27 @@ private fun invokeStaticIntEventHandler(
     TODO("Lowered while compiling the static delegate entry test")
 }
 
+@WinRTProjectionInboundCallSite(returnAbiType = "kotlin.Int")
+private fun invokeStaticIntDelegate(
+    target: () -> Int,
+): Int = target().also {
+    TODO("Lowered while compiling the static scalar delegate entry test")
+}
+
+@WinRTProjectionInboundCallSite(returnAbiType = "kotlin.Boolean")
+private fun invokeStaticBooleanDelegate(
+    target: () -> Boolean,
+): Boolean = target().also {
+    TODO("Lowered while compiling the static boolean delegate entry test")
+}
+
+@WinRTProjectionInboundCallSite(returnAbiType = "kotlin.Long")
+private fun invokeStaticLongDelegate(
+    target: () -> Long,
+): Long = target().also {
+    TODO("Lowered while compiling the static int64 delegate entry test")
+}
+
 class WinRTDelegateBridgeTest {
     private data class DelegateObjectPayload(val value: String)
 
@@ -573,6 +594,119 @@ class WinRTDelegateBridgeTest {
 
         assertEquals(31, firstValue)
         assertEquals(47, secondValue)
+    }
+
+    @Test
+    fun callback_free_static_delegate_entry_writes_scalar_return() {
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("66d14639-2616-4a28-832b-6f5b24981569"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+        )
+        val entryPoint = winRTProjectionInboundEntryPoint(::invokeStaticIntDelegate)
+        WinRTDelegateBridge.createDelegateStatic(
+            descriptor = descriptor,
+            managedTarget = { 42 },
+            abiEntryPoint = entryPoint,
+        ).use { handle ->
+            handle.createReference().use { reference ->
+                assertEquals(42, reference.invoke(emptyList()))
+            }
+        }
+    }
+
+    @Test
+    fun callback_free_static_delegate_entry_maps_target_failure_to_hresult() {
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("66d14639-2616-4a28-832b-6f5b2498156a"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+        )
+        val entryPoint = winRTProjectionInboundEntryPoint(::invokeStaticIntDelegate)
+        WinRTDelegateBridge.createDelegateStatic(
+            descriptor = descriptor,
+            managedTarget = { throw WinRTAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED) },
+            abiEntryPoint = entryPoint,
+        ).use { handle ->
+            handle.createReference().use { reference ->
+                assertEquals(
+                    KnownHResults.E_ACCESSDENIED,
+                    assertFailsWith<WinRTAccessDeniedException> {
+                        reference.invoke(emptyList())
+                    }.hResult,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun callback_free_static_delegate_entry_supports_boolean_and_int64_carriers() {
+        val booleanDescriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("66d14639-2616-4a28-832b-6f5b2498156b"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.BOOLEAN,
+        )
+        val longDescriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("66d14639-2616-4a28-832b-6f5b2498156c"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT64,
+        )
+
+        WinRTDelegateBridge.createDelegateStatic(
+            descriptor = booleanDescriptor,
+            managedTarget = { true },
+            abiEntryPoint = winRTProjectionInboundEntryPoint(::invokeStaticBooleanDelegate),
+        ).use { handle ->
+            handle.createReference().use { reference ->
+                assertEquals(true, reference.invoke(emptyList()))
+            }
+        }
+
+        val expectedLong = Long.MIN_VALUE + 1234L
+        WinRTDelegateBridge.createDelegateStatic(
+            descriptor = longDescriptor,
+            managedTarget = { expectedLong },
+            abiEntryPoint = winRTProjectionInboundEntryPoint(::invokeStaticLongDelegate),
+        ).use { handle ->
+            handle.createReference().use { reference ->
+                assertEquals(expectedLong, reference.invoke(emptyList()))
+            }
+        }
+    }
+
+    @Test
+    fun callback_free_static_delegate_lifecycle_rejects_new_references_after_handle_close() {
+        var invocationCount = 0
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("66d14639-2616-4a28-832b-6f5b2498156d"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+        )
+        val handle = WinRTDelegateBridge.createDelegateStatic(
+            descriptor = descriptor,
+            managedTarget = {
+                invocationCount += 1
+                7
+            },
+            abiEntryPoint = winRTProjectionInboundEntryPoint(::invokeStaticIntDelegate),
+        )
+        val reference = handle.createReference()
+
+        handle.close()
+
+        assertFailsWith<WinRTObjectDisposedException> {
+            handle.createReference()
+        }
+        assertNull(handle.tryAcquireMarshalingReference())
+        assertEquals(7, reference.invoke(emptyList()))
+        assertEquals(1, invocationCount)
+
+        reference.close()
+
+        assertTrue(reference.isDisposed)
+        assertFailsWith<WinRTObjectDisposedException> {
+            reference.invoke(emptyList())
+        }
     }
 
     @Test

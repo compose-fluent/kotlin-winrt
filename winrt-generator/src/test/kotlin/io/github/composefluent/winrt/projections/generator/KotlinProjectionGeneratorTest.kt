@@ -10911,6 +10911,132 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_uses_static_inbound_entry_for_zero_parameter_scalar_delegate() {
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ScalarHandler",
+                            kind = WinRTTypeKind.Delegate,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRTMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Int",
+                                    parameters = emptyList(),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .single { it.relativePath.substringAfterLast('/') == "ScalarHandler.kt" }
+            .contents
+
+        assertTrue(contents, contents.contains("createDelegateStatic("))
+        assertTrue(contents, contents.contains("managedTarget = this"))
+        assertTrue(
+            contents,
+            contents.contains("@WinRTProjectionInboundCallSite(returnAbiType = \"kotlin.Int\")"),
+        )
+        assertTrue(
+            contents,
+            Regex("private fun invokeWinRTDelegate_.*\\(target: ScalarHandler\\): Int")
+                .containsMatchIn(contents),
+        )
+        assertTrue(contents, contents.contains("winRTProjectionInboundEntryPoint(::invokeWinRTDelegate_"))
+        assertFalse(contents, contents.contains("createDelegate(\n      descriptor = Metadata.DESCRIPTOR"))
+    }
+
+    @Test
+    fun generator_limits_static_inbound_to_zero_parameter_scalar_delegate_shapes() {
+        val namespace = "Sample.Foundation"
+        fun delegate(
+            name: String,
+            returnTypeName: String,
+            parameters: List<WinRTParameterDefinition> = emptyList(),
+        ) =
+            WinRTTypeDefinition(
+                namespace = namespace,
+                name = name,
+                kind = WinRTTypeKind.Delegate,
+                iid = Guid("33333333-3333-3333-3333-${name.hashCode().toUInt().toString(16).padStart(12, '0')}"),
+                methods = listOf(
+                    WinRTMethodDefinition(
+                        name = "Invoke",
+                        returnTypeName = returnTypeName,
+                        parameters = parameters,
+                    ),
+                ),
+            )
+        val model = WinRTMetadataModel(
+            namespaces = listOf(
+                WinRTNamespace(
+                    name = namespace,
+                    types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = namespace,
+                            name = "Point",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(
+                                WinRTFieldDefinition("X", "Single"),
+                                WinRTFieldDefinition("Y", "Single"),
+                            ),
+                        ),
+                        WinRTTypeDefinition(
+                            namespace = namespace,
+                            name = "Status",
+                            kind = WinRTTypeKind.Enum,
+                            enumUnderlyingType = WinRTIntegralType.Int32,
+                            enumMembers = listOf(WinRTEnumMemberDefinition("Ready", 0uL)),
+                        ),
+                        delegate("BooleanHandler", "Boolean"),
+                        delegate("LongHandler", "Long"),
+                        delegate("UnitHandler", "Unit"),
+                        delegate("StringHandler", "String"),
+                        delegate(
+                            "ParameterizedHandler",
+                            "Int",
+                            listOf(WinRTParameterDefinition("value", "Int")),
+                        ),
+                        delegate("StructHandler", "${namespace}.Point"),
+                        delegate("EnumHandler", "${namespace}.Status"),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        listOf("BooleanHandler.kt", "LongHandler.kt").forEach { fileName ->
+            val contents = filesByName.getValue(fileName).contents
+            assertTrue(contents, contents.contains("createDelegateStatic("))
+            assertTrue(contents, contents.contains("winRTProjectionInboundEntryPoint(::invokeWinRTDelegate_"))
+        }
+        listOf(
+            "UnitHandler.kt",
+            "StringHandler.kt",
+            "ParameterizedHandler.kt",
+            "StructHandler.kt",
+            "EnumHandler.kt",
+        ).forEach { fileName ->
+            val contents = filesByName.getValue(fileName).contents
+            assertTrue(contents, contents.contains("createDelegate("))
+            assertFalse(contents, contents.contains("createDelegateStatic("))
+            assertFalse(contents, contents.contains("winRTProjectionInboundEntryPoint(::invokeWinRTDelegate_"))
+        }
+    }
+
+    @Test
     fun generator_decodes_delegate_runtime_class_callback_parameters_as_inspectable_references() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_delegate -> write_managed_method_call:
         // ABI delegate parameters are marshaled according to their signature before invoking the projected delegate.

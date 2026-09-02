@@ -156,6 +156,20 @@ class KotlinProjectionRenderer(
                     )
                 }
             }
+            .apply {
+                if (plan.declarationKind == KotlinProjectionDeclarationKind.Delegate) {
+                    val invokeShape = plan.delegateInvokeShape
+                    if (invokeShape != null && supportsProjectedDelegateStaticInbound(plan, invokeShape)) {
+                        addFunction(
+                            renderDelegateInboundCallSite(
+                                plan = plan,
+                                invokeMethod = requireDelegateInvokeMethod(plan.type),
+                                invokeShape = invokeShape,
+                            ),
+                        )
+                    }
+                }
+            }
             .apply { addType(renderType(plan)) }
             .build()
             .toString()
@@ -3623,22 +3637,38 @@ class KotlinProjectionRenderer(
         val invokeShape = plan.delegateInvokeShape
         if (invokeShape != null && supportsProjectedDelegateObjectMarshaller(plan, invokeShape)) {
             builder.addSuperinterface(WINRT_PROJECTED_DELEGATE_CLASS_NAME)
+            val useStaticInbound = supportsProjectedDelegateStaticInbound(plan, invokeShape)
             builder.addFunction(
                 FunSpec.builder("createWinRTDelegateHandle")
                     .addModifiers(KModifier.OVERRIDE)
                     .returns(ClassName("io.github.composefluent.winrt.runtime", "WinRTDelegateHandle"))
                     .addCode(
-                        CodeBlock.of(
-                            """
-                            return %T.createDelegate(
-                                descriptor = Metadata.DESCRIPTOR,
-                            ) { __args ->
-                                this(%L)
-                            }
-                            """.trimIndent() + "\n",
-                            WINRT_DELEGATE_BRIDGE_CLASS_NAME,
-                            delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
-                        ),
+                        if (useStaticInbound) {
+                            CodeBlock.of(
+                                """
+                                return %T.createDelegateStatic(
+                                    descriptor = Metadata.DESCRIPTOR,
+                                    managedTarget = this,
+                                    abiEntryPoint = %M(::%L),
+                                )
+                                """.trimIndent() + "\n",
+                                WINRT_DELEGATE_BRIDGE_CLASS_NAME,
+                                WINRT_PROJECTION_INBOUND_ENTRY_POINT_FUNCTION_NAME,
+                                delegateInboundCallSiteFunctionName(plan),
+                            )
+                        } else {
+                            CodeBlock.of(
+                                """
+                                return %T.createDelegate(
+                                    descriptor = Metadata.DESCRIPTOR,
+                                ) { __args ->
+                                    this(%L)
+                                }
+                                """.trimIndent() + "\n",
+                                WINRT_DELEGATE_BRIDGE_CLASS_NAME,
+                                delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
+                            )
+                        },
                     )
                     .build(),
             )
@@ -3695,6 +3725,69 @@ class KotlinProjectionRenderer(
         }
         return builder.build()
     }
+
+    /**
+     * Emits the semantic half of a static delegate entry. The inbound compiler lowering replaces
+     * the TODO body with a typed ABI thunk, so the generated delegate never needs a generic
+     * List<Any?> compatibility callback for this narrow scalar shape.
+     */
+    private fun renderDelegateInboundCallSite(
+        plan: KotlinTypeProjectionPlan,
+        invokeMethod: WinRTMethodDefinition,
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ): FunSpec {
+        val projectedType = plan.projectedSelfTypeName()
+        val annotation = AnnotationSpec.builder(WINRT_PROJECTION_INBOUND_CALL_SITE_CLASS_NAME)
+            .addMember(
+                "returnAbiType = %S",
+                resolveTypeName(invokeShape.returnBinding.typeName).toString(),
+            )
+            .build()
+        val invocation = CodeBlock.builder()
+            .add("target(")
+            .apply {
+                invokeMethod.parameters.forEachIndexed { index, parameter ->
+                    if (index > 0) add(", ")
+                    add("%N", parameter.name)
+                }
+            }
+            .add(")")
+            .build()
+        return FunSpec.builder(delegateInboundCallSiteFunctionName(plan))
+            .addModifiers(KModifier.PRIVATE)
+            .addAnnotation(annotation)
+            .addParameter("target", projectedType)
+            .apply {
+                invokeMethod.parameters.forEachIndexed { index, parameter ->
+                    val binding = invokeShape.parameterBindings[index]
+                    addParameter(
+                        ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName))
+                            .addAnnotation(
+                                AnnotationSpec.builder(WINRT_PROJECTION_PARAMETER_CLASS_NAME)
+                                    .addMember(
+                                        "abiType = %S",
+                                        resolveTypeName(binding.typeBinding.typeName).toString(),
+                                    )
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                }
+            }
+            .returns(resolveTypeName(invokeMethod.returnTypeName))
+            .addCode(
+                "return %L.also { TODO(%S) }\n",
+                invocation,
+                "Lowered while compiling the generated WinRT delegate CallSite",
+            )
+            .build()
+    }
+
+    private fun delegateInboundCallSiteFunctionName(plan: KotlinTypeProjectionPlan): String =
+        "invokeWinRTDelegate_" + plan.type.qualifiedName
+            .replace('.', '_')
+            .replace('`', '_') + "_" +
+            plan.type.qualifiedName.hashCode().toUInt().toString(16)
 
     private fun renderDelegateFromOwnedAbi(
         plan: KotlinTypeProjectionPlan,
@@ -3868,6 +3961,36 @@ private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshaller(
     plan.type.genericParameterCount == 0 &&
         invokeShape.isSupportedOutboundDelegateShape() &&
         invokeShape.parameterBindings.all { binding -> supportsProjectedDelegateObjectMarshallerArgument(binding.typeBinding) }
+
+/**
+ * Keep the first static-entry rollout deliberately narrow. A zero-argument scalar return has a
+ * single primitive ABI carrier and needs no generated ownership codec, so it can be lowered to a
+ * callback-free entry without changing any reference or cleanup semantics. Other delegate shapes
+ * continue using the established compatibility path until their inbound recipes are separately
+ * profiled and validated.
+ */
+private fun KotlinProjectionRenderer.supportsProjectedDelegateStaticInbound(
+    plan: KotlinTypeProjectionPlan,
+    invokeShape: KotlinProjectionDelegateInvokeShape,
+): Boolean =
+    supportsProjectedDelegateObjectMarshaller(plan, invokeShape) &&
+        invokeShape.parameterBindings.isEmpty() &&
+        invokeShape.returnBinding.kind in STATIC_INBOUND_SCALAR_KINDS
+
+private val STATIC_INBOUND_SCALAR_KINDS = setOf(
+    KotlinProjectionAbiValueKind.Boolean,
+    KotlinProjectionAbiValueKind.Int8,
+    KotlinProjectionAbiValueKind.UInt8,
+    KotlinProjectionAbiValueKind.Int16,
+    KotlinProjectionAbiValueKind.UInt16,
+    KotlinProjectionAbiValueKind.Char16,
+    KotlinProjectionAbiValueKind.Int32,
+    KotlinProjectionAbiValueKind.UInt32,
+    KotlinProjectionAbiValueKind.Int64,
+    KotlinProjectionAbiValueKind.UInt64,
+    KotlinProjectionAbiValueKind.Float,
+    KotlinProjectionAbiValueKind.Double,
+)
 
 private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshallerArgument(
     typeBinding: KotlinProjectionAbiTypeBinding,

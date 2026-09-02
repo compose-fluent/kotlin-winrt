@@ -67,6 +67,15 @@
   claim is limited to construction. JVM focused tests, `javap` equivalence,
   Native release compilation/tests, and the complete 4-runner 97-scenario
   checksum gate passed.
+- [x] Complete P64 Native static scalar delegate inbound lowering. The
+  generator now selects a compiler-generated static inbound thunk only for
+  non-generic, zero-parameter scalar-return delegates; all other delegate
+  shapes keep the compatibility callback path. The CCW binding recovers the
+  managed target, removing the Native hot-path `List<Any?>` callback closure.
+  A fixed 12-pair Native screen won `12/12` at ratio `0.772181` with 95% CI
+  `[0.731810, 0.814781]`; the JVM control was `0.847858` with `11/12` wins and
+  no material regression signal. Checksums, generator/runtime tests, Native
+  release compilation, and the complete 4-runner 97-scenario matrix passed.
 - [ ] Native profile-first follow-up 正在做: obtain a target-specific call
   stack or machine-code attribution for `ReflectionPerf.ExecuteMarshalingForDelegate`
   and `ReflectionPerf.GetWeakReferenceOfNativeObject` before admitting another
