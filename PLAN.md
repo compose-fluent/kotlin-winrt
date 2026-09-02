@@ -81,6 +81,11 @@
   and `ReflectionPerf.GetWeakReferenceOfNativeObject` before admitting another
   optimization. Keep event/delegate changes frozen unless the evidence isolates
   removable Native-only work; retain JVM controls for every shared candidate.
+- [x] Reject the Native weak-reference managed-storage trial. With a fixed shared
+  `BenchmarkComponent` artifact and balanced 12-pair AB/BA measurement, the
+  candidate won `8/12`, with geometric ratio `1.01491x` and paired 95% interval
+  `[0.96350, 1.06907]`; checksum and protocol matched, but the Native gate
+  failed. The trial was removed; the JVM eager path remains unchanged.
 - [x] Implement P61 owned `System.Object` return decoding in the common RCW and
   call-site codec path. Follow `.cswinrt/src/WinRT.Runtime` ownership:
   consume ABI-owned `IInspectable*` returns on cache hits and transfer them on
