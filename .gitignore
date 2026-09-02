@@ -23,3 +23,8 @@ replay_pid*.log
 
 .cswinrt/
 docs/superpowers/
+
+# Local-only planning and benchmark notes
+/BENCHMARK_RESULTS_2026-08-23.md
+/PERFORMANCE_OPTIMIZATION_PLAN.md
+/PLAN_PERFORMANCE_KN_0901.MD
