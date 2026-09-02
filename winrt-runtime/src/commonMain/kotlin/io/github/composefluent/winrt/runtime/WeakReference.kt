@@ -20,12 +20,12 @@ class WeakReference<T : Any>(
 private class WeakReferenceOwnerState<T : Any>(
     target: T?,
 ) {
-    private val lock = PlatformLock()
+    private val lock = PlatformWeakReferenceLock()
     private val managedWeakReference = PlatformManagedWeakReference(target)
     private var nativeWeakReference = target?.let(WeakReferenceInterop::tryCreateNativeWeakReference)
 
     fun setTarget(target: T?) {
-        val previous = lock.withLock {
+        val previous = lock.withWeakReferenceLock {
             managedWeakReference.set(target)
             nativeWeakReference.also {
                 nativeWeakReference = target?.let(WeakReferenceInterop::tryCreateNativeWeakReference)
@@ -36,8 +36,8 @@ private class WeakReferenceOwnerState<T : Any>(
 
     @Suppress("UNCHECKED_CAST")
     fun tryGetTarget(): T? =
-        lock.withLock {
-            managedWeakReference.get()?.let { return@withLock it }
+        lock.withWeakReferenceLock {
+            managedWeakReference.get()?.let { return@withWeakReferenceLock it }
             val resolved = nativeWeakReference
                 ?.let(WeakReferenceInterop::resolveNativeWeakReference) as? T
             if (resolved != null) {
@@ -60,7 +60,26 @@ internal expect class PlatformLock() {
     fun exit()
 }
 
+/**
+ * Lock seam dedicated to weak-reference owners. Native can defer its OS lock allocation until the
+ * first operation, while JVM remains an exact alias of the existing eager lock implementation.
+ */
+internal expect class PlatformWeakReferenceLock() {
+    fun enter()
+
+    fun exit()
+}
+
 internal inline fun <R> PlatformLock.withLock(block: () -> R): R {
+    enter()
+    try {
+        return block()
+    } finally {
+        exit()
+    }
+}
+
+internal inline fun <R> PlatformWeakReferenceLock.withWeakReferenceLock(block: () -> R): R {
     enter()
     try {
         return block()

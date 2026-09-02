@@ -54,6 +54,19 @@
   control was `0.98254x`, and JVM URI/weak-reference controls were `0.97892x` /
   `1.02802x`. Ownership tests, Native release compilation, and the complete
   4-runner, 6-family, 97-scenario checksum gate passed.
+- [x] Complete P63 Native weak-reference owner construction lowering. The
+  `mingwX64` weak-reference lock now defers `CRITICAL_SECTION` allocation and
+  initialization until the first `setTarget`/`tryGetTarget`; the JVM actual is
+  an exact `PlatformLock` typealias, so JVM lock allocation and bytecode remain
+  unchanged. The fixed 12-pair Native `GetWeakReferenceOfNativeObject` screen
+  won `12/12` with candidate/baseline geometric ratio `0.946841` and paired
+  log-ratio 95% interval `[-0.062874,-0.046374]` (approximately
+  `[0.9391,0.9547]` as a ratio); all checksums were `1`. A six-pair diagnostic
+  screen found no stable direction for first-use event registration or the
+  already-initialized/read and component-resolution controls, so the retained
+  claim is limited to construction. JVM focused tests, `javap` equivalence,
+  Native release compilation/tests, and the complete 4-runner 97-scenario
+  checksum gate passed.
 - [ ] Native profile-first follow-up 正在做: obtain a target-specific call
   stack or machine-code attribution for `ReflectionPerf.ExecuteMarshalingForDelegate`
   and `ReflectionPerf.GetWeakReferenceOfNativeObject` before admitting another

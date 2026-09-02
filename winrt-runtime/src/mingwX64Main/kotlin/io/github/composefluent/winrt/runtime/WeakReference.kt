@@ -27,6 +27,18 @@ internal actual class PlatformManagedWeakReference<T : Any> actual constructor(t
     }
 }
 
+internal actual class PlatformWeakReferenceLock actual constructor() {
+    private val delegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) { PlatformLock() }
+
+    actual fun enter() {
+        delegate.value.enter()
+    }
+
+    actual fun exit() {
+        delegate.value.exit()
+    }
+}
+
 internal actual class PlatformLock actual constructor() {
     private val section = nativeHeap.alloc<CRITICAL_SECTION>().ptr
 
