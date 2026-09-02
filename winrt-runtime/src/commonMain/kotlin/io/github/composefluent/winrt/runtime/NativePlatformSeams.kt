@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.reflect.KClass
+
 expect class NativeScope : AutoCloseable {
     override fun close()
 }
@@ -29,6 +31,16 @@ internal expect class NativeScalarScratchFrame : AutoCloseable {
 
 @PublishedApi
 internal expect fun acquireNativeScalarScratchFrame(clear: Boolean = true): NativeScalarScratchFrame
+
+/**
+ * Native-only probe for an ABI-owned plain runtime-class result. A null result leaves ownership
+ * with the caller so it can run the ordinary inspectable-wrapper path.
+ */
+@PublishedApi
+internal expect inline fun tryConsumeOwnedRuntimeClassRcw(
+    pointer: RawAddress,
+    expectedType: KClass<*>,
+): Any?
 
 @PublishedApi
 internal expect class NativeStructScratchFrame : AutoCloseable {

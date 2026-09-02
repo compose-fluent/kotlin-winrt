@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.ir.declarations.impl.IrVariableImpl
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrCatch
 import org.jetbrains.kotlin.ir.expressions.impl.IrCatchImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrThrowImpl
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
@@ -141,6 +142,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val nativeStringMarshallerGetAbiHString: IrSimpleFunctionSymbol,
     private val nativeStringMarshallerDisposeAbi: IrSimpleFunctionSymbol,
     private val winRTProjectionInboundRetainAddress: IrSimpleFunctionSymbol,
+    private val tryConsumeOwnedRuntimeClassRcw: IrSimpleFunctionSymbol,
     private val winRTPlatformApiReleaseRaw: IrSimpleFunctionSymbol,
     private val winRTPlatformApiCoTaskMemFreeRaw: IrSimpleFunctionSymbol,
     private val hResultConstructor: IrConstructorSymbol,
@@ -2879,6 +2881,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         } else {
             resolver.topLevelFunction(FqName("kotlin"), "error", 1) ?: return null
         }
+        val expectedClass = returnType.classOrNull
         return builder.irBlock(resultType = returnType) {
             val address = irTemporary(
                 rawAddress,
@@ -2886,15 +2889,6 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 isMutable = false,
                 origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
             )
-            val reference = decodeComReferenceAddress(
-                builder = builder,
-                returnType = parameterType,
-                referenceAccess = child.referenceAccess,
-                address = builder.irGet(address),
-            ) ?: abortCallSiteLowering("plain projection output cannot construct ${parameterType.classFqName}")
-            val wrapped = resolver.call(builder, fromAbi, listOf(reference)).let { expression ->
-                if (expression.type == returnType) expression else builder.irAs(expression, returnType)
-            }
             val nullResult = if (recipe.nullable) {
                 builder.irNull(returnType)
             } else {
@@ -2904,6 +2898,53 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     listOf(builder.irString("WINRT_E_NULL_ABI_RETURN")),
                 )
             }
+            val nonNullResult = builder.irBlock(resultType = returnType) {
+                val fastCached = if (
+                    child.referenceAccess == WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE &&
+                        expectedClass != null
+                ) {
+                    irTemporary(
+                        resolver.topLevelCall(
+                            builder,
+                            tryConsumeOwnedRuntimeClassRcw,
+                            listOf(
+                                builder.irGet(address),
+                                IrClassReferenceImpl(
+                                    startOffset = 0,
+                                    endOffset = 0,
+                                    type = pluginContext.irBuiltIns.kClassClass.owner.defaultType,
+                                    symbol = expectedClass,
+                                    classType = expectedClass.owner.defaultType,
+                                ),
+                            ),
+                        ),
+                        nameHint = "cachedRuntimeClass",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                } else {
+                    null
+                }
+                val reference = decodeComReferenceAddress(
+                    builder = builder,
+                    returnType = parameterType,
+                    referenceAccess = child.referenceAccess,
+                    address = builder.irGet(address),
+                ) ?: abortCallSiteLowering("plain projection output cannot construct ${parameterType.classFqName}")
+                val wrapped = resolver.call(builder, fromAbi, listOf(reference)).let { expression ->
+                    if (expression.type == returnType) expression else builder.irAs(expression, returnType)
+                }
+                if (fastCached == null) {
+                    +wrapped
+                } else {
+                    +builder.irIfNull(
+                        type = returnType,
+                        subject = builder.irGet(fastCached),
+                        thenPart = wrapped,
+                        elsePart = builder.irAs(builder.irGet(fastCached), returnType),
+                    )
+                }
+            }
             +builder.irIfThenElse(
                 type = returnType,
                 condition = builder.irCall(isNull).apply {
@@ -2911,7 +2952,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     arguments[1] = builder.irGet(address)
                 },
                 thenPart = nullResult,
-                elsePart = wrapped,
+                elsePart = nonNullResult,
             )
         }
     }
@@ -3702,6 +3743,14 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                         WINRT_RUNTIME_PACKAGE_FQ_NAME,
                         "winRTProjectionInboundRetainAddress",
                         1,
+                    ),
+                ) ?: return null,
+                tryConsumeOwnedRuntimeClassRcw = requiredCallSiteSymbol(
+                    "tryConsumeOwnedRuntimeClassRcw",
+                    resolver.topLevelFunction(
+                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                        "tryConsumeOwnedRuntimeClassRcw",
+                        2,
                     ),
                 ) ?: return null,
                 winRTPlatformApiReleaseRaw = requiredCallSiteSymbol(

@@ -39,6 +39,7 @@ import kotlinx.cinterop.value
 import kotlinx.io.files.Path
 import kotlin.native.concurrent.ThreadLocal
 import kotlin.native.internal.GCUnsafeCall
+import kotlin.reflect.KClass
 import platform.posix.getenv
 import platform.posix.memset
 import platform.windows.FreeLibrary
@@ -58,6 +59,12 @@ import platform.windows.VirtualQuery
 
 private const val readablePageMask = 0x0Eu
 private const val getModuleHandleExFlagFromAddress = 0x00000004u
+
+@PublishedApi
+internal actual inline fun tryConsumeOwnedRuntimeClassRcw(
+    pointer: RawAddress,
+    expectedType: KClass<*>,
+): Any? = ComWrappersSupport.tryConsumeCachedRcwForOwnedRuntimeClass(pointer, expectedType)
 
 actual class NativeScope internal constructor(
     private val ownsAllocations: Boolean,

@@ -44,6 +44,21 @@
 
 ## Current Focus
 
+- [x] Complete P62 typed runtime-class owned return fast path: the
+  compiler-owned plain runtime-class output now probes the Native RCW cache
+  before `IInspectableReference` construction. A typed hit consumes the
+  ABI-owned pointer; misses and type mismatches retain the existing wrapper /
+  `Metadata.wrap` path. Interface outputs, borrowed callback/event inputs, and
+  JVM orchestration remain unchanged. The focused Native URI A/B won `12/12`
+  with ratio `0.16x` and 95% CI `[0.14389, 0.18693]`; the Native weak-reference
+  control was `0.98254x`, and JVM URI/weak-reference controls were `0.97892x` /
+  `1.02802x`. Ownership tests, Native release compilation, and the complete
+  4-runner, 6-family, 97-scenario checksum gate passed.
+- [ ] Native profile-first follow-up 正在做: obtain a target-specific call
+  stack or machine-code attribution for `ReflectionPerf.ExecuteMarshalingForDelegate`
+  and `ReflectionPerf.GetWeakReferenceOfNativeObject` before admitting another
+  optimization. Keep event/delegate changes frozen unless the evidence isolates
+  removable Native-only work; retain JVM controls for every shared candidate.
 - [x] Implement P61 owned `System.Object` return decoding in the common RCW and
   call-site codec path. Follow `.cswinrt/src/WinRT.Runtime` ownership:
   consume ABI-owned `IInspectable*` returns on cache hits and transfer them on

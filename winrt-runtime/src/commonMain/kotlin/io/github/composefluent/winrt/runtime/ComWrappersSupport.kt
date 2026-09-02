@@ -498,6 +498,27 @@ object ComWrappersSupport {
     }
 
     /**
+     * Consumes an ABI-owned plain runtime-class pointer only for a direct, already-hot RCW entry.
+     * The static Kotlin class check mirrors generated `Metadata.wrap` validation while avoiding
+     * the managed-CCW identity probe and canonical `IUnknown` query on the fast miss path.
+     */
+    @PublishedApi
+    internal fun tryConsumeCachedRcwForOwnedRuntimeClass(
+        pointer: RawAddress,
+        expectedType: KClass<*>,
+    ): Any? {
+        if (PlatformAbi.isNull(pointer)) {
+            return null
+        }
+        val cached = findHotCachedRcw(PlatformAbi.pointerKey(pointer)) ?: return null
+        if (!expectedType.isInstance(cached)) {
+            return null
+        }
+        WinRTPlatformApi.releaseRaw(pointer)
+        return cached
+    }
+
+    /**
      * Projects an ABI-owned closed interface while preserving identity for that exact
      * parameterized interface. Different closed interfaces on the same COM identity keep
      * independent Kotlin views because Kotlin cannot add CsWinRT-style dynamic interfaces

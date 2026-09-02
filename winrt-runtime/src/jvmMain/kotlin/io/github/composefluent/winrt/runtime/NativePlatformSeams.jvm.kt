@@ -7,6 +7,13 @@ import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.reflect.KClass
+
+@PublishedApi
+internal actual inline fun tryConsumeOwnedRuntimeClassRcw(
+    pointer: RawAddress,
+    expectedType: KClass<*>,
+): Any? = null
 
 @PublishedApi
 internal actual fun consumeOwnedHString(handle: RawAddress): String {

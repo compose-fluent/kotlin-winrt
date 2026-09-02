@@ -138,6 +138,108 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun typed_runtime_class_owned_probe_returns_hot_wrapper_and_consumes_one_reference() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val runtimeClassName = "test.TypedOwnedRuntimeClass"
+        ComWrappersSupport.registerRuntimeClassFactory(runtimeClassName) { inspectable ->
+            TestRuntimeClassWrapper(inspectable)
+        }
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = "payload",
+            runtimeClassName = runtimeClassName,
+        )
+        val cachedPointer = host.detachReference(IID.IInspectable)
+        val cached = ComWrappersSupport.createRcwForComObject(cachedPointer)
+            as TestRuntimeClassWrapper
+
+        try {
+            val ownedPointer = host.ownedInspectablePointer()
+            val before = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer))
+
+            assertSame(
+                cached,
+                ComWrappersSupport.tryConsumeCachedRcwForOwnedRuntimeClass(
+                    pointer = ownedPointer,
+                    expectedType = TestRuntimeClassWrapper::class,
+                ),
+            )
+            assertEquals(
+                before - 1u,
+                WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer),
+            )
+        } finally {
+            cached.nativeObject.close()
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun typed_runtime_class_owned_probe_keeps_pointer_on_cache_miss() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = "payload",
+            runtimeClassName = "test.TypedOwnedRuntimeClassMiss",
+        )
+        val ownedPointer = host.ownedInspectablePointer()
+        val before = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer))
+
+        try {
+            assertNull(
+                ComWrappersSupport.tryConsumeCachedRcwForOwnedRuntimeClass(
+                    pointer = ownedPointer,
+                    expectedType = TestRuntimeClassWrapper::class,
+                ),
+            )
+            assertEquals(
+                before,
+                WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer),
+            )
+        } finally {
+            WinRTPlatformApi.releaseRaw(ownedPointer)
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun typed_runtime_class_owned_probe_keeps_pointer_on_static_type_mismatch() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val runtimeClassName = "test.TypedOwnedRuntimeClassMismatch"
+        ComWrappersSupport.registerRuntimeClassFactory(runtimeClassName) { inspectable ->
+            TestRuntimeClassWrapper(inspectable)
+        }
+        val host = WinRTInspectableComObject.inspectableBox(
+            value = "payload",
+            runtimeClassName = runtimeClassName,
+        )
+        val cachedPointer = host.detachReference(IID.IInspectable)
+        val cached = ComWrappersSupport.createRcwForComObject(cachedPointer)
+            as TestRuntimeClassWrapper
+
+        try {
+            val ownedPointer = host.ownedInspectablePointer()
+            val before = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer))
+
+            assertNull(
+                ComWrappersSupport.tryConsumeCachedRcwForOwnedRuntimeClass(
+                    pointer = ownedPointer,
+                    expectedType = TestDerivedRuntimeClassWrapper::class,
+                ),
+            )
+            assertEquals(
+                before,
+                WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer),
+            )
+            WinRTPlatformApi.releaseRaw(ownedPointer)
+        } finally {
+            cached.nativeObject.close()
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
     fun owned_untyped_rcw_transfers_cold_reference_and_consumes_cache_hit() {
         ComWrappersSupport.clearRegistriesForTests()
         val host = WinRTInspectableComObject.inspectableBox(
@@ -394,10 +496,10 @@ class ComWrappersSupportTest {
             IID.IInspectable,
         )
         val host = WinRTInspectableComObject.inspectableBox("payload")
-        val pointer = host.detachReference(IID.IInspectable)
+        val pointer = host.ownedInspectablePointer()
         val delayed = DelayedNativeObject(typeHandle)
         val delayedReference = IInspectableReference(
-            host.detachReference(IID.IInspectable).asRawComPtr(),
+            host.ownedInspectablePointer().asRawComPtr(),
             IID.IInspectable,
         )
 
