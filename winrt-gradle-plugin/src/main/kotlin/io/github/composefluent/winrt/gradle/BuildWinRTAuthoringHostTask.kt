@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
@@ -40,8 +41,16 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
     @get:Input
     abstract val runtimeIdentifier: Property<String>
 
+    @get:Input
+    @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
     @get:Internal
     abstract val commandWorkingDirectory: DirectoryProperty
+
+    init {
+        windowsSdkRegistryRoots.convention(emptyList())
+    }
 
     @TaskAction
     fun build() {
@@ -74,7 +83,7 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
         if (compiler == null) {
             throw IllegalStateException("No clang-cl.exe or cl.exe found. Kotlin/WinRT authoring host DLLs require a Windows C/C++ toolchain.")
         }
-        val sdk = findWindowsSdk()
+        val sdk = findWindowsSdk(registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty())
         if (sdk == null) {
             throw IllegalStateException("No Windows SDK installation found. Kotlin/WinRT authoring host DLLs require Windows SDK headers and libraries.")
         }

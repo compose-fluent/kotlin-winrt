@@ -38,7 +38,7 @@ Gradle finishes the Kotlin build prerequisites before timing and serializes the 
 - Visual Studio or Build Tools with `Desktop development with C++` and an x64 MSVC toolset
 - Windows SDK 10.0.26100.0 with C++/WinRT headers
 
-The Gradle wrapper downloads the Kotlin and Kotlin/Native dependencies. The C++ runner discovers Windows Kits from `KOTLIN_WINRT_WINDOWS_SDK_ROOT`, the installed-kits registry, or the default location, and reports the exact missing Visual Studio or Windows SDK component instead of silently skipping it.
+The Gradle wrapper downloads the Kotlin and Kotlin/Native dependencies. The C++ runner discovers Windows Kits from the installed-kits registry first, then `KOTLIN_WINRT_WINDOWS_SDK_ROOT`, and finally the default location. It reports the exact missing Visual Studio or Windows SDK component instead of silently skipping it.
 
 ## Run
 

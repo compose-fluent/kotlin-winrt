@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
@@ -22,6 +23,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         packageMode.convention(WinRTApplicationPackageMode.Unpackaged.name)
         console.convention(false)
         windowsSdkVersion.convention("")
+        windowsSdkRegistryRoots.convention(emptyList())
     }
 
     @get:OutputDirectory
@@ -58,6 +60,10 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     abstract val windowsSdkVersion: Property<String>
 
     @get:Input
+    @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
+    @get:Input
     abstract val runtimeIdentifier: Property<String>
 
     @get:Internal
@@ -88,7 +94,10 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         if (compiler == null) {
             throw IllegalStateException("No clang-cl.exe or cl.exe found. Kotlin/WinRT application host requires a Windows C/C++ toolchain.")
         }
-        val sdk = findWindowsSdk(windowsSdkVersion.get().takeIf(String::isNotBlank))
+        val sdk = findWindowsSdk(
+            version = windowsSdkVersion.get().takeIf(String::isNotBlank),
+            registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty(),
+        )
             ?: throw IllegalStateException("No Windows SDK installation found. Kotlin/WinRT application host requires Windows SDK headers and libraries.")
         compileHostExe(compiler, sdk, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
     }

@@ -86,6 +86,10 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
 
     @get:Input
     @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
+    @get:Input
+    @get:Optional
     abstract val windowsSdkVersion: Property<String>
 
     @get:Input
@@ -172,7 +176,12 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
     }
 
     private fun metadataSources(): List<WinRTMetadataSource> {
-        val explicitSources = metadataInputs.get().map(WinRTMetadataSource::parse)
+        val registryRoots = windowsSdkRegistryRoots.orNull
+            ?.orNullIfEmpty()
+            ?.map(Path::of)
+        val explicitSources = metadataInputs.get()
+            .map(WinRTMetadataSource::parse)
+            .map { source -> source.withWindowsSdkRegistryRoots(registryRoots) }
         val packageSpecs = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .distinct()
             .sorted()
@@ -181,6 +190,7 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
                 WinRTMetadataSource.windowsSdk(
                     version = windowsSdkVersion.orNull,
                     includeExtensions = includeWindowsSdkExtensions.get(),
+                    registryRoots = registryRoots,
                 ),
             )
         } else {

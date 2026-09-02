@@ -1,11 +1,26 @@
 package io.github.composefluent.winrt.gradle
 
+import io.github.composefluent.winrt.metadata.WindowsSdkRootDiscovery
+import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
+
+internal fun WinRTMetadataSource.withWindowsSdkRegistryRoots(
+    registryRoots: List<Path>?,
+): WinRTMetadataSource =
+    if (this is WinRTMetadataSource.WindowsSdk &&
+        this.sdkRoot == null &&
+        this.registryRoots == null &&
+        registryRoots != null
+    ) {
+        copy(registryRoots = registryRoots)
+    } else {
+        this
+    }
 
 internal data class WindowsSdkLayout(
     val root: Path,
@@ -24,9 +39,25 @@ internal data class WindowsSdkLayout(
     }
 }
 
-internal fun findWindowsSdk(version: String? = null): WindowsSdkLayout? {
-    val root = windowsSdkRoot() ?: return null
-    val resolvedVersion = version?.takeIf(String::isNotBlank) ?: latestWindowsSdkVersion(root) ?: return null
+internal fun findWindowsSdk(
+    version: String? = null,
+    registryRoots: List<String>? = null,
+): WindowsSdkLayout? {
+    val requestedVersion = version?.takeIf(String::isNotBlank)
+    val roots = registryRoots?.let { suppliedRoots ->
+        WindowsSdkRootDiscovery.candidateRoots(registryRoots = suppliedRoots)
+    } ?: WindowsSdkRootDiscovery.candidateRootsWithRegistry()
+    return roots
+        .asSequence()
+        .mapNotNull { root -> findWindowsSdk(root, requestedVersion) }
+        .firstOrNull()
+}
+
+/** An empty ValueSource result means that the registry should be queried at execution time. */
+internal fun List<String>.orNullIfEmpty(): List<String>? = takeIf { it.isNotEmpty() }
+
+private fun findWindowsSdk(root: Path, requestedVersion: String?): WindowsSdkLayout? {
+    val resolvedVersion = requestedVersion ?: latestWindowsSdkVersion(root) ?: return null
     val includeRoot = root.resolve("Include").resolve(resolvedVersion)
     val libRoot = root.resolve("Lib").resolve(resolvedVersion)
     val binRoot = root.resolve("bin").resolve(resolvedVersion)
@@ -58,17 +89,6 @@ internal fun winRTManifestProcessorArchitecture(runtimeIdentifier: String): Stri
         rid.endsWith("-x86") -> "x86"
         else -> "amd64"
     }
-}
-
-private fun windowsSdkRoot(): Path? {
-    System.getenv("KOTLIN_WINRT_WINDOWS_SDK_ROOT")
-        ?.takeIf(String::isNotBlank)
-        ?.let(Path::of)
-        ?.takeIf { it.isDirectory() }
-        ?.let { return it }
-
-    val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
-    return Path.of(programFilesX86, "Windows Kits", "10").takeIf { it.isDirectory() }
 }
 
 private fun latestWindowsSdkVersion(root: Path): String? {

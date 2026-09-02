@@ -3,10 +3,11 @@ package io.github.composefluent.winrt.projections.generator
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
+import io.github.composefluent.winrt.metadata.WindowsSdkRootDiscovery
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.streams.asSequence
@@ -90,21 +91,31 @@ internal data class KotlinProjectionGeneratorOptions(
                 ?.takeIf { it.isRegularFile() }
                 ?.let { return it }
 
-            val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
-            val unionMetadata = Path.of(programFilesX86, "Windows Kits", "10", "UnionMetadata")
-            require(unionMetadata.exists()) {
-                "Windows SDK UnionMetadata directory was not found. Pass --winmd or set KOTLIN_WINRT_WINDOWS_WINMD."
+            val windowsWinmd = WindowsSdkRootDiscovery.candidateRootsWithRegistry()
+                .asSequence()
+                .mapNotNull { root -> findWindowsWinmd(root.resolve("UnionMetadata")) }
+                .firstOrNull()
+            requireNotNull(windowsWinmd) {
+                "Windows SDK Windows.winmd was not found. Pass --winmd, install Windows Kits 10, or set KOTLIN_WINRT_WINDOWS_WINMD."
             }
+            return windowsWinmd
+        }
 
-            return Files.walk(unionMetadata).use { stream ->
-                stream.asSequence()
-                    .filter(Files::isRegularFile)
-                    .filter { it.name.equals("Windows.winmd", ignoreCase = true) }
-                    .filterNot { it.parent.name.equals("Facade", ignoreCase = true) }
-                    .sortedBy { it.toString() }
-                    .toList()
-                    .lastOrNull()
-            } ?: error("Windows.winmd was not found under $unionMetadata.")
+        private fun findWindowsWinmd(unionMetadata: Path): Path? {
+            if (!unionMetadata.isDirectory()) {
+                return null
+            }
+            return runCatching {
+                Files.walk(unionMetadata).use { stream ->
+                    stream.asSequence()
+                        .filter(Files::isRegularFile)
+                        .filter { it.name.equals("Windows.winmd", ignoreCase = true) }
+                        .filterNot { it.parent.name.equals("Facade", ignoreCase = true) }
+                        .sortedBy { it.toString() }
+                        .toList()
+                        .lastOrNull()
+                }
+            }.getOrNull()
         }
 
         private fun printUsageAndExit(): Nothing {

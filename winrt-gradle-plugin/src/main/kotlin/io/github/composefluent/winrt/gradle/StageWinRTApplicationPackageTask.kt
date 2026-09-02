@@ -63,6 +63,10 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     abstract val windowsSdkVersion: Property<String>
 
     @get:Input
+    @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
+    @get:Input
     abstract val runtimeIdentifier: Property<String>
 
     @get:Input
@@ -147,6 +151,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         enableDefaultProjectPriResources.convention(true)
         makePriExecutable.convention("")
         windowsSdkVersion.convention("")
+        windowsSdkRegistryRoots.convention(emptyList())
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
         executableBaseName.convention("app")
@@ -315,7 +320,12 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         ProjectPriManifestSupport.indexName(projectPriIndexName.get(), projectPriFallbackIndexName.get(), appxManifestFiles.files)
 
     private fun discoverMakePriExecutable(): Path? {
-        return ProjectPriToolResolver.makePriExecutable(makePriExecutable.get(), windowsSdkVersion.get(), runtimeIdentifier.get())
+        return ProjectPriToolResolver.makePriExecutable(
+            configuredExecutable = makePriExecutable.get(),
+            windowsSdkVersion = windowsSdkVersion.get(),
+            runtimeIdentifier = runtimeIdentifier.get(),
+            registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty(),
+        )
     }
 
 }

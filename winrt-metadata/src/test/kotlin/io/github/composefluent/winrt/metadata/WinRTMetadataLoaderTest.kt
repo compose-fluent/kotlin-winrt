@@ -922,10 +922,8 @@ class WinRTMetadataLoaderTest {
     }
 
     private fun findWindowsSdkFoundationContracts(): List<Path>? {
-        val roots = listOfNotNull(
-            System.getenv("KOTLIN_WINRT_WINDOWS_SDK_ROOT")?.takeIf(String::isNotBlank)?.let(Path::of),
-            Path.of("C:\\Program Files (x86)\\Windows Kits\\10"),
-        ).filter { it.isDirectory() }
+        val roots = WindowsSdkRootDiscovery.candidateRootsWithRegistry()
+            .filter { it.isDirectory() }
         return roots.asSequence()
             .flatMap { root ->
                 val references = root.resolve("References")

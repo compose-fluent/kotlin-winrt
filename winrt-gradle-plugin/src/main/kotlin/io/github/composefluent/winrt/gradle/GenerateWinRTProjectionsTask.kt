@@ -120,6 +120,10 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
 
     @get:Input
     @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
+    @get:Input
+    @get:Optional
     abstract val windowsSdkVersion: Property<String>
 
     @get:Input
@@ -204,6 +208,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.additionExcludeNamespaces.set(additionExcludeNamespaces)
             parameters.dependencyIdentityFiles.from(dependencyIdentityFiles)
             parameters.windowsSdkDeclared.set(windowsSdkDeclared)
+            parameters.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             parameters.windowsSdkVersion.set(windowsSdkVersion)
             parameters.includeWindowsSdkExtensions.set(includeWindowsSdkExtensions)
             parameters.generateWindowsSdkProjection.set(generateWindowsSdkProjection)
@@ -243,6 +248,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val additionExcludeNamespaces: ListProperty<String>
     val dependencyIdentityFiles: ConfigurableFileCollection
     val windowsSdkDeclared: Property<Boolean>
+    val windowsSdkRegistryRoots: ListProperty<String>
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
     val generateWindowsSdkProjection: Property<Boolean>
@@ -478,7 +484,12 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             }
 
     private fun metadataSources(): List<WinRTMetadataSource> {
-        val explicitSources = parameters.metadataInputs.get().map(WinRTMetadataSource::parse)
+        val registryRoots = parameters.windowsSdkRegistryRoots.orNull
+            ?.orNullIfEmpty()
+            ?.map(Path::of)
+        val explicitSources = parameters.metadataInputs.get()
+            .map(WinRTMetadataSource::parse)
+            .map { source -> source.withWindowsSdkRegistryRoots(registryRoots) }
         val packageSpecs = (parameters.nugetPackages.get() + parameters.dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .distinct()
             .sorted()
@@ -487,6 +498,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 WinRTMetadataSource.windowsSdk(
                     version = parameters.windowsSdkVersion.orNull,
                     includeExtensions = parameters.includeWindowsSdkExtensions.get(),
+                    registryRoots = registryRoots,
                 ),
             )
         } else {

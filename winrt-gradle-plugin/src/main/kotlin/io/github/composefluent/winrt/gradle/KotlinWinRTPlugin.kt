@@ -47,10 +47,11 @@ import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 class KotlinWinRTPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("winRT", WinRTExtension::class.java, project)
+        val windowsSdkRegistryRoots = windowsSdkRegistryRootsProvider(project)
         configureWinRTRuntimeDependency(project)
-        configureWinRTGeneration(project, extension)
-        configureWinRTLibraryModel(project, extension)
-        configureWinRTApplicationModel(project, extension)
+        configureWinRTGeneration(project, extension, windowsSdkRegistryRoots)
+        configureWinRTLibraryModel(project, extension, windowsSdkRegistryRoots)
+        configureWinRTApplicationModel(project, extension, windowsSdkRegistryRoots)
     }
 }
 
@@ -127,6 +128,7 @@ private fun configureWinRTRuntimeDependency(
 private fun configureWinRTLibraryModel(
     project: Project,
     extension: WinRTExtension,
+    windowsSdkRegistryRoots: Provider<List<String>>,
 ) {
     project.extensions.extraProperties["kotlinWinRTModel"] = project.provider {
         if (extension.applicationEnabled.get()) "application" else "library"
@@ -268,7 +270,12 @@ private fun configureWinRTLibraryModel(
     configureWinRTIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
     configureWinRTIdentityProjectDependencies(project, dependencyIdentities, includeExternalModules = true)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, dependencyIdentities)
-    val localGenerationRequired = kotlinWinRTLocalGenerationRequired(project, extension, dependencyIdentityFiles)
+    val localGenerationRequired = kotlinWinRTLocalGenerationRequired(
+        project = project,
+        extension = extension,
+        dependencyIdentityFiles = dependencyIdentityFiles,
+        windowsSdkRegistryRoots = windowsSdkRegistryRoots,
+    )
     project.extensions.extraProperties["kotlinWinRTLocalGenerationRequired"] = localGenerationRequired
     project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
@@ -297,9 +304,10 @@ private fun configureWinRTLibraryModel(
 private fun configureWinRTApplicationModel(
     project: Project,
     extension: WinRTExtension,
+    windowsSdkRegistryRoots: Provider<List<String>>,
 ) {
     extension.whenApplicationConfigured {
-        configureWinRTApplicationTasks(project, extension)
+        configureWinRTApplicationTasks(project, extension, windowsSdkRegistryRoots)
     }
 }
 
@@ -331,6 +339,7 @@ private fun Project.registerWinRTApplicationHostRunTask(
 private fun configureWinRTApplicationTasks(
     project: Project,
     extension: WinRTExtension,
+    windowsSdkRegistryRoots: Provider<List<String>>,
 ) {
     if (project.configurations.findByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION) != null) {
         return
@@ -393,6 +402,7 @@ private fun configureWinRTApplicationTasks(
             task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/src"))
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
         },
@@ -550,6 +560,7 @@ private fun configureWinRTApplicationTasks(
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.executableBaseName.set(project.name)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
             task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
@@ -659,6 +670,7 @@ private fun configureWinRTApplicationTasks(
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.makePriExecutable.set(extension.application.makePriExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.executableBaseName.set(project.name)
             task.dependsOn(stageRuntimeAssetsTask)
@@ -684,6 +696,7 @@ private fun configureWinRTApplicationTasks(
             task.executableBaseName.set(project.name)
             task.javaHome.set(project.provider { System.getProperty("java.home") })
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
@@ -721,6 +734,7 @@ private fun configureWinRTApplicationTasks(
             task.generatePackage.set(extension.application.generatePackage)
             task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.onlyIf { extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged }
             task.dependsOn(stageApplicationPackageTask)
@@ -738,6 +752,7 @@ private fun configureWinRTApplicationTasks(
             task.verifyPackage.set(extension.application.verifyPackage)
             task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.onlyIf {
                 extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
@@ -762,6 +777,7 @@ private fun configureWinRTApplicationTasks(
             task.signPackage.set(extension.application.signPackage)
             task.signToolExecutable.set(extension.application.signToolExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.signingCertificateThumbprint.set(extension.application.signingCertificateThumbprint)
             task.signingCertificateFile.set(extension.application.signingCertificateFile)
@@ -959,6 +975,7 @@ private fun configureMingwApplicationEntry(
 private fun configureWinRTGeneration(
     project: Project,
     extension: BaseWinRTExtension,
+    windowsSdkRegistryRoots: Provider<List<String>>,
 ) {
     val generatedJvmSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/jvmMain/kotlin")
     val generatedKmpWinuiSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
@@ -999,6 +1016,7 @@ private fun configureWinRTGeneration(
             task.excludeTypes.set(extension.excludeTypes)
             task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)
             task.windowsSdkDeclared.set(extension.windowsSdkDeclared)
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.windowsSdkVersion.set(extension.windowsSdkVersion)
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
             task.generateWindowsSdkProjection.set(extension.generateWindowsSdkProjection)
@@ -1092,6 +1110,7 @@ private fun configureWinRTGeneration(
         },
     )
     project.tasks.withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java).configureEach { task ->
+        task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
         task.projectionRegistrarFiles.from(
             project.provider {
                 if (kotlinWinRTLocalGenerationRequired(project).get()) {
@@ -1880,13 +1899,19 @@ private fun kotlinWinRTLocalGenerationRequired(
     project: Project,
     extension: BaseWinRTExtension,
     dependencyIdentityFiles: org.gradle.api.file.FileCollection,
+    windowsSdkRegistryRoots: Provider<List<String>>,
 ): Provider<Boolean> =
     memoizedBooleanProvider(project) {
         try {
-            if (!kotlinWinRTLocalGenerationMetadataPlan(extension, emptySet()).hasLocalProjectionSelection) {
+            val initialPlan = kotlinWinRTLocalGenerationMetadataPlan(extension, emptySet())
+            if (!initialPlan.hasLocalProjectionSelection) {
                 false
             } else {
-                kotlinWinRTCombinedProjectionHasLocalOutput(extension, dependencyIdentityFiles.files)
+                kotlinWinRTCombinedProjectionHasLocalOutput(
+                    extension = extension,
+                    dependencyIdentityFiles = dependencyIdentityFiles.files,
+                    registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty().orEmpty(),
+                )
             }
         } catch (_: Exception) {
             true
@@ -1897,6 +1922,9 @@ private fun kotlinWinRTLocalGenerationRequired(
 private fun kotlinWinRTLocalGenerationRequired(project: Project): Provider<Boolean> =
     project.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as? Provider<Boolean>
         ?: project.provider { false }
+
+private fun windowsSdkRegistryRootsProvider(project: Project): Provider<List<String>> =
+    project.providers.of(WindowsSdkRegistryRootsValueSource::class.java) {}
 
 internal fun memoizedBooleanProvider(
     project: Project,
@@ -1910,11 +1938,16 @@ internal fun memoizedBooleanProvider(
 private fun kotlinWinRTCombinedProjectionHasLocalOutput(
     extension: BaseWinRTExtension,
     dependencyIdentityFiles: Set<File>,
+    registryRoots: List<String> = emptyList(),
 ): Boolean {
     if (kotlinWinRTApplicationPackagingOnly(extension)) {
         return false
     }
-    val sources = kotlinWinRTLocalGenerationMetadataPlan(extension, dependencyIdentityFiles).sources
+    val sources = kotlinWinRTLocalGenerationMetadataPlan(
+        extension = extension,
+        dependencyIdentityFiles = dependencyIdentityFiles,
+        registryRoots = registryRoots,
+    ).sources
     if (sources.isEmpty()) {
         return dependencyOwnedExactTypeHasUnownedSourceAddition(extension, dependencyIdentityFiles)
     }
@@ -1999,8 +2032,12 @@ private data class KotlinWinRTLocalGenerationMetadataPlan(
 private fun kotlinWinRTLocalGenerationMetadataPlan(
     extension: BaseWinRTExtension,
     dependencyIdentityFiles: Set<File>,
+    registryRoots: List<String> = emptyList(),
 ): KotlinWinRTLocalGenerationMetadataPlan {
-    val explicitSources = extension.metadataInputs.get().map(WinRTMetadataSource::parse)
+    val registryRootPaths = registryRoots.orNullIfEmpty()?.map(Path::of)
+    val explicitSources = extension.metadataInputs.get()
+        .map(WinRTMetadataSource::parse)
+        .map { source -> source.withWindowsSdkRegistryRoots(registryRootPaths) }
     val hasProjectionFilter = extension.includeNamespaces.get().isNotEmpty() || extension.includeTypes.get().isNotEmpty()
     val projectionPackageSpecs = projectionNuGetPackageSpecs(extension)
     val packageSpecs = (projectionPackageSpecs + dependencyIdentityFiles.flatMap(::readNuGetPackages))
@@ -2011,6 +2048,7 @@ private fun kotlinWinRTLocalGenerationMetadataPlan(
             WinRTMetadataSource.windowsSdk(
                 version = extension.windowsSdkVersion.orNull,
                 includeExtensions = extension.includeWindowsSdkExtensions.get(),
+                registryRoots = registryRootPaths,
             ),
         )
     } else {

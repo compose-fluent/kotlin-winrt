@@ -4,10 +4,12 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -35,12 +37,17 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
     abstract val windowsSdkVersion: Property<String>
 
     @get:Input
+    @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
+    @get:Input
     abstract val runtimeIdentifier: Property<String>
 
     init {
         generatePackage.convention(true)
         makeAppxExecutable.convention("")
         windowsSdkVersion.convention("")
+        windowsSdkRegistryRoots.convention(emptyList())
     }
 
     @TaskAction
@@ -87,5 +94,6 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
             makeAppxExecutable.get(),
             windowsSdkVersion.get(),
             runtimeIdentifier.get(),
+            windowsSdkRegistryRoots.get().orNullIfEmpty(),
         )
 }

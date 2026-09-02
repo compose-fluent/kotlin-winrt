@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
@@ -34,6 +35,10 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
     abstract val windowsSdkVersion: Property<String>
 
     @get:Input
+    @get:Optional
+    abstract val windowsSdkRegistryRoots: ListProperty<String>
+
+    @get:Input
     abstract val runtimeIdentifier: Property<String>
 
     @get:Input
@@ -57,6 +62,7 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
         signPackage.convention(false)
         signToolExecutable.convention("")
         windowsSdkVersion.convention("")
+        windowsSdkRegistryRoots.convention(emptyList())
         signingCertificateThumbprint.convention("")
         signingCertificatePassword.convention("")
         signingTimestampUrl.convention("")
@@ -109,5 +115,6 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
             signToolExecutable.get(),
             windowsSdkVersion.get(),
             runtimeIdentifier.get(),
+            windowsSdkRegistryRoots.get().orNullIfEmpty(),
         )
 }

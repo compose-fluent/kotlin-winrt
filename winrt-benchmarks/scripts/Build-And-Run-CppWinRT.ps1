@@ -29,21 +29,26 @@ param(
 $ErrorActionPreference = "Stop"
 
 $programFilesX86 = ${env:ProgramFiles(x86)}
-if ([string]::IsNullOrWhiteSpace($programFilesX86)) {
-    throw "ProgramFiles(x86) is not available; the C++/WinRT benchmark requires x64 Windows."
+$defaultWindowsSdkRoot = if ([string]::IsNullOrWhiteSpace($programFilesX86)) {
+    $null
+} else {
+    Join-Path $programFilesX86 "Windows Kits\10"
 }
 
 $windowsSdkRootCandidates = @(
-    $env:KOTLIN_WINRT_WINDOWS_SDK_ROOT
     foreach ($registryPath in @(
-        "HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots",
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots"
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots",
+        "HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots"
     )) {
         if (Test-Path -LiteralPath $registryPath) {
-            (Get-ItemProperty -LiteralPath $registryPath -Name KitsRoot10 -ErrorAction SilentlyContinue).KitsRoot10
+            $registryRoot = (Get-ItemProperty -LiteralPath $registryPath -Name KitsRoot10 -ErrorAction SilentlyContinue).KitsRoot10
+            if (-not [string]::IsNullOrWhiteSpace($registryRoot)) {
+                [Environment]::ExpandEnvironmentVariables([string]$registryRoot)
+            }
         }
     }
-    (Join-Path $programFilesX86 "Windows Kits\10")
+    $env:KOTLIN_WINRT_WINDOWS_SDK_ROOT
+    $defaultWindowsSdkRoot
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
 
 $windowsSdkMatches = @(
@@ -61,10 +66,16 @@ if (-not (Test-Path -LiteralPath $windowsHeader -PathType Leaf)) {
     throw "Windows SDK $WindowsSdkVersion is not installed. Install that Windows SDK before running benchmarkCppWinRT."
 }
 
-$vswhereCandidates = @(@(
-    (Join-Path $programFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"),
-    (Join-Path $env:ProgramFiles "Microsoft Visual Studio\Installer\vswhere.exe")
-) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+$vswhereCandidates = @(
+    @(
+        if (-not [string]::IsNullOrWhiteSpace($programFilesX86)) {
+            Join-Path $programFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+            Join-Path $env:ProgramFiles "Microsoft Visual Studio\Installer\vswhere.exe"
+        }
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+)
 
 if ($vswhereCandidates.Count -eq 0) {
     throw "Visual Studio was not found. Install Visual Studio or Build Tools with 'Desktop development with C++'."

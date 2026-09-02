@@ -77,6 +77,8 @@ sealed interface WinRTMetadataSource {
         val includeExtensions: Boolean = false,
         val sdkRoot: Path? = null,
         val discoveryMode: WinRTWindowsSdkDiscoveryMode = WinRTWindowsSdkDiscoveryMode.EnvironmentOrDefaultRoot,
+        /** Registry candidates supplied by an integration boundary; null means query the registry. */
+        val registryRoots: List<Path>? = null,
     ) : WinRTMetadataSource
     data class NuGetPackage(
         val packagePath: Path,
@@ -101,12 +103,14 @@ sealed interface WinRTMetadataSource {
             includeExtensions: Boolean = false,
             sdkRoot: Path? = null,
             discoveryMode: WinRTWindowsSdkDiscoveryMode = WinRTWindowsSdkDiscoveryMode.EnvironmentOrDefaultRoot,
+            registryRoots: List<Path>? = null,
         ): WinRTMetadataSource =
             WindowsSdk(
                 version = version,
                 includeExtensions = includeExtensions,
                 sdkRoot = sdkRoot,
                 discoveryMode = discoveryMode,
+                registryRoots = registryRoots,
             )
 
         fun parse(value: String): WinRTMetadataSource {
@@ -834,8 +838,9 @@ object WinRTMetadataSourceResolver {
     }
 
     private fun windowsSdkMetadata(source: WinRTMetadataSource.WindowsSdk): ResolvedWindowsSdkMetadata {
-        val sdkRoot = source.sdkRoot ?: locateWindowsSdkRoot(source.discoveryMode)
-        val version = source.version ?: latestWindowsSdkVersion(sdkRoot)
+        val (sdkRoot, version) = source.sdkRoot?.let { root ->
+            root to (source.version ?: latestWindowsSdkVersion(root))
+        } ?: locateWindowsSdkRoot(source.discoveryMode, source.version, source.registryRoots)
         val files = linkedSetOf<Path>()
         val platformXml = sdkRoot.resolve("Platforms").resolve("UAP").resolve(version).resolve("Platform.xml")
         val platformContracts = readApiContracts(platformXml)
@@ -965,28 +970,38 @@ object WinRTMetadataSourceResolver {
         }
     }
 
-    private fun locateWindowsSdkRoot(discoveryMode: WinRTWindowsSdkDiscoveryMode): Path {
+    private fun locateWindowsSdkRoot(
+        discoveryMode: WinRTWindowsSdkDiscoveryMode,
+        requestedVersion: String?,
+        suppliedRegistryRoots: List<Path>?,
+    ): Pair<Path, String> {
         if (discoveryMode == WinRTWindowsSdkDiscoveryMode.WindowsHostRegistry) {
             throw IllegalArgumentException(
                 "Windows SDK registry/module-version discovery is a Windows-host integration boundary; provide sdkRoot or use EnvironmentOrDefaultRoot discovery.",
             )
         }
 
-        System.getenv("KOTLIN_WINRT_WINDOWS_SDK_ROOT")
-            ?.takeIf(String::isNotBlank)
-            ?.let(Path::of)
-            ?.takeIf { it.isDirectory() }
-            ?.let { return it }
-
-        val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
-        val root = Path.of(programFilesX86, "Windows Kits", "10")
-        if (root.isDirectory()) {
-            return root
+        val version = requestedVersion?.takeIf(String::isNotBlank)
+        val registryRoots = suppliedRegistryRoots ?: WindowsSdkRootDiscovery.readRegistryKitsRoots().map(Path::of)
+        WindowsSdkRootDiscovery.candidateRoots(registryRoots = registryRoots.map(Path::toString)).forEach { root ->
+            if (!root.isDirectory()) {
+                return@forEach
+            }
+            if (version != null) {
+                if (root.resolve("Platforms").resolve("UAP").resolve(version).resolve("Platform.xml").isRegularFile()) {
+                    return root to version
+                }
+            } else {
+                latestWindowsSdkVersionOrNull(root)?.let { return root to it }
+            }
         }
         throw IllegalArgumentException(
-            "Could not find the Windows SDK root. Set KOTLIN_WINRT_WINDOWS_SDK_ROOT or install Windows Kits 10.",
+            "Could not find the Windows SDK root. Install Windows Kits 10 or set ${WindowsSdkRootDiscovery.environmentVariable} for a custom SDK location.",
         )
     }
+
+    private fun latestWindowsSdkVersionOrNull(sdkRoot: Path): String? =
+        runCatching { latestWindowsSdkVersion(sdkRoot) }.getOrNull()
 
     private fun latestWindowsSdkVersion(sdkRoot: Path): String {
         val platforms = sdkRoot.resolve("Platforms").resolve("UAP")
