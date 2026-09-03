@@ -86,6 +86,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
             outputRoot,
             executableBaseName.get(),
             winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+            redirectDlls = packageMode.get() != WinRTApplicationPackageMode.Packaged.name,
         )
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             logger.warn("Kotlin/WinRT application host native EXE build is Windows-only; generated source without compiling EXE.")

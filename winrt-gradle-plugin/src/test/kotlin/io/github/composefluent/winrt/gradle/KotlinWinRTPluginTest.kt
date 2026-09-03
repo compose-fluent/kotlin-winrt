@@ -3483,6 +3483,11 @@ class KotlinWinRTPluginTest {
         assertEquals("C:/tools/winapp.cmd", restoreTask.winAppCliExecutable.get())
         assertEquals("C:/tools/winapp.cmd", packageTask.winAppCliExecutable.get())
         assertEquals("C:/tools/winapp.cmd", verifyTask.winAppCliExecutable.get())
+        assertFalse(
+            project.tasks.named("stageWinRTRuntimeAssets", StageWinRTRuntimeAssetsTask::class.java)
+                .get()
+                .includeFrameworkRuntimeAssets.get(),
+        )
         assertEquals("", packageTask.makeAppxExecutable.get())
         assertEquals("", verifyTask.makeAppxExecutable.get())
         assertTrue("restoreWinAppDependencies" in taskDependencyNames(packageTask))
@@ -4635,6 +4640,13 @@ class KotlinWinRTPluginTest {
             ),
         )
         assertFalse(Files.exists(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
+
+        task.includeFrameworkRuntimeAssets.set(false)
+        task.stage()
+
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Runtime.Native.dll")))
+        assertFalse(Files.exists(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
+        assertFalse(Files.exists(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
     }
 
     @Test
@@ -5055,6 +5067,76 @@ class KotlinWinRTPluginTest {
 
         val manifest = Files.readString(task.outputDirectory.get().asFile.toPath().resolve("sample-app.exe.manifest"))
         assertEquals(1, Regex("""<winrtv1:activatableClass name='Sample\.Duplicate\.Widget'""").findAll(manifest).count())
+    }
+
+    @Test
+    fun runtime_assets_task_omits_lifted_registration_for_unstaged_framework_dll() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.framework-dependent/1.0.0").get().asFile.toPath()
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.writeString(
+            packageRoot.resolve("Sample.FrameworkDependent.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.FrameworkDependent</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("Present.dll"), "present")
+        Files.writeString(
+            packageRoot.resolve("build/native/LiftedWinRTClassRegistrations.xml"),
+            """
+            <Registrations xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Extension Category="windows.activatableClass.inProcessServer">
+                <InProcessServer>
+                  <Path>Present.dll</Path>
+                  <ActivatableClass ActivatableClassId="Sample.Present" ThreadingModel="both" />
+                </InProcessServer>
+              </Extension>
+              <Extension Category="windows.activatableClass.inProcessServer">
+                <InProcessServer>
+                  <Path>Microsoft.UI.Xaml.dll</Path>
+                  <ActivatableClass ActivatableClassId="Microsoft.UI.Xaml.Application" ThreadingModel="both" />
+                </InProcessServer>
+              </Extension>
+            </Registrations>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-framework-dependent.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.FrameworkDependent@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageFrameworkDependentRegistrations",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-framework-dependent"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.executableBaseName.set("sample-app")
+            registeredTask.includeFrameworkRuntimeAssets.set(false)
+        }.get()
+
+        task.stage()
+
+        val manifest = Files.readString(task.outputDirectory.get().asFile.toPath().resolve("sample-app.exe.manifest"))
+        assertTrue(manifest.contains("<asmv3:file name='Present.dll'"))
+        assertTrue(manifest.contains("<winrtv1:activatableClass name='Sample.Present' threadingModel='both'/>"))
+        assertFalse(manifest.contains("Microsoft.UI.Xaml.dll"))
+        assertFalse(manifest.contains("Microsoft.UI.Xaml.Application"))
     }
 
     @Test
@@ -12341,6 +12423,36 @@ class KotlinWinRTPluginTest {
             ),
         )
         assertFalse(Files.exists(assetsRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
+    }
+
+    @Test
+    fun packaged_application_keeps_framework_runtime_assets_for_legacy_appx_output() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.packaged()
+            application.packageOutputFile.set(project.layout.buildDirectory.file("packages/sample.appx"))
+        }
+
+        val task = project.tasks.named("stageWinRTRuntimeAssets", StageWinRTRuntimeAssetsTask::class.java).get()
+
+        assertTrue(task.includeFrameworkRuntimeAssets.get())
+    }
+
+    @Test
+    fun packaged_application_keeps_framework_runtime_assets_when_legacy_makeappx_is_configured() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.packaged()
+            application.makeAppxExecutable.set("C:/Windows Kits/10/bin/makeappx.exe")
+        }
+
+        val task = project.tasks.named("stageWinRTRuntimeAssets", StageWinRTRuntimeAssetsTask::class.java).get()
+
+        assertTrue(task.includeFrameworkRuntimeAssets.get())
     }
 
     @Test

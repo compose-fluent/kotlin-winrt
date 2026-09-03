@@ -8,7 +8,12 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
 internal object WinRTApplicationManifestGenerator {
-    fun writeApplicationManifest(outputRoot: Path, executableBaseName: String, processorArchitecture: String) {
+    fun writeApplicationManifest(
+        outputRoot: Path,
+        executableBaseName: String,
+        processorArchitecture: String,
+        redirectDlls: Boolean = true,
+    ) {
         val fragmentXmls = Files.walk(outputRoot).use { stream ->
             stream.asSequence()
                 .filter { path -> path.isRegularFile() && path.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
@@ -31,6 +36,7 @@ internal object WinRTApplicationManifestGenerator {
                 readAuthoredHostManifestRegistrations(outputRoot),
                 dllFileNames,
                 processorArchitecture,
+                redirectDlls,
             ),
         )
     }
@@ -38,16 +44,26 @@ internal object WinRTApplicationManifestGenerator {
     private fun buildApplicationManifest(
         fragmentXmls: List<String>,
         authoredHostRegistrations: List<LiftedRegistrationEntry>,
-        frameworkFileNames: List<String>,
+        availableDllFileNames: List<String>,
         processorArchitecture: String,
+        redirectDlls: Boolean,
     ): String {
         val entriesByFileName = linkedMapOf<String, LiftedRegistrationEntryBuilder>()
         val remainingFileNames = linkedMapOf<String, String>()
         val seenActivatableClasses = linkedSetOf<String>()
-        frameworkFileNames.forEach { fileName -> remainingFileNames.putIfAbsent(fileName.lowercase(), fileName) }
+        val availableFileKeys = availableDllFileNames.mapTo(linkedSetOf(), ::manifestPathKey)
+        availableDllFileNames.forEach { fileName ->
+            remainingFileNames.putIfAbsent(manifestPathKey(fileName), fileName)
+        }
         (fragmentXmls.flatMap(::parseLiftedRegistrationEntries) + authoredHostRegistrations)
             .forEach { entry ->
-                val key = entry.path.lowercase()
+                val key = manifestPathKey(entry.path)
+                if (key !in availableFileKeys) {
+                    // Framework fragments are restored for metadata and projection work even when
+                    // a framework-dependent packaged app resolves the DLL from PackageDependency.
+                    // Do not emit SxS entries for files that are intentionally absent from staging.
+                    return@forEach
+                }
                 val builder = entriesByFileName.getOrPut(key) { LiftedRegistrationEntryBuilder(entry.path) }
                 entry.activatableClasses
                     .filter(String::isNotBlank)
@@ -84,20 +100,24 @@ internal object WinRTApplicationManifestGenerator {
                     }
                 }
                 if (body.isNotEmpty()) {
-                    append(manifestFileEntry(entry.path, body))
+                    append(manifestFileEntry(entry.path, body, redirectDlls))
                 }
             }
-            remainingFileNames.values.forEach { fileName -> append(manifestFileEntry(fileName, "")) }
+            remainingFileNames.values.forEach { fileName ->
+                append(manifestFileEntry(fileName, "", redirectDlls))
+            }
             appendLine("</assembly>")
         }
     }
 
-    private fun manifestFileEntry(path: String, body: String): String =
+    private fun manifestFileEntry(path: String, body: String, redirectDlls: Boolean): String =
         buildString {
             append("    <asmv3:file name='")
             append(escapeXml(path))
-            append("' loadFrom='%MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY%")
-            append(escapeXml(path))
+            if (redirectDlls) {
+                append("' loadFrom='%MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY%")
+                append(escapeXml(path))
+            }
             appendLine("'>")
             append(body)
             appendLine("    </asmv3:file>")
@@ -188,6 +208,9 @@ internal object WinRTApplicationManifestGenerator {
 
     private const val executableAssemblyName = "io.github.composefluent.winrt.application"
 }
+
+private fun manifestPathKey(path: String): String =
+    path.trim().replace('\\', '/').trimStart('/').lowercase()
 
 private data class LiftedRegistrationEntry(
     val path: String,

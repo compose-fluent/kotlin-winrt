@@ -90,6 +90,14 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     @get:Input
     abstract val restoreNuGetPackages: Property<Boolean>
 
+    /**
+     * Whether package-declared framework payloads under `runtimes-framework` should be staged.
+     * Framework-dependent WinApp CLI packages resolve the Windows App Runtime through manifest
+     * dependencies, while unpackaged and legacy MakeAppx layouts still need the payload locally.
+     */
+    @get:Input
+    abstract val includeFrameworkRuntimeAssets: Property<Boolean>
+
     @get:Input
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
 
@@ -224,6 +232,7 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
         executableBaseName.convention("app")
+        includeFrameworkRuntimeAssets.convention(true)
     }
 
     @TaskAction
@@ -318,10 +327,12 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
                 stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
             }
             stageLiftedRegistrations(resolved.identity, resolved.packageRoot, outputRoot)
-            stageFrameworkNativeAssets(
-                resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
-                outputRoot,
-            )
+            if (includeFrameworkRuntimeAssets.get()) {
+                stageFrameworkNativeAssets(
+                    resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
+                    outputRoot,
+                )
+            }
             stageMsBuildCopyLocalPayloads(resolved.packageRoot, rid, outputRoot)
         }
         stageGeneratedComponentRegistrations(outputRoot)

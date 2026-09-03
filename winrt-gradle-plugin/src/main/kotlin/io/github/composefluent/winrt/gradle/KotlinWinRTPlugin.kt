@@ -517,6 +517,13 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
+            task.includeFrameworkRuntimeAssets.set(project.provider {
+                val outputFile = extension.application.packageOutputFile.orNull?.asFile
+                extension.application.packageMode.get() != WinRTApplicationPackageMode.Packaged ||
+                    !extension.application.generatePackage.get() ||
+                    extension.application.makeAppxExecutable.get().isNotBlank() ||
+                    outputFile?.name?.endsWith(".appx", ignoreCase = true) == true
+            })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.generateProjectPri.set(extension.application.generateProjectPri)
             task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })
