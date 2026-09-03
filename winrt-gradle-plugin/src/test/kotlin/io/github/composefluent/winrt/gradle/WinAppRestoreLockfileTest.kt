@@ -90,6 +90,47 @@ class WinAppRestoreLockfileTest {
     }
 
     @Test
+    fun projection_inputs_discover_winmds_when_cli_lockfile_entry_is_empty() {
+        val root = Files.createTempDirectory("kotlin-winrt-winapp-lock-discovery-")
+        val cacheRoot = root.resolve("packages").toAbsolutePath()
+        val packageRoot = cacheRoot.resolve("sample.package/1.0.0")
+        val nestedWinmd = packageRoot.resolve("lib/native/Release/x64/Sample.Package.winmd")
+        Files.createDirectories(nestedWinmd.parent)
+        Files.writeString(nestedWinmd, "metadata")
+        Files.writeString(
+            packageRoot.resolve("sample.package.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Package</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        val lockfile = root.resolve("winmds.lock.json")
+        Files.writeString(
+            lockfile,
+            """
+            {
+              "schema": 3,
+              "nuget_cache_dir": ${jsonString(cacheRoot.toString())},
+              "packages": [
+                {"name":"Sample.Package","version":"1.0.0","winmds":[]}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val inputs = readWinAppProjectionWinmdFiles(
+            lockFiles = listOf(lockfile.toFile()),
+            rootPackageSpecs = listOf("Sample.Package@1.0.0"),
+        )
+
+        assertEquals(listOf(nestedWinmd.toAbsolutePath().normalize()), inputs)
+    }
+
+    @Test
     fun restored_package_roots_come_from_the_lockfile_cache_and_exclude_tooling() {
         val root = Files.createTempDirectory("kotlin-winrt-winapp-package-roots-")
         val cacheRoot = root.resolve("packages").toAbsolutePath()

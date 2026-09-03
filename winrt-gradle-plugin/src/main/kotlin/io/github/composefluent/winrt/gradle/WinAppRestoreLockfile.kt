@@ -121,7 +121,14 @@ internal fun readWinAppProjectionWinmdFiles(
         }
         selectedPackageIds
             .map(packagesById::getValue)
-            .flatMap(WinAppRestoredPackage::winmdFiles)
+            .flatMap { packageEntry ->
+                val packageRoot = restoredPackageRoot(
+                    restoredLockfile.path,
+                    restoredLockfile.lockfile,
+                    packageEntry,
+                )
+                packageEntry.winmdFiles + discoverWinmdFiles(packageRoot)
+            }
     }
     return winmdFiles
         .distinctBy { path -> path.toAbsolutePath().normalize().toString().lowercase() }
@@ -252,6 +259,28 @@ private fun restoredPackageRoot(
         )
     }
     return packageRoot
+}
+
+/**
+ * WinApp CLI versions may not recognize every valid NuGet metadata layout when writing
+ * winmds.lock.json. The lockfile still gives us the resolved package root, so use that
+ * root as the boundary for a layout-agnostic metadata fallback. This deliberately does
+ * not inspect any global cache or infer a package-specific directory convention.
+ */
+private fun discoverWinmdFiles(packageRoot: Path): List<Path> {
+    if (!Files.isDirectory(packageRoot)) {
+        return emptyList()
+    }
+    return runCatching {
+        Files.walk(packageRoot).use { stream ->
+            stream
+                .filter(Files::isRegularFile)
+                .filter { path -> path.fileName.toString().endsWith(".winmd", ignoreCase = true) }
+                .map { path -> path.toAbsolutePath().normalize() }
+                .sorted()
+                .toList()
+        }
+    }.getOrDefault(emptyList())
 }
 
 private fun JsonObject.requiredInt(name: String, path: Path): Int =
