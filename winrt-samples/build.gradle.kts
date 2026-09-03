@@ -3,7 +3,6 @@ import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.TaskAction
 
 abstract class VerifyWinRTSampleModeTask : DefaultTask() {
@@ -196,6 +195,26 @@ winRT {
     }
 }
 
+val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class) {
+    group = "verification"
+    description = "Verifies explicit WinUI/no-WinUI sample source-set and NuGet selection."
+    val noWinuiMain = kotlin.sourceSets.findByName("noWinuiMain")
+    val winuiMain = kotlin.sourceSets.getByName("winuiMain")
+    val winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
+    val mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
+    val packages = project.extensions
+        .getByType<io.github.composefluent.winrt.gradle.WinRTExtension>()
+        .nugetPackages
+        .map { pkg -> pkg.packageId }
+
+    winuiEnabled.set(sampleWinUIEnabled)
+    noWinuiMainPresent.set(noWinuiMain != null)
+    winuiJvmUsesNoWinui.set(noWinuiMain != null && noWinuiMain in winuiJvmMain.dependsOn)
+    mingwUsesNoWinui.set(noWinuiMain != null && noWinuiMain in mingwX64Main.dependsOn)
+    winuiMainSourceDirectories.set(winuiMain.kotlin.srcDirs.map { sourceDir -> sourceDir.invariantSeparatorsPath })
+    configuredNuGetPackages.set(packages)
+}
+
 val sampleJvmOptionProperties = listOf(
     "kotlin.winrt.samples.runNativeSmoke",
     "kotlin.winrt.samples.runComponentSmoke",
@@ -242,102 +261,18 @@ tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("r
 }
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRTApplicationPackage")
-    workingDir(layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release"))
-    executable(layout.buildDirectory.file("kotlin-winrt/application-layout/mingwX64/release/${project.name}.exe").get().asFile.absolutePath)
     environment(
         "WEBVIEW2_USER_DATA_FOLDER",
         webView2UserDataRoot.get().dir("mingwX64").asFile.absolutePath,
     )
     sampleJvmOptionProperties.forEach { name ->
-        providers.systemProperty(name).orElse(standardSampleSmokeDefaults[name] ?: "").orNull?.takeIf { it.isNotEmpty() }?.let { value ->
-            environment(name, value)
-        }
+        providers.systemProperty(name)
+            .orElse(standardSampleSmokeDefaults[name] ?: "")
+            .orNull
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { value -> environment(name, value) }
     }
 }
 
-val verifyWinRTSampleIdentity by tasks.registering {
-    group = "verification"
-    description = "Verifies the sample application aggregates Kotlin WinRT identity metadata from projection dependencies."
-    val identityFile = layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json")
-    val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
-    dependsOn(tasks.named("generateWinRTApplicationIdentity"))
-    inputs.file(identityFile)
-
-    doLast {
-        val identityJson = identityFile.get().asFile.readText()
-        check("\"model\": \"application\"" in identityJson) {
-            "Expected sample application identity JSON to use the application model."
-        }
-        check("winrt-projections" in identityJson) {
-            "Expected sample application identity JSON to include the winrt-projections identity dependency."
-        }
-        check("winrt-runtime" !in identityJson) {
-            "Runtime implementation dependencies must not be treated as Kotlin WinRT identity metadata."
-        }
-        if (!sampleWinUIEnabled.get()) {
-            check("Microsoft.WindowsAppSDK" !in identityJson) {
-                "WindowsAppSDK must not be declared when kotlinWinRT.samples.enableWinUI=false."
-            }
-        } else {
-            val expectedPackage = "Microsoft.WindowsAppSDK@$expectedWindowsAppSdkVersion"
-            check(expectedPackage in identityJson) {
-                "Expected sample application identity JSON to include $expectedPackage."
-            }
-        }
-    }
-}
-
-val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class) {
-    group = "verification"
-    description = "Verifies explicit WinUI/no-WinUI sample source-set and NuGet selection."
-    val noWinuiMain = kotlin.sourceSets.findByName("noWinuiMain")
-    val winuiMain = kotlin.sourceSets.getByName("winuiMain")
-    val winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
-    val mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
-    val packages = project.extensions
-        .getByType<io.github.composefluent.winrt.gradle.WinRTExtension>()
-        .nugetPackages
-        .map { pkg -> pkg.packageId }
-
-    winuiEnabled.set(sampleWinUIEnabled)
-    noWinuiMainPresent.set(noWinuiMain != null)
-    winuiJvmUsesNoWinui.set(noWinuiMain != null && noWinuiMain in winuiJvmMain.dependsOn)
-    mingwUsesNoWinui.set(noWinuiMain != null && noWinuiMain in mingwX64Main.dependsOn)
-    winuiMainSourceDirectories.set(winuiMain.kotlin.srcDirs.map { sourceDir -> sourceDir.invariantSeparatorsPath })
-    configuredNuGetPackages.set(packages)
-}
-
-val verifyWinRTSampleRuntimeAssets by tasks.registering {
-    group = "verification"
-    description = "Verifies the sample application stages local WinRT component runtime assets."
-    val runtimeAssetsDir = layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
-    dependsOn(tasks.named("stageWinRTRuntimeAssets"))
-    inputs.dir(runtimeAssetsDir)
-
-    doLast {
-        check(runtimeAssetsDir.get().asFile.resolve("SimpleMathComponent.dll").isFile) {
-            "Expected SimpleMathComponent.dll to be staged as a local WinRT component runtime asset."
-        }
-    }
-}
-
-val verifyWinRTSampleRun by tasks.registering {
-    group = "verification"
-    description = "Runs the sample application through the native Kotlin/WinRT host without opt-in native WinRT smoke tests."
-    dependsOn(tasks.named("runWinRTApplicationHost"))
-}
-
-val verifyWinRTSampleMingwRun by tasks.registering {
-    group = "verification"
-    description = "Runs the sample application through the mingwX64 executable."
-    dependsOn(tasks.named("runReleaseExecutableMingwX64"))
-}
-
-tasks.named("check") {
-    dependsOn(verifyWinRTSampleMode)
-    dependsOn(verifyWinRTSampleIdentity)
-    dependsOn(verifyWinRTSampleRuntimeAssets)
-    dependsOn(verifyWinRTSampleRun)
-    dependsOn(verifyWinRTSampleMingwRun)
-}
+// Keep sample smoke and generated-output checks out of the application model.
+apply(from = layout.projectDirectory.file("sample-validation.gradle.kts"))

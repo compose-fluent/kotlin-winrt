@@ -351,8 +351,10 @@ Use Windows for full build and runtime validation:
 .\gradlew.bat test
 .\gradlew.bat validateWinRTMingwParity
 .\gradlew.bat validateWinRTFullWindowsSdkProjectionGate
-.\gradlew.bat :winrt-samples:check
+.\gradlew.bat validateWinRTSampleSmoke
 ```
+
+The sample modules' normal `check` tasks stay focused on compilation and unit tests. `validateWinRTSampleSmoke` runs the machine-dependent JVM/native launches and generated-output audits.
 
 Run the projection benchmark matrix on an x64 Windows machine with .NET 8 and the Visual Studio C++ build tools:
 

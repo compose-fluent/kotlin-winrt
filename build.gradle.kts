@@ -370,10 +370,10 @@ val validateWinRTNativeAuthoringFixture by tasks.registering {
 
 val validateWinRTSampleSmoke by tasks.registering {
     group = "verification"
-    description = "Runs sample smoke checks after projection validation."
+    description = "Runs explicit sample integration checks after projection validation."
     dependsOn(validateWinRTProjectionCompile)
-    dependsOn(":winrt-samples:check")
-    dependsOn(":winrt-samples:winui-kmp-app:check")
+    dependsOn(":winrt-samples:validateWinRTSampleIntegration")
+    dependsOn(":winrt-samples:winui-kmp-app:validateWinuiKmpIntegration")
 }
 
 val validateWinRTNoWinUISampleMode by tasks.registering(Exec::class) {
