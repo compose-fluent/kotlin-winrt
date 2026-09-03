@@ -944,6 +944,11 @@ private fun configureMingwApplicationEntry(
     console: Boolean,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    val applicationExecutableName = "${project.name}.exe"
+    val applicationLayoutDirectory = project.layout.buildDirectory
+        .dir("kotlin-winrt/application-layout/mingwX64/release")
+        .get()
+        .asFile
     kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
         if (!target.isMingwX64Target()) {
             return@configureEach
@@ -956,7 +961,13 @@ private fun configureMingwApplicationEntry(
             }
             executable.runTaskProvider?.configure { task ->
                 task.dependsOn(stageRuntimeAssetsTask)
-                task.workingDir(project.projectDir)
+                if (executable.buildType == NativeBuildType.RELEASE) {
+                    task.dependsOn(stageApplicationPackageTask)
+                    task.workingDir(applicationLayoutDirectory)
+                    task.executable(applicationLayoutDirectory.resolve(applicationExecutableName).absolutePath)
+                } else {
+                    task.workingDir(project.projectDir)
+                }
                 task.environment(
                     "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
                     stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,

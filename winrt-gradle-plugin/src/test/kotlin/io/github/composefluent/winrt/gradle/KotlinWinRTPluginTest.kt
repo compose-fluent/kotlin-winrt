@@ -27,6 +27,7 @@ import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.BasePluginExtension
+import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.bundling.Jar
@@ -2905,6 +2906,8 @@ class KotlinWinRTPluginTest {
         val hostDependencies = taskDependencyNames(hostTask)
         val stagePackageTask = project.tasks.named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java).get()
         val stagePackageDependencies = taskDependencyNames(stagePackageTask)
+        val nativeRunTask = project.tasks.named("runReleaseExecutableWinuiMingw", Exec::class.java).get()
+        val applicationLayout = stagePackageTask.outputDirectory.get().asFile
 
         assertTrue(project.configurations.getByName("winuiJvmRuntimeClasspath").isCanBeResolved)
         assertTrue("buildWinRTApplicationHost dependencies: $hostDependencies", "winuiJvmJar" in hostDependencies)
@@ -2913,6 +2916,12 @@ class KotlinWinRTPluginTest {
             "linkReleaseExecutableWinuiMingw" in stagePackageDependencies,
         )
         assertFalse("buildWinRTApplicationHost must not depend on mingw native link tasks: $hostDependencies", "linkReleaseExecutableWinuiMingw" in hostDependencies)
+        assertTrue(
+            "release native run must stage the application layout: ${taskDependencyNames(nativeRunTask)}",
+            "stageWinRTApplicationPackage" in taskDependencyNames(nativeRunTask),
+        )
+        assertEquals(applicationLayout, nativeRunTask.workingDir)
+        assertEquals(applicationLayout.resolve("sample-app.exe").absolutePath, nativeRunTask.executable)
     }
 
     @Test
