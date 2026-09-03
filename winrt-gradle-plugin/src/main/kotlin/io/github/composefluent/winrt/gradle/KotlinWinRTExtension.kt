@@ -27,6 +27,7 @@ interface BaseWinRTExtension {
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
     val generateWindowsSdkProjection: Property<Boolean>
+    val winAppCliExecutable: Property<String>
     val nugetExecutable: Property<String>
     val nugetCliVersion: Property<String>
     val restoreNuGetPackages: Property<Boolean>
@@ -76,6 +77,7 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val generateWindowsSdkProjection: Property<Boolean> =
         objects.property(Boolean::class.java).convention(false)
+    override val winAppCliExecutable: Property<String> = objects.property(String::class.java).convention("winapp")
     override val nugetExecutable: Property<String> = objects.property(String::class.java).convention("nuget")
     override val nugetCliVersion: Property<String> = objects.property(String::class.java).convention("7.3.1")
     override val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)

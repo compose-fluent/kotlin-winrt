@@ -131,7 +131,11 @@ internal object ProjectPriManifestSupport {
         return errors
     }
 
-    fun validatePackageManifestPayload(manifest: Path, packageRoot: Path): List<String> {
+    fun validatePackageManifestPayload(
+        manifest: Path,
+        packageRoot: Path,
+        deferredReferences: Set<Path> = emptySet(),
+    ): List<String> {
         val document = readXmlDocument(manifest) ?: return listOf("manifest XML could not be parsed: $manifest")
         val errors = mutableListOf<String>()
         val properties = document.getElementsByTagNameNS("*", "Properties").item(0) as? Element
@@ -142,6 +146,7 @@ internal object ProjectPriManifestSupport {
                 reference = logo,
                 label = "manifest Properties Logo",
                 allowResourceCandidates = true,
+                deferredReferences = deferredReferences,
                 errors = errors,
             )
         }
@@ -155,6 +160,7 @@ internal object ProjectPriManifestSupport {
                     reference = executable,
                     label = "$prefix Executable",
                     allowResourceCandidates = false,
+                    deferredReferences = deferredReferences,
                     errors = errors,
                 )
             }
@@ -167,6 +173,7 @@ internal object ProjectPriManifestSupport {
                             reference = reference,
                             label = "$prefix VisualElements $attribute",
                             allowResourceCandidates = true,
+                            deferredReferences = deferredReferences,
                             errors = errors,
                         )
                     }
@@ -216,6 +223,7 @@ internal object ProjectPriManifestSupport {
         reference: String,
         label: String,
         allowResourceCandidates: Boolean,
+        deferredReferences: Set<Path>,
         errors: MutableList<String>,
     ) {
         val relative = runCatching { reference.toSafeRelativePath(label) }.getOrElse { exception ->
@@ -225,6 +233,7 @@ internal object ProjectPriManifestSupport {
         val target = packageRoot.resolve(relative).normalize()
         if (target.isRegularFile()) return
         if (allowResourceCandidates && target.hasQualifiedResourceCandidate()) return
+        if (relative.normalize() in deferredReferences) return
         errors += "$label references missing package file: $reference"
     }
 

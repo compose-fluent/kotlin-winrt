@@ -113,6 +113,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
     abstract val rootPackagePayloadFiles: ConfigurableFileCollection
 
+    @get:Input
+    abstract val deferredManifestPayloadPaths: ListProperty<String>
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -154,6 +157,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         windowsSdkRegistryRoots.convention(emptyList())
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
+        deferredManifestPayloadPaths.convention(emptyList())
         executableBaseName.convention("app")
     }
 
@@ -201,7 +205,14 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     private fun validateStagedManifestPayload(outputRoot: Path) {
         val manifest = outputRoot.resolve("AppxManifest.xml")
         if (!manifest.isRegularFile()) return
-        val payloadErrors = ProjectPriManifestSupport.validatePackageManifestPayload(manifest, outputRoot)
+        val deferredReferences = deferredManifestPayloadPaths.get()
+            .map { path -> path.toSafeRelativePath("deferred manifest payload path").normalize() }
+            .toSet()
+        val payloadErrors = ProjectPriManifestSupport.validatePackageManifestPayload(
+            manifest,
+            outputRoot,
+            deferredReferences,
+        )
         if (payloadErrors.isNotEmpty()) {
             throw GradleException(
                 "Invalid AppX manifest payload references in ${manifest.toAbsolutePath().normalize()}:\n" +

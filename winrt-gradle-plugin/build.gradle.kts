@@ -27,6 +27,7 @@ dependencies {
     implementation(projects.winrtGenerator)
     implementation(projects.winrtCompilerPlugin)
     implementation(libs.kotlinpoet)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlin.gradle.plugin)
     testImplementation(libs.junit)
     testImplementation(gradleTestKit())

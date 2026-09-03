@@ -9,6 +9,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
@@ -33,7 +34,31 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
     abstract val verifyPackage: Property<Boolean>
 
     @get:Input
+    abstract val packageMode: Property<String>
+
+    @get:Input
+    abstract val generatePackage: Property<Boolean>
+
+    @get:Input
     abstract val makeAppxExecutable: Property<String>
+
+    @get:Input
+    abstract val winAppCliExecutable: Property<String>
+
+    @get:Input
+    abstract val winAppCliVersion: Property<String>
+
+    @get:Input
+    abstract val winAppCliPackageSha512: Property<String>
+
+    @get:Internal
+    abstract val winAppCliCacheDirectory: DirectoryProperty
+
+    @get:Internal
+    abstract val winAppWorkspace: DirectoryProperty
+
+    @get:Input
+    abstract val offline: Property<Boolean>
 
     @get:Input
     abstract val windowsSdkVersion: Property<String>
@@ -50,7 +75,13 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         verifyPackage.convention(true)
+        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        generatePackage.convention(true)
         makeAppxExecutable.convention("")
+        winAppCliExecutable.convention("winapp")
+        winAppCliVersion.convention(WinAppCliDefaults.VERSION)
+        winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
+        offline.convention(false)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
@@ -67,14 +98,13 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
             throw GradleException("Cannot verify appx/msix package because package file does not exist: $source.")
         }
         AppPackageFileSupport.validatePackageExtension(source, "verify")
-        val makeAppx = discoverMakeAppxExecutable() ?: run {
-            throw GradleException("Cannot verify appx/msix package because makeappx.exe was not found.")
-        }
         val unpackRoot = unpackDirectory.get().asFile.toPath()
         GradleFileOperations.cleanDirectory(unpackRoot)
         Files.createDirectories(unpackRoot)
-        if (!MakeAppxRunner.unpack(makeAppx, source, unpackRoot, logger)) {
-            throw GradleException("Failed to verify appx/msix package at $source.")
+        if (makeAppxExecutable.get().isNotBlank()) {
+            unpackWithLegacyMakeAppx(source, unpackRoot)
+        } else {
+            unpackWithWinAppCli(source, unpackRoot)
         }
         if (!unpackRoot.resolve("AppxManifest.xml").isRegularFile()) {
             throw GradleException("Verified appx/msix package did not unpack an AppxManifest.xml from $source.")
@@ -106,6 +136,42 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
             runtimeIdentifier.get(),
             windowsSdkRegistryRoots.get().orNullIfEmpty(),
         )
+
+    private fun unpackWithLegacyMakeAppx(source: Path, unpackRoot: Path) {
+        val makeAppx = discoverMakeAppxExecutable() ?: run {
+            throw GradleException("Cannot verify appx/msix package because makeappx.exe was not found.")
+        }
+        if (!MakeAppxRunner.unpack(makeAppx, source, unpackRoot, logger)) {
+            throw GradleException("Failed to verify appx/msix package at $source.")
+        }
+    }
+
+    private fun unpackWithWinAppCli(source: Path, unpackRoot: Path) {
+        winAppCli().run(
+            arguments = listOf(
+                "tool",
+                "makeappx",
+                "unpack",
+                "/p",
+                source.toString(),
+                "/d",
+                unpackRoot.toString(),
+                "/o",
+            ),
+            workingDirectory = winAppWorkspace.orNull?.asFile?.toPath() ?: unpackRoot.parent,
+            description = "unpack application package $source for verification",
+        )
+    }
+
+    private fun winAppCli(): WinAppCliSupport = WinAppCliSupport(
+        configuredExecutable = winAppCliExecutable.get(),
+        cliVersion = winAppCliVersion.get(),
+        packageSha512 = winAppCliPackageSha512.get(),
+        cliCacheDirectory = winAppCliCacheDirectory.orNull?.asFile?.toPath()
+            ?: temporaryDir.toPath().resolve("winapp-cli"),
+        offline = offline.get(),
+        logger = logger,
+    )
 
     private fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")

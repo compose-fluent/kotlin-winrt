@@ -22,6 +22,9 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
     abstract val installPackage: Property<Boolean>
 
     @get:Input
+    abstract val packageMode: Property<String>
+
+    @get:Input
     abstract val powerShellExecutable: Property<String>
 
     @get:Input
@@ -29,6 +32,7 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         installPackage.convention(false)
+        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
         powerShellExecutable.convention("powershell.exe")
         forceApplicationShutdown.convention(true)
     }

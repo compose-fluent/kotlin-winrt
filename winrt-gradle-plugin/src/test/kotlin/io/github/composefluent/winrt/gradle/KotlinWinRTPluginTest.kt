@@ -308,6 +308,7 @@ class KotlinWinRTPluginTest {
             winRT {
                 nugetPackage "$packageId", "$packageVersion"
                 namespace "Sample"
+                restoreNuGetPackages.set(false)
             }
 
             tasks.named("generateWinRTProjections") {
@@ -3449,6 +3450,79 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun packaged_application_plugin_wires_the_configured_winapp_cli_through_restore_package_and_verify() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.winAppCliExecutable.set("C:/tools/winapp.cmd")
+        extension.application { application -> application.packaged() }
+        project.pluginManager.apply("application")
+
+        val configurationTask = project.tasks
+            .named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java)
+            .get()
+        val restoreTask = project.tasks
+            .named("restoreWinAppDependencies", RestoreWinAppDependenciesTask::class.java)
+            .get()
+        val packageTask = project.tasks
+            .named("packageWinRTApplication", PackageWinRTApplicationTask::class.java)
+            .get()
+        val applicationHostTask = project.tasks
+            .named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java)
+            .get()
+        val stagePackageTask = project.tasks
+            .named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java)
+            .get()
+        val verifyTask = project.tasks
+            .named("verifyWinRTApplicationPackage", VerifyWinRTApplicationPackageTask::class.java)
+            .get()
+
+        assertTrue(configurationTask.includeToolingPackages.get())
+        assertTrue(restoreTask.includeToolingPackages.get())
+        assertEquals("C:/tools/winapp.cmd", restoreTask.winAppCliExecutable.get())
+        assertEquals("C:/tools/winapp.cmd", packageTask.winAppCliExecutable.get())
+        assertEquals("C:/tools/winapp.cmd", verifyTask.winAppCliExecutable.get())
+        assertEquals("", packageTask.makeAppxExecutable.get())
+        assertEquals("", verifyTask.makeAppxExecutable.get())
+        assertTrue("restoreWinAppDependencies" in taskDependencyNames(packageTask))
+        assertEquals(applicationHostTask.outputDirectory.get(), packageTask.packageDirectory.get())
+        assertTrue("buildWinRTApplicationHost" in taskDependencyNames(packageTask))
+        assertEquals(listOf("test.exe"), stagePackageTask.deferredManifestPayloadPaths.get())
+    }
+
+    @Test
+    fun packaged_application_prefers_the_release_mingw_layout_when_native_and_jvm_targets_exist() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            mingwX64("winuiMingw") {
+                binaries {
+                    executable()
+                }
+            }
+        }
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+            application.packaged()
+        }
+
+        val packageTask = project.tasks
+            .named("packageWinRTApplication", PackageWinRTApplicationTask::class.java)
+            .get()
+        val nativeLayoutTask = project.tasks
+            .named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java)
+            .get()
+
+        assertEquals(nativeLayoutTask.outputDirectory.get(), packageTask.packageDirectory.get())
+        assertFalse("buildWinRTApplicationHost" in taskDependencyNames(packageTask))
+        assertTrue(nativeLayoutTask.deferredManifestPayloadPaths.get().isEmpty())
+    }
+
+    @Test
     fun application_plugin_accepts_gradle_application_distribution_model() {
         val project = ProjectBuilder.builder().build()
 
@@ -4297,6 +4371,7 @@ class KotlinWinRTPluginTest {
         val outputRoot = project.layout.buildDirectory.dir("application-layout/jvm").get().asFile.toPath()
         Files.createDirectories(outputRoot.resolve("lib"))
         Files.writeString(outputRoot.resolve("lib/stale-app.jar"), "stale")
+        Files.writeString(outputRoot.resolve("stale-runtime.dll"), "stale")
         val task = project.tasks.register(
             "buildApplicationHost",
             BuildWinRTApplicationHostTask::class.java,
@@ -4329,6 +4404,7 @@ class KotlinWinRTPluginTest {
         assertFalse(source.contains("java/lang/reflect"))
         assertTrue(Files.isRegularFile(outputRoot.resolve("lib").resolve(jar.fileName)))
         assertFalse(Files.exists(outputRoot.resolve("lib/stale-app.jar")))
+        assertFalse(Files.exists(outputRoot.resolve("stale-runtime.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("sample-app.exe.manifest")))
     }
 
@@ -5033,6 +5109,78 @@ class KotlinWinRTPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xaml")))
+    }
+
+    @Test
+    fun runtime_assets_task_uses_winapp_runtime_output_and_lockfile_package_closure() {
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("winapp-nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.winapp.package/1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.WinApp.Package.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.WinApp.Package</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        val nativeRoot = packageRoot.resolve("lib/native/Release/x64")
+        Files.createDirectories(nativeRoot.resolve("Resources"))
+        Files.writeString(nativeRoot.resolve("Sample.WinApp.Package.dll"), "dll")
+        Files.writeString(nativeRoot.resolve("Sample.WinApp.Package.pri"), "pri")
+        Files.writeString(nativeRoot.resolve("Resources/Control.xaml"), "xaml")
+
+        val winAppRoot = project.layout.buildDirectory.dir("generated-winapp/.winapp").get().asFile.toPath()
+        val winAppBin = winAppRoot.resolve("bin")
+        Files.createDirectories(winAppBin.resolve("x64/plugins"))
+        Files.writeString(winAppBin.resolve("x64/plugins/runtime.dat"), "runtime")
+        val lockfile = winAppRoot.resolve("winmds.lock.json")
+        Files.writeString(
+            lockfile,
+            """
+            {
+              "schema": 3,
+              "nuget_cache_dir": "${globalPackagesRoot.toString().replace("\\", "\\\\")}",
+              "packages": [
+                {"name":"Microsoft.Windows.SDK.BuildTools","version":"10.0.26100.1742","winmds":[]},
+                {"name":"Sample.WinApp.Package","version":"1.0.0","winmds":[]}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val task = project.tasks.register(
+            "stageWinAppResolvedRuntimeAssets",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("winapp-runtime-assets"))
+            registeredTask.nugetPackages.set(listOf("Sample.WinApp.Package@1.0.0"))
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.winAppRuntimeAssetDirectories.from(winAppBin)
+            registeredTask.winAppRestoreLockFiles.from(lockfile)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(true)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertEquals("runtime", Files.readString(outputRoot.resolve("plugins/runtime.dat")))
+        assertEquals("dll", Files.readString(outputRoot.resolve("Sample.WinApp.Package.dll")))
+        assertEquals("pri", Files.readString(outputRoot.resolve("Sample.WinApp.Package.pri")))
+        assertEquals("xaml", Files.readString(outputRoot.resolve("Resources/Control.xaml")))
     }
 
     @Test
@@ -6244,6 +6392,43 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_package_task_allows_only_a_declared_deferred_manifest_payload() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-deferred-manifest-payload").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
+        Files.delete(runtimeAssets.resolve("App/Contoso.exe"))
+        val manifest = project.projectDir.toPath().resolve("DeferredPayloadPackage.appxmanifest")
+        Files.writeString(manifest, appxManifestXml())
+        val task = project.tasks.register(
+            "stageDeferredManifestPayloadApplicationPackage",
+            StageWinRTApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-deferred-manifest-payload"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.deferredManifestPayloadPaths.set(listOf("App/Contoso.exe"))
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppxManifest.xml")))
+        assertFalse(Files.exists(outputRoot.resolve("App/Contoso.exe")))
+    }
+
+    @Test
     fun application_package_task_rejects_manifest_payload_path_escape_with_field_context() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-escaped-manifest-payload").get().asFile.toPath()
@@ -6591,6 +6776,50 @@ class KotlinWinRTPluginTest {
 
         assertTrue(failure is GradleException)
         assertTrue(failure?.message.orEmpty().contains("Declared project PRI input does not exist"))
+    }
+
+    @Test
+    fun package_application_task_invokes_winapp_cli_by_default() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-winapp-package").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
+        Files.writeString(packageRoot.resolve("AppxManifest.xml"), appxManifestXml())
+        val winAppLog = project.layout.buildDirectory.file("winapp-package.log").get().asFile.toPath()
+        val winApp = writeFakeWinApp(
+            project.layout.buildDirectory.file("fake-winapp-package.cmd").get().asFile.toPath(),
+            winAppLog,
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/WinApp.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithWinApp",
+            PackageWinRTApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set("")
+            registeredTask.winAppCliExecutable.set(winApp.toString())
+            registeredTask.offline.set(true)
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.pack()
+
+        assertTrue(Files.isRegularFile(outputFile))
+        val winAppArgs = readFakeToolArguments(winAppLog)
+        assertTrue(winAppArgs.contains("package"))
+        assertTrue(winAppArgs.any { it.endsWith("staged-winapp-package") })
+        assertTrue(winAppArgs.contains("--output"))
+        assertTrue(winAppArgs.any { it.endsWith("WinApp.msix") })
+        assertTrue(winAppArgs.contains("--manifest"))
+        assertTrue(winAppArgs.any { it.endsWith("AppxManifest.xml") })
+        assertTrue(winAppArgs.contains("--skip-pri"))
+        assertTrue(winAppArgs.contains("--quiet"))
     }
 
     @Test
@@ -6943,6 +7172,48 @@ class KotlinWinRTPluginTest {
         assertTrue(failure is GradleException)
         assertTrue(failure?.message.orEmpty().contains("Failed to create appx/msix package"))
         assertFalse(Files.exists(outputFile))
+    }
+
+    @Test
+    fun verify_application_package_task_invokes_winapp_tool_makeappx_by_default() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/WinAppVerify.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val winAppLog = project.layout.buildDirectory.file("winapp-verify.log").get().asFile.toPath()
+        val winApp = writeFakeWinApp(
+            project.layout.buildDirectory.file("fake-winapp-verify.cmd").get().asFile.toPath(),
+            winAppLog,
+        )
+        val markerFile = project.layout.buildDirectory.file("packages/WinAppVerify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("winapp-verify-unpack").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyApplicationPackageWithWinApp",
+            VerifyWinRTApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set("")
+            registeredTask.winAppCliExecutable.set(winApp.toString())
+            registeredTask.offline.set(true)
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.verify()
+
+        assertTrue(Files.isRegularFile(markerFile))
+        val winAppArgs = readFakeToolArguments(winAppLog)
+        assertTrue(winAppArgs.contains("tool"))
+        assertTrue(winAppArgs.contains("makeappx"))
+        assertTrue(winAppArgs.contains("unpack"))
+        assertTrue(winAppArgs.any { it.endsWith("WinAppVerify.msix") })
+        assertTrue(winAppArgs.any { it.endsWith("winapp-verify-unpack") })
     }
 
     @Test
@@ -12404,6 +12675,62 @@ private fun writeFakeMakePri(path: Path, log: Path, languagePri: String = ""): P
           if not "${languagePri}"=="" (
             for %%I in ("%output%") do echo fake-language-pri>"%%~dpIresources.language-${languagePri}.pri"
           )
+        )
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakeWinApp(path: Path, log: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        if /I "%~1"=="--version" (
+          echo 0.6.0
+          exit /b 0
+        )
+        set operation=
+        set output=
+        set directory=
+        :next
+        if "%~1"=="" goto done
+        >>"${log.toString()}" echo(%~1
+        if /I "%~1"=="package" set operation=package
+        if /I "%~1"=="unpack" set operation=unpack
+        if /I "%~1"=="--output" set output=%~2
+        if /I "%~1"=="/d" set directory=%~2
+        shift
+        goto next
+        :done
+        if /I "%operation%"=="package" if not "%output%"=="" (
+          echo fake-msix>"%output%"
+        )
+        if /I "%operation%"=="unpack" if not "%directory%"=="" (
+          mkdir "%directory%" 2>nul
+          mkdir "%directory%\App" 2>nul
+          mkdir "%directory%\Assets" 2>nul
+          echo fake-exe>"%directory%\App\Contoso.exe"
+          echo fake-logo>"%directory%\Assets\StoreLogo.png"
+          echo fake-logo>"%directory%\Assets\Square150x150Logo.png"
+          echo fake-logo>"%directory%\Assets\Square44x44Logo.png"
+          (
+            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"^>
+            echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
+            echo   ^<Properties^>
+            echo     ^<DisplayName^>Contoso^</DisplayName^>
+            echo     ^<PublisherDisplayName^>Contoso^</PublisherDisplayName^>
+            echo     ^<Logo^>Assets/StoreLogo.png^</Logo^>
+            echo   ^</Properties^>
+            echo   ^<Applications^>
+            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App"^>
+            echo       ^<uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" Square150x150Logo="Assets/Square150x150Logo.png" Square44x44Logo="Assets/Square44x44Logo.png" /^>
+            echo     ^</Application^>
+            echo   ^</Applications^>
+            echo ^</Package^>
+          )>"%directory%\AppxManifest.xml"
         )
         exit /b 0
         """.trimIndent(),

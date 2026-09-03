@@ -6,6 +6,7 @@ import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
@@ -60,6 +61,16 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val resolvedNuGetPackageManifestFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRuntimeAssetDirectories: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRestoreLockFiles: ConfigurableFileCollection
 
     @get:Input
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
@@ -254,18 +265,51 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
-        val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
+        val rid = runtimeIdentifier.get()
+        val winAppRuntimeRoots = winAppRuntimeAssetDirectories.files
+            .map { file -> file.toPath() }
+            .filter(Path::isDirectory)
+        winAppRuntimeRoots.forEach { root ->
+            stageWinAppRuntimeAssets(root.resolve(winAppRuntimeArchitecture(rid)), outputRoot)
+        }
+        val packageSpecs = nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+        val identities = packageSpecs
             .map(::parseNuGetPackageIdentity)
+            .filterNot { identity ->
+                identity.normalizedPackageId.lowercase() in WinAppConfigurationDefaults.toolingPackageIds
+            }
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
-        val resolvedPackageRoots = resolvedNuGetPackageManifestFiles.files
-            .flatMap(::readResolvedRuntimeNuGetPackageRoots)
-            .map(Path::of)
+        val winAppLockFiles = winAppRestoreLockFiles.files.filter(java.io.File::isFile)
+        val winAppPackageRoots = if (winAppLockFiles.isNotEmpty()) {
+            readWinAppRestoredPackageRoots(
+                lockFiles = winAppLockFiles,
+                rootPackageSpecs = packageSpecs,
+            )
+        } else {
+            emptyList()
+        }
+        val missingWinAppPackageRoots = winAppPackageRoots.filterNot(Path::isDirectory)
+        if (missingWinAppPackageRoots.isNotEmpty()) {
+            throw GradleException(
+                "WinApp restore lockfile references missing NuGet package roots:${System.lineSeparator()}" +
+                    missingWinAppPackageRoots.joinToString(System.lineSeparator()),
+            )
+        }
+        if (winAppLockFiles.isNotEmpty() && identities.isNotEmpty() && winAppPackageRoots.isEmpty()) {
+            throw GradleException("WinApp restore lockfile does not contain the declared runtime NuGet packages.")
+        }
+        val resolvedPackageRoots = if (winAppLockFiles.isNotEmpty()) {
+            winAppPackageRoots
+        } else {
+            resolvedNuGetPackageManifestFiles.files
+                .flatMap(::readResolvedRuntimeNuGetPackageRoots)
+                .map(Path::of)
+        }
         val resolvedPackages = resolveNuGetPackages(
             identities = identities,
             resolvedPackageRoots = resolvedPackageRoots,
             modeledPackageRoots = nugetPackageContentFiles.files.map { it.toPath() },
         )
-        val rid = runtimeIdentifier.get()
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
@@ -400,6 +444,19 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             stream.asSequence()
                 .filter { it.isRegularFile() }
                 .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
+        }
+    }
+
+    private fun stageWinAppRuntimeAssets(runtimeRoot: Path, outputRoot: Path) {
+        if (!runtimeRoot.isDirectory()) {
+            return
+        }
+        Files.walk(runtimeRoot).use { stream ->
+            stream.asSequence()
+                .filter(Path::isRegularFile)
+                .forEach { source ->
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeRoot)))
+                }
         }
     }
 
@@ -722,6 +779,9 @@ internal fun currentWindowsRuntimeIdentifier(): String {
         else -> "win-x64"
     }
 }
+
+internal fun winAppRuntimeArchitecture(runtimeIdentifier: String): String =
+    runtimeIdentifier.substringAfter("win-", missingDelimiterValue = runtimeIdentifier)
 
 internal fun parseNuGetPackageIdentity(spec: String): WinRTNuGetPackageIdentity {
     val separator = spec.lastIndexOf('@')

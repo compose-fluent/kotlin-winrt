@@ -115,6 +115,11 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRestoreLockFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val windowsSdkDeclared: Property<Boolean>
 
@@ -207,6 +212,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.excludeTypes.set(excludeTypes)
             parameters.additionExcludeNamespaces.set(additionExcludeNamespaces)
             parameters.dependencyIdentityFiles.from(dependencyIdentityFiles)
+            parameters.winAppRestoreLockFiles.from(winAppRestoreLockFiles)
             parameters.windowsSdkDeclared.set(windowsSdkDeclared)
             parameters.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             parameters.windowsSdkVersion.set(windowsSdkVersion)
@@ -247,6 +253,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val excludeTypes: ListProperty<String>
     val additionExcludeNamespaces: ListProperty<String>
     val dependencyIdentityFiles: ConfigurableFileCollection
+    val winAppRestoreLockFiles: ConfigurableFileCollection
     val windowsSdkDeclared: Property<Boolean>
     val windowsSdkRegistryRoots: ListProperty<String>
     val windowsSdkVersion: Property<String>
@@ -504,14 +511,32 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         } else {
             emptyList()
         }
+        val winAppLockFiles = parameters.winAppRestoreLockFiles.files.filter(File::isFile)
+        val nugetSources = if (winAppLockFiles.isNotEmpty()) {
+            readWinAppProjectionWinmdFiles(
+                lockFiles = winAppLockFiles,
+                rootPackageSpecs = packageSpecs,
+            ).map(WinRTMetadataSource::path)
+        } else {
+            legacyNuGetMetadataSources(packageSpecs)
+        }
+        val dependencyRecords = parameters.dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
+        val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
+            records = dependencyRecords,
+            outputRoot = parameters.workDirectory.get().asFile.toPath().resolve("dependency-authored-metadata"),
+        )
+            .map(WinRTMetadataSource::path)
+        val sources = explicitSources + sdkSource + nugetSources + dependencyAuthoredMetadataSources
+        return sources
+    }
+
+    private fun legacyNuGetMetadataSources(packageSpecs: List<String>): List<WinRTMetadataSource> {
         val explicitNuGetRoots = parameters.nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
         val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (parameters.restoreNuGetPackages.get()) {
-            packageIdentities.filter { identity ->
-                isNuGetPackageClosureAvailable(identity, nugetRoots)
-            }
+            packageIdentities.filter { identity -> isNuGetPackageClosureAvailable(identity, nugetRoots) }
         } else {
             val missingNuGetIdentities = packageIdentities.filterNot { identity ->
                 isNuGetPackageClosureAvailable(identity, nugetRoots)
@@ -523,27 +548,17 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         }
         val restoredPackageDirectories = if (parameters.restoreNuGetPackages.get()) {
             val identitiesFromRoots = packageIdentitiesFromRoots.toSet()
-            val missingNuGetIdentities = packageIdentities.filterNot { identity -> identity in identitiesFromRoots }
-            restoreNuGetPackages(missingNuGetIdentities)
+            restoreNuGetPackages(packageIdentities.filterNot { identity -> identity in identitiesFromRoots })
         } else {
             emptyList()
         }
-        val resolvedNuGetSources = packageIdentitiesFromRoots.map { identity ->
+        return packageIdentitiesFromRoots.map { identity ->
             WinRTMetadataSource.nugetPackage(
                 packageId = identity.normalizedPackageId,
                 version = identity.normalizedVersion,
                 globalPackagesRoots = nugetRoots,
             )
-        }
-        val restoredNuGetSources = restoredPackageDirectories.map(WinRTMetadataSource::nugetPackage)
-        val dependencyRecords = parameters.dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
-        val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
-            records = dependencyRecords,
-            outputRoot = parameters.workDirectory.get().asFile.toPath().resolve("dependency-authored-metadata"),
-        )
-            .map(WinRTMetadataSource::path)
-        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
-        return sources
+        } + restoredPackageDirectories.map(WinRTMetadataSource::nugetPackage)
     }
 
     private fun isNuGetPackageClosureAvailable(

@@ -22,6 +22,7 @@ import org.gradle.api.file.CopySpec
 import org.gradle.api.file.Directory
 import org.gradle.api.plugins.JavaApplication
 import org.gradle.api.file.RegularFile
+import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Input
@@ -281,6 +282,12 @@ private fun configureWinRTLibraryModel(
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
         task.emitProjectionSources.set(localGenerationRequired)
     }
+    project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+    }
+    project.tasks.named("restoreWinAppDependencies", RestoreWinAppDependenciesTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+    }
     project.tasks.named("mergeWinRTCompilerSupport", MergeWinRTCompilerSupportTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -358,6 +365,18 @@ private fun configureWinRTApplicationTasks(
     )
     configureWinRTIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
+    val projectName = project.name
+    val hasMingwReleaseExecutable = project.objects.property(Boolean::class.java).convention(false)
+    val restoreWinAppDependenciesTask = project.tasks.named(
+        "restoreWinAppDependencies",
+        RestoreWinAppDependenciesTask::class.java,
+    )
+    project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+    }
+    restoreWinAppDependenciesTask.configure { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+    }
     project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -449,6 +468,7 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
+            task.onlyIf { !task.restoreNuGetPackages.get() }
         },
     )
     val stageRuntimeAssetsTask = project.tasks.register(
@@ -479,6 +499,12 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.resolvedNuGetPackageManifestFiles.from(resolveRuntimeNuGetPackagesTask.flatMap { it.outputFile })
+            task.winAppRuntimeAssetDirectories.from(
+                restoreWinAppDependenciesTask.flatMap { restore -> restore.winAppDirectory }.map { directory ->
+                    directory.dir("bin")
+                },
+            )
+            task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { restore -> restore.winmdLockFile })
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
             task.nugetExecutable.set(extension.nugetExecutable)
@@ -569,6 +595,7 @@ private fun configureWinRTApplicationTasks(
             task.dependsOn("generateWinRTProjections")
             task.dependsOn(buildAuthoringHostTask)
             task.dependsOn(resolveRuntimeNuGetPackagesTask)
+            task.dependsOn(restoreWinAppDependenciesTask)
         },
     )
     val mingwApplicationEntryTask = project.tasks.register(
@@ -673,6 +700,11 @@ private fun configureWinRTApplicationTasks(
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.executableBaseName.set(project.name)
+            task.deferredManifestPayloadPaths.set(
+                hasMingwReleaseExecutable.map { hasNativeExecutable ->
+                    if (hasNativeExecutable) emptyList() else listOf("$projectName.exe")
+                },
+            )
             task.dependsOn(stageRuntimeAssetsTask)
         },
     )
@@ -681,6 +713,7 @@ private fun configureWinRTApplicationTasks(
         mingwApplicationEntryTask,
         stageRuntimeAssetsTask,
         stageApplicationPackageTask,
+        hasMingwReleaseExecutable,
         extension.application.console.get(),
     )
     val applicationHostTask = project.tasks.register(
@@ -725,19 +758,46 @@ private fun configureWinRTApplicationTasks(
         Action<PackageWinRTApplicationTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Packages the staged WinRT application payload into an appx/msix package."
-            task.packageDirectory.set(stageApplicationPackageTask.flatMap { it.outputDirectory })
+            task.packageDirectory.set(
+                hasMingwReleaseExecutable.flatMap { hasNativeExecutable ->
+                    if (hasNativeExecutable) {
+                        stageApplicationPackageTask.flatMap { it.outputDirectory }
+                    } else {
+                        applicationHostTask.flatMap { it.outputDirectory }
+                    }
+                },
+            )
             task.outputFile.set(
                 extension.application.packageOutputFile.orElse(
                     project.layout.buildDirectory.file("kotlin-winrt/packages/${project.name}.msix"),
                 ),
             )
             task.generatePackage.set(extension.application.generatePackage)
+            task.packageMode.set(extension.application.packageMode.map { it.name })
             task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
+            task.winAppCliExecutable.set(extension.winAppCliExecutable)
+            task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
+            task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
+            task.winAppCliCacheDirectory.set(
+                project.layout.dir(
+                    project.provider {
+                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
+                    },
+                ),
+            )
+            task.winAppWorkspace.set(
+                project.layout.dir(
+                    restoreWinAppDependenciesTask.flatMap { restore -> restore.configurationFile }
+                        .map { configuration -> configuration.asFile.parentFile },
+                ),
+            )
+            task.offline.set(project.provider { project.gradle.startParameter.isOffline })
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
-            task.onlyIf { extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged }
+            task.onlyIf { task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name }
             task.dependsOn(stageApplicationPackageTask)
+            task.dependsOn(restoreWinAppDependenciesTask)
         },
     )
     val verifyPackageTask = project.tasks.register(
@@ -745,19 +805,38 @@ private fun configureWinRTApplicationTasks(
         VerifyWinRTApplicationPackageTask::class.java,
         Action<VerifyWinRTApplicationPackageTask> { task ->
             task.group = "kotlin-winrt"
-            task.description = "Verifies the WinRT application appx/msix package layout with makeappx."
+            task.description = "Verifies the WinRT application appx/msix package layout with WinApp CLI."
             task.packageFile.set(packageApplicationTask.flatMap { it.outputFile })
             task.markerFile.set(project.layout.buildDirectory.file("kotlin-winrt/packages/${project.name}.verify.marker"))
             task.unpackDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/package-verification/${project.name}"))
             task.verifyPackage.set(extension.application.verifyPackage)
+            task.packageMode.set(extension.application.packageMode.map { it.name })
+            task.generatePackage.set(extension.application.generatePackage)
             task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
+            task.winAppCliExecutable.set(extension.winAppCliExecutable)
+            task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
+            task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
+            task.winAppCliCacheDirectory.set(
+                project.layout.dir(
+                    project.provider {
+                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
+                    },
+                ),
+            )
+            task.winAppWorkspace.set(
+                project.layout.dir(
+                    restoreWinAppDependenciesTask.flatMap { restore -> restore.configurationFile }
+                        .map { configuration -> configuration.asFile.parentFile },
+                ),
+            )
+            task.offline.set(project.provider { project.gradle.startParameter.isOffline })
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.onlyIf {
-                extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
-                    extension.application.generatePackage.get() &&
-                    extension.application.verifyPackage.get()
+                task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
+                    task.verifyPackage.get() &&
+                    task.generatePackage.get()
             }
             task.dependsOn(packageApplicationTask)
         },
@@ -775,6 +854,7 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.signPackage.set(extension.application.signPackage)
+            task.packageMode.set(extension.application.packageMode.map { it.name })
             task.signToolExecutable.set(extension.application.signToolExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
@@ -785,8 +865,8 @@ private fun configureWinRTApplicationTasks(
             task.signingTimestampUrl.set(extension.application.signingTimestampUrl)
             task.signingHashAlgorithm.set(extension.application.signingHashAlgorithm)
             task.onlyIf {
-                extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
-                    extension.application.signPackage.get()
+                task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
+                    task.signPackage.get()
             }
             task.dependsOn(packageApplicationTask)
             task.dependsOn(verifyPackageTask)
@@ -809,11 +889,12 @@ private fun configureWinRTApplicationTasks(
                 extension.application.installPackageFile.orElse(defaultInstallPackageFile),
             )
             task.installPackage.set(extension.application.installPackage)
+            task.packageMode.set(extension.application.packageMode.map { it.name })
             task.powerShellExecutable.set(extension.application.installPowerShellExecutable)
             task.forceApplicationShutdown.set(extension.application.installForceApplicationShutdown)
             task.onlyIf {
-                extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
-                    extension.application.installPackage.get()
+                task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
+                    task.installPackage.get()
             }
             task.dependsOn(packageApplicationTask)
             task.dependsOn(verifyPackageTask)
@@ -941,6 +1022,7 @@ private fun configureMingwApplicationEntry(
     entryTask: TaskProvider<GenerateWinRTMingwApplicationEntryTask>,
     stageRuntimeAssetsTask: TaskProvider<StageWinRTRuntimeAssetsTask>,
     stageApplicationPackageTask: TaskProvider<StageWinRTApplicationPackageTask>,
+    hasMingwReleaseExecutable: Property<Boolean>,
     console: Boolean,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
@@ -974,6 +1056,7 @@ private fun configureMingwApplicationEntry(
                 )
             }
             if (executable.buildType == NativeBuildType.RELEASE) {
+                hasMingwReleaseExecutable.set(true)
                 stageApplicationPackageTask.configure { task ->
                     task.dependsOn(executable.linkTaskProvider)
                     task.rootPackagePayloadFiles.from(project.provider { executable.outputFile })
@@ -1006,6 +1089,51 @@ private fun configureWinRTGeneration(
     val authoringTargetArtifactName = kotlinWinRTAuthoringTargetArtifactName(project)
     val mergedCompilerSupportManifest = project.layout.buildDirectory.file(
         "generated/kotlin-winrt/compiler-support/merged/compiler-support.tsv",
+    )
+    val winAppWorkspace = project.layout.buildDirectory.dir("generated/kotlin-winrt/winapp")
+    val includeWinAppToolingPackages = project.provider {
+        extension is WinRTExtension &&
+            extension.applicationEnabled.get() &&
+            extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
+            extension.application.generatePackage.get() &&
+            extension.application.makeAppxExecutable.get().isBlank()
+    }
+    val generateWinAppConfigurationTask = project.tasks.register(
+        "generateWinAppConfiguration",
+        GenerateWinAppConfigurationTask::class.java,
+        Action<GenerateWinAppConfigurationTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Generates the internal WinApp CLI configuration from Kotlin/WinRT NuGet declarations."
+            task.nugetPackages.set(project.provider { allNuGetPackageSpecs(extension) })
+            task.includeToolingPackages.set(includeWinAppToolingPackages)
+            task.outputFile.set(winAppWorkspace.map { workspace -> workspace.file("winapp.yaml") })
+        },
+    )
+    val restoreWinAppDependenciesTask = project.tasks.register(
+        "restoreWinAppDependencies",
+        RestoreWinAppDependenciesTask::class.java,
+        Action<RestoreWinAppDependenciesTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Restores Kotlin/WinRT NuGet dependencies and WinMD inventory with WinApp CLI."
+            task.configurationFile.set(generateWinAppConfigurationTask.flatMap { it.outputFile })
+            task.winAppDirectory.set(winAppWorkspace.map { workspace -> workspace.dir(".winapp") })
+            task.winmdLockFile.set(task.winAppDirectory.file("winmds.lock.json"))
+            task.nugetPackages.set(project.provider { allNuGetPackageSpecs(extension) })
+            task.restoreEnabled.set(extension.restoreNuGetPackages)
+            task.includeToolingPackages.set(includeWinAppToolingPackages)
+            task.winAppCliExecutable.set(extension.winAppCliExecutable)
+            task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
+            task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
+            task.winAppCliCacheDirectory.set(
+                project.layout.dir(
+                    project.provider {
+                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
+                    },
+                ),
+            )
+            task.offline.set(project.provider { project.gradle.startParameter.isOffline })
+            task.dependsOn(generateWinAppConfigurationTask)
+        },
     )
     val generateTask = project.tasks.register(
         "generateWinRTProjections",
@@ -1051,6 +1179,7 @@ private fun configureWinRTGeneration(
                     projectionNuGetPackageSpecs(extension)
                 },
             )
+            task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
             task.nugetPackageContentFiles.from(
                 task.nugetPackages.zip(extension.nugetGlobalPackagesRoots) { packageSpecs, explicitGlobalPackagesRoots ->
                     existingNuGetPackageContentRoots(
@@ -1421,6 +1550,10 @@ private fun registerWinRTAuthoredCandidateValidation(
                 project.provider {
                     projectionNuGetPackageSpecs(extension)
                 },
+            )
+            task.winAppRestoreLockFiles.from(
+                project.tasks.named("restoreWinAppDependencies", RestoreWinAppDependenciesTask::class.java)
+                    .flatMap { restore -> restore.winmdLockFile },
             )
             task.authoringAssemblyName.set(projectName)
             task.dependsOn(compileTaskProvider)

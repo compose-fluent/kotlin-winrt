@@ -9,6 +9,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -31,7 +32,28 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
     abstract val generatePackage: Property<Boolean>
 
     @get:Input
+    abstract val packageMode: Property<String>
+
+    @get:Input
     abstract val makeAppxExecutable: Property<String>
+
+    @get:Input
+    abstract val winAppCliExecutable: Property<String>
+
+    @get:Input
+    abstract val winAppCliVersion: Property<String>
+
+    @get:Input
+    abstract val winAppCliPackageSha512: Property<String>
+
+    @get:Internal
+    abstract val winAppCliCacheDirectory: DirectoryProperty
+
+    @get:Internal
+    abstract val winAppWorkspace: DirectoryProperty
+
+    @get:Input
+    abstract val offline: Property<Boolean>
 
     @get:Input
     abstract val windowsSdkVersion: Property<String>
@@ -45,7 +67,12 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
 
     init {
         generatePackage.convention(true)
+        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
         makeAppxExecutable.convention("")
+        winAppCliExecutable.convention("winapp")
+        winAppCliVersion.convention(WinAppCliDefaults.VERSION)
+        winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
+        offline.convention(false)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
@@ -75,17 +102,61 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
                     manifestErrors.joinToString(separator = "\n") { "- $it" },
             )
         }
+        Files.deleteIfExists(target)
+        target.parent?.let(Files::createDirectories)
+        if (makeAppxExecutable.get().isNotBlank()) {
+            packageWithLegacyMakeAppx(packageRoot, target)
+        } else {
+            packageWithWinAppCli(packageRoot, manifest, target)
+        }
+        if (!target.isRegularFile()) {
+            throw GradleException("WinApp packaging completed but did not create appx/msix package at $target.")
+        }
+    }
+
+    private fun packageWithLegacyMakeAppx(packageRoot: Path, target: Path) {
         val makeAppx = discoverMakeAppxExecutable() ?: run {
             throw GradleException("Cannot create appx/msix package because makeappx.exe was not found.")
         }
-        Files.deleteIfExists(target)
-        target.parent?.let(Files::createDirectories)
         if (!MakeAppxRunner.pack(makeAppx, packageRoot, target, logger)) {
             Files.deleteIfExists(target)
             throw GradleException("Failed to create appx/msix package at $target.")
         }
-        if (!target.isRegularFile()) {
-            throw GradleException("makeappx completed but did not create appx/msix package at $target.")
+    }
+
+    private fun packageWithWinAppCli(packageRoot: Path, manifest: Path, target: Path) {
+        val arguments = if (target.fileName.toString().endsWith(".appx", ignoreCase = true)) {
+            listOf(
+                "tool",
+                "makeappx",
+                "pack",
+                "/d",
+                packageRoot.toString(),
+                "/p",
+                target.toString(),
+                "/o",
+            )
+        } else {
+            listOf(
+                "package",
+                packageRoot.toString(),
+                "--output",
+                target.toString(),
+                "--manifest",
+                manifest.toString(),
+                "--skip-pri",
+                "--quiet",
+            )
+        }
+        try {
+            winAppCli().run(
+                arguments = arguments,
+                workingDirectory = winAppWorkspace.orNull?.asFile?.toPath() ?: packageRoot,
+                description = "package the staged application at $packageRoot",
+            )
+        } catch (error: Exception) {
+            runCatching { Files.deleteIfExists(target) }
+            throw error
         }
     }
 
@@ -96,4 +167,14 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
             runtimeIdentifier.get(),
             windowsSdkRegistryRoots.get().orNullIfEmpty(),
         )
+
+    private fun winAppCli(): WinAppCliSupport = WinAppCliSupport(
+        configuredExecutable = winAppCliExecutable.get(),
+        cliVersion = winAppCliVersion.get(),
+        packageSha512 = winAppCliPackageSha512.get(),
+        cliCacheDirectory = winAppCliCacheDirectory.orNull?.asFile?.toPath()
+            ?: temporaryDir.toPath().resolve("winapp-cli"),
+        offline = offline.get(),
+        logger = logger,
+    )
 }

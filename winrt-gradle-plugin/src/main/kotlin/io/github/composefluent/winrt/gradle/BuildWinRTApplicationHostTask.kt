@@ -73,6 +73,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     fun build() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
+        GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
         Files.createDirectories(sourceRoot)
         val source = sourceRoot.resolve("kotlin_winrt_application_host.c")

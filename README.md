@@ -233,6 +233,33 @@ winRT {
 
 Reusable WinRT libraries may declare `nugetPackage(...)` or `runtimeAsset(...)`. Final application modules consume dependency WinRT identity metadata and stage the aggregated runtime assets, so downstream apps do not need to repeat every library declaration just to place payloads in the final layout.
 
+## WinApp CLI and NuGet Restore
+
+The Gradle plugin translates project and dependency `nugetPackage(...)` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `restoreNuGetPackages.set(true)`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile and `.winapp/bin/<architecture>` output drive DLL, PRI, asset, and manifest staging after compilation; explicit local `winmd(...)` inputs remain part of the projection input set.
+
+WinApp CLI provisioning is automatic and does not use WinGet, modify `PATH`, or require an administrator install. The plugin first probes `winAppCliExecutable` (default: `winapp`) and uses it only when it reports the required version, currently `0.6.0`. Otherwise it downloads `Microsoft.Windows.SDK.BuildTools.WinApp` from NuGet, verifies the pinned SHA-512 checksum, and caches the extracted host tools below the Gradle user home. A custom system location can be selected without changing `PATH`:
+
+```kotlin
+winRT {
+    winAppCliExecutable.set("C:/tools/winapp.exe")
+}
+```
+
+The plugin's `winapp restore`, `winapp package`, and `winapp tool makeappx` paths do not invoke MSBuild and do not require an MSBuild project. JVM and `mingwX64` compilation still require their normal JDK, Kotlin/Native, C/C++, and Windows SDK prerequisites.
+
+WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore and may check or install Windows App SDK runtime packages. That release does not expose a switch that limits `restore` to NuGet download and lockfile generation. Gradle `--offline` prevents automatic CLI download when the managed copy is absent, but WinApp itself has no offline option; a forced restore must already be satisfiable from local WinApp/NuGet state. Set `restoreNuGetPackages.set(false)` to retain the legacy NuGet cache/CLI resolution path.
+
+For the default unpackaged application mode, the plugin keeps a loose staged layout for the generated JVM host or `mingwX64` executable. With `application { packaged() }`, `packageWinRTApplication` creates the final package after staging. A configured release `mingwX64` executable remains the package entry payload; projects without one package the generated JVM host, its runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. `verifyWinRTApplicationPackage` unpacks the result through `winapp tool makeappx` and validates its manifest payload. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override:
+
+```kotlin
+winRT {
+    application {
+        packaged()
+        makeAppxExecutable.set("C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/makeappx.exe")
+    }
+}
+```
+
 ## WinUI Applications
 
 Enable the application model only in the final executable app module:
