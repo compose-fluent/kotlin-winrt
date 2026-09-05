@@ -120,6 +120,11 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
 
     @get:InputFiles
     @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val defaultAppxResourceFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
     abstract val rootPackagePayloadFiles: ConfigurableFileCollection
 
@@ -144,9 +149,22 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
 
+    @get:Internal
+    abstract val defaultAppxResourceRoot: DirectoryProperty
+
     @Input
     fun getDefaultProjectPriResourceRootPath(): String =
         defaultProjectPriResourceRoot.orNull
+            ?.asFile
+            ?.toPath()
+            ?.toAbsolutePath()
+            ?.normalize()
+            ?.toString()
+            .orEmpty()
+
+    @Input
+    fun getDefaultAppxResourceRootPath(): String =
+        defaultAppxResourceRoot.orNull
             ?.asFile
             ?.toPath()
             ?.toAbsolutePath()
@@ -184,6 +202,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
                     .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeAssetsRoot))) }
             }
         }
+        stageDefaultAppxResources(outputRoot)
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
         stageRootPackagePayloads(outputRoot)
@@ -214,11 +233,24 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     }
 
     private fun stageAppxManifest(outputRoot: Path) {
-        val manifest = appxManifestFiles.files
+        val configuredManifests = appxManifestFiles.files
             .map { it.toPath() }
+        val manifest = configuredManifests
             .filter { it.isRegularFile() }
             .sorted()
-            .firstOrNull() ?: return
+            .firstOrNull()
+            ?: if (configuredManifests.isEmpty()) {
+                defaultAppxResourceRoot.orNull
+                    ?.asFile
+                    ?.toPath()
+                    ?.toAbsolutePath()
+                    ?.normalize()
+                    ?.resolve("AppxManifest.xml")
+                    ?.takeIf { it.isRegularFile() }
+            } else {
+                null
+            }
+            ?: return
         val manifestErrors = ProjectPriManifestSupport.validatePackageManifest(manifest)
         if (manifestErrors.isNotEmpty()) {
             throw GradleException(
@@ -227,6 +259,31 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             )
         }
         GradleFileOperations.copyFile(manifest, outputRoot.resolve("AppxManifest.xml"))
+    }
+
+    private fun stageDefaultAppxResources(outputRoot: Path) {
+        val resourceRoot = defaultAppxResourceRoot.orNull
+            ?.asFile
+            ?.toPath()
+            ?.toAbsolutePath()
+            ?.normalize()
+            ?: return
+        defaultAppxResourceFiles.files.asSequence()
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filter { it.isRegularFile() }
+            .sortedBy { it.toString().lowercase() }
+            .forEach { source ->
+                if (!source.startsWith(resourceRoot)) {
+                    throw GradleException(
+                        "Default AppX resource is outside appxResources: ${source.toAbsolutePath().normalize()}",
+                    )
+                }
+                val relativeTarget = source.relativeTo(resourceRoot)
+                if (relativeTarget.name.equals("AppxManifest.xml", ignoreCase = true) && relativeTarget.parent == null) {
+                    return@forEach
+                }
+                GradleFileOperations.copyFile(source, outputRoot.resolve(relativeTarget))
+            }
     }
 
     private fun validateStagedManifestPayload(outputRoot: Path) {

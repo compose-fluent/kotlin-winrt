@@ -2886,6 +2886,48 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_plugin_uses_appx_resources_manifest_by_default_and_prefers_explicit_manifest() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-appx-resources-default-test-")
+        val appxResources = projectDir.resolve("appxResources")
+        Files.createDirectories(appxResources)
+        val defaultManifest = appxResources.resolve("AppxManifest.xml")
+        val explicitManifest = projectDir.resolve("custom-AppxManifest.xml")
+        Files.writeString(defaultManifest, appxManifestXml(identityName = "Default.Manifest"))
+        Files.writeString(explicitManifest, appxManifestXml(identityName = "Explicit.Manifest"))
+
+        val defaultProject = ProjectBuilder.builder()
+            .withName("default-manifest-app")
+            .withProjectDir(projectDir.toFile())
+            .build()
+        defaultProject.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        defaultProject.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.packaged()
+        }
+        val defaultStageTask = defaultProject.tasks
+            .named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java)
+            .get()
+        assertEquals(setOf(defaultManifest.toFile()), defaultStageTask.appxManifestFiles.files)
+        val defaultRuntimeTask = defaultProject.tasks
+            .named("stageWinRTRuntimeAssets", StageWinRTRuntimeAssetsTask::class.java)
+            .get()
+        assertEquals(setOf(defaultManifest.toFile()), defaultRuntimeTask.appxManifestFiles.files)
+
+        val explicitProject = ProjectBuilder.builder()
+            .withName("explicit-manifest-app")
+            .withProjectDir(projectDir.toFile())
+            .build()
+        explicitProject.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        explicitProject.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.packaged()
+            application.appxManifest(explicitManifest)
+        }
+        val explicitStageTask = explicitProject.tasks
+            .named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java)
+            .get()
+        assertEquals(setOf(explicitManifest.toFile()), explicitStageTask.appxManifestFiles.files)
+    }
+
+    @Test
     fun application_host_infers_kmp_jvm_target_runtime_classpath_and_jar() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
@@ -6494,6 +6536,56 @@ class KotlinWinRTPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppxManifest.xml")))
         assertEquals("jar", Files.readString(outputRoot.resolve("App/app.jar")))
         assertEquals("dll", Files.readString(outputRoot.resolve("App/native/component.dll")))
+    }
+
+    @Test
+    fun application_package_task_stages_default_appx_resources_relative_to_appx_resources_root() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-default-appx-resources").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val appxResources = project.projectDir.toPath().resolve("appxResources")
+        writeManifestPayloadReferences(appxResources)
+        Files.writeString(appxResources.resolve("AppxManifest.xml"), appxManifestXml())
+        Files.createDirectories(appxResources.resolve("WinUI3Package/themes"))
+        Files.writeString(appxResources.resolve("WinUI3Package/themes/Generic.xaml"), "theme")
+        val explicitExecutable = project.layout.buildDirectory.file("explicit/Contoso.exe").get().asFile.toPath()
+        Files.createDirectories(explicitExecutable.parent)
+        Files.writeString(explicitExecutable, "explicit")
+
+        val task = project.tasks.register(
+            "stageDefaultAppxResourcesApplicationPackage",
+            StageWinRTApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-default-appx-resources"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultAppxResourceRoot.set(project.layout.projectDirectory.dir("appxResources"))
+            registeredTask.defaultAppxResourceFiles.from(project.fileTree(appxResources))
+            registeredTask.packagePayloadFiles.from(explicitExecutable)
+            registeredTask.projectPriTargetPaths.put(
+                explicitExecutable.toAbsolutePath().normalize().toString(),
+                "App/Contoso.exe",
+            )
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppxManifest.xml")))
+        assertEquals("explicit", Files.readString(outputRoot.resolve("App/Contoso.exe")))
+        assertEquals("theme", Files.readString(outputRoot.resolve("WinUI3Package/themes/Generic.xaml")))
+        assertFalse(Files.exists(outputRoot.resolve("appxResources/AppxManifest.xml")))
+        assertFalse(Files.exists(outputRoot.resolve("appxResources/WinUI3Package/themes/Generic.xaml")))
     }
 
     @Test

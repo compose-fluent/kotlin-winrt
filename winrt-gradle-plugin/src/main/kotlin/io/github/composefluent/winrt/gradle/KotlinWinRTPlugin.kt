@@ -366,6 +366,26 @@ private fun configureWinRTApplicationTasks(
     configureWinRTIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
     val projectName = project.name
+    val appxResourcesRoot = project.layout.projectDirectory.dir("appxResources")
+    val defaultAppxManifestFiles = project.provider {
+        if (extension.application.appxManifestFiles.files.isNotEmpty()) {
+            emptyList<File>()
+        } else {
+            val manifest = appxResourcesRoot.file("AppxManifest.xml").asFile
+            if (manifest.isFile) listOf(manifest) else emptyList()
+        }
+    }
+    val defaultAppxResourceFiles = project.provider {
+        if (appxResourcesRoot.asFile.isDirectory) {
+            project.fileTree(appxResourcesRoot.asFile) { spec ->
+                spec.include("**/*")
+                spec.exclude(".gradle/**")
+                spec.exclude("build/**")
+            }.files
+        } else {
+            emptyList<File>()
+        }
+    }
     val hasMingwReleaseExecutable = project.objects.property(Boolean::class.java).convention(false)
     val restoreWinAppDependenciesTask = project.tasks.named(
         "restoreWinAppDependencies",
@@ -591,7 +611,7 @@ private fun configureWinRTApplicationTasks(
                     }
                 },
             )
-            task.appxManifestFiles.from(extension.application.appxManifestFiles)
+            task.appxManifestFiles.from(extension.application.appxManifestFiles, defaultAppxManifestFiles)
             task.resolvedNuGetPackageManifestFiles.from(resolveRuntimeNuGetPackagesTask.flatMap { it.outputFile })
             task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
@@ -702,13 +722,15 @@ private fun configureWinRTApplicationTasks(
                     }
                 },
             )
-            task.appxManifestFiles.from(extension.application.appxManifestFiles)
+            task.appxManifestFiles.from(extension.application.appxManifestFiles, defaultAppxManifestFiles)
             task.resolvedNuGetPackageManifestFiles.from(resolveRuntimeNuGetPackagesTask.flatMap { it.outputFile })
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
             task.projectPriEmbedFiles.from(extension.application.projectPriEmbedFiles)
             task.packagePayloadFiles.from(extension.application.packagePayloadFiles)
+            task.defaultAppxResourceRoot.set(appxResourcesRoot)
+            task.defaultAppxResourceFiles.from(defaultAppxResourceFiles)
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.makePriExecutable.set(extension.application.makePriExecutable)

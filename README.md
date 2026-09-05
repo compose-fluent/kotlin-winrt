@@ -251,6 +251,8 @@ WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore 
 
 For the default unpackaged application mode, the plugin keeps a loose staged layout for the generated JVM host or `mingwX64` executable. With `application { packaged() }`, `packageWinRTApplication` creates the final package after staging. A configured release `mingwX64` executable remains the package entry payload; projects without one package the generated JVM host, its runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. `verifyWinRTApplicationPackage` unpacks the result through `winapp tool makeappx` and validates its manifest payload. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override:
 
+Application package files can be kept in the application module's `appxResources/` directory. The plugin copies every file below that directory into the staged AppX root using its path relative to `appxResources/`; `appxResources/AppxManifest.xml` is used automatically when no `application { appxManifest(...) }` is configured and is not copied as a second payload file. Explicit `appxManifest(...)` manifests take precedence, and explicit `packagePayload(...)` entries are staged after the convention resources so they can override a default path.
+
 ```kotlin
 winRT {
     application {
