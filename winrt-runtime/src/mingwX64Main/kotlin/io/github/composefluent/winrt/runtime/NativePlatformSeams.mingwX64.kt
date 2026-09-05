@@ -1400,9 +1400,44 @@ internal inline fun invokeUnknownRefCountMethod(
 private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"
 private const val runtimeAssetsRootEnvironmentVariableName = "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"
 
+private val nativeKernel32Module by lazy { LoadLibraryA("kernel32.dll") }
+private val nativeGetModuleFileNameWProc:
+    CPointer<CFunction<(COpaquePointer?, CPointer<UShortVar>?, UInt) -> UInt>>? by lazy {
+        GetProcAddress(nativeKernel32Module, "GetModuleFileNameW")?.reinterpret()
+    }
+
+private val nativeModuleDirectory: String? by lazy(::resolveNativeModuleDirectory)
+
+private fun resolveNativeModuleDirectory(): String? {
+    val getModuleFileName = nativeGetModuleFileNameWProc ?: return null
+    var capacity = 512
+    while (capacity <= 32768) {
+        val buffer = nativeHeap.allocArray<UShortVar>(capacity)
+        try {
+            val length = getModuleFileName(null, buffer, capacity.toUInt()).toInt()
+            if (length <= 0) {
+                return null
+            }
+            if (length >= capacity) {
+                capacity *= 2
+                continue
+            }
+            val modulePath = buffer.toLengthAwareKString(length)
+            val separator = maxOf(modulePath.lastIndexOf('\\'), modulePath.lastIndexOf('/'))
+            return if (separator >= 0) modulePath.substring(0, separator) else null
+        } finally {
+            nativeHeap.free(buffer.rawValue)
+        }
+    }
+    return null
+}
+
 private fun nativeRuntimeAssetCandidates(fileName: String): Sequence<String> = sequence {
     getenv(runtimeAssetsRootEnvironmentVariableName)?.toKString()?.takeIf { it.isNotBlank() }?.let { root ->
         yield("$root/$fileName")
+    }
+    nativeModuleDirectory?.let { directory ->
+        yield("$directory\\$fileName")
     }
     yield(fileName)
     yield("$runtimeAssetsDirectoryName/$fileName")
