@@ -4964,6 +4964,66 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_stages_msbuild_content_with_target_path() {
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("nuget/sample.content-target-path/1.0.0").get().asFile.toPath()
+        val buildRoot = packageRoot.resolve("build/native")
+        Files.createDirectories(buildRoot.resolve("payload"))
+        Files.writeString(
+            packageRoot.resolve("Sample.Content.Target.Path.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Content.Target.Path</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(buildRoot.resolve("payload/Control.xbf"), "xbf")
+        Files.writeString(
+            buildRoot.resolve("Sample.Content.Target.Path.targets"),
+            """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <ItemGroup>
+                <ContentWithTargetPath Include="$(MSBuildThisFileDirectory)payload\\Control.xbf">
+                  <TargetPath>WinUI3Package/Controls/Control.xbf</TargetPath>
+                </ContentWithTargetPath>
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/sample-content-target-path.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.Content.Target.Path@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageMsBuildContentWithTargetPath",
+            StageWinRTRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-content-target-path"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetPackageContentFiles.from(packageRoot)
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertEquals("xbf", Files.readString(outputRoot.resolve("WinUI3Package/Controls/Control.xbf")))
+        assertFalse(Files.exists(outputRoot.resolve("Control.xbf")))
+    }
+
+    @Test
     fun runtime_assets_task_writes_concrete_application_manifest_processor_architecture() {
         val project = ProjectBuilder.builder().build()
         val task = project.tasks.register(
@@ -5162,7 +5222,9 @@ class KotlinWinRTPluginTest {
         Files.writeString(nativeRoot.resolve("WinUI3Package.winmd"), "winmd")
         Files.writeString(nativeRoot.resolve("WinUI3Package.pri"), "pri")
         Files.writeString(nativeRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml"), "xaml")
+        Files.writeString(nativeRoot.resolve("WinUI3Package/SettingsCard_Resource.xbf"), "xbf")
         Files.writeString(nativeRoot.resolve("WinUI3Package/Shimmer_Resource.xaml"), "xaml")
+        Files.writeString(nativeRoot.resolve("WinUI3Package/Shimmer_Resource.xbf"), "xbf")
 
         val task = project.tasks.register(
             "stageCppWinRTNativeAssets",
@@ -5189,8 +5251,10 @@ class KotlinWinRTPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.pri")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xaml")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xbf")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xbf")))
+        assertFalse(Files.exists(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml")))
+        assertFalse(Files.exists(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xaml")))
     }
 
     @Test
@@ -5262,7 +5326,7 @@ class KotlinWinRTPluginTest {
         assertEquals("runtime", Files.readString(outputRoot.resolve("plugins/runtime.dat")))
         assertEquals("dll", Files.readString(outputRoot.resolve("Sample.WinApp.Package.dll")))
         assertEquals("pri", Files.readString(outputRoot.resolve("Sample.WinApp.Package.pri")))
-        assertEquals("xaml", Files.readString(outputRoot.resolve("Resources/Control.xaml")))
+        assertFalse(Files.exists(outputRoot.resolve("Resources/Control.xaml")))
     }
 
     @Test

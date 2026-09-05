@@ -424,6 +424,11 @@ private fun configureWinRTApplicationTasks(
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+            task.onlyIf {
+                // A release mingw executable is self-contained native output; building the JVM
+                // authoring host would require MSVC/clang-cl and would only pollute its package.
+                !hasMingwReleaseExecutable.get()
+            }
         },
     )
     val resolveRuntimeNuGetPackagesTask = project.tasks.register(
@@ -524,6 +529,7 @@ private fun configureWinRTApplicationTasks(
                     extension.application.makeAppxExecutable.get().isNotBlank() ||
                     outputFile?.name?.endsWith(".appx", ignoreCase = true) == true
             })
+            task.includeJvmAuthoringArtifacts.set(hasMingwReleaseExecutable.map { hasNativeExecutable -> !hasNativeExecutable })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.generateProjectPri.set(extension.application.generateProjectPri)
             task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })
@@ -586,6 +592,8 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.appxManifestFiles.from(extension.application.appxManifestFiles)
+            task.resolvedNuGetPackageManifestFiles.from(resolveRuntimeNuGetPackagesTask.flatMap { it.outputFile })
+            task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
@@ -695,6 +703,7 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.appxManifestFiles.from(extension.application.appxManifestFiles)
+            task.resolvedNuGetPackageManifestFiles.from(resolveRuntimeNuGetPackagesTask.flatMap { it.outputFile })
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)

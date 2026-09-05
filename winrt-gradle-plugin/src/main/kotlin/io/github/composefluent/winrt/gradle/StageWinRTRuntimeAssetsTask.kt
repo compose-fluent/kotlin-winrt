@@ -218,6 +218,13 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredHostDllFiles: ConfigurableFileCollection
 
+    /**
+     * JVM authoring artifacts are only needed by the JVM application host. A packaged mingw
+     * application is a native entry point and must not carry a JVM jar/runtimeconfig/host DLL.
+     */
+    @get:Input
+    abstract val includeJvmAuthoringArtifacts: Property<Boolean>
+
     init {
         generateProjectPri.convention(true)
         projectPriIndexName.convention("")
@@ -233,6 +240,7 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
         projectPriExcludedFromBuildPaths.convention(emptySet())
         executableBaseName.convention("app")
         includeFrameworkRuntimeAssets.convention(true)
+        includeJvmAuthoringArtifacts.convention(true)
     }
 
     @TaskAction
@@ -254,26 +262,43 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords),
             outputRoot = outputRoot,
         )
-        copyOptionalFiles(authoredHostManifestFiles.files.map { it.toPath() }, outputRoot)
+        val includeJvm = includeJvmAuthoringArtifacts.get()
+        val authoredHostManifests = authoredHostManifestFiles.files
+            .filter(java.io.File::isFile)
+            .filter { includeJvm || !isJvmAuthoringHostManifest(it) }
+        copyOptionalFiles(authoredHostManifests.map { it.toPath() }, outputRoot)
         val dependencyHostManifests = writeDependencyAuthoredHostManifestRecords(
-            records = dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifestRecords),
+            records = dependencyIdentityFiles.files
+                .flatMap(::readAuthoredHostManifestRecords)
+                .filter { includeJvm || !it.targetArtifact.endsWith(".jar", ignoreCase = true) },
             outputRoot = outputRoot,
         )
-        stageAuthoringHostRuntimeConfigs(
-            sources = authoredHostManifestFiles.files.filter(java.io.File::isFile) + dependencyHostManifests.map(Path::toFile),
-            outputRoot = outputRoot,
+        if (includeJvm) {
+            stageAuthoringHostRuntimeConfigs(
+                sources = authoredHostManifests + dependencyHostManifests.map(Path::toFile),
+                outputRoot = outputRoot,
+            )
+        }
+        copyOptionalFiles(
+            authoredTargetArtifactFiles.files
+                .map { it.toPath() }
+                .filter { includeJvm || !it.name.endsWith(".jar", ignoreCase = true) },
+            outputRoot,
         )
-        copyOptionalFiles(authoredTargetArtifactFiles.files.map { it.toPath() }, outputRoot)
         writeDependencyAuthoredTargetArtifactRecords(
-            records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredTargetArtifactRecords),
+            records = dependencyIdentityFiles.files
+                .flatMap(::readDependencyAuthoredTargetArtifactRecords)
+                .filter { includeJvm || !it.fileName.endsWith(".jar", ignoreCase = true) },
             outputRoot = outputRoot,
         )
-        authoredHostDllFiles.files
-            .asSequence()
-            .map { it.toPath() }
-            .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
-            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
+        if (includeJvm) {
+            authoredHostDllFiles.files
+                .asSequence()
+                .map { it.toPath() }
+                .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
+                .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
+        }
         val rid = runtimeIdentifier.get()
         val winAppRuntimeRoots = winAppRuntimeAssetDirectories.files
             .map { file -> file.toPath() }
@@ -440,11 +465,21 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             nativeRoot.resolve(arch),
         )
         val selectedRoot = candidates.firstOrNull { it.isDirectory() } ?: return
-        Files.walk(selectedRoot).use { stream ->
+        val files = Files.walk(selectedRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() }
-                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(selectedRoot))) }
+                .sorted()
+                .toList()
         }
+        files
+            .asSequence()
+            // lib/native is a compiler payload. Its XAML files are source inputs, not
+            // default application payload; explicit ContentWithTargetPath items are
+            // staged separately by the NuGet MSBuild payload resolver below.
+            .filterNot { source -> source.name.endsWith(".xaml", ignoreCase = true) }
+            .forEach { source ->
+                GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(selectedRoot)))
+            }
     }
 
     private fun stageFrameworkNativeAssets(nativeRoot: Path, outputRoot: Path) {
@@ -908,6 +943,11 @@ internal fun readAuthoredHostManifestActivatableClasses(manifest: java.io.File):
     return readJsonStringArrayField(content, "activatableClasses") +
         readJsonStringMap(content, "activatableClassTargets").keys
 }
+
+private fun isJvmAuthoringHostManifest(manifest: java.io.File): Boolean =
+    readPortableIdentityJsonStringField(manifest.takeIf { it.isFile }?.readText().orEmpty(), "targetArtifact")
+        ?.let { targetArtifact -> targetArtifact.endsWith(".jar", ignoreCase = true) }
+        ?: false
 
 internal fun authoredHostManifestDeclaresActivatableClasses(manifest: java.io.File): Boolean {
     return readAuthoredHostManifestActivatableClasses(manifest).any { it.isNotBlank() }

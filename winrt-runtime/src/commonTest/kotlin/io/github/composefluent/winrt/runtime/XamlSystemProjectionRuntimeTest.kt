@@ -22,6 +22,29 @@ import windows.foundation.IStringable
 
 class XamlSystemProjectionRuntimeTest {
     @Test
+    fun xaml_metadata_provider_xmlns_definitions_merge_in_provider_order() {
+        val merged =
+            mergeWinUiXamlXmlnsDefinitions(
+                listOf(
+                    listOf(
+                        WinUiXamlXmlnsDefinition("http://schemas.microsoft.com/winfx/2006/xaml/presentation", "Microsoft.UI.Xaml"),
+                    ),
+                    listOf(
+                        WinUiXamlXmlnsDefinition("using:WinUI3Package", "WinUI3Package"),
+                    ),
+                ),
+            )
+
+        assertEquals(
+            listOf(
+                WinUiXamlXmlnsDefinition("http://schemas.microsoft.com/winfx/2006/xaml/presentation", "Microsoft.UI.Xaml"),
+                WinUiXamlXmlnsDefinition("using:WinUI3Package", "WinUI3Package"),
+            ),
+            merged,
+        )
+    }
+
+    @Test
     fun xaml_runtime_cache_close_is_idempotent() {
         XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
         XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()

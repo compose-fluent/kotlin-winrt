@@ -86,6 +86,16 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val resolvedNuGetPackageManifestFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRestoreLockFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectPriResourceFiles: ConfigurableFileCollection
 
     @get:InputFiles
@@ -177,6 +187,22 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
         stageRootPackagePayloads(outputRoot)
+        val restoredPackageRoots = winAppRestoreLockFiles.files
+            .filter(java.io.File::isFile)
+            .let { lockFiles ->
+                if (lockFiles.isEmpty()) {
+                    emptyList()
+                } else {
+                    readWinAppRestoredPackageRoots(lockFiles)
+                }
+            }
+        AppxManifestPackageSupport.mergeRuntimeDependenciesAndExtensions(
+            manifest = outputRoot.resolve("AppxManifest.xml"),
+            packageRoot = outputRoot,
+            resolvedPackageManifestFiles = resolvedNuGetPackageManifestFiles.files.map { it.toPath() },
+            restoredPackageRoots = restoredPackageRoots,
+            runtimeIdentifier = runtimeIdentifier.get(),
+        )
         WinRTApplicationManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
