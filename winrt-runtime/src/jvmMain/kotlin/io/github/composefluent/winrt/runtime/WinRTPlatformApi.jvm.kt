@@ -625,6 +625,8 @@ actual object WinRTPlatformApi {
     actual fun lastErrorAsHResultRaw(): Int =
         lastErrorAsHResult().value
 
+    actual fun currentPackagePathRaw(): String? = null
+
     actual fun resolveModulePathRaw(fileName: String): String =
         resolveModulePath(fileName)
 

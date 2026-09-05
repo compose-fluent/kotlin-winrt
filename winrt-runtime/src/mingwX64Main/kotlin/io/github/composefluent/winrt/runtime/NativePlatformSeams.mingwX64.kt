@@ -18,6 +18,7 @@ import kotlinx.cinterop.FloatVar
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.ShortVar
+import kotlinx.cinterop.UIntVar
 import kotlinx.cinterop.UShortVar
 import kotlinx.cinterop.Vector128
 import kotlinx.cinterop.alloc
@@ -1375,6 +1376,9 @@ actual object WinRTPlatformApi {
     actual fun lastErrorAsHResultRaw(): Int =
         ExceptionHelpers.hResultFromWin32(GetLastError().toInt()).value
 
+    actual fun currentPackagePathRaw(): String? =
+        nativePackageInstallLocation
+
     actual fun resolveModulePathRaw(fileName: String): String =
         nativeRuntimeAssetCandidates(fileName)
             .firstOrNull { candidate -> Path(candidate).isRegularFile() }
@@ -1399,14 +1403,66 @@ internal inline fun invokeUnknownRefCountMethod(
 
 private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"
 private const val runtimeAssetsRootEnvironmentVariableName = "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"
+private const val errorSuccess = 0
+private const val errorInsufficientBuffer = 122
+private const val maxPackagePathCapacity = 32768
 
 private val nativeKernel32Module by lazy { LoadLibraryA("kernel32.dll") }
+private val nativeGetCurrentPackagePathProc:
+    CPointer<CFunction<(CPointer<UIntVar>?, CPointer<UShortVar>?) -> Int>>? by lazy {
+        GetProcAddress(nativeKernel32Module, "GetCurrentPackagePath")?.reinterpret()
+    }
 private val nativeGetModuleFileNameWProc:
     CPointer<CFunction<(COpaquePointer?, CPointer<UShortVar>?, UInt) -> UInt>>? by lazy {
         GetProcAddress(nativeKernel32Module, "GetModuleFileNameW")?.reinterpret()
     }
 
+private val nativePackageInstallLocation: String? by lazy(::resolveNativePackageInstallLocation)
 private val nativeModuleDirectory: String? by lazy(::resolveNativeModuleDirectory)
+
+private fun resolveNativePackageInstallLocation(): String? {
+    val getCurrentPackagePath = nativeGetCurrentPackagePathProc ?: return null
+    val pathLength = nativeHeap.alloc<UIntVar>()
+    try {
+        pathLength.value = 0u
+        val queryResult = getCurrentPackagePath(pathLength.ptr, null)
+        if (queryResult != errorInsufficientBuffer && queryResult != errorSuccess) {
+            return null
+        }
+
+        var capacity = pathLength.value.toInt()
+        if (capacity <= 0) {
+            return null
+        }
+        while (capacity <= maxPackagePathCapacity) {
+            val buffer = nativeHeap.allocArray<UShortVar>(capacity)
+            try {
+                pathLength.value = capacity.toUInt()
+                val result = getCurrentPackagePath(pathLength.ptr, buffer)
+                if (result == errorInsufficientBuffer) {
+                    val requiredCapacity = pathLength.value.toInt()
+                    if (requiredCapacity <= capacity) {
+                        return null
+                    }
+                    capacity = requiredCapacity
+                    continue
+                }
+                if (result != errorSuccess) {
+                    return null
+                }
+                val length = pathLength.value.toInt().coerceAtMost(capacity)
+                return buffer.toLengthAwareKString(length)
+                    .trimEnd('\u0000')
+                    .takeIf { it.isNotBlank() }
+            } finally {
+                nativeHeap.free(buffer.rawValue)
+            }
+        }
+    } finally {
+        nativeHeap.free(pathLength.ptr.rawValue)
+    }
+    return null
+}
 
 private fun resolveNativeModuleDirectory(): String? {
     val getModuleFileName = nativeGetModuleFileNameWProc ?: return null
@@ -1433,6 +1489,9 @@ private fun resolveNativeModuleDirectory(): String? {
 }
 
 private fun nativeRuntimeAssetCandidates(fileName: String): Sequence<String> = sequence {
+    nativePackageInstallLocation?.let { directory ->
+        yield("$directory\\$fileName")
+    }
     getenv(runtimeAssetsRootEnvironmentVariableName)?.toKString()?.takeIf { it.isNotBlank() }?.let { root ->
         yield("$root/$fileName")
     }
