@@ -2888,7 +2888,7 @@ class KotlinWinRTPluginTest {
     @Test
     fun application_plugin_uses_appx_resources_manifest_by_default_and_prefers_explicit_manifest() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-appx-resources-default-test-")
-        val appxResources = projectDir.resolve("appxResources")
+        val appxResources = projectDir.resolve("src/main/appxResources")
         Files.createDirectories(appxResources)
         val defaultManifest = appxResources.resolve("AppxManifest.xml")
         val explicitManifest = projectDir.resolve("custom-AppxManifest.xml")
@@ -6566,7 +6566,7 @@ class KotlinWinRTPluginTest {
             registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
             registeredTask.enableDefaultProjectPriResources.set(false)
             registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
-            registeredTask.defaultAppxResourceRoot.set(project.layout.projectDirectory.dir("appxResources"))
+            registeredTask.defaultAppxResourceRoots.set(listOf(appxResources.toString()))
             registeredTask.defaultAppxResourceFiles.from(project.fileTree(appxResources))
             registeredTask.packagePayloadFiles.from(explicitExecutable)
             registeredTask.projectPriTargetPaths.put(

@@ -149,8 +149,8 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
 
-    @get:Internal
-    abstract val defaultAppxResourceRoot: DirectoryProperty
+    @get:Input
+    abstract val defaultAppxResourceRoots: ListProperty<String>
 
     @Input
     fun getDefaultProjectPriResourceRootPath(): String =
@@ -163,14 +163,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             .orEmpty()
 
     @Input
-    fun getDefaultAppxResourceRootPath(): String =
-        defaultAppxResourceRoot.orNull
-            ?.asFile
-            ?.toPath()
-            ?.toAbsolutePath()
-            ?.normalize()
-            ?.toString()
-            .orEmpty()
+    fun getDefaultAppxResourceRootsPath(): List<String> =
+        defaultAppxResourceRoots.get()
+            .map { Path.of(it).toAbsolutePath().normalize().toString() }
 
     init {
         generateProjectPri.convention(true)
@@ -186,6 +181,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
         deferredManifestPayloadPaths.convention(emptyList())
+        defaultAppxResourceRoots.convention(emptyList())
         executableBaseName.convention("app")
     }
 
@@ -240,13 +236,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             .sorted()
             .firstOrNull()
             ?: if (configuredManifests.isEmpty()) {
-                defaultAppxResourceRoot.orNull
-                    ?.asFile
-                    ?.toPath()
-                    ?.toAbsolutePath()
-                    ?.normalize()
-                    ?.resolve("AppxManifest.xml")
-                    ?.takeIf { it.isRegularFile() }
+                findAppxManifest(defaultAppxResourceInputs())
             } else {
                 null
             }
@@ -262,29 +252,17 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     }
 
     private fun stageDefaultAppxResources(outputRoot: Path) {
-        val resourceRoot = defaultAppxResourceRoot.orNull
-            ?.asFile
-            ?.toPath()
-            ?.toAbsolutePath()
-            ?.normalize()
-            ?: return
-        defaultAppxResourceFiles.files.asSequence()
-            .map { it.toPath().toAbsolutePath().normalize() }
-            .filter { it.isRegularFile() }
-            .sortedBy { it.toString().lowercase() }
-            .forEach { source ->
-                if (!source.startsWith(resourceRoot)) {
-                    throw GradleException(
-                        "Default AppX resource is outside appxResources: ${source.toAbsolutePath().normalize()}",
-                    )
-                }
-                val relativeTarget = source.relativeTo(resourceRoot)
-                if (relativeTarget.name.equals("AppxManifest.xml", ignoreCase = true) && relativeTarget.parent == null) {
+        defaultAppxResourceInputs()
+            .forEach { input ->
+                if (input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)) {
                     return@forEach
                 }
-                GradleFileOperations.copyFile(source, outputRoot.resolve(relativeTarget))
+                GradleFileOperations.copyFile(input.source, outputRoot.resolve(input.relativePath))
             }
     }
+
+    private fun defaultAppxResourceInputs(): List<AppxResourceInput> =
+        collectAppxResourceInputs(defaultAppxResourceRoots.get().map(Path::of))
 
     private fun validateStagedManifestPayload(outputRoot: Path) {
         val manifest = outputRoot.resolve("AppxManifest.xml")
@@ -374,6 +352,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         ).stage(
             componentPriFiles = inputPris,
             componentPriBaseRoot = outputRoot,
+            appxResourceFiles = defaultAppxResourceInputs(),
             explicitResourceFiles = projectPriResourceFiles.files.map { it.toPath() },
             explicitLayoutFiles = projectPriLayoutFiles.files.map { it.toPath() },
             explicitContentFiles = projectPriContentFiles.files.map { it.toPath() },

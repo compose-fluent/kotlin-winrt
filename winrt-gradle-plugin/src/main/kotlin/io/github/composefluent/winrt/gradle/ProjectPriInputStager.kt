@@ -22,6 +22,7 @@ internal class ProjectPriInputStager(
     fun stage(
         componentPriFiles: Collection<Path>,
         componentPriBaseRoot: Path,
+        appxResourceFiles: Collection<AppxResourceInput>,
         explicitResourceFiles: Collection<Path>,
         explicitLayoutFiles: Collection<Path>,
         explicitContentFiles: Collection<Path>,
@@ -33,6 +34,7 @@ internal class ProjectPriInputStager(
     ): Set<ApplicationPackageItem> {
         val items = linkedSetOf<ApplicationPackageItem>()
         stageComponentPris(componentPriFiles, componentPriBaseRoot, items)
+        stageAppxResources(appxResourceFiles, items)
         stageExplicitResources(explicitResourceFiles, items)
         stageExplicitLayoutResources(explicitLayoutFiles, items)
         stageExplicitContentResources(explicitContentFiles, items)
@@ -43,6 +45,52 @@ internal class ProjectPriInputStager(
             stageDefaultContentResources(defaultContentFiles, items)
         }
         return items
+    }
+
+    private fun stageAppxResources(sources: Collection<AppxResourceInput>, items: MutableSet<ApplicationPackageItem>) {
+        sources.asSequence()
+            .filterNot { input ->
+                input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
+            }
+            .filter { input -> input.source.isRegularFile() }
+            .filter { input -> input.source.name.endsWith(".resw", ignoreCase = true) }
+            .sortedBy { it.relativePathString.lowercase() }
+            .forEach { input ->
+                copyInput(
+                    ApplicationPackageItemKind.PriResource,
+                    input.source,
+                    projectPriRoot.resolve(initialPath).resolve(input.relativePath),
+                    items,
+                )
+            }
+        val layoutInputs = sources.asSequence()
+            .filterNot { input ->
+                input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
+            }
+            .filter { input -> input.source.isRegularFile() && isProjectPriLayoutFile(input.source) }
+            .sortedBy { it.relativePathString.lowercase() }
+            .map { input ->
+                ProjectPriLayoutInput(
+                    input.source,
+                    projectPriRoot.resolve(initialPath).resolve(input.relativePath),
+                )
+            }
+            .toList()
+        stageFilteredLayoutInputs(layoutInputs, items)
+        sources.asSequence()
+            .filterNot { input ->
+                input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
+            }
+            .filter { input -> input.source.isRegularFile() && isProjectPriContentFile(input.source) }
+            .sortedBy { it.relativePathString.lowercase() }
+            .forEach { input ->
+                copyInput(
+                    ApplicationPackageItemKind.Content,
+                    input.source,
+                    projectPriRoot.resolve(initialPath).resolve(input.relativePath),
+                    items,
+                )
+            }
     }
 
     private fun stageComponentPris(sources: Collection<Path>, baseRoot: Path, items: MutableSet<ApplicationPackageItem>) {

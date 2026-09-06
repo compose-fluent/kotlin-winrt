@@ -366,27 +366,25 @@ private fun configureWinRTApplicationTasks(
     configureWinRTIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
     val projectName = project.name
-    val appxResourcesRoot = project.layout.projectDirectory.dir("appxResources")
+    val hasMingwReleaseExecutable = project.objects.property(Boolean::class.java).convention(false)
+    val appxResourceTargetSourceSetNames = project.provider {
+        appxResourceTargetSourceSetNames(project, hasMingwReleaseExecutable.get())
+    }
+    val appxResourceRoots = project.provider {
+        appxResourceRoots(project, appxResourceTargetSourceSetNames.get())
+    }
     val defaultAppxManifestFiles = project.provider {
         if (extension.application.appxManifestFiles.files.isNotEmpty()) {
             emptyList<File>()
         } else {
-            val manifest = appxResourcesRoot.file("AppxManifest.xml").asFile
-            if (manifest.isFile) listOf(manifest) else emptyList()
+            findAppxManifest(collectAppxResourceInputs(appxResourceRoots.get()))
+                ?.let(::listOf)
+                .orEmpty()
         }
     }
     val defaultAppxResourceFiles = project.provider {
-        if (appxResourcesRoot.asFile.isDirectory) {
-            project.fileTree(appxResourcesRoot.asFile) { spec ->
-                spec.include("**/*")
-                spec.exclude(".gradle/**")
-                spec.exclude("build/**")
-            }.files
-        } else {
-            emptyList<File>()
-        }
+        appxResourceFiles(appxResourceRoots.get()).map { path -> path.toFile() }
     }
-    val hasMingwReleaseExecutable = project.objects.property(Boolean::class.java).convention(false)
     val restoreWinAppDependenciesTask = project.tasks.named(
         "restoreWinAppDependencies",
         RestoreWinAppDependenciesTask::class.java,
@@ -568,6 +566,7 @@ private fun configureWinRTApplicationTasks(
                             spec.exclude("build/**")
                             spec.exclude("**/.gradle/**")
                             spec.exclude("**/build/**")
+                            spec.exclude("**/appxResources/**")
                         }
                     } else {
                         project.files()
@@ -584,6 +583,7 @@ private fun configureWinRTApplicationTasks(
                             spec.exclude("build/**")
                             spec.exclude("**/.gradle/**")
                             spec.exclude("**/build/**")
+                            spec.exclude("**/appxResources/**")
                         }
                     } else {
                         project.files()
@@ -605,6 +605,7 @@ private fun configureWinRTApplicationTasks(
                             spec.exclude("build/**")
                             spec.exclude("**/.gradle/**")
                             spec.exclude("**/build/**")
+                            spec.exclude("**/appxResources/**")
                         }
                     } else {
                         project.files()
@@ -679,6 +680,7 @@ private fun configureWinRTApplicationTasks(
                             spec.exclude("build/**")
                             spec.exclude("**/.gradle/**")
                             spec.exclude("**/build/**")
+                            spec.exclude("**/appxResources/**")
                         }
                     } else {
                         project.files()
@@ -695,6 +697,7 @@ private fun configureWinRTApplicationTasks(
                             spec.exclude("build/**")
                             spec.exclude("**/.gradle/**")
                             spec.exclude("**/build/**")
+                            spec.exclude("**/appxResources/**")
                         }
                     } else {
                         project.files()
@@ -716,6 +719,7 @@ private fun configureWinRTApplicationTasks(
                             spec.exclude("build/**")
                             spec.exclude("**/.gradle/**")
                             spec.exclude("**/build/**")
+                            spec.exclude("**/appxResources/**")
                         }
                     } else {
                         project.files()
@@ -729,7 +733,9 @@ private fun configureWinRTApplicationTasks(
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
             task.projectPriEmbedFiles.from(extension.application.projectPriEmbedFiles)
             task.packagePayloadFiles.from(extension.application.packagePayloadFiles)
-            task.defaultAppxResourceRoot.set(appxResourcesRoot)
+            task.defaultAppxResourceRoots.set(
+                appxResourceRoots.map { roots -> roots.map(Path::toString) },
+            )
             task.defaultAppxResourceFiles.from(defaultAppxResourceFiles)
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
@@ -753,6 +759,10 @@ private fun configureWinRTApplicationTasks(
         stageApplicationPackageTask,
         hasMingwReleaseExecutable,
         extension.application.console.get(),
+    )
+    configureAppxResourceGeneration(
+        project = project,
+        mainClass = extension.application.mainClass,
     )
     val applicationHostTask = project.tasks.register(
         "buildWinRTApplicationHost",
@@ -1104,6 +1114,99 @@ private fun configureMingwApplicationEntry(
     }
 }
 
+private fun configureAppxResourceGeneration(
+    project: Project,
+    mainClass: Provider<String>,
+) {
+    val generatedPackageName = mainClass.map(::appxGeneratedPackageName)
+    val configuredSourceSets = linkedSetOf<String>()
+
+    fun configureSourceSet(sourceSet: KotlinSourceSet) {
+        if (!configuredSourceSets.add(sourceSet.name)) return
+        val roots = project.provider {
+            appxResourceRoots(project, listOf(sourceSet.name))
+        }
+        val taskName = "generateWinRTAppxResources" + sourceSet.name.replaceFirstChar(Char::uppercaseChar)
+        val task = project.tasks.register(taskName, GenerateAppxResourcesTask::class.java) { resourceTask ->
+            resourceTask.group = "kotlin-winrt"
+            resourceTask.description = "Generates AppX resource accessors for ${sourceSet.name}."
+            resourceTask.outputDirectory.set(
+                project.layout.buildDirectory.dir("generated/kotlin-winrt/appx-resources/${sourceSet.name}"),
+            )
+            resourceTask.packageName.set(generatedPackageName)
+            resourceTask.targetSourceSet.set(sourceSet.name)
+            resourceTask.resourceRoots.set(roots.map { resourceRoots -> resourceRoots.map(Path::toString) })
+            resourceTask.resourceFiles.from(
+                project.provider {
+                    appxResourceFiles(roots.get()).map { path -> path.toFile() }
+                },
+            )
+        }
+        sourceSet.kotlin.srcDir(task)
+    }
+
+    project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.let { kotlin ->
+        kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+            configureSourceSet(target.compilations.getByName("main").defaultSourceSet)
+        }
+        kotlin.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+            if (target.isMingwX64Target()) {
+                configureSourceSet(target.compilations.getByName("main").defaultSourceSet)
+            }
+        }
+        return
+    }
+
+    project.extensions.findByType(KotlinProjectExtension::class.java)?.sourceSets?.matching { sourceSet ->
+        sourceSet.name == "main"
+    }?.configureEach(::configureSourceSet)
+}
+
+private fun appxGeneratedPackageName(mainClass: String): String {
+    val normalized = mainClass.trim()
+    if (normalized.isBlank()) return "io.github.composefluent.winrt.appx"
+    val mainName = normalized.removeSuffix(".MainKt")
+    val packageName = mainName.substringBeforeLast('.', missingDelimiterValue = "")
+    return packageName.takeIf(String::isNotBlank) ?: "io.github.composefluent.winrt.appx"
+}
+
+private fun appxResourceTargetSourceSetNames(project: Project, useMingw: Boolean): List<String> {
+    val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return listOf("main")
+    if (useMingw) {
+        kotlin.targets.withType(KotlinNativeTarget::class.java)
+            .firstOrNull(KotlinNativeTarget::isMingwX64Target)
+            ?.let { target -> return listOf(target.compilations.getByName("main").defaultSourceSet.name) }
+    }
+    kotlin.targets.withType(KotlinJvmTarget::class.java)
+        .firstOrNull { target -> target.name == "winuiJvm" }
+        ?.let { target -> return listOf(target.compilations.getByName("main").defaultSourceSet.name) }
+    kotlin.targets.withType(KotlinJvmTarget::class.java)
+        .singleOrNull()
+        ?.let { target -> return listOf(target.compilations.getByName("main").defaultSourceSet.name) }
+    return emptyList()
+}
+
+private fun appxResourceRoots(project: Project, targetSourceSetNames: Iterable<String>): List<Path> {
+    val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java)
+    val sourceSetsByName = kotlin?.sourceSets?.associateBy { sourceSet -> sourceSet.name }.orEmpty()
+    val visited = linkedSetOf<String>()
+    val orderedSourceSetNames = mutableListOf<String>()
+
+    fun collect(name: String) {
+        if (!visited.add(name)) return
+        sourceSetsByName[name]
+            ?.dependsOn
+            ?.sortedBy { sourceSet -> sourceSet.name }
+            ?.forEach { sourceSet -> collect(sourceSet.name) }
+        orderedSourceSetNames += name
+    }
+
+    targetSourceSetNames.forEach(::collect)
+    return orderedSourceSetNames.map { sourceSetName ->
+        project.projectDir.toPath().resolve("src").resolve(sourceSetName).resolve("appxResources")
+    }
+}
+
 private fun configureWinRTGeneration(
     project: Project,
     extension: BaseWinRTExtension,
@@ -1259,11 +1362,19 @@ private fun configureWinRTGeneration(
                         task.authoringTypeDetailsOutputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
                     val generatedMingwApplicationEntrySourcesPath =
                         generatedMingwApplicationEntrySources.get().asFile.toPath().toAbsolutePath().normalize()
+                    val generatedAppxResourceSourcesPath = project.layout.buildDirectory
+                        .dir("generated/kotlin-winrt/appx-resources")
+                        .get()
+                        .asFile
+                        .toPath()
+                        .toAbsolutePath()
+                        .normalize()
                     kotlinWinRTAuthoringSourceDirs(project).filterNot { sourceDir ->
                         val normalizedSourceDir = sourceDir.toPath().toAbsolutePath().normalize()
                         normalizedSourceDir.startsWith(generatedSourcesPath) ||
                             normalizedSourceDir.startsWith(generatedAuthoringSourcesPath) ||
-                            normalizedSourceDir.startsWith(generatedMingwApplicationEntrySourcesPath)
+                            normalizedSourceDir.startsWith(generatedMingwApplicationEntrySourcesPath) ||
+                            normalizedSourceDir.startsWith(generatedAppxResourceSourcesPath)
                     }
                 },
             )
