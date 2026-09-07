@@ -35,6 +35,8 @@ winRT {
     type("sample.NativeJsonValueThing")
     application {
         mainClass.set("sample.consumer.MainKt")
+        targetName.set("mingwX64")
+        nativeBuildType.set("release")
         generateProjectPri.set(false)
     }
 }

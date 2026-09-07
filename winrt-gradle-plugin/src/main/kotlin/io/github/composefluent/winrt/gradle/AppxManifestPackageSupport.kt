@@ -37,18 +37,19 @@ internal object AppxManifestPackageSupport {
         resolvedPackageManifestFiles: Iterable<Path>,
         runtimeIdentifier: String,
         restoredPackageRoots: Iterable<Path> = emptyList(),
+        includeFrameworkDependencies: Boolean = true,
     ) {
         val document = readXml(manifest) ?: return
         val packageElement = document.documentElement ?: return
         val dependencies = packageElement.childElements("Dependencies").firstOrNull()
             ?: document.createElementNS(APPX_NAMESPACE, "Dependencies").also(packageElement::appendChild)
 
-        discoveredFrameworkDependencies(
+        val frameworkDependencies: List<PackageDependency> = if (includeFrameworkDependencies) discoveredFrameworkDependencies(
             resolvedPackageManifestFiles = resolvedPackageManifestFiles,
             restoredPackageRoots = restoredPackageRoots,
             runtimeIdentifier = runtimeIdentifier,
-        )
-            .forEach { dependency ->
+        ) else emptyList()
+        frameworkDependencies.forEach { dependency ->
                 val alreadyDeclared = dependencies.childElements(PACKAGE_DEPENDENCY_NAME).any { element ->
                     element.getAttribute("Name").equals(dependency.name, ignoreCase = true)
                 }
@@ -70,6 +71,34 @@ internal object AppxManifestPackageSupport {
             mergeInProcessServerExtensions(document, extensions, packageRoot, registrations)
         }
         writeXml(manifest, document)
+    }
+
+    /** Returns framework dependency packages that can be passed to Add-AppxPackage. */
+    internal fun discoverFrameworkPackageArchives(
+        restoredPackageRoots: Iterable<Path>,
+        runtimeIdentifier: String,
+    ): List<Path> {
+        val architecture = winAppRuntimeArchitecture(runtimeIdentifier)
+        return restoredPackageRoots
+            .filter(Path::isDirectory)
+            .flatMap { root ->
+                Files.walk(root).use { stream ->
+                    stream
+                        .filter(Path::isRegularFile)
+                        .filter { path ->
+                            (path.toString().contains("win10-$architecture", ignoreCase = true) ||
+                                path.parent?.fileName?.toString()?.equals("MSIX", ignoreCase = true) == true) &&
+                                (path.fileName.toString().endsWith(".msix", ignoreCase = true) ||
+                                    path.fileName.toString().endsWith(".appx", ignoreCase = true))
+                        }
+                        .sorted()
+                        .asSequence()
+                        .filter { archive -> readFrameworkManifest(archive) != null }
+                        .toList()
+                }
+            }
+            .distinctBy { path -> path.toAbsolutePath().normalize().toString().lowercase() }
+            .sortedBy { path -> path.toAbsolutePath().normalize().toString().lowercase() }
     }
 
     private fun discoveredFrameworkDependencies(

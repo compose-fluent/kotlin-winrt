@@ -18,6 +18,12 @@ internal class ProjectPriInputStager(
 ) {
     private val initialPath = projectPriInitialPath.toSafeRelativePath("projectPriInitialPath")
     private val projectResourceRoot = defaultProjectResourceRoot?.toAbsolutePath()?.normalize()
+    private val normalizedTargetPaths = targetPaths.entries.associate { (source, target) ->
+        Path.of(source).toNormalizedInputPathKey() to target
+    }
+    private val normalizedExcludedFromBuildPaths = excludedFromBuildPaths
+        .map { Path.of(it).toNormalizedInputPathKey() }
+        .toSet()
 
     fun stage(
         componentPriFiles: Collection<Path>,
@@ -33,21 +39,26 @@ internal class ProjectPriInputStager(
         includeDefaultProjectResources: Boolean,
     ): Set<ApplicationPackageItem> {
         val items = linkedSetOf<ApplicationPackageItem>()
-        stageComponentPris(componentPriFiles, componentPriBaseRoot, items)
-        stageAppxResources(appxResourceFiles, items)
-        stageExplicitResources(explicitResourceFiles, items)
-        stageExplicitLayoutResources(explicitLayoutFiles, items)
-        stageExplicitContentResources(explicitContentFiles, items)
-        stageExplicitEmbedFiles(explicitEmbedFiles, items)
+        val priorities = mutableMapOf<String, Int>()
+        stageComponentPris(componentPriFiles, componentPriBaseRoot, items, priorities)
+        stageAppxResources(appxResourceFiles, items, priorities)
+        stageExplicitResources(explicitResourceFiles, items, priorities)
+        stageExplicitLayoutResources(explicitLayoutFiles, items, priorities)
+        stageExplicitContentResources(explicitContentFiles, items, priorities)
+        stageExplicitEmbedFiles(explicitEmbedFiles, items, priorities)
         if (includeDefaultProjectResources) {
-            stageDefaultResources(defaultResourceFiles, items)
-            stageDefaultLayoutResources(defaultLayoutFiles, items)
-            stageDefaultContentResources(defaultContentFiles, items)
+            stageDefaultResources(defaultResourceFiles, items, priorities)
+            stageDefaultLayoutResources(defaultLayoutFiles, items, priorities)
+            stageDefaultContentResources(defaultContentFiles, items, priorities)
         }
         return items
     }
 
-    private fun stageAppxResources(sources: Collection<AppxResourceInput>, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageAppxResources(
+        sources: Collection<AppxResourceInput>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
         sources.asSequence()
             .filterNot { input ->
                 input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
@@ -61,6 +72,8 @@ internal class ProjectPriInputStager(
                     input.source,
                     projectPriRoot.resolve(initialPath).resolve(input.relativePath),
                     items,
+                    priorities,
+                    APPX_RESOURCE_PRIORITY,
                 )
             }
         val layoutInputs = sources.asSequence()
@@ -76,7 +89,7 @@ internal class ProjectPriInputStager(
                 )
             }
             .toList()
-        stageFilteredLayoutInputs(layoutInputs, items)
+        stageFilteredLayoutInputs(layoutInputs, items, priorities, APPX_RESOURCE_PRIORITY)
         sources.asSequence()
             .filterNot { input ->
                 input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
@@ -89,11 +102,18 @@ internal class ProjectPriInputStager(
                     input.source,
                     projectPriRoot.resolve(initialPath).resolve(input.relativePath),
                     items,
+                    priorities,
+                    APPX_RESOURCE_PRIORITY,
                 )
             }
     }
 
-    private fun stageComponentPris(sources: Collection<Path>, baseRoot: Path, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageComponentPris(
+        sources: Collection<Path>,
+        baseRoot: Path,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
         val normalizedBaseRoot = baseRoot.toAbsolutePath().normalize()
         sources.asSequence()
             .filter { it.isRegularFile() }
@@ -101,30 +121,57 @@ internal class ProjectPriInputStager(
             .forEach { source ->
                 val normalizedSource = source.toAbsolutePath().normalize()
                 val relativeTarget = if (normalizedSource.startsWith(normalizedBaseRoot)) normalizedSource.relativeTo(normalizedBaseRoot) else source.fileName
-                copyInput(ApplicationPackageItemKind.ComponentPri, source, projectPriRoot.resolve(relativeTarget), items)
+                copyInput(
+                    ApplicationPackageItemKind.ComponentPri,
+                    source,
+                    projectPriRoot.resolve(relativeTarget),
+                    items,
+                    priorities,
+                    COMPONENT_PRI_PRIORITY,
+                )
             }
     }
 
-    private fun stageExplicitResources(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
-        stageExplicitFileTree(sources, ApplicationPackageItemKind.PriResource, projectPriRoot, items)
+    private fun stageExplicitResources(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
+        stageExplicitFileTree(sources, ApplicationPackageItemKind.PriResource, projectPriRoot, items, priorities)
     }
 
-    private fun stageExplicitLayoutResources(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageExplicitLayoutResources(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
         val inputs = explicitFileTree(sources, ::isProjectPriLayoutFile)
             .map { ProjectPriLayoutInput(it.source, projectPriRoot.resolve(initialPath).resolve(it.relativeTarget)) }
             .toList()
-        stageFilteredLayoutInputs(inputs, items)
+        stageFilteredLayoutInputs(inputs, items, priorities, EXPLICIT_RESOURCE_PRIORITY)
     }
 
-    private fun stageExplicitContentResources(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
-        stageExplicitFileTree(sources, ApplicationPackageItemKind.Content, projectPriRoot, items)
+    private fun stageExplicitContentResources(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
+        stageExplicitFileTree(sources, ApplicationPackageItemKind.Content, projectPriRoot, items, priorities)
     }
 
-    private fun stageExplicitEmbedFiles(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
-        stageExplicitFileTree(sources, ApplicationPackageItemKind.Embed, projectPriRoot.resolve("embed"), items)
+    private fun stageExplicitEmbedFiles(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
+        stageExplicitFileTree(sources, ApplicationPackageItemKind.Embed, projectPriRoot.resolve("embed"), items, priorities)
     }
 
-    private fun stageDefaultResources(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageDefaultResources(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
         val root = projectResourceRoot ?: return
         sources.asSequence()
             .filter { it.isRegularFile() && it.name.endsWith(".resw", ignoreCase = true) }
@@ -133,12 +180,23 @@ internal class ProjectPriInputStager(
             .forEach { source ->
                 val normalizedSource = source.toAbsolutePath().normalize()
                 if (normalizedSource.startsWith(root)) {
-                    copyInput(ApplicationPackageItemKind.PriResource, source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)), items)
+                    copyInput(
+                        ApplicationPackageItemKind.PriResource,
+                        source,
+                        projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)),
+                        items,
+                        priorities,
+                        DEFAULT_RESOURCE_PRIORITY,
+                    )
                 }
             }
     }
 
-    private fun stageDefaultLayoutResources(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageDefaultLayoutResources(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
         val root = projectResourceRoot ?: return
         val inputs = sources.asSequence()
             .filter { it.isRegularFile() && isProjectPriLayoutFile(it) }
@@ -149,10 +207,14 @@ internal class ProjectPriInputStager(
                 if (normalizedSource.startsWith(root)) ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root))) else null
             }
             .toList()
-        stageFilteredLayoutInputs(inputs, items)
+        stageFilteredLayoutInputs(inputs, items, priorities, DEFAULT_RESOURCE_PRIORITY)
     }
 
-    private fun stageDefaultContentResources(sources: Collection<Path>, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageDefaultContentResources(
+        sources: Collection<Path>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+    ) {
         val root = projectResourceRoot ?: return
         sources.asSequence()
             .filter { it.isRegularFile() && isProjectPriContentFile(it) }
@@ -161,7 +223,14 @@ internal class ProjectPriInputStager(
             .forEach { source ->
                 val normalizedSource = source.toAbsolutePath().normalize()
                 if (normalizedSource.startsWith(root)) {
-                    copyInput(ApplicationPackageItemKind.Content, source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)), items)
+                    copyInput(
+                        ApplicationPackageItemKind.Content,
+                        source,
+                        projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)),
+                        items,
+                        priorities,
+                        DEFAULT_RESOURCE_PRIORITY,
+                    )
                 }
             }
     }
@@ -171,10 +240,18 @@ internal class ProjectPriInputStager(
         kind: ApplicationPackageItemKind,
         targetRoot: Path,
         items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
     ) {
         explicitFileTree(sources) { true }
             .forEach { input ->
-                copyInput(kind, input.source, targetRoot.resolve(initialPath).resolve(input.relativeTarget), items)
+                copyInput(
+                    kind,
+                    input.source,
+                    targetRoot.resolve(initialPath).resolve(input.relativeTarget),
+                    items,
+                    priorities,
+                    EXPLICIT_RESOURCE_PRIORITY,
+                )
             }
     }
 
@@ -207,7 +284,12 @@ internal class ProjectPriInputStager(
                 }
             }
 
-    private fun stageFilteredLayoutInputs(inputs: List<ProjectPriLayoutInput>, items: MutableSet<ApplicationPackageItem>) {
+    private fun stageFilteredLayoutInputs(
+        inputs: List<ProjectPriLayoutInput>,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+        priority: Int,
+    ) {
         val xbfTargets = inputs.asSequence()
             .filter { it.source.name.endsWith(".xbf", ignoreCase = true) }
             .map { it.target.toNormalizedPackagePathKey() }
@@ -215,35 +297,71 @@ internal class ProjectPriInputStager(
         val embedRoot = projectPriRoot.resolve("embed")
         inputs.forEach { input ->
             if (input.source.name.endsWith(".xaml", ignoreCase = true) && input.target.toXbfTargetKey() in xbfTargets) {
-                recordInput(ApplicationPackageItemKind.ExcludedLayout, input.source, input.target, items)
+                recordInput(ApplicationPackageItemKind.ExcludedLayout, input.source, input.target, items, priorities, priority)
                 return@forEach
             }
             if (input.source.name.endsWith(".xbf", ignoreCase = true)) {
                 val embedTarget = embedRoot.resolve(input.target.relativeTo(embedRoot.parent))
-                copyInput(ApplicationPackageItemKind.Embed, input.source, embedTarget, items)
+                copyInput(ApplicationPackageItemKind.Embed, input.source, embedTarget, items, priorities, priority)
                 return@forEach
             }
-            copyInput(ApplicationPackageItemKind.Layout, input.source, input.target, items)
+            copyInput(ApplicationPackageItemKind.Layout, input.source, input.target, items, priorities, priority)
         }
     }
 
-    private fun copyInput(kind: ApplicationPackageItemKind, source: Path, target: Path, items: MutableSet<ApplicationPackageItem>): Boolean {
+    private fun copyInput(
+        kind: ApplicationPackageItemKind,
+        source: Path,
+        target: Path,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+        priority: Int,
+    ): Boolean {
         val item = applicationPackageItem(kind, source, target)
-        if (!items.add(item)) return false
+        val existing = items.firstOrNull { it.targetKey == item.targetKey }
+        if (existing != null) {
+            val existingPriority = priorities[existing.targetKey] ?: DEFAULT_RESOURCE_PRIORITY
+            if (priority < existingPriority) return false
+            if (priority == existingPriority && existing.source != item.source) {
+                throw GradleException(
+                    "Conflicting project PRI inputs target the same package path " +
+                        "${item.target}: ${existing.source} and ${item.source}.",
+                )
+            }
+            items.remove(existing)
+        }
+        items.add(item)
+        priorities[item.targetKey] = priority
         GradleFileOperations.copyFile(source, target)
         return true
     }
 
-    private fun recordInput(kind: ApplicationPackageItemKind, source: Path, target: Path, items: MutableSet<ApplicationPackageItem>): Boolean =
-        items.add(applicationPackageItem(kind, source, target))
+    private fun recordInput(
+        kind: ApplicationPackageItemKind,
+        source: Path,
+        target: Path,
+        items: MutableSet<ApplicationPackageItem>,
+        priorities: MutableMap<String, Int>,
+        priority: Int,
+    ): Boolean {
+        val item = applicationPackageItem(kind, source, target)
+        val existing = items.firstOrNull { it.targetKey == item.targetKey }
+        if (existing != null) {
+            val existingPriority = priorities[existing.targetKey] ?: DEFAULT_RESOURCE_PRIORITY
+            if (priority <= existingPriority) return false
+            items.remove(existing)
+        }
+        priorities[item.targetKey] = priority
+        return items.add(item)
+    }
 
     private fun Path.explicitTargetPath(): Path? {
-        val configured = targetPaths[toAbsolutePath().normalize().toString()] ?: return null
+        val configured = normalizedTargetPaths[toNormalizedInputPathKey()] ?: return null
         return configured.toSafeRelativePath("projectPriTargetPaths")
     }
 
     private fun Path.isExcludedFromBuild(): Boolean =
-        toAbsolutePath().normalize().toString() in excludedFromBuildPaths
+        toNormalizedInputPathKey() in normalizedExcludedFromBuildPaths
 
     private fun Path.toSingleFileRelativeTarget(): Path {
         val normalizedSource = toAbsolutePath().normalize()
@@ -270,6 +388,11 @@ internal class ProjectPriInputStager(
 
     private data class ProjectPriLayoutInput(val source: Path, val target: Path)
 }
+
+private const val DEFAULT_RESOURCE_PRIORITY = 10
+private const val APPX_RESOURCE_PRIORITY = 20
+private const val EXPLICIT_RESOURCE_PRIORITY = 30
+private const val COMPONENT_PRI_PRIORITY = 100
 
 internal fun String.toSafeRelativePath(label: String): Path {
     val normalized = trim().replace('\\', '/')

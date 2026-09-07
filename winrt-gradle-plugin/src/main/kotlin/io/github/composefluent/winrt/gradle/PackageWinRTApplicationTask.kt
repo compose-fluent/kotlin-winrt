@@ -25,6 +25,9 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packageDirectory: DirectoryProperty
 
+    @get:Input
+    abstract val applicationVariant: Property<String>
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -67,6 +70,7 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
 
     init {
         generatePackage.convention(true)
+        applicationVariant.convention("default")
         packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
         makeAppxExecutable.convention("")
         winAppCliExecutable.convention("winapp")

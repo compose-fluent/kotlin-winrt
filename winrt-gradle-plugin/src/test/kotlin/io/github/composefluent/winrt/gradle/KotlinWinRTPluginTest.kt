@@ -2969,6 +2969,7 @@ class KotlinWinRTPluginTest {
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
+            application.jvmTarget("winuiJvm")
         }
 
         val hostTask = project.tasks.named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java).get()
@@ -2976,21 +2977,18 @@ class KotlinWinRTPluginTest {
         val stagePackageTask = project.tasks.named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java).get()
         val stagePackageDependencies = taskDependencyNames(stagePackageTask)
         val nativeRunTask = project.tasks.named("runReleaseExecutableWinuiMingw", Exec::class.java).get()
-        val applicationLayout = stagePackageTask.outputDirectory.get().asFile
 
         assertTrue(project.configurations.getByName("winuiJvmRuntimeClasspath").isCanBeResolved)
         assertTrue("buildWinRTApplicationHost dependencies: $hostDependencies", "winuiJvmJar" in hostDependencies)
-        assertTrue(
-            "mingw release executable must remain staged through the native package path: $stagePackageDependencies",
+        assertFalse(
+            "JVM variant must not link the unrelated mingw executable: $stagePackageDependencies",
             "linkReleaseExecutableWinuiMingw" in stagePackageDependencies,
         )
         assertFalse("buildWinRTApplicationHost must not depend on mingw native link tasks: $hostDependencies", "linkReleaseExecutableWinuiMingw" in hostDependencies)
-        assertTrue(
-            "release native run must stage the application layout: ${taskDependencyNames(nativeRunTask)}",
+        assertFalse(
+            "an unrelated native run task must not stage the selected JVM application layout: ${taskDependencyNames(nativeRunTask)}",
             "stageWinRTApplicationPackage" in taskDependencyNames(nativeRunTask),
         )
-        assertEquals(applicationLayout, nativeRunTask.workingDir)
-        assertEquals(applicationLayout.resolve("sample-app.exe").absolutePath, nativeRunTask.executable)
     }
 
     @Test
@@ -3257,7 +3255,7 @@ class KotlinWinRTPluginTest {
             ?.substringAfter("runtimeAssetsRoot=")
             ?.let { Path.of(it).toAbsolutePath().normalize() }
         val expectedRuntimeAssetsRoot = projectDir
-            .resolve("build/kotlin-winrt/application-layout/mingwX64/release")
+            .resolve("build/kotlin-winrt/application-layout/jvm_main/package")
             .toAbsolutePath()
             .normalize()
         assertTrue(
@@ -3565,7 +3563,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun packaged_application_prefers_the_release_mingw_layout_when_native_and_jvm_targets_exist() {
+    fun packaged_application_uses_the_explicitly_selected_mingw_layout_when_native_and_jvm_targets_exist() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
@@ -3581,6 +3579,7 @@ class KotlinWinRTPluginTest {
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
             application.packaged()
+            application.mingwX64Target("winuiMingw")
         }
 
         val packageTask = project.tasks
@@ -4473,7 +4472,9 @@ class KotlinWinRTPluginTest {
         assertTrue(source.contains("initializeApplicationHost\", \"(Z)Ljava/lang/AutoCloseable;\""))
         assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, JNI_TRUE)"))
         assertTrue(source.contains("KOTLIN_WINRT_JVM_OPTIONS"))
-        assertTrue(source.contains(System.getProperty("java.home").replace("\\", "\\\\")))
+        // The launcher resolves the bundled image beside its executable at runtime; it must
+        // not embed the build machine's JDK location in generated native source.
+        assertFalse(source.contains(System.getProperty("java.home").replace("\\", "\\\\")))
         assertFalse(source.contains("java/lang/reflect"))
         assertTrue(Files.isRegularFile(outputRoot.resolve("lib").resolve(jar.fileName)))
         assertFalse(Files.exists(outputRoot.resolve("lib/stale-app.jar")))
@@ -12696,6 +12697,7 @@ class KotlinWinRTPluginTest {
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
+                    nativeBuildType.set "release"
                     generateProjectPri.set false
                 }
             }
@@ -12703,7 +12705,7 @@ class KotlinWinRTPluginTest {
             tasks.register("verifyMingwApplicationPackageLayout") {
                 dependsOn("stageWinRTApplicationPackage")
                 doLast {
-                    def packageRoot = layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64/release").get().asFile
+                    def packageRoot = layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64_main_releaseExecutable/package").get().asFile
                     def executable = new File(packageRoot, "kotlin-winrt-mingw-package-test.exe")
                     if (!executable.isFile()) {
                         throw new GradleException("Expected staged release executable at package root: " + executable)
@@ -12752,7 +12754,7 @@ class KotlinWinRTPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMingwApplicationPackageLayout")?.outcome)
         assertEquals(
             2,
-            readPeSubsystem(projectDir.resolve("build/kotlin-winrt/application-layout/mingwX64/release/kotlin-winrt-mingw-package-test.exe")),
+            readPeSubsystem(projectDir.resolve("build/kotlin-winrt/application-layout/mingwX64_main_releaseExecutable/package/kotlin-winrt-mingw-package-test.exe")),
         )
     }
 }

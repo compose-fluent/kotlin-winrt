@@ -27,6 +27,14 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packageFile: RegularFileProperty
 
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val resourceResolutionReport: RegularFileProperty
+
+    @get:Input
+    abstract val applicationVariant: Property<String>
+
     @get:OutputFile
     abstract val markerFile: RegularFileProperty
 
@@ -75,6 +83,7 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         verifyPackage.convention(true)
+        applicationVariant.convention("default")
         packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
         generatePackage.convention(true)
         makeAppxExecutable.convention("")
@@ -112,10 +121,14 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
         val manifest = unpackRoot.resolve("AppxManifest.xml")
         val manifestErrors = ProjectPriManifestSupport.validatePackageManifest(manifest) +
             ProjectPriManifestSupport.validatePackageManifestPayload(manifest, unpackRoot)
-        if (manifestErrors.isNotEmpty()) {
+        val reportErrors = resourceResolutionReport.orNull?.asFile?.toPath()?.let { report ->
+            ApplicationPackagePayloadWriter.validateResolutionReport(report, unpackRoot)
+        }.orEmpty()
+        val errors = manifestErrors + reportErrors
+        if (errors.isNotEmpty()) {
             throw GradleException(
-                "Verified appx/msix package contains an invalid AppxManifest.xml from $source:\n" +
-                    manifestErrors.joinToString(separator = "\n") { "- $it" },
+                "Verified appx/msix package contains an invalid AppxManifest.xml or payload content from $source:\n" +
+                    errors.joinToString(separator = "\n") { "- $it" },
             )
         }
         marker.parent?.let(Files::createDirectories)

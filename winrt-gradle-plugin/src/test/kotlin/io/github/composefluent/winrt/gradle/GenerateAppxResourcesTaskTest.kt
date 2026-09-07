@@ -1,10 +1,27 @@
 package io.github.composefluent.winrt.gradle
 
 import java.nio.file.Path
+import java.nio.file.Files
+import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GenerateAppxResourcesTaskTest {
+    @Test
+    fun empty_resource_sets_do_not_generate_a_windows_uri_source_file() {
+        val root = Files.createTempDirectory("kotlin-winrt-empty-appx-resources-")
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        val task = project.tasks.create("generateAppxResources", GenerateAppxResourcesTask::class.java)
+        task.outputDirectory.set(root.resolve("generated").toFile())
+        task.packageName.set("sample.appx")
+        task.targetSourceSet.set("winuiMain")
+        task.resourceRoots.set(emptyList())
+
+        task.generate()
+
+        assertTrue(Files.notExists(root.resolve("generated/sample/appx/AppxRes.kt")))
+    }
+
     @Test
     fun renders_appx_resource_accessors_with_kotlinpoet() {
         val source = renderAppxResourcesSource(

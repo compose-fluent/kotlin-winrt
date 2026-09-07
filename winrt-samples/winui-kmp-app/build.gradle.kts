@@ -8,6 +8,10 @@ val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.w
     .orElse("2.2.0")
 val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
+val sampleApplicationTarget = providers.gradleProperty("kotlinWinRT.samples.applicationTarget")
+    .orElse("winuiJvm")
+val sampleNativeBuildType = providers.gradleProperty("kotlinWinRT.samples.nativeBuildType")
+    .orElse("release")
 
 kotlin {
     jvmToolchain(25)
@@ -29,6 +33,8 @@ kotlin {
 winRT {
     application {
         mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
+        targetName.set(sampleApplicationTarget)
+        nativeBuildType.set(sampleNativeBuildType)
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)

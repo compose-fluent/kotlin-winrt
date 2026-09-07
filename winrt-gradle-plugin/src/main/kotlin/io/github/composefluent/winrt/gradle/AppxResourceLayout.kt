@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.gradle
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Locale
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -50,6 +51,18 @@ internal fun collectAppxResourceInputs(resourceRoots: Iterable<Path>): List<Appx
 
 internal fun AppxResourceInput.relativePathKey(): String =
     relativePathString.trimStart('/').lowercase()
+
+/**
+ * Normalizes an input path for Windows comparisons without changing the path spelling used in
+ * package output. Explicit PRI/payload maps are persisted as absolute paths, so comparing their
+ * normalized keys keeps the layout and PRI stages consistent when a caller changes casing.
+ */
+internal fun Path.toNormalizedInputPathKey(): String =
+    toAbsolutePath()
+        .normalize()
+        .toString()
+        .replace('\\', '/')
+        .lowercase(Locale.ROOT)
 
 internal fun findAppxManifest(resourceInputs: Iterable<AppxResourceInput>): Path? =
     resourceInputs

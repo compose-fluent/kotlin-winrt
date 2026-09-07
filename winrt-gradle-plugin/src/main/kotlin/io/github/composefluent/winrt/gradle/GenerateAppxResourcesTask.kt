@@ -56,6 +56,9 @@ abstract class GenerateAppxResourcesTask : DefaultTask() {
             .filterNot { input ->
                 input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
             }
+        // A module with no AppX resources should not introduce a source file that imports the
+        // Windows Uri projection into otherwise platform-agnostic Kotlin/Native compilations.
+        if (inputs.isEmpty()) return
         val source = outputRoot.resolve("${packageName.get().replace('.', '/')}/AppxRes.kt")
         Files.createDirectories(source.parent)
         Files.writeString(source, renderAppxResourcesSource(packageName.get(), inputs, targetSourceSet.get()))
