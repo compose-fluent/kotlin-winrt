@@ -35,6 +35,35 @@ internal object ProjectPriGenerator {
         return true
     }
 
+    /** Dumps the generated PRI into structured XML so package verification can validate mappings. */
+    fun dumpApplicationPri(
+        makePri: Path,
+        pri: Path,
+        dump: Path,
+        workingDirectory: Path,
+        logger: Logger,
+    ): Boolean {
+        Files.deleteIfExists(dump)
+        Files.createDirectories(dump.parent)
+        MakePriRunner.run(
+            makePri,
+            listOf(
+                "dump",
+                "/if",
+                pri.toString(),
+                "/of",
+                dump.toString(),
+                "/dt",
+                "detailed",
+                "/o",
+            ),
+            workingDirectory,
+            "dump application PRI",
+            logger,
+        ) ?: return false
+        return Files.isRegularFile(dump)
+    }
+
     private fun copyGeneratedPriOutputs(projectPriRoot: Path, outputRoot: Path) {
         Files.walk(projectPriRoot).use { stream ->
             stream.asSequence()

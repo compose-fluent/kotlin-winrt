@@ -37,6 +37,10 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
     @get:Input
     abstract val packageMode: Property<String>
 
+    /** Whether WinApp CLI should package Windows App SDK runtime payloads self-contained. */
+    @get:Input
+    abstract val selfContained: Property<Boolean>
+
     @get:Input
     abstract val makeAppxExecutable: Property<String>
 
@@ -72,6 +76,7 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
         generatePackage.convention(true)
         applicationVariant.convention("default")
         packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        selfContained.convention(false)
         makeAppxExecutable.convention("")
         winAppCliExecutable.convention("winapp")
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
@@ -141,16 +146,19 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
                 "/o",
             )
         } else {
-            listOf(
-                "package",
-                packageRoot.toString(),
-                "--output",
-                target.toString(),
-                "--manifest",
-                manifest.toString(),
-                "--skip-pri",
-                "--quiet",
-            )
+            buildList {
+                add("package")
+                add(packageRoot.toString())
+                add("--output")
+                add(target.toString())
+                add("--manifest")
+                add(manifest.toString())
+                add("--skip-pri")
+                if (selfContained.get()) {
+                    add("--self-contained")
+                }
+                add("--quiet")
+            }
         }
         try {
             winAppCli().run(

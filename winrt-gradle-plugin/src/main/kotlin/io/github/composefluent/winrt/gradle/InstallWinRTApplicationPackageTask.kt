@@ -45,6 +45,10 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
     @get:Input
     abstract val packageMode: Property<String>
 
+    /** Whether restored Windows App SDK framework packages are already embedded in the app. */
+    @get:Input
+    abstract val includeRestoredFrameworkDependencies: Property<Boolean>
+
     @get:Input
     abstract val powerShellExecutable: Property<String>
 
@@ -54,6 +58,7 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
     init {
         installPackage.convention(false)
         packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        includeRestoredFrameworkDependencies.convention(true)
         powerShellExecutable.convention("powershell.exe")
         forceApplicationShutdown.convention(true)
         dependencyPackageSpecs.convention(emptyList())
@@ -78,8 +83,17 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
                     rootPackageSpecs = dependencyPackageSpecs.get(),
                 )
             }
-        val dependencyPaths = (dependencyPackageFiles.files.map { it.toPath() } +
-            AppxManifestPackageSupport.discoverFrameworkPackageArchives(restoredRoots, runtimeIdentifier.get()))
+        val explicitDependencies = dependencyPackageFiles.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .onEach { dependency ->
+                AppxManifestPackageSupport.validateFrameworkPackageArchive(dependency, runtimeIdentifier.get())
+            }
+        val restoredDependencies = if (includeRestoredFrameworkDependencies.get()) {
+            AppxManifestPackageSupport.discoverFrameworkPackageArchives(restoredRoots, runtimeIdentifier.get())
+        } else {
+            emptyList()
+        }
+        val dependencyPaths = (explicitDependencies + restoredDependencies)
             .map { it.toAbsolutePath().normalize() }
             .distinctBy { it.toString().lowercase() }
             .onEach { dependency ->

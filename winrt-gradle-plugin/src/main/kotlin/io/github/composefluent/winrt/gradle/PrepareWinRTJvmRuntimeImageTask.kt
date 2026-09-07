@@ -34,6 +34,12 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
     @get:Input
     abstract val javaHome: Property<String>
 
+    @get:Input
+    abstract val expectedJavaMajor: Property<Int>
+
+    @get:Input
+    abstract val runtimeIdentifier: Property<String>
+
     @get:InputDirectory
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -47,7 +53,9 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
 
     init {
         runtimeMode.convention(WinRTJvmRuntimeMode.Bundled.name)
-        javaHome.convention(System.getProperty("java.home"))
+        javaHome.convention("")
+        expectedJavaMajor.convention(25)
+        runtimeIdentifier.convention(currentWindowsRuntimeIdentifier())
         modules.convention(listOf("java.base", "java.desktop", "java.logging", "java.management", "java.naming", "jdk.crypto.ec", "jdk.management", "jdk.unsupported"))
     }
 
@@ -63,12 +71,14 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
             if (!supplied.isDirectory()) {
                 throw GradleException("Configured JVM runtime image is not a directory: $supplied")
             }
-            if (output == supplied) return
-            if (output.startsWith(supplied)) {
-                throw GradleException(
-                    "Configured JVM runtime image output cannot be inside the source image: " +
-                        "source=$supplied, output=$output",
-                )
+            if (output == supplied) {
+                // Reusing an explicitly supplied image is allowed, but it must still be a valid
+                // image. In particular, do not let the output cleanup erase the input first.
+            validateImage(supplied, "configured JVM runtime image")
+                return
+            }
+            runtimeImageOverlapError(supplied, output, "configured JVM runtime image")?.let { message ->
+                throw GradleException(message)
             }
             GradleFileOperations.cleanDirectory(output)
             copyDirectory(supplied, output)
@@ -76,7 +86,14 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
             return
         }
 
-        val javaRoot = Path.of(javaHome.get()).toAbsolutePath().normalize()
+        val javaHomeValue = javaHome.orNull?.trim().orEmpty()
+        if (javaHomeValue.isBlank()) {
+            throw GradleException(
+                "Bundled JVM runtime image requires a resolved Java toolchain home; " +
+                    "configure application.jvmToolchain(...) or install the requested Gradle toolchain.",
+            )
+        }
+        val javaRoot = Path.of(javaHomeValue).toAbsolutePath().normalize()
         val jlink = listOf(
             javaRoot.resolve("bin").resolve(if (isWindowsHost()) "jlink.exe" else "jlink"),
             javaRoot.resolve("jre").resolve("bin").resolve(if (isWindowsHost()) "jlink.exe" else "jlink"),
@@ -132,6 +149,7 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
                     if (isWindowsHost()) " and a Windows JVM library (bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll)." else ".",
             )
         }
+        validateJvmRuntime(root, expectedJavaMajor.get(), runtimeIdentifier.get(), description)
     }
 
     private fun copyDirectory(source: Path, target: Path) {
@@ -160,7 +178,105 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
     }
 }
 
+/** Validates the executable JVM contract instead of accepting a directory by file presence alone. */
+internal fun validateJvmRuntime(root: Path, expectedMajor: Int, runtimeIdentifier: String, description: String) {
+    val launcherName = if (isWindowsHost()) "java.exe" else "java"
+    val launcher = listOf(
+        root.resolve("bin").resolve(launcherName),
+        root.resolve("jre").resolve("bin").resolve(launcherName),
+    ).firstOrNull(Path::isRegularFile)
+        ?: throw GradleException("$description at $root does not contain a runnable $launcherName.")
+    val process = runCatching {
+        ProcessBuilder(
+            launcher.toString(),
+            "-XshowSettings:properties",
+            "-version",
+        ).redirectErrorStream(true).start().let { child ->
+            val output = child.inputStream.bufferedReader().readText()
+            val exitCode = child.waitFor()
+            exitCode to output
+        }
+    }.getOrElse { error ->
+        throw GradleException("Cannot inspect $description at $root: ${error.message}", error)
+    }
+    if (process.first != 0) {
+        throw GradleException(
+            "Cannot inspect $description at $root (java exited with ${process.first}).\n${process.second}",
+        )
+    }
+    val version = Regex("(?:java.version|java.runtime.version)\\s*=\\s*(\\d+)")
+        .find(process.second)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+    if (version == null || version != expectedMajor) {
+        throw GradleException(
+            "$description at $root uses Java ${version ?: "an unknown version"}, " +
+                "but Java $expectedMajor is required for this application.",
+        )
+    }
+    val architecture = Regex("os.arch\\s*=\\s*([^\\r\\n]+)")
+        .find(process.second)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.trim()
+        ?.lowercase()
+    val expectedArchitecture = when (runtimeIdentifier.lowercase()) {
+        "win-x64" -> setOf("amd64", "x86_64", "x64")
+        "win-x86" -> setOf("x86", "i386", "i686")
+        "win-arm64" -> setOf("aarch64", "arm64")
+        else -> emptySet()
+    }
+    if (expectedArchitecture.isNotEmpty() && architecture !in expectedArchitecture) {
+        throw GradleException(
+            "$description at $root reports architecture '${architecture ?: "unknown"}', " +
+                "but runtime identifier '$runtimeIdentifier' requires ${expectedArchitecture.joinToString("/")}.",
+        )
+    }
+}
+
 private data class JvmRuntimeProcessResult(
     val exitCode: Int,
     val output: String,
 )
+
+/**
+ * Returns a diagnostic when cleaning [output] could delete [source], or when copying [source]
+ * into [output] would recurse. The paths are canonicalized through existing ancestors so a
+ * symlinked image/output cannot bypass the check.
+ */
+internal fun runtimeImageOverlapError(source: Path, output: Path, description: String): String? {
+    val normalizedSource = canonicalPathForOverlap(source)
+    val normalizedOutput = canonicalPathForOverlap(output)
+    if (sameOrDescendant(normalizedSource, normalizedOutput)) {
+        return "$description source cannot be inside the output directory: " +
+            "source=$normalizedSource, output=$normalizedOutput"
+    }
+    if (sameOrDescendant(normalizedOutput, normalizedSource)) {
+        return "$description output cannot be inside the source image: " +
+            "source=$normalizedSource, output=$normalizedOutput"
+    }
+    return null
+}
+
+private fun canonicalPathForOverlap(path: Path): Path {
+    val normalized = path.toAbsolutePath().normalize()
+    val missing = ArrayDeque<Path>()
+    var existing = normalized
+    while (!Files.exists(existing) && existing.parent != null) {
+        missing.addFirst(existing.fileName)
+        existing = existing.parent
+    }
+    val canonicalExisting = runCatching { existing.toRealPath() }.getOrDefault(existing)
+    return missing.fold(canonicalExisting) { parent, child -> parent.resolve(child) }.normalize()
+}
+
+private fun sameOrDescendant(path: Path, parent: Path): Boolean {
+    if (path.startsWith(parent)) return true
+    if (!isWindowsHost()) return false
+    val pathText = path.toString().trimEnd('\\', '/')
+    val parentText = parent.toString().trimEnd('\\', '/')
+    return pathText.equals(parentText, ignoreCase = true) ||
+        pathText.startsWith("$parentText\\", ignoreCase = true) ||
+        pathText.startsWith("$parentText/", ignoreCase = true)
+}

@@ -247,7 +247,7 @@ winRT {
 
 The plugin's `winapp restore`, `winapp package`, and `winapp tool makeappx` paths do not invoke MSBuild and do not require an MSBuild project. JVM and `mingwX64` compilation still require their normal JDK, Kotlin/Native, C/C++, and Windows SDK prerequisites.
 
-WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore and may check or install Windows App SDK runtime packages. That release does not expose a switch that limits `restore` to NuGet download and lockfile generation. Gradle `--offline` prevents automatic CLI download when the managed copy is absent, but WinApp itself has no offline option; a forced restore must already be satisfiable from local WinApp/NuGet state. Set `restoreNuGetPackages.set(false)` to retain the legacy NuGet cache/CLI resolution path.
+WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore and may check or install Windows App SDK runtime packages. That release does not expose a switch that limits `restore` to NuGet download and lockfile generation, and WinApp itself has no `--offline` option. When Gradle runs with `--offline`, the plugin does not invoke `winapp restore`: it reuses the verified `.winapp` lock/cache and fails if the lock, package contents, or restore context is missing or stale. Without Gradle offline, a normal restore may use the configured NuGet sources and CLI behavior. Set `restoreNuGetPackages.set(false)` to retain the legacy NuGet cache/CLI resolution path.
 
 For the default unpackaged application mode, the plugin keeps a loose staged layout for the generated JVM host or `mingwX64` executable. With `application { packaged() }`, `packageWinRTApplication` creates the final package after staging. A selected `mingwX64` executable remains the package entry payload; projects without one package the generated JVM host, its runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. `verifyWinRTApplicationPackage` unpacks the result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override:
 
@@ -292,6 +292,7 @@ kotlin {
 winRT {
     application {
         mainClass.set("sample.MainKt")
+        targetName.set("winuiJvm")
         // console.set(true) enables a console window for diagnostics.
     }
 
@@ -299,6 +300,31 @@ winRT {
     nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
 }
 ```
+
+The same dual-target project must select its application target explicitly. Use the JVM selection for the generated host:
+
+```kotlin
+winRT {
+    application {
+        mainClass.set("sample.MainKt")
+        targetName.set("winuiJvm")
+    }
+}
+```
+
+For the MinGW executable path, use a separate target selection (and choose the executable build type when more than one exists):
+
+```kotlin
+winRT {
+    application {
+        mainClass.set("sample.MainKt")
+        targetName.set("mingwX64")
+        nativeBuildType.set("release")
+    }
+}
+```
+
+Run the selected JVM variant with `runWinRTApplicationHost`, or the selected MinGW variant with `runReleaseExecutableMingwX64`. Do not leave a dual-target application on automatic selection when both candidates are present.
 
 Run the JVM application through the generated host:
 

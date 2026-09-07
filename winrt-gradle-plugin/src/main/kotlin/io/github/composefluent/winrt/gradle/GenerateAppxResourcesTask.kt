@@ -107,6 +107,21 @@ internal fun renderAppxResourcesSource(
     return fileSpec.toString()
 }
 
+/**
+ * Keeps accessors from a target compilation separate from the shared Windows source set. A
+ * Kotlin compilation includes its parent source sets, so emitting the same AppxRes FQN in both
+ * places would create duplicate declarations as soon as a target owns an additional resource.
+ */
+internal fun appxResourceAccessorPackageName(basePackage: String, sourceSetName: String): String {
+    if (sourceSetName == "main" || sourceSetName == "winuiMain") return basePackage
+    val suffix = sourceSetName
+        .map { character -> if (character.isLetterOrDigit() || character == '_') character else '_' }
+        .joinToString("")
+        .trim('_')
+        .ifBlank { "target" }
+    return "$basePackage.$suffix"
+}
+
 private class AppxResourceTreeNode(
     val name: String,
     val children: MutableMap<String, AppxResourceTreeNode> = sortedMapOf(),

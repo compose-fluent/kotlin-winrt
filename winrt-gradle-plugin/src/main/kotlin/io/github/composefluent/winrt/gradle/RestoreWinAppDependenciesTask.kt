@@ -18,8 +18,10 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.io.path.isRegularFile
 
 @DisableCachingByDefault(because = "WinApp restore writes absolute NuGet-cache paths and updates external package caches.")
@@ -136,6 +138,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
                 }
                 """.trimIndent() + System.lineSeparator(),
             )
+            writeRestoreContext(output, config, restoreBase, packageSpecs, winmdLockFile.get().asFile.toPath())
             return
         }
 
@@ -144,6 +147,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             if (existingLock.isRegularFile()) {
                 runCatching {
                     validateRestore(existingLock, packageSpecs)
+                    validateRestoreContext(output, config, restoreBase, packageSpecs, existingLock)
                 }.onSuccess {
                     logger.lifecycle("Reusing verified WinApp restore from $output because Gradle is offline.")
                     return
@@ -179,6 +183,13 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
 
             val restoredOutput = restoreWorkspace.resolve(".winapp")
             validateRestore(restoredOutput.resolve("winmds.lock.json"), packageSpecs)
+            writeRestoreContext(
+                restoredOutput,
+                config,
+                restoreBase,
+                packageSpecs,
+                restoredOutput.resolve("winmds.lock.json"),
+            )
             GradleFileOperations.deleteDirectory(output)
             moveDirectory(restoredOutput, output)
         } finally {
@@ -204,9 +215,147 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         if (missingPackageRoots.isNotEmpty()) {
             throw GradleException(
                 "WinApp restore lockfile references missing NuGet package roots:${System.lineSeparator()}" +
-                    missingPackageRoots.joinToString(System.lineSeparator()),
+                missingPackageRoots.joinToString(System.lineSeparator()),
             )
         }
+        val emptyPackageRoots = lockfile.packages.mapNotNull { packageEntry ->
+            val root = packageRoot(lockFile, lockfile, packageEntry)
+            if (Files.isDirectory(root) && Files.walk(root).use { stream -> stream.anyMatch(Files::isRegularFile) }) {
+                null
+            } else {
+                root
+            }
+        }
+        if (emptyPackageRoots.isNotEmpty()) {
+            throw GradleException(
+                "WinApp restore lockfile references empty NuGet package roots:${System.lineSeparator()}" +
+                    emptyPackageRoots.joinToString(System.lineSeparator()),
+            )
+        }
+    }
+
+    private fun writeRestoreContext(
+        output: Path,
+        config: Path,
+        restoreBase: Path,
+        packageSpecs: List<String>,
+        lockFile: Path,
+    ) {
+        Files.createDirectories(output)
+        Files.writeString(output.resolve(RESTORE_CONTEXT_FILE), restoreContext(config, restoreBase, packageSpecs, lockFile))
+    }
+
+    private fun validateRestoreContext(
+        output: Path,
+        config: Path,
+        restoreBase: Path,
+        packageSpecs: List<String>,
+        lockFile: Path,
+    ) {
+        val context = output.resolve(RESTORE_CONTEXT_FILE)
+        if (!context.isRegularFile()) {
+            throw GradleException(
+                "WinApp restore cache at $output has no verified restore context. " +
+                    "Run restore once without --offline.",
+            )
+        }
+        val expected = restoreContext(config, restoreBase, packageSpecs, lockFile)
+        val actual = Files.readString(context)
+        if (actual != expected) {
+            throw GradleException(
+                "WinApp restore cache at $output does not match the current configuration, NuGet.Config, " +
+                    "tool version, or restored package contents. Run restore once without --offline.",
+            )
+        }
+    }
+
+    private fun restoreContext(config: Path, restoreBase: Path, packageSpecs: List<String>, lock: Path): String {
+        val inventory = if (lock.isRegularFile()) packageInventory(lock) else "pending"
+        val lines = linkedMapOf(
+            "schema" to "1",
+            "configurationSha256" to sha256(config),
+            "nugetConfigSha256" to effectiveNuGetConfigFingerprint(restoreBase),
+            "packageSpecs" to packageSpecs.joinToString("\u001f"),
+            "includeToolingPackages" to includeToolingPackages.get().toString(),
+            "winAppCliVersion" to winAppCliVersion.get(),
+            "winAppCliPackageSha512" to winAppCliPackageSha512.get(),
+            "dependencyIdentitySha256" to dependencyIdentityFingerprint(),
+            "packageInventory" to inventory,
+        )
+        return lines.entries.joinToString(System.lineSeparator()) { (key, value) -> "$key=$value" } +
+            System.lineSeparator()
+    }
+
+    private fun dependencyIdentityFingerprint(): String =
+        dependencyIdentityFiles.files
+            .filter(File::isFile)
+            .sortedBy(File::getAbsolutePath)
+            .joinToString("\u001f") { file -> "${file.name}:${sha256(file.toPath())}" }
+
+    private fun effectiveNuGetConfigFingerprint(restoreBase: Path): String =
+        effectiveNuGetConfigFiles(restoreBase)
+            .joinToString("\u001f") { file -> "${file.toAbsolutePath().normalize()}:${sha256(file)}" }
+
+    private fun effectiveNuGetConfigFiles(restoreBase: Path): List<Path> {
+        val files = linkedSetOf<Path>()
+        var current: Path? = restoreBase.toAbsolutePath().normalize()
+        while (current != null) {
+            Files.list(current).use { entries ->
+                entries.filter { path ->
+                    Files.isRegularFile(path) && path.fileName.toString().equals("NuGet.Config", ignoreCase = true)
+                }.forEach { files.add(it.toAbsolutePath().normalize()) }
+            }
+            current = current.parent
+        }
+        System.getenv("APPDATA")?.takeIf(String::isNotBlank)?.let { appData ->
+            val userConfig = Path.of(appData).resolve("NuGet").resolve("NuGet.Config")
+            if (Files.isRegularFile(userConfig)) files.add(userConfig.toAbsolutePath().normalize())
+        }
+        return files.sortedBy { it.toString().lowercase() }
+    }
+
+    private fun packageInventory(lockFile: Path): String {
+        val lockfile = WinAppRestoreLockfileReader.read(lockFile)
+        val digest = MessageDigest.getInstance("SHA-256")
+        lockfile.packages.sortedBy { "${it.name.lowercase()}:${it.version.lowercase()}" }.forEach { packageEntry ->
+            val root = packageRoot(lockFile, lockfile, packageEntry)
+            if (!Files.isDirectory(root)) return@forEach
+            Files.walk(root).use { stream ->
+                stream.filter(Files::isRegularFile).sorted().forEach { file ->
+                    digest.update(root.relativize(file).toString().replace('\\', '/').toByteArray())
+                    digest.update(0.toByte())
+                    digest.update(sha256(file).toByteArray())
+                    digest.update(0.toByte())
+                }
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun packageRoot(lockFile: Path, lockfile: WinAppRestoreLockfile, packageEntry: WinAppRestoredPackage): Path {
+        val cacheRoot = lockfile.nugetCacheDirectory
+            ?: throw GradleException("WinApp restore lockfile $lockFile has no absolute nuget_cache_dir.")
+        if (!cacheRoot.isAbsolute) {
+            throw GradleException("WinApp restore lockfile $lockFile has a relative nuget_cache_dir.")
+        }
+        val root = cacheRoot.resolve(packageEntry.name.lowercase()).resolve(packageEntry.version).normalize()
+        if (!root.startsWith(cacheRoot.normalize())) {
+            throw GradleException("WinApp restore lockfile $lockFile contains an unsafe package path for ${packageEntry.name}.")
+        }
+        return root
+    }
+
+    private fun sha256(path: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
     private fun createRestoreWorkspace(restoreBase: Path): Path {
@@ -241,3 +390,5 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         logger = logger,
     )
 }
+
+private const val RESTORE_CONTEXT_FILE = "restore-context.sha256"

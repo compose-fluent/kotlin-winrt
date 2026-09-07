@@ -43,6 +43,7 @@ internal object AppxManifestPackageSupport {
         val packageElement = document.documentElement ?: return
         val dependencies = packageElement.childElements("Dependencies").firstOrNull()
             ?: document.createElementNS(APPX_NAMESPACE, "Dependencies").also(packageElement::appendChild)
+        deduplicatePackageDependencies(dependencies)
 
         val frameworkDependencies: List<PackageDependency> = if (includeFrameworkDependencies) discoveredFrameworkDependencies(
             resolvedPackageManifestFiles = resolvedPackageManifestFiles,
@@ -50,10 +51,10 @@ internal object AppxManifestPackageSupport {
             runtimeIdentifier = runtimeIdentifier,
         ) else emptyList()
         frameworkDependencies.forEach { dependency ->
-                val alreadyDeclared = dependencies.childElements(PACKAGE_DEPENDENCY_NAME).any { element ->
+                val existing = dependencies.childElements(PACKAGE_DEPENDENCY_NAME).firstOrNull { element ->
                     element.getAttribute("Name").equals(dependency.name, ignoreCase = true)
                 }
-                if (!alreadyDeclared) {
+                if (existing == null) {
                     dependencies.appendChild(
                         document.createElementNS(APPX_NAMESPACE, PACKAGE_DEPENDENCY_NAME).apply {
                             setAttribute("Name", dependency.name)
@@ -61,6 +62,31 @@ internal object AppxManifestPackageSupport {
                             setAttribute("Publisher", dependency.publisher)
                         },
                     )
+                } else {
+                    val publisher = existing.getAttribute("Publisher").trim()
+                    val minVersion = normalizeVersion(existing.getAttribute("MinVersion"))
+                    if (!publisher.equals(dependency.publisher, ignoreCase = true)) {
+                        throw IllegalArgumentException(
+                            "AppX manifest dependency '${dependency.name}' declares publisher '$publisher', " +
+                                "but the restored framework uses '${dependency.publisher}'.",
+                        )
+                    }
+                    if (minVersion == null || compareVersions(minVersion, dependency.version) > 0) {
+                        throw IllegalArgumentException(
+                            "AppX manifest dependency '${dependency.name}' declares MinVersion " +
+                                "'${existing.getAttribute("MinVersion")}', but the restored framework package " +
+                                "only provides version '${dependency.version}'.",
+                        )
+                    }
+                    val existingArchitecture = existing.getAttribute("ProcessorArchitecture").trim()
+                    if (existingArchitecture.isNotBlank() &&
+                        !architectureMatchesRuntime(existingArchitecture, runtimeIdentifier)
+                    ) {
+                        throw IllegalArgumentException(
+                            "AppX manifest dependency '${dependency.name}' declares processor architecture " +
+                                "'$existingArchitecture', but the selected runtime is '$runtimeIdentifier'.",
+                        )
+                    }
                 }
             }
 
@@ -78,7 +104,6 @@ internal object AppxManifestPackageSupport {
         restoredPackageRoots: Iterable<Path>,
         runtimeIdentifier: String,
     ): List<Path> {
-        val architecture = winAppRuntimeArchitecture(runtimeIdentifier)
         return restoredPackageRoots
             .filter(Path::isDirectory)
             .flatMap { root ->
@@ -86,14 +111,16 @@ internal object AppxManifestPackageSupport {
                     stream
                         .filter(Path::isRegularFile)
                         .filter { path ->
-                            (path.toString().contains("win10-$architecture", ignoreCase = true) ||
-                                path.parent?.fileName?.toString()?.equals("MSIX", ignoreCase = true) == true) &&
-                                (path.fileName.toString().endsWith(".msix", ignoreCase = true) ||
-                                    path.fileName.toString().endsWith(".appx", ignoreCase = true))
+                            path.fileName.toString().endsWith(".msix", ignoreCase = true) ||
+                                path.fileName.toString().endsWith(".appx", ignoreCase = true)
                         }
                         .sorted()
                         .asSequence()
-                        .filter { archive -> readFrameworkManifest(archive) != null }
+                        .filter { archive ->
+                            readFrameworkManifest(archive)?.let { dependency ->
+                                architectureMatchesRuntime(dependency.processorArchitecture, runtimeIdentifier)
+                            } == true
+                        }
                         .toList()
                 }
             }
@@ -106,7 +133,6 @@ internal object AppxManifestPackageSupport {
         restoredPackageRoots: Iterable<Path>,
         runtimeIdentifier: String,
     ): List<PackageDependency> {
-        val architecture = winAppRuntimeArchitecture(runtimeIdentifier)
         return resolvedPackageManifestFiles
             .filter { it.isRegularFile() }
             .flatMap { file ->
@@ -115,29 +141,91 @@ internal object AppxManifestPackageSupport {
             }
             .plus(restoredPackageRoots)
             .filter { root -> root.isDirectory() }
-            .filter { root ->
-                root.parent?.fileName?.toString()?.contains("microsoft.windowsappsdk.runtime", ignoreCase = true) == true
+            .distinctBy { root -> root.toAbsolutePath().normalize().toString().lowercase() }
+            .flatMap { root -> discoverFrameworkPackageManifests(root, runtimeIdentifier) }
+            .groupBy { dependency -> dependency.name.lowercase() }
+            .values
+            .map { dependencies ->
+                val publishers = dependencies.map { dependency -> dependency.publisher.lowercase() }.distinct()
+                if (publishers.size > 1) {
+                    throw IllegalArgumentException(
+                        "Restored framework package '${dependencies.first().name}' has conflicting publishers: " +
+                            dependencies.joinToString { dependency -> "${dependency.version}=${dependency.publisher}" },
+                    )
+                }
+                dependencies.maxWithOrNull { left, right ->
+                    compareVersions(left.version, right.version).takeIf { it != 0 }
+                        ?: left.processorArchitecture.compareTo(right.processorArchitecture, ignoreCase = true)
+                } ?: error("Framework dependency group is empty")
             }
-            .flatMap { root -> discoverFrameworkPackageManifests(root, architecture) }
-            .distinctBy { dependency -> dependency.name.lowercase() to dependency.version }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
-    private fun discoverFrameworkPackageManifests(root: Path, architecture: String): List<PackageDependency> {
+    private fun deduplicatePackageDependencies(dependencies: Element) {
+        val existingByName = LinkedHashMap<String, Element>()
+        dependencies.childElements(PACKAGE_DEPENDENCY_NAME).forEach { dependency ->
+            val name = dependency.getAttribute("Name").trim()
+            if (name.isBlank()) return@forEach
+            val key = name.lowercase()
+            val existing = existingByName[key]
+            if (existing == null) {
+                existingByName[key] = dependency
+                return@forEach
+            }
+            val differingAttributes = listOf("Publisher", "MinVersion", "ProcessorArchitecture")
+                .filter { attribute ->
+                    existing.getAttribute(attribute).trim() != dependency.getAttribute(attribute).trim()
+                }
+            if (differingAttributes.isNotEmpty()) {
+                throw IllegalArgumentException(
+                    "AppX manifest contains duplicate dependency '$name' with conflicting " +
+                        "${differingAttributes.joinToString()}.",
+                )
+            }
+            dependencies.removeChild(dependency)
+        }
+    }
+
+    private fun discoverFrameworkPackageManifests(root: Path, runtimeIdentifier: String): List<PackageDependency> {
         if (!root.isDirectory()) return emptyList()
         return Files.walk(root).use { stream ->
             stream
                 .filter { path ->
                     path.isRegularFile() &&
                         (path.fileName.toString().endsWith(".msix", ignoreCase = true) ||
-                            path.fileName.toString().endsWith(".appx", ignoreCase = true)) &&
-                        path.toString().contains("win10-$architecture", ignoreCase = true)
+                            path.fileName.toString().endsWith(".appx", ignoreCase = true))
                 }
                 .sorted()
                 .asSequence()
-                .mapNotNull(::readFrameworkManifest)
+                .mapNotNull { archive ->
+                    readFrameworkManifest(archive)?.takeIf { dependency ->
+                        architectureMatchesRuntime(dependency.processorArchitecture, runtimeIdentifier)
+                    }
+                }
                 .toList()
         }
+    }
+
+    /**
+     * Validates an explicitly supplied dependency package before handing it to Add-AppxPackage.
+     * Discovery is allowed to skip packages for another architecture; explicit inputs are user
+     * intent and therefore receive a diagnostic instead of being silently ignored.
+     */
+    internal fun validateFrameworkPackageArchive(archive: Path, runtimeIdentifier: String): PackageDependency {
+        if (!archive.isRegularFile()) {
+            throw IllegalArgumentException("Configured AppX dependency package does not exist: $archive")
+        }
+        val dependency = readFrameworkManifest(archive)
+            ?: throw IllegalArgumentException(
+                "Configured AppX dependency package $archive does not contain a valid framework AppxManifest.xml.",
+            )
+        if (!architectureMatchesRuntime(dependency.processorArchitecture, runtimeIdentifier)) {
+            throw IllegalArgumentException(
+                "Configured AppX dependency package $archive targets processor architecture " +
+                    "'${dependency.processorArchitecture}', but the selected runtime is '$runtimeIdentifier'.",
+            )
+        }
+        return dependency
     }
 
     private fun readFrameworkManifest(archive: Path): PackageDependency? = runCatching {
@@ -155,8 +243,9 @@ internal object AppxManifestPackageSupport {
                 val name = identity.getAttribute("Name").trim()
                 val version = normalizeVersion(identity.getAttribute("Version"))
                 val publisher = identity.getAttribute("Publisher").trim()
-                if (name.isBlank() || version == null || publisher.isBlank()) null
-                else PackageDependency(name, version, publisher)
+                val processorArchitecture = normalizePackageArchitecture(identity.getAttribute("ProcessorArchitecture"))
+                if (name.isBlank() || version == null || publisher.isBlank() || processorArchitecture == null) null
+                else PackageDependency(name, version, publisher, processorArchitecture)
             }
         }
     }.getOrNull()
@@ -261,6 +350,33 @@ internal object AppxManifestPackageSupport {
         return parts.joinToString(".")
     }
 
+    private fun compareVersions(left: String, right: String): Int {
+        val leftParts = versionParts(left)
+        val rightParts = versionParts(right)
+        for (index in 0 until maxOf(leftParts.size, rightParts.size)) {
+            val comparison = (leftParts.getOrElse(index) { 0 }).compareTo(rightParts.getOrElse(index) { 0 })
+            if (comparison != 0) return comparison
+        }
+        return 0
+    }
+
+    private fun versionParts(value: String): List<Int> =
+        value.split('.').map { part -> part.toIntOrNull() ?: -1 }
+
+    private fun normalizePackageArchitecture(value: String): String? = when (value.trim().lowercase()) {
+        "x86" -> "x86"
+        "x64", "amd64" -> "x64"
+        "arm64" -> "arm64"
+        "neutral" -> "neutral"
+        else -> null
+    }
+
+    private fun architectureMatchesRuntime(packageArchitecture: String, runtimeIdentifier: String): Boolean {
+        val actual = normalizePackageArchitecture(packageArchitecture) ?: return false
+        val expected = normalizePackageArchitecture(winAppRuntimeArchitecture(runtimeIdentifier)) ?: return false
+        return actual == expected || actual == "neutral"
+    }
+
     private fun manifestPathKey(value: String): String =
         value.replace('/', '\\').trimStart('\\').lowercase()
 
@@ -278,9 +394,10 @@ internal object AppxManifestPackageSupport {
         }
     }
 
-    private data class PackageDependency(
+    internal data class PackageDependency(
         val name: String,
         val version: String,
         val publisher: String,
+        val processorArchitecture: String,
     )
 }

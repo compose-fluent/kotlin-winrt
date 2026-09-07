@@ -711,6 +711,21 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun jvm_compiler_target_follows_application_toolchain_configuration() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.jvmToolchain(21)
+        }
+
+        val compileTask = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java).get()
+        assertEquals("21", compileTask.compilerOptions.jvmTarget.get().target)
+        assertTrue(compileTask.compilerOptions.freeCompilerArgs.get().contains("-Xjdk-release=21"))
+    }
+
+    @Test
     fun runtime_only_multiplatform_native_compilation_keeps_authoring_options_without_projection_support() {
         val project = ProjectBuilder.builder().build()
 
@@ -2992,6 +3007,30 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_host_uses_the_selected_non_main_jvm_compilation_archive() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        val target = kotlin.jvm("customJvm")
+        val smokeCompilation = target.compilations.create("smoke")
+        project.tasks.register("customJvmSmokeJar", Jar::class.java)
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+            application.jvmTarget("customJvm", "smoke")
+        }
+
+        val archiveTaskName = smokeCompilation.archiveTaskName ?: "customJvmSmokeJar"
+        val hostTask = project.tasks.named("buildWinRTApplicationHost", BuildWinRTApplicationHostTask::class.java).get()
+        val hostDependencies = taskDependencyNames(hostTask)
+
+        assertTrue("Host dependencies: $hostDependencies", archiveTaskName in hostDependencies)
+        assertFalse("The main compilation archive must not be selected.", "customJvmJar" in hostDependencies)
+        assertTrue(project.configurations.getByName(smokeCompilation.runtimeDependencyConfigurationName).isCanBeResolved)
+    }
+
+    @Test
     fun application_host_task_graph_includes_generation_support_staging_and_host_prerequisites() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
@@ -3554,6 +3593,7 @@ class KotlinWinRTPluginTest {
                 .get()
                 .includeFrameworkRuntimeAssets.get(),
         )
+        assertFalse(stagePackageTask.includeFrameworkPackageDependencies.get())
         assertEquals("", packageTask.makeAppxExecutable.get())
         assertEquals("", verifyTask.makeAppxExecutable.get())
         assertTrue("restoreWinAppDependencies" in taskDependencyNames(packageTask))
@@ -3638,6 +3678,7 @@ class KotlinWinRTPluginTest {
         assertEquals(true, verifyTask.verifyPackage.get())
         val stagePackageTask =
             project.tasks.named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java).get()
+        assertTrue(stagePackageTask.includeFrameworkPackageDependencies.get())
         assertTrue(stagePackageTask.packagePayloadFiles.files.any { it.path.replace("\\", "/").endsWith("build/libs/app.jar") })
         assertTrue(stagePackageTask.projectPriTargetPaths.get().values.contains("App/app.jar"))
         val signTask = project.tasks.named("signWinRTApplicationPackage", SignWinRTApplicationPackageTask::class.java).get()
@@ -7085,6 +7126,44 @@ class KotlinWinRTPluginTest {
         assertTrue(winAppArgs.any { it.endsWith("AppxManifest.xml") })
         assertTrue(winAppArgs.contains("--skip-pri"))
         assertTrue(winAppArgs.contains("--quiet"))
+        assertFalse(winAppArgs.contains("--self-contained"))
+    }
+
+    @Test
+    fun package_application_task_passes_self_contained_to_winapp_cli() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-winapp-self-contained").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
+        Files.writeString(packageRoot.resolve("AppxManifest.xml"), appxManifestXml())
+        val winAppLog = project.layout.buildDirectory.file("winapp-self-contained.log").get().asFile.toPath()
+        val winApp = writeFakeWinApp(
+            project.layout.buildDirectory.file("fake-winapp-self-contained.cmd").get().asFile.toPath(),
+            winAppLog,
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/WinAppSelfContained.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithWinAppSelfContained",
+            PackageWinRTApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.selfContained.set(true)
+            registeredTask.makeAppxExecutable.set("")
+            registeredTask.winAppCliExecutable.set(winApp.toString())
+            registeredTask.offline.set(true)
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.pack()
+
+        assertTrue(Files.isRegularFile(outputFile))
+        assertTrue(readFakeToolArguments(winAppLog).contains("--self-contained"))
     }
 
     @Test
@@ -12957,15 +13036,22 @@ private fun writeFakeMakePri(path: Path, log: Path, languagePri: String = ""): P
         """
         @echo off
         set output=
+        set operation=
         :next
         if "%~1"=="" goto done
         >>"${log.toString()}" echo(%~1
+        if /I "%~1"=="dump" set operation=dump
         if /I "%~1"=="/of" (
           set output=%~2
         )
         shift
         goto next
         :done
+        if /I "%operation%"=="dump" (
+          >"%output%" echo ^<?xml version="1.0" encoding="UTF-8"?^>
+          >>"%output%" echo ^<PriInfo^>^</PriInfo^>
+          exit /b 0
+        )
         if not "%output%"=="" (
           echo fake-pri>"%output%"
           if not "${languagePri}"=="" (

@@ -286,6 +286,8 @@ abstract class WinRTApplicationOptions @Inject constructor(
             "jdk.unsupported",
         ),
     )
+    /** Java major version used for JNI headers, jlink, and the runtime image contract. */
+    val jvmToolchainVersion: Property<Int> = objects.property(Int::class.java).convention(25)
     /** Windows App SDK deployment mode; independent from packaged/unpackaged identity. */
     val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment> =
         objects.property(WinRTWindowsAppSdkDeployment::class.java)
@@ -353,6 +355,11 @@ abstract class WinRTApplicationOptions @Inject constructor(
     fun externalJvmRuntime(home: Any) {
         jvmRuntimeMode.set(WinRTJvmRuntimeMode.External)
         externalJvmHome.set(project.layout.dir(project.provider { project.file(home) }))
+    }
+
+    fun jvmToolchain(version: Int) {
+        require(version > 0) { "JVM toolchain version must be positive." }
+        jvmToolchainVersion.set(version)
     }
 
     fun runTask(name: String) {

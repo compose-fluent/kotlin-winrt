@@ -109,9 +109,9 @@ internal fun discoverWinRTApplicationVariants(project: Project): List<WinRTAppli
 
     val candidates = mutableListOf<WinRTApplicationVariant>()
     kotlin.targets.withType(KotlinJvmTarget::class.java).forEach { target ->
-        target.compilations.findByName("main")?.let { compilation ->
+        target.compilations.forEach { compilation ->
             candidates += WinRTApplicationVariant(
-                id = "${target.name}:main",
+                id = "${target.name}:${compilation.name}",
                 kind = WinRTApplicationVariantKind.Jvm,
                 targetName = target.name,
                 compilationName = compilation.name,
@@ -126,15 +126,16 @@ internal fun discoverWinRTApplicationVariants(project: Project): List<WinRTAppli
         .filter(KotlinNativeTarget::isMingwX64Target)
         .forEach { target ->
             target.binaries.withType(Executable::class.java).forEach { executable ->
+                val compilation = executable.compilation
                 candidates += WinRTApplicationVariant(
-                    id = "${target.name}:main:${executable.name}",
+                    id = "${target.name}:${compilation.name}:${executable.name}",
                     kind = WinRTApplicationVariantKind.MingwX64,
                     targetName = target.name,
-                    compilationName = "main",
-                    sourceSetName = target.compilations.getByName("main").defaultSourceSet.name,
+                    compilationName = compilation.name,
+                    sourceSetName = compilation.defaultSourceSet.name,
                     buildType = executable.buildType.name,
                     executableName = executable.name,
-                    runtimeIdentifier = "mingwX64",
+                    runtimeIdentifier = "win-x64",
                 )
             }
         }

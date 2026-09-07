@@ -26,6 +26,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         applicationVariant.convention("jvm:main")
         jvmRuntimeMode.convention(WinRTJvmRuntimeMode.Bundled.name)
         externalJvmHome.convention("")
+        expectedJavaMajor.convention(25)
         console.convention(false)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
@@ -65,6 +66,9 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     abstract val javaHome: Property<String>
 
     @get:Input
+    abstract val expectedJavaMajor: Property<Int>
+
+    @get:Input
     abstract val jvmRuntimeMode: Property<String>
 
     @get:InputDirectory
@@ -93,10 +97,6 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     fun build() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
-        GradleFileOperations.cleanDirectory(outputRoot)
-        Files.createDirectories(outputRoot)
-        Files.createDirectories(sourceRoot)
-        val source = sourceRoot.resolve("kotlin_winrt_application_host.c")
         val mainClassValue = mainClass.orNull?.takeIf(String::isNotBlank)
             ?: throw IllegalStateException("Kotlin/WinRT application host requires an application mainClass.")
         val runtimeMode = jvmRuntimeMode.get()
@@ -109,6 +109,25 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         if (runtimeMode == WinRTJvmRuntimeMode.External.name) {
             validateExternalJvmHome(Path.of(externalHome))
         }
+        val configuredRuntimeImage = if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name) {
+            runtimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        } else {
+            null
+        }
+        if (configuredRuntimeImage != null) {
+            if (!configuredRuntimeImage.isDirectory()) {
+                throw IllegalStateException("Bundled JVM runtime image is not a directory: $configuredRuntimeImage")
+            }
+            runtimeImageOverlapError(configuredRuntimeImage, outputRoot, "Bundled JVM runtime image")?.let { message ->
+                throw IllegalStateException(message)
+            }
+        }
+        // Validate the image/output relationship before cleaning the host output. A configured
+        // image inside that output would otherwise be deleted before it can be staged.
+        GradleFileOperations.cleanDirectory(outputRoot)
+        Files.createDirectories(outputRoot)
+        Files.createDirectories(sourceRoot)
+        val source = sourceRoot.resolve("kotlin_winrt_application_host.c")
         // Host compilation is Windows-only. On other hosts this task still emits the source
         // used by TestKit and cross-platform configuration checks, but it cannot consume a
         // Windows JVM image or compile the native launcher.
@@ -174,15 +193,22 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
             throw IllegalStateException("Bundled JVM runtime image is not a directory: $source")
         }
         val target = outputRoot.resolve("runtime").toAbsolutePath().normalize()
-        if (target == source || target.startsWith(source)) {
-            throw IllegalStateException("Bundled JVM runtime image cannot be staged inside itself: $source")
+        runtimeImageOverlapError(source, outputRoot, "Bundled JVM runtime image")?.let { message ->
+            throw IllegalStateException(message)
         }
         copyDirectory(source, target)
         if (isWindowsHost() && !hasWindowsJvmLibrary(target)) {
             throw IllegalStateException(
                 "Bundled JVM runtime image at $source does not contain a Windows JVM library " +
-                    "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
+                "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
             )
+        }
+        if (isWindowsHost()) {
+            runCatching {
+                validateJvmRuntime(target, expectedJavaMajor.get(), runtimeIdentifier.get(), "Bundled JVM runtime image")
+            }.getOrElse { error ->
+                throw IllegalStateException(error.message, error)
+            }
         }
     }
 
@@ -194,8 +220,15 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         if (isWindowsHost() && !hasWindowsJvmLibrary(normalized)) {
             throw IllegalStateException(
                 "External JVM runtime home at $normalized does not contain a Windows JVM library " +
-                    "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
+                "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
             )
+        }
+        if (isWindowsHost()) {
+            runCatching {
+                validateJvmRuntime(normalized, expectedJavaMajor.get(), runtimeIdentifier.get(), "External JVM runtime")
+            }.getOrElse { error ->
+                throw IllegalStateException(error.message, error)
+            }
         }
     }
 
@@ -211,9 +244,10 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
             .filterNot { it.toPath().toAbsolutePath().normalize() == outputRoot.toAbsolutePath().normalize() }
             .forEach { source ->
                 if (source.isDirectory) {
-                    copyDirectory(source.toPath(), outputRoot)
+                    copyRuntimeAssetDirectory(source.toPath(), outputRoot)
                 } else if (source.isFile) {
                     Files.createDirectories(outputRoot)
+                    rejectReservedRuntimeAsset(Path.of(source.name))
                     Files.copy(
                         source.toPath(),
                         outputRoot.resolve(source.name),
@@ -221,6 +255,27 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                     )
                 }
             }
+    }
+
+    private fun copyRuntimeAssetDirectory(sourceRoot: Path, targetRoot: Path) {
+        Files.walk(sourceRoot).use { stream ->
+            stream.filter(Files::isRegularFile).forEach { source ->
+                val relative = sourceRoot.relativize(source)
+                rejectReservedRuntimeAsset(relative)
+                val target = targetRoot.resolve(relative.toString()).normalize()
+                Files.createDirectories(target.parent)
+                Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+
+    private fun rejectReservedRuntimeAsset(relative: Path) {
+        val firstSegment = relative.iterator().asSequence().firstOrNull()?.toString().orEmpty()
+        if (firstSegment.equals("runtime", ignoreCase = true) || firstSegment.equals("lib", ignoreCase = true)) {
+            throw IllegalStateException(
+                "Runtime asset '${relative.toString().replace('\\', '/')}' targets a reserved JVM host directory.",
+            )
+        }
     }
 
     private fun copyDirectory(sourceRoot: Path, targetRoot: Path) {
@@ -243,7 +298,13 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         source: Path,
         output: Path,
     ) {
-        val javaHomePath = Path.of(javaHome.get())
+        val javaHomeValue = javaHome.orNull?.trim().orEmpty()
+        if (javaHomeValue.isBlank()) {
+            throw IllegalStateException(
+                "Kotlin/WinRT application host requires a resolved Java toolchain home for JNI headers.",
+            )
+        }
+        val javaHomePath = Path.of(javaHomeValue)
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
         val useLlvmLinker = compiler.fileName.toString().equals("clang-cl.exe", ignoreCase = true) &&
             findExecutable("lld-link.exe") != null
@@ -338,7 +399,7 @@ private data class HostProcessResult(
     val output: String,
 )
 
-private fun applicationHostSource(
+internal fun applicationHostSource(
     mainClass: String,
     packageMode: String,
     runtimeMode: String,
@@ -350,6 +411,7 @@ private fun applicationHostSource(
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
     val bundledRuntime = runtimeMode == WinRTJvmRuntimeMode.Bundled.name
+    val bundledRuntimeCondition = if (bundledRuntime) "1" else "0"
     return """
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
@@ -445,7 +507,7 @@ private fun applicationHostSource(
         wchar_t host_directory[MAX_PATH * 4];
         kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
         HMODULE module = NULL;
-        if ($bundledRuntime) {
+        if ($bundledRuntimeCondition) {
             module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\server\\jvm.dll");
             if (module == NULL) {
                 module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\jre\\bin\\server\\jvm.dll");

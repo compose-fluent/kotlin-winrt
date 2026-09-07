@@ -15,6 +15,15 @@ import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ModuleComponentSelector
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentSelector
+import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.Usage
 import org.gradle.api.component.AdhocComponentWithVariants
 import org.gradle.api.distribution.DistributionContainer
@@ -22,7 +31,6 @@ import org.gradle.api.file.CopySpec
 import org.gradle.api.file.Directory
 import org.gradle.api.plugins.JavaApplication
 import org.gradle.api.file.RegularFile
-import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Input
@@ -40,9 +48,13 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import java.io.File
 import java.util.Properties
+import java.util.concurrent.ConcurrentHashMap
 import java.nio.file.Path
 import java.nio.file.Files
 import org.gradle.jvm.tasks.Jar
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
+import org.gradle.jvm.toolchain.JavaToolchainSpec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 import kotlin.io.path.isDirectory
@@ -70,8 +82,26 @@ const val KOTLIN_WINRT_APPX_RESOURCES_ELEMENTS_CONFIGURATION: String = "kotlinWi
 const val KOTLIN_WINRT_APPX_RESOURCES_CONFIGURATION: String = "kotlinWinRTAppxResources"
 const val KOTLIN_WINRT_APPX_RESOURCES_USAGE: String = "kotlin-winrt-appx-resources"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
+internal val KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE: Attribute<String> =
+    Attribute.of("io.github.composefluent.winrt.appx-resource-target", String::class.java)
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
 private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRTLibraryDependencyIdentity"
+
+/** Resolves the configured Gradle Java toolchain instead of inheriting the daemon JVM. */
+private fun configuredJvmToolchainHome(
+    project: Project,
+    options: WinRTApplicationOptions,
+): Provider<String> = project.provider {
+    val service = project.extensions.findByType(JavaToolchainService::class.java)
+        ?: throw org.gradle.api.GradleException(
+            "Gradle Java toolchain service is unavailable; cannot build the Kotlin/WinRT JVM host. " +
+                "Apply a Kotlin/JVM or Java plugin with toolchain support.",
+        )
+    val launcher = service.launcherFor(Action<JavaToolchainSpec> { spec ->
+        spec.languageVersion.set(JavaLanguageVersion.of(options.jvmToolchainVersion.get()))
+    }).get()
+    launcher.metadata.installationPath.asFile.absolutePath
+}
 
 fun Project.registerWinRTApplicationHostRunTask(
     name: String,
@@ -329,6 +359,7 @@ private fun configureWinRTLibraryModel(
     // Keep the optional resource variant's dependency graph separate from JVM/Native runtime
     // classpaths while still publishing WinRT resource artifacts of transitive modules.
     appxResourceElements.extendsFrom(dependencyAppxResources)
+    configureKmpAppxResourceArtifactVariants(project, dependencyAppxResources)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, dependencyIdentities)
     val localGenerationRequired = kotlinWinRTLocalGenerationRequired(
         project = project,
@@ -426,20 +457,54 @@ private fun configureWinRTApplicationTasks(
     )
     configureWinRTIdentityProjectDependencies(project, identityDependencies, includeExternalModules = true)
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
-    val dependencyAppxResourceArchives = project.configurations
+    val dependencyAppxResources = project.configurations.getByName(KOTLIN_WINRT_APPX_RESOURCES_CONFIGURATION)
+    val selectedVariant = project.provider {
+        resolveWinRTApplicationVariant(project, extension.application)
+    }
+    val appxResourceVariantRegistry = AppxResourceVariantRegistry()
+    val dependencyAppxResourceView = project.configurations
         .getByName(KOTLIN_WINRT_APPX_RESOURCES_CONFIGURATION)
         .incoming
         .artifactView { view ->
+            // Ordinary source dependencies do not publish this optional capability. The view is
+            // lenient only so those dependencies can remain absent; the provider below turns any
+            // failure for a component that actually publishes a WinRT resource variant into a
+            // hard error before the files reach package staging.
             view.isLenient = true
             view.attributes.attribute(
                 Usage.USAGE_ATTRIBUTE,
                 project.objects.named(Usage::class.java, KOTLIN_WINRT_APPX_RESOURCES_USAGE),
             )
+            view.attributes.attributeProvider(
+                KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE,
+                selectedVariant.map { variant -> variant.sourceSetName },
+            )
         }
-        .files
+    val dependencyAppxResourceArchives = project.configurations
+        .getByName(KOTLIN_WINRT_APPX_RESOURCES_CONFIGURATION)
+        .let {
+            project.files(project.provider {
+                discoverAppxResourceVariants(project, it, appxResourceVariantRegistry)
+                val artifacts = dependencyAppxResourceView.artifacts
+                validateAppxResourceVariantResolution(
+                    configuration = it,
+                    failures = artifacts.failures,
+                    resolvedArtifacts = artifacts.artifacts,
+                    requestedTarget = selectedVariant.get().sourceSetName,
+                    resourceVariantRegistry = appxResourceVariantRegistry,
+                )
+                artifacts.artifactFiles.files
+            })
+        }
     val projectName = project.name
-    val selectedVariant = project.provider {
-        resolveWinRTApplicationVariant(project, extension.application)
+    // Attribute the optional resource graph only after the final application variant is known.
+    // The generic artifact remains a compatibility fallback, while an exact target-source-set
+    // artifact wins whenever a producer publishes one.
+    project.afterEvaluate {
+        dependencyAppxResources.attributes.attribute(
+            KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE,
+            selectedVariant.get().sourceSetName,
+        )
     }
     val hasMingwReleaseExecutable = selectedVariant.map { variant ->
         variant.kind == WinRTApplicationVariantKind.MingwX64
@@ -530,8 +595,8 @@ private fun configureWinRTApplicationTasks(
                     },
                 ),
             )
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
-            task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+            task.javaHome.set(configuredJvmToolchainHome(project, extension.application))
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
@@ -642,7 +707,7 @@ private fun configureWinRTApplicationTasks(
                     outputFile?.name?.endsWith(".appx", ignoreCase = true) == true
             })
             task.includeJvmAuthoringArtifacts.set(hasMingwReleaseExecutable.map { hasNativeExecutable -> !hasNativeExecutable })
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.generateProjectPri.set(extension.application.generateProjectPri)
             task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })
             task.projectPriFallbackIndexName.set(project.name)
@@ -735,7 +800,9 @@ private fun configureWinRTApplicationTasks(
             task.group = "kotlin-winrt"
             task.description = "Prepares the bundled JVM runtime image for the selected WinRT application variant."
             task.runtimeMode.set(extension.application.jvmRuntimeMode.map { it.name })
-            task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.javaHome.set(configuredJvmToolchainHome(project, extension.application))
+            task.expectedJavaMajor.set(extension.application.jvmToolchainVersion)
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.sourceImage.set(extension.application.jvmRuntimeImage)
             task.modules.set(extension.application.jvmRuntimeModules)
             task.outputDirectory.set(
@@ -874,9 +941,14 @@ private fun configureWinRTApplicationTasks(
             task.makePriExecutable.set(extension.application.makePriExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.includeFrameworkPackageDependencies.set(project.provider {
-                extension.application.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
+                val packageOutput = extension.application.packageOutputFile.orNull?.asFile
+                val usesLegacyMakeAppx = extension.application.makeAppxExecutable.get().isNotBlank() ||
+                    packageOutput?.name?.endsWith(".appx", ignoreCase = true) == true
+                extension.application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
+                    extension.application.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent &&
+                    usesLegacyMakeAppx
             })
             task.executableBaseName.set(project.name)
             task.deferredManifestPayloadPaths.set(
@@ -918,10 +990,11 @@ private fun configureWinRTApplicationTasks(
             task.packageMode.set(project.provider { extension.application.packageMode.get().name })
             task.console.set(extension.application.console)
             task.executableBaseName.set(project.name)
-            task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.javaHome.set(configuredJvmToolchainHome(project, extension.application))
+            task.expectedJavaMajor.set(extension.application.jvmToolchainVersion)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
             task.jvmRuntimeMode.set(extension.application.jvmRuntimeMode.map { it.name })
@@ -979,6 +1052,9 @@ private fun configureWinRTApplicationTasks(
             )
             task.generatePackage.set(extension.application.generatePackage)
             task.packageMode.set(extension.application.packageMode.map { it.name })
+            task.selfContained.set(extension.application.windowsAppSdkDeployment.map {
+                it == WinRTWindowsAppSdkDeployment.SelfContained
+            })
             task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
             task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
@@ -999,7 +1075,7 @@ private fun configureWinRTApplicationTasks(
             task.offline.set(project.provider { project.gradle.startParameter.isOffline })
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.onlyIf { task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name }
             task.dependsOn(stageApplicationPackageTask)
             task.dependsOn(restoreWinAppDependenciesTask)
@@ -1051,7 +1127,7 @@ private fun configureWinRTApplicationTasks(
             task.offline.set(project.provider { project.gradle.startParameter.isOffline })
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.onlyIf {
                 task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
                     task.verifyPackage.get() &&
@@ -1081,7 +1157,7 @@ private fun configureWinRTApplicationTasks(
             task.signToolExecutable.set(extension.application.signToolExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.signingCertificateThumbprint.set(extension.application.signingCertificateThumbprint)
             task.signingCertificateFile.set(extension.application.signingCertificateFile)
             task.signingCertificatePassword.set(extension.application.signingCertificatePassword)
@@ -1114,9 +1190,12 @@ private fun configureWinRTApplicationTasks(
             task.dependencyPackageFiles.from(extension.application.dependencyPackageFiles)
             task.dependencyLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
             task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension) })
-            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.installPackage.set(extension.application.installPackage)
             task.packageMode.set(extension.application.packageMode.map { it.name })
+            task.includeRestoredFrameworkDependencies.set(project.provider {
+                extension.application.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
+            })
             task.powerShellExecutable.set(extension.application.installPowerShellExecutable)
             task.forceApplicationShutdown.set(extension.application.installForceApplicationShutdown)
             task.onlyIf {
@@ -1234,72 +1313,94 @@ private fun configureKmpJvmApplicationHostClasspath(
     applicationHostTask: TaskProvider<BuildWinRTApplicationHostTask>,
 ) {
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
-        val kotlinExtension = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
         val extension = project.extensions.getByType(WinRTExtension::class.java)
-        val configuredTargetNames = linkedSetOf<String>()
+        // Keep the selected KMP target in a separate file collection. The application host may
+        // be configured before all targets exist; wiring every target as it appears leaks jars
+        // from unrelated JVM targets into the eventual application classpath.
+        val selectedJvmClasspath = project.files()
+        applicationHostTask.configure { task -> task.runtimeClasspath.from(selectedJvmClasspath) }
 
-        fun attachTarget(targetName: String) {
-            val runtimeClasspathName = "${targetName}RuntimeClasspath"
-            val jarTaskName = "${targetName}Jar"
-            project.configurations.findByName(runtimeClasspathName)?.let { configuration ->
-                applicationHostTask.configure { task ->
-                    task.runtimeClasspath.from(configuration)
+        var selectedTargetAttached = false
+
+        // Kotlin MPP targets may be declared either before or after the WinRT application block.
+        // The application callback handles the normal ProjectBuilder/configuration path, while
+        // the afterEvaluate retry handles targets declared later in the build script.
+        fun attachSelectedTarget(failIfUnavailable: Boolean) {
+            if (selectedTargetAttached) return
+            val variant = runCatching { resolveWinRTApplicationVariant(project, extension.application) }
+                .getOrElse { error ->
+                    if (failIfUnavailable) throw error
+                    return
                 }
-            }
-            (project.tasks.findByName(jarTaskName) as? Jar)?.let { jar ->
-                applicationHostTask.configure { task ->
-                    task.runtimeClasspath.from(jar.archiveFile)
-                    task.dependsOn(jar)
-                }
-            }
-        }
-
-        fun configureTarget(targetName: String) {
-            if (configuredTargetNames.add(targetName)) {
-                attachTarget(targetName)
-            }
-        }
-
-        // Wire a target as soon as Kotlin creates it so model-only consumers (and projects that
-        // register the application block before their target) still expose the real jar task.
-        // The final variant resolution below remains authoritative and rejects ambiguity.
-        kotlinExtension.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
-            val targetSelector = extension.application.targetName.orNull.orEmpty().trim()
-            val variantSelector = extension.application.variantName.orNull.orEmpty().trim()
-            val requestedKind = extension.application.targetKind.orNull ?: WinRTApplicationTargetKind.Auto
-            val compilationName = extension.application.compilationName.orNull.orEmpty().ifBlank { "main" }
-            val matchesExplicitSelector =
-                (targetSelector.isBlank() || target.name.equals(targetSelector, ignoreCase = true)) &&
-                    (variantSelector.isBlank() ||
-                        variantSelector.equals("${target.name}:$compilationName", ignoreCase = true)) &&
-                    (requestedKind == WinRTApplicationTargetKind.Auto || requestedKind == WinRTApplicationTargetKind.Jvm)
-            if (matchesExplicitSelector) {
-                configureTarget(target.name)
-            }
-        }
-
-        // Kotlin MPP targets may be declared after the WinRT application block. Resolve the
-        // selected variant once project configuration is complete and validate that the selected
-        // JVM target really exposes the expected classpath and jar task.
-        project.afterEvaluate {
-            val variant = resolveWinRTApplicationVariant(project, extension.application)
             if (variant.kind != WinRTApplicationVariantKind.Jvm) {
-                return@afterEvaluate
+                selectedTargetAttached = true
+                return
             }
-            // The target callback may have run before Kotlin created its Jar task. At this point
-            // all target tasks exist, so attach the authoritative selected variant directly.
-            attachTarget(variant.targetName)
-            val runtimeClasspath = project.configurations.findByName("${variant.targetName}RuntimeClasspath")
-                ?: throw org.gradle.api.GradleException(
-                    "Selected JVM target '${variant.targetName}' has no ${variant.targetName}RuntimeClasspath configuration.",
-                )
-            val jarTaskName = "${variant.targetName}Jar"
-            val jar = project.tasks.findByName(jarTaskName) as? Jar
-                ?: throw org.gradle.api.GradleException(
-                    "Selected JVM target '${variant.targetName}' has no ${jarTaskName} task.",
-                )
-            applicationHostTask.configure { task -> task.runtimeClasspath.from(runtimeClasspath, jar.archiveFile) }
+            val target = project.extensions
+                .getByType(KotlinMultiplatformExtension::class.java)
+                .targets
+                .withType(KotlinJvmTarget::class.java)
+                .singleOrNull { candidate -> candidate.name.equals(variant.targetName, ignoreCase = true) }
+                ?: if (failIfUnavailable) {
+                    throw org.gradle.api.GradleException(
+                        "Selected JVM target '${variant.targetName}' is no longer available.",
+                    )
+                } else {
+                    return
+                }
+            val compilation = target.compilations.findByName(variant.compilationName)
+                ?: if (failIfUnavailable) {
+                    throw org.gradle.api.GradleException(
+                        "Selected JVM target '${variant.targetName}' has no '${variant.compilationName}' compilation.",
+                    )
+                } else {
+                    return
+                }
+            val jvmCompilation = compilation
+            val archiveTaskName = jvmCompilation.archiveTaskName
+            val jar = if (archiveTaskName != null) {
+                project.tasks.findByName(archiveTaskName) as? Jar
+                    ?: if (failIfUnavailable) {
+                        throw org.gradle.api.GradleException(
+                            "Selected JVM target '${variant.targetName}' compilation '${variant.compilationName}' " +
+                                "has no $archiveTaskName archive task.",
+                        )
+                    } else {
+                        return
+                    }
+                project.tasks.named(archiveTaskName, Jar::class.java)
+            } else {
+                // Kotlin Gradle Plugin does not create archives for custom compilations unless an
+                // internal opt-in is enabled. The application host still needs one stable Jar so
+                // that its classpath matches the selected compilation rather than main.
+                val fallbackTaskName =
+                    "${variant.targetName}${variant.compilationName.replaceFirstChar(Char::uppercaseChar)}Jar"
+                val existingFallbackTask = project.tasks.findByName(fallbackTaskName)
+                if (existingFallbackTask != null && existingFallbackTask !is Jar) {
+                    throw org.gradle.api.GradleException(
+                        "Selected JVM compilation '${variant.targetName}:${variant.compilationName}' " +
+                            "needs a Jar task named '$fallbackTaskName', but that task is " +
+                            "${existingFallbackTask::class.java.name}.",
+                    )
+                }
+                val fallbackJar = existingFallbackTask?.let {
+                    project.tasks.named(fallbackTaskName, Jar::class.java)
+                } ?: project.tasks.register(fallbackTaskName, Jar::class.java)
+                fallbackJar.configure { task ->
+                    task.from(jvmCompilation.output.allOutputs)
+                    task.dependsOn(jvmCompilation.compileTaskProvider)
+                    project.tasks.findByName(jvmCompilation.processResourcesTaskName)?.let(task::dependsOn)
+                }
+                fallbackJar
+            }
+            selectedJvmClasspath.setFrom(emptyList<Any>())
+            selectedJvmClasspath.from(jvmCompilation.runtimeDependencyFiles, jar.flatMap { it.archiveFile })
+            applicationHostTask.configure { task -> task.dependsOn(jar) }
+            selectedTargetAttached = true
         }
+
+        extension.whenApplicationConfigured { attachSelectedTarget(failIfUnavailable = false) }
+        project.afterEvaluate { attachSelectedTarget(failIfUnavailable = true) }
     }
 }
 
@@ -1312,33 +1413,11 @@ private fun configureMingwApplicationEntry(
     console: Boolean,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    val applicationExecutableName = project.provider { selectedVariant.get().executableName ?: "${project.name}.exe" }
     val applicationLayoutDirectory = project.provider {
         project.layout.buildDirectory
             .dir("kotlin-winrt/application-layout/${selectedVariant.get().id.toSafeDirectoryName()}/package")
             .get()
             .asFile
-    }
-    kotlinExtension.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
-        if (!target.isMingwX64Target()) {
-            return@configureEach
-        }
-        target.binaries.withType(Executable::class.java).configureEach { executable ->
-            executable.entryPoint = KOTLIN_WINRT_MINGW_APPLICATION_ENTRY_POINT
-            executable.linkerOpts(if (console) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
-            executable.runTaskProvider?.configure { task ->
-                task.dependsOn(stageRuntimeAssetsTask)
-                task.onlyIf {
-                    val variant = selectedVariant.get()
-                    variant.kind == WinRTApplicationVariantKind.MingwX64 &&
-                        variant.executableName.equals(executable.name, ignoreCase = true)
-                }
-                task.environment(
-                    "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
-                    stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,
-                )
-            }
-        }
     }
     project.afterEvaluate {
         val variant = selectedVariant.get()
@@ -1352,15 +1431,29 @@ private fun configureMingwApplicationEntry(
             ?: throw org.gradle.api.GradleException(
                 "Selected mingwX64 executable '${variant.executableName}' is no longer available on target '${target.name}'.",
             )
+        executable.entryPoint = KOTLIN_WINRT_MINGW_APPLICATION_ENTRY_POINT
+        executable.linkerOpts(if (console) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
+        // Kotlin/Native's model name (for example, releaseExecutable) is not the staged file
+        // name. Keep the output file Provider as the single source for payload, manifest and run
+        // task wiring so custom binary names and target-specific base names remain consistent.
+        val executableOutputFile = project.provider { executable.outputFile }
+        val executableOutputName = executableOutputFile.map { outputFile -> outputFile.name }
+        val executableOutputBaseName = executableOutputFile.map { outputFile -> outputFile.nameWithoutExtension }
         executable.linkTaskProvider.configure { task -> task.dependsOn(entryTask) }
         stageApplicationPackageTask.configure { task ->
             task.dependsOn(executable.linkTaskProvider)
-            task.rootPackagePayloadFiles.from(project.provider { executable.outputFile })
+            task.rootPackagePayloadFiles.from(executableOutputFile)
+            task.executableBaseName.set(executableOutputBaseName)
         }
         executable.runTaskProvider?.configure { task ->
+            task.dependsOn(stageRuntimeAssetsTask)
             task.dependsOn(stageApplicationPackageTask)
             task.workingDir(applicationLayoutDirectory.get())
-            task.executable(applicationLayoutDirectory.get().resolve(applicationExecutableName.get()).absolutePath)
+            task.executable(applicationLayoutDirectory.get().resolve(executableOutputName.get()).absolutePath)
+            task.environment(
+                "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
+                stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,
+            )
         }
     }
 }
@@ -1385,7 +1478,11 @@ private fun configureAppxResourceGeneration(
             resourceTask.outputDirectory.set(
                 project.layout.buildDirectory.dir("generated/kotlin-winrt/appx-resources/${sourceSet.name}"),
             )
-            resourceTask.packageName.set(generatedPackageName)
+            resourceTask.packageName.set(
+                generatedPackageName.map { packageName ->
+                    appxResourceAccessorPackageName(packageName, sourceSet.name)
+                },
+            )
             resourceTask.targetSourceSet.set(sourceSet.name)
             resourceTask.resourceRoots.set(roots.map { resourceRoots -> resourceRoots.map(Path::toString) })
             resourceTask.resourceFiles.from(
@@ -1398,6 +1495,24 @@ private fun configureAppxResourceGeneration(
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
         val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
         configureSourceSet(kotlin.sourceSets.maybeCreate("winuiMain"))
+        // Generate the shared accessor and one accessor namespace for every supported target
+        // compilation. A target compilation includes winuiMain, so target-owned resources must
+        // not be emitted under the same FQN as the shared accessor.
+        kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+            target.compilations.configureEach { compilation ->
+                if (!compilation.name.endsWith("Test", ignoreCase = true)) {
+                    configureSourceSet(compilation.defaultSourceSet)
+                }
+            }
+        }
+        kotlin.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+            if (!target.isMingwX64Target()) return@configureEach
+            target.compilations.configureEach { compilation ->
+                if (!compilation.name.endsWith("Test", ignoreCase = true)) {
+                    configureSourceSet(compilation.defaultSourceSet)
+                }
+            }
+        }
     }
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
         val kotlin = project.extensions.getByType(KotlinProjectExtension::class.java)
@@ -1744,6 +1859,7 @@ private fun configureWinRTGeneration(
             authoringTargetArtifactName = authoringTargetArtifactName,
             nativeAuthoringTargetArtifactName = kotlinWinRTNativeAuthoringTargetArtifactName(project),
             compilerSupportManifest = mergedCompilerSupportManifest,
+            jvmToolchainVersion = (extension as? WinRTExtension)?.application?.jvmToolchainVersion,
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
@@ -1792,6 +1908,7 @@ private fun configureWinRTGeneration(
             authoringTargetArtifactName = authoringTargetArtifactName,
             nativeAuthoringTargetArtifactName = kotlinWinRTNativeAuthoringTargetArtifactName(project),
             compilerSupportManifest = mergedCompilerSupportManifest,
+            jvmToolchainVersion = (extension as? WinRTExtension)?.application?.jvmToolchainVersion,
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
@@ -2777,13 +2894,94 @@ private fun configureWinRTIdentityProjectDependencies(
 }
 
 /**
+ * Publishes one optional resource artifact for each supported KMP target source set. Gradle's
+ * target attribute keeps `mingwX64Main` payloads out of a JVM application while the generic
+ * `kotlinWinRTAppxResourcesElements` variant remains available to Java/JVM consumers.
+ */
+private fun configureKmpAppxResourceArtifactVariants(
+    project: Project,
+    dependencyAppxResources: org.gradle.api.artifacts.Configuration,
+) {
+    val configuredSourceSets = linkedSetOf<String>()
+
+    fun configureSourceSet(sourceSetName: String) {
+        if (sourceSetName == "main" || sourceSetName == "winuiMain" || !configuredSourceSets.add(sourceSetName)) {
+            return
+        }
+        val suffix = sourceSetName.replaceFirstChar(Char::uppercaseChar)
+        val task = project.tasks.register(
+            "packageWinRTAppxResources$suffix",
+            GenerateAppxResourcesArtifactTask::class.java,
+        ) { resourceTask ->
+            resourceTask.group = "kotlin-winrt"
+            resourceTask.description = "Packages AppX resources for the $sourceSetName target compilation."
+            resourceTask.outputFile.set(
+                project.layout.buildDirectory.file(
+                    "libs/${project.name}-${sourceSetName}-appx-resources.zip",
+                ),
+            )
+            resourceTask.resourceRoots.set(
+                project.provider {
+                    appxResourceRoots(project, listOf(sourceSetName)).map(Path::toString)
+                },
+            )
+            resourceTask.resourceInputs.from(
+                project.provider {
+                    appxResourceFiles(appxResourceRoots(project, listOf(sourceSetName))).map(Path::toFile)
+                },
+            )
+        }
+        val elements = project.configurations.maybeCreate(
+            "${KOTLIN_WINRT_APPX_RESOURCES_ELEMENTS_CONFIGURATION}$suffix",
+        ).apply {
+            isCanBeConsumed = true
+            isCanBeResolved = false
+            attributes.attribute(
+                Usage.USAGE_ATTRIBUTE,
+                project.objects.named(Usage::class.java, KOTLIN_WINRT_APPX_RESOURCES_USAGE),
+            )
+            attributes.attribute(KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE, sourceSetName)
+            extendsFrom(dependencyAppxResources)
+            outgoing.artifact(task.flatMap { it.outputFile }) { artifact ->
+                artifact.builtBy(task)
+                artifact.type = "zip"
+            }
+        }
+        project.plugins.withId("maven-publish") {
+            project.components.withType(AdhocComponentWithVariants::class.java).configureEach { component ->
+                component.addVariantsFromConfiguration(elements) { details -> details.mapToOptional() }
+            }
+        }
+    }
+
+    project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
+            target.compilations.configureEach { compilation ->
+                if (!compilation.name.endsWith("Test", ignoreCase = true)) {
+                    configureSourceSet(compilation.defaultSourceSet.name)
+                }
+            }
+        }
+        kotlin.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
+            if (!target.isMingwX64Target()) return@configureEach
+            target.compilations.configureEach { compilation ->
+                if (!compilation.name.endsWith("Test", ignoreCase = true)) {
+                    configureSourceSet(compilation.defaultSourceSet.name)
+                }
+            }
+        }
+    }
+}
+
+/**
  * Mirrors the normal source dependency graph into the AppX resource artifact configuration.
  *
- * Resource artifacts are an optional Gradle variant.  Keeping the declarations in a separate
+ * Resource artifacts are an optional Gradle variant. Keeping the declarations in a separate
  * consumer configuration means ordinary JVM/Native compilation does not accidentally put zip
- * payloads on its runtime classpath.  The artifact view used by application staging is lenient,
- * so non-WinRT dependencies that do not publish this optional variant are ignored while WinRT
- * project and Maven dependencies that do publish it remain resolvable (including transitives).
+ * payloads on its runtime classpath. Non-WinRT dependencies remain optional because they do not
+ * publish this capability; the target attribute above still prevents a matching WinRT artifact
+ * from leaking across targets.
  */
 private fun configureWinRTAppxResourceDependencies(
     project: Project,
@@ -2829,6 +3027,171 @@ private fun configureWinRTAppxResourceDependencies(
         project.configurations.toList().forEach(::observe)
     }
 }
+
+/**
+ * Tracks external components that really publish the optional AppX resource capability.
+ *
+ * The consumer configuration also mirrors ordinary source dependencies so that a WinRT library
+ * can be added without a second dependency declaration. Gradle cannot select the custom resource
+ * usage for an ordinary Java/Kotlin module, so those modules are intentionally absent from the
+ * artifact view. This registry lets the lenient view distinguish that expected absence from a
+ * broken resource variant or a missing resource artifact in a module that advertised one.
+ */
+private class AppxResourceVariantRegistry {
+    private val resourceModules = ConcurrentHashMap.newKeySet<String>()
+    private val resourceProjects = ConcurrentHashMap.newKeySet<String>()
+
+    fun observe(component: ResolvedComponentResult) {
+        val publishesResourceVariant = component.variants.any { variant ->
+            val usage = variant.attributes.getAttribute(Usage.USAGE_ATTRIBUTE)?.name
+            usage == KOTLIN_WINRT_APPX_RESOURCES_USAGE || usage == KOTLIN_WINRT_APPX_PUBLISHED_USAGE
+        }
+        if (!publishesResourceVariant) return
+        when (val id = component.id) {
+            is ModuleComponentIdentifier -> resourceModules += moduleKey(id.group, id.module)
+            is ProjectComponentIdentifier -> resourceProjects += projectKey(id.build.buildPath, id.projectPath)
+        }
+    }
+
+    fun observeProject(project: Project) {
+        if (project.configurations.any { configuration ->
+                configuration.isCanBeConsumed && configuration.attributes
+                    .getAttribute(Usage.USAGE_ATTRIBUTE)
+                    ?.name
+                    ?.let(::isAppxResourceUsage) == true
+            }
+        ) {
+            resourceProjects += projectKey(":", project.path)
+        }
+    }
+
+    fun containsModule(group: String?, module: String?): Boolean =
+        group != null && module != null && moduleKey(group, module) in resourceModules
+
+    fun containsProject(buildPath: String?, projectPath: String?): Boolean =
+        projectPath != null && (
+            projectKey(buildPath ?: ":", projectPath) in resourceProjects ||
+                resourceProjects.any { key -> key.endsWith(":$projectPath") }
+            )
+
+    fun containsComponent(id: org.gradle.api.artifacts.component.ComponentIdentifier): Boolean = when (id) {
+        is ModuleComponentIdentifier -> containsModule(id.group, id.module)
+        is ProjectComponentIdentifier -> containsProject(id.build.buildPath, id.projectPath)
+        else -> false
+    }
+}
+
+// Maven publication currently emits the optional AppX usage under this normalized name. Keep it
+// as a read-side alias so published resources remain distinguishable from ordinary JVM modules.
+private const val KOTLIN_WINRT_APPX_PUBLISHED_USAGE: String = "kotlin-winrt-appx"
+
+private fun discoverAppxResourceVariants(
+    project: Project,
+    sourceConfiguration: org.gradle.api.artifacts.Configuration,
+    registry: AppxResourceVariantRegistry,
+) {
+    val discoveryConfiguration = project.configurations.detachedConfiguration(
+        *sourceConfiguration.dependencies.toTypedArray(),
+    )
+    discoveryConfiguration.attributes.attribute(
+        Usage.USAGE_ATTRIBUTE,
+        project.objects.named(Usage::class.java, KOTLIN_WINRT_APPX_RESOURCES_USAGE),
+    )
+    val components = discoveryConfiguration.incoming.resolutionResult.allComponents
+    components.forEach { component ->
+        registry.observe(component)
+        (component.id as? ProjectComponentIdentifier)
+            ?.let { identifier -> project.findProject(identifier.projectPath) }
+            ?.let(registry::observeProject)
+    }
+}
+
+private fun validateAppxResourceVariantResolution(
+    configuration: org.gradle.api.artifacts.Configuration,
+    failures: Collection<Throwable>,
+    resolvedArtifacts: Collection<ResolvedArtifactResult>,
+    requestedTarget: String,
+    resourceVariantRegistry: AppxResourceVariantRegistry,
+) {
+    val unresolvedResourceDependencies = configuration.incoming.resolutionResult.allDependencies
+        .asSequence()
+        .filterIsInstance<UnresolvedDependencyResult>()
+        .mapNotNull { dependency ->
+            val selector = dependency.requested
+            val coordinate = when (selector) {
+                is ModuleComponentSelector -> {
+                    if (!resourceVariantRegistry.containsModule(selector.group, selector.module)) return@mapNotNull null
+                    listOf(selector.group, selector.module, selector.version).joinToString(":")
+                }
+                is ProjectComponentSelector -> {
+                    if (!resourceVariantRegistry.containsProject(selector.buildPath, selector.projectPath)) return@mapNotNull null
+                    "project(build=${selector.buildPath}, path=${selector.projectPath})"
+                }
+                else -> return@mapNotNull null
+            }
+            coordinate to dependency.failure
+        }
+        .toList()
+
+    val resourceModuleKeys = unresolvedResourceDependencies
+        .flatMapTo(linkedSetOf()) { (coordinate, _) ->
+            if (coordinate.startsWith("project(")) {
+                listOf(
+                    coordinate,
+                    coordinate.substringAfter("path=").removeSuffix(")"),
+                )
+            } else {
+                listOf(coordinate.substringBeforeLast(":"))
+            }
+        }
+    val artifactFailures = failures.filter { failure ->
+        val message = failure.message.orEmpty()
+        resourceModuleKeys.any { key -> message.contains(key) }
+    }
+    val resolvedResourceOwners = configuration.incoming.resolutionResult.allDependencies
+        .asSequence()
+        .filterIsInstance<ResolvedDependencyResult>()
+        .map { dependency -> dependency.selected.id }
+        .filter(resourceVariantRegistry::containsComponent)
+        .toSet()
+    val selectedVariantErrors = resolvedResourceOwners.flatMap { owner ->
+        val ownerArtifacts = resolvedArtifacts.filter { artifact -> artifact.variant.owner == owner }
+        if (ownerArtifacts.isEmpty()) {
+            listOf("$owner did not produce a resolved AppX resource artifact for target '$requestedTarget'.")
+        } else {
+            ownerArtifacts.flatMap { artifact ->
+                val usage = artifact.variant.attributes.getAttribute(Usage.USAGE_ATTRIBUTE)?.name
+                val target = artifact.variant.attributes.getAttribute(KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE)
+                when {
+                    !isAppxResourceUsage(usage) -> listOf(
+                        "$owner resolved ${artifact.variant.displayName} instead of an AppX resource variant.",
+                    )
+                    target != null && target != requestedTarget -> listOf(
+                        "$owner resolved AppX resource target '$target', requested '$requestedTarget'.",
+                    )
+                    else -> emptyList()
+                }
+            }
+        }
+    }
+    if (unresolvedResourceDependencies.isEmpty() && artifactFailures.isEmpty() && selectedVariantErrors.isEmpty()) return
+
+    val details = (unresolvedResourceDependencies.map { (coordinate, failure) ->
+        "$coordinate: ${failure.message ?: failure::class.java.simpleName}"
+    } + artifactFailures.map { failure -> failure.message ?: failure::class.java.simpleName } + selectedVariantErrors)
+        .distinct()
+    throw org.gradle.api.GradleException(
+        "Failed to resolve Kotlin/WinRT AppX resource variants for ${configuration.name}:\n" +
+            details.joinToString(separator = "\n") { "- $it" },
+    )
+}
+
+private fun moduleKey(group: String, module: String): String = "$group:$module"
+
+private fun projectKey(buildPath: String, projectPath: String): String = "$buildPath:$projectPath"
+
+private fun isAppxResourceUsage(usage: String?): Boolean =
+    usage == KOTLIN_WINRT_APPX_RESOURCES_USAGE || usage == KOTLIN_WINRT_APPX_PUBLISHED_USAGE
 
 private fun String.isWinRTIdentityDependencySourceConfiguration(): Boolean =
     this == "api" ||
@@ -3080,6 +3443,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
     authoringTargetArtifactName: org.gradle.api.provider.Provider<String>,
     nativeAuthoringTargetArtifactName: org.gradle.api.provider.Provider<String> = authoringTargetArtifactName,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+    jvmToolchainVersion: Provider<Int>? = null,
 ) {
     project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
@@ -3097,8 +3461,10 @@ private fun configureKotlinWinRTCompilerPluginOptions(
         )
     })
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
-        task.compilerOptions.jvmTarget.set(JvmTarget.JVM_25)
-        task.compilerOptions.freeCompilerArgs.add("-Xjdk-release=25")
+        jvmToolchainVersion?.let { version ->
+            task.compilerOptions.jvmTarget.set(version.map(::jvmTargetForToolchain))
+            task.compilerOptions.freeCompilerArgs.addAll(version.map { value -> listOf("-Xjdk-release=$value") })
+        }
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
         val outputs = compilerAuthoringOutputs(
             outputDirectory = project.layout.dir(project.provider {
@@ -3122,6 +3488,15 @@ private fun configureKotlinWinRTCompilerPluginOptions(
         )
     })
 }
+
+private fun jvmTargetForToolchain(version: Int): JvmTarget =
+    runCatching { JvmTarget.fromTarget(version.toString()) }.getOrElse {
+        throw org.gradle.api.GradleException(
+            "Kotlin/WinRT application.jvmToolchain($version) is not supported by the installed Kotlin " +
+                "Gradle plugin; choose a supported JVM target.",
+            it,
+        )
+    }
 
 private fun addWinRTCompilerPluginOptions(
     project: Project,
