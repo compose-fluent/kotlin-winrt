@@ -2928,6 +2928,32 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_plugin_excludes_target_appx_resources_from_default_pri_scans() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-appx-resources-pri-exclusion-test-")
+        val appxResources = projectDir.resolve("src/main/appxResources")
+        Files.createDirectories(appxResources.resolve("Assets"))
+        Files.writeString(appxResources.resolve("Assets/Square44x44Logo.png"), "asset")
+        Files.writeString(appxResources.resolve("AppxManifest.xml"), appxManifestXml())
+
+        val project = ProjectBuilder.builder()
+            .withName("appx-resources-pri-exclusion-app")
+            .withProjectDir(projectDir.toFile())
+            .build()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.packaged()
+        }
+
+        val stageTask = project.tasks
+            .named("stageWinRTApplicationPackage", StageWinRTApplicationPackageTask::class.java)
+            .get()
+        assertTrue(stageTask.defaultAppxResourceRoots.get().contains(appxResources.toString()))
+        assertFalse(stageTask.defaultProjectPriResourceFiles.files.any { it.toPath().startsWith(appxResources) })
+        assertFalse(stageTask.defaultProjectPriLayoutFiles.files.any { it.toPath().startsWith(appxResources) })
+        assertFalse(stageTask.defaultProjectPriContentFiles.files.any { it.toPath().startsWith(appxResources) })
+    }
+
+    @Test
     fun application_host_infers_kmp_jvm_target_runtime_classpath_and_jar() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
