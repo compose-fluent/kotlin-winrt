@@ -34,10 +34,10 @@ winRT {
     type("Microsoft.UI.Xaml.Controls.ContentControl")
     type("sample.NativeJsonValueThing")
     application {
-        mainClass.set("sample.consumer.MainKt")
-        targetName.set("mingwX64")
-        nativeBuildType.set("release")
-        generateProjectPri.set(false)
+        mainClass = "sample.consumer.MainKt"
+        targetName = "mingwX64"
+        nativeBuildType = "release"
+        generateProjectPri = false
     }
 }
 

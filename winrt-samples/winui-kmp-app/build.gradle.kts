@@ -32,9 +32,9 @@ kotlin {
 
 winRT {
     application {
-        mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
-        targetName.set(sampleApplicationTarget)
-        nativeBuildType.set(sampleNativeBuildType)
+        mainClass = "io.github.composefluent.winrt.samples.kmp.app.MainKt"
+        targetName = sampleApplicationTarget
+        nativeBuildType = sampleNativeBuildType
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)

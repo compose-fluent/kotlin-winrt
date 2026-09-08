@@ -116,9 +116,9 @@ kotlin {
 
 winRT {
     application {
-        mainClass.set("io.github.composefluent.winrt.samples.MainKt")
-        targetName.set(sampleApplicationTarget)
-        nativeBuildType.set(sampleNativeBuildType)
+        mainClass = "io.github.composefluent.winrt.samples.MainKt"
+        targetName = sampleApplicationTarget
+        nativeBuildType = sampleNativeBuildType
         when (sampleApplicationPackageMode.get()) {
             "packaged" -> packaged()
             "unpackaged" -> unpackaged()
@@ -135,8 +135,8 @@ winRT {
         namespace("Windows.Data.Json")
         sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
             nugetGlobalPackagesRoots.add(globalPackagesRoot)
-            useNuGetCliGlobalPackages.set(false)
-            restoreNuGetPackages.set(false)
+            useNuGetCliGlobalPackages = false
+            restoreNuGetPackages = false
         }
         windowsSdk(includeExtensions = true, generateProjection = true)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
