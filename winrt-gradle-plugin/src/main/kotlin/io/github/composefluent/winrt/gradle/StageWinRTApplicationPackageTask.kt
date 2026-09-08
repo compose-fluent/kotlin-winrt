@@ -147,6 +147,12 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:Input
     abstract val deferredManifestPayloadPaths: ListProperty<String>
 
+    @get:Input
+    abstract val reservedPackageFiles: ListProperty<String>
+
+    @get:Input
+    abstract val reservedPackageDirectories: ListProperty<String>
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -197,6 +203,8 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
         deferredManifestPayloadPaths.convention(emptyList())
+        reservedPackageFiles.convention(emptyList())
+        reservedPackageDirectories.convention(emptyList())
         defaultAppxResourceRoots.convention(emptyList())
         executableBaseName.convention("app")
         applicationVariant.convention("default")
@@ -346,7 +354,28 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             projectRoot = projectRoot,
             targetPaths = projectPriTargetPaths.get(),
             excludedPaths = projectPriExcludedFromBuildPaths.get(),
+            reservedPaths = reservedPayloadPaths(),
+            reservedDirectories = reservedPackageDirectories.get().mapTo(linkedSetOf(), Path::of),
         )
+    }
+
+    private fun reservedPayloadPaths(): Set<Path> = buildSet {
+        add(Path.of("${executableBaseName.get()}.exe.manifest"))
+        if (generateProjectPri.get()) add(Path.of("resources.pri"))
+        rootPackagePayloadFiles.files.forEach { add(Path.of(it.name)) }
+        reservedPackageFiles.get().forEach { add(it.toSafeRelativePath("reserved package file")) }
+        val runtimeRoot = runtimeAssetsDirectory.get().asFile.toPath()
+        if (runtimeRoot.isDirectory()) {
+            Files.walk(runtimeRoot).use { files ->
+                files.filter { it.isRegularFile() }.forEach { source ->
+                    if (source.name.endsWith(".dll", true) || source.name.endsWith(".exe", true) ||
+                        source.name.endsWith(".manifest", true)
+                    ) {
+                        add(source.relativeTo(runtimeRoot))
+                    }
+                }
+            }
+        }
     }
 
     private fun unpackDependencyAppxResources(): List<AppxResourceInput> {
@@ -449,7 +478,13 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         if (copiedProjectPriItems.isEmpty()) {
             return null
         }
-        ApplicationPackagePayloadWriter.copyPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
+        ApplicationPackagePayloadWriter.copyPackagePayloads(
+            projectPriRoot,
+            outputRoot,
+            copiedProjectPriItems,
+            reservedPaths = reservedPayloadPaths(),
+            reservedDirectories = reservedPackageDirectories.get().mapTo(linkedSetOf(), Path::of),
+        )
         val makePri = discoverMakePriExecutable() ?: run {
             throw GradleException("Cannot generate application PRI because makepri.exe was not found.")
         }
@@ -490,7 +525,6 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         val excludedSources = excludedItems.mapTo(linkedSetOf()) { item ->
             item.source.toAbsolutePath().normalize().toNormalizedInputPathKey()
         }
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath("projectPriInitialPath")
         val targets = linkedSetOf<Path>()
         selectedPayloads
             .filter { decision ->
@@ -500,9 +534,6 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         excludedItems.forEach { item ->
             val target = item.target.relativeTo(generatedPri.projectPriRoot)
             targets.add(target)
-            if (initialPath != Path.of("") && target.startsWith(initialPath)) {
-                targets.add(target.relativeTo(initialPath))
-            }
         }
         val removedTargets = targets
             .map { target -> outputRoot.resolve(target).normalize() }

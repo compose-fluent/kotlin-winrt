@@ -977,6 +977,12 @@ private fun configureWinRTApplicationTasks(
                     if (hasNativeExecutable) emptyList() else listOf("$projectName.exe")
                 },
             )
+            task.reservedPackageFiles.set(
+                hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("$projectName.exe") },
+            )
+            task.reservedPackageDirectories.set(
+                hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("runtime", "lib") },
+            )
             task.dependsOn(stageRuntimeAssetsTask)
         },
     )

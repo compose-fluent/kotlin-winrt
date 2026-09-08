@@ -70,7 +70,7 @@ internal class ProjectPriInputStager(
                 copyInput(
                     ApplicationPackageItemKind.PriResource,
                     input.source,
-                    projectPriRoot.resolve(initialPath).resolve(input.relativePath),
+                    projectPriRoot.resolve(input.relativePath),
                     items,
                     priorities,
                     APPX_RESOURCE_PRIORITY,
@@ -85,7 +85,7 @@ internal class ProjectPriInputStager(
             .map { input ->
                 ProjectPriLayoutInput(
                     input.source,
-                    projectPriRoot.resolve(initialPath).resolve(input.relativePath),
+                    projectPriRoot.resolve(input.relativePath),
                 )
             }
             .toList()
@@ -100,7 +100,7 @@ internal class ProjectPriInputStager(
                 copyInput(
                     ApplicationPackageItemKind.Content,
                     input.source,
-                    projectPriRoot.resolve(initialPath).resolve(input.relativePath),
+                    projectPriRoot.resolve(input.relativePath),
                     items,
                     priorities,
                     APPX_RESOURCE_PRIORITY,

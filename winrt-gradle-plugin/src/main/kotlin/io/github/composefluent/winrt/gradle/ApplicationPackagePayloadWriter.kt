@@ -28,13 +28,23 @@ internal data class PackagePayloadDecision(
 )
 
 internal object ApplicationPackagePayloadWriter {
-    fun copyPackagePayloads(projectRoot: Path, packageRoot: Path, items: Set<ApplicationPackageItem>) {
-        items.asSequence()
+    fun copyPackagePayloads(
+        projectRoot: Path,
+        packageRoot: Path,
+        items: Set<ApplicationPackageItem>,
+        reservedPaths: Set<Path> = emptySet(),
+        reservedDirectories: Set<Path> = emptySet(),
+    ) {
+        val payloads = items.asSequence()
             .filter { it.kind.isPackagePayload }
             .sortedBy { it.targetKey }
-            .forEach { item ->
-                GradleFileOperations.copyFile(item.target, packageRoot.resolve(item.target.relativeTo(projectRoot)))
-            }
+            .toList()
+        payloads.forEach { item ->
+            validatePackagePayloadTarget(item.source, item.target.relativeTo(projectRoot), reservedPaths, reservedDirectories)
+        }
+        payloads.forEach { item ->
+            GradleFileOperations.copyFile(item.target, packageRoot.resolve(item.target.relativeTo(projectRoot)))
+        }
     }
 
     fun resolvePackagePayloads(
@@ -45,6 +55,8 @@ internal object ApplicationPackagePayloadWriter {
         projectRoot: Path?,
         targetPaths: Map<String, String>,
         excludedPaths: Set<String>,
+        reservedPaths: Set<Path> = emptySet(),
+        reservedDirectories: Set<Path> = emptySet(),
     ): List<PackagePayloadDecision> {
         val selected = linkedMapOf<String, PackagePayloadDecision>()
         val excludedKeys = excludedPaths.mapTo(linkedSetOf(), ::normalizedSourceKey)
@@ -158,7 +170,29 @@ internal object ApplicationPackagePayloadWriter {
             }
         }
 
+        selected.values.filterNot { it.origin == "selected executable" }.forEach { decision ->
+            validatePackagePayloadTarget(decision.source, decision.target, reservedPaths, reservedDirectories)
+        }
         return selected.values.sortedBy { it.target.toNormalizedPackagePathKey() }
+    }
+
+    private fun validatePackagePayloadTarget(
+        source: Path,
+        target: Path,
+        reservedPaths: Set<Path>,
+        reservedDirectories: Set<Path>,
+    ) {
+        val relative = target.toString().toSafeRelativePath("package payload target").normalize()
+        val key = relative.toNormalizedPackagePathKey()
+        val reserved = (reservedPaths + Path.of("AppxManifest.xml")).firstOrNull {
+            it.toNormalizedPackagePathKey() == key
+        } ?: reservedDirectories.firstOrNull { directory ->
+            val directoryKey = directory.toNormalizedPackagePathKey()
+            key == directoryKey || key.startsWith(directoryKey + java.io.File.separator)
+        }
+        if (reserved != null) {
+            throw GradleException("Package payload cannot replace reserved $reserved at $source (target $relative).")
+        }
     }
 
     /**

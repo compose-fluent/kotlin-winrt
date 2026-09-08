@@ -8,6 +8,44 @@ import org.junit.Test
 
 class ApplicationPackagePayloadWriterTest {
     @Test
+    fun ordinary_payload_and_pri_copy_enforce_the_same_reserved_paths() {
+        // Like CSWinRTInApp.targets, package ownership is settled before payload delivery.
+        val root = Files.createTempDirectory("kotlin-winrt-reserved-payloads-")
+        val source = root.resolve("source.txt")
+        Files.writeString(source, "override")
+        val reservedPaths = setOf(Path.of("resources.pri"), Path.of("custom.exe"))
+        val reservedDirectories = setOf(Path.of("runtime"), Path.of("lib"))
+        listOf("AppxManifest.xml", "RESOURCES.pri", "custom.exe", "Runtime/bin/server/jvm.dll", "lib/app.jar").forEach { target ->
+            val resolutionError = runCatching {
+                ApplicationPackagePayloadWriter.resolvePackagePayloads(
+                    conventionInputs = emptyList(),
+                    explicitPayloadFiles = listOf(source),
+                    rootPayloadFiles = emptyList(),
+                    projectRoot = root,
+                    targetPaths = mapOf(source.toString() to target),
+                    excludedPaths = emptySet(),
+                    reservedPaths = reservedPaths,
+                    reservedDirectories = reservedDirectories,
+                )
+            }.exceptionOrNull()
+            assertTrue("$target: $resolutionError", resolutionError?.message.orEmpty().contains("reserved"))
+
+            val priRoot = root.resolve("pri")
+            val copyError = runCatching {
+                ApplicationPackagePayloadWriter.copyPackagePayloads(
+                    projectRoot = priRoot,
+                    packageRoot = root.resolve("package"),
+                    items = setOf(applicationPackageItem(ApplicationPackageItemKind.Content, source, priRoot.resolve(target))),
+                    reservedPaths = reservedPaths,
+                    reservedDirectories = reservedDirectories,
+                )
+            }.exceptionOrNull()
+            assertTrue("$target: $copyError", copyError?.message.orEmpty().contains("reserved"))
+        }
+        assertTrue(!Files.exists(root.resolve("package")))
+    }
+
+    @Test
     fun resolves_dependency_convention_and_explicit_override_in_priority_order() {
         val root = Files.createTempDirectory("kotlin-winrt-payload-resolution-")
         val dependency = root.resolve("dependency/Assets/Icon.png")

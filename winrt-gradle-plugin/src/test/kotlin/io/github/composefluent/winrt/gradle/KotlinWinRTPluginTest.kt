@@ -6607,6 +6607,37 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_pri_overrides_of_generated_and_selected_payloads() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) return
+        listOf("custom.exe", "AppxManifest.xml", "resources.pri", "app.exe.manifest", "runtime/bin/server/jvm.dll", "lib/app.jar").forEach { target ->
+            val project = ProjectBuilder.builder().build()
+            val runtimeAssets = project.projectDir.toPath().resolve("runtime-assets")
+            Files.createDirectories(runtimeAssets)
+            val executable = project.projectDir.toPath().resolve("custom.exe")
+            val override = project.projectDir.toPath().resolve("override.txt")
+            Files.writeString(executable, "selected-executable")
+            Files.writeString(override, "override")
+            val task = project.tasks.register("stageReservedPayload", StageWinRTApplicationPackageTask::class.java) {
+                it.runtimeAssetsDirectory.set(runtimeAssets.toFile())
+                it.outputDirectory.set(project.layout.buildDirectory.dir("package"))
+                it.runtimeIdentifier.set("win-x64")
+                it.projectPriIndexName.set("Review.App")
+                it.enableDefaultProjectPriResources.set(false)
+                it.rootPackagePayloadFiles.from(executable)
+                it.projectPriContentFiles.from(override)
+                it.projectPriTargetPaths.put(override.toString(), target)
+                it.reservedPackageDirectories.set(listOf("runtime", "lib"))
+            }.get()
+
+            val error = runCatching { task.stage() }.exceptionOrNull()
+
+            assertTrue("$target: $error", error?.message.orEmpty().contains("reserved"))
+            assertEquals("selected-executable", Files.readString(task.outputDirectory.get().asFile.toPath().resolve("custom.exe")))
+            assertFalse(Files.exists(task.resourceResolutionReport.get().asFile.toPath()))
+        }
+    }
+
+    @Test
     fun application_package_task_uses_project_pri_content_for_same_payload_target() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -8715,11 +8746,12 @@ class KotlinWinRTPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertFalse(Files.exists(outputRoot.resolve("Strings/en-US/Resources.resw")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Assets/Logo.png")))
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Assets/Logo.png")))
         assertFalse(Files.exists(outputRoot.resolve("Views/Control.xaml")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Views/Control.xbf")))
         assertTrue(
             Files.isRegularFile(
-                task.temporaryDir.toPath().resolve("project-pri/Appx/Strings/en-US/Resources.resw"),
+                task.temporaryDir.toPath().resolve("project-pri/Strings/en-US/Resources.resw"),
             ),
         )
         val report = project.layout.buildDirectory.file("kotlin-winrt/reports/appx-resource-resolution.json").get().asFile.toPath()
