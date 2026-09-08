@@ -14,6 +14,7 @@ internal data class PriResourceMapping(
     val resourceUri: String,
     val candidateType: String,
     val value: String?,
+    val qualifiers: String? = null,
 )
 
 /**
@@ -50,7 +51,10 @@ internal object PriResourceMapValidator {
                     ?.textContent
                     ?.trim()
                     ?.takeIf(String::isNotBlank)
-                result += PriResourceMapping(resourceUri, type, value)
+                val qualifiers = candidate.getAttribute("qualifiers")
+                    .trim()
+                    .takeIf(String::isNotBlank)
+                result += PriResourceMapping(resourceUri, type, value, qualifiers)
             }
         }
         return result
@@ -91,6 +95,11 @@ internal object PriResourceMapValidator {
                     } else if (!resolved.isRegularFile()) {
                         errors += "PRI mapping[$index] Path Value is missing from the package: $rawValue"
                     }
+                    val uriPath = resourcePath(mapping.resourceUri)
+                    if (uriPath != null && !pathMatchesCandidate(uriPath, relative, mapping.qualifiers)) {
+                        errors += "PRI mapping[$index] Path Value '$rawValue' does not match " +
+                            "resource URI path '${uriPath.toString().replace('\\', '/')}'"
+                    }
                 }
 
                 // EmbeddedData is stored inside the PRI itself. Its URI commonly ends in
@@ -109,7 +118,24 @@ internal object PriResourceMapValidator {
         val identities = document.getElementsByTagName("Identity")
         if (identities.length == 0) return emptySet()
         val identity = identities.item(0) as? Element ?: return emptySet()
-        return setOf(identity.getAttribute("Name").trim()).filter(String::isNotBlank).toSet()
+        return buildSet {
+            identity.getAttribute("Name").trim().takeIf(String::isNotBlank)?.let(::add)
+            runCatching {
+                Files.walk(packageRoot).use { stream ->
+                    stream
+                        .filter(Files::isRegularFile)
+                        .map { path -> path.fileName.toString() }
+                        .filter { name ->
+                            name.endsWith(".pri", ignoreCase = true) &&
+                                !name.equals("resources.pri", ignoreCase = true) &&
+                                !name.startsWith("resources.language-", ignoreCase = true)
+                        }
+                        .map { name -> name.substringBeforeLast('.') }
+                        .filter(String::isNotBlank)
+                        .forEach(::add)
+                }
+            }
+        }
     }
 
     private fun resourceMapName(resourceUri: String): String? =
@@ -122,6 +148,57 @@ internal object PriResourceMapValidator {
         if (start < 0) return null
         return runCatching { path.substring(start + marker.length).toSafeRelativePath("PRI resource URI") }.getOrNull()
     }
+
+    private fun pathKey(path: Path): String =
+        path.toString().replace('\\', '/').trimStart('/').lowercase()
+
+    /**
+     * A PRI URI names the logical resource.  Qualified candidates add their qualifier suffix to
+     * the physical file name (for example `Logo.scale-200.png`), so an exact path comparison
+     * would reject valid scale/target-size assets.  Keep the directory, base name, and extension
+     * anchored while allowing the qualifier suffix recorded by makepri.
+     */
+    private fun pathMatchesCandidate(uriPath: Path, candidatePath: Path, qualifiers: String?): Boolean {
+        if (pathKey(uriPath) == pathKey(candidatePath)) return true
+        val uriParent = uriPath.parent?.let(::pathKey).orEmpty()
+        val candidateParent = candidatePath.parent?.let(::pathKey).orEmpty()
+        if (uriParent != candidateParent) return false
+
+        val uriName = uriPath.fileName.toString()
+        val candidateName = candidatePath.fileName.toString()
+        val uriExtension = uriName.substringAfterLast('.', "").lowercase()
+        val candidateExtension = candidateName.substringAfterLast('.', "").lowercase()
+        if (uriExtension != candidateExtension) return false
+        val uriStem = uriName.substringBeforeLast('.', uriName)
+        val candidateStem = candidateName.substringBeforeLast('.', candidateName)
+        val qualifierSuffix = candidateStem
+            .takeIf { it.length > uriStem.length + 1 && it.startsWith("$uriStem.", ignoreCase = true) }
+            ?.substring(uriStem.length + 1)
+            ?: return false
+
+        val expectedQualifiers = parseQualifiers(qualifiers)
+        if (expectedQualifiers.isEmpty()) return true
+        val actualQualifiers = qualifierSuffix
+            .split('_')
+            .mapNotNull { token ->
+                val separator = token.indexOf('-')
+                if (separator <= 0 || separator == token.lastIndex) return@mapNotNull null
+                token.substring(0, separator).lowercase() to token.substring(separator + 1).lowercase()
+            }
+            .toMap()
+        return expectedQualifiers.all { (name, value) -> actualQualifiers[name] == value }
+    }
+
+    private fun parseQualifiers(raw: String?): Map<String, String> =
+        raw.orEmpty()
+            .split(',')
+            .mapNotNull { token ->
+                val normalized = token.trim()
+                val separator = normalized.indexOf('-')
+                if (separator <= 0 || separator == normalized.lastIndex) return@mapNotNull null
+                normalized.substring(0, separator).lowercase() to normalized.substring(separator + 1).lowercase()
+            }
+            .toMap()
 
     private fun secureDocumentBuilderFactory(): DocumentBuilderFactory =
         DocumentBuilderFactory.newInstance().apply {

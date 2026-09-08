@@ -106,6 +106,9 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
         if (requestedModules.isEmpty()) {
             throw GradleException("Bundled JVM runtime image requires at least one jlink module.")
         }
+        runtimeImageOverlapError(javaRoot, output, "JDK toolchain home")?.let { message ->
+            throw GradleException(message)
+        }
         // jlink requires its output path not to exist.  Cleaning the contents is insufficient
         // because Gradle keeps @OutputDirectory itself in place between task executions.
         GradleFileOperations.deleteDirectory(output)

@@ -215,6 +215,87 @@ class AppxManifestPackageSupportTest {
         assertEquals(1, Regex("Name=\"Framework\"", RegexOption.IGNORE_CASE).findAll(output).count())
     }
 
+    @Test
+    fun selects_the_highest_manifest_satisfying_framework_archive_and_ignores_unrelated_candidates() {
+        val root = Files.createTempDirectory("kotlin-winrt-framework-selection-")
+        val application = root.resolve("application.msix")
+        writeZip(
+            application,
+            "AppxManifest.xml" to """
+                <?xml version="1.0" encoding="utf-8"?>
+                <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                  <Identity Name="Sample" Version="1.0.0.0" Publisher="CN=Sample" ProcessorArchitecture="x64" />
+                  <Dependencies>
+                    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" />
+                    <PackageDependency Name="Framework" MinVersion="2.0.0.0" Publisher="CN=Framework" ProcessorArchitecture="x64" />
+                  </Dependencies>
+                </Package>
+            """.trimIndent(),
+        )
+        val version1 = root.resolve("framework-1.msix")
+        val version2 = root.resolve("framework-2.msix")
+        val wrongPublisher = root.resolve("framework-other-publisher.msix")
+        val unrelated = root.resolve("unrelated.msix")
+        writeZip(version1, frameworkManifest(version = "1.0.0.0", processorArchitecture = "x64"))
+        writeZip(version2, frameworkManifest(version = "2.2.0.0", processorArchitecture = "x64"))
+        writeZip(
+            wrongPublisher,
+            "AppxManifest.xml" to """
+                <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                  <Identity Name="Framework" Version="9.0.0.0" Publisher="CN=Other" ProcessorArchitecture="x64" />
+                  <Properties><Framework>true</Framework></Properties>
+                </Package>
+            """.trimIndent(),
+        )
+        writeZip(
+            unrelated,
+            "AppxManifest.xml" to """
+                <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                  <Identity Name="Other.Framework" Version="9.0.0.0" Publisher="CN=Framework" ProcessorArchitecture="x64" />
+                  <Properties><Framework>true</Framework></Properties>
+                </Package>
+            """.trimIndent(),
+        )
+
+        val selected = AppxManifestPackageSupport.selectFrameworkPackageArchives(
+            applicationPackage = application,
+            candidateArchives = listOf(version1, version2, wrongPublisher, unrelated),
+            runtimeIdentifier = "win-x64",
+        )
+
+        assertEquals(listOf(version2.toAbsolutePath().normalize()), selected)
+    }
+
+    @Test
+    fun reports_the_manifest_identity_when_no_framework_archive_satisfies_it() {
+        val root = Files.createTempDirectory("kotlin-winrt-framework-selection-missing-")
+        val application = root.resolve("application.msix")
+        writeZip(
+            application,
+            "AppxManifest.xml" to """
+                <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                  <Identity Name="Sample" Version="1.0.0.0" Publisher="CN=Sample" ProcessorArchitecture="x64" />
+                  <Dependencies>
+                    <PackageDependency Name="Framework" MinVersion="3.0.0.0" Publisher="CN=Framework" ProcessorArchitecture="x64" />
+                  </Dependencies>
+                </Package>
+            """.trimIndent(),
+        )
+        val candidate = root.resolve("framework.msix")
+        writeZip(candidate, frameworkManifest(version = "2.2.0.0", processorArchitecture = "x64"))
+
+        val error = runCatching {
+            AppxManifestPackageSupport.selectFrameworkPackageArchives(
+                applicationPackage = application,
+                candidateArchives = listOf(candidate),
+                runtimeIdentifier = "win-x64",
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error?.message.orEmpty().contains("Framework@3.0.0.0"))
+        assertTrue(error?.message.orEmpty().contains("CN=Framework"))
+    }
+
     private fun frameworkManifest(
         processorArchitecture: String,
         version: String = "2.2.0.0",

@@ -128,6 +128,50 @@ internal object AppxManifestPackageSupport {
             .sortedBy { path -> path.toAbsolutePath().normalize().toString().lowercase() }
     }
 
+    /**
+     * Selects only framework archives required by the final application manifest. Candidate
+     * discovery is intentionally broader because a restore root can contain several packages and
+     * versions; installation must not pass all of them to Add-AppxPackage.
+     */
+    internal fun selectFrameworkPackageArchives(
+        applicationPackage: Path,
+        candidateArchives: Iterable<Path>,
+        runtimeIdentifier: String,
+    ): List<Path> {
+        val requirements = readPackageDependencies(applicationPackage)
+        if (requirements.isEmpty()) return emptyList()
+
+        val candidates = candidateArchives
+            .map { archive ->
+                archive.toAbsolutePath().normalize() to
+                    validateFrameworkPackageArchive(archive, runtimeIdentifier)
+            }
+            .distinctBy { (archive, _) -> archive.toString().lowercase() }
+        val selected = linkedMapOf<String, Path>()
+        requirements.forEach { requirement ->
+            val match = candidates
+                .asSequence()
+                .filter { (_, dependency) ->
+                    dependency.name.equals(requirement.name, ignoreCase = true) &&
+                        dependency.publisher.equals(requirement.publisher, ignoreCase = true) &&
+                        compareVersions(dependency.version, requirement.minVersion) >= 0 &&
+                        (requirement.processorArchitecture == null ||
+                            architectureMatchesRuntime(requirement.processorArchitecture, runtimeIdentifier))
+                }
+                .maxWithOrNull { left, right ->
+                    compareVersions(left.second.version, right.second.version).takeIf { it != 0 }
+                        ?: left.second.processorArchitecture.compareTo(right.second.processorArchitecture, ignoreCase = true)
+                }
+                ?: throw IllegalArgumentException(
+                    "No restored framework package satisfies application dependency " +
+                        "${requirement.name}@${requirement.minVersion} (${requirement.publisher}) " +
+                        "for '$runtimeIdentifier'.",
+                )
+            selected[requirement.name.lowercase()] = match.first
+        }
+        return selected.values.toList()
+    }
+
     private fun discoveredFrameworkDependencies(
         resolvedPackageManifestFiles: Iterable<Path>,
         restoredPackageRoots: Iterable<Path>,
@@ -226,6 +270,48 @@ internal object AppxManifestPackageSupport {
             )
         }
         return dependency
+    }
+
+    private fun readPackageDependencies(applicationPackage: Path): List<RequiredPackageDependency> {
+        if (!applicationPackage.isRegularFile()) {
+            throw IllegalArgumentException("Application package does not exist: $applicationPackage")
+        }
+        val document = runCatching {
+            ZipFile(applicationPackage.toFile()).use { zip ->
+                val entry = zip.getEntry("AppxManifest.xml")
+                    ?: throw IllegalArgumentException(
+                        "Application package $applicationPackage does not contain AppxManifest.xml.",
+                    )
+                zip.getInputStream(entry).use { input ->
+                    secureDocumentBuilderFactory().newDocumentBuilder().parse(input)
+                }
+            }
+        }.getOrElse { error ->
+            if (error is IllegalArgumentException) throw error
+            throw IllegalArgumentException("Cannot read application manifest from $applicationPackage: ${error.message}", error)
+        }
+        val dependencyElements = document.documentElement
+            ?.childElements("Dependencies")
+            ?.flatMap { dependencies -> dependencies.childElements(PACKAGE_DEPENDENCY_NAME) }
+            .orEmpty()
+        return dependencyElements.map { dependency ->
+            val name = dependency.getAttribute("Name").trim()
+            val minVersion = normalizeVersion(dependency.getAttribute("MinVersion"))
+            val publisher = dependency.getAttribute("Publisher").trim()
+            if (name.isBlank() || minVersion == null || publisher.isBlank()) {
+                throw IllegalArgumentException(
+                    "Application package $applicationPackage contains an invalid PackageDependency.",
+                )
+            }
+            RequiredPackageDependency(
+                name = name,
+                minVersion = minVersion,
+                publisher = publisher,
+                processorArchitecture = dependency.getAttribute("ProcessorArchitecture")
+                    .trim()
+                    .takeIf(String::isNotBlank),
+            )
+        }
     }
 
     private fun readFrameworkManifest(archive: Path): PackageDependency? = runCatching {
@@ -399,5 +485,12 @@ internal object AppxManifestPackageSupport {
         val version: String,
         val publisher: String,
         val processorArchitecture: String,
+    )
+
+    private data class RequiredPackageDependency(
+        val name: String,
+        val minVersion: String,
+        val publisher: String,
+        val processorArchitecture: String?,
     )
 }

@@ -210,6 +210,7 @@ class ApplicationPackagePayloadWriterTest {
         Files.createDirectories(packageRoot.resolve("Assets"))
         Files.writeString(packageRoot.resolve("resources.pri"), "correct-pri")
         Files.writeString(packageRoot.resolve("Assets/Icon.png"), "icon")
+        Files.writeString(packageRoot.resolve("Assets/Qualified.scale-200.png"), "qualified")
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
             """
@@ -227,6 +228,9 @@ class ApplicationPackagePayloadWriterTest {
                 <ResourceMapSubtree name="Files">
                   <NamedResource name="Icon.png" uri="ms-resource://Contoso.App/Files/Assets/Icon.png">
                     <Candidate type="Path"><Value>Assets\\Icon.png</Value></Candidate>
+                  </NamedResource>
+                  <NamedResource name="Qualified.png" uri="ms-resource://Contoso.App/Files/Assets/Qualified.png">
+                    <Candidate qualifiers="Scale-200" type="Path"><Value>Assets\\Qualified.scale-200.png</Value></Candidate>
                   </NamedResource>
                   <NamedResource name="Page.xbf" uri="ms-resource://Contoso.App/Files/WinUI3Package/Page.xbf">
                     <Candidate type="EmbeddedData"><Base64Value>eA==</Base64Value></Candidate>
@@ -246,6 +250,78 @@ class ApplicationPackagePayloadWriterTest {
         Files.writeString(report, invalid)
         val errors = ApplicationPackagePayloadWriter.validateResolutionReport(report, packageRoot)
         assertTrue(errors.any { it.contains("Path Value is missing from the package") })
+    }
+
+    @Test
+    fun pri_validation_rejects_a_path_that_disagrees_with_the_resource_uri() {
+        val root = Files.createTempDirectory("kotlin-winrt-pri-uri-path-")
+        val packageRoot = root.resolve("package")
+        Files.createDirectories(packageRoot.resolve("Assets"))
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Sample" Publisher="CN=Sample" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("WinUI3Package.pri"), "pri")
+        Files.writeString(packageRoot.resolve("Assets/Square44x44Logo.png"), "logo")
+        Files.writeString(packageRoot.resolve("Assets/StoreLogo.png"), "store")
+
+        val errors = PriResourceMapValidator.validate(
+            mappings = listOf(
+                PriResourceMapping(
+                    resourceUri = "ms-resource://Sample/Files/Assets/Square44x44Logo.png",
+                    candidateType = "Path",
+                    value = "Assets/StoreLogo.png",
+                    qualifiers = "Scale-200",
+                ),
+            ),
+            packageRoot = packageRoot,
+        )
+
+        assertTrue(errors.any { it.contains("does not match resource URI path") })
+    }
+
+    @Test
+    fun pri_validation_checks_component_maps_but_ignores_external_maps_and_embedded_data() {
+        val root = Files.createTempDirectory("kotlin-winrt-pri-component-map-")
+        val packageRoot = root.resolve("package")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Sample" Publisher="CN=Sample" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("WinUI3Package.pri"), "pri")
+
+        val errors = PriResourceMapValidator.validate(
+            mappings = listOf(
+                PriResourceMapping(
+                    resourceUri = "ms-resource://WinUI3Package/Files/Assets/Missing.png",
+                    candidateType = "Path",
+                    value = "Assets/Missing.png",
+                ),
+                PriResourceMapping(
+                    resourceUri = "ms-resource://Microsoft.UI.Xaml/Files/Assets/Missing.png",
+                    candidateType = "Path",
+                    value = "Assets/Missing.png",
+                ),
+                PriResourceMapping(
+                    resourceUri = "ms-resource://WinUI3Package/Files/Views/CompiledPage.xbf",
+                    candidateType = "EmbeddedData",
+                    value = null,
+                ),
+            ),
+            packageRoot = packageRoot,
+        )
+
+        assertEquals(1, errors.size)
+        assertTrue(errors.single().contains("Path Value is missing from the package"))
     }
 
     @Test

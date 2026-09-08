@@ -93,9 +93,11 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
         } else {
             emptyList()
         }
-        val dependencyPaths = (explicitDependencies + restoredDependencies)
-            .map { it.toAbsolutePath().normalize() }
-            .distinctBy { it.toString().lowercase() }
+        val dependencyPaths = AppxManifestPackageSupport.selectFrameworkPackageArchives(
+            applicationPackage = source,
+            candidateArchives = explicitDependencies + restoredDependencies,
+            runtimeIdentifier = runtimeIdentifier.get(),
+        )
             .onEach { dependency ->
                 if (!Files.isRegularFile(dependency)) {
                     throw GradleException("Configured AppX dependency package does not exist: $dependency")

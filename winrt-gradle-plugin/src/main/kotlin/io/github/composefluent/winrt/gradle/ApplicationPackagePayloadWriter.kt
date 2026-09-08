@@ -282,6 +282,7 @@ internal object ApplicationPackagePayloadWriter {
                         resourceUri = resourceUri,
                         candidateType = candidateType,
                         value = mapping["value"]?.jsonPrimitive?.content?.takeIf(String::isNotBlank),
+                        qualifiers = mapping["qualifiers"]?.jsonPrimitive?.content?.takeIf(String::isNotBlank),
                     )
                 }
                 errors += PriResourceMapValidator.validate(mappings, packageRoot)
@@ -310,6 +311,7 @@ internal object ApplicationPackagePayloadWriter {
                                 put("resourceUri", mapping.resourceUri)
                                 put("candidateType", mapping.candidateType)
                                 mapping.value?.let { value -> put("value", value) }
+                                mapping.qualifiers?.let { qualifiers -> put("qualifiers", qualifiers) }
                             })
                         }
                     })
