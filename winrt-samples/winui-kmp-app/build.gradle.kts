@@ -8,10 +8,6 @@ val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.w
     .orElse("2.2.0")
 val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
-val sampleApplicationTarget = providers.gradleProperty("kotlinWinRT.samples.applicationTarget")
-    .orElse("winuiJvm")
-val sampleNativeBuildType = providers.gradleProperty("kotlinWinRT.samples.nativeBuildType")
-    .orElse("release")
 
 kotlin {
     jvmToolchain(25)
@@ -33,8 +29,6 @@ kotlin {
 winRT {
     application {
         mainClass = "io.github.composefluent.winrt.samples.kmp.app.MainKt"
-        targetName = sampleApplicationTarget
-        nativeBuildType = sampleNativeBuildType
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
@@ -66,7 +60,7 @@ private val winuiKmpOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
     jvmArgs.addAll(
         providers.provider {
             winuiKmpOptionProperties.map { name ->

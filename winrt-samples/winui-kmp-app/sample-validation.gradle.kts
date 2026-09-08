@@ -23,7 +23,7 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     group = "verification"
     description = "Runs the KMP WinRT library consumed by a KMP WinRT application sample."
     dependsOn("compileKotlinWinuiJvm")
-    dependsOn("stageWinRTRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssetsWinuiJvmMain")
     mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
     classpath(
         layout.buildDirectory.dir("classes/kotlin/winuiJvm/main"),
@@ -32,7 +32,7 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     systemProperty(
         "kotlin.winrt.runtimeAssetsRoot",
-        layout.buildDirectory.dir("kotlin-winrt/runtime-assets").get().asFile.absolutePath,
+        layout.buildDirectory.dir("kotlin-winrt/application-layout/winuiJvm_main/runtime-assets").get().asFile.absolutePath,
     )
     systemProperty(
         "kotlin.winrt.samples.autoExitWinUi",
@@ -79,7 +79,7 @@ tasks.named<Exec>("runReleaseExecutableMingwX64") {
 val verifyWinuiKmpJvmRun by tasks.registering {
     group = "verification"
     description = "Runs the KMP WinUI sample through the generated JVM application host path."
-    dependsOn(tasks.named("runWinRTApplicationHost"))
+    dependsOn(tasks.named("runWinRTApplicationHostWinuiJvmMain"))
 }
 
 val verifyWinuiKmpMingwRun by tasks.registering {
@@ -93,14 +93,15 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
     description = "Verifies the KMP WinUI dependency is a native authored DLL with composable/overridable support."
     val library = project(":winrt-samples:winui-kmp-library")
     dependsOn(library.tasks.named("validateCompileKotlinMingwX64WinRTNativeAuthoringExports"))
-    dependsOn("stageWinRTRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable")
 
     val nativeAuthoringRoot = library.layout.buildDirectory.dir("kotlin-winrt/native-authoring/compileKotlinMingwX64")
     val generatedTypeDetailsRoot =
         library.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/compileKotlinMingwX64/src/commonMain/kotlin")
     val libraryGeneratedRoot = library.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
     val libraryDll = library.layout.buildDirectory.file("bin/mingwX64/releaseShared/winui_kmp_library.dll")
-    val stagedRuntimeAssets = layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
+    val stagedRuntimeAssets =
+        layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64_main_releaseExecutable/runtime-assets")
 
     inputs.file(nativeAuthoringRoot.map { it.file("kotlin-winrt/authored-candidates.tsv") })
     inputs.file(nativeAuthoringRoot.map { it.file("kotlin-winrt-authoring/authored-metadata.tsv") })

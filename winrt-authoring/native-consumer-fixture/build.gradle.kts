@@ -42,11 +42,11 @@ winRT {
 }
 
 tasks.named("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRTRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable")
 }
 
 val stagedRuntimeAssets = tasks.named(
-    "stageWinRTRuntimeAssets",
+    "stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable",
     io.github.composefluent.winrt.gradle.StageWinRTRuntimeAssetsTask::class,
 )
 
@@ -55,7 +55,7 @@ val verifyNativeAuthoringConsumerFixture by tasks.registering(
 ) {
     group = "verification"
     description = "Validates staging and runtime activation of native authored dependency artifacts."
-    dependsOn("stageWinRTRuntimeAssets")
+    dependsOn(stagedRuntimeAssets)
     dependsOn("runReleaseExecutableMingwX64")
     runtimeAssetsRoot.set(stagedRuntimeAssets.flatMap { it.outputDirectory })
     expectedDllName.set("native_component_fixture.dll")

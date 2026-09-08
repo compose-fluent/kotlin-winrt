@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.mpp.Executable
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
@@ -51,6 +52,26 @@ internal fun resolveWinRTApplicationVariant(
     project: Project,
     options: WinRTApplicationOptions,
 ): WinRTApplicationVariant {
+    val filtered = matchingWinRTApplicationVariants(project, options)
+    if (filtered.size == 1) {
+        return filtered.single()
+    }
+    throw GradleException(
+        "Kotlin/WinRT application variant selection is ambiguous for ${options.selectorDescription()}. " +
+        "Set application.variantName/targetName (and nativeExecutableName for multiple executables). " +
+            "Matching candidates:${System.lineSeparator()}${filtered.describe()}",
+    )
+}
+
+/**
+ * Returns every Kotlin application variant selected by [options]. Default application packaging
+ * expands this list into one task graph per variant; selecting exactly one remains a requirement
+ * only for an explicitly named application.
+ */
+internal fun matchingWinRTApplicationVariants(
+    project: Project,
+    options: WinRTApplicationOptions,
+): List<WinRTApplicationVariant> {
     val candidates = discoverWinRTApplicationVariants(project)
     if (candidates.isEmpty()) {
         throw GradleException(
@@ -58,56 +79,50 @@ internal fun resolveWinRTApplicationVariant(
                 "Declare a Kotlin/JVM target or a mingwX64 executable before configuring winRT.application.",
         )
     }
-
-    val variantSelector = options.variantName.orNull.orEmpty().trim()
-    val targetSelector = options.targetName.orNull.orEmpty().trim()
-    val requestedKind = options.targetKind.orNull ?: WinRTApplicationTargetKind.Auto
-    val requestedBuildType = options.nativeBuildType.orNull.orEmpty().trim()
-    val requestedExecutable = options.nativeExecutableName.orNull.orEmpty().trim()
-    val requestedCompilation = options.compilationName.orNull.orEmpty().trim().ifBlank { "main" }
-
-    val filtered = candidates.filter { candidate ->
-        (variantSelector.isBlank() || candidate.id.equals(variantSelector, ignoreCase = true)) &&
-            (targetSelector.isBlank() || candidate.targetName.equals(targetSelector, ignoreCase = true)) &&
-            (requestedKind == WinRTApplicationTargetKind.Auto ||
-                candidate.kind.matches(requestedKind)) &&
-            candidate.compilationName.equals(requestedCompilation, ignoreCase = true) &&
-            (candidate.kind != WinRTApplicationVariantKind.MingwX64 ||
-                requestedBuildType.isBlank() || candidate.buildType.equals(requestedBuildType, ignoreCase = true)) &&
-            (requestedExecutable.isBlank() || candidate.executableName.equals(requestedExecutable, ignoreCase = true))
-    }
-
-    if (filtered.size == 1) {
-        return filtered.single()
-    }
-    val selector = listOfNotNull(
-        variantSelector.takeIf(String::isNotBlank)?.let { "variant='$it'" },
-        targetSelector.takeIf(String::isNotBlank)?.let { "target='$it'" },
-        "kind=${requestedKind.name}",
-        "compilation='$requestedCompilation'",
-        requestedBuildType.takeIf { requestedKind != WinRTApplicationTargetKind.Jvm && it.isNotBlank() }
-            ?.let { "buildType='$it'" },
-        requestedExecutable.takeIf(String::isNotBlank)?.let { "executable='$it'" },
-    ).joinToString(", ")
-    val available = candidates.joinToString(System.lineSeparator()) { candidate ->
-        "- ${candidate.id} (${candidate.kind.name}, sourceSet=${candidate.sourceSetName}" +
-            candidate.buildType?.let { ", buildType=$it" }.orEmpty() +
-            candidate.executableName?.let { ", executable=$it" }.orEmpty() + ")"
-    }
-    if (filtered.isEmpty()) {
-        throw GradleException(
-            "No Kotlin/WinRT application variant matches $selector. Available candidates:${System.lineSeparator()}$available",
-        )
+    val filtered = candidates.filter { candidate -> candidate.matches(options) }
+    if (filtered.isNotEmpty()) {
+        return filtered
     }
     throw GradleException(
-        "Kotlin/WinRT application variant selection is ambiguous for $selector. " +
-            "Set application.variantName/targetName (and nativeExecutableName for multiple executables). " +
-            "Matching candidates:${System.lineSeparator()}" +
-            filtered.joinToString(System.lineSeparator()) { candidate ->
-                "- ${candidate.id} (${candidate.kind.name}, sourceSet=${candidate.sourceSetName}" +
-                    candidate.buildType?.let { ", buildType=$it" }.orEmpty() +
-                    candidate.executableName?.let { ", executable=$it" }.orEmpty() + ")"
-            },
+        "No Kotlin/WinRT application variant matches ${options.selectorDescription()}. " +
+            "Available candidates:${System.lineSeparator()}${candidates.describe()}",
+    )
+}
+
+internal fun findMatchingWinRTApplicationVariants(
+    project: Project,
+    options: WinRTApplicationOptions,
+): List<WinRTApplicationVariant> =
+    discoverWinRTApplicationVariants(project).filter { candidate -> candidate.matches(options) }
+
+internal fun jvmWinRTApplicationVariant(
+    target: KotlinJvmTarget,
+    compilation: KotlinCompilation<*>,
+): WinRTApplicationVariant = WinRTApplicationVariant(
+    id = "${target.name}:${compilation.name}",
+    kind = WinRTApplicationVariantKind.Jvm,
+    targetName = target.name,
+    compilationName = compilation.name,
+    sourceSetName = compilation.defaultSourceSet.name,
+    buildType = null,
+    executableName = null,
+    runtimeIdentifier = currentWindowsRuntimeIdentifier(),
+)
+
+internal fun mingwWinRTApplicationVariant(
+    target: KotlinNativeTarget,
+    executable: Executable,
+): WinRTApplicationVariant {
+    val compilation = executable.compilation
+    return WinRTApplicationVariant(
+        id = "${target.name}:${compilation.name}:${executable.name}",
+        kind = WinRTApplicationVariantKind.MingwX64,
+        targetName = target.name,
+        compilationName = compilation.name,
+        sourceSetName = compilation.defaultSourceSet.name,
+        buildType = executable.buildType.name,
+        executableName = executable.name,
+        runtimeIdentifier = "win-x64",
     )
 }
 
@@ -133,33 +148,14 @@ internal fun discoverWinRTApplicationVariants(project: Project): List<WinRTAppli
     val candidates = mutableListOf<WinRTApplicationVariant>()
     kotlin.targets.withType(KotlinJvmTarget::class.java).forEach { target ->
         target.compilations.forEach { compilation ->
-            candidates += WinRTApplicationVariant(
-                id = "${target.name}:${compilation.name}",
-                kind = WinRTApplicationVariantKind.Jvm,
-                targetName = target.name,
-                compilationName = compilation.name,
-                sourceSetName = compilation.defaultSourceSet.name,
-                buildType = null,
-                executableName = null,
-                runtimeIdentifier = currentWindowsRuntimeIdentifier(),
-            )
+            candidates += jvmWinRTApplicationVariant(target, compilation)
         }
     }
     kotlin.targets.withType(KotlinNativeTarget::class.java)
         .filter(KotlinNativeTarget::isMingwX64Target)
         .forEach { target ->
             target.binaries.withType(Executable::class.java).forEach { executable ->
-                val compilation = executable.compilation
-                candidates += WinRTApplicationVariant(
-                    id = "${target.name}:${compilation.name}:${executable.name}",
-                    kind = WinRTApplicationVariantKind.MingwX64,
-                    targetName = target.name,
-                    compilationName = compilation.name,
-                    sourceSetName = compilation.defaultSourceSet.name,
-                    buildType = executable.buildType.name,
-                    executableName = executable.name,
-                    runtimeIdentifier = "win-x64",
-                )
+                candidates += mingwWinRTApplicationVariant(target, executable)
             }
         }
     return candidates.sortedBy { it.id.lowercase() }
@@ -173,6 +169,47 @@ internal fun String.toSafeDirectoryName(): String =
             '_'
         }
     }.joinToString("").trim('_').ifBlank { "default" }
+
+internal fun WinRTApplicationVariant.matches(options: WinRTApplicationOptions): Boolean {
+    val variantSelector = options.variantName.orNull.orEmpty().trim()
+    val targetSelector = options.targetName.orNull.orEmpty().trim()
+    val requestedKind = options.targetKind.orNull ?: WinRTApplicationTargetKind.Auto
+    val requestedBuildType = options.nativeBuildType.orNull.orEmpty().trim()
+    val requestedExecutable = options.nativeExecutableName.orNull.orEmpty().trim()
+    val requestedCompilation = options.compilationName.orNull.orEmpty().trim().ifBlank { "main" }
+    return (variantSelector.isBlank() || id.equals(variantSelector, ignoreCase = true)) &&
+        (targetSelector.isBlank() || targetName.equals(targetSelector, ignoreCase = true)) &&
+        (requestedKind == WinRTApplicationTargetKind.Auto || kind.matches(requestedKind)) &&
+        compilationName.equals(requestedCompilation, ignoreCase = true) &&
+        (kind != WinRTApplicationVariantKind.MingwX64 ||
+            requestedBuildType.isBlank() || buildType.equals(requestedBuildType, ignoreCase = true)) &&
+        (requestedExecutable.isBlank() || executableName.equals(requestedExecutable, ignoreCase = true))
+}
+
+private fun WinRTApplicationOptions.selectorDescription(): String {
+    val variantSelector = variantName.orNull.orEmpty().trim()
+    val targetSelector = targetName.orNull.orEmpty().trim()
+    val requestedKind = targetKind.orNull ?: WinRTApplicationTargetKind.Auto
+    val requestedBuildType = nativeBuildType.orNull.orEmpty().trim()
+    val requestedExecutable = nativeExecutableName.orNull.orEmpty().trim()
+    val requestedCompilation = compilationName.orNull.orEmpty().trim().ifBlank { "main" }
+    return listOfNotNull(
+        variantSelector.takeIf(String::isNotBlank)?.let { "variant='$it'" },
+        targetSelector.takeIf(String::isNotBlank)?.let { "target='$it'" },
+        "kind=${requestedKind.name}",
+        "compilation='$requestedCompilation'",
+        requestedBuildType.takeIf { requestedKind != WinRTApplicationTargetKind.Jvm && it.isNotBlank() }
+            ?.let { "buildType='$it'" },
+        requestedExecutable.takeIf(String::isNotBlank)?.let { "executable='$it'" },
+    ).joinToString(", ")
+}
+
+private fun Iterable<WinRTApplicationVariant>.describe(): String =
+    joinToString(System.lineSeparator()) { candidate ->
+        "- ${candidate.id} (${candidate.kind.name}, sourceSet=${candidate.sourceSetName}" +
+            candidate.buildType?.let { ", buildType=$it" }.orEmpty() +
+            candidate.executableName?.let { ", executable=$it" }.orEmpty() + ")"
+    }
 
 private fun WinRTApplicationVariantKind.matches(kind: WinRTApplicationTargetKind): Boolean = when (kind) {
     WinRTApplicationTargetKind.Auto -> true

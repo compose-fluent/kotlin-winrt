@@ -70,10 +70,6 @@ val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.w
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
     .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRT.samples.nugetGlobalPackagesRoot")
-val sampleApplicationTarget = providers.gradleProperty("kotlinWinRT.samples.applicationTarget")
-    .orElse("winuiJvm")
-val sampleNativeBuildType = providers.gradleProperty("kotlinWinRT.samples.nativeBuildType")
-    .orElse("release")
 val sampleApplicationPackageMode = providers.gradleProperty("kotlinWinRT.samples.packageMode")
     .map(String::lowercase)
     .orElse("unpackaged")
@@ -117,8 +113,6 @@ kotlin {
 winRT {
     application {
         mainClass = "io.github.composefluent.winrt.samples.MainKt"
-        targetName = sampleApplicationTarget
-        nativeBuildType = sampleNativeBuildType
         when (sampleApplicationPackageMode.get()) {
             "packaged" -> packaged()
             "unpackaged" -> unpackaged()
@@ -263,7 +257,7 @@ val standardSampleSmokeDefaults = mapOf(
 
 val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
     environmentVariables.put(
         "WEBVIEW2_USER_DATA_FOLDER",
         webView2UserDataRoot.map { it.dir("jvm").asFile.absolutePath },

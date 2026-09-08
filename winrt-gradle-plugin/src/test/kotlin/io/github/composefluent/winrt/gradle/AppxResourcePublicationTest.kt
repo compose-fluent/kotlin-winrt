@@ -38,10 +38,10 @@ class AppxResourcePublicationTest {
             }
             winRT { application { mainClass = 'sample.Main'; jvmTarget('desktop', 'preview') } }
             tasks.register('inspectResources') {
-                def archives = tasks.named('stageWinRTApplicationPackage').get().appxResourceArchives
+                def archives = tasks.named('stageWinRTApplicationPackageDesktopPreview').get().appxResourceArchives
                 inputs.files(archives)
                 doLast {
-                    println 'resourceProjects=' + configurations.kotlinWinRTAppxResources.dependencies
+                    println 'resourceProjects=' + configurations.kotlinWinRTAppxResourcesApplicationDesktopPreview.dependencies
                         .findAll { it instanceof ProjectDependency }.collect { it.path }.sort().join(',')
                     println 'archives=' + archives.files.collect { it.name }.sort().join(',')
                     assert archives.files.every { it.isFile() }
@@ -92,7 +92,7 @@ class AppxResourcePublicationTest {
             }
             winRT { application { mainClass = 'sample.Main'; jvmTarget('appDesktop', 'main') } }
             tasks.register('inspectResources') {
-                def archives = tasks.named('stageWinRTApplicationPackage').get().appxResourceArchives
+                def archives = tasks.named('stageWinRTApplicationPackageAppDesktopMain').get().appxResourceArchives
                 inputs.files(archives)
                 doLast {
                     def archive = archives.singleFile
@@ -129,7 +129,7 @@ class AppxResourcePublicationTest {
             }
             winRT { application { mainClass = 'sample.Main'; jvmTarget('desktop', 'preview') } }
             tasks.register('inspectResources') {
-                doLast { tasks.named('stageWinRTApplicationPackage').get().appxResourceArchives.files }
+                doLast { tasks.named('stageWinRTApplicationPackageDesktopPreview').get().appxResourceArchives.files }
             }
         """.trimIndent())
 
@@ -183,7 +183,7 @@ class AppxResourcePublicationTest {
                 doLast {
                     def output = file("${'$'}buildDir/appx-resources.txt")
                     output.parentFile.mkdirs()
-                    def appxResources = tasks.named('stageWinRTApplicationPackage').get().appxResourceArchives
+                    def appxResources = tasks.named('stageWinRTApplicationPackageJvmMain').get().appxResourceArchives
                     output.text = appxResources.files.collect { it.absolutePath }.sort().join(System.lineSeparator())
                 }
             }
@@ -305,7 +305,7 @@ class AppxResourcePublicationTest {
 
             tasks.register('inspectAppxResources') {
                 doLast {
-                    tasks.named('stageWinRTApplicationPackage').get().appxResourceArchives.files
+                    tasks.named('stageWinRTApplicationPackageJvmMain').get().appxResourceArchives.files
                 }
             }
             """.trimIndent(),

@@ -67,8 +67,12 @@ val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.w
 val verifyWinRTSampleIdentity by tasks.registering(VerifyWinRTSampleIdentityTask::class) {
     group = "verification"
     description = "Verifies the sample application aggregates Kotlin WinRT identity metadata from projection dependencies."
-    dependsOn("generateWinRTApplicationIdentity")
-    identityFile.set(layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json"))
+    dependsOn("generateWinRTApplicationIdentityWinuiJvmMain")
+    identityFile.set(
+        layout.buildDirectory.file(
+            "generated/kotlin-winrt/identity/variant-WinuiJvmMain/kotlin-winrt-application.json",
+        ),
+    )
     winuiEnabled.set(sampleWinUIEnabled)
     windowsAppSdkVersion.set(sampleWindowsAppSdkVersion)
 }
@@ -76,14 +80,14 @@ val verifyWinRTSampleIdentity by tasks.registering(VerifyWinRTSampleIdentityTask
 val verifyWinRTSampleRuntimeAssets by tasks.registering(VerifyWinRTSampleRuntimeAssetsTask::class) {
     group = "verification"
     description = "Verifies the sample application stages local WinRT component runtime assets."
-    dependsOn("stageWinRTRuntimeAssets")
-    runtimeAssetsDirectory.set(layout.buildDirectory.dir("kotlin-winrt/runtime-assets"))
+    dependsOn("stageWinRTRuntimeAssetsWinuiJvmMain")
+    runtimeAssetsDirectory.set(layout.buildDirectory.dir("kotlin-winrt/application-layout/winuiJvm_main/runtime-assets"))
 }
 
 val verifyWinRTSampleRun by tasks.registering {
     group = "verification"
     description = "Runs the sample application through the native Kotlin/WinRT host without opt-in native WinRT smoke tests."
-    dependsOn("runWinRTApplicationHost")
+    dependsOn("runWinRTApplicationHostWinuiJvmMain")
 }
 
 val verifyWinRTSampleMingwRun by tasks.registering {

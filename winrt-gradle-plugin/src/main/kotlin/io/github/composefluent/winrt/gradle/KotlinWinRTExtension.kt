@@ -231,16 +231,15 @@ abstract class WinRTApplicationOptions @Inject constructor(
     private var runTaskRegistrar: ((WinRTApplicationRunTaskRegistration) -> Unit)? = null
 
     /**
-     * Explicit application variant selection. An empty selector is only resolved when the
-     * project exposes one unambiguous Windows application candidate; it never gives Native or
-     * a target with a particular name implicit priority.
+     * Optional application-variant filters. The default application creates a task graph for
+     * every matching target variant; an explicitly named application must still match exactly one.
      */
     val variantName: Property<String> = objects.property(String::class.java).convention("")
     val targetName: Property<String> = objects.property(String::class.java).convention("")
     val compilationName: Property<String> = objects.property(String::class.java).convention("main")
     val targetKind: Property<WinRTApplicationTargetKind> =
         objects.property(WinRTApplicationTargetKind::class.java).convention(WinRTApplicationTargetKind.Auto)
-    /** Native build type is intentionally unset until the caller selects one explicitly. */
+    /** An empty Native build type includes every executable build variant. */
     val nativeBuildType: Property<String> = objects.property(String::class.java).convention("")
     val nativeExecutableName: Property<String> = objects.property(String::class.java).convention("")
 
