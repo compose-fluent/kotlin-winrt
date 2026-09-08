@@ -33,6 +33,9 @@ import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
+    @get:Internal
+    abstract val applicationCompilationTasks: SetProperty<String>
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -226,6 +229,7 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     abstract val includeJvmAuthoringArtifacts: Property<Boolean>
 
     init {
+        applicationCompilationTasks.convention(emptySet())
         generateProjectPri.convention(true)
         projectPriIndexName.convention("")
         projectPriFallbackIndexName.convention("Application")

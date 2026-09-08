@@ -326,6 +326,34 @@ winRT {
 
 Run the selected JVM variant with `runWinRTApplicationHost`, or the selected MinGW variant with `runReleaseExecutableMingwX64`. Do not leave a dual-target application on automatic selection when both candidates are present.
 
+To build several applications in one invocation, declare named variants in the first `application` block. Settings outside `variants` are shared defaults; each application can override them:
+
+```kotlin
+winRT {
+    application {
+        mainClass.set("sample.MainKt")
+        packaged()
+        variants {
+            create("desktop") {
+                jvmTarget("winuiJvm")
+                runTask("runDesktopDiagnostics") {
+                    jvmArgs.add("-Xmx256m")
+                }
+            }
+            create("native") {
+                mingwX64Target("mingwX64", "main", "release", "releaseExecutable")
+            }
+        }
+    }
+}
+```
+
+This registers `packageWinRTApplicationDesktop` and `packageWinRTApplicationNative`, with matching suffixed staging, verification, signing, and installation tasks. The unsuffixed tasks aggregate all named applications. Layouts, identity files, PRI work directories, generated Native entries, packages, and verification reports are isolated per application. Native applications must select different executable binaries, even when they share a compilation. Explicit package output paths must also be distinct.
+
+For multiple JVM applications, use the same JVM target with different main classes or compilations (`jvmTarget("winuiJvm", "preview")`). Kotlin Gradle Plugin 2.3.20 rejects compiling multiple JVM targets in one project.
+
+Use `runWinRTApplicationHostDesktop` for a JVM variant's direct host launch and the selected Kotlin/Native executable's run task for Native. These direct launches do not activate a packaged application's identity; packaged startup verification must install and activate the package. Named applications do not inject all their layouts into the global Java `processResources`, `JavaExec`, or distribution tasks. Register additional JVM runs inside the corresponding variant with `runTask`.
+
 Run the JVM application through the generated host:
 
 ```powershell

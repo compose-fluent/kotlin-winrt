@@ -5,6 +5,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -20,6 +21,9 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 
 abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
+    @get:Internal
+    abstract val applicationCompilationTasks: SetProperty<String>
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -49,6 +53,7 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
     abstract val commandWorkingDirectory: DirectoryProperty
 
     init {
+        applicationCompilationTasks.convention(emptySet())
         windowsSdkRegistryRoots.convention(emptyList())
     }
 

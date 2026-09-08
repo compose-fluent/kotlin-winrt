@@ -174,9 +174,9 @@ abstract class WinRTExtension @Inject constructor(
     private val applicationConfiguredActions = mutableListOf<() -> Unit>()
 
     @get:Nested
-    val application: WinRTApplicationOptions = objects.newInstance(WinRTApplicationOptions::class.java, project)
+    val application: WinRTApplicationConfiguration = objects.newInstance(WinRTApplicationConfiguration::class.java, project)
 
-    fun application(action: Action<in WinRTApplicationOptions>) {
+    fun application(action: Action<in WinRTApplicationConfiguration>) {
         applicationEnabled.set(true)
         action.execute(application)
         applicationConfiguredActions.forEach { it() }
@@ -198,11 +198,37 @@ abstract class WinRTExtension @Inject constructor(
     }
 }
 
+abstract class WinRTApplicationConfiguration @Inject constructor(
+    objects: ObjectFactory,
+    project: Project,
+) : WinRTApplicationOptions(objects, project) {
+    @get:Nested
+    val variants: NamedDomainObjectContainer<NamedWinRTApplicationOptions> =
+        objects.domainObjectContainer(NamedWinRTApplicationOptions::class.java) { name ->
+            objects.newInstance(NamedWinRTApplicationOptions::class.java, name, project).also { variant ->
+                variant.inheritFrom(this)
+            }
+        }
+
+    fun variants(action: Action<in NamedDomainObjectContainer<NamedWinRTApplicationOptions>>) {
+        action.execute(variants)
+    }
+}
+
+abstract class NamedWinRTApplicationOptions @Inject constructor(
+    private val applicationName: String,
+    objects: ObjectFactory,
+    project: Project,
+) : WinRTApplicationOptions(objects, project), Named {
+    override fun getName(): String = applicationName
+}
+
 abstract class WinRTApplicationOptions @Inject constructor(
     objects: ObjectFactory,
     private val project: Project,
 ) {
     internal val runTaskRegistrations = mutableListOf<WinRTApplicationRunTaskRegistration>()
+    private var runTaskRegistrar: ((WinRTApplicationRunTaskRegistration) -> Unit)? = null
 
     /**
      * Explicit application variant selection. An empty selector is only resolved when the
@@ -293,6 +319,62 @@ abstract class WinRTApplicationOptions @Inject constructor(
         objects.property(WinRTWindowsAppSdkDeployment::class.java)
             .convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
 
+    internal fun inheritFrom(defaults: WinRTApplicationOptions) {
+        variantName.convention(defaults.variantName)
+        targetName.convention(defaults.targetName)
+        compilationName.convention(defaults.compilationName)
+        targetKind.convention(defaults.targetKind)
+        nativeBuildType.convention(defaults.nativeBuildType)
+        nativeExecutableName.convention(defaults.nativeExecutableName)
+        packageMode.convention(defaults.packageMode)
+        mainClass.convention(defaults.mainClass)
+        console.convention(defaults.console)
+        generateProjectPri.convention(defaults.generateProjectPri)
+        projectPriIndexName.convention(defaults.projectPriIndexName)
+        projectPriInitialPath.convention(defaults.projectPriInitialPath)
+        projectPriDefaultLanguage.convention(defaults.projectPriDefaultLanguage)
+        projectPriDefaultQualifiers.convention(defaults.projectPriDefaultQualifiers)
+        enableDefaultProjectPriResources.convention(defaults.enableDefaultProjectPriResources)
+        appxManifestFiles.convention(defaults.appxManifestFiles)
+        projectPriResourceFiles.convention(defaults.projectPriResourceFiles)
+        projectPriLayoutFiles.convention(defaults.projectPriLayoutFiles)
+        projectPriContentFiles.convention(defaults.projectPriContentFiles)
+        projectPriEmbedFiles.convention(defaults.projectPriEmbedFiles)
+        packagePayloadFiles.convention(defaults.packagePayloadFiles)
+        projectPriTargetPaths.convention(defaults.projectPriTargetPaths)
+        projectPriExcludedFromBuildPaths.convention(defaults.projectPriExcludedFromBuildPaths)
+        makePriExecutable.convention(defaults.makePriExecutable)
+        generatePackage.convention(defaults.generatePackage)
+        packageOutputFile.convention(defaults.packageOutputFile)
+        makeAppxExecutable.convention(defaults.makeAppxExecutable)
+        verifyPackage.convention(defaults.verifyPackage)
+        signPackage.convention(defaults.signPackage)
+        signedPackageOutputFile.convention(defaults.signedPackageOutputFile)
+        signToolExecutable.convention(defaults.signToolExecutable)
+        signingCertificateThumbprint.convention(defaults.signingCertificateThumbprint)
+        signingCertificateFile.convention(defaults.signingCertificateFile)
+        signingCertificatePassword.convention(defaults.signingCertificatePassword)
+        signingTimestampUrl.convention(defaults.signingTimestampUrl)
+        signingHashAlgorithm.convention(defaults.signingHashAlgorithm)
+        installPackage.convention(defaults.installPackage)
+        installPackageFile.convention(defaults.installPackageFile)
+        dependencyPackageFiles.convention(defaults.dependencyPackageFiles)
+        installPowerShellExecutable.convention(defaults.installPowerShellExecutable)
+        installForceApplicationShutdown.convention(defaults.installForceApplicationShutdown)
+        jvmRuntimeMode.convention(defaults.jvmRuntimeMode)
+        jvmRuntimeImage.convention(defaults.jvmRuntimeImage)
+        externalJvmHome.convention(defaults.externalJvmHome)
+        jvmRuntimeModules.convention(defaults.jvmRuntimeModules)
+        jvmToolchainVersion.convention(defaults.jvmToolchainVersion)
+        windowsAppSdkDeployment.convention(defaults.windowsAppSdkDeployment)
+    }
+
+    internal fun bindRunTasks(registrar: (WinRTApplicationRunTaskRegistration) -> Unit) {
+        runTaskRegistrar = registrar
+        runTaskRegistrations.forEach(registrar)
+        runTaskRegistrations.clear()
+    }
+
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
     }
@@ -367,11 +449,8 @@ abstract class WinRTApplicationOptions @Inject constructor(
     }
 
     fun runTask(name: String, action: Action<in RunWinRTApplicationHostTask>) {
-        if (project.tasks.findByName("buildWinRTApplicationHost") != null) {
-            project.registerWinRTApplicationHostRunTask(name, action)
-        } else {
-            runTaskRegistrations += WinRTApplicationRunTaskRegistration(name, action)
-        }
+        val registration = WinRTApplicationRunTaskRegistration(name, action)
+        runTaskRegistrar?.invoke(registration) ?: run { runTaskRegistrations += registration }
     }
 
     fun projectPriResource(input: Any) {

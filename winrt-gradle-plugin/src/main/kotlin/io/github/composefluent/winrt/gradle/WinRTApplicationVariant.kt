@@ -31,6 +31,14 @@ internal fun WinRTApplicationVariant.appxResourceTargetIdentity(): String = when
     WinRTApplicationVariantKind.MingwX64 -> appxResourceTargetIdentity(kind, compilationName)
 }
 
+@OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
+internal fun WinRTApplicationVariant.compilationTaskNames(project: Project): Set<String> {
+    val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java)
+        ?: return setOf("compileKotlin")
+    val compilation = kotlin.targets.getByName(targetName).compilations.getByName(compilationName)
+    return (compilation.allAssociatedCompilations + compilation).map { it.compileTaskProvider.name }.toSet()
+}
+
 internal fun appxResourceTargetIdentity(
     kind: WinRTApplicationVariantKind,
     compilationName: String,
