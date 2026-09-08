@@ -231,6 +231,26 @@ class NamedWinRTApplicationsTest {
     }
 
     @Test
+    fun runtime_preparation_does_not_capture_application_models_in_configuration_cache() {
+        val root = fixture("cached-runtime-preparation")
+        writeGradleFile(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
+            winRT { application {
+                mainClass = 'sample.Main'
+                jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinRTJvmRuntimeMode.External
+                externalJvmHome = file('${System.getProperty("java.home").replace("\\", "/")}')
+                variants { create('first'); create('second') }
+            } }
+        """.trimIndent())
+        val first = runner(root, "prepareWinRTJvmRuntimeImage", "--configuration-cache").build()
+        assertTrue(first.output, first.output.contains("Configuration cache entry stored"))
+        val second = runner(root, "prepareWinRTJvmRuntimeImage", "--configuration-cache").build()
+        assertTrue(second.output, second.output.contains("Reusing configuration cache"))
+        assertEquals(TaskOutcome.SKIPPED, second.task(":prepareWinRTJvmRuntimeImageFirst")?.outcome)
+        assertEquals(TaskOutcome.SKIPPED, second.task(":prepareWinRTJvmRuntimeImageSecond")?.outcome)
+    }
+
+    @Test
     fun rejects_two_applications_owning_the_same_native_binary() {
         val root = fixture("duplicate-native")
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """

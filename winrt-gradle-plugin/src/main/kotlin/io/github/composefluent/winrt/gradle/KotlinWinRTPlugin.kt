@@ -941,7 +941,7 @@ private fun configureWinRTApplicationTasks(
             )
             task.onlyIf {
                 selectedVariant.get().kind == WinRTApplicationVariantKind.Jvm &&
-                    options.jvmRuntimeMode.get() == WinRTJvmRuntimeMode.Bundled
+                    task.runtimeMode.get() == WinRTJvmRuntimeMode.Bundled.name
             }
         },
     )
