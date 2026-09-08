@@ -267,7 +267,6 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         val generatedPri = generateProjectPri(
             outputRoot = outputRoot,
             selectedPayloads = packagePayloadDecisions,
-            runtimeAssetInputs = runtimeAssetInputs(runtimeAssetsRoot, outputRoot),
         )
         val excludedPayloadTargets = generatedPri?.let { result ->
             removeExcludedLayoutPayloads(outputRoot, packagePayloadDecisions, result)
@@ -324,22 +323,6 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
 
     private fun defaultAppxResourceInputs(): List<AppxResourceInput> =
         collectAppxResourceInputs(defaultAppxResourceRoots.get().map(Path::of))
-
-    private fun runtimeAssetInputs(runtimeAssetsRoot: Path, outputRoot: Path): List<AppxResourceInput> {
-        if (!runtimeAssetsRoot.isDirectory()) return emptyList()
-        return Files.walk(runtimeAssetsRoot).use { stream ->
-            stream.asSequence()
-                .filter(Path::isRegularFile)
-                .map { source ->
-                    AppxResourceInput(
-                        source = outputRoot.resolve(runtimeAssetsRoot.relativize(source).toString()).normalize(),
-                        relativePath = runtimeAssetsRoot.relativize(source),
-                    )
-                }
-                .sortedBy { input -> input.relativePathString.lowercase() }
-                .toList()
-        }
-    }
 
     private fun resolvePackagePayloadDecisions(
         conventionInputs: Collection<AppxResourceInput>,
@@ -430,7 +413,6 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     private fun generateProjectPri(
         outputRoot: Path,
         selectedPayloads: Collection<PackagePayloadDecision>,
-        runtimeAssetInputs: Collection<AppxResourceInput>,
     ): GeneratedProjectPriResult? {
         if (!generateProjectPri.get() || !isWindowsHost()) {
             return null
@@ -450,12 +432,6 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             val source = decision.source.toAbsolutePath().normalize()
             if (source.isRegularFile()) AppxResourceInput(source, decision.target) else null
         }
-        val selectedTargetKeys = selectedPayloadInputs.mapTo(linkedSetOf()) { input ->
-            input.relativePathString.replace('\\', '/').lowercase()
-        }
-        val resolvedAppxResourceInputs = selectedPayloadInputs + runtimeAssetInputs.filterNot { input ->
-            input.relativePathString.replace('\\', '/').lowercase() in selectedTargetKeys
-        }
         val copiedProjectPriItems = ProjectPriInputStager(
             projectPriRoot = projectPriRoot,
             projectPriInitialPath = projectPriInitialPath.get(),
@@ -465,7 +441,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         ).stage(
             componentPriFiles = inputPris,
             componentPriBaseRoot = outputRoot,
-            appxResourceFiles = resolvedAppxResourceInputs,
+            // Component payload is copy-local content, indexed by its own PRI. Re-indexing
+            // runtime files can conflict with those mappings or re-embed compiled XBF.
+            appxResourceFiles = selectedPayloadInputs,
             explicitResourceFiles = projectPriResourceFiles.files.map { it.toPath() },
             explicitLayoutFiles = projectPriLayoutFiles.files.map { it.toPath() },
             explicitContentFiles = projectPriContentFiles.files.map { it.toPath() },
