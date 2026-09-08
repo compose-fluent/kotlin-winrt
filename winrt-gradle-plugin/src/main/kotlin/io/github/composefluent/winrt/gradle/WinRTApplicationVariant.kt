@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.mpp.Executable
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
+import java.util.Locale
 
 /** The only native application target currently supported by the packaging pipeline. */
 internal enum class WinRTApplicationVariantKind {
@@ -23,6 +24,20 @@ internal data class WinRTApplicationVariant(
     val executableName: String?,
     val runtimeIdentifier: String,
 )
+
+/** Stable resource-variant identity shared by producers and consumers with different local names. */
+internal fun WinRTApplicationVariant.appxResourceTargetIdentity(): String = when (kind) {
+    WinRTApplicationVariantKind.Jvm -> appxResourceTargetIdentity(kind, compilationName)
+    WinRTApplicationVariantKind.MingwX64 -> appxResourceTargetIdentity(kind, compilationName)
+}
+
+internal fun appxResourceTargetIdentity(
+    kind: WinRTApplicationVariantKind,
+    compilationName: String,
+): String = when (kind) {
+    WinRTApplicationVariantKind.Jvm -> "jvm:${compilationName.lowercase(Locale.ROOT)}"
+    WinRTApplicationVariantKind.MingwX64 -> "mingw_x64:${compilationName.lowercase(Locale.ROOT)}"
+}
 
 internal fun resolveWinRTApplicationVariant(
     project: Project,

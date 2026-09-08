@@ -6607,6 +6607,74 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_package_task_uses_project_pri_content_for_same_payload_target() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-pri-overlap").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(manifest, appxManifestXml())
+        val packagePayload = project.projectDir.toPath().resolve("package/Assets/Logo.png")
+        val priContent = project.projectDir.toPath().resolve("pri/Logo.png")
+        Files.createDirectories(packagePayload.parent)
+        Files.createDirectories(priContent.parent)
+        Files.writeString(packagePayload, "package-content")
+        Files.writeString(priContent, "pri-content")
+        val makePriLog = project.layout.buildDirectory.file("makepri-pri-overlap.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri-pri-overlap.cmd").get().asFile.toPath(),
+            makePriLog,
+        )
+        val task = project.tasks.register(
+            "stagePriOverlapApplicationPackage",
+            StageWinRTApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-pri-overlap"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.packagePayloadFiles.from(packagePayload)
+            registeredTask.projectPriContentFiles.from(priContent)
+            registeredTask.projectPriTargetPaths.put(
+                packagePayload.toAbsolutePath().normalize().toString(),
+                "Assets/Logo.png",
+            )
+            registeredTask.projectPriTargetPaths.put(
+                priContent.toAbsolutePath().normalize().toString(),
+                "Assets/Logo.png",
+            )
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertEquals("pri-content", Files.readString(outputRoot.resolve("Assets/Logo.png")))
+        val report = project.layout.buildDirectory
+            .file("kotlin-winrt/reports/appx-resource-resolution.json")
+            .get()
+            .asFile
+            .toPath()
+        val reportText = Files.readString(report)
+        assertTrue(reportText.contains("\"target\":\"Assets/Logo.png\""))
+        assertTrue(reportText.contains("\"origin\":\"project PRI content\""))
+        assertFalse(reportText.contains("\"origin\":\"explicit packagePayload\""))
+        assertTrue(Files.readString(makePriLog).contains("new"))
+    }
+
+    @Test
     fun application_package_task_stages_default_appx_resources_relative_to_appx_resources_root() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-default-appx-resources").get().asFile.toPath()
@@ -8598,6 +8666,69 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_package_task_keeps_appx_resource_resw_out_of_final_payload() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-appx-resw").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val appxResources = project.projectDir.toPath().resolve("src/winuiMain/appxResources")
+        val resource = appxResources.resolve("Strings/en-US/Resources.resw")
+        val image = appxResources.resolve("Assets/Logo.png")
+        val xaml = appxResources.resolve("Views/Control.xaml")
+        val xbf = appxResources.resolve("Views/Control.xbf")
+        Files.createDirectories(resource.parent)
+        Files.createDirectories(image.parent)
+        Files.createDirectories(xaml.parent)
+        Files.writeString(resource, "appx-resw")
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        Files.writeString(xaml, "<Page />")
+        Files.write(xbf, byteArrayOf(0x58, 0x42, 0x46))
+        val makePriLog = project.layout.buildDirectory.file("makepri-appx-resw.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri-appx-resw.cmd").get().asFile.toPath(),
+            makePriLog,
+        )
+        val task = project.tasks.register(
+            "stageAppxResourceReswApplicationPackage",
+            StageWinRTApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-appx-resw"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultAppxResourceRoots.set(listOf(appxResources.toString()))
+            registeredTask.defaultAppxResourceFiles.from(resource, image, xaml, xbf)
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertFalse(Files.exists(outputRoot.resolve("Strings/en-US/Resources.resw")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Assets/Logo.png")))
+        assertFalse(Files.exists(outputRoot.resolve("Views/Control.xaml")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Views/Control.xbf")))
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Strings/en-US/Resources.resw"),
+            ),
+        )
+        val report = project.layout.buildDirectory.file("kotlin-winrt/reports/appx-resource-resolution.json").get().asFile.toPath()
+        assertFalse(Files.readString(report).contains("Resources.resw"))
+        assertFalse(Files.readString(report).contains("Control.xaml"))
+        assertTrue(Files.readString(makePriLog).contains("new"))
+    }
+
+    @Test
     fun project_pri_full_index_config_is_accepted_by_real_makepri() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -9079,7 +9210,11 @@ class KotlinWinRTPluginTest {
 
             kotlin {
                 jvm("winuiJvm")
-                mingwX64()
+                mingwX64 {
+                    binaries {
+                        executable()
+                    }
+                }
                 linuxX64()
                 sourceSets {
                     commonMain {
@@ -9093,6 +9228,9 @@ class KotlinWinRTPluginTest {
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
+                    targetName.set "mingwX64"
+                    nativeBuildType.set "release"
+                    nativeExecutableName.set "releaseExecutable"
                 }
                 windowsSdk(null, false, true)
                 type "Windows.Foundation.IStringable"
@@ -9124,7 +9262,9 @@ class KotlinWinRTPluginTest {
                         .replace("\\", "/")
                     def legacyGeneratedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
                     def generatedHostExports = buildRoot.resolve("generated/kotlin-winrt-native-authoring-host")
-                    def generatedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
+                    def generatedApplicationEntry = buildRoot.resolve(
+                        "generated/kotlin-winrt-application-entry/mingwX64_main_releaseExecutable/src/kotlin",
+                    )
                         .toString()
                         .replace("\\", "/")
                     def legacyGeneratedApplicationEntry = buildRoot.resolve("generated/kotlin-winrt-application-entry/src/commonMain/kotlin")
@@ -9602,7 +9742,11 @@ class KotlinWinRTPluginTest {
 
             kotlin {
                 jvm("winuiJvm")
-                mingwX64()
+                mingwX64 {
+                    binaries {
+                        executable()
+                    }
+                }
                 sourceSets {
                     winuiMain {
                         dependsOn commonMain
@@ -9616,6 +9760,9 @@ class KotlinWinRTPluginTest {
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
+                    targetName.set "mingwX64"
+                    nativeBuildType.set "release"
+                    nativeExecutableName.set "releaseExecutable"
                 }
             }
             """.trimIndent(),
@@ -9657,6 +9804,133 @@ class KotlinWinRTPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTMingwApplicationEntry")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinWinuiJvm")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinMingwX64")?.outcome)
+        val generatedEntry = projectDir.resolve(
+            "build/generated/kotlin-winrt-application-entry/mingwX64_main_releaseExecutable/src/kotlin/" +
+                "io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt",
+        )
+        assertTrue(Files.isRegularFile(generatedEntry))
+        assertFalse(
+            Files.exists(
+                projectDir.resolve("build/generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin"),
+            ),
+        )
+    }
+
+    @Test
+    fun mingw_application_entry_isolated_between_two_named_executables() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-two-mingw-targets-entry-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-two-mingw-targets-entry-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "io.github.compose-fluent.winrt"
+            }
+
+            kotlin {
+                mingwX64("customMingw") {
+                    binaries {
+                        executable("firstExecutable")
+                        executable("secondExecutable")
+                    }
+                }
+            }
+
+            def selectedBinary = providers.gradleProperty("selectedBinary").orElse("firstExecutable").get()
+            def mingwTarget = kotlin.targets.getByName("customMingw")
+            def selectedExecutable = mingwTarget.binaries
+                .findAll { it.name.toLowerCase().contains(selectedBinary.toLowerCase()) }
+                .find { it.buildType.name.equalsIgnoreCase("release") }
+            if (selectedExecutable == null) {
+                throw new GradleException(
+                    "No release executable matches ${'$'}{selectedBinary}: ${'$'}{mingwTarget.binaries*.name}",
+                )
+            }
+
+            winRT {
+                application {
+                    mainClass.set "sample.MainKt"
+                    mingwX64Target("customMingw", "main", "release", selectedExecutable.name)
+                }
+            }
+
+            tasks.register("verifyEntryOwnership") {
+                dependsOn("generateWinRTMingwApplicationEntry")
+                doLast {
+                    def normalized = { file -> file.toPath().toAbsolutePath().normalize().toString().replace("\\\\", "/") }
+                    def sourceDirs = mingwTarget.compilations.getByName("main").defaultSourceSet.kotlin.srcDirs.collect(normalized)
+                    def buildRoot = layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+                    def selectedEntry = buildRoot.resolve(
+                        "generated/kotlin-winrt-application-entry/customMingw_main_${'$'}{selectedExecutable.name}/src/kotlin",
+                    ).toString().replace("\\\\", "/")
+                    if (!sourceDirs.contains(selectedEntry)) {
+                        throw new GradleException(
+                            "Selected ${'$'}{selectedExecutable.name} compilation does not own ${'$'}{selectedEntry}: ${'$'}{sourceDirs}",
+                        )
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val firstResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyEntryOwnership", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, firstResult.task(":verifyEntryOwnership")?.outcome)
+        val firstEntry = projectDir.resolve(
+            "build/generated/kotlin-winrt-application-entry/customMingw_main_firstExecutableReleaseExecutable/src/kotlin/" +
+                "io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt",
+        )
+        assertTrue(Files.isRegularFile(firstEntry))
+
+        val secondResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyEntryOwnership", "-PselectedBinary=secondExecutable", "--rerun-tasks", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, secondResult.task(":verifyEntryOwnership")?.outcome)
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve(
+                    "build/generated/kotlin-winrt-application-entry/customMingw_main_secondExecutableReleaseExecutable/src/kotlin/" +
+                        "io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt",
+                ),
+            ),
+        )
+        assertTrue("Switching variants must not clean the first entry output", Files.isRegularFile(firstEntry))
     }
 
     @Test

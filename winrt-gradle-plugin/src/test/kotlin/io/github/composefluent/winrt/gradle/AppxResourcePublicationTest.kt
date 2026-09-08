@@ -92,7 +92,7 @@ class AppxResourcePublicationTest {
         val resourceUsage = "\"org.gradle.usage\": \"kotlin-winrt-appx\""
         val targetOnlyModule = Files.readString(libraryModule).replace(
             resourceUsage,
-            "$resourceUsage,\n        \"io.github.composefluent.winrt.appx-resource-target\": \"mingwX64Main\"",
+            "$resourceUsage,\n        \"io.github.composefluent.winrt.appx-resource-target\": \"mingw_x64:main\"",
         )
         Files.writeString(libraryModule, targetOnlyModule)
 
@@ -148,7 +148,7 @@ class AppxResourcePublicationTest {
                     attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, 'kotlin-winrt-appx'))
                     attribute(
                         Attribute.of('io.github.composefluent.winrt.appx-resource-target', String),
-                        'mingwX64Main',
+                        'mingw_x64:main',
                     )
                 }
             }

@@ -24,6 +24,7 @@ internal data class PackagePayloadDecision(
     val target: Path,
     val origin: String,
     val overriddenSource: Path? = null,
+    val isPriCompilerInput: Boolean = false,
 )
 
 internal object ApplicationPackagePayloadWriter {
@@ -62,6 +63,7 @@ internal object ApplicationPackagePayloadWriter {
                         input.source,
                         input.relativePath.toString().toSafeRelativePath("dependency AppX resource path"),
                         "dependency AppX resource",
+                        isPriCompilerInput = input.isPriCompilerInput(),
                     ),
                     priority = DEPENDENCY_PRIORITY,
                     unresolvedConflicts = unresolvedConflicts,
@@ -78,6 +80,7 @@ internal object ApplicationPackagePayloadWriter {
                         input.source,
                         input.relativePath.toString().toSafeRelativePath("AppX resource path"),
                         "appxResources",
+                        isPriCompilerInput = input.isPriCompilerInput(),
                     ),
                     priority = CONVENTION_PRIORITY,
                     unresolvedConflicts = unresolvedConflicts,
@@ -327,7 +330,10 @@ internal object ApplicationPackagePayloadWriter {
             put("schemaVersion", 1)
             put("packageRootRelative", true)
             put("entries", buildJsonArray {
-                decisions.sortedBy { it.target.toNormalizedPackagePathKey() }.forEach { decision ->
+                decisions
+                    .filterNot { it.isPriCompilerInput }
+                    .sortedBy { it.target.toNormalizedPackagePathKey() }
+                    .forEach { decision ->
                     add(buildJsonObject {
                         put("target", decision.target.toString().replace('\\', '/'))
                         put("source", decision.source.toString())
@@ -399,6 +405,10 @@ internal object ApplicationPackagePayloadWriter {
         else -> CONVENTION_PRIORITY
     }
 }
+
+/** Resource compiler inputs are staged into the project PRI, not copied as loose package files. */
+private fun AppxResourceInput.isPriCompilerInput(): Boolean =
+    relativePath.name.endsWith(".resw", ignoreCase = true)
 
 private fun sha256(path: Path): String {
     val digest = MessageDigest.getInstance("SHA-256")
