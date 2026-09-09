@@ -4469,7 +4469,7 @@ class KotlinWinRTPluginTest {
         assertTrue(source.contains("kotlin_winrt_append_classpath_jars(buffer, count, L\"lib\\\\*.jar\", L\"lib\\\\\")"))
         assertTrue(source.contains("io/github/composefluent/winrt/projections/support/WinRTAuthoringHostExports_SampleComponent_jar"))
         assertTrue(Files.readString(sourceRoot.resolve("kotlin_winrt_authoring_host.def")).contains("DllGetActivationFactory"))
-        if (System.getProperty("os.name").contains("Windows", ignoreCase = true) && commandExists("clang-cl.exe")) {
+        if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             assertTrue(Files.isRegularFile(task.outputDirectory.get().asFile.toPath().resolve("SampleComponent.dll")))
         }
     }

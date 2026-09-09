@@ -5,6 +5,8 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
+import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
@@ -14,13 +16,25 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.inject.Inject
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
 abstract class BuildWinRTApplicationHostTask : DefaultTask() {
+    @get:Inject
+    protected abstract val providers: ProviderFactory
+
+    @get:Input
+    @get:Optional
+    val nativeToolchain: Provider<WindowsNativeToolchain> = providers.of(WindowsNativeToolchainValueSource::class.java) {
+        it.parameters.forAuthoring.set(false)
+        it.parameters.runtimeIdentifier.set(runtimeIdentifier)
+        it.parameters.windowsSdkVersion.set(windowsSdkVersion)
+        it.parameters.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+    }
+
     init {
         packageMode.convention(WinRTApplicationPackageMode.Unpackaged.name)
         applicationVariant.convention("jvm:main")
@@ -147,16 +161,9 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
             logger.warn("Kotlin/WinRT application host native EXE build is Windows-only; generated source without compiling EXE.")
             return
         }
-        val compiler = findExecutable("clang-cl.exe") ?: findExecutable("cl.exe")
-        if (compiler == null) {
-            throw IllegalStateException("No clang-cl.exe or cl.exe found. Kotlin/WinRT application host requires a Windows C/C++ toolchain.")
-        }
-        val sdk = findWindowsSdk(
-            version = windowsSdkVersion.get().takeIf(String::isNotBlank),
-            registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty(),
-        )
-            ?: throw IllegalStateException("No Windows SDK installation found. Kotlin/WinRT application host requires Windows SDK headers and libraries.")
-        compileHostExe(compiler, sdk, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
+        val toolchain = nativeToolchain.get()
+        logger.info("Kotlin/WinRT JVM application host: {} ({}; Windows SDK {})", toolchain.compiler, runtimeIdentifier.get(), toolchain.sdkVersion)
+        compileHostExe(toolchain, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
     }
 
     private fun stageRuntimeClasspath(outputRoot: Path) {
@@ -293,8 +300,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     }
 
     private fun compileHostExe(
-        compiler: Path,
-        sdk: WindowsSdkLayout,
+        toolchain: WindowsNativeToolchain,
         source: Path,
         output: Path,
     ) {
@@ -305,14 +311,11 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
             )
         }
         val javaHomePath = Path.of(javaHomeValue)
+        val sdk = toolchain.sdk
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
-        val useLlvmLinker = compiler.fileName.toString().equals("clang-cl.exe", ignoreCase = true) &&
-            findExecutable("lld-link.exe") != null
         val arguments = buildList {
-            add(compiler.toString())
-            if (useLlvmLinker) {
-                add("-fuse-ld=lld")
-            }
+            add(toolchain.compiler)
+            addAll(toolchain.compilerArguments)
             addAll(
                 listOf(
                     "/nologo",
@@ -343,61 +346,12 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                 ),
             )
         }
-        val result = runProcess(arguments, output.parent)
+        val result = toolchain.compile(arguments, output.parent)
         if (result.exitCode != 0) {
             throw IllegalStateException("Kotlin/WinRT application host build failed with exit code ${result.exitCode}.\n${result.output}")
         }
     }
-
-    private fun findExecutable(name: String): Path? {
-        val path = System.getenv("PATH").orEmpty()
-            .split(java.io.File.pathSeparatorChar)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { Path.of(it).resolve(name) }
-            .firstOrNull { it.isRegularFile() }
-        if (path != null) {
-            return path
-        }
-        return runCatching {
-            val result = runProcess(listOf("cmd.exe", "/c", "where", name), commandWorkingDirectory.get().asFile.toPath())
-            result.output
-                .lineSequence()
-                .map(String::trim)
-                .firstOrNull { it.endsWith(name, ignoreCase = true) }
-                ?.let(Path::of)
-        }.getOrNull()
-            ?: standardWindowsToolchainCandidates(name).firstOrNull { it.isRegularFile() }
-    }
-
-    private fun standardWindowsToolchainCandidates(name: String): Sequence<Path> = sequence {
-        System.getenv("ProgramFiles")?.takeIf { it.isNotBlank() }?.let { programFiles ->
-            yield(Path.of(programFiles).resolve("LLVM").resolve("bin").resolve(name))
-        }
-        System.getenv("ProgramFiles(x86)")?.takeIf { it.isNotBlank() }?.let { programFilesX86 ->
-            yield(Path.of(programFilesX86).resolve("LLVM").resolve("bin").resolve(name))
-        }
-    }
-
-    private fun runProcess(
-        arguments: List<String>,
-        workingDirectory: Path,
-    ): HostProcessResult {
-        val output = ByteArrayOutputStream()
-        val process = ProcessBuilder(arguments)
-            .directory(workingDirectory.toFile())
-            .redirectErrorStream(true)
-            .start()
-        process.inputStream.copyTo(output)
-        val exitCode = process.waitFor()
-        return HostProcessResult(exitCode, output.toString(Charsets.UTF_8))
-    }
 }
-
-private data class HostProcessResult(
-    val exitCode: Int,
-    val output: String,
-)
 
 internal fun applicationHostSource(
     mainClass: String,

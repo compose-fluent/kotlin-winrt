@@ -47,6 +47,7 @@ class WindowsSdkSelectionTest {
                 destinationFile = layout.buildDirectory.file('selected-sdk.properties')
                 property('projection', tasks.named('generateWinRTProjections').get().windowsSdkVersion.get())
                 property('host', tasks.named('buildWinRTApplicationHostDesktop').get().windowsSdkVersion.get())
+                property('authoringHost', tasks.named('buildWinRTAuthoringHostDesktop').get().windowsSdkVersion.get())
                 property('minimum', winRT.application.minWindowsVersion.get())
                 property('normal', tasks.named('stageWinRTApplicationPackageDesktop').get().maxVersionTested.get())
                 property('dev', tasks.named('stageWinRTApplicationDevelopmentPackageDesktop').get().maxVersionTested.get())
@@ -60,7 +61,7 @@ class WindowsSdkSelectionTest {
             val values = Properties().apply {
                 Files.newInputStream(root.resolve("build/selected-sdk.properties")).use(::load)
             }
-            listOf("projection", "host", "normal", "dev").forEach { key ->
+            listOf("projection", "host", "authoringHost", "normal", "dev").forEach { key ->
                 assertEquals(key, version, values.getProperty(key))
             }
             assertEquals("10.0.17763.0", values.getProperty("minimum"))

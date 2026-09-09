@@ -868,6 +868,7 @@ private fun configureWinRTApplicationTasks(
             )
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.javaHome.set(configuredJvmToolchainHome(project, options))
+            task.windowsSdkVersion.set(extension.windowsSdkVersion.orElse(""))
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
