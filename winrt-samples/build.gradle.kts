@@ -1,3 +1,4 @@
+import io.github.composefluent.winrt.gradle.WindowsPackageType
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -67,9 +68,14 @@ val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWin
     .orElse(true)
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.2.0")
+val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
+    .orElse("10.0.26100.0")
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
     .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRT.samples.nugetGlobalPackagesRoot")
+val sampleApplicationPackageType = providers.gradleProperty("kotlinWinRT.samples.packageType")
+    .map(String::lowercase)
+    .orElse("packaged")
 
 kotlin {
     jvmToolchain(25)
@@ -109,7 +115,16 @@ kotlin {
 
 winRT {
     application {
-        mainClass.set("io.github.composefluent.winrt.samples.MainKt")
+        mainClass = "io.github.composefluent.winrt.samples.MainKt"
+        minWindowsVersion = "10.0.19041.0"
+        packageType = when (sampleApplicationPackageType.get()) {
+            "packaged" -> WindowsPackageType.Packaged
+            "none" -> WindowsPackageType.None
+            else -> error(
+                "kotlinWinRT.samples.packageType must be 'packaged' or 'none', " +
+                    "but was '${sampleApplicationPackageType.get()}'",
+            )
+        }
     }
     if (sampleWinUIEnabled.get()) {
         val windowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
@@ -118,10 +133,10 @@ winRT {
         namespace("Windows.Data.Json")
         sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
             nugetGlobalPackagesRoots.add(globalPackagesRoot)
-            useNuGetCliGlobalPackages.set(false)
-            restoreNuGetPackages.set(false)
+            useNuGetCliGlobalPackages = false
+            restoreNuGetPackages = false
         }
-        windowsSdk(includeExtensions = true, generateProjection = true)
+        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = true, generateProjection = true)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
             generateProjection = true
         }
@@ -246,7 +261,7 @@ val standardSampleSmokeDefaults = mapOf(
 
 val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
     environmentVariables.put(
         "WEBVIEW2_USER_DATA_FOLDER",
         webView2UserDataRoot.map { it.dir("jvm").asFile.absolutePath },

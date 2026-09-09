@@ -67,6 +67,11 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRestoreLockFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectionRegistrarFiles: ConfigurableFileCollection
 
     @get:Input
@@ -196,14 +201,31 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
         } else {
             emptyList()
         }
+        val winAppLockFiles = winAppRestoreLockFiles.files.filter(java.io.File::isFile)
+        val nugetSources = if (winAppLockFiles.isNotEmpty()) {
+            readWinAppProjectionWinmdFiles(
+                lockFiles = winAppLockFiles,
+                rootPackageSpecs = packageSpecs,
+            ).map(WinRTMetadataSource::path)
+        } else {
+            legacyNuGetMetadataSources(packageSpecs)
+        }
+        val dependencyRecords = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
+        val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
+            records = dependencyRecords,
+            outputRoot = temporaryDir.toPath().resolve("dependency-authored-metadata"),
+        )
+            .map(WinRTMetadataSource::path)
+        return explicitSources + sdkSource + nugetSources + dependencyAuthoredMetadataSources
+    }
+
+    private fun legacyNuGetMetadataSources(packageSpecs: List<String>): List<WinRTMetadataSource> {
         val explicitNuGetRoots = nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
         val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val packageIdentitiesFromRoots = if (restoreNuGetPackages.get()) {
-            packageIdentities.filter { identity ->
-                isNuGetPackageClosureAvailable(identity, nugetRoots)
-            }
+            packageIdentities.filter { identity -> isNuGetPackageClosureAvailable(identity, nugetRoots) }
         } else {
             val missingNuGetIdentities = packageIdentities.filterNot { identity ->
                 isNuGetPackageClosureAvailable(identity, nugetRoots)
@@ -215,26 +237,17 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
         }
         val restoredPackageDirectories = if (restoreNuGetPackages.get()) {
             val identitiesFromRoots = packageIdentitiesFromRoots.toSet()
-            val missingNuGetIdentities = packageIdentities.filterNot { identity -> identity in identitiesFromRoots }
-            restoreNuGetPackages(missingNuGetIdentities)
+            restoreNuGetPackages(packageIdentities.filterNot { identity -> identity in identitiesFromRoots })
         } else {
             emptyList()
         }
-        val resolvedNuGetSources = packageIdentitiesFromRoots.map { identity ->
+        return packageIdentitiesFromRoots.map { identity ->
             WinRTMetadataSource.nugetPackage(
                 packageId = identity.normalizedPackageId,
                 version = identity.normalizedVersion,
                 globalPackagesRoots = nugetRoots,
             )
-        }
-        val restoredNuGetSources = restoredPackageDirectories.map(WinRTMetadataSource::nugetPackage)
-        val dependencyRecords = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
-        val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
-            records = dependencyRecords,
-            outputRoot = temporaryDir.toPath().resolve("dependency-authored-metadata"),
-        )
-            .map(WinRTMetadataSource::path)
-        return explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources + dependencyAuthoredMetadataSources
+        } + restoredPackageDirectories.map(WinRTMetadataSource::nugetPackage)
     }
 
     private fun isNuGetPackageClosureAvailable(

@@ -207,11 +207,12 @@ internal object XamlSystemProjectionRuntimeHooks {
                 }
             }
         }
+        if (slot == WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions) {
+            return forwardXmlnsDefinitions(providers, arg0, arg1)
+        }
         var lastHr = KnownHResults.E_NOINTERFACE.value
         for (provider in providers) {
-            if (slot == WinUiXamlMetadataProviderSlots.GetXamlType || slot == WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName) {
-                PlatformAbi.writePointer(arg1, PlatformAbi.nullPointer)
-            }
+            PlatformAbi.writePointer(arg1, PlatformAbi.nullPointer)
             val hr = ComVtableInvoker.invokeArgs(
                 instance = provider.pointer,
                 slot = slot,
@@ -219,7 +220,7 @@ internal object XamlSystemProjectionRuntimeHooks {
                 arg1 = arg1,
             )
             lastHr = hr
-            if (HResult(hr).isSuccess && (slot == WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions || !PlatformAbi.isNull(PlatformAbi.readPointer(arg1)))) {
+            if (HResult(hr).isSuccess && !PlatformAbi.isNull(PlatformAbi.readPointer(arg1))) {
                 if (FeatureSwitches.traceCcw) {
                     println("winrt-xaml-metadata: forward slot=$slot hr=$hr")
                 }
@@ -230,6 +231,95 @@ internal object XamlSystemProjectionRuntimeHooks {
             println("winrt-xaml-metadata: forward slot=$slot hr=$lastHr")
         }
         return lastHr
+    }
+
+    private fun forwardXmlnsDefinitions(
+        providers: List<WinUiXamlMetadataProviderReference>,
+        countOut: RawAddress,
+        definitionsOut: RawAddress,
+    ): Int {
+        PlatformAbi.writeInt32(countOut, 0)
+        PlatformAbi.writePointer(definitionsOut, PlatformAbi.nullPointer)
+
+        var lastHr = KnownHResults.E_NOINTERFACE.value
+        var successfulProvider = false
+        val providerDefinitions = mutableListOf<List<WinUiXamlXmlnsDefinition>>()
+        providers.forEach { provider ->
+            val result = provider.getXmlnsDefinitions()
+            lastHr = result.hResult
+            if (HResult(result.hResult).isSuccess) {
+                successfulProvider = true
+                providerDefinitions += result.definitions
+            }
+        }
+        if (!successfulProvider) {
+            if (FeatureSwitches.traceCcw) {
+                println("winrt-xaml-metadata: forward slot=${WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions} hr=$lastHr")
+            }
+            return lastHr
+        }
+
+        val definitions = mergeWinUiXamlXmlnsDefinitions(providerDefinitions)
+        return writeXmlnsDefinitions(definitions, countOut, definitionsOut).also { hr ->
+            if (FeatureSwitches.traceCcw) {
+                println(
+                    "winrt-xaml-metadata: forward slot=${WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions} " +
+                        "providers=${providerDefinitions.size} definitions=${definitions.size} hr=$hr",
+                )
+            }
+        }
+    }
+
+    private fun writeXmlnsDefinitions(
+        definitions: List<WinUiXamlXmlnsDefinition>,
+        countOut: RawAddress,
+        definitionsOut: RawAddress,
+    ): Int {
+        if (definitions.isEmpty()) {
+            return KnownHResults.S_OK.value
+        }
+
+        val definitionCount = definitions.size.toLong()
+        if (definitionCount > Long.MAX_VALUE / winUiXamlXmlnsDefinitionSizeBytes) {
+            throw WinRTOutOfMemoryException(
+                "Unable to allocate XAML XmlnsDefinition entries: size overflow.",
+                KnownHResults.E_OUTOFMEMORY,
+            )
+        }
+        val arrayBytes = definitionCount * winUiXamlXmlnsDefinitionSizeBytes
+        val definitionsPointer = WinRTPlatformApi.coTaskMemAllocRaw(arrayBytes)
+        if (PlatformAbi.isNull(definitionsPointer)) {
+            throw WinRTOutOfMemoryException(
+                "Unable to allocate $arrayBytes bytes for XAML XmlnsDefinition entries.",
+                KnownHResults.E_OUTOFMEMORY,
+            )
+        }
+
+        val ownedStrings = mutableListOf<RawAddress>()
+        try {
+            definitions.forEachIndexed { index, definition ->
+                val elementOffset = index.toLong() * winUiXamlXmlnsDefinitionSizeBytes
+                val xmlNamespace = HString.create(definition.xmlNamespace).handle
+                ownedStrings += xmlNamespace
+                val namespace = HString.create(definition.namespace).handle
+                ownedStrings += namespace
+                PlatformAbi.writePointer(definitionsPointer, elementOffset, xmlNamespace)
+                PlatformAbi.writePointer(
+                    definitionsPointer,
+                    elementOffset + winUiXamlXmlnsDefinitionNamespaceOffsetBytes,
+                    namespace,
+                )
+            }
+            PlatformAbi.writeInt32(countOut, definitions.size)
+            PlatformAbi.writePointer(definitionsOut, definitionsPointer)
+            return KnownHResults.S_OK.value
+        } catch (error: Throwable) {
+            ownedStrings.forEach { handle ->
+                runCatching { WinRTPlatformApi.windowsDeleteStringRaw(handle) }
+            }
+            runCatching { WinRTPlatformApi.coTaskMemFreeRaw(definitionsPointer) }
+            throw error
+        }
     }
 
     private object WinUiXamlMetadataProviderCache {

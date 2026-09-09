@@ -28,7 +28,7 @@ kotlin {
 
 winRT {
     application {
-        mainClass.set("io.github.composefluent.winrt.samples.kmp.app.MainKt")
+        mainClass = "io.github.composefluent.winrt.samples.kmp.app.MainKt"
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
@@ -60,7 +60,7 @@ private val winuiKmpOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHost") {
+tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
     jvmArgs.addAll(
         providers.provider {
             winuiKmpOptionProperties.map { name ->

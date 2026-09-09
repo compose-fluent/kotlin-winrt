@@ -15,6 +15,7 @@ import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -36,7 +37,22 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     abstract val outputDirectory: DirectoryProperty
 
     @get:Input
+    abstract val applicationVariant: Property<String>
+
+    @get:OutputFile
+    abstract val resourceResolutionReport: org.gradle.api.file.RegularFileProperty
+
+    @get:Input
     abstract val generateProjectPri: Property<Boolean>
+
+    @get:Input
+    abstract val developmentIdentity: Property<Boolean>
+
+    @get:Input
+    abstract val minWindowsVersion: Property<String>
+
+    @get:Input
+    abstract val maxVersionTested: Property<String>
 
     @get:Input
     abstract val projectPriIndexName: Property<String>
@@ -69,6 +85,10 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:Input
     abstract val runtimeIdentifier: Property<String>
 
+    /** Whether the package should declare restored Windows App SDK framework dependencies. */
+    @get:Input
+    abstract val includeFrameworkPackageDependencies: Property<Boolean>
+
     @get:Input
     abstract val executableBaseName: Property<String>
 
@@ -82,6 +102,16 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val appxManifestFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val resolvedNuGetPackageManifestFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRestoreLockFiles: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
@@ -110,8 +140,27 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
 
     @get:InputFiles
     @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val appxResourceArchives: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val defaultAppxResourceFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
     abstract val rootPackagePayloadFiles: ConfigurableFileCollection
+
+    @get:Input
+    abstract val deferredManifestPayloadPaths: ListProperty<String>
+
+    @get:Input
+    abstract val reservedPackageFiles: ListProperty<String>
+
+    @get:Input
+    abstract val reservedPackageDirectories: ListProperty<String>
 
     @get:InputFiles
     @get:Optional
@@ -131,6 +180,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
 
+    @get:Input
+    abstract val defaultAppxResourceRoots: ListProperty<String>
+
     @Input
     fun getDefaultProjectPriResourceRootPath(): String =
         defaultProjectPriResourceRoot.orNull
@@ -141,8 +193,16 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             ?.toString()
             .orEmpty()
 
+    @Input
+    fun getDefaultAppxResourceRootsPath(): List<String> =
+        defaultAppxResourceRoots.get()
+            .map { Path.of(it).toAbsolutePath().normalize().toString() }
+
     init {
         generateProjectPri.convention(true)
+        developmentIdentity.convention(false)
+        minWindowsVersion.convention("")
+        maxVersionTested.convention(windowsSdkVersion)
         projectPriIndexName.convention("")
         projectPriFallbackIndexName.convention("Application")
         projectPriInitialPath.convention("")
@@ -154,7 +214,16 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         windowsSdkRegistryRoots.convention(emptyList())
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
+        deferredManifestPayloadPaths.convention(emptyList())
+        reservedPackageFiles.convention(emptyList())
+        reservedPackageDirectories.convention(emptyList())
+        defaultAppxResourceRoots.convention(emptyList())
         executableBaseName.convention("app")
+        applicationVariant.convention("default")
+        includeFrameworkPackageDependencies.convention(true)
+        resourceResolutionReport.convention(
+            project.layout.buildDirectory.file("kotlin-winrt/reports/appx-resource-resolution.json"),
+        )
     }
 
     @TaskAction
@@ -170,24 +239,103 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
                     .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeAssetsRoot))) }
             }
         }
+        // Resolve the convention and dependency resource inputs once. PRI staging and loose
+        // payload selection must observe the same source set and dependency archive contents.
+        val conventionAppxResources = defaultAppxResourceInputs()
+        val dependencyAppxResources = unpackDependencyAppxResources()
+        val packagePayloadDecisions = resolvePackagePayloadDecisions(
+            conventionInputs = conventionAppxResources,
+            dependencyInputs = dependencyAppxResources,
+        )
+        packagePayloadDecisions
+            .filterNot { it.isPriCompilerInput }
+            .forEach { decision ->
+                GradleFileOperations.copyFile(decision.source, outputRoot.resolve(decision.target))
+            }
         stageAppxManifest(outputRoot)
-        stagePackagePayloads(outputRoot)
-        stageRootPackagePayloads(outputRoot)
+        AppxManifestPackageSupport.applyWindowsVersions(
+            outputRoot.resolve("AppxManifest.xml"), minWindowsVersion.get(), maxVersionTested.get(),
+        )
+        val developmentIndexName = if (developmentIdentity.get()) {
+            AppxManifestPackageSupport.useDevelopmentIdentity(outputRoot.resolve("AppxManifest.xml"))
+        } else null
+        val restoredPackageRoots = winAppRestoreLockFiles.files
+            .filter(java.io.File::isFile)
+            .let { lockFiles ->
+                if (lockFiles.isEmpty()) {
+                    emptyList()
+                } else {
+                    readWinAppRestoredPackageRoots(lockFiles)
+                }
+            }
+        AppxManifestPackageSupport.mergeRuntimeDependenciesAndExtensions(
+            manifest = outputRoot.resolve("AppxManifest.xml"),
+            packageRoot = outputRoot,
+            resolvedPackageManifestFiles = resolvedNuGetPackageManifestFiles.files.map { it.toPath() },
+            restoredPackageRoots = restoredPackageRoots,
+            runtimeIdentifier = runtimeIdentifier.get(),
+            includeFrameworkDependencies = includeFrameworkPackageDependencies.get(),
+        )
         WinRTApplicationManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
             winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+            redirectDlls = false,
         )
-        generateProjectPri(outputRoot)
+        val generatedPri = generateProjectPri(
+            outputRoot = outputRoot,
+            selectedPayloads = packagePayloadDecisions,
+            indexName = developmentIndexName ?: projectPriIndexName(),
+        )
+        if (developmentIndexName != null && generatedPri == null && outputRoot.resolve("resources.pri").isRegularFile()) {
+            throw GradleException(
+                "Packaged development runs must regenerate resources.pri for identity '$developmentIndexName'. " +
+                    "Enable generateProjectPri and provide the application's PRI resource inputs.",
+            )
+        }
+        val excludedPayloadTargets = generatedPri?.let { result ->
+            removeExcludedLayoutPayloads(outputRoot, packagePayloadDecisions, result)
+        }.orEmpty()
+        ApplicationPackagePayloadWriter.writeResolutionReport(
+            resourceResolutionReport.get().asFile.toPath(),
+            mergeFinalPayloadDecisions(packagePayloadDecisions, generatedPri, excludedPayloadTargets),
+        )
+        if (generatedPri != null) {
+            val makePri = discoverMakePriExecutable()
+                ?: throw GradleException("Cannot dump application PRI because makepri.exe was not found.")
+            val priDump = temporaryDir.toPath().resolve("resources.pri.dump.xml")
+            if (!ProjectPriGenerator.dumpApplicationPri(
+                    makePri = makePri,
+                    pri = outputRoot.resolve("resources.pri"),
+                    dump = priDump,
+                    workingDirectory = outputRoot,
+                    logger = logger,
+                )
+            ) {
+                throw GradleException("Failed to dump application PRI for staged app package.")
+            }
+            ApplicationPackagePayloadWriter.recordGeneratedPri(
+                resourceResolutionReport.get().asFile.toPath(),
+                outputRoot,
+                priDump,
+            )
+        }
         validateStagedManifestPayload(outputRoot)
     }
 
     private fun stageAppxManifest(outputRoot: Path) {
-        val manifest = appxManifestFiles.files
+        val configuredManifests = appxManifestFiles.files
             .map { it.toPath() }
+        val manifest = configuredManifests
             .filter { it.isRegularFile() }
             .sorted()
-            .firstOrNull() ?: return
+            .firstOrNull()
+            ?: if (configuredManifests.isEmpty()) {
+                findAppxManifest(defaultAppxResourceInputs())
+            } else {
+                null
+            }
+            ?: return
         val manifestErrors = ProjectPriManifestSupport.validatePackageManifest(manifest)
         if (manifestErrors.isNotEmpty()) {
             throw GradleException(
@@ -198,10 +346,87 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         GradleFileOperations.copyFile(manifest, outputRoot.resolve("AppxManifest.xml"))
     }
 
+    private fun defaultAppxResourceInputs(): List<AppxResourceInput> =
+        collectAppxResourceInputs(defaultAppxResourceRoots.get().map(Path::of))
+
+    private fun resolvePackagePayloadDecisions(
+        conventionInputs: Collection<AppxResourceInput>,
+        dependencyInputs: Collection<AppxResourceInput>,
+    ): List<PackagePayloadDecision> {
+        val projectRoot = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        return ApplicationPackagePayloadWriter.resolvePackagePayloads(
+            conventionInputs = conventionInputs,
+            dependencyInputs = dependencyInputs,
+            explicitPayloadFiles = packagePayloadFiles.files.map { it.toPath() },
+            rootPayloadFiles = rootPackagePayloadFiles.files.map { it.toPath() },
+            projectRoot = projectRoot,
+            targetPaths = projectPriTargetPaths.get(),
+            excludedPaths = projectPriExcludedFromBuildPaths.get(),
+            reservedPaths = reservedPayloadPaths(),
+            reservedDirectories = reservedPackageDirectories.get().mapTo(linkedSetOf(), Path::of),
+        )
+    }
+
+    private fun reservedPayloadPaths(): Set<Path> = buildSet {
+        add(Path.of("${executableBaseName.get()}.exe.manifest"))
+        if (generateProjectPri.get()) add(Path.of("resources.pri"))
+        rootPackagePayloadFiles.files.forEach { add(Path.of(it.name)) }
+        reservedPackageFiles.get().forEach { add(it.toSafeRelativePath("reserved package file")) }
+        val runtimeRoot = runtimeAssetsDirectory.get().asFile.toPath()
+        if (runtimeRoot.isDirectory()) {
+            Files.walk(runtimeRoot).use { files ->
+                files.filter { it.isRegularFile() }.forEach { source ->
+                    if (source.name.endsWith(".dll", true) || source.name.endsWith(".exe", true) ||
+                        source.name.endsWith(".manifest", true)
+                    ) {
+                        add(source.relativeTo(runtimeRoot))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun unpackDependencyAppxResources(): List<AppxResourceInput> {
+        val archives = appxResourceArchives.files.filter { it.isFile }
+        if (archives.isEmpty()) return emptyList()
+        val root = temporaryDir.toPath().resolve("dependency-appx-resources")
+        GradleFileOperations.cleanDirectory(root)
+        Files.createDirectories(root)
+        return archives.sortedBy { it.absolutePath.lowercase() }.flatMapIndexed { archiveIndex, archive ->
+            val archiveRoot = root.resolve(archiveIndex.toString())
+            Files.createDirectories(archiveRoot)
+            val entryKeys = linkedSetOf<String>()
+            java.util.zip.ZipFile(archive).use { zip ->
+                zip.entries().asSequence().filterNot { it.isDirectory }.map { entry ->
+                    val normalizedEntryName = entry.name.replace('\\', '/')
+                    if (!entryKeys.add(normalizedEntryName.lowercase())) {
+                        throw GradleException(
+                            "AppX resource artifact contains duplicate package path '${entry.name}': $archive",
+                        )
+                    }
+                    val target = archiveRoot.resolve(normalizedEntryName.replace('/', java.io.File.separatorChar)).normalize()
+                    if (!target.startsWith(archiveRoot)) {
+                        throw GradleException("AppX resource artifact contains an unsafe path: ${entry.name}")
+                    }
+                    Files.createDirectories(target.parent)
+                    zip.getInputStream(entry).use { input -> Files.newOutputStream(target).use(input::copyTo) }
+                    AppxResourceInput(target, Path.of(normalizedEntryName.replace('/', java.io.File.separatorChar)))
+                }.toList()
+            }
+        }
+    }
+
     private fun validateStagedManifestPayload(outputRoot: Path) {
         val manifest = outputRoot.resolve("AppxManifest.xml")
         if (!manifest.isRegularFile()) return
-        val payloadErrors = ProjectPriManifestSupport.validatePackageManifestPayload(manifest, outputRoot)
+        val deferredReferences = deferredManifestPayloadPaths.get()
+            .map { path -> path.toSafeRelativePath("deferred manifest payload path").normalize() }
+            .toSet()
+        val payloadErrors = ProjectPriManifestSupport.validatePackageManifestPayload(
+            manifest,
+            outputRoot,
+            deferredReferences,
+        )
         if (payloadErrors.isNotEmpty()) {
             throw GradleException(
                 "Invalid AppX manifest payload references in ${manifest.toAbsolutePath().normalize()}:\n" +
@@ -210,54 +435,13 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         }
     }
 
-    private fun stagePackagePayloads(outputRoot: Path) {
-        val projectRoot = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
-        val targetPaths = projectPriTargetPaths.get()
-        val excludedPaths = projectPriExcludedFromBuildPaths.get()
-        packagePayloadFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { it.toAbsolutePath().normalize().toString() !in excludedPaths }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (!Files.exists(source)) {
-                    throw GradleException("Declared package payload does not exist: ${source.toAbsolutePath().normalize()}")
-                }
-                val explicitTarget = targetPaths[source.toAbsolutePath().normalize().toString()]
-                    ?.toSafeRelativePath("packagePayload target path")
-                if (source.isDirectory()) {
-                    Files.walk(source).use { stream ->
-                        stream.asSequence()
-                            .filter { it.isRegularFile() }
-                            .filter { it.toAbsolutePath().normalize().toString() !in excludedPaths }
-                            .sorted()
-                            .forEach { child ->
-                                val relativeTarget = explicitTarget?.resolve(child.relativeTo(source))
-                                    ?: child.defaultPackagePayloadTarget(source, projectRoot)
-                                GradleFileOperations.copyFile(child, outputRoot.resolve(relativeTarget))
-                            }
-                    }
-                } else if (source.isRegularFile()) {
-                    val relativeTarget = explicitTarget ?: source.defaultPackagePayloadTarget(source.parent, projectRoot)
-                    GradleFileOperations.copyFile(source, outputRoot.resolve(relativeTarget))
-                }
-            }
-    }
-
-    private fun stageRootPackagePayloads(outputRoot: Path) {
-        rootPackagePayloadFiles.files.asSequence()
-            .map { it.toPath() }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (!source.isRegularFile()) {
-                    throw GradleException("Declared root package payload must be a file: ${source.toAbsolutePath().normalize()}")
-                }
-                GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
-            }
-    }
-
-    private fun generateProjectPri(outputRoot: Path) {
+    private fun generateProjectPri(
+        outputRoot: Path,
+        selectedPayloads: Collection<PackagePayloadDecision>,
+        indexName: String,
+    ): GeneratedProjectPriResult? {
         if (!generateProjectPri.get() || !isWindowsHost()) {
-            return
+            return null
         }
         val inputPris = Files.walk(outputRoot).use { stream ->
             stream.asSequence()
@@ -270,6 +454,10 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
         GradleFileOperations.cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
+        val selectedPayloadInputs = selectedPayloads.mapNotNull { decision ->
+            val source = decision.source.toAbsolutePath().normalize()
+            if (source.isRegularFile()) AppxResourceInput(source, decision.target) else null
+        }
         val copiedProjectPriItems = ProjectPriInputStager(
             projectPriRoot = projectPriRoot,
             projectPriInitialPath = projectPriInitialPath.get(),
@@ -279,6 +467,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         ).stage(
             componentPriFiles = inputPris,
             componentPriBaseRoot = outputRoot,
+            // Component payload is copy-local content, indexed by its own PRI. Re-indexing
+            // runtime files can conflict with those mappings or re-embed compiled XBF.
+            appxResourceFiles = selectedPayloadInputs,
             explicitResourceFiles = projectPriResourceFiles.files.map { it.toPath() },
             explicitLayoutFiles = projectPriLayoutFiles.files.map { it.toPath() },
             explicitContentFiles = projectPriContentFiles.files.map { it.toPath() },
@@ -289,9 +480,15 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             includeDefaultProjectResources = enableDefaultProjectPriResources.get(),
         )
         if (copiedProjectPriItems.isEmpty()) {
-            return
+            return null
         }
-        ApplicationPackagePayloadWriter.copyPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
+        ApplicationPackagePayloadWriter.copyPackagePayloads(
+            projectPriRoot,
+            outputRoot,
+            copiedProjectPriItems,
+            reservedPaths = reservedPayloadPaths(),
+            reservedDirectories = reservedPackageDirectories.get().mapTo(linkedSetOf(), Path::of),
+        )
         val makePri = discoverMakePriExecutable() ?: run {
             throw GradleException("Cannot generate application PRI because makepri.exe was not found.")
         }
@@ -301,13 +498,83 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             outputRoot,
             projectPriRoot,
             configRoot,
-            projectPriIndexName(),
+            indexName,
             projectPriDefaultQualifierPairs(),
             copiedProjectPriItems,
             logger,
         )) {
             throw GradleException("Failed to generate application PRI for staged app package.")
         }
+        return GeneratedProjectPriResult(
+            projectPriRoot = projectPriRoot,
+            copiedItems = copiedProjectPriItems,
+        )
+    }
+
+    /**
+     * AppX resources are copied to the package before PRI staging. When the PRI input set
+     * contains both a XAML file and its compiled XBF sibling, the stager records the XAML as an
+     * excluded layout item. Remove any earlier loose XAML copy so the final package agrees with
+     * the same decision used to build the PRI.
+     */
+    private fun removeExcludedLayoutPayloads(
+        outputRoot: Path,
+        selectedPayloads: Collection<PackagePayloadDecision>,
+        generatedPri: GeneratedProjectPriResult,
+    ): Set<Path> {
+        val excludedItems = generatedPri.copiedItems.filter { item ->
+            item.kind == ApplicationPackageItemKind.ExcludedLayout
+        }
+        if (excludedItems.isEmpty()) return emptySet()
+        val excludedSources = excludedItems.mapTo(linkedSetOf()) { item ->
+            item.source.toAbsolutePath().normalize().toNormalizedInputPathKey()
+        }
+        val targets = linkedSetOf<Path>()
+        selectedPayloads
+            .filter { decision ->
+                decision.source.toAbsolutePath().normalize().toNormalizedInputPathKey() in excludedSources
+            }
+            .forEach { decision -> targets.add(decision.target) }
+        excludedItems.forEach { item ->
+            val target = item.target.relativeTo(generatedPri.projectPriRoot)
+            targets.add(target)
+        }
+        val removedTargets = targets
+            .map { target -> outputRoot.resolve(target).normalize() }
+            .filter { target -> target.startsWith(outputRoot) && target.isRegularFile() }
+            .map { target ->
+                val relative = target.relativeTo(outputRoot)
+                Files.deleteIfExists(target)
+                relative
+            }
+            .toSet()
+        return removedTargets
+    }
+
+    private fun mergeFinalPayloadDecisions(
+        packagePayloadDecisions: Collection<PackagePayloadDecision>,
+        generatedPri: GeneratedProjectPriResult?,
+        excludedPayloadTargets: Set<Path>,
+    ): List<PackagePayloadDecision> {
+        val finalDecisions = linkedMapOf<String, PackagePayloadDecision>()
+        val excludedKeys = excludedPayloadTargets.mapTo(linkedSetOf(), Path::toNormalizedPackagePathKey)
+        packagePayloadDecisions
+            .filterNot { it.isPriCompilerInput }
+            .filterNot { it.target.toNormalizedPackagePathKey() in excludedKeys }
+            .forEach { decision -> finalDecisions[decision.target.toNormalizedPackagePathKey()] = decision }
+        generatedPri?.copiedItems
+            ?.filter { item -> item.kind.isPackagePayload }
+            ?.forEach { item ->
+                val target = item.target.relativeTo(generatedPri.projectPriRoot)
+                val key = target.toNormalizedPackagePathKey()
+                finalDecisions[key] = PackagePayloadDecision(
+                    source = item.source,
+                    target = target,
+                    origin = "project PRI ${item.kind.name.lowercase()}",
+                    overriddenSource = finalDecisions[key]?.source,
+                )
+            }
+        return finalDecisions.values.toList()
     }
 
     private fun projectPriDefaultLanguageValue(): String =
@@ -330,11 +597,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
 
 }
 
-private fun Path.defaultPackagePayloadTarget(fallbackRoot: Path, projectRoot: Path?): Path {
-    val normalized = toAbsolutePath().normalize()
-    return if (projectRoot != null && normalized.startsWith(projectRoot)) {
-        normalized.relativeTo(projectRoot)
-    } else {
-        normalized.relativeTo(fallbackRoot)
-    }
-}
+private data class GeneratedProjectPriResult(
+    val projectPriRoot: Path,
+    val copiedItems: Set<ApplicationPackageItem>,
+)

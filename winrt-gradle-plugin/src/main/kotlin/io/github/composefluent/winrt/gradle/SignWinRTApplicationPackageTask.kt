@@ -29,6 +29,9 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
     abstract val signPackage: Property<Boolean>
 
     @get:Input
+    abstract val packageType: Property<String>
+
+    @get:Input
     abstract val signToolExecutable: Property<String>
 
     @get:Input
@@ -60,6 +63,7 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         signPackage.convention(false)
+        packageType.convention(WindowsPackageType.Packaged.name)
         signToolExecutable.convention("")
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())

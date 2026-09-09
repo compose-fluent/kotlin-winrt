@@ -1,6 +1,5 @@
 package io.github.composefluent.winrt.samples
 
-import io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources
 import windows.foundation.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
@@ -130,7 +129,6 @@ class WinUiControlsApp : Application(), AutoCloseable {
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")
         mergedDictionaries.add(controlsResources)
-        installComponentXamlResources(mergedDictionaries)
         println("winui-controls: install resources done")
     }
 
@@ -138,16 +136,13 @@ class WinUiControlsApp : Application(), AutoCloseable {
         return XamlControlsResources()
     }
 
-    private fun installComponentXamlResources(mergedDictionaries: MutableList<ResourceDictionary>) {
-        WinUiXamlComponentResources.installInto(mergedDictionaries)
-        println("winui-controls: install component XAML resources")
-    }
-
     private fun createControlsSurface(): UIElement {
         val skipObjectContent = winRTSampleOption("kotlin.winrt.samples.skipObjectContent")
         val skipSettingsCard = winRTSampleOption("kotlin.winrt.samples.skipSettingsCard")
         val skipShimmer = winRTSampleOption("kotlin.winrt.samples.skipShimmer")
-        val enableShimmerLoading = winRTSampleOption("kotlin.winrt.samples.enableShimmerLoading")
+        val shimmerLoadingOption = "kotlin.winrt.samples.enableShimmerLoading"
+        val enableShimmerLoading =
+            !winRTSampleOptionConfigured(shimmerLoadingOption) || winRTSampleOption(shimmerLoadingOption)
         val skipShimmerSizing = winRTSampleOption("kotlin.winrt.samples.skipShimmerSizing")
         deferredLoadingShimmers.clear()
         deferredMenuFlyoutToken = null

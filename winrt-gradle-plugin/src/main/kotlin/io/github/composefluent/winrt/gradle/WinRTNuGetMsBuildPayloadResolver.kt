@@ -161,7 +161,7 @@ internal object WinRTNuGetMsBuildPayloadResolver {
             }
             element.childElements().forEach { item ->
                 when (item.localTagName()) {
-                    "ReferenceCopyLocalPaths", "Content", "None" -> {
+                    "ReferenceCopyLocalPaths", "Content", "ContentWithTargetPath", "None" -> {
                         if (conditionPasses(item.getAttribute("Condition"))) {
                             addCopyLocalItem(item)
                         }
@@ -189,10 +189,11 @@ internal object WinRTNuGetMsBuildPayloadResolver {
 
         private fun addCopyLocalItem(item: Element) {
             val include = expandProperties(item.getAttribute("Include")).takeIf(String::isNotBlank) ?: return
+            val targetPath = item.metadata("TargetPath")
             val destinationSubDirectory = item.metadata("DestinationSubDirectory")
             val link = item.metadata("Link")
             expandInclude(include).forEach { source ->
-                val target = copyLocalTargetPath(source, include, destinationSubDirectory, link) ?: return@forEach
+                val target = copyLocalTargetPath(source, include, targetPath, destinationSubDirectory, link) ?: return@forEach
                 val normalizedSource = source.toAbsolutePath().normalize()
                 payloads.putIfAbsent(
                     target.toString().lowercase(),
@@ -232,10 +233,20 @@ internal object WinRTNuGetMsBuildPayloadResolver {
         private fun copyLocalTargetPath(
             source: Path,
             include: String,
+            targetPath: String?,
             destinationSubDirectory: String?,
             link: String?,
         ): Path? {
             val fileName = source.fileName?.toString() ?: return null
+            val expandedTargetPath = targetPath
+                ?.let { expandItemMetadata(it, source, include) }
+                ?.replace('/', '\\')
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+                ?.let(::safeRelativeTargetPath)
+            if (expandedTargetPath != null) {
+                return expandedTargetPath
+            }
             val expandedDestination = destinationSubDirectory
                 ?.let { expandItemMetadata(it, source, include) }
                 ?.replace('/', '\\')
@@ -253,6 +264,15 @@ internal object WinRTNuGetMsBuildPayloadResolver {
                 return Path.of(expandedLink).normalize()
             }
             return Path.of(fileName)
+        }
+
+        private fun safeRelativeTargetPath(value: String): Path? {
+            val normalizedText = value.replace('\\', '/').trim()
+            if (normalizedText.isBlank() || normalizedText.startsWith("/") || WINDOWS_DRIVE_PATH.matches(normalizedText)) {
+                return null
+            }
+            val path = Path.of(normalizedText).normalize()
+            return path.takeUnless { it.isAbsolute || it.startsWith("..") || it.toString() == "." }
         }
 
         private fun expandItemMetadata(value: String, source: Path, include: String): String =
@@ -380,3 +400,4 @@ private fun Element.localTagName(): String =
     localName ?: tagName.substringAfter(':')
 
 private val propertyReference = Regex("""\$\(([A-Za-z0-9_.-]+)\)""")
+private val WINDOWS_DRIVE_PATH = Regex("""^[A-Za-z]:($|/.*)""")

@@ -93,8 +93,14 @@ object WinUiResourceManagerSupport {
         }
     }
 
-    internal fun preferredPriPath(): Path? =
-        preferredPriPath { fileName -> Path(WinRTPlatformApi.resolveModulePathRaw(fileName)) }
+    internal fun preferredPriPath(): Path? {
+        val packagePath = WinRTPlatformApi.currentPackagePathRaw()
+        return if (packagePath != null) {
+            preferredPriPath { fileName -> Path(packagePath, fileName) }
+        } else {
+            preferredPriPath { fileName -> Path(WinRTPlatformApi.resolveModulePathRaw(fileName)) }
+        }
+    }
 
     internal fun preferredPriPath(runtimeAssetsRoot: Path): Path? =
         preferredPriPath { fileName -> Path(runtimeAssetsRoot, fileName) }

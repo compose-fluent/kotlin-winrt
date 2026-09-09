@@ -6,6 +6,7 @@ import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
@@ -32,6 +33,9 @@ import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
+    @get:Internal
+    abstract val applicationCompilationTasks: SetProperty<String>
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -61,6 +65,16 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val resolvedNuGetPackageManifestFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRuntimeAssetDirectories: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val winAppRestoreLockFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
 
@@ -78,6 +92,14 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
 
     @get:Input
     abstract val restoreNuGetPackages: Property<Boolean>
+
+    /**
+     * Whether package-declared framework payloads under `runtimes-framework` should be staged.
+     * Framework-dependent WinApp CLI packages resolve the Windows App Runtime through manifest
+     * dependencies, while unpackaged and legacy MakeAppx layouts still need the payload locally.
+     */
+    @get:Input
+    abstract val includeFrameworkRuntimeAssets: Property<Boolean>
 
     @get:Input
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
@@ -199,7 +221,15 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredHostDllFiles: ConfigurableFileCollection
 
+    /**
+     * JVM authoring artifacts are only needed by the JVM application host. A packaged mingw
+     * application is a native entry point and must not carry a JVM jar/runtimeconfig/host DLL.
+     */
+    @get:Input
+    abstract val includeJvmAuthoringArtifacts: Property<Boolean>
+
     init {
+        applicationCompilationTasks.convention(emptySet())
         generateProjectPri.convention(true)
         projectPriIndexName.convention("")
         projectPriFallbackIndexName.convention("Application")
@@ -213,6 +243,8 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
         projectPriTargetPaths.convention(emptyMap())
         projectPriExcludedFromBuildPaths.convention(emptySet())
         executableBaseName.convention("app")
+        includeFrameworkRuntimeAssets.convention(true)
+        includeJvmAuthoringArtifacts.convention(true)
     }
 
     @TaskAction
@@ -234,38 +266,88 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords),
             outputRoot = outputRoot,
         )
-        copyOptionalFiles(authoredHostManifestFiles.files.map { it.toPath() }, outputRoot)
+        val includeJvm = includeJvmAuthoringArtifacts.get()
+        val authoredHostManifests = authoredHostManifestFiles.files
+            .filter(java.io.File::isFile)
+            .filter { includeJvm || !isJvmAuthoringHostManifest(it) }
+        copyOptionalFiles(authoredHostManifests.map { it.toPath() }, outputRoot)
         val dependencyHostManifests = writeDependencyAuthoredHostManifestRecords(
-            records = dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifestRecords),
+            records = dependencyIdentityFiles.files
+                .flatMap(::readAuthoredHostManifestRecords)
+                .filter { includeJvm || !it.targetArtifact.endsWith(".jar", ignoreCase = true) },
             outputRoot = outputRoot,
         )
-        stageAuthoringHostRuntimeConfigs(
-            sources = authoredHostManifestFiles.files.filter(java.io.File::isFile) + dependencyHostManifests.map(Path::toFile),
-            outputRoot = outputRoot,
+        if (includeJvm) {
+            stageAuthoringHostRuntimeConfigs(
+                sources = authoredHostManifests + dependencyHostManifests.map(Path::toFile),
+                outputRoot = outputRoot,
+            )
+        }
+        copyOptionalFiles(
+            authoredTargetArtifactFiles.files
+                .map { it.toPath() }
+                .filter { includeJvm || !it.name.endsWith(".jar", ignoreCase = true) },
+            outputRoot,
         )
-        copyOptionalFiles(authoredTargetArtifactFiles.files.map { it.toPath() }, outputRoot)
         writeDependencyAuthoredTargetArtifactRecords(
-            records = dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredTargetArtifactRecords),
+            records = dependencyIdentityFiles.files
+                .flatMap(::readDependencyAuthoredTargetArtifactRecords)
+                .filter { includeJvm || !it.fileName.endsWith(".jar", ignoreCase = true) },
             outputRoot = outputRoot,
         )
-        authoredHostDllFiles.files
-            .asSequence()
-            .map { it.toPath() }
-            .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
-            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
-        val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
+        if (includeJvm) {
+            authoredHostDllFiles.files
+                .asSequence()
+                .map { it.toPath() }
+                .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
+                .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
+        }
+        val rid = runtimeIdentifier.get()
+        val winAppRuntimeRoots = winAppRuntimeAssetDirectories.files
+            .map { file -> file.toPath() }
+            .filter(Path::isDirectory)
+        winAppRuntimeRoots.forEach { root ->
+            stageWinAppRuntimeAssets(root.resolve(winAppRuntimeArchitecture(rid)), outputRoot)
+        }
+        val packageSpecs = nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+        val identities = packageSpecs
             .map(::parseNuGetPackageIdentity)
+            .filterNot { identity ->
+                identity.normalizedPackageId.lowercase() in WinAppConfigurationDefaults.toolingPackageIds
+            }
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
-        val resolvedPackageRoots = resolvedNuGetPackageManifestFiles.files
-            .flatMap(::readResolvedRuntimeNuGetPackageRoots)
-            .map(Path::of)
+        val winAppLockFiles = winAppRestoreLockFiles.files.filter(java.io.File::isFile)
+        val winAppPackageRoots = if (winAppLockFiles.isNotEmpty()) {
+            readWinAppRestoredPackageRoots(
+                lockFiles = winAppLockFiles,
+                rootPackageSpecs = packageSpecs,
+            )
+        } else {
+            emptyList()
+        }
+        val missingWinAppPackageRoots = winAppPackageRoots.filterNot(Path::isDirectory)
+        if (missingWinAppPackageRoots.isNotEmpty()) {
+            throw GradleException(
+                "WinApp restore lockfile references missing NuGet package roots:${System.lineSeparator()}" +
+                    missingWinAppPackageRoots.joinToString(System.lineSeparator()),
+            )
+        }
+        if (winAppLockFiles.isNotEmpty() && identities.isNotEmpty() && winAppPackageRoots.isEmpty()) {
+            throw GradleException("WinApp restore lockfile does not contain the declared runtime NuGet packages.")
+        }
+        val resolvedPackageRoots = if (winAppLockFiles.isNotEmpty()) {
+            winAppPackageRoots
+        } else {
+            resolvedNuGetPackageManifestFiles.files
+                .flatMap(::readResolvedRuntimeNuGetPackageRoots)
+                .map(Path::of)
+        }
         val resolvedPackages = resolveNuGetPackages(
             identities = identities,
             resolvedPackageRoots = resolvedPackageRoots,
             modeledPackageRoots = nugetPackageContentFiles.files.map { it.toPath() },
         )
-        val rid = runtimeIdentifier.get()
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
@@ -274,10 +356,12 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
                 stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
             }
             stageLiftedRegistrations(resolved.identity, resolved.packageRoot, outputRoot)
-            stageFrameworkNativeAssets(
-                resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
-                outputRoot,
-            )
+            if (includeFrameworkRuntimeAssets.get()) {
+                stageFrameworkNativeAssets(
+                    resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
+                    outputRoot,
+                )
+            }
             stageMsBuildCopyLocalPayloads(resolved.packageRoot, rid, outputRoot)
         }
         stageGeneratedComponentRegistrations(outputRoot)
@@ -385,11 +469,21 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             nativeRoot.resolve(arch),
         )
         val selectedRoot = candidates.firstOrNull { it.isDirectory() } ?: return
-        Files.walk(selectedRoot).use { stream ->
+        val files = Files.walk(selectedRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() }
-                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(selectedRoot))) }
+                .sorted()
+                .toList()
         }
+        files
+            .asSequence()
+            // lib/native is a compiler payload. Its XAML files are source inputs, not
+            // default application payload; explicit ContentWithTargetPath items are
+            // staged separately by the NuGet MSBuild payload resolver below.
+            .filterNot { source -> source.name.endsWith(".xaml", ignoreCase = true) }
+            .forEach { source ->
+                GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(selectedRoot)))
+            }
     }
 
     private fun stageFrameworkNativeAssets(nativeRoot: Path, outputRoot: Path) {
@@ -400,6 +494,19 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             stream.asSequence()
                 .filter { it.isRegularFile() }
                 .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
+        }
+    }
+
+    private fun stageWinAppRuntimeAssets(runtimeRoot: Path, outputRoot: Path) {
+        if (!runtimeRoot.isDirectory()) {
+            return
+        }
+        Files.walk(runtimeRoot).use { stream ->
+            stream.asSequence()
+                .filter(Path::isRegularFile)
+                .forEach { source ->
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeRoot)))
+                }
         }
     }
 
@@ -575,6 +682,7 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
         ).stage(
             componentPriFiles = inputPris,
             componentPriBaseRoot = outputRoot,
+            appxResourceFiles = emptyList(),
             explicitResourceFiles = projectPriResourceFiles.files.map { it.toPath() },
             explicitLayoutFiles = projectPriLayoutFiles.files.map { it.toPath() },
             explicitContentFiles = projectPriContentFiles.files.map { it.toPath() },
@@ -723,6 +831,9 @@ internal fun currentWindowsRuntimeIdentifier(): String {
     }
 }
 
+internal fun winAppRuntimeArchitecture(runtimeIdentifier: String): String =
+    runtimeIdentifier.substringAfter("win-", missingDelimiterValue = runtimeIdentifier)
+
 internal fun parseNuGetPackageIdentity(spec: String): WinRTNuGetPackageIdentity {
     val separator = spec.lastIndexOf('@')
     require(separator > 0 && separator < spec.lastIndex) {
@@ -837,6 +948,11 @@ internal fun readAuthoredHostManifestActivatableClasses(manifest: java.io.File):
     return readJsonStringArrayField(content, "activatableClasses") +
         readJsonStringMap(content, "activatableClassTargets").keys
 }
+
+private fun isJvmAuthoringHostManifest(manifest: java.io.File): Boolean =
+    readPortableIdentityJsonStringField(manifest.takeIf { it.isFile }?.readText().orEmpty(), "targetArtifact")
+        ?.let { targetArtifact -> targetArtifact.endsWith(".jar", ignoreCase = true) }
+        ?: false
 
 internal fun authoredHostManifestDeclaresActivatableClasses(manifest: java.io.File): Boolean {
     return readAuthoredHostManifestActivatableClasses(manifest).any { it.isNotBlank() }

@@ -173,7 +173,8 @@ internal object ReferenceTrackerManager {
                         if (walkFailed) 1 else 0,
                     ),
                 )
-                PlatformFinalization.collect()
+                // XAML holds its reference-tracker lock until this callback returns. A synchronous
+                // Kotlin/Native collection here can finalize a XAML object and wait on that lock.
             } finally {
                 checkSucceeded(
                     ComVtableInvoker.invoke(

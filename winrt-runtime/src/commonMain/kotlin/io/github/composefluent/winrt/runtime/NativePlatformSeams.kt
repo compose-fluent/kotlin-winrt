@@ -425,6 +425,12 @@ expect object WinRTPlatformApi {
 
     fun lastErrorAsHResultRaw(): Int
 
+    /**
+     * Returns the physical installation directory for the current package identity, when one
+     * exists. Unpackaged processes return null and must use the normal asset fallbacks.
+     */
+    fun currentPackagePathRaw(): String?
+
     fun resolveModulePathRaw(fileName: String): String
 }
 

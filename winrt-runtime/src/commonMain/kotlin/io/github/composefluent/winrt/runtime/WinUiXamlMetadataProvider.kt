@@ -5,6 +5,16 @@ class WinUiXamlTypeReference(
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlType,
 ) : IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
+internal data class WinUiXamlXmlnsDefinition(
+    val xmlNamespace: String,
+    val namespace: String,
+)
+
+internal data class WinUiXamlXmlnsDefinitionsResult(
+    val hResult: Int,
+    val definitions: List<WinUiXamlXmlnsDefinition>,
+)
+
 class WinUiXamlMetadataProviderReference(
     pointer: RawAddress,
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
@@ -26,7 +36,96 @@ class WinUiXamlMetadataProviderReference(
                 }
             }
         }
+
+    internal fun getXmlnsDefinitions(): WinUiXamlXmlnsDefinitionsResult =
+        PlatformAbi.confinedScope().use { scope ->
+            val countOut = PlatformAbi.allocateInt32Slot(scope)
+            val definitionsOut = PlatformAbi.allocatePointerSlot(scope)
+            PlatformAbi.writeInt32(countOut, 0)
+            PlatformAbi.writePointer(definitionsOut, PlatformAbi.nullPointer)
+
+            val hResult =
+                ComVtableInvoker.invokeArgs(
+                    pointer,
+                    WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions,
+                    countOut,
+                    definitionsOut,
+                )
+            val definitionsPointer = PlatformAbi.readPointer(definitionsOut)
+            val definitionCount = PlatformAbi.readInt32(countOut).toUInt().toLong()
+            if (PlatformAbi.isNull(definitionsPointer)) {
+                check(definitionCount == 0L || !HResult(hResult).isSuccess) {
+                    "XAML metadata provider returned a null XmlnsDefinition array for $definitionCount entries."
+                }
+                return@use WinUiXamlXmlnsDefinitionsResult(hResult, emptyList())
+            }
+
+            readAndReleaseXmlnsDefinitions(
+                hResult = hResult,
+                definitionsPointer = definitionsPointer,
+                definitionCount = definitionCount,
+            )
+        }
 }
+
+internal const val winUiXamlXmlnsDefinitionSizeBytes = 16L
+internal const val winUiXamlXmlnsDefinitionNamespaceOffsetBytes = 8L
+
+private fun readAndReleaseXmlnsDefinitions(
+    hResult: Int,
+    definitionsPointer: RawAddress,
+    definitionCount: Long,
+): WinUiXamlXmlnsDefinitionsResult {
+    require(definitionCount <= Int.MAX_VALUE) {
+        "XAML metadata provider returned too many XmlnsDefinition entries: $definitionCount."
+    }
+
+    val handles = ArrayList<Pair<RawAddress, RawAddress>>(definitionCount.toInt())
+    try {
+        repeat(definitionCount.toInt()) { index ->
+            val element = PlatformAbi.slice(
+                definitionsPointer,
+                index.toLong() * winUiXamlXmlnsDefinitionSizeBytes,
+                winUiXamlXmlnsDefinitionSizeBytes,
+            )
+            handles +=
+                PlatformAbi.readPointer(element) to
+                    PlatformAbi.readPointer(
+                        PlatformAbi.slice(
+                            element,
+                            winUiXamlXmlnsDefinitionNamespaceOffsetBytes,
+                            Long.SIZE_BYTES.toLong(),
+                        ),
+                    )
+        }
+
+        val definitions =
+            if (HResult(hResult).isSuccess) {
+                handles.map { (xmlNamespace, namespace) ->
+                    WinUiXamlXmlnsDefinition(
+                        xmlNamespace = PlatformAbi.readHString(xmlNamespace),
+                        namespace = PlatformAbi.readHString(namespace),
+                    )
+                }
+            } else {
+                emptyList()
+            }
+        return WinUiXamlXmlnsDefinitionsResult(hResult, definitions)
+    } finally {
+        handles.forEach { (xmlNamespace, namespace) ->
+            runCatching { WinRTPlatformApi.windowsDeleteStringRaw(xmlNamespace) }
+            runCatching { WinRTPlatformApi.windowsDeleteStringRaw(namespace) }
+        }
+        runCatching { WinRTPlatformApi.coTaskMemFreeRaw(definitionsPointer) }
+    }
+}
+
+internal fun mergeWinUiXamlXmlnsDefinitions(
+    providerDefinitions: Iterable<List<WinUiXamlXmlnsDefinition>>,
+): List<WinUiXamlXmlnsDefinition> =
+    buildList {
+        providerDefinitions.forEach(::addAll)
+    }
 
 object WinUiXamlMetadataProvider {
     val providerRuntimeClassName: String

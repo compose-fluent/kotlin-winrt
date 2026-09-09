@@ -5,6 +5,9 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
+import org.gradle.api.provider.ProviderFactory
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -13,13 +16,29 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.isRegularFile
+import javax.inject.Inject
 import kotlin.io.path.name
 
 abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
+    @get:Inject
+    protected abstract val providers: ProviderFactory
+
+    @get:Input
+    @get:Optional
+    val nativeToolchain: Provider<WindowsNativeToolchain> = providers.of(WindowsNativeToolchainValueSource::class.java) {
+        it.parameters.forAuthoring.set(true)
+        it.parameters.authoredHostManifestFiles.from(authoredHostManifestFiles)
+        it.parameters.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        it.parameters.runtimeIdentifier.set(runtimeIdentifier)
+        it.parameters.windowsSdkVersion.set(windowsSdkVersion)
+        it.parameters.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+    }
+
+    @get:Internal
+    abstract val applicationCompilationTasks: SetProperty<String>
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -42,6 +61,9 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
     abstract val runtimeIdentifier: Property<String>
 
     @get:Input
+    abstract val windowsSdkVersion: Property<String>
+
+    @get:Input
     @get:Optional
     abstract val windowsSdkRegistryRoots: ListProperty<String>
 
@@ -49,6 +71,8 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
     abstract val commandWorkingDirectory: DirectoryProperty
 
     init {
+        applicationCompilationTasks.convention(emptySet())
+        windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
 
@@ -58,11 +82,7 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
         Files.createDirectories(outputRoot)
         Files.createDirectories(sourceRoot)
-        val manifests = (
-            authoredHostManifestFiles.files.map(::readHostBuildManifest) +
-                dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifestRecords).mapNotNull(::hostBuildManifestFromRecord)
-            )
-            .distinctBy { it.assemblyName.lowercase() }
+        val manifests = hostBuildManifests()
         if (manifests.isEmpty()) {
             return
         }
@@ -79,21 +99,14 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
             logger.warn("Kotlin/WinRT authoring host native DLL build is Windows-only; generated source files without compiling DLLs.")
             return
         }
-        val compiler = findExecutable("clang-cl.exe") ?: findExecutable("cl.exe")
-        if (compiler == null) {
-            throw IllegalStateException("No clang-cl.exe or cl.exe found. Kotlin/WinRT authoring host DLLs require a Windows C/C++ toolchain.")
-        }
-        val sdk = findWindowsSdk(registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty())
-        if (sdk == null) {
-            throw IllegalStateException("No Windows SDK installation found. Kotlin/WinRT authoring host DLLs require Windows SDK headers and libraries.")
-        }
+        val toolchain = nativeToolchain.get()
+        logger.info("Kotlin/WinRT JVM authoring host: {} ({}; Windows SDK {})", toolchain.compiler, runtimeIdentifier.get(), toolchain.sdkVersion)
         manifests.forEach { manifest ->
             val hostSource = sourceRoot.resolve("${manifest.assemblyName.toGeneratedFileStem()}_kotlin_winrt_authoring_host.c")
             Files.writeString(hostSource, authoringHostSource(manifest.hostExportsClass))
             val dll = outputRoot.resolve("${manifest.assemblyName}.dll")
             compileHostDll(
-                compiler = compiler,
-                sdk = sdk,
+                toolchain = toolchain,
                 source = hostSource,
                 moduleDefinition = moduleDefinition,
                 output = dll,
@@ -102,15 +115,15 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
     }
 
     private fun compileHostDll(
-        compiler: Path,
-        sdk: WindowsSdkLayout,
+        toolchain: WindowsNativeToolchain,
         source: Path,
         moduleDefinition: Path,
         output: Path,
     ) {
         val javaHomePath = Path.of(javaHome.get())
-        val arguments = mutableListOf(
-            compiler.toString(),
+        val sdk = toolchain.sdk
+        val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
+        val arguments = listOf(toolchain.compiler) + toolchain.compilerArguments + listOf(
             "/nologo",
             "/LD",
             source.toString(),
@@ -125,13 +138,13 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
             "/NOLOGO",
             "/DLL",
             "/DEF:${moduleDefinition}",
-            "/LIBPATH:${sdk.libRoot.resolve("um").resolve(targetArchitecture())}",
-            "/LIBPATH:${sdk.libRoot.resolve("ucrt").resolve(targetArchitecture())}",
+            "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
+            "/LIBPATH:${sdk.libRoot.resolve("ucrt").resolve(architecture)}",
             "runtimeobject.lib",
             "kernel32.lib",
             "user32.lib",
         )
-        val result = runProcess(arguments, output.parent)
+        val result = toolchain.compile(arguments, output.parent)
         if (result.exitCode != 0) {
             throw IllegalStateException(
                 "Kotlin/WinRT authoring host DLL build failed with exit code ${result.exitCode}.\n${result.output}",
@@ -161,14 +174,16 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
         return HostBuildManifest(assemblyName, hostExportsClass)
     }
 
+    private fun hostBuildManifests(): List<HostBuildManifest> = (
+        authoredHostManifestFiles.files.map(::readHostBuildManifest) +
+            dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifestRecords).mapNotNull(::hostBuildManifestFromRecord)
+        ).distinctBy { it.assemblyName.lowercase() }
+
     private fun hostBuildManifestFromRecord(record: AuthoredHostManifestRecord): HostBuildManifest? {
-        val hostExportsClass = record.hostExportsClass?.takeIf(String::isNotBlank) ?: return null
-        if (!record.targetArtifact.endsWith(".jar", ignoreCase = true)) {
+        if (!record.requiresJvmAuthoringHost()) {
             return null
         }
-        if ((record.activatableClasses + record.activatableClassTargets.keys).none { it.isNotBlank() }) {
-            return null
-        }
+        val hostExportsClass = requireNotNull(record.hostExportsClass)
         if (!hostExportsClass.matches(JVM_CLASS_NAME_REGEX)) {
             throw IllegalArgumentException(
                 "Kotlin/WinRT authoring host record for '${record.assemblyName}' has invalid hostExportsClass '$hostExportsClass'.",
@@ -176,63 +191,11 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
         }
         return HostBuildManifest(record.assemblyName, hostExportsClass)
     }
-
-    private fun findExecutable(name: String): Path? {
-        val path = System.getenv("PATH").orEmpty()
-            .split(java.io.File.pathSeparatorChar)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { Path.of(it).resolve(name) }
-            .firstOrNull { it.isRegularFile() }
-        if (path != null) {
-            return path
-        }
-        return runCatching {
-            val result = runProcess(listOf("cmd.exe", "/c", "where", name), commandWorkingDirectory.get().asFile.toPath())
-            result.output
-                .lineSequence()
-                .map { it.trim() }
-                .firstOrNull { it.endsWith(name, ignoreCase = true) }
-                ?.let(Path::of)
-        }.getOrNull()
-            ?: standardWindowsToolchainCandidates(name).firstOrNull { it.isRegularFile() }
-    }
-
-    private fun standardWindowsToolchainCandidates(name: String): Sequence<Path> = sequence {
-        System.getenv("ProgramFiles")?.takeIf { it.isNotBlank() }?.let { programFiles ->
-            yield(Path.of(programFiles).resolve("LLVM").resolve("bin").resolve(name))
-        }
-        System.getenv("ProgramFiles(x86)")?.takeIf { it.isNotBlank() }?.let { programFilesX86 ->
-            yield(Path.of(programFilesX86).resolve("LLVM").resolve("bin").resolve(name))
-        }
-    }
-
-    private fun targetArchitecture(): String =
-        windowsSdkArchitecture(runtimeIdentifier.get())
-
-    private fun runProcess(
-        arguments: List<String>,
-        workingDirectory: Path,
-    ): ProcessResult {
-        val output = ByteArrayOutputStream()
-        val process = ProcessBuilder(arguments)
-            .directory(workingDirectory.toFile())
-            .redirectErrorStream(true)
-            .start()
-        process.inputStream.copyTo(output)
-        val exitCode = process.waitFor()
-        return ProcessResult(exitCode, output.toString(Charsets.UTF_8))
-    }
 }
 
 private data class HostBuildManifest(
     val assemblyName: String,
     val hostExportsClass: String,
-)
-
-private data class ProcessResult(
-    val exitCode: Int,
-    val output: String,
 )
 
 private val JVM_CLASS_NAME_REGEX = Regex("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*")

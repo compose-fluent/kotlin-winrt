@@ -102,7 +102,10 @@ private fun latestWindowsSdkVersion(root: Path): String? {
             .map { it.name }
             .filter { WINDOWS_SDK_VERSION.matches(it) }
             .filter { includeRoot.resolve(it).resolve("um").isDirectory() }
-            .sorted(Comparator.reverseOrder())
+            .sorted(Comparator<String> { left, right ->
+                left.split('.').map(String::toInt).zip(right.split('.').map(String::toInt))
+                    .map { (a, b) -> a.compareTo(b) }.firstOrNull { it != 0 } ?: 0
+            }.reversed())
             .findFirst()
             .orElse(null)
     }

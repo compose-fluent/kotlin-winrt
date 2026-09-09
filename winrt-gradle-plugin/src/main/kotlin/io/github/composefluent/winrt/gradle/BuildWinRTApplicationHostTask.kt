@@ -5,7 +5,10 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
+import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
@@ -13,14 +16,31 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.inject.Inject
+import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
 abstract class BuildWinRTApplicationHostTask : DefaultTask() {
+    @get:Inject
+    protected abstract val providers: ProviderFactory
+
+    @get:Input
+    @get:Optional
+    val nativeToolchain: Provider<WindowsNativeToolchain> = providers.of(WindowsNativeToolchainValueSource::class.java) {
+        it.parameters.forAuthoring.set(false)
+        it.parameters.runtimeIdentifier.set(runtimeIdentifier)
+        it.parameters.windowsSdkVersion.set(windowsSdkVersion)
+        it.parameters.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+    }
+
     init {
-        packageMode.convention(WinRTApplicationPackageMode.Unpackaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
+        applicationVariant.convention("jvm:main")
+        jvmRuntimeMode.convention(WinRTJvmRuntimeMode.Bundled.name)
+        externalJvmHome.convention("")
+        expectedJavaMajor.convention(25)
         console.convention(false)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
@@ -28,6 +48,9 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
 
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
+
+    @get:Input
+    abstract val applicationVariant: Property<String>
 
     @get:OutputDirectory
     abstract val generatedSourceDirectory: DirectoryProperty
@@ -48,13 +71,28 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     abstract val runtimeAssetsDirectory: ConfigurableFileCollection
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     @get:Input
     abstract val console: Property<Boolean>
 
     @get:Input
     abstract val javaHome: Property<String>
+
+    @get:Input
+    abstract val expectedJavaMajor: Property<Int>
+
+    @get:Input
+    abstract val jvmRuntimeMode: Property<String>
+
+    @get:InputDirectory
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val runtimeImageDirectory: DirectoryProperty
+
+    @get:Input
+    @get:Optional
+    abstract val externalJvmHome: Property<String>
 
     @get:Input
     abstract val windowsSdkVersion: Property<String>
@@ -73,45 +111,139 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     fun build() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
+        val mainClassValue = mainClass.orNull?.takeIf(String::isNotBlank)
+            ?: throw IllegalStateException("Kotlin/WinRT application host requires an application mainClass.")
+        val runtimeMode = jvmRuntimeMode.get()
+        val externalHome = externalJvmHome.orNull?.trim().orEmpty()
+        if (runtimeMode == WinRTJvmRuntimeMode.External.name && externalHome.isBlank()) {
+            throw IllegalStateException(
+                "External JVM runtime mode requires application.externalJvmHome to point to a JVM home.",
+            )
+        }
+        if (runtimeMode == WinRTJvmRuntimeMode.External.name) {
+            validateExternalJvmHome(Path.of(externalHome))
+        }
+        val configuredRuntimeImage = if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name) {
+            runtimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        } else {
+            null
+        }
+        if (configuredRuntimeImage != null) {
+            if (!configuredRuntimeImage.isDirectory()) {
+                throw IllegalStateException("Bundled JVM runtime image is not a directory: $configuredRuntimeImage")
+            }
+            runtimeImageOverlapError(configuredRuntimeImage, outputRoot, "Bundled JVM runtime image")?.let { message ->
+                throw IllegalStateException(message)
+            }
+        }
+        // Validate the image/output relationship before cleaning the host output. A configured
+        // image inside that output would otherwise be deleted before it can be staged.
+        GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
         Files.createDirectories(sourceRoot)
         val source = sourceRoot.resolve("kotlin_winrt_application_host.c")
-        val mainClassValue = mainClass.orNull?.takeIf(String::isNotBlank)
-            ?: throw IllegalStateException("Kotlin/WinRT application host requires an application mainClass.")
-        Files.writeString(source, applicationHostSource(mainClassValue, packageMode.get(), Path.of(javaHome.get())))
+        // Host compilation is Windows-only. On other hosts this task still emits the source
+        // used by TestKit and cross-platform configuration checks, but it cannot consume a
+        // Windows JVM image or compile the native launcher.
+        if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name && isWindowsHost()) {
+            stageRuntimeImage(outputRoot)
+        }
+        Files.writeString(source, applicationHostSource(mainClassValue, packageType.get(), runtimeMode, externalHome))
         stageRuntimeClasspath(outputRoot)
         stageRuntimeAssets(outputRoot)
         WinRTApplicationManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
             winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+            redirectDlls = packageType.get() != WindowsPackageType.Packaged.name,
         )
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             logger.warn("Kotlin/WinRT application host native EXE build is Windows-only; generated source without compiling EXE.")
             return
         }
-        val compiler = findExecutable("clang-cl.exe") ?: findExecutable("cl.exe")
-        if (compiler == null) {
-            throw IllegalStateException("No clang-cl.exe or cl.exe found. Kotlin/WinRT application host requires a Windows C/C++ toolchain.")
-        }
-        val sdk = findWindowsSdk(
-            version = windowsSdkVersion.get().takeIf(String::isNotBlank),
-            registryRoots = windowsSdkRegistryRoots.get().orNullIfEmpty(),
-        )
-            ?: throw IllegalStateException("No Windows SDK installation found. Kotlin/WinRT application host requires Windows SDK headers and libraries.")
-        compileHostExe(compiler, sdk, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
+        val toolchain = nativeToolchain.get()
+        logger.info("Kotlin/WinRT JVM application host: {} ({}; Windows SDK {})", toolchain.compiler, runtimeIdentifier.get(), toolchain.sdkVersion)
+        compileHostExe(toolchain, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
     }
 
     private fun stageRuntimeClasspath(outputRoot: Path) {
         val libRoot = outputRoot.resolve("lib")
         GradleFileOperations.cleanDirectory(libRoot)
         Files.createDirectories(libRoot)
+        val staged = linkedMapOf<String, Path>()
         runtimeClasspath.files
             .filter { it.isFile && it.name.endsWith(".jar", ignoreCase = true) }
+            .sortedBy { it.absolutePath.lowercase() }
             .forEach { jar ->
-                Files.copy(jar.toPath(), libRoot.resolve(jar.name), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                val key = jar.name.lowercase()
+                val previous = staged[key]
+                if (previous != null && previous != jar.toPath().toAbsolutePath().normalize()) {
+                    throw IllegalStateException(
+                        "JVM application host cannot stage two runtime JARs with the same file name '${jar.name}': " +
+                            "$previous and ${jar.toPath().toAbsolutePath().normalize()}",
+                    )
+                }
+                if (previous == null) {
+                    staged[key] = jar.toPath().toAbsolutePath().normalize()
+                    Files.copy(jar.toPath(), libRoot.resolve(jar.name))
+                }
             }
     }
+
+    private fun stageRuntimeImage(outputRoot: Path) {
+        val source = runtimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+            ?: throw IllegalStateException(
+                "Bundled JVM runtime image is missing. Configure application.jvmRuntimeImage or ensure the " +
+                    "prepareWinRTJvmRuntimeImage task is wired before building the application host.",
+            )
+        if (!source.isDirectory()) {
+            throw IllegalStateException("Bundled JVM runtime image is not a directory: $source")
+        }
+        val target = outputRoot.resolve("runtime").toAbsolutePath().normalize()
+        runtimeImageOverlapError(source, outputRoot, "Bundled JVM runtime image")?.let { message ->
+            throw IllegalStateException(message)
+        }
+        copyDirectory(source, target)
+        if (isWindowsHost() && !hasWindowsJvmLibrary(target)) {
+            throw IllegalStateException(
+                "Bundled JVM runtime image at $source does not contain a Windows JVM library " +
+                "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
+            )
+        }
+        if (isWindowsHost()) {
+            runCatching {
+                validateJvmRuntime(target, expectedJavaMajor.get(), runtimeIdentifier.get(), "Bundled JVM runtime image")
+            }.getOrElse { error ->
+                throw IllegalStateException(error.message, error)
+            }
+        }
+    }
+
+    private fun validateExternalJvmHome(home: Path) {
+        val normalized = home.toAbsolutePath().normalize()
+        if (!normalized.isDirectory()) {
+            throw IllegalStateException("External JVM runtime home does not exist or is not a directory: $normalized")
+        }
+        if (isWindowsHost() && !hasWindowsJvmLibrary(normalized)) {
+            throw IllegalStateException(
+                "External JVM runtime home at $normalized does not contain a Windows JVM library " +
+                "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
+            )
+        }
+        if (isWindowsHost()) {
+            runCatching {
+                validateJvmRuntime(normalized, expectedJavaMajor.get(), runtimeIdentifier.get(), "External JVM runtime")
+            }.getOrElse { error ->
+                throw IllegalStateException(error.message, error)
+            }
+        }
+    }
+
+    private fun hasWindowsJvmLibrary(root: Path): Boolean = listOf(
+        root.resolve("bin").resolve("server").resolve("jvm.dll"),
+        root.resolve("jre").resolve("bin").resolve("server").resolve("jvm.dll"),
+        root.resolve("bin").resolve("jvm.dll"),
+    ).any(Path::isRegularFile)
 
     private fun stageRuntimeAssets(outputRoot: Path) {
         runtimeAssetsDirectory.files
@@ -119,9 +251,10 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
             .filterNot { it.toPath().toAbsolutePath().normalize() == outputRoot.toAbsolutePath().normalize() }
             .forEach { source ->
                 if (source.isDirectory) {
-                    copyDirectory(source.toPath(), outputRoot)
+                    copyRuntimeAssetDirectory(source.toPath(), outputRoot)
                 } else if (source.isFile) {
                     Files.createDirectories(outputRoot)
+                    rejectReservedRuntimeAsset(Path.of(source.name))
                     Files.copy(
                         source.toPath(),
                         outputRoot.resolve(source.name),
@@ -129,6 +262,27 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                     )
                 }
             }
+    }
+
+    private fun copyRuntimeAssetDirectory(sourceRoot: Path, targetRoot: Path) {
+        Files.walk(sourceRoot).use { stream ->
+            stream.filter(Files::isRegularFile).forEach { source ->
+                val relative = sourceRoot.relativize(source)
+                rejectReservedRuntimeAsset(relative)
+                val target = targetRoot.resolve(relative.toString()).normalize()
+                Files.createDirectories(target.parent)
+                Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+
+    private fun rejectReservedRuntimeAsset(relative: Path) {
+        val firstSegment = relative.iterator().asSequence().firstOrNull()?.toString().orEmpty()
+        if (firstSegment.equals("runtime", ignoreCase = true) || firstSegment.equals("lib", ignoreCase = true)) {
+            throw IllegalStateException(
+                "Runtime asset '${relative.toString().replace('\\', '/')}' targets a reserved JVM host directory.",
+            )
+        }
     }
 
     private fun copyDirectory(sourceRoot: Path, targetRoot: Path) {
@@ -146,20 +300,22 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     }
 
     private fun compileHostExe(
-        compiler: Path,
-        sdk: WindowsSdkLayout,
+        toolchain: WindowsNativeToolchain,
         source: Path,
         output: Path,
     ) {
-        val javaHomePath = Path.of(javaHome.get())
+        val javaHomeValue = javaHome.orNull?.trim().orEmpty()
+        if (javaHomeValue.isBlank()) {
+            throw IllegalStateException(
+                "Kotlin/WinRT application host requires a resolved Java toolchain home for JNI headers.",
+            )
+        }
+        val javaHomePath = Path.of(javaHomeValue)
+        val sdk = toolchain.sdk
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
-        val useLlvmLinker = compiler.fileName.toString().equals("clang-cl.exe", ignoreCase = true) &&
-            findExecutable("lld-link.exe") != null
         val arguments = buildList {
-            add(compiler.toString())
-            if (useLlvmLinker) {
-                add("-fuse-ld=lld")
-            }
+            add(toolchain.compiler)
+            addAll(toolchain.compilerArguments)
             addAll(
                 listOf(
                     "/nologo",
@@ -190,73 +346,26 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                 ),
             )
         }
-        val result = runProcess(arguments, output.parent)
+        val result = toolchain.compile(arguments, output.parent)
         if (result.exitCode != 0) {
             throw IllegalStateException("Kotlin/WinRT application host build failed with exit code ${result.exitCode}.\n${result.output}")
         }
     }
-
-    private fun findExecutable(name: String): Path? {
-        val path = System.getenv("PATH").orEmpty()
-            .split(java.io.File.pathSeparatorChar)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { Path.of(it).resolve(name) }
-            .firstOrNull { it.isRegularFile() }
-        if (path != null) {
-            return path
-        }
-        return runCatching {
-            val result = runProcess(listOf("cmd.exe", "/c", "where", name), commandWorkingDirectory.get().asFile.toPath())
-            result.output
-                .lineSequence()
-                .map(String::trim)
-                .firstOrNull { it.endsWith(name, ignoreCase = true) }
-                ?.let(Path::of)
-        }.getOrNull()
-            ?: standardWindowsToolchainCandidates(name).firstOrNull { it.isRegularFile() }
-    }
-
-    private fun standardWindowsToolchainCandidates(name: String): Sequence<Path> = sequence {
-        System.getenv("ProgramFiles")?.takeIf { it.isNotBlank() }?.let { programFiles ->
-            yield(Path.of(programFiles).resolve("LLVM").resolve("bin").resolve(name))
-        }
-        System.getenv("ProgramFiles(x86)")?.takeIf { it.isNotBlank() }?.let { programFilesX86 ->
-            yield(Path.of(programFilesX86).resolve("LLVM").resolve("bin").resolve(name))
-        }
-    }
-
-    private fun runProcess(
-        arguments: List<String>,
-        workingDirectory: Path,
-    ): HostProcessResult {
-        val output = ByteArrayOutputStream()
-        val process = ProcessBuilder(arguments)
-            .directory(workingDirectory.toFile())
-            .redirectErrorStream(true)
-            .start()
-        process.inputStream.copyTo(output)
-        val exitCode = process.waitFor()
-        return HostProcessResult(exitCode, output.toString(Charsets.UTF_8))
-    }
 }
 
-private data class HostProcessResult(
-    val exitCode: Int,
-    val output: String,
-)
-
-private fun applicationHostSource(
+internal fun applicationHostSource(
     mainClass: String,
-    packageMode: String,
-    javaHome: Path,
+    packageType: String,
+    runtimeMode: String,
+    externalJvmHome: String,
 ): String {
     val mainClassPath = mainClass.replace('.', '/')
-    val unpackaged = packageMode == WinRTApplicationPackageMode.Unpackaged.name
-    val javaHomeJvmPath = javaHome.resolve("bin").resolve("server").resolve("jvm.dll")
-        .toString()
+    val unpackaged = packageType == WindowsPackageType.None.name
+    val externalJvmHomePath = externalJvmHome
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
+    val bundledRuntime = runtimeMode == WinRTJvmRuntimeMode.Bundled.name
+    val bundledRuntimeCondition = if (bundledRuntime) "1" else "0"
     return """
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
@@ -338,22 +447,50 @@ private fun applicationHostSource(
         }
     }
 
+    static HMODULE kotlin_winrt_load_jvm_at(const wchar_t *home, const wchar_t *suffix) {
+        wchar_t path[MAX_PATH * 4];
+        if (home == NULL || home[0] == L'\0') {
+            return NULL;
+        }
+        lstrcpynW(path, home, ARRAYSIZE(path));
+        kotlin_winrt_append_wide(path, ARRAYSIZE(path), suffix);
+        return LoadLibraryW(path);
+    }
+
     static HMODULE kotlin_winrt_load_jvm_module(void) {
-        HMODULE configured_module = LoadLibraryW(L"$javaHomeJvmPath");
-        if (configured_module != NULL) {
-            return configured_module;
+        wchar_t host_directory[MAX_PATH * 4];
+        kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
+        HMODULE module = NULL;
+        if ($bundledRuntimeCondition) {
+            module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\server\\jvm.dll");
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\jre\\bin\\server\\jvm.dll");
+            }
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\jvm.dll");
+            }
+        } else {
+            module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\bin\\server\\jvm.dll");
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\jre\\bin\\server\\jvm.dll");
+            }
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\bin\\jvm.dll");
+            }
+            wchar_t configured_home[MAX_PATH * 4];
+            DWORD length = GetEnvironmentVariableW(L"KOTLIN_WINRT_JAVA_HOME", configured_home, ARRAYSIZE(configured_home));
+            if (module == NULL && length > 0 && length < ARRAYSIZE(configured_home)) {
+                module = kotlin_winrt_load_jvm_at(configured_home, L"\\bin\\server\\jvm.dll");
+            }
+            length = GetEnvironmentVariableW(L"JAVA_HOME", configured_home, ARRAYSIZE(configured_home));
+            if (module == NULL && length > 0 && length < ARRAYSIZE(configured_home)) {
+                module = kotlin_winrt_load_jvm_at(configured_home, L"\\bin\\server\\jvm.dll");
+            }
+            if (module == NULL) {
+                module = LoadLibraryW(L"jvm.dll");
+            }
         }
-        HMODULE module = LoadLibraryW(L"jvm.dll");
-        if (module != NULL) {
-            return module;
-        }
-        wchar_t java_home[MAX_PATH * 2];
-        DWORD length = GetEnvironmentVariableW(L"JAVA_HOME", java_home, ARRAYSIZE(java_home));
-        if (length > 0 && length < ARRAYSIZE(java_home)) {
-            kotlin_winrt_append_wide(java_home, ARRAYSIZE(java_home), L"\\bin\\server\\jvm.dll");
-            return LoadLibraryW(java_home);
-        }
-        return NULL;
+        return module;
     }
 
     static int kotlin_winrt_add_environment_options(JavaVMOption *options, int option_count, int option_capacity, char *environment_options, DWORD environment_options_count) {

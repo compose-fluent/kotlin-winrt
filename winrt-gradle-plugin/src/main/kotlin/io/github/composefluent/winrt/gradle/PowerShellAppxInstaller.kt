@@ -8,6 +8,7 @@ internal object PowerShellAppxInstaller {
     fun install(
         powerShellExecutable: String,
         packageFile: Path,
+        dependencyPackagePaths: List<Path> = emptyList(),
         forceApplicationShutdown: Boolean,
         logger: Logger,
     ): Boolean {
@@ -15,6 +16,16 @@ internal object PowerShellAppxInstaller {
             append("Add-AppxPackage -Path '")
             append(packageFile.toString().replace("'", "''"))
             append("'")
+            if (dependencyPackagePaths.isNotEmpty()) {
+                append(" -DependencyPath @(")
+                dependencyPackagePaths.forEachIndexed { index, dependency ->
+                    if (index > 0) append(", ")
+                    append("'")
+                    append(dependency.toString().replace("'", "''"))
+                    append("'")
+                }
+                append(")")
+            }
             if (forceApplicationShutdown) {
                 append(" -ForceApplicationShutdown")
             }

@@ -34,23 +34,28 @@ winRT {
     type("Microsoft.UI.Xaml.Controls.ContentControl")
     type("sample.NativeJsonValueThing")
     application {
-        mainClass.set("sample.consumer.MainKt")
-        generateProjectPri.set(false)
+        mainClass = "sample.consumer.MainKt"
+        generateProjectPri = false
     }
 }
 
 tasks.named("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRTRuntimeAssets")
+    dependsOn("stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable")
 }
+
+val stagedRuntimeAssets = tasks.named(
+    "stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable",
+    io.github.composefluent.winrt.gradle.StageWinRTRuntimeAssetsTask::class,
+)
 
 val verifyNativeAuthoringConsumerFixture by tasks.registering(
     io.github.composefluent.winrt.gradle.VerifyWinRTNativeAuthoringConsumerFixtureTask::class,
 ) {
     group = "verification"
     description = "Validates staging and runtime activation of native authored dependency artifacts."
-    dependsOn("stageWinRTRuntimeAssets")
+    dependsOn(stagedRuntimeAssets)
     dependsOn("runReleaseExecutableMingwX64")
-    runtimeAssetsRoot.set(layout.buildDirectory.dir("kotlin-winrt/runtime-assets"))
+    runtimeAssetsRoot.set(stagedRuntimeAssets.flatMap { it.outputDirectory })
     expectedDllName.set("native_component_fixture.dll")
     expectedWinmdName.set("native-component-fixture.winmd")
     expectedHostManifestName.set("native-component-fixture.host.json")
