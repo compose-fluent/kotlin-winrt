@@ -6,31 +6,38 @@ package io.github.composefluent.winrt.runtime
 
 internal object PlatformRuntimeInitialization {
     fun initializeCom(apartmentType: ApartmentType): HResult {
-        if (!PlatformRuntime.isWindows) return KnownHResults.S_OK
+        if (!PlatformRuntime.isWindows) return KnownHResults.E_NOTSUPPORTED
         return HResult(WinRTPlatformApi.coInitializeExRaw(apartmentType))
     }
 
     fun uninitializeCom() {
         if (!PlatformRuntime.isWindows) return
-        XamlSystemProjectionRuntimeHooks.closeRuntimeCaches()
-        WinRTComposableObjectReference.closeRuntimeReferences()
-        ComWrappersSupport.clearRuntimeCache()
-        drainDeferredComReleasesForCurrentContext()
-        PlatformFinalization.drain()
-        drainDeferredComReleasesForCurrentContext()
-        uninitializeComApartment()
-    }
-
-    fun uninitializeComApartment() {
-        if (!PlatformRuntime.isWindows) return
-        drainDeferredComReleasesForCurrentContext()
-        PlatformFinalization.drain()
-        drainDeferredComReleasesForCurrentContext()
         WinRTPlatformApi.coUninitializeRaw()
     }
 
+    fun cleanupApplicationHostRuntime() {
+        if (!PlatformRuntime.isWindows) return
+        var failure: Throwable? = null
+        fun attempt(cleanup: () -> Unit) {
+            try {
+                cleanup()
+            } catch (error: Throwable) {
+                failure?.addSuppressed(error) ?: run { failure = error }
+            }
+        }
+        // Keep attempting every phase so one failing cache/release path cannot prevent the
+        // remaining application-owned references from being drained.
+        attempt { XamlSystemProjectionRuntimeHooks.closeRuntimeCaches() }
+        attempt { WinRTComposableObjectReference.closeRuntimeReferences() }
+        attempt { ComWrappersSupport.clearRuntimeCache() }
+        attempt { drainDeferredComReleasesForCurrentContext() }
+        attempt { PlatformFinalization.drain() }
+        attempt { drainDeferredComReleasesForCurrentContext() }
+        failure?.let { throw it }
+    }
+
     fun initializeWinRT(apartmentType: ApartmentType): HResult {
-        if (!PlatformRuntime.isWindows) return KnownHResults.S_OK
+        if (!PlatformRuntime.isWindows) return KnownHResults.E_NOTSUPPORTED
         return HResult(WinRTPlatformApi.roInitializeRaw(apartmentType))
     }
 

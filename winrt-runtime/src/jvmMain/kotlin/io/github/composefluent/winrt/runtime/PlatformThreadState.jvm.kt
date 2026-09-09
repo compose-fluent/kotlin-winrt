@@ -1,11 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
-internal actual class PlatformThreadLocalInt actual constructor(initialValue: Int) {
-    private val local = ThreadLocal.withInitial { initialValue }
+internal actual fun platformCurrentThreadToken(): Long =
+    Thread.currentThread().threadId()
 
-    actual fun get(): Int = local.get()
-
-    actual fun set(value: Int) {
-        local.set(value)
-    }
-}
+internal actual fun platformCurrentThreadIsVirtual(): Boolean =
+    Thread.currentThread().isVirtual

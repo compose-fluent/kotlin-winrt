@@ -3,6 +3,7 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlinx.cinterop.CFunction
+import kotlinx.cinterop.COpaque
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.alloc
@@ -20,6 +21,7 @@ import platform.windows.ACTCTXW
 import platform.windows.ActivateActCtx
 import platform.windows.CreateActCtxW
 import platform.windows.DeactivateActCtx
+import platform.windows.GetEnvironmentVariableW
 import platform.windows.GetLastError
 import platform.windows.INVALID_HANDLE_VALUE
 import platform.windows.ReleaseActCtx
@@ -71,7 +73,35 @@ internal actual fun platformActivateWindowsManifest(manifestPath: Path): AutoClo
         }
     }
 
-internal actual fun platformSetWindowsEnvironmentVariable(name: String, value: String) {
+internal actual fun platformGetWindowsEnvironmentVariable(name: String): String? =
+    PlatformAbi.confinedScope().use { scope ->
+        var capacity = 256
+        while (true) {
+            val buffer = PlatformAbi.allocateBytes(scope, capacity.toLong() * 2L)
+            val length = GetEnvironmentVariableW(
+                name,
+                buffer.value.toCPointer(),
+                capacity.toUInt(),
+            ).toInt()
+            if (length == 0) {
+                val lastError = GetLastError()
+                if (lastError == 203u) {
+                    return@use null
+                }
+                if (lastError == 0u) {
+                    return@use ""
+                }
+                error("GetEnvironmentVariableW failed with GetLastError=$lastError for $name")
+            }
+            if (length < capacity) {
+                return@use PlatformAbi.readUtf16(buffer, length)
+            }
+            capacity = length + 1
+        }
+        error("GetEnvironmentVariableW did not return a value.")
+    }
+
+internal actual fun platformSetWindowsEnvironmentVariable(name: String, value: String?) {
     val result = SetEnvironmentVariableW(name, value)
     if (result == 0) {
         error("SetEnvironmentVariableW failed with GetLastError=${GetLastError()} for $name")
@@ -86,7 +116,12 @@ internal actual fun platformLoadWindowsLibrary(path: Path): RawAddress =
     WinRTPlatformApi.loadLibraryExWRaw(path.canonicalString(), 0)
 
 internal actual fun platformFreeWindowsLibrary(module: RawAddress) {
-    WinRTPlatformApi.freeLibraryRaw(module)
+    if (!WinRTPlatformApi.freeLibraryRaw(module)) {
+        error(
+            "FreeLibrary failed for module ${module.value} " +
+                "with HRESULT ${HResult(WinRTPlatformApi.lastErrorAsHResultRaw())}.",
+        )
+    }
 }
 
 internal actual fun platformTryGetWindowsProcAddress(module: RawAddress, procedureName: String): RawAddress? =
@@ -105,24 +140,39 @@ internal actual fun platformCallMddBootstrapInitialize2(
     majorMinorVersion: Int,
     versionTag: String?,
     minVersion: Long,
+    options: Int,
 ) {
-    val hResult = procedure.asBootstrapInitialize2().invoke(
-        majorMinorVersion,
-        null,
-        minVersion,
-        0,
-    )
-    HResult(hResult).requireSuccess("MddBootstrapInitialize2")
+    PlatformAbi.confinedScope().use { scope ->
+        val versionTagPointer = versionTag
+            ?.takeIf(String::isNotEmpty)
+            ?.let { value ->
+                PlatformAbi.allocateUtf16(scope, value, nulTerminated = true).value.toCPointer<COpaque>()
+            }
+        val hResult = procedure.asBootstrapInitialize2().invoke(
+            majorMinorVersion,
+            versionTagPointer,
+            minVersion,
+            options,
+        )
+        HResult(hResult).requireSuccess("MddBootstrapInitialize2")
+    }
 }
 
 internal actual fun platformRememberWindowsAppSdkBootstrapShutdown(module: RawAddress) {
     bootstrapShutdown = WinRTPlatformApi.tryGetProcAddressRaw(module, "MddBootstrapShutdown")
         .takeUnless { address -> PlatformAbi.isNull(address) }
         ?.asBootstrapShutdown()
+        ?: error("Microsoft.WindowsAppRuntime.Bootstrap.dll does not export MddBootstrapShutdown.")
+}
+
+internal actual fun platformForgetWindowsAppSdkBootstrapShutdown() {
+    bootstrapShutdown = null
 }
 
 internal actual fun platformWindowsAppSdkBootstrapShutdown() {
-    bootstrapShutdown?.invoke()
+    val shutdown = bootstrapShutdown ?: error("Windows App SDK bootstrap shutdown was not initialized.")
+    bootstrapShutdown = null
+    shutdown.invoke()
 }
 
 private class NativeActivationContextScope(
@@ -130,8 +180,20 @@ private class NativeActivationContextScope(
     private val cookie: RawAddress,
 ) : AutoCloseable {
     override fun close() {
-        DeactivateActCtx(0u, cookie.value.toULong())
-        ReleaseActCtx(handle.value.toCPointer() ?: return)
+        var failure: Throwable? = null
+        try {
+            if (DeactivateActCtx(0u, cookie.value.toULong()) == 0) {
+                error("DeactivateActCtx failed with GetLastError=${GetLastError()}")
+            }
+        } catch (error: Throwable) {
+            failure = error
+        }
+        try {
+            ReleaseActCtx(handle.value.toCPointer() ?: error("Activation context handle is null."))
+        } catch (error: Throwable) {
+            failure?.addSuppressed(error) ?: run { failure = error }
+        }
+        failure?.let { throw it }
     }
 }
 
