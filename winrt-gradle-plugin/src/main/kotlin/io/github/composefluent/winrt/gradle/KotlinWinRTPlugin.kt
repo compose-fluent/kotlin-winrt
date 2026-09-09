@@ -708,6 +708,26 @@ private fun configureWinRTApplicationTasks(
         },
     )
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
+    // A pure WinRT application should not inherit a Windows App SDK bootstrap requirement just
+    // because the application DSL is enabled. An explicit value, including one inherited by a
+    // named application, must remain authoritative over this convention.
+    if (options.windowsAppSdkDeployment.orNull == null) {
+        options.windowsAppSdkDeployment.convention(project.provider {
+            val packageSpecs = allNuGetPackageSpecs(extension) +
+                dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+            val hasWindowsAppSdk = packageSpecs.any { spec ->
+                parseNuGetPackageIdentity(spec).normalizedPackageId.let { packageId ->
+                    packageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
+                        packageId.startsWith("Microsoft.WindowsAppSDK.", ignoreCase = true)
+                }
+            }
+            if (hasWindowsAppSdk) {
+                WinRTWindowsAppSdkDeployment.FrameworkDependent
+            } else {
+                WinRTWindowsAppSdkDeployment.None
+            }
+        })
+    }
     val dependencyAppxResources = project.configurations.maybeCreate(resourceConfigurationName).apply {
         isCanBeConsumed = false
         isCanBeResolved = true
@@ -1107,6 +1127,7 @@ private fun configureWinRTApplicationTasks(
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
             task.packageType.set(project.provider { options.packageType.get().name })
+            task.windowsAppSdkDeployment.set(project.provider { options.windowsAppSdkDeployment.get().name })
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1282,6 +1303,7 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.packageType.set(project.provider { options.packageType.get().name })
+            task.windowsAppSdkDeployment.set(project.provider { options.windowsAppSdkDeployment.get().name })
             task.console.set(options.console)
             task.executableBaseName.set(project.name)
             task.javaHome.set(configuredJvmToolchainHome(project, options))

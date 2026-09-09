@@ -537,6 +537,22 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_without_windows_app_sdk_dependency_defaults_to_no_deployment() {
+        val project = ProjectBuilder.builder().withName("pure-winrt-app").build()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+
+        extension.application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        assertEquals(
+            WinRTWindowsAppSdkDeployment.None,
+            extension.application.windowsAppSdkDeployment.get(),
+        )
+    }
+
+    @Test
     fun prebuilt_nuget_package_can_opt_out_of_local_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
@@ -3653,6 +3669,7 @@ class KotlinWinRTPluginTest {
         val signingCertificate = project.layout.buildDirectory.file("certificates/contoso.pfx")
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
+            application.frameworkDependent()
             application.packageOutputFile.set(packageOutput)
             application.makeAppxExecutable.set("C:/Windows Kits/10/bin/makeappx.exe")
             application.generatePackage.set(false)
@@ -4522,8 +4539,10 @@ class KotlinWinRTPluginTest {
         assertTrue(source.contains("JNI_CreateJavaVM"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
         assertTrue(source.contains("WinRTWindowsAppSdkLauncherSupport"))
-        assertTrue(source.contains("initializeApplicationHost\", \"(Z)Ljava/lang/AutoCloseable;\""))
-        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, JNI_TRUE)"))
+        assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
+        assertTrue(source.contains("NewStringUTF(env, \"Unpackaged\")"))
+        assertTrue(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
+        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode)"))
         assertTrue(source.contains("KOTLIN_WINRT_JVM_OPTIONS"))
         // The launcher resolves the bundled image beside its executable at runtime; it must
         // not embed the build machine's JDK location in generated native source.
@@ -4617,8 +4636,10 @@ class KotlinWinRTPluginTest {
 
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
         assertTrue(source.contains("WinRTWindowsAppSdkLauncherSupport"))
-        assertTrue(source.contains("initializeApplicationHost\", \"(Z)Ljava/lang/AutoCloseable;\""))
-        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, JNI_FALSE)"))
+        assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
+        assertTrue(source.contains("NewStringUTF(env, \"Packaged\")"))
+        assertTrue(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
+        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode)"))
         assertFalse(source.contains("initializeForUnpackagedApp"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
     }
@@ -4651,8 +4672,12 @@ class KotlinWinRTPluginTest {
         val relativeSource = Path.of("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt")
         val unpackagedSource = Files.readString(unpackagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
         val packagedSource = Files.readString(packagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
-        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(unpackaged = true).use"))
-        assertTrue(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(unpackaged = false).use"))
+        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration(packageIdentity"))
+        assertTrue(unpackagedSource.contains("WinRTApplicationPackageIdentity.Unpackaged"))
+        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkDeploymentMode.FrameworkDependent"))
+        assertTrue(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration(packageIdentity"))
+        assertTrue(packagedSource.contains("WinRTApplicationPackageIdentity.Packaged"))
+        assertTrue(packagedSource.contains("WinRTWindowsAppSdkDeploymentMode.FrameworkDependent"))
         assertFalse(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initialize()"))
         assertFalse(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initialize()"))
     }
@@ -9858,8 +9883,14 @@ class KotlinWinRTPluginTest {
             """
             package io.github.composefluent.winrt.runtime
 
+            enum class WinRTApplicationPackageIdentity { Packaged, Unpackaged }
+            enum class WinRTWindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
+            data class WinRTApplicationHostConfiguration(
+                val packageIdentity: WinRTApplicationPackageIdentity,
+                val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            )
             object WinRTWindowsAppSdkBootstrap {
-                fun initializeApplicationHost(unpackaged: Boolean = true): AutoCloseable =
+                fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }
             }
@@ -12961,6 +12992,19 @@ class KotlinWinRTPluginTest {
             packageId = "Microsoft.WindowsAppSDK.Runtime",
             version = "1.8.260416003",
         )
+        val runtimeVersionInfo = nugetRoot
+            .resolve("microsoft.windowsappsdk.runtime")
+            .resolve("1.8.260416003")
+            .resolve("include/WindowsAppSDK-VersionInfo.h")
+        Files.createDirectories(runtimeVersionInfo.parent)
+        Files.writeString(
+            runtimeVersionInfo,
+            """
+            #define WINDOWSAPPSDK_RELEASE_MAJORMINOR 0x00010008
+            #define WINDOWSAPPSDK_RELEASE_VERSION_TAG_W L""
+            #define WINDOWSAPPSDK_RUNTIME_VERSION_UINT64 0x0001000800000000u
+            """.trimIndent(),
+        )
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK.WinUI",
@@ -13051,7 +13095,16 @@ class KotlinWinRTPluginTest {
                 ),
             ),
         )
-        assertFalse(Files.exists(assetsRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
+        assertTrue(Files.isRegularFile(assetsRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
+        assertEquals(
+            listOf(
+                "schemaVersion=1",
+                "majorMinorVersion=65544",
+                "versionTag=",
+                "minVersion=281509336449024",
+            ),
+            Files.readAllLines(assetsRoot.resolve("kotlin-winrt-windows-app-sdk.properties")),
+        )
     }
 
     @Test
@@ -13176,11 +13229,17 @@ class KotlinWinRTPluginTest {
             """
             package io.github.composefluent.winrt.runtime
 
+            enum class WinRTApplicationPackageIdentity { Packaged, Unpackaged }
+            enum class WinRTWindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
+            data class WinRTApplicationHostConfiguration(
+                val packageIdentity: WinRTApplicationPackageIdentity,
+                val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            )
             object WinRTWindowsAppSdkBootstrap {
                 fun initialize() {
                 }
 
-                fun initializeApplicationHost(unpackaged: Boolean = true): AutoCloseable =
+                fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }
             }

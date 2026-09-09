@@ -31,6 +31,16 @@ import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
+internal const val WINDOWS_APP_SDK_STARTUP_PROPERTIES: String =
+    "kotlin-winrt-windows-app-sdk.properties"
+
+private val windowsAppSdkMajorMinorRegex =
+    Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJORMINOR\s+(0x[0-9A-Fa-f]+)""")
+private val windowsAppSdkVersionTagRegex =
+    Regex("""#define\s+WINDOWSAPPSDK_RELEASE_VERSION_TAG_W\s+L"([^"]*)"""")
+private val windowsAppSdkRuntimeVersionRegex =
+    Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_VERSION_UINT64\s+(0x[0-9A-Fa-f]+)u""")
+
 @CacheableTask
 abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
     @get:Internal
@@ -352,7 +362,7 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
             stageLibNativeAssets(resolved.packageRoot.resolve("lib").resolve("native"), rid, outputRoot)
-            if (resolved.identity.isWindowsAppSdkRootPackage()) {
+            if (resolved.identity.isWindowsAppSdkVersionPackage()) {
                 stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
             }
             stageLiftedRegistrations(resolved.identity, resolved.packageRoot, outputRoot)
@@ -519,9 +529,39 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
 
     private fun stageWindowsAppSdkVersionInfo(packageRoot: Path, outputRoot: Path) {
         val versionInfo = packageRoot.resolve("include").resolve("WindowsAppSDK-VersionInfo.h")
-        if (versionInfo.isRegularFile()) {
-            GradleFileOperations.copyFile(versionInfo, outputRoot.resolve("include").resolve(versionInfo.name))
+        if (!versionInfo.isRegularFile()) return
+        GradleFileOperations.copyFile(versionInfo, outputRoot.resolve("include").resolve(versionInfo.name))
+
+        val content = Files.readString(versionInfo)
+        val majorMinor = windowsAppSdkMajorMinorRegex.find(content)
+            ?.groupValues?.get(1)
+            ?.removePrefix("0x")
+            ?.toIntOrNull(16)
+        val versionTag = windowsAppSdkVersionTagRegex.find(content)?.groupValues?.get(1).orEmpty()
+        val minVersion = windowsAppSdkRuntimeVersionRegex.find(content)
+            ?.groupValues?.get(1)
+            ?.removePrefix("0x")
+            ?.removeSuffix("u")
+            ?.toULongOrNull(16)
+        if (majorMinor == null || minVersion == null) {
+            throw GradleException(
+                "Windows App SDK version header '${versionInfo.toAbsolutePath()}' is missing " +
+                    "WINDOWSAPPSDK_RELEASE_MAJORMINOR or WINDOWSAPPSDK_RUNTIME_VERSION_UINT64.",
+            )
         }
+        val properties = buildString {
+            appendLine("schemaVersion=1")
+            appendLine("majorMinorVersion=$majorMinor")
+            appendLine("versionTag=$versionTag")
+            appendLine("minVersion=${minVersion.toLong()}")
+        }
+        val target = outputRoot.resolve(WINDOWS_APP_SDK_STARTUP_PROPERTIES)
+        if (target.isRegularFile() && Files.readString(target) != properties) {
+            throw GradleException(
+                "Resolved Windows App SDK packages disagree on startup version information: $target",
+            )
+        }
+        Files.writeString(target, properties)
     }
 
     private fun stageLiftedRegistrations(
@@ -816,8 +856,9 @@ private data class AuthoringHostRuntimeConfig(
     val activatableClasses: Map<String, String>,
 )
 
-private fun WinRTNuGetPackageIdentity.isWindowsAppSdkRootPackage(): Boolean =
-    normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true)
+private fun WinRTNuGetPackageIdentity.isWindowsAppSdkVersionPackage(): Boolean =
+    normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
+        normalizedPackageId.equals("Microsoft.WindowsAppSDK.Runtime", ignoreCase = true)
 
 internal fun isWindowsHost(): Boolean =
     System.getProperty("os.name").contains("Windows", ignoreCase = true)

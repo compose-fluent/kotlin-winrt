@@ -17,6 +17,10 @@ class BuildWinRTApplicationHostTaskTest {
         assertTrue(source.contains("if (1) {"))
         assertFalse(source.contains("if (true) {"))
         assertFalse(source.contains("if (false) {"))
+        assertTrue(source.contains("kotlin_winrt_handle_pending_exception"))
+        assertTrue(source.contains("if (application_host == NULL)"))
+        assertTrue(source.contains("goto cleanup;"))
+        assertTrue(source.contains("kotlin_winrt_close_application_host(env, application_host)"))
     }
 
     @Test

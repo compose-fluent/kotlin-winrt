@@ -315,7 +315,6 @@ abstract class WinRTApplicationOptions @Inject constructor(
     /** Windows App SDK deployment mode; independent from packaged/unpackaged identity. */
     val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment> =
         objects.property(WinRTWindowsAppSdkDeployment::class.java)
-            .convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
 
     internal fun inheritFrom(defaults: WinRTApplicationOptions) {
         packageType.convention(defaults.packageType)
@@ -379,6 +378,11 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     fun selfContained() {
         windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.SelfContained)
+    }
+
+    /** Explicitly builds a pure WinRT application without Windows App SDK deployment files. */
+    fun noWindowsAppSdk() {
+        windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.None)
     }
 
     fun bundledJvmRuntime(image: Any? = null) {
@@ -498,6 +502,7 @@ enum class WinRTJvmRuntimeMode {
 }
 
 enum class WinRTWindowsAppSdkDeployment {
+    None,
     FrameworkDependent,
     SelfContained,
 }

@@ -17,6 +17,25 @@ import java.util.zip.ZipFile
 
 class NamedWinRTApplicationsTest {
     @Test
+    fun named_application_preserves_explicit_default_deployment_mode() {
+        val project = ProjectBuilder.builder().withName("named-deployment").build()
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+
+        extension.application { application ->
+            application.selfContained()
+            application.variants.create("desktop") {
+                it.variant("jvm:main")
+                it.mainClass.set("sample.Main")
+            }
+        }
+
+        val host = project.tasks.getByName("buildWinRTApplicationHostDesktop") as BuildWinRTApplicationHostTask
+        assertEquals(WinRTWindowsAppSdkDeployment.SelfContained.name, host.windowsAppSdkDeployment.get())
+    }
+
+    @Test
     fun named_applications_inherit_defaults_and_bind_their_own_run_tasks() {
         val project = ProjectBuilder.builder().withName("named-apps").build()
         project.pluginManager.apply("java")
@@ -216,8 +235,15 @@ class NamedWinRTApplicationsTest {
         // KGP compilation/link/packaging ownership from WinUI deployment and projection loading.
         writeGradleFile(root.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkBootstrap.kt"), """
             package io.github.composefluent.winrt.runtime
+            enum class WinRTApplicationPackageIdentity { Packaged, Unpackaged }
+            enum class WinRTWindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
+            data class WinRTApplicationHostConfiguration(
+                val packageIdentity: WinRTApplicationPackageIdentity,
+                val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            )
             object WinRTWindowsAppSdkBootstrap {
-                fun initializeApplicationHost(unpackaged: Boolean): AutoCloseable {
+                fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable {
+                    val unpackaged = configuration.packageIdentity == WinRTApplicationPackageIdentity.Unpackaged
                     println("bootstrap=${'$'}unpackaged")
                     return AutoCloseable { }
                 }

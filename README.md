@@ -277,7 +277,7 @@ When a source set contains AppX resources, the plugin generates a KotlinPoet `Ap
 
 Kotlin Multiplatform applications expose one task graph for each JVM main compilation and every declared MinGW executable build variant. For example, a `winuiJvm` main compilation plus the default MinGW executables creates `packageWinRTApplicationWinuiJvmMain`, `packageWinRTApplicationMingwX64MainDebugExecutable`, and `packageWinRTApplicationMingwX64MainReleaseExecutable`. The same suffix is used by staging, run, verification, signing, and installation tasks, and every variant has isolated layouts, package files, reports, and verification directories. The application DSL has no global target or build-type selectors; choose the artifact by invoking its concrete task.
 
-JVM distribution and Windows App SDK deployment are independent settings. The default `bundledJvmRuntime()` creates or copies a runtime image beside the host; `externalJvmRuntime("C:/path/to/jdk")` requires that JVM on the target machine. `frameworkDependent()` keeps restored Windows App SDK framework packages as manifest dependencies, while `selfContained()` stages the supported `runtimes-framework` payload in the application layout. These settings do not change `packageType`.
+JVM distribution and Windows App SDK deployment are independent settings. The default `bundledJvmRuntime()` creates or copies a runtime image beside the host; `externalJvmRuntime("C:/path/to/jdk")` requires that JVM on the target machine. When a Windows App SDK package is present, deployment defaults to `frameworkDependent()`; applications without that dependency default to `noWindowsAppSdk()`. Use `frameworkDependent()` to keep restored Windows App SDK framework packages as manifest dependencies, or `selfContained()` to stage the supported `runtimes-framework` payload in the application layout. These settings do not change `packageType`.
 
 NuGet source configuration follows NuGet's normal directory hierarchy. `winRT { nugetConfig("path/to/NuGet.Config") }` selects an explicit config, while `nugetConfigDirectory` can select the restore base directory. The plugin still generates `winapp.yaml`; users do not maintain that file or a second global cache. In offline mode, restore only reuses a verified lock/cache and fails clearly when a package or lock entry is missing.
 
@@ -438,16 +438,36 @@ class DemoApp : Application() {
 }
 ```
 
-Do not wrap `Application.start` in `RuntimeScope.initializeSingleThreaded()`. XAML application startup owns its WinRT module lifetime. `RuntimeScope` remains the normal scope for non-XAML WinRT API calls.
+`RuntimeScope` is the explicit apartment scope for ordinary WinRT calls. It owns one successful
+`CoInitializeEx` on the creating thread, and its `close()` must run on that same thread:
 
-If you use a custom launcher or a Gradle `JavaExec` task instead of `runWinRTApplicationHost`, create the same application host scope before `Application.start`:
+```kotlin
+RuntimeScope.initializeMultithreaded().use {
+    // Ordinary WinRT calls.
+}
+```
+
+The generated `runWinRTApplicationHost<Target><Compilation>` tasks already create the application
+host and its UI apartment before entering your main function. Keep `Application.start` as the
+normal XAML entry point and do not create another `RuntimeScope` around it.
+
+If you use a custom launcher or a Gradle `JavaExec` task instead, create the same host explicitly
+with package identity and Windows App SDK deployment as separate inputs:
 
 ```kotlin
 import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.WinRTApplicationHostConfiguration
+import io.github.composefluent.winrt.runtime.WinRTApplicationPackageIdentity
+import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkDeploymentMode
 import microsoft.ui.xaml.Application
 
 fun main() {
-    WinRTWindowsAppSdkBootstrap.initializeApplicationHost().use {
+    WinRTWindowsAppSdkBootstrap.initializeApplicationHost(
+        WinRTApplicationHostConfiguration(
+            packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
+            windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
+        ),
+    ).use {
         Application.start {
             DemoApp()
         }
@@ -455,7 +475,13 @@ fun main() {
 }
 ```
 
-For packaged custom launchers, pass `unpackaged = false`; the generated hosts do this from `winRT { application { packageType } }`.
+Use `Packaged` for a packaged identity, `SelfContained` when the staged payload owns the Windows
+App SDK runtime, `FrameworkDependent` when the installed framework supplies it, `None` for a
+pure WinRT application, or `ExternallyInitialized` when another host already prepared the SDK.
+An application host is unique per process, and both the host and deployment owner must be closed
+on their creating thread. Closing the host performs application cleanup before releasing its
+apartment and deployment owner; ordinary `RuntimeScope.close()` does not perform that process
+cleanup.
 
 When `winRT { application {} }` is enabled, the plugin wires unpackaged `JavaExec` tasks to the staged payload and passes `-Dkotlin.winrt.runtimeAssetsRoot=...`. Custom native launchers or external packaging tools still need to place the staged `kotlin-winrt-runtime-assets` directory beside the launcher or pass `-Dkotlin.winrt.runtimeAssetsRoot=<path>`.
 
