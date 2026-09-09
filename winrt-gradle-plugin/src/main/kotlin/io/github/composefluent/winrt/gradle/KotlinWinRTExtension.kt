@@ -221,6 +221,13 @@ abstract class NamedWinRTApplicationOptions @Inject constructor(
     project: Project,
 ) : WinRTApplicationOptions(objects, project), Named {
     override fun getName(): String = applicationName
+
+    /** Exact Kotlin variant bound to this named application's task graph. */
+    val variantName: Property<String> = objects.property(String::class.java)
+
+    fun variant(name: String) {
+        variantName.set(name)
+    }
 }
 
 abstract class WinRTApplicationOptions @Inject constructor(
@@ -229,27 +236,6 @@ abstract class WinRTApplicationOptions @Inject constructor(
 ) {
     internal val runTaskRegistrations = mutableListOf<WinRTApplicationRunTaskRegistration>()
     private var runTaskRegistrar: ((WinRTApplicationRunTaskRegistration) -> Unit)? = null
-
-    /**
-     * Optional application-variant filters. The default application creates a task graph for
-     * every matching target variant; an explicitly named application must still match exactly one.
-     */
-    val variantName: Property<String> = objects.property(String::class.java).convention("")
-    val targetName: Property<String> = objects.property(String::class.java).convention("")
-    val compilationName: Property<String> = objects.property(String::class.java).convention("main")
-    val targetKind: Property<WinRTApplicationTargetKind> =
-        objects.property(WinRTApplicationTargetKind::class.java).convention(WinRTApplicationTargetKind.Auto)
-    /** An empty Native build type includes every executable build variant. */
-    val nativeBuildType: Property<String> = objects.property(String::class.java).convention("")
-    val nativeExecutableName: Property<String> = objects.property(String::class.java).convention("")
-
-    // Short aliases keep the DSL readable while the long names remain unambiguous in reports.
-    val target: Property<String>
-        get() = targetName
-    val compilation: Property<String>
-        get() = compilationName
-    val executable: Property<String>
-        get() = nativeExecutableName
 
     val packageMode: Property<WinRTApplicationPackageMode> =
         objects.property(WinRTApplicationPackageMode::class.java).convention(WinRTApplicationPackageMode.Unpackaged)
@@ -319,12 +305,6 @@ abstract class WinRTApplicationOptions @Inject constructor(
             .convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
 
     internal fun inheritFrom(defaults: WinRTApplicationOptions) {
-        variantName.convention(defaults.variantName)
-        targetName.convention(defaults.targetName)
-        compilationName.convention(defaults.compilationName)
-        targetKind.convention(defaults.targetKind)
-        nativeBuildType.convention(defaults.nativeBuildType)
-        nativeExecutableName.convention(defaults.nativeExecutableName)
         packageMode.convention(defaults.packageMode)
         mainClass.convention(defaults.mainClass)
         console.convention(defaults.console)
@@ -392,38 +372,6 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     fun selfContained() {
         windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.SelfContained)
-    }
-
-    fun variant(name: String) {
-        variantName.set(name)
-    }
-
-    fun target(name: String) {
-        targetName.set(name)
-    }
-
-    fun target(name: String, compilation: String) {
-        targetName.set(name)
-        compilationName.set(compilation)
-    }
-
-    fun jvmTarget(name: String, compilation: String = "main") {
-        targetName.set(name)
-        compilationName.set(compilation)
-        targetKind.set(WinRTApplicationTargetKind.Jvm)
-    }
-
-    fun mingwX64Target(
-        name: String,
-        compilation: String = "main",
-        buildType: String = "release",
-        executable: String? = null,
-    ) {
-        targetName.set(name)
-        compilationName.set(compilation)
-        targetKind.set(WinRTApplicationTargetKind.MingwX64)
-        nativeBuildType.set(buildType)
-        executable?.let(nativeExecutableName::set)
     }
 
     fun bundledJvmRuntime(image: Any? = null) {
@@ -535,12 +483,6 @@ internal fun defaultAppxResourcePackageName(projectName: String): String {
         .trim('_')
         .ifBlank { "module" }
     return "io.github.composefluent.winrt.appx.$module"
-}
-
-enum class WinRTApplicationTargetKind {
-    Auto,
-    Jvm,
-    MingwX64,
 }
 
 enum class WinRTJvmRuntimeMode {

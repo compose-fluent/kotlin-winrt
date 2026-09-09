@@ -25,8 +25,12 @@ class NamedWinRTApplicationsTest {
         extension.application { application ->
             application.mainClass.set("sample.First")
             application.packagePayloadFiles.from(project.file("shared.txt"))
-            application.variants.create("first") { it.runTask("runFirst") }
+            application.variants.create("first") {
+                it.variant("jvm:main")
+                it.runTask("runFirst")
+            }
             application.variants.create("second") {
+                it.variant("jvm:main")
                 it.mainClass.set("sample.Second")
                 it.packagePayloadFiles.setFrom(project.file("second.txt"))
                 it.runTask("runSecond")
@@ -92,7 +96,7 @@ class NamedWinRTApplicationsTest {
                 mainClass = 'sample.FirstKt'
                 generateProjectPri = false
                 enableDefaultProjectPriResources = false
-                variants { create('first') { jvmTarget('firstJvm', 'primary') } }
+                variants { create('first') { variantName = 'firstJvm:primary' } }
             } }
             kotlin {
                 jvm('firstJvm') {
@@ -106,7 +110,7 @@ class NamedWinRTApplicationsTest {
                 }
             }
             winRT { application { variants { create('second') {
-                jvmTarget('firstJvm', 'preview')
+                variantName = 'firstJvm:preview'
                 mainClass = 'sample.SecondKt'
             } } } }
             ['First', 'Second'].each { suffix ->
@@ -166,13 +170,13 @@ class NamedWinRTApplicationsTest {
                 makeAppxExecutable = '${makeAppx.toString().replace("\\", "/")}'
                 variants {
                     create('first') {
-                        mingwX64Target('desktop', 'main', 'release', 'firstReleaseExecutable')
+                        variantName = 'desktop:main:firstReleaseExecutable'
                         mainClass = 'sample.first'
                         appxManifest('payload/first.xml')
                         packagePayload('payload/Logo.png', 'Assets/Logo.png')
                     }
                     create('second') {
-                        mingwX64Target('desktop', 'main', 'release', 'secondReleaseExecutable')
+                        variantName = 'desktop:main:secondReleaseExecutable'
                         mainClass = 'sample.second'
                         appxManifest('payload/second.xml')
                         packagePayload('payload/Logo.png', 'Assets/Logo.png')
@@ -239,7 +243,10 @@ class NamedWinRTApplicationsTest {
                 mainClass = 'sample.Main'
                 jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinRTJvmRuntimeMode.External
                 externalJvmHome = file('${System.getProperty("java.home").replace("\\", "/")}')
-                variants { create('first'); create('second') }
+                variants {
+                    create('first') { variantName = 'jvm:main' }
+                    create('second') { variantName = 'jvm:main' }
+                }
             } }
         """.trimIndent())
         val first = runner(root, "prepareWinRTJvmRuntimeImage", "--configuration-cache").build()
@@ -256,8 +263,10 @@ class NamedWinRTApplicationsTest {
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
             winRT { application {
                 mainClass = 'sample.main'
-                mingwX64Target('desktop', 'main', 'release', 'firstReleaseExecutable')
-                variants { create('first'); create('second') }
+                variants {
+                    create('first') { variantName = 'desktop:main:firstReleaseExecutable' }
+                    create('second') { variantName = 'desktop:main:firstReleaseExecutable' }
+                }
             } }
         """.trimIndent())
         val result = runner(root, "help").buildAndFail()
@@ -272,8 +281,9 @@ class NamedWinRTApplicationsTest {
             winRT { application {
                 mainClass = 'sample.Main'
                 variants {
-                    create('first')
+                    create('first') { variantName = 'jvm:main' }
                     create('second') {
+                        variantName = 'jvm:main'
                         packageOutputFile = layout.buildDirectory.file('kotlin-winrt/packages/output-conflict-first--jvm_main.msix')
                     }
                 }

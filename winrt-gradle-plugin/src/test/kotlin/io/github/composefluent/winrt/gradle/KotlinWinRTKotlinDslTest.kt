@@ -59,8 +59,6 @@ class KotlinWinRTKotlinDslTest {
 
                 application {
                     mainClass = configuredMainClass
-                    targetName = providers.provider { "jvm" }
-                    nativeBuildType = "release"
                     console = true
                     generateProjectPri = false
                     projectPriDefaultQualifiers = listOf("scale-100")
@@ -68,6 +66,9 @@ class KotlinWinRTKotlinDslTest {
                     verifyPackage = false
                     jvmRuntimeModules = listOf("java.base")
                     jvmToolchainVersion = 21
+                    variants.create("desktop") {
+                        variantName = providers.provider { "jvm:main" }
+                    }
                 }
             }
 
@@ -87,8 +88,7 @@ class KotlinWinRTKotlinDslTest {
                     check(!nugetPackage.generateProjection)
 
                     check(configured.application.mainClass.get() == "sample.Main")
-                    check(configured.application.targetName.get() == "jvm")
-                    check(configured.application.nativeBuildType.get() == "release")
+                    check(configured.application.variants.getByName("desktop").variantName.get() == "jvm:main")
                     check(configured.application.console.get())
                     check(!configured.application.generateProjectPri.get())
                     check(configured.application.projectPriDefaultQualifiers.get() == listOf("scale-100"))

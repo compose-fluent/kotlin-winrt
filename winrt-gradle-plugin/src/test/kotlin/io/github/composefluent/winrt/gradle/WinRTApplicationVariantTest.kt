@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.testfixtures.ProjectBuilder
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -10,13 +11,16 @@ import java.nio.file.Files
 
 class WinRTApplicationVariantTest {
     @Test
-    fun default_application_expands_every_matching_target_variant_into_tasks() {
+    fun default_application_expands_every_target_and_executable_build_type_into_tasks() {
         val project = ProjectBuilder.builder().withName("variant-test").build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
             jvm("customJvm")
             mingwX64("customMingw") {
-                binaries { executable() }
+                binaries {
+                    executable()
+                    executable("tools")
+                }
             }
         }
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
@@ -26,6 +30,8 @@ class WinRTApplicationVariantTest {
             "packageWinRTApplicationCustomJvmMain",
             "packageWinRTApplicationCustomMingwMainDebugExecutable",
             "packageWinRTApplicationCustomMingwMainReleaseExecutable",
+            "packageWinRTApplicationCustomMingwMainToolsDebugExecutable",
+            "packageWinRTApplicationCustomMingwMainToolsReleaseExecutable",
         )
         concreteTasks.forEach { taskName ->
             assertTrue("Missing $taskName", taskName in project.tasks.names)
@@ -39,11 +45,11 @@ class WinRTApplicationVariantTest {
         val variants = concreteTasks.map { taskName ->
             project.tasks.named(taskName, PackageWinRTApplicationTask::class.java).get().applicationVariant.get()
         }
-        assertEquals(3, variants.toSet().size)
+        assertEquals(concreteTasks.size, variants.toSet().size)
         val outputs = concreteTasks.map { taskName ->
             project.tasks.named(taskName, PackageWinRTApplicationTask::class.java).get().outputFile.get().asFile
         }
-        assertEquals(3, outputs.toSet().size)
+        assertEquals(concreteTasks.size, outputs.toSet().size)
         assertNotEquals(outputs.first(), outputs.last())
     }
 
@@ -74,7 +80,7 @@ class WinRTApplicationVariantTest {
     }
 
     @Test
-    fun selects_a_custom_jvm_target_without_linking_native_candidates() {
+    fun concrete_native_package_tasks_link_only_their_own_executable() {
         val project = ProjectBuilder.builder().withName("variant-test").build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
@@ -84,36 +90,42 @@ class WinRTApplicationVariantTest {
             }
         }
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val options = project.extensions.getByType(WinRTExtension::class.java).application
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
-            application.jvmTarget("customJvm")
+            application.mainClass.set("sample.MainKt")
         }
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
 
-        val variant = resolveWinRTApplicationVariant(project, options)
-
-        assertEquals(WinRTApplicationVariantKind.Jvm, variant.kind)
-        assertEquals("customJvm", variant.targetName)
-        assertEquals("customJvm:main", variant.id)
-        assertTrue("packageWinRTApplicationCustomJvmMain" in project.tasks.names)
-        assertTrue(project.tasks.names.none { taskName -> taskName.startsWith("packageWinRTApplicationCustomMingw") })
+        listOf("Debug", "Release").forEach { buildType ->
+            val suffix = "CustomMingwMain${buildType}Executable"
+            val packageTask = project.tasks.getByName("packageWinRTApplication$suffix")
+            val stageTask = project.tasks.getByName("stageWinRTApplicationPackage$suffix")
+            assertTrue(stageTask in packageTask.taskDependencies.getDependencies(packageTask))
+            val dependencies = stageTask.taskDependencies.getDependencies(stageTask).map { it.name }.toSet()
+            assertEquals(setOf("link${buildType}ExecutableCustomMingw"), dependencies.filter { it.startsWith("link") }.toSet())
+            assertFalse(dependencies.any { it.startsWith("buildWinRTApplicationHost") })
+        }
+        val jvmStage = project.tasks.getByName("stageWinRTApplicationPackageCustomJvmMain")
+        assertFalse(jvmStage.taskDependencies.getDependencies(jvmStage).any { it.name.startsWith("link") })
     }
 
     @Test
-    fun does_not_assume_a_native_build_type_without_explicit_selection() {
+    fun named_application_requires_an_exact_variant_id_even_with_one_candidate() {
         val project = ProjectBuilder.builder().withName("variant-test").build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64("customMingw") {
-            binaries { executable() }
-        }
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("customJvm")
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val options = project.extensions.getByType(WinRTExtension::class.java).application.variants.create("desktop")
 
-        val options = project.extensions.getByType(WinRTExtension::class.java).application
+        val missing = runCatching { resolveWinRTApplicationVariant(project, options) }.exceptionOrNull()
+        assertTrue(missing?.message.orEmpty().contains("requires an explicit variantName"))
 
-        assertEquals("", options.nativeBuildType.get())
-        assertEquals(
-            setOf("DEBUG", "RELEASE"),
-            matchingWinRTApplicationVariants(project, options).mapNotNull { it.buildType }.toSet(),
-        )
+        options.variant("customJvm")
+        val partial = runCatching { resolveWinRTApplicationVariant(project, options) }.exceptionOrNull()
+        assertTrue(partial?.message.orEmpty().contains("No unique Kotlin/WinRT variant"))
+        assertTrue(partial?.message.orEmpty().contains("customJvm:main"))
+
+        options.variant("customJvm:main")
+        assertEquals("customJvm:main", resolveWinRTApplicationVariant(project, options).id)
     }
 
     @Test
@@ -137,9 +149,7 @@ class WinRTApplicationVariantTest {
         jvmMain.dependsOn(first)
         jvmMain.dependsOn(second)
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
-            application.jvmTarget("customJvm")
-        }
+        project.extensions.getByType(WinRTExtension::class.java).application { }
 
         val stageTask = project.tasks
             .named("stageWinRTApplicationPackageCustomJvmMain", StageWinRTApplicationPackageTask::class.java)

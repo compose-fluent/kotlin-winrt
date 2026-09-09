@@ -36,7 +36,10 @@ class AppxResourcePublicationTest {
                     unselectedMain { dependencies { implementation project(':other') } }
                 }
             }
-            winRT { application { mainClass = 'sample.Main'; jvmTarget('desktop', 'preview') } }
+            winRT { application {
+                mainClass = 'sample.Main'
+                variants { create('desktopPreview') { variantName = 'desktop:preview' } }
+            } }
             tasks.register('inspectResources') {
                 def archives = tasks.named('stageWinRTApplicationPackageDesktopPreview').get().appxResourceArchives
                 inputs.files(archives)
@@ -90,7 +93,7 @@ class AppxResourcePublicationTest {
                 jvm('appDesktop')
                 sourceSets.appDesktopMain.dependencies { implementation project(':producer') }
             }
-            winRT { application { mainClass = 'sample.Main'; jvmTarget('appDesktop', 'main') } }
+            winRT { application { mainClass = 'sample.Main' } }
             tasks.register('inspectResources') {
                 def archives = tasks.named('stageWinRTApplicationPackageAppDesktopMain').get().appxResourceArchives
                 inputs.files(archives)
@@ -127,7 +130,10 @@ class AppxResourcePublicationTest {
                 jvm('desktop') { compilations.create('preview') }
                 sourceSets.desktopPreview.dependencies { implementation project(':producer') }
             }
-            winRT { application { mainClass = 'sample.Main'; jvmTarget('desktop', 'preview') } }
+            winRT { application {
+                mainClass = 'sample.Main'
+                variants { create('desktopPreview') { variantName = 'desktop:preview' } }
+            } }
             tasks.register('inspectResources') {
                 doLast { tasks.named('stageWinRTApplicationPackageDesktopPreview').get().appxResourceArchives.files }
             }

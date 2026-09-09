@@ -2984,7 +2984,6 @@ class KotlinWinRTPluginTest {
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
-            application.jvmTarget("winuiJvm")
         }
 
         val hostTask = project.tasks.named("buildWinRTApplicationHostWinuiJvmMain", BuildWinRTApplicationHostTask::class.java).get()
@@ -3021,8 +3020,9 @@ class KotlinWinRTPluginTest {
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
-            application.jvmTarget("customJvm", "smoke")
+            application.variants.create("customJvmSmoke") { it.variant("customJvm:smoke") }
         }
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
 
         val archiveTaskName = smokeCompilation.archiveTaskName ?: "customJvmSmokeJar"
         val hostTask = project.tasks.named("buildWinRTApplicationHostCustomJvmSmoke", BuildWinRTApplicationHostTask::class.java).get()
@@ -3606,7 +3606,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun packaged_application_uses_the_explicitly_selected_mingw_layout_when_native_and_jvm_targets_exist() {
+    fun packaged_application_task_uses_its_mingw_layout_when_native_and_jvm_targets_exist() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
@@ -3622,7 +3622,6 @@ class KotlinWinRTPluginTest {
         project.extensions.getByType(WinRTExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
             application.packaged()
-            application.mingwX64Target("winuiMingw")
         }
 
         val packageTask = project.tasks
@@ -9263,9 +9262,6 @@ class KotlinWinRTPluginTest {
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
-                    targetName.set "mingwX64"
-                    nativeBuildType.set "release"
-                    nativeExecutableName.set "releaseExecutable"
                 }
                 windowsSdk(null, false, true)
                 type "Windows.Foundation.IStringable"
@@ -9795,9 +9791,6 @@ class KotlinWinRTPluginTest {
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
-                    targetName.set "mingwX64"
-                    nativeBuildType.set "release"
-                    nativeExecutableName.set "releaseExecutable"
                 }
             }
             """.trimIndent(),
@@ -9902,37 +9895,26 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            def selectedBinary = providers.gradleProperty("selectedBinary").orElse("firstExecutable").get()
             def mingwTarget = kotlin.targets.getByName("customMingw")
-            def selectedExecutable = mingwTarget.binaries
-                .findAll { it.name.toLowerCase().contains(selectedBinary.toLowerCase()) }
-                .find { it.buildType.name.equalsIgnoreCase("release") }
-            if (selectedExecutable == null) {
-                throw new GradleException(
-                    "No release executable matches ${'$'}{selectedBinary}: ${'$'}{mingwTarget.binaries*.name}",
-                )
-            }
 
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
-                    mingwX64Target("customMingw", "main", "release", selectedExecutable.name)
                 }
             }
 
-            tasks.register("verifyEntryOwnership") {
-                dependsOn("generateWinRTMingwApplicationEntry")
-                doLast {
-                    def normalized = { file -> file.toPath().toAbsolutePath().normalize().toString().replace("\\\\", "/") }
-                    def sourceDirs = mingwTarget.compilations.getByName("main").defaultSourceSet.kotlin.srcDirs.collect(normalized)
-                    def buildRoot = layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-                    def selectedEntry = buildRoot.resolve(
-                        "generated/kotlin-winrt-application-entry/customMingw_main_${'$'}{selectedExecutable.name}/src/kotlin",
-                    ).toString().replace("\\\\", "/")
-                    if (!sourceDirs.contains(selectedEntry)) {
-                        throw new GradleException(
-                            "Selected ${'$'}{selectedExecutable.name} compilation does not own ${'$'}{selectedEntry}: ${'$'}{sourceDirs}",
-                        )
+            mingwTarget.binaries.withType(org.jetbrains.kotlin.gradle.plugin.mpp.Executable).all { executable ->
+                def suffix = "CustomMingwMain" + executable.name.capitalize()
+                tasks.register("verifyEntryOwnership" + suffix) {
+                    dependsOn("generateWinRTMingwApplicationEntry" + suffix)
+                    doLast {
+                        def normalized = { file -> file.toPath().toAbsolutePath().normalize().toString().replace("\\\\", "/") }
+                        def sourceDirs = executable.compilation.defaultSourceSet.kotlin.srcDirs.collect(normalized)
+                        def buildRoot = layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+                        def entry = buildRoot.resolve(
+                            "generated/kotlin-winrt-application-entry/customMingw_main_${'$'}{executable.name}/src/kotlin",
+                        ).toString().replace("\\\\", "/")
+                        assert sourceDirs.contains(entry) : sourceDirs
                     }
                 }
             }
@@ -9942,11 +9924,18 @@ class KotlinWinRTPluginTest {
         val firstResult = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("verifyEntryOwnership", "--stacktrace")
+            .withArguments("verifyEntryOwnershipCustomMingwMainFirstExecutableReleaseExecutable", "--stacktrace")
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, firstResult.task(":verifyEntryOwnership")?.outcome)
+        assertEquals(
+            TaskOutcome.SUCCESS,
+            firstResult.task(":verifyEntryOwnershipCustomMingwMainFirstExecutableReleaseExecutable")?.outcome,
+        )
+        assertEquals(
+            listOf(":generateWinRTMingwApplicationEntryCustomMingwMainFirstExecutableReleaseExecutable"),
+            firstResult.tasks.filter { it.path.startsWith(":generateWinRTMingwApplicationEntry") }.map { it.path },
+        )
         val firstEntry = projectDir.resolve(
             "build/generated/kotlin-winrt-application-entry/customMingw_main_firstExecutableReleaseExecutable/src/kotlin/" +
                 "io/github/composefluent/winrt/application/" +
@@ -9957,11 +9946,18 @@ class KotlinWinRTPluginTest {
         val secondResult = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("verifyEntryOwnership", "-PselectedBinary=secondExecutable", "--rerun-tasks", "--stacktrace")
+            .withArguments("verifyEntryOwnershipCustomMingwMainSecondExecutableReleaseExecutable", "--stacktrace")
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, secondResult.task(":verifyEntryOwnership")?.outcome)
+        assertEquals(
+            TaskOutcome.SUCCESS,
+            secondResult.task(":verifyEntryOwnershipCustomMingwMainSecondExecutableReleaseExecutable")?.outcome,
+        )
+        assertEquals(
+            listOf(":generateWinRTMingwApplicationEntryCustomMingwMainSecondExecutableReleaseExecutable"),
+            secondResult.tasks.filter { it.path.startsWith(":generateWinRTMingwApplicationEntry") }.map { it.path },
+        )
         assertTrue(
             Files.isRegularFile(
                 projectDir.resolve(
@@ -9971,7 +9967,7 @@ class KotlinWinRTPluginTest {
                 ),
             ),
         )
-        assertTrue("Switching variants must not clean the first entry output", Files.isRegularFile(firstEntry))
+        assertTrue("Building another variant must not clean the first entry output", Files.isRegularFile(firstEntry))
     }
 
     @Test
@@ -13096,7 +13092,6 @@ class KotlinWinRTPluginTest {
             winRT {
                 application {
                     mainClass.set "sample.MainKt"
-                    nativeBuildType.set "release"
                     generateProjectPri.set false
                 }
             }

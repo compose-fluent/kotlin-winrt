@@ -119,7 +119,7 @@ fun Project.registerWinRTApplicationHostRunTask(
     require(application.variants.isEmpty()) {
         "Named applications require application.variants.named(\"name\") { runTask(...) } to select a host."
     }
-    val jvmVariants = matchingWinRTApplicationVariants(this, application)
+    val jvmVariants = defaultWinRTApplicationVariants(this)
         .filter { variant -> variant.kind == WinRTApplicationVariantKind.Jvm }
     require(jvmVariants.size == 1) {
         "A custom JVM run task requires exactly one matching JVM target variant. " +
@@ -504,7 +504,7 @@ private fun configureDefaultWinRTApplicationVariants(
     val taskSuffixOwners = linkedMapOf<String, String>()
 
     fun registerVariant(variant: WinRTApplicationVariant, eagerJvmSelection: Boolean) {
-        if (!variant.matches(application)) return
+        if (!variant.isDefaultApplicationVariant) return
         val variantKey = variant.id.lowercase(Locale.ROOT)
         if (variantKey in registeredVariants) return
         val suffix = winRTApplicationTaskSuffix(variant)
@@ -532,7 +532,7 @@ private fun configureDefaultWinRTApplicationVariants(
     }
 
     fun registerDiscoveredVariants() {
-        findMatchingWinRTApplicationVariants(project, application).forEach { variant ->
+        defaultWinRTApplicationVariants(project).forEach { variant ->
             registerVariant(variant, eagerJvmSelection = true)
         }
     }
@@ -561,7 +561,7 @@ private fun configureDefaultWinRTApplicationVariants(
     }
     application.bindRunTasks { registration ->
         registerDiscoveredVariants()
-        val jvmVariants = findMatchingWinRTApplicationVariants(project, application)
+        val jvmVariants = defaultWinRTApplicationVariants(project)
             .filter { variant -> variant.kind == WinRTApplicationVariantKind.Jvm }
         require(jvmVariants.size == 1) {
             "A custom JVM run task requires exactly one matching JVM target variant. " +
@@ -574,14 +574,9 @@ private fun configureDefaultWinRTApplicationVariants(
         project.registerWinRTApplicationHostRunTask(registration.name, hostTask, registration.action)
     }
     project.afterEvaluate {
-        val matchingVariants = matchingWinRTApplicationVariants(project, application)
-        val missingVariants = matchingVariants.filter { variant ->
-            variant.id.lowercase(Locale.ROOT) !in registeredVariants
-        }
-        require(missingVariants.isEmpty()) {
-            "Kotlin/WinRT application selectors changed after target task registration. " +
-                "Configure target selectors in the first winRT.application block. Missing variants: " +
-                missingVariants.joinToString { it.id }
+        require(registeredVariants.isNotEmpty()) {
+            "No supported Kotlin/WinRT application variant was found. " +
+                "Declare a Kotlin/JVM target or a mingwX64 executable before configuring winRT.application."
         }
         validateWinRTApplicationPackageOutputs(
             project,

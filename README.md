@@ -255,7 +255,7 @@ Application package files live under the owning Kotlin source set at `src/<targe
 
 When a source set contains AppX resources, the plugin generates a KotlinPoet `AppxRes` accessor in that module's configured resource package. For example, `AppxRes.Assets.Square44x44LogoPng.path` is the package-root-relative path and `.uri` lazily creates the corresponding `ms-appx:///` `Windows.Foundation.Uri`; the accessor follows the shared Windows source-set visibility of the module.
 
-Kotlin Multiplatform applications do not select one Windows target implicitly. For example, a `winuiJvm` main compilation plus the default MinGW executables creates `packageWinRTApplicationWinuiJvmMain`, `packageWinRTApplicationMingwX64MainDebugExecutable`, and `packageWinRTApplicationMingwX64MainReleaseExecutable`. The same suffix is used by staging, run, verification, signing, and installation tasks, and every variant has isolated layouts, package files, reports, and verification directories. `targetName`, `targetKind`, `compilationName`, `nativeBuildType`, `nativeExecutableName`, and `variantName` remain optional filters when a build intentionally wants only part of that task matrix.
+Kotlin Multiplatform applications expose one task graph for each JVM main compilation and every declared MinGW executable build variant. For example, a `winuiJvm` main compilation plus the default MinGW executables creates `packageWinRTApplicationWinuiJvmMain`, `packageWinRTApplicationMingwX64MainDebugExecutable`, and `packageWinRTApplicationMingwX64MainReleaseExecutable`. The same suffix is used by staging, run, verification, signing, and installation tasks, and every variant has isolated layouts, package files, reports, and verification directories. The application DSL has no global target or build-type selectors; choose the artifact by invoking its concrete task.
 
 JVM distribution and Windows App SDK deployment are independent settings. The default `bundledJvmRuntime()` creates or copies a runtime image beside the host; `externalJvmRuntime("C:/path/to/jdk")` requires that JVM on the target machine. `frameworkDependent()` keeps restored Windows App SDK framework packages as manifest dependencies, while `selfContained()` stages the supported `runtimes-framework` payload in the application layout. These settings do not change `packaged()` versus `unpackaged()`.
 
@@ -312,7 +312,7 @@ Run a MinGW build through its Kotlin/Native executable task, for example:
 ./gradlew runReleaseExecutableMingwX64
 ```
 
-Use a concrete packaging task when building one artifact, or the unsuffixed aggregate to build all matching artifacts. For example, `packageWinRTApplicationMingwX64MainReleaseExecutable` builds only the release Native package, while `packageWinRTApplication` builds the JVM, debug Native, and release Native packages. To narrow the generated matrix itself, configure an optional filter such as `targetName = "winuiJvm"` or `nativeBuildType = "release"`.
+Use a concrete packaging task when building one artifact, or the unsuffixed aggregate to build all artifacts. For example, `packageWinRTApplicationMingwX64MainReleaseExecutable` builds only the release Native package, while `packageWinRTApplication` builds the JVM, debug Native, and release Native packages. Targets and executable build types are declared once in the Kotlin DSL; packaging follows that model without separate selection properties.
 
 To build several applications in one invocation, declare named variants in the first `application` block. Settings outside `variants` are shared defaults; each application can override them:
 
@@ -323,22 +323,22 @@ winRT {
         packaged()
         variants {
             create("desktop") {
-                jvmTarget("winuiJvm")
+                variantName = "winuiJvm:main"
                 runTask("runDesktopDiagnostics") {
                     jvmArgs.add("-Xmx256m")
                 }
             }
             create("native") {
-                mingwX64Target("mingwX64", "main", "release", "releaseExecutable")
+                variantName = "mingwX64:main:releaseExecutable"
             }
         }
     }
 }
 ```
 
-This registers `packageWinRTApplicationDesktop` and `packageWinRTApplicationNative`, with matching suffixed staging, verification, signing, and installation tasks. The unsuffixed tasks aggregate all named applications. Layouts, identity files, PRI work directories, generated Native entries, packages, and verification reports are isolated per application. Native applications must select different executable binaries, even when they share a compilation. Explicit package output paths must also be distinct.
+This registers `packageWinRTApplicationDesktop` and `packageWinRTApplicationNative`, with matching suffixed staging, verification, signing, and installation tasks. Each named application requires a full `variantName` (`target:compilation` for JVM, `target:compilation:executable` for Native); this binding is only available inside named variants. The unsuffixed tasks aggregate all named applications. Layouts, identity files, PRI work directories, generated Native entries, packages, and verification reports are isolated per application. Native applications must bind different executable binaries, even when they share a compilation. Explicit package output paths must also be distinct.
 
-For multiple JVM applications, use the same JVM target with different main classes or compilations (`jvmTarget("winuiJvm", "preview")`). Kotlin Gradle Plugin 2.3.20 rejects compiling multiple JVM targets in one project.
+For multiple JVM applications, use the same JVM target with different main classes or explicitly bind a custom compilation (`variantName = "winuiJvm:preview"`). Kotlin Gradle Plugin 2.3.20 rejects compiling multiple JVM targets in one project.
 
 Use `runWinRTApplicationHostDesktop` for a JVM variant's direct host launch and the selected Kotlin/Native executable's run task for Native. These direct launches do not activate a packaged application's identity; packaged startup verification must install and activate the package. Named applications do not inject all their layouts into the global Java `processResources`, `JavaExec`, or distribution tasks. Register additional JVM runs inside the corresponding variant with `runTask`.
 
