@@ -22,7 +22,7 @@ class RunWinRTApplicationPackageTaskTest {
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
         project.extensions.getByType(WinRTExtension::class.java).application {
             it.mainClass.set("sample.MainKt")
-            it.packaged()
+            it.packageType.set(WindowsPackageType.Packaged)
         }
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
             jvm("desktop")
@@ -49,7 +49,7 @@ class RunWinRTApplicationPackageTaskTest {
             assertEquals(developmentStage.outputDirectory.get(), run.packageDirectory.get())
             assertTrue(developmentStage.developmentIdentity.get())
             assertTrue(producer in developmentStage.taskDependencies.getDependencies(developmentStage).map { it.name })
-            assertEquals(WinRTApplicationPackageMode.Packaged.name, run.packageMode.get())
+            assertEquals(WindowsPackageType.Packaged.name, run.packageType.get())
             assertFalse(run.selfContained.get())
             val deployment = run.deploymentDirectory.get().asFile.toPath()
             assertFalse(deployment.startsWith(run.packageDirectory.get().asFile.toPath()))
@@ -103,12 +103,12 @@ class RunWinRTApplicationPackageTaskTest {
         assumeTrue(isWindowsHost())
         val project = ProjectBuilder.builder().build()
         val task = project.tasks.register("runFixture", RunWinRTApplicationPackageTask::class.java).get()
-        task.packageMode.set(WinRTApplicationPackageMode.Unpackaged.name)
+        task.packageType.set(WindowsPackageType.None.name)
         val modeError = runCatching { task.run() }.exceptionOrNull()
         assertTrue(modeError is GradleException)
-        assertTrue(modeError?.message.orEmpty().contains("packaged()"))
+        assertTrue(modeError?.message.orEmpty().contains("packageType"))
 
-        task.packageMode.set(WinRTApplicationPackageMode.Packaged.name)
+        task.packageType.set(WindowsPackageType.Packaged.name)
         task.selfContained.set(true)
         val deploymentModeError = runCatching { task.run() }.exceptionOrNull()
         assertTrue(deploymentModeError is GradleException)

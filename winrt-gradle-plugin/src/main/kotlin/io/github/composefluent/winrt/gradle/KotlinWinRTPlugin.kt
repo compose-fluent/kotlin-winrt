@@ -695,7 +695,7 @@ private fun configureWinRTApplicationTasks(
     if (project.configurations.findByName(identityConfigurationName) != null) {
         return
     }
-    val unpackagedMode = options.packageMode.map { it == WinRTApplicationPackageMode.Unpackaged }
+    val unpackagedMode = options.packageType.map { it == WindowsPackageType.None }
     val identityDependencies = project.configurations.create(
         identityConfigurationName,
         Action { configuration ->
@@ -974,7 +974,7 @@ private fun configureWinRTApplicationTasks(
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 val outputFile = options.packageOutputFile.orNull?.asFile
                 options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.SelfContained ||
-                    options.packageMode.get() != WinRTApplicationPackageMode.Packaged ||
+                    options.packageType.get() != WindowsPackageType.Packaged ||
                     !options.generatePackage.get() ||
                     options.makeAppxExecutable.get().isNotBlank() ||
                     outputFile?.name?.endsWith(".appx", ignoreCase = true) == true
@@ -1106,7 +1106,7 @@ private fun configureWinRTApplicationTasks(
             )
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
-            task.packageMode.set(project.provider { options.packageMode.get().name })
+            task.packageType.set(project.provider { options.packageType.get().name })
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1233,7 +1233,7 @@ private fun configureWinRTApplicationTasks(
                 val packageOutput = options.packageOutputFile.orNull?.asFile
                 val usesLegacyMakeAppx = options.makeAppxExecutable.get().isNotBlank() ||
                     packageOutput?.name?.endsWith(".appx", ignoreCase = true) == true
-                options.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
+                options.packageType.get() == WindowsPackageType.Packaged &&
                     options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent &&
                     usesLegacyMakeAppx
             })
@@ -1281,7 +1281,7 @@ private fun configureWinRTApplicationTasks(
                         .dir("kotlin-winrt/application-host/${selectedVariant.get().id.toSafeDirectoryName()}/src")
                 },
             )
-            task.packageMode.set(project.provider { options.packageMode.get().name })
+            task.packageType.set(project.provider { options.packageType.get().name })
             task.console.set(options.console)
             task.executableBaseName.set(project.name)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
@@ -1364,7 +1364,7 @@ private fun configureWinRTApplicationTasks(
                     selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/AppX" },
                 ),
             )
-            task.packageMode.set(options.packageMode.map { it.name })
+            task.packageType.set(options.packageType.map { it.name })
             task.selfContained.set(options.windowsAppSdkDeployment.map {
                 it == WinRTWindowsAppSdkDeployment.SelfContained
             })
@@ -1404,7 +1404,7 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.generatePackage.set(options.generatePackage)
-            task.packageMode.set(options.packageMode.map { it.name })
+            task.packageType.set(options.packageType.map { it.name })
             task.selfContained.set(options.windowsAppSdkDeployment.map {
                 it == WinRTWindowsAppSdkDeployment.SelfContained
             })
@@ -1429,7 +1429,7 @@ private fun configureWinRTApplicationTasks(
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
-            task.onlyIf { task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name }
+            task.onlyIf { task.packageType.get() == WindowsPackageType.Packaged.name }
             task.dependsOn(stageApplicationPackageTask)
             task.dependsOn(restoreWinAppDependenciesTask)
         },
@@ -1458,7 +1458,7 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.verifyPackage.set(options.verifyPackage)
-            task.packageMode.set(options.packageMode.map { it.name })
+            task.packageType.set(options.packageType.map { it.name })
             task.generatePackage.set(options.generatePackage)
             task.makeAppxExecutable.set(options.makeAppxExecutable)
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
@@ -1482,7 +1482,7 @@ private fun configureWinRTApplicationTasks(
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.onlyIf {
-                task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
+                task.packageType.get() == WindowsPackageType.Packaged.name &&
                     task.verifyPackage.get() &&
                     task.generatePackage.get()
             }
@@ -1506,7 +1506,7 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.signPackage.set(options.signPackage)
-            task.packageMode.set(options.packageMode.map { it.name })
+            task.packageType.set(options.packageType.map { it.name })
             task.signToolExecutable.set(options.signToolExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
@@ -1517,7 +1517,7 @@ private fun configureWinRTApplicationTasks(
             task.signingTimestampUrl.set(options.signingTimestampUrl)
             task.signingHashAlgorithm.set(options.signingHashAlgorithm)
             task.onlyIf {
-                task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
+                task.packageType.get() == WindowsPackageType.Packaged.name &&
                     task.signPackage.get()
             }
             task.dependsOn(packageApplicationTask)
@@ -1545,14 +1545,14 @@ private fun configureWinRTApplicationTasks(
             task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension) })
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.installPackage.set(options.installPackage)
-            task.packageMode.set(options.packageMode.map { it.name })
+            task.packageType.set(options.packageType.map { it.name })
             task.includeRestoredFrameworkDependencies.set(project.provider {
                 options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
             })
             task.powerShellExecutable.set(options.installPowerShellExecutable)
             task.forceApplicationShutdown.set(options.installForceApplicationShutdown)
             task.onlyIf {
-                task.packageMode.get() == WinRTApplicationPackageMode.Packaged.name &&
+                task.packageType.get() == WindowsPackageType.Packaged.name &&
                     task.installPackage.get()
             }
             task.dependsOn(packageApplicationTask)
@@ -2014,7 +2014,7 @@ private fun configureWinRTGeneration(
                 extension.application.variants.toList()
             }
             applications.any { application ->
-                application.packageMode.get() == WinRTApplicationPackageMode.Packaged &&
+                application.packageType.get() == WindowsPackageType.Packaged &&
                     application.generatePackage.get() && application.makeAppxExecutable.get().isBlank()
             }
         }

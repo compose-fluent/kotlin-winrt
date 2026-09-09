@@ -241,8 +241,13 @@ abstract class WinRTApplicationOptions @Inject constructor(
     internal val runTaskRegistrations = mutableListOf<WinRTApplicationRunTaskRegistration>()
     private var runTaskRegistrar: ((WinRTApplicationRunTaskRegistration) -> Unit)? = null
 
-    val packageMode: Property<WinRTApplicationPackageMode> =
-        objects.property(WinRTApplicationPackageMode::class.java).convention(WinRTApplicationPackageMode.Unpackaged)
+    /**
+     * Controls whether the application has an AppX/MSIX package identity. Applications are
+     * packaged by default; use [WindowsPackageType.None] for a loose unpackaged layout.
+     */
+    val packageType: Property<WindowsPackageType> =
+        objects.property(WindowsPackageType::class.java).convention(WindowsPackageType.Packaged)
+
     /** Minimum supported Windows version. Required when staging an AppX manifest. */
     val minWindowsVersion: Property<String> = objects.property(String::class.java)
     /** Defaults to the module's selected Windows SDK; may describe a separately tested OS version. */
@@ -313,7 +318,7 @@ abstract class WinRTApplicationOptions @Inject constructor(
             .convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
 
     internal fun inheritFrom(defaults: WinRTApplicationOptions) {
-        packageMode.convention(defaults.packageMode)
+        packageType.convention(defaults.packageType)
         minWindowsVersion.convention(defaults.minWindowsVersion)
         maxVersionTested.convention(defaults.maxVersionTested)
         mainClass.convention(defaults.mainClass)
@@ -366,14 +371,6 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
-    }
-
-    fun packaged() {
-        packageMode.set(WinRTApplicationPackageMode.Packaged)
-    }
-
-    fun unpackaged() {
-        packageMode.set(WinRTApplicationPackageMode.Unpackaged)
     }
 
     fun frameworkDependent() {
@@ -510,9 +507,9 @@ internal data class WinRTApplicationRunTaskRegistration(
     val action: Action<in RunWinRTApplicationHostTask>,
 )
 
-enum class WinRTApplicationPackageMode {
-    Unpackaged,
+enum class WindowsPackageType {
     Packaged,
+    None,
 }
 
 abstract class KotlinWinRTNuGetPackage @Inject constructor(

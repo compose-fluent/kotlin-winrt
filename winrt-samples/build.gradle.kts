@@ -1,3 +1,4 @@
+import io.github.composefluent.winrt.gradle.WindowsPackageType
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -72,9 +73,9 @@ val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.wind
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
     .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRT.samples.nugetGlobalPackagesRoot")
-val sampleApplicationPackageMode = providers.gradleProperty("kotlinWinRT.samples.packageMode")
+val sampleApplicationPackageType = providers.gradleProperty("kotlinWinRT.samples.packageType")
     .map(String::lowercase)
-    .orElse("unpackaged")
+    .orElse("packaged")
 
 kotlin {
     jvmToolchain(25)
@@ -116,12 +117,12 @@ winRT {
     application {
         mainClass = "io.github.composefluent.winrt.samples.MainKt"
         minWindowsVersion = "10.0.19041.0"
-        when (sampleApplicationPackageMode.get()) {
-            "packaged" -> packaged()
-            "unpackaged" -> unpackaged()
+        packageType = when (sampleApplicationPackageType.get()) {
+            "packaged" -> WindowsPackageType.Packaged
+            "none" -> WindowsPackageType.None
             else -> error(
-                "kotlinWinRT.samples.packageMode must be 'packaged' or 'unpackaged', " +
-                    "but was '${sampleApplicationPackageMode.get()}'",
+                "kotlinWinRT.samples.packageType must be 'packaged' or 'none', " +
+                    "but was '${sampleApplicationPackageType.get()}'",
             )
         }
     }

@@ -251,7 +251,7 @@ JVM native EXE and authoring DLL hosts automatically discover installed Visual S
 
 WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore and may check or install Windows App SDK runtime packages. That release does not expose a switch that limits `restore` to NuGet download and lockfile generation, and WinApp itself has no `--offline` option. When Gradle runs with `--offline`, the plugin does not invoke `winapp restore`: it reuses the verified `.winapp` lock/cache and fails if the lock, package contents, or restore context is missing or stale. Without Gradle offline, a normal restore may use the configured NuGet sources and CLI behavior. Set `restoreNuGetPackages = false` to retain the legacy NuGet cache/CLI resolution path.
 
-For the default unpackaged application mode, the plugin keeps a loose staged layout for each generated JVM host or `mingwX64` executable. With `application { packaged() }`, it creates one package task graph per matching Kotlin target variant. The unsuffixed `packageWinRTApplication` task aggregates those concrete tasks. A `mingwX64` executable remains its variant's package entry payload; JVM variants package the generated host, runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. Each concrete `verifyWinRTApplicationPackage<TargetVariant>` task unpacks its result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override:
+For the default packaged application mode, the plugin creates one package task graph per matching Kotlin target variant. Set `application { packageType = WindowsPackageType.None }` to keep a loose unpackaged layout for a generated JVM host or `mingwX64` executable. The unsuffixed `packageWinRTApplication` task aggregates those concrete tasks. A `mingwX64` executable remains its variant's package entry payload; JVM variants package the generated host, runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. Each concrete `verifyWinRTApplicationPackage<TargetVariant>` task unpacks its result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override:
 
 Application package files live under the owning Kotlin source set at `src/<targetSourceSet>/appxResources/` (for example `src/winuiMain/appxResources/` or `src/main/appxResources/`). The plugin copies every file below that directory into the staged AppX root using its path relative to `appxResources/`; `AppxManifest.xml` is used automatically when no `application { appxManifest(...) }` is configured and is not copied as a second payload file. Source-set dependencies are merged from the least-specific source set to the selected target, so a target resource can override a shared resource. Explicit `appxManifest(...)` manifests take precedence. Explicit `packagePayload(...)` entries have the highest normal resource priority; same-level conflicts fail instead of being chosen by directory traversal order.
 
@@ -277,14 +277,14 @@ When a source set contains AppX resources, the plugin generates a KotlinPoet `Ap
 
 Kotlin Multiplatform applications expose one task graph for each JVM main compilation and every declared MinGW executable build variant. For example, a `winuiJvm` main compilation plus the default MinGW executables creates `packageWinRTApplicationWinuiJvmMain`, `packageWinRTApplicationMingwX64MainDebugExecutable`, and `packageWinRTApplicationMingwX64MainReleaseExecutable`. The same suffix is used by staging, run, verification, signing, and installation tasks, and every variant has isolated layouts, package files, reports, and verification directories. The application DSL has no global target or build-type selectors; choose the artifact by invoking its concrete task.
 
-JVM distribution and Windows App SDK deployment are independent settings. The default `bundledJvmRuntime()` creates or copies a runtime image beside the host; `externalJvmRuntime("C:/path/to/jdk")` requires that JVM on the target machine. `frameworkDependent()` keeps restored Windows App SDK framework packages as manifest dependencies, while `selfContained()` stages the supported `runtimes-framework` payload in the application layout. These settings do not change `packaged()` versus `unpackaged()`.
+JVM distribution and Windows App SDK deployment are independent settings. The default `bundledJvmRuntime()` creates or copies a runtime image beside the host; `externalJvmRuntime("C:/path/to/jdk")` requires that JVM on the target machine. `frameworkDependent()` keeps restored Windows App SDK framework packages as manifest dependencies, while `selfContained()` stages the supported `runtimes-framework` payload in the application layout. These settings do not change `packageType`.
 
 NuGet source configuration follows NuGet's normal directory hierarchy. `winRT { nugetConfig("path/to/NuGet.Config") }` selects an explicit config, while `nugetConfigDirectory` can select the restore base directory. The plugin still generates `winapp.yaml`; users do not maintain that file or a second global cache. In offline mode, restore only reuses a verified lock/cache and fails clearly when a package or lock entry is missing.
 
 ```kotlin
 winRT {
     application {
-        packaged()
+        packageType = WindowsPackageType.Packaged
         minWindowsVersion = "10.0.19041.0"
         makeAppxExecutable = "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/makeappx.exe"
     }
@@ -342,7 +342,7 @@ To build several applications in one invocation, declare named variants in the f
 winRT {
     application {
         mainClass = "sample.MainKt"
-        packaged()
+        packageType = WindowsPackageType.Packaged
         variants {
             create("desktop") {
                 variantName = "winuiJvm:main"
@@ -364,7 +364,7 @@ For multiple JVM applications, use the same JVM target with different main class
 
 Use `runWinRTApplicationHostDesktop` for a JVM variant's direct host launch and the selected Kotlin/Native executable's run task for Native. These direct launches do not activate a packaged application's identity; use the packaged development run tasks below or install and activate an MSIX for packaged startup verification. Named applications do not inject all their layouts into the global Java `processResources`, `JavaExec`, or distribution tasks. Register additional JVM runs inside the corresponding variant with `runTask`.
 
-For packaged development, configure `application { packaged() }` and invoke the concrete package run task:
+For packaged development, use the default `packageType = WindowsPackageType.Packaged` and invoke the concrete package run task:
 
 ```powershell
 .\gradlew.bat runWinRTApplicationPackageWinuiJvmMain
@@ -455,7 +455,7 @@ fun main() {
 }
 ```
 
-For packaged custom launchers, pass `unpackaged = false`; the generated hosts do this from `winRT { application { packageMode } }`.
+For packaged custom launchers, pass `unpackaged = false`; the generated hosts do this from `winRT { application { packageType } }`.
 
 When `winRT { application {} }` is enabled, the plugin wires unpackaged `JavaExec` tasks to the staged payload and passes `-Dkotlin.winrt.runtimeAssetsRoot=...`. Custom native launchers or external packaging tools still need to place the staged `kotlin-winrt-runtime-assets` directory beside the launcher or pass `-Dkotlin.winrt.runtimeAssetsRoot=<path>`.
 

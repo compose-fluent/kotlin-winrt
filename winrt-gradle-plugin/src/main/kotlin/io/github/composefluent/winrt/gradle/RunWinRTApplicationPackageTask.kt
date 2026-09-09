@@ -29,7 +29,7 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
     abstract val deploymentDirectory: DirectoryProperty
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     @get:Input
     abstract val selfContained: Property<Boolean>
@@ -72,7 +72,7 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
     abstract val offline: Property<Boolean>
 
     init {
-        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
         selfContained.convention(false)
         applicationVariant.convention("default")
         args.convention("")
@@ -91,8 +91,11 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
         if (!isWindowsHost()) {
             throw GradleException("Packaged application development runs require Windows.")
         }
-        if (packageMode.get() != WinRTApplicationPackageMode.Packaged.name) {
-            throw GradleException("Configure winRT.application { packaged() } before running a packaged application.")
+        if (packageType.get() != WindowsPackageType.Packaged.name) {
+            throw GradleException(
+                "Configure winRT.application { packageType = WindowsPackageType.Packaged } " +
+                    "before running a packaged application.",
+            )
         }
         // WinApp 0.6 folder-mode run always adds framework dependencies; it has no --self-contained option.
         if (selfContained.get()) {

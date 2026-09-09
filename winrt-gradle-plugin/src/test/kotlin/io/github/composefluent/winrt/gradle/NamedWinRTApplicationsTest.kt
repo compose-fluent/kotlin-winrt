@@ -189,7 +189,7 @@ class NamedWinRTApplicationsTest {
         val root = fixture("native-variants")
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
             winRT { application {
-                packaged()
+                packageType = io.github.composefluent.winrt.gradle.WindowsPackageType.Packaged
                 minWindowsVersion = '10.0.17763.0'
                 maxVersionTested = '10.0.26100.0'
                 console = true

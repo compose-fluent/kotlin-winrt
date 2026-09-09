@@ -28,7 +28,7 @@ abstract class GenerateWinRTMingwApplicationEntryTask : DefaultTask() {
     abstract val mainClass: Property<String>
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     @get:Input
     abstract val entryPointFunctionName: Property<String>
@@ -39,6 +39,7 @@ abstract class GenerateWinRTMingwApplicationEntryTask : DefaultTask() {
 
     init {
         entryPointFunctionName.convention("main")
+        packageType.convention(WindowsPackageType.Packaged.name)
     }
 
     @TaskAction
@@ -54,7 +55,7 @@ abstract class GenerateWinRTMingwApplicationEntryTask : DefaultTask() {
             return
         }
         val mainFunction = nativeMainFunctionName(mainClassValue)
-        val unpackaged = packageMode.get() == WinRTApplicationPackageMode.Unpackaged.name
+        val unpackaged = packageType.get() == WindowsPackageType.None.name
         mingwApplicationEntrySource(mainFunction, unpackaged, entryPointFunctionName.get()).writeTo(outputRoot)
     }
 }

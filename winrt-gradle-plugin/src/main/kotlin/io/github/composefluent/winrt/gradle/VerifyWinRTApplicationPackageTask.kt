@@ -42,7 +42,7 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
     abstract val verifyPackage: Property<Boolean>
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     @get:Input
     abstract val generatePackage: Property<Boolean>
@@ -84,7 +84,7 @@ abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
     init {
         verifyPackage.convention(true)
         applicationVariant.convention("default")
-        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
         generatePackage.convention(true)
         makeAppxExecutable.convention("")
         winAppCliExecutable.convention("winapp")

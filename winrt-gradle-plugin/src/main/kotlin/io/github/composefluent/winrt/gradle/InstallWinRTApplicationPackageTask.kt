@@ -43,7 +43,7 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
     abstract val installPackage: Property<Boolean>
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     /** Whether restored Windows App SDK framework packages are already embedded in the app. */
     @get:Input
@@ -57,7 +57,7 @@ abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         installPackage.convention(false)
-        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
         includeRestoredFrameworkDependencies.convention(true)
         powerShellExecutable.convention("powershell.exe")
         forceApplicationShutdown.convention(true)

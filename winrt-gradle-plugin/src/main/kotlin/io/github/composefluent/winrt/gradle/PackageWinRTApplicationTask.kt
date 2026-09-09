@@ -35,7 +35,7 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
     abstract val generatePackage: Property<Boolean>
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     /** Whether WinApp CLI should package Windows App SDK runtime payloads self-contained. */
     @get:Input
@@ -75,7 +75,7 @@ abstract class PackageWinRTApplicationTask : DefaultTask() {
     init {
         generatePackage.convention(true)
         applicationVariant.convention("default")
-        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
         selfContained.convention(false)
         makeAppxExecutable.convention("")
         winAppCliExecutable.convention("winapp")

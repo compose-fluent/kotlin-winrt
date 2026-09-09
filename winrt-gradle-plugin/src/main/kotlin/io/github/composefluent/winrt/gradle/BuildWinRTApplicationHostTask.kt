@@ -36,7 +36,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     }
 
     init {
-        packageMode.convention(WinRTApplicationPackageMode.Unpackaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
         applicationVariant.convention("jvm:main")
         jvmRuntimeMode.convention(WinRTJvmRuntimeMode.Bundled.name)
         externalJvmHome.convention("")
@@ -71,7 +71,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     abstract val runtimeAssetsDirectory: ConfigurableFileCollection
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     @get:Input
     abstract val console: Property<Boolean>
@@ -148,14 +148,14 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name && isWindowsHost()) {
             stageRuntimeImage(outputRoot)
         }
-        Files.writeString(source, applicationHostSource(mainClassValue, packageMode.get(), runtimeMode, externalHome))
+        Files.writeString(source, applicationHostSource(mainClassValue, packageType.get(), runtimeMode, externalHome))
         stageRuntimeClasspath(outputRoot)
         stageRuntimeAssets(outputRoot)
         WinRTApplicationManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
             winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
-            redirectDlls = packageMode.get() != WinRTApplicationPackageMode.Packaged.name,
+            redirectDlls = packageType.get() != WindowsPackageType.Packaged.name,
         )
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             logger.warn("Kotlin/WinRT application host native EXE build is Windows-only; generated source without compiling EXE.")
@@ -355,12 +355,12 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
 
 internal fun applicationHostSource(
     mainClass: String,
-    packageMode: String,
+    packageType: String,
     runtimeMode: String,
     externalJvmHome: String,
 ): String {
     val mainClassPath = mainClass.replace('.', '/')
-    val unpackaged = packageMode == WinRTApplicationPackageMode.Unpackaged.name
+    val unpackaged = packageType == WindowsPackageType.None.name
     val externalJvmHomePath = externalJvmHome
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")

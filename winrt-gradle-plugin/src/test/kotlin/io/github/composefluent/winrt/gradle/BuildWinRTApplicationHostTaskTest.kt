@@ -9,7 +9,7 @@ class BuildWinRTApplicationHostTaskTest {
     fun generated_host_uses_c_integer_condition_for_bundled_runtime() {
         val source = applicationHostSource(
             mainClass = "sample.MainKt",
-            packageMode = WinRTApplicationPackageMode.Packaged.name,
+            packageType = WindowsPackageType.Packaged.name,
             runtimeMode = WinRTJvmRuntimeMode.Bundled.name,
             externalJvmHome = "",
         )
@@ -23,7 +23,7 @@ class BuildWinRTApplicationHostTaskTest {
     fun generated_host_uses_c_integer_condition_for_external_runtime() {
         val source = applicationHostSource(
             mainClass = "sample.MainKt",
-            packageMode = WinRTApplicationPackageMode.Unpackaged.name,
+            packageType = WindowsPackageType.None.name,
             runtimeMode = WinRTJvmRuntimeMode.External.name,
             externalJvmHome = "C:\\Program Files\\Java\\jdk",
         )

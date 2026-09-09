@@ -59,6 +59,7 @@ class KotlinWinRTKotlinDslTest {
 
                 application {
                     mainClass = configuredMainClass
+                    packageType = io.github.composefluent.winrt.gradle.WindowsPackageType.None
                     console = true
                     generateProjectPri = false
                     projectPriDefaultQualifiers = listOf("scale-100")
@@ -88,6 +89,7 @@ class KotlinWinRTKotlinDslTest {
                     check(!nugetPackage.generateProjection)
 
                     check(configured.application.mainClass.get() == "sample.Main")
+                    check(configured.application.packageType.get() == io.github.composefluent.winrt.gradle.WindowsPackageType.None)
                     check(configured.application.variants.getByName("desktop").variantName.get() == "jvm:main")
                     check(configured.application.console.get())
                     check(!configured.application.generateProjectPri.get())

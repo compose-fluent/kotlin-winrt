@@ -29,7 +29,7 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
     abstract val signPackage: Property<Boolean>
 
     @get:Input
-    abstract val packageMode: Property<String>
+    abstract val packageType: Property<String>
 
     @get:Input
     abstract val signToolExecutable: Property<String>
@@ -63,7 +63,7 @@ abstract class SignWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         signPackage.convention(false)
-        packageMode.convention(WinRTApplicationPackageMode.Packaged.name)
+        packageType.convention(WindowsPackageType.Packaged.name)
         signToolExecutable.convention("")
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
