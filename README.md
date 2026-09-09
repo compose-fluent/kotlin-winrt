@@ -340,7 +340,22 @@ This registers `packageWinRTApplicationDesktop` and `packageWinRTApplicationNati
 
 For multiple JVM applications, use the same JVM target with different main classes or explicitly bind a custom compilation (`variantName = "winuiJvm:preview"`). Kotlin Gradle Plugin 2.3.20 rejects compiling multiple JVM targets in one project.
 
-Use `runWinRTApplicationHostDesktop` for a JVM variant's direct host launch and the selected Kotlin/Native executable's run task for Native. These direct launches do not activate a packaged application's identity; packaged startup verification must install and activate the package. Named applications do not inject all their layouts into the global Java `processResources`, `JavaExec`, or distribution tasks. Register additional JVM runs inside the corresponding variant with `runTask`.
+Use `runWinRTApplicationHostDesktop` for a JVM variant's direct host launch and the selected Kotlin/Native executable's run task for Native. These direct launches do not activate a packaged application's identity; use the packaged development run tasks below or install and activate an MSIX for packaged startup verification. Named applications do not inject all their layouts into the global Java `processResources`, `JavaExec`, or distribution tasks. Register additional JVM runs inside the corresponding variant with `runTask`.
+
+For packaged development, configure `application { packaged() }` and invoke the concrete package run task:
+
+```powershell
+.\gradlew.bat runWinRTApplicationPackageWinuiJvmMain
+.\gradlew.bat runWinRTApplicationPackageMingwX64MainDebugExecutable
+```
+
+These tasks build their own variant, stage a development manifest with `.dev` appended to `Identity.Name`, regenerate the application PRI with that development identity, and pass the layout to `winapp run` in folder mode. The source manifest and normal package outputs remain unchanged. WinApp creates a separate development AppX layout, registers it, and launches through package identity, so `ms-appx:///` resources use the registered layout. This does not require creating or signing an MSIX, setting `installPackage`, or invoking MSBuild. Windows Developer Mode must be enabled. WinApp preserves development application data across redeployments by default. Each variant has an isolated deployment directory; variants with the same source manifest identity replace the same `.dev` registration, so packaged run tasks have no unsuffixed aggregate.
+
+The `.dev` identity coexists with the installed production application and has separate application data. The source identity must leave four characters available within Windows' 50-character identity-name limit. If the input already has `resources.pri`, development staging requires `generateProjectPri` and its resource inputs to rebuild it; the plugin will not reuse a PRI indexed under the production identity. WinApp still refuses to overwrite any non-development package already occupying the `.dev` identity. The plugin never removes installed production packages automatically.
+
+Packaged development runs currently require `frameworkDependent()` (the default). WinApp CLI 0.6 has no self-contained folder-run option and would add Windows App SDK framework dependencies, so `selfContained()` is rejected rather than silently changing the deployment model. Install and activate the generated MSIX to verify self-contained deployment.
+
+The task waits for the application to exit and streams WinApp output to Gradle. Use `--detach` to return after launch, `--args='--flag value'` to pass an application command line, `--debug-output` to capture native debug output and exceptions, or `--no-launch` to register without launching. Native debug capture occupies the process's debugger connection; leave it off when using another native debugger. Named applications expose the same task with their name, for example `runWinRTApplicationPackageDesktop`.
 
 Run the JVM application through the generated host:
 

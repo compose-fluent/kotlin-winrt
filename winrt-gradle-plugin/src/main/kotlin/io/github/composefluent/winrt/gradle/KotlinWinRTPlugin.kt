@@ -1119,8 +1119,8 @@ private fun configureWinRTApplicationTasks(
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
         task.dependsOn(mingwApplicationEntryTask)
     })
-    val stageApplicationPackageTask = project.tasks.register(
-        taskName("stageWinRTApplicationPackage"),
+    fun registerApplicationPackageStage(baseName: String) = project.tasks.register(
+        taskName(baseName),
         StageWinRTApplicationPackageTask::class.java,
         Action<StageWinRTApplicationPackageTask> { task ->
             task.group = "kotlin-winrt"
@@ -1245,6 +1245,7 @@ private fun configureWinRTApplicationTasks(
             task.dependsOn(stageRuntimeAssetsTask)
         },
     )
+    val stageApplicationPackageTask = registerApplicationPackageStage("stageWinRTApplicationPackage")
     configureMingwApplicationEntry(
         project,
         mingwApplicationEntryTask,
@@ -1316,6 +1317,68 @@ private fun configureWinRTApplicationTasks(
             )
         }
     }
+    val applicationPackageDirectory = project.provider {
+        if (selectedVariant.get().kind == WinRTApplicationVariantKind.MingwX64) {
+            stageApplicationPackageTask.get().outputDirectory.get()
+        } else {
+            applicationHostTask.get().outputDirectory.get()
+        }
+    }
+    val developmentPackageTask = registerApplicationPackageStage("stageWinRTApplicationDevelopmentPackage")
+    developmentPackageTask.configure { task ->
+        task.description = "Stages an isolated development identity and regenerates its application PRI."
+        task.runtimeAssetsDirectory.set(applicationPackageDirectory)
+        task.developmentIdentity.set(true)
+        task.outputDirectory.set(project.layout.buildDirectory.dir(
+            selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/input" },
+        ))
+        task.resourceResolutionReport.set(project.layout.buildDirectory.file(
+            selectedVariant.map { "kotlin-winrt/reports/${it.id.toSafeDirectoryName()}/development-appx-resource-resolution.json" },
+        ))
+        task.dependsOn(project.provider {
+            if (selectedVariant.get().kind == WinRTApplicationVariantKind.Jvm) {
+                applicationHostTask
+            } else {
+                stageApplicationPackageTask
+            }
+        })
+    }
+    // Launch tasks are concrete-only: variants can share a package identity and cannot be
+    // registered concurrently by an aggregate run task.
+    val runApplicationPackageTask = project.tasks.register(
+        taskName("runWinRTApplicationPackage"),
+        RunWinRTApplicationPackageTask::class.java,
+        Action<RunWinRTApplicationPackageTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Registers and runs this variant as a packaged development application through WinApp CLI."
+            task.packageDirectory.set(developmentPackageTask.flatMap { it.outputDirectory })
+            task.deploymentDirectory.set(
+                project.layout.buildDirectory.dir(
+                    selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/AppX" },
+                ),
+            )
+            task.packageMode.set(options.packageMode.map { it.name })
+            task.selfContained.set(options.windowsAppSdkDeployment.map {
+                it == WinRTWindowsAppSdkDeployment.SelfContained
+            })
+            task.applicationVariant.set(selectedVariant.map { it.id })
+            task.winAppCliExecutable.set(extension.winAppCliExecutable)
+            task.winAppCliCacheDirectory.set(
+                project.layout.dir(project.provider {
+                    project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
+                }),
+            )
+            task.winAppWorkspace.set(
+                project.layout.dir(
+                    restoreWinAppDependenciesTask.flatMap { it.configurationFile }
+                        .map { it.asFile.parentFile },
+                ),
+            )
+            task.offline.set(project.provider { project.gradle.startParameter.isOffline })
+            task.dependsOn(restoreWinAppDependenciesTask)
+            task.dependsOn(developmentPackageTask)
+        },
+    )
     val packageApplicationTask = project.tasks.register(
         taskName("packageWinRTApplication"),
         PackageWinRTApplicationTask::class.java,
@@ -1323,15 +1386,7 @@ private fun configureWinRTApplicationTasks(
             task.group = "kotlin-winrt"
             task.description = "Packages the staged WinRT application payload into an appx/msix package."
             task.applicationVariant.set(selectedVariant.map { it.id })
-            task.packageDirectory.set(
-                project.provider {
-                    if (selectedVariant.get().kind == WinRTApplicationVariantKind.MingwX64) {
-                        stageApplicationPackageTask.get().outputDirectory.get()
-                    } else {
-                        applicationHostTask.get().outputDirectory.get()
-                    }
-                },
-            )
+            task.packageDirectory.set(applicationPackageDirectory)
             task.outputFile.set(
                 options.packageOutputFile.orElse(
                     project.layout.buildDirectory.file(
@@ -1585,6 +1640,7 @@ private fun configureWinRTApplicationTasks(
     project.extensions.extraProperties["kotlinWinRTApplicationPackageTask" + taskSuffix] = stageApplicationPackageTask.name
     project.extensions.extraProperties["kotlinWinRTApplicationHostTask" + taskSuffix] = applicationHostTask.name
     project.extensions.extraProperties["kotlinWinRTRunApplicationHostTask" + taskSuffix] = runApplicationHostTask.name
+    project.extensions.extraProperties["kotlinWinRTRunApplicationPackageTask" + taskSuffix] = runApplicationPackageTask.name
     project.extensions.extraProperties["kotlinWinRTPackageTask" + taskSuffix] = packageApplicationTask.name
     project.extensions.extraProperties["kotlinWinRTVerifyPackageTask" + taskSuffix] = verifyPackageTask.name
     project.extensions.extraProperties["kotlinWinRTSignPackageTask" + taskSuffix] = signPackageTask.name

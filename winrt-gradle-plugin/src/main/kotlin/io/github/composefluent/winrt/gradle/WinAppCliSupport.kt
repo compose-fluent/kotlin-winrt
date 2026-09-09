@@ -309,15 +309,7 @@ private fun invokeWinAppCli(
     workingDirectory: Path?,
     environment: Map<String, String>,
 ): WinAppCliInvocation {
-    val command = if (
-        System.getProperty("os.name").contains("Windows", ignoreCase = true) &&
-        (executable.endsWith(".cmd", ignoreCase = true) || executable.endsWith(".bat", ignoreCase = true))
-    ) {
-        listOf("cmd.exe", "/d", "/c", executable) + arguments
-    } else {
-        listOf(executable) + arguments
-    }
-    val processBuilder = ProcessBuilder(command)
+    val processBuilder = ProcessBuilder(winAppCliCommandLine(executable, arguments))
         .redirectErrorStream(true)
     if (workingDirectory != null) {
         processBuilder.directory(workingDirectory.toFile())
@@ -337,6 +329,16 @@ private fun invokeWinAppCli(
         output = output,
     )
 }
+
+internal fun winAppCliCommandLine(executable: String, arguments: List<String>): List<String> =
+    if (
+        System.getProperty("os.name").contains("Windows", ignoreCase = true) &&
+        (executable.endsWith(".cmd", ignoreCase = true) || executable.endsWith(".bat", ignoreCase = true))
+    ) {
+        listOf("cmd.exe", "/d", "/c", executable) + arguments
+    } else {
+        listOf(executable) + arguments
+    }
 
 private fun winAppCliHostRuntimeIdentifier(): String {
     val architecture = System.getProperty("os.arch").lowercase()

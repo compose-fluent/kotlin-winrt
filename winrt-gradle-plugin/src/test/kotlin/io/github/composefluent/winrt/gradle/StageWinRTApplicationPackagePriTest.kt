@@ -53,6 +53,18 @@ class StageWinRTApplicationPackagePriTest {
         val appLogo = appxRoot.resolve("Assets/Logo.png")
         Files.createDirectories(appLogo.parent)
         Files.write(appLogo, byteArrayOf(0x50, 0x4e, 0x47))
+        Files.writeString(runtimeRoot.resolve("app.exe"), "test executable")
+        Files.writeString(appxRoot.resolve("AppxManifest.xml"), """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+                     xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" ProcessorArchitecture="x64" />
+              <Properties><DisplayName>App</DisplayName><PublisherDisplayName>Contoso</PublisherDisplayName><Logo>Assets/Logo.png</Logo></Properties>
+              <Applications><Application Id="App" Executable="app.exe" EntryPoint="Windows.FullTrustApplication">
+                <uap:VisualElements DisplayName="App" Description="App" BackgroundColor="transparent"
+                                   Square150x150Logo="Assets/Logo.png" Square44x44Logo="Assets/Logo.png" />
+              </Application></Applications>
+            </Package>
+        """.trimIndent())
         val task = project.tasks.register(
             "stageComponentApplication", StageWinRTApplicationPackageTask::class.java,
         ) { registered ->
@@ -88,5 +100,26 @@ class StageWinRTApplicationPackagePriTest {
         assertEquals("EmbeddedData", mappings.single { it.resourceUri.endsWith("Generic.xbf") }.candidateType)
         assertEquals("Path", mappings.single { it.resourceUri.endsWith("Assets/Logo.png") }.candidateType)
         assertTrue(PriResourceMapValidator.validate(mappings, outputRoot).isEmpty())
+
+        val originalPri = Files.readAllBytes(outputRoot.resolve("resources.pri"))
+        val originalManifest = Files.readString(outputRoot.resolve("AppxManifest.xml"))
+        val developmentRoot = root.resolve("package-dev")
+        task.runtimeAssetsDirectory.set(outputRoot.toFile())
+        task.outputDirectory.set(developmentRoot.toFile())
+        task.developmentIdentity.set(true)
+        task.stage()
+
+        assertArrayEquals(originalPri, Files.readAllBytes(outputRoot.resolve("resources.pri")))
+        assertEquals(originalManifest, Files.readString(outputRoot.resolve("AppxManifest.xml")))
+        assertTrue(Files.readString(developmentRoot.resolve("AppxManifest.xml")).contains("Name=\"Contoso.App.dev\""))
+        val developmentMappings = PriResourceMapValidator.readDump(task.temporaryDir.toPath().resolve("resources.pri.dump.xml"))
+        assertTrue(developmentMappings.single { it.resourceUri.endsWith("Assets/Logo.png") }
+            .resourceUri.startsWith("ms-resource://Contoso.App.dev/", ignoreCase = true))
+        assertEquals("EmbeddedData", developmentMappings.single { it.resourceUri.endsWith("Generic.xbf") }.candidateType)
+        assertTrue(PriResourceMapValidator.validate(developmentMappings, developmentRoot).isEmpty())
+        assertArrayEquals(
+            Files.readAllBytes(outputRoot.resolve("Contoso.Component.pri")),
+            Files.readAllBytes(developmentRoot.resolve("Contoso.Component.pri")),
+        )
     }
 }

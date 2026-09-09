@@ -31,6 +31,41 @@ internal object AppxManifestPackageSupport {
     private const val ACTIVATABLE_CLASS_NAME = "ActivatableClass"
     private const val PACKAGE_DEPENDENCY_CATEGORY = "windows.activatableClass.inProcessServer"
 
+    fun useDevelopmentIdentity(manifest: Path): String {
+        val document = requireNotNull(readXml(manifest)) { "Cannot read development package manifest: $manifest" }
+        val identity = requireNotNull(document.documentElement.childElements("Identity").firstOrNull()) {
+            "Development package manifest must declare Identity: $manifest"
+        }
+        val originalName = identity.getAttribute("Name")
+        val developmentName = "$originalName.dev"
+        require(originalName.isNotBlank() && developmentName.length <= 50) {
+            "Package Identity Name must contain 1 to 46 characters to append the development suffix '.dev': $originalName"
+        }
+        identity.setAttribute("Name", developmentName)
+        // Absolute references into the application's resource map must follow the new identity.
+        fun rewriteResourceReference(value: String): String {
+            val uri = runCatching { java.net.URI(value) }.getOrNull() ?: return value
+            return if (uri.scheme.equals("ms-resource", true) && uri.authority.equals(originalName, true)) {
+                java.net.URI(uri.scheme, developmentName, uri.path, uri.query, uri.fragment).toString()
+            } else value
+        }
+        val elements = document.getElementsByTagName("*")
+        for (index in 0 until elements.length) {
+            val element = elements.item(index)
+            val attributes = element.attributes
+            for (attributeIndex in 0 until attributes.length) {
+                val attribute = attributes.item(attributeIndex)
+                attribute.nodeValue = rewriteResourceReference(attribute.nodeValue)
+            }
+            for (childIndex in 0 until element.childNodes.length) {
+                val child = element.childNodes.item(childIndex)
+                if (child.nodeType == Node.TEXT_NODE) child.nodeValue = rewriteResourceReference(child.nodeValue)
+            }
+        }
+        writeXml(manifest, document)
+        return developmentName
+    }
+
     fun mergeRuntimeDependenciesAndExtensions(
         manifest: Path,
         packageRoot: Path,

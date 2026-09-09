@@ -49,6 +49,17 @@ class NamedWinRTApplicationsTest {
         assertTrue(second.console.get())
         assertNotEquals(first.outputDirectory.get(), second.outputDirectory.get())
         assertNotEquals(first.generatedSourceDirectory.get(), second.generatedSourceDirectory.get())
+        val firstPackagedRun = project.tasks.getByName("runWinRTApplicationPackageFirst") as RunWinRTApplicationPackageTask
+        val secondPackagedRun = project.tasks.getByName("runWinRTApplicationPackageSecond") as RunWinRTApplicationPackageTask
+        val firstDevelopment = project.tasks.getByName("stageWinRTApplicationDevelopmentPackageFirst") as StageWinRTApplicationPackageTask
+        val secondDevelopment = project.tasks.getByName("stageWinRTApplicationDevelopmentPackageSecond") as StageWinRTApplicationPackageTask
+        assertEquals(first.outputDirectory.get(), firstDevelopment.runtimeAssetsDirectory.get())
+        assertEquals(second.outputDirectory.get(), secondDevelopment.runtimeAssetsDirectory.get())
+        assertEquals(firstDevelopment.outputDirectory.get(), firstPackagedRun.packageDirectory.get())
+        assertEquals(secondDevelopment.outputDirectory.get(), secondPackagedRun.packageDirectory.get())
+        assertNotEquals(firstPackagedRun.deploymentDirectory.get(), secondPackagedRun.deploymentDirectory.get())
+        assertTrue(first in firstDevelopment.taskDependencies.getDependencies(firstDevelopment))
+        assertTrue(second in secondDevelopment.taskDependencies.getDependencies(secondDevelopment))
         assertEquals("shared.txt", extension.application.variants.getByName("first").packagePayloadFiles.singleFile.name)
         assertEquals("second.txt", extension.application.variants.getByName("second").packagePayloadFiles.singleFile.name)
         listOf("runFirst" to first, "runSecond" to second, "runSecondAgain" to second).forEach { (name, host) ->

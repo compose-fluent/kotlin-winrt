@@ -46,6 +46,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     abstract val generateProjectPri: Property<Boolean>
 
     @get:Input
+    abstract val developmentIdentity: Property<Boolean>
+
+    @get:Input
     abstract val projectPriIndexName: Property<String>
 
     @get:Input
@@ -191,6 +194,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
 
     init {
         generateProjectPri.convention(true)
+        developmentIdentity.convention(false)
         projectPriIndexName.convention("")
         projectPriFallbackIndexName.convention("Application")
         projectPriInitialPath.convention("")
@@ -241,6 +245,9 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
                 GradleFileOperations.copyFile(decision.source, outputRoot.resolve(decision.target))
             }
         stageAppxManifest(outputRoot)
+        val developmentIndexName = if (developmentIdentity.get()) {
+            AppxManifestPackageSupport.useDevelopmentIdentity(outputRoot.resolve("AppxManifest.xml"))
+        } else null
         val restoredPackageRoots = winAppRestoreLockFiles.files
             .filter(java.io.File::isFile)
             .let { lockFiles ->
@@ -267,7 +274,14 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
         val generatedPri = generateProjectPri(
             outputRoot = outputRoot,
             selectedPayloads = packagePayloadDecisions,
+            indexName = developmentIndexName ?: projectPriIndexName(),
         )
+        if (developmentIndexName != null && generatedPri == null && outputRoot.resolve("resources.pri").isRegularFile()) {
+            throw GradleException(
+                "Packaged development runs must regenerate resources.pri for identity '$developmentIndexName'. " +
+                    "Enable generateProjectPri and provide the application's PRI resource inputs.",
+            )
+        }
         val excludedPayloadTargets = generatedPri?.let { result ->
             removeExcludedLayoutPayloads(outputRoot, packagePayloadDecisions, result)
         }.orEmpty()
@@ -413,6 +427,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
     private fun generateProjectPri(
         outputRoot: Path,
         selectedPayloads: Collection<PackagePayloadDecision>,
+        indexName: String,
     ): GeneratedProjectPriResult? {
         if (!generateProjectPri.get() || !isWindowsHost()) {
             return null
@@ -472,7 +487,7 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             outputRoot,
             projectPriRoot,
             configRoot,
-            projectPriIndexName(),
+            indexName,
             projectPriDefaultQualifierPairs(),
             copiedProjectPriItems,
             logger,
