@@ -281,12 +281,18 @@ internal object XamlSystemProjectionRuntimeHooks {
 
         val definitionCount = definitions.size.toLong()
         if (definitionCount > Long.MAX_VALUE / winUiXamlXmlnsDefinitionSizeBytes) {
-            throw OutOfMemoryError("Unable to allocate XAML XmlnsDefinition entries: size overflow.")
+            throw WinRTOutOfMemoryException(
+                "Unable to allocate XAML XmlnsDefinition entries: size overflow.",
+                KnownHResults.E_OUTOFMEMORY,
+            )
         }
         val arrayBytes = definitionCount * winUiXamlXmlnsDefinitionSizeBytes
         val definitionsPointer = WinRTPlatformApi.coTaskMemAllocRaw(arrayBytes)
         if (PlatformAbi.isNull(definitionsPointer)) {
-            throw OutOfMemoryError("Unable to allocate $arrayBytes bytes for XAML XmlnsDefinition entries.")
+            throw WinRTOutOfMemoryException(
+                "Unable to allocate $arrayBytes bytes for XAML XmlnsDefinition entries.",
+                KnownHResults.E_OUTOFMEMORY,
+            )
         }
 
         val ownedStrings = mutableListOf<RawAddress>()
