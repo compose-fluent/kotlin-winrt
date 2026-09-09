@@ -11,6 +11,73 @@ import org.junit.Test
 
 class AppxManifestPackageSupportTest {
     @Test
+    fun windows_versions_follow_build_settings_and_preserve_framework_dependencies() {
+        // CsWinRT Samples/AuthoringDemo/WinUI3CppApp separates the SDK target from TargetPlatformMinVersion.
+        val manifest = Files.createTempFile("windows-versions-", ".xml")
+        Files.writeString(manifest, """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Dependencies>
+                <TargetDeviceFamily Name="Windows.Universal" />
+                <TargetDeviceFamily Name="Windows.Desktop" />
+                <PackageDependency Name="Framework" MinVersion="2.2.0.0" Publisher="CN=Framework" />
+              </Dependencies>
+            </Package>
+        """.trimIndent())
+        repeat(2) {
+            AppxManifestPackageSupport.applyWindowsVersions(manifest, "10.0.19041.0", "10.0.26100.0")
+        }
+        val document = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(manifest.toFile())
+        val families = document.getElementsByTagNameNS("*", "TargetDeviceFamily")
+        assertEquals(2, families.length)
+        for (index in 0 until families.length) {
+            val family = families.item(index) as org.w3c.dom.Element
+            assertEquals("10.0.19041.0", family.getAttribute("MinVersion"))
+            assertEquals("10.0.26100.0", family.getAttribute("MaxVersionTested"))
+        }
+        val framework = document.getElementsByTagNameNS("*", "PackageDependency").item(0) as org.w3c.dom.Element
+        assertEquals("2.2.0.0", framework.getAttribute("MinVersion"))
+    }
+
+    @Test
+    fun conflicting_manifest_windows_versions_fail_without_rewriting_the_file() {
+        val manifest = Files.createTempFile("windows-version-conflict-", ".xml")
+        for (attribute in listOf("MinVersion", "MaxVersionTested")) {
+            val original = """
+                <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                  <Dependencies><TargetDeviceFamily Name="Windows.Desktop" $attribute="10.0.22000.0" /></Dependencies>
+                </Package>
+            """.trimIndent()
+            Files.writeString(manifest, original)
+            val error = runCatching {
+                AppxManifestPackageSupport.applyWindowsVersions(manifest, "10.0.19041.0", "10.0.26100.0")
+            }.exceptionOrNull()
+            assertTrue(error?.message.orEmpty(), error?.message.orEmpty().contains("Remove $attribute"))
+            assertEquals(original, Files.readString(manifest))
+        }
+    }
+
+    @Test
+    fun windows_versions_require_explicit_minimum_and_valid_ordered_numeric_values() {
+        val manifest = Files.createTempFile("windows-version-validation-", ".xml")
+        val original = "<Package xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\" />"
+        for ((minimum, tested) in listOf(
+            "" to "10.0.26100.0", "10.0.19041.0" to "", "10.0.28000.0" to "10.0.26100.0",
+            "10.0.19041" to "10.0.26100.0", "-1.0.0.0" to "10.0.26100.0",
+            "10.0.19041.0" to "10.0.26100.65536", "10.0.19041.0" to "10.0.26100.999999999999",
+        )) {
+            Files.writeString(manifest, original)
+            val error = runCatching {
+                AppxManifestPackageSupport.applyWindowsVersions(manifest, minimum, tested)
+            }.exceptionOrNull()
+            assertTrue("$minimum / $tested: $error", error is IllegalArgumentException)
+            assertEquals(original, Files.readString(manifest))
+        }
+        AppxManifestPackageSupport.applyWindowsVersions(manifest, "10.0.19041.0", "10.0.28000.0")
+        assertTrue(Files.readString(manifest).contains("Name=\"Windows.Desktop\""))
+    }
+
+    @Test
     fun merges_restored_framework_dependency_and_present_lifted_registrations() {
         val root = Files.createTempDirectory("kotlin-winrt-appx-manifest-")
         val packageRoot = root.resolve("packages/microsoft.windowsappsdk.runtime/2.2.0")

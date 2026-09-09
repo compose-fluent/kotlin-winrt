@@ -68,6 +68,10 @@ class KotlinWinRTPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("winRT", WinRTExtension::class.java, project)
         val windowsSdkRegistryRoots = windowsSdkRegistryRootsProvider(project)
+        extension.windowsSdkVersion.convention(project.providers.of(WindowsSdkVersionValueSource::class.java) {
+            it.parameters.registryRoots.set(windowsSdkRegistryRoots)
+        })
+        extension.application.maxVersionTested.convention(extension.windowsSdkVersion)
         configureWinRTRuntimeDependency(project)
         configureWinRTGeneration(project, extension, windowsSdkRegistryRoots)
         configureWinRTLibraryModel(project, extension, windowsSdkRegistryRoots)
@@ -1142,6 +1146,8 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.generateProjectPri.set(options.generateProjectPri)
+            task.minWindowsVersion.set(options.minWindowsVersion.orElse(""))
+            task.maxVersionTested.set(options.maxVersionTested.orElse(""))
             task.projectPriIndexName.set(project.provider { options.projectPriIndexName.orNull.orEmpty() })
             task.projectPriFallbackIndexName.set(project.name)
             task.projectPriInitialPath.set(options.projectPriInitialPath)
@@ -2020,6 +2026,7 @@ private fun configureWinRTGeneration(
             task.description = "Generates the internal WinApp CLI configuration from Kotlin/WinRT NuGet declarations."
             task.nugetPackages.set(project.provider { allNuGetPackageSpecs(extension) })
             task.includeToolingPackages.set(includeWinAppToolingPackages)
+            task.windowsSdkToolsVersion.set(extension.windowsSdkToolsVersion)
             task.outputFile.set(winAppWorkspace.map { workspace -> workspace.file("winapp.yaml") })
         },
     )

@@ -31,6 +31,50 @@ internal object AppxManifestPackageSupport {
     private const val ACTIVATABLE_CLASS_NAME = "ActivatableClass"
     private const val PACKAGE_DEPENDENCY_CATEGORY = "windows.activatableClass.inProcessServer"
 
+    /** CsWinRT's TargetPlatformMinVersion and SDK target belong to the build, not a second manifest setting. */
+    fun applyWindowsVersions(manifest: Path, minWindowsVersion: String, maxVersionTested: String) {
+        if (!manifest.isRegularFile()) return
+        val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
+        fun requireWindowsVersion(value: String, setting: String): String {
+            require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+").matches(value) &&
+                value.split('.').all { (it.toIntOrNull() ?: -1) in 0..65535 }
+            ) {
+                "Configure winRT.application.$setting with a four-component Windows version (0..65535 per component). " +
+                    "maxVersionTested defaults to windowsSdk(version); no version is taken from AppxManifest.xml. " +
+                    "Received '$value' for $manifest."
+            }
+            return value.split('.').joinToString(".") { it.toInt().toString() }
+        }
+        val minimum = requireWindowsVersion(minWindowsVersion, "minWindowsVersion")
+        val tested = requireWindowsVersion(maxVersionTested, "maxVersionTested")
+        require(compareVersions(minimum, tested) <= 0) {
+            "minWindowsVersion '$minimum' must not exceed maxVersionTested '$tested': $manifest"
+        }
+        val root = document.documentElement
+        val dependencies = root.childElements("Dependencies").firstOrNull { it.namespaceURI == APPX_NAMESPACE }
+            ?: document.createElementNS(APPX_NAMESPACE, "Dependencies").also(root::appendChild)
+        val families = dependencies.childElements("TargetDeviceFamily").filter { it.namespaceURI == APPX_NAMESPACE }
+            .ifEmpty {
+                listOf(document.createElementNS(APPX_NAMESPACE, "TargetDeviceFamily").apply {
+                    setAttribute("Name", "Windows.Desktop")
+                    dependencies.appendChild(this)
+                })
+            }
+        families.forEach { family ->
+            require(family.getAttribute("Name").isNotBlank()) { "TargetDeviceFamily must declare Name: $manifest" }
+            for ((attribute, expected) in listOf("MinVersion" to minimum, "MaxVersionTested" to tested)) {
+                val declared = family.getAttribute(attribute)
+                require(!family.hasAttribute(attribute) || declared == expected) {
+                    "AppX manifest TargetDeviceFamily '${family.getAttribute("Name")}' declares $attribute='$declared', " +
+                        "but Gradle configures '$expected'. Remove $attribute from the source manifest and configure " +
+                        "the version in winRT.application: $manifest"
+                }
+                family.setAttribute(attribute, expected)
+            }
+        }
+        writeXml(manifest, document)
+    }
+
     fun useDevelopmentIdentity(manifest: Path): String {
         val document = requireNotNull(readXml(manifest)) { "Cannot read development package manifest: $manifest" }
         val identity = requireNotNull(document.documentElement.childElements("Identity").firstOrNull()) {

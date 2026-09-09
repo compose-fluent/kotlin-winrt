@@ -23,6 +23,9 @@ abstract class GenerateWinAppConfigurationTask : DefaultTask() {
     @get:Input
     abstract val includeToolingPackages: Property<Boolean>
 
+    @get:Input
+    abstract val windowsSdkToolsVersion: Property<String>
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -34,6 +37,7 @@ abstract class GenerateWinAppConfigurationTask : DefaultTask() {
     init {
         nugetPackages.convention(emptyList())
         includeToolingPackages.convention(false)
+        windowsSdkToolsVersion.convention(WinAppConfigurationDefaults.WINDOWS_SDK_TOOLS_VERSION)
     }
 
     @TaskAction
@@ -42,7 +46,7 @@ abstract class GenerateWinAppConfigurationTask : DefaultTask() {
         val packages = resolveWinAppPackagePins(
             packageSpecs = packageSpecs,
             toolingPackages = if (packageSpecs.isNotEmpty() || includeToolingPackages.get()) {
-                WinAppConfigurationDefaults.toolingPackages
+                WinAppConfigurationDefaults.toolingPackages(windowsSdkToolsVersion.get())
             } else {
                 emptyList()
             },

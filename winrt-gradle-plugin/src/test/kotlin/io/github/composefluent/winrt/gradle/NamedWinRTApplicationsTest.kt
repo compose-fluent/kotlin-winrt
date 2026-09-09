@@ -22,8 +22,10 @@ class NamedWinRTApplicationsTest {
         project.pluginManager.apply("java")
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
         val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.windowsSdk("10.0.26100.0")
         extension.application { application ->
             application.mainClass.set("sample.First")
+            application.minWindowsVersion.set("10.0.19041.0")
             application.packagePayloadFiles.from(project.file("shared.txt"))
             application.variants.create("first") {
                 it.variant("jvm:main")
@@ -32,6 +34,8 @@ class NamedWinRTApplicationsTest {
             application.variants.create("second") {
                 it.variant("jvm:main")
                 it.mainClass.set("sample.Second")
+                it.minWindowsVersion.set("10.0.22000.0")
+                it.maxVersionTested.set("10.0.28000.0")
                 it.packagePayloadFiles.setFrom(project.file("second.txt"))
                 it.runTask("runSecond")
             }
@@ -53,6 +57,17 @@ class NamedWinRTApplicationsTest {
         val secondPackagedRun = project.tasks.getByName("runWinRTApplicationPackageSecond") as RunWinRTApplicationPackageTask
         val firstDevelopment = project.tasks.getByName("stageWinRTApplicationDevelopmentPackageFirst") as StageWinRTApplicationPackageTask
         val secondDevelopment = project.tasks.getByName("stageWinRTApplicationDevelopmentPackageSecond") as StageWinRTApplicationPackageTask
+        listOf("First", "Second").forEach { suffix ->
+            val stage = project.tasks.getByName("stageWinRTApplicationPackage$suffix") as StageWinRTApplicationPackageTask
+            val dev = project.tasks.getByName("stageWinRTApplicationDevelopmentPackage$suffix") as StageWinRTApplicationPackageTask
+            assertEquals(if (suffix == "First") "10.0.19041.0" else "10.0.22000.0", stage.minWindowsVersion.get())
+            assertEquals(if (suffix == "First") "10.0.26100.0" else "10.0.28000.0", stage.maxVersionTested.get())
+            assertEquals(stage.minWindowsVersion.get(), dev.minWindowsVersion.get())
+            assertEquals(stage.maxVersionTested.get(), dev.maxVersionTested.get())
+        }
+        extension.windowsSdkVersion.set("10.0.22621.0")
+        assertEquals("10.0.22621.0", firstDevelopment.maxVersionTested.get())
+        assertEquals("10.0.28000.0", secondDevelopment.maxVersionTested.get())
         assertEquals(first.outputDirectory.get(), firstDevelopment.runtimeAssetsDirectory.get())
         assertEquals(second.outputDirectory.get(), secondDevelopment.runtimeAssetsDirectory.get())
         assertEquals(firstDevelopment.outputDirectory.get(), firstPackagedRun.packageDirectory.get())
@@ -175,6 +190,8 @@ class NamedWinRTApplicationsTest {
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
             winRT { application {
                 packaged()
+                minWindowsVersion = '10.0.17763.0'
+                maxVersionTested = '10.0.26100.0'
                 console = true
                 generateProjectPri = false
                 enableDefaultProjectPriResources = false

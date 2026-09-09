@@ -7,6 +7,25 @@ import org.junit.Test
 
 class WinAppConfigurationTest {
     @Test
+    fun sdk_toolchain_revision_is_explicit_and_independent_from_manifest_os_versions() {
+        val project = org.gradle.testfixtures.ProjectBuilder.builder().build()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.windowsSdk("10.0.26100.0")
+        extension.windowsSdkToolsVersion.set("10.0.26100.4654")
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        val task = project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).get()
+        task.generate()
+        val yaml = java.nio.file.Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(yaml, yaml.contains("name: Microsoft.Windows.SDK.CPP\n    version: 10.0.26100.4654"))
+        assertTrue(yaml, yaml.contains("name: Microsoft.Windows.SDK.BuildTools\n    version: 10.0.26100.4654"))
+        assertEquals("10.0.26100.0", extension.application.maxVersionTested.get())
+        extension.windowsSdkToolsVersion.set("latest")
+        val error = runCatching { task.generate() }.exceptionOrNull()
+        assertTrue(error?.message.orEmpty().contains("exact version"))
+    }
+
+    @Test
     fun generated_configuration_is_sorted_and_includes_pinned_tooling() {
         val packages = resolveWinAppPackagePins(
             packageSpecs = listOf(

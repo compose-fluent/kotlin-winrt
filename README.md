@@ -253,6 +253,24 @@ For the default unpackaged application mode, the plugin keeps a loose staged lay
 
 Application package files live under the owning Kotlin source set at `src/<targetSourceSet>/appxResources/` (for example `src/winuiMain/appxResources/` or `src/main/appxResources/`). The plugin copies every file below that directory into the staged AppX root using its path relative to `appxResources/`; `AppxManifest.xml` is used automatically when no `application { appxManifest(...) }` is configured and is not copied as a second payload file. Source-set dependencies are merged from the least-specific source set to the selected target, so a target resource can override a shared resource. Explicit `appxManifest(...)` manifests take precedence. Explicit `packagePayload(...)` entries have the highest normal resource priority; same-level conflicts fail instead of being chosen by directory traversal order.
 
+Windows version settings belong to Gradle, not a second copy in the source manifest:
+
+```kotlin
+winRT {
+    windowsSdk("10.0.26100.0")
+    application {
+        minWindowsVersion = "10.0.19041.0"
+        // maxVersionTested defaults to the selected SDK; override it only for a different tested OS.
+    }
+}
+```
+
+Keep `<TargetDeviceFamily Name="Windows.Desktop" />` in the source manifest without version attributes. Staging writes `MinVersion` and `MaxVersionTested` into the copied manifest; conflicting source attributes fail. When no target family is declared, staging adds `Windows.Desktop`. This applies to normal and `.dev` layouts, including manifests in unpackaged layouts, and never edits the source file. `minWindowsVersion` is required whenever an AppX manifest is staged and must not exceed `maxVersionTested`. Named applications inherit both settings and may override them independently.
+
+`windowsSdk(version)` selects the Windows API baseline and installed native SDK. When omitted, the plugin uses one shared, configuration-cache-tracked installed SDK selection for metadata, native tools, and the default `maxVersionTested`; pin the version for reproducible builds. `MaxVersionTested` is not an upper installation limit, and using a newer SDK does not make new APIs available on older Windows versions. Guard those calls when supporting an older `minWindowsVersion`.
+
+The NuGet toolchain revision is separate: `windowsSdkToolsVersion = "10.0.26100.4654"` selects the exact `Microsoft.Windows.SDK.CPP` and `Microsoft.Windows.SDK.BuildTools` packages used by WinApp. Its default remains `10.0.26100.1742`. Changing this revision does not change the API baseline or manifest OS versions; the plugin does not invent a NuGet package version from an OS version. Explicit declarations of those tool packages must match the configured toolchain revision.
+
 When a source set contains AppX resources, the plugin generates a KotlinPoet `AppxRes` accessor in that module's configured resource package. For example, `AppxRes.Assets.Square44x44LogoPng.path` is the package-root-relative path and `.uri` lazily creates the corresponding `ms-appx:///` `Windows.Foundation.Uri`; the accessor follows the shared Windows source-set visibility of the module.
 
 Kotlin Multiplatform applications expose one task graph for each JVM main compilation and every declared MinGW executable build variant. For example, a `winuiJvm` main compilation plus the default MinGW executables creates `packageWinRTApplicationWinuiJvmMain`, `packageWinRTApplicationMingwX64MainDebugExecutable`, and `packageWinRTApplicationMingwX64MainReleaseExecutable`. The same suffix is used by staging, run, verification, signing, and installation tasks, and every variant has isolated layouts, package files, reports, and verification directories. The application DSL has no global target or build-type selectors; choose the artifact by invoking its concrete task.
@@ -265,6 +283,7 @@ NuGet source configuration follows NuGet's normal directory hierarchy. `winRT { 
 winRT {
     application {
         packaged()
+        minWindowsVersion = "10.0.19041.0"
         makeAppxExecutable = "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/makeappx.exe"
     }
 }
@@ -292,6 +311,7 @@ kotlin {
 winRT {
     application {
         mainClass = "sample.MainKt"
+        minWindowsVersion = "10.0.19041.0"
         // console = true enables a console window for diagnostics.
     }
 

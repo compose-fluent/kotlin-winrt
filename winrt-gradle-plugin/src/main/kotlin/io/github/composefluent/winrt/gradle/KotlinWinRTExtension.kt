@@ -26,6 +26,7 @@ interface BaseWinRTExtension {
     val metadataInputs: ListProperty<String>
     val windowsSdkDeclared: Property<Boolean>
     val windowsSdkVersion: Property<String>
+    val windowsSdkToolsVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
     val generateWindowsSdkProjection: Property<Boolean>
     val winAppCliExecutable: Property<String>
@@ -77,6 +78,9 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
     override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val windowsSdkDeclared: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
+    /** NuGet SDK toolchain revision, independent of the Windows API and OS version numbers. */
+    override val windowsSdkToolsVersion: Property<String> = objects.property(String::class.java)
+        .convention(WinAppConfigurationDefaults.WINDOWS_SDK_TOOLS_VERSION)
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val generateWindowsSdkProjection: Property<Boolean> =
         objects.property(Boolean::class.java).convention(false)
@@ -239,6 +243,10 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     val packageMode: Property<WinRTApplicationPackageMode> =
         objects.property(WinRTApplicationPackageMode::class.java).convention(WinRTApplicationPackageMode.Unpackaged)
+    /** Minimum supported Windows version. Required when staging an AppX manifest. */
+    val minWindowsVersion: Property<String> = objects.property(String::class.java)
+    /** Defaults to the module's selected Windows SDK; may describe a separately tested OS version. */
+    val maxVersionTested: Property<String> = objects.property(String::class.java)
     val mainClass: Property<String> = objects.property(String::class.java)
     val console: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     val generateProjectPri: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
@@ -306,6 +314,8 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     internal fun inheritFrom(defaults: WinRTApplicationOptions) {
         packageMode.convention(defaults.packageMode)
+        minWindowsVersion.convention(defaults.minWindowsVersion)
+        maxVersionTested.convention(defaults.maxVersionTested)
         mainClass.convention(defaults.mainClass)
         console.convention(defaults.console)
         generateProjectPri.convention(defaults.generateProjectPri)

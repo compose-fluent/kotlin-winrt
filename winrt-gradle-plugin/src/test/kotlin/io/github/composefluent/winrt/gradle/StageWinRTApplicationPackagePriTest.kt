@@ -78,6 +78,8 @@ class StageWinRTApplicationPackagePriTest {
             registered.defaultAppxResourceFiles.from(appLogo)
             registered.makePriExecutable.set(makePri.toString())
             registered.runtimeIdentifier.set("win-x64")
+            registered.minWindowsVersion.set("10.0.19041.0")
+            registered.windowsSdkVersion.set("10.0.26100.0")
         }.get()
 
         task.stage()

@@ -82,6 +82,8 @@ class RunWinRTApplicationPackageTaskTest {
         task.runtimeIdentifier.set("win-x64")
         task.generateProjectPri.set(false)
         task.developmentIdentity.set(true)
+        task.minWindowsVersion.set("10.0.19041.0")
+        task.windowsSdkVersion.set("10.0.26100.0")
         repeat(2) {
             task.stage()
             val staged = Files.readString(root.resolve("output/AppxManifest.xml"))
@@ -131,8 +133,17 @@ class RunWinRTApplicationPackageTaskTest {
         """.trimIndent())
         write(root.resolve("build.gradle"), """
             plugins { id 'io.github.compose-fluent.winrt' }
+            def developmentStage = tasks.register('developmentStage', io.github.composefluent.winrt.gradle.StageWinRTApplicationPackageTask) {
+                runtimeAssetsDirectory = layout.projectDirectory.dir('build output')
+                outputDirectory = layout.buildDirectory.dir('development-input')
+                runtimeIdentifier = 'win-x64'
+                generateProjectPri = false
+                developmentIdentity = true
+                minWindowsVersion = providers.gradleProperty('minimum').orElse('10.0.19041.0')
+                windowsSdkVersion = providers.gradleProperty('sdkApi').orElse('10.0.26100.0')
+            }
             tasks.register('runFixture', io.github.composefluent.winrt.gradle.RunWinRTApplicationPackageTask) {
-                packageDirectory = layout.projectDirectory.dir('build output')
+                packageDirectory = developmentStage.flatMap { it.outputDirectory }
                 deploymentDirectory = layout.buildDirectory.dir('deployment')
                 winAppCliExecutable = file('fake-winapp.cmd').absolutePath
                 winAppCliCacheDirectory = layout.buildDirectory.dir('winapp-cache')
@@ -162,13 +173,14 @@ class RunWinRTApplicationPackageTaskTest {
         assertEquals(TaskOutcome.SUCCESS, first.task(":runFixture")?.outcome)
         assertTrue(first.output, first.output.contains("packaged-launch-output"))
         val second = runner().build()
+        assertEquals(TaskOutcome.UP_TO_DATE, second.task(":developmentStage")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, second.task(":runFixture")?.outcome)
         assertTrue(second.output, second.output.contains("Reusing configuration cache"))
         val invocations = Files.readAllLines(root.resolve("invocations.log"))
         assertEquals(2, invocations.size)
         invocations.forEach { command ->
             assertTrue(command, command.startsWith("run "))
-            assertTrue(command, command.contains("build output"))
+            assertTrue(command, command.contains("development-input"))
             assertTrue(command, command.contains("--manifest"))
             assertTrue(command, command.contains("--output-appx-directory"))
             assertTrue(command, command.contains("--detach"))
@@ -185,6 +197,12 @@ class RunWinRTApplicationPackageTaskTest {
         assertTrue(registerInvocation, registerInvocation.contains("--no-launch"))
         assertFalse(registerInvocation, registerInvocation.contains("--args"))
         assertFalse(registerInvocation, registerInvocation.contains("--detach"))
+        runner(listOf("--no-launch", "-PsdkApi=10.0.28000.0", "-Pminimum=10.0.22000.0")).build()
+        val staged = Files.readString(root.resolve("build/development-input/AppxManifest.xml"))
+        assertTrue(staged, staged.contains("MinVersion=\"10.0.22000.0\""))
+        assertTrue(staged, staged.contains("MaxVersionTested=\"10.0.28000.0\""))
+        assertTrue(staged, staged.contains("Name=\"KotlinWinRT.RunTest.dev\""))
+        assertEquals(manifest, Files.readString(root.resolve("build output/AppxManifest.xml")))
         write(root.resolve("fail.flag"), "fail")
         val failure = runner().buildAndFail()
         assertTrue(failure.output, failure.output.contains("non-zero exit value 23"))

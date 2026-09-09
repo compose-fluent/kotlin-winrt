@@ -67,6 +67,8 @@ val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWin
     .orElse(true)
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
     .orElse("2.2.0")
+val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
+    .orElse("10.0.26100.0")
 val sampleWinUIEssentialVersion = providers.gradleProperty("kotlinWinRT.samples.winUIEssentialVersion")
     .orElse("1.6.7")
 val sampleNuGetGlobalPackagesRoot = providers.gradleProperty("kotlinWinRT.samples.nugetGlobalPackagesRoot")
@@ -113,6 +115,7 @@ kotlin {
 winRT {
     application {
         mainClass = "io.github.composefluent.winrt.samples.MainKt"
+        minWindowsVersion = "10.0.19041.0"
         when (sampleApplicationPackageMode.get()) {
             "packaged" -> packaged()
             "unpackaged" -> unpackaged()
@@ -132,7 +135,7 @@ winRT {
             useNuGetCliGlobalPackages = false
             restoreNuGetPackages = false
         }
-        windowsSdk(includeExtensions = true, generateProjection = true)
+        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = true, generateProjection = true)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
             generateProjection = true
         }

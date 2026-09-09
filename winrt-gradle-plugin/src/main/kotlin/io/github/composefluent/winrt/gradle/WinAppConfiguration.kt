@@ -8,10 +8,14 @@ internal data class WinAppPackagePin(
 )
 
 internal object WinAppConfigurationDefaults {
-    val toolingPackages: List<WinAppPackagePin> = listOf(
+    const val WINDOWS_SDK_TOOLS_VERSION = "10.0.26100.1742"
+
+    val toolingPackages: List<WinAppPackagePin> = toolingPackages(WINDOWS_SDK_TOOLS_VERSION)
+
+    fun toolingPackages(windowsSdkToolsVersion: String): List<WinAppPackagePin> = listOf(
         WinAppPackagePin("Microsoft.Windows.CppWinRT", "2.0.240405.15"),
-        WinAppPackagePin("Microsoft.Windows.SDK.BuildTools", "10.0.26100.1742"),
-        WinAppPackagePin("Microsoft.Windows.SDK.CPP", "10.0.26100.1742"),
+        WinAppPackagePin("Microsoft.Windows.SDK.BuildTools", windowsSdkToolsVersion),
+        WinAppPackagePin("Microsoft.Windows.SDK.CPP", windowsSdkToolsVersion),
     )
 
     val toolingPackageIds: Set<String> = toolingPackages
