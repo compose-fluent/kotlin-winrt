@@ -94,7 +94,7 @@ internal val KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE: Attribute<String> =
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
 private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRTLibraryDependencyIdentity"
 
-/** Resolves the configured Gradle Java toolchain instead of inheriting the daemon JVM. */
+/** Resolves a complete JDK for JVM host generation instead of inheriting the daemon JVM. */
 private fun configuredJvmToolchainHome(
     project: Project,
     options: WinRTApplicationOptions,
@@ -107,7 +107,10 @@ private fun configuredJvmToolchainHome(
     val launcher = service.launcherFor(Action<JavaToolchainSpec> { spec ->
         spec.languageVersion.set(JavaLanguageVersion.of(options.jvmToolchainVersion.get()))
     }).get()
-    launcher.metadata.installationPath.asFile.absolutePath
+    resolveJvmDevelopmentKitHome(
+        selectedHome = launcher.metadata.installationPath.asFile.toPath(),
+        expectedJavaMajor = options.jvmToolchainVersion.get(),
+    ).toString()
 }
 
 fun Project.registerWinRTApplicationHostRunTask(

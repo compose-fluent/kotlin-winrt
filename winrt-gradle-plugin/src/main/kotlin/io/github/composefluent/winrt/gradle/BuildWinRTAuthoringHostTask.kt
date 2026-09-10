@@ -120,7 +120,7 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
         moduleDefinition: Path,
         output: Path,
     ) {
-        val javaHomePath = Path.of(javaHome.get())
+        val jniHeaders = resolveJvmNativeHeaderDirectories(javaHome.get())
         val sdk = toolchain.sdk
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
         val arguments = listOf(toolchain.compiler) + toolchain.compilerArguments + listOf(
@@ -128,8 +128,10 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
             "/LD",
             source.toString(),
             "/Fe:${output}",
-            "/I${javaHomePath.resolve("include")}",
-            "/I${javaHomePath.resolve("include").resolve("win32")}",
+            "/I",
+            jniHeaders.includeDirectory.toString(),
+            "/I",
+            jniHeaders.platformIncludeDirectory.toString(),
             "/I${sdk.includeRoot.resolve("shared")}",
             "/I${sdk.includeRoot.resolve("um")}",
             "/I${sdk.includeRoot.resolve("ucrt")}",

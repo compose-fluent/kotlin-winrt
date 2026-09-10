@@ -317,13 +317,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         source: Path,
         output: Path,
     ) {
-        val javaHomeValue = javaHome.orNull?.trim().orEmpty()
-        if (javaHomeValue.isBlank()) {
-            throw IllegalStateException(
-                "Kotlin/WinRT application host requires a resolved Java toolchain home for JNI headers.",
-            )
-        }
-        val javaHomePath = Path.of(javaHomeValue)
+        val jniHeaders = resolveJvmNativeHeaderDirectories(javaHome.orNull.orEmpty())
         val sdk = toolchain.sdk
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
         val arguments = buildList {
@@ -334,8 +328,10 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                     "/nologo",
                     source.toString(),
                     "/Fe:${output}",
-                    "/I${javaHomePath.resolve("include")}",
-                    "/I${javaHomePath.resolve("include").resolve("win32")}",
+                    "/I",
+                    jniHeaders.includeDirectory.toString(),
+                    "/I",
+                    jniHeaders.platformIncludeDirectory.toString(),
                     "/I${sdk.includeRoot.resolve("shared")}",
                     "/I${sdk.includeRoot.resolve("um")}",
                     "/I${sdk.includeRoot.resolve("ucrt")}",
