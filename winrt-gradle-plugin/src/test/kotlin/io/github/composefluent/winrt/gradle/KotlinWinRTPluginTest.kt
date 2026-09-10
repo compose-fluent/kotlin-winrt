@@ -547,7 +547,7 @@ class KotlinWinRTPluginTest {
         }
 
         assertEquals(
-            WinRTWindowsAppSdkDeployment.Auto,
+            WindowsAppSdkDeployment.Auto,
             extension.application.windowsAppSdkDeployment.get(),
         )
 
@@ -555,7 +555,7 @@ class KotlinWinRTPluginTest {
             "buildWinRTApplicationHostJvmMain",
             BuildWinRTApplicationHostTask::class.java,
         ).get()
-        assertEquals(WinRTWindowsAppSdkDeployment.None, host.windowsAppSdkDeployment.get())
+        assertEquals(WindowsAppSdkDeployment.None, host.windowsAppSdkDeployment.get())
     }
 
     @Test
@@ -573,8 +573,8 @@ class KotlinWinRTPluginTest {
             "buildWinRTApplicationHostJvmMain",
             BuildWinRTApplicationHostTask::class.java,
         ).get()
-        assertEquals(WinRTWindowsAppSdkDeployment.Auto, extension.application.windowsAppSdkDeployment.get())
-        assertEquals(WinRTWindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
+        assertEquals(WindowsAppSdkDeployment.Auto, extension.application.windowsAppSdkDeployment.get())
+        assertEquals(WindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
     }
 
     @Test
@@ -592,7 +592,7 @@ class KotlinWinRTPluginTest {
             "buildWinRTApplicationHostJvmMain",
             BuildWinRTApplicationHostTask::class.java,
         ).get()
-        assertEquals(WinRTWindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
+        assertEquals(WindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
     }
 
     @Test
@@ -612,7 +612,7 @@ class KotlinWinRTPluginTest {
             "buildWinRTApplicationHostJvmMain",
             BuildWinRTApplicationHostTask::class.java,
         ).get()
-        assertEquals(WinRTWindowsAppSdkDeployment.SelfContained, host.windowsAppSdkDeployment.get())
+        assertEquals(WindowsAppSdkDeployment.SelfContained, host.windowsAppSdkDeployment.get())
     }
 
     @Test
@@ -640,7 +640,7 @@ class KotlinWinRTPluginTest {
             "buildWinRTApplicationHostJvmMain",
             BuildWinRTApplicationHostTask::class.java,
         ).get()
-        assertEquals(WinRTWindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
+        assertEquals(WindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
     }
 
     @Test

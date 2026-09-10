@@ -312,10 +312,10 @@ abstract class WinRTApplicationOptions @Inject constructor(
     )
     /** Java major version used for JNI headers, jlink, and the runtime image contract. */
     val jvmToolchainVersion: Property<Int> = objects.property(Int::class.java).convention(25)
-    /** Windows App SDK deployment mode; [WinRTWindowsAppSdkDeployment.Auto] selects it from the app graph. */
-    val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment> =
-        objects.property(WinRTWindowsAppSdkDeployment::class.java)
-            .convention(WinRTWindowsAppSdkDeployment.Auto)
+    /** Windows App SDK deployment mode; [WindowsAppSdkDeployment.Auto] selects it from the app graph. */
+    val windowsAppSdkDeployment: Property<WindowsAppSdkDeployment> =
+        objects.property(WindowsAppSdkDeployment::class.java)
+            .convention(WindowsAppSdkDeployment.Auto)
 
     internal fun inheritFrom(defaults: WinRTApplicationOptions) {
         packageType.convention(defaults.packageType)
@@ -374,11 +374,11 @@ abstract class WinRTApplicationOptions @Inject constructor(
     }
 
     fun frameworkDependent() {
-        windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.FrameworkDependent)
+        windowsAppSdkDeployment.set(WindowsAppSdkDeployment.FrameworkDependent)
     }
 
     fun selfContained() {
-        windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.SelfContained)
+        windowsAppSdkDeployment.set(WindowsAppSdkDeployment.SelfContained)
     }
 
     fun bundledJvmRuntime(image: Any? = null) {
@@ -497,7 +497,7 @@ enum class WinRTJvmRuntimeMode {
     External,
 }
 
-enum class WinRTWindowsAppSdkDeployment {
+enum class WindowsAppSdkDeployment {
     Auto,
     None,
     FrameworkDependent,

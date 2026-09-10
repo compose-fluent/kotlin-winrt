@@ -42,7 +42,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         externalJvmHome.convention("")
         expectedJavaMajor.convention(25)
         console.convention(false)
-        windowsAppSdkDeployment.convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
+        windowsAppSdkDeployment.convention(WindowsAppSdkDeployment.FrameworkDependent)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
@@ -75,7 +75,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     abstract val packageType: Property<String>
 
     @get:Input
-    abstract val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment>
+    abstract val windowsAppSdkDeployment: Property<WindowsAppSdkDeployment>
 
     @get:Input
     abstract val console: Property<Boolean>
@@ -367,9 +367,9 @@ internal fun applicationHostSource(
     packageType: String,
     runtimeMode: String,
     externalJvmHome: String,
-    windowsAppSdkDeployment: WinRTWindowsAppSdkDeployment = WinRTWindowsAppSdkDeployment.FrameworkDependent,
+    windowsAppSdkDeployment: WindowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent,
 ): String {
-    require(windowsAppSdkDeployment != WinRTWindowsAppSdkDeployment.Auto) {
+    require(windowsAppSdkDeployment != WindowsAppSdkDeployment.Auto) {
         "Generated application hosts require a concrete Windows App SDK deployment mode."
     }
     val mainClassPath = mainClass.replace('.', '/')

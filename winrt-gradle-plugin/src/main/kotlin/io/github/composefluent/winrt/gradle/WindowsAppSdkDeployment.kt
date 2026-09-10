@@ -20,14 +20,14 @@ internal fun containsWindowsAppSdkPackage(packageSpecs: Iterable<String>): Boole
  * tasks and generated hosts. Auto deliberately has no runtime representation.
  */
 internal fun resolveWindowsAppSdkDeployment(
-    requested: WinRTWindowsAppSdkDeployment,
+    requested: WindowsAppSdkDeployment,
     packageSpecs: Iterable<String>,
     frameworkDependentAvailable: Boolean,
-): WinRTWindowsAppSdkDeployment = when {
-    requested != WinRTWindowsAppSdkDeployment.Auto -> requested
-    !containsWindowsAppSdkPackage(packageSpecs) -> WinRTWindowsAppSdkDeployment.None
-    frameworkDependentAvailable -> WinRTWindowsAppSdkDeployment.FrameworkDependent
-    else -> WinRTWindowsAppSdkDeployment.SelfContained
+): WindowsAppSdkDeployment = when {
+    requested != WindowsAppSdkDeployment.Auto -> requested
+    !containsWindowsAppSdkPackage(packageSpecs) -> WindowsAppSdkDeployment.None
+    frameworkDependentAvailable -> WindowsAppSdkDeployment.FrameworkDependent
+    else -> WindowsAppSdkDeployment.SelfContained
 }
 
 /**

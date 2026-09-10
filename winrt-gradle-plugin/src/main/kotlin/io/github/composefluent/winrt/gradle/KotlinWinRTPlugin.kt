@@ -988,7 +988,7 @@ private fun configureWinRTApplicationTasks(
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 val outputFile = options.packageOutputFile.orNull?.asFile
-                resolvedWindowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.SelfContained ||
+                resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained ||
                     options.packageType.get() != WindowsPackageType.Packaged ||
                     !options.generatePackage.get() ||
                     options.makeAppxExecutable.get().isNotBlank() ||
@@ -1250,7 +1250,7 @@ private fun configureWinRTApplicationTasks(
                 val usesLegacyMakeAppx = options.makeAppxExecutable.get().isNotBlank() ||
                     packageOutput?.name?.endsWith(".appx", ignoreCase = true) == true
                 options.packageType.get() == WindowsPackageType.Packaged &&
-                    resolvedWindowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent &&
+                    resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent &&
                     usesLegacyMakeAppx
             })
             task.executableBaseName.set(project.name)
@@ -1383,7 +1383,7 @@ private fun configureWinRTApplicationTasks(
             )
             task.packageType.set(options.packageType.map { it.name })
             task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
-                it == WinRTWindowsAppSdkDeployment.SelfContained
+                it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
@@ -1423,7 +1423,7 @@ private fun configureWinRTApplicationTasks(
             task.generatePackage.set(options.generatePackage)
             task.packageType.set(options.packageType.map { it.name })
             task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
-                it == WinRTWindowsAppSdkDeployment.SelfContained
+                it == WindowsAppSdkDeployment.SelfContained
             })
             task.makeAppxExecutable.set(options.makeAppxExecutable)
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
@@ -1564,7 +1564,7 @@ private fun configureWinRTApplicationTasks(
             task.installPackage.set(options.installPackage)
             task.packageType.set(options.packageType.map { it.name })
             task.includeRestoredFrameworkDependencies.set(project.provider {
-                resolvedWindowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
+                resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent
             })
             task.powerShellExecutable.set(options.installPowerShellExecutable)
             task.forceApplicationShutdown.set(options.installForceApplicationShutdown)
