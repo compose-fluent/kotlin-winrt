@@ -92,23 +92,6 @@ object WinRTApplicationHostScope {
         }
     }
 
-    /** Compatibility overload for callers compiled against the original Boolean API. */
-    @Deprecated("Pass WinRTApplicationHostConfiguration to keep package identity and deployment explicit.")
-    fun initialize(unpackaged: Boolean = true): Scope = initialize(
-        WinRTApplicationHostConfiguration(
-            packageIdentity = if (unpackaged) {
-                WinRTApplicationPackageIdentity.Unpackaged
-            } else {
-                WinRTApplicationPackageIdentity.Packaged
-            },
-            windowsAppSdkDeployment = if (unpackaged) {
-                WinRTWindowsAppSdkDeploymentMode.FrameworkDependent
-            } else {
-                WinRTWindowsAppSdkDeploymentMode.None
-            },
-        ),
-    )
-
     private fun reserveHost() {
         ownerLock.withLock {
             check(!ownerReserved && activeOwner == null) {

@@ -11,7 +11,12 @@ class WinRTApplicationHostScopeTest {
         }
 
         assertFailsWith<IllegalStateException> {
-            WinRTApplicationHostScope.initialize(WinRTApplicationHostConfiguration())
+            WinRTApplicationHostScope.initialize(
+                WinRTApplicationHostConfiguration(
+                    packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
+                    windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.None,
+                ),
+            )
         }
     }
 }

@@ -463,7 +463,7 @@ import microsoft.ui.xaml.Application
 
 fun main() {
     WinRTWindowsAppSdkBootstrap.initializeApplicationHost(
-        WinRTApplicationHostConfiguration(
+        WinRTApplicationHostConfiguration.fromStagedRuntimeAssets(
             packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
             windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
         ),

@@ -1,24 +1,21 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.io.files.Path
+
 object WinRTWindowsAppSdkLauncherSupport {
     @JvmStatic
-    fun initializeForUnpackagedApp(): AutoCloseable =
-        WinRTWindowsAppSdkDeployment.initializeForUnpackagedApp()
-
-    @JvmStatic
-    fun initializeApplicationHost(packageIdentity: String, deploymentMode: String): AutoCloseable =
+    fun initializeApplicationHost(
+        packageIdentity: String,
+        deploymentMode: String,
+        runtimeAssetsRoot: String,
+    ): AutoCloseable =
         WinRTWindowsAppSdkBootstrap.initializeApplicationHost(
-            WinRTApplicationHostConfiguration(
+            WinRTApplicationHostConfiguration.fromStagedRuntimeAssets(
                 packageIdentity = parsePackageIdentity(packageIdentity),
                 windowsAppSdkDeployment = parseDeploymentMode(deploymentMode),
+                runtimeAssetsRoot = Path(runtimeAssetsRoot),
             ),
         )
-
-    /** Compatibility entry point for older native launchers. */
-    @JvmStatic
-    @Deprecated("Use the package identity/deployment mode overload.")
-    fun initializeApplicationHost(unpackaged: Boolean): AutoCloseable =
-        WinRTWindowsAppSdkBootstrap.initializeApplicationHost(unpackaged)
 
     @JvmStatic
     fun close(scope: AutoCloseable?) {

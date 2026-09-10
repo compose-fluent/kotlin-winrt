@@ -91,6 +91,7 @@ class RuntimeScopeTest {
 
         val configuration = WinRTWindowsAppSdkDeploymentConfiguration(
             mode = WinRTWindowsAppSdkDeploymentMode.ExternallyInitialized,
+            packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
         )
         val first = WinRTWindowsAppSdkDeployment.initialize(configuration)
         checkNotNull(first)

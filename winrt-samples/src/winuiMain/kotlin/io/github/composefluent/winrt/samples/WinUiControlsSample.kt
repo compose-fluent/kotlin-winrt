@@ -1,10 +1,6 @@
 package io.github.composefluent.winrt.samples
 
 import windows.foundation.EventRegistrationToken
-import io.github.composefluent.winrt.runtime.WinRTApplicationHostConfiguration
-import io.github.composefluent.winrt.runtime.WinRTApplicationPackageIdentity
-import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkBootstrap
-import io.github.composefluent.winrt.runtime.WinRTWindowsAppSdkDeploymentMode
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
@@ -40,18 +36,6 @@ object WinUiControlsSample {
     fun start() {
         startApplication()
     }
-
-    fun launchForSmoke(): WinUiControlsSampleResult =
-        WinRTWindowsAppSdkBootstrap.initializeApplicationHost(
-            WinRTApplicationHostConfiguration(
-                packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
-                windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
-            ),
-        ).use {
-            WinUiControlsApp().use { app ->
-                app.launchWithResources()
-            }
-        }
 
     private fun startApplication() {
         Application.start {

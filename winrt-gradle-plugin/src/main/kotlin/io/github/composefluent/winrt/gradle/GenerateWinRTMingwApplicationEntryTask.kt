@@ -101,6 +101,7 @@ private fun mingwApplicationEntrySource(
     val hostConfiguration = ClassName("io.github.composefluent.winrt.runtime", "WinRTApplicationHostConfiguration")
     val packageIdentity = ClassName("io.github.composefluent.winrt.runtime", "WinRTApplicationPackageIdentity")
     val deploymentMode = ClassName("io.github.composefluent.winrt.runtime", "WinRTWindowsAppSdkDeploymentMode")
+    val deployment = ClassName("io.github.composefluent.winrt.runtime", "WinRTWindowsAppSdkDeployment")
     val packageIdentityName = if (unpackaged) "Unpackaged" else "Packaged"
     val fileName = if (entryFunctionName == "main") "WinRTMingwApplicationEntry" else "WinRTMingwApplicationEntry_$entryFunctionName"
     return FileSpec.builder("io.github.composefluent.winrt.application", fileName)
@@ -108,13 +109,14 @@ private fun mingwApplicationEntrySource(
         .addFunction(
             FunSpec.builder(entryFunctionName)
                 .beginControlFlow(
-                    "%T.initializeApplicationHost(%T(packageIdentity = %T.%L, windowsAppSdkDeployment = %T.%L)).use",
+                    "%T.initializeApplicationHost(%T.fromStagedRuntimeAssets(packageIdentity = %T.%L, windowsAppSdkDeployment = %T.%L, runtimeAssetsRoot = %T.discoverRuntimeAssetsRoot())).use",
                     bootstrap,
                     hostConfiguration,
                     packageIdentity,
                     packageIdentityName,
                     deploymentMode,
                     windowsAppSdkDeployment,
+                    deployment,
                 )
                 .addStatement("%M()", userMain)
                 .endControlFlow()

@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -33,16 +34,76 @@ class RuntimeScopeJvmTest {
             return
         }
 
-        val scope = RuntimeScope.initializeMultithreaded()
-        val failure = AtomicReference<Throwable?>()
-        val otherThread = Thread {
-            failure.set(runCatching { scope.close() }.exceptionOrNull())
-        }
-        otherThread.start()
-        otherThread.join()
+        runOnFreshPlatformThread {
+            val scope = RuntimeScope.initializeMultithreaded()
+            val failure = AtomicReference<Throwable?>()
+            val otherThread = Thread {
+                failure.set(runCatching { scope.close() }.exceptionOrNull())
+            }
+            otherThread.start()
+            otherThread.join()
 
-        assertIs<IllegalStateException>(failure.get())
-        scope.close()
+            assertIs<IllegalStateException>(failure.get())
+            activateJsonObject()
+            scope.close()
+        }
+    }
+
+    @Test
+    fun fresh_mta_thread_activates_winrt_and_closes_its_apartment() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        // C++/WinRT init_apartment succeeds before its caller makes ordinary WinRT calls.
+        runOnFreshPlatformThread {
+            RuntimeScope.initializeMultithreaded().use {
+                activateJsonObject()
+            }
+        }
+    }
+
+    @Test
+    fun fresh_sta_thread_activates_winrt_and_closes_its_apartment() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        runOnFreshPlatformThread {
+            RuntimeScope.initializeSingleThreaded().use {
+                activateJsonObject()
+            }
+        }
+    }
+
+    @Test
+    fun mta_to_sta_conflict_preserves_the_existing_apartment() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        runOnFreshPlatformThread {
+            RuntimeScope.initializeMultithreaded().use {
+                activateJsonObject()
+                assertChangedMode { RuntimeScope.initializeSingleThreaded() }
+                activateJsonObject()
+            }
+        }
+    }
+
+    @Test
+    fun sta_to_mta_conflict_preserves_the_existing_apartment() {
+        if (!PlatformRuntime.isWindows) {
+            return
+        }
+
+        runOnFreshPlatformThread {
+            RuntimeScope.initializeSingleThreaded().use {
+                activateJsonObject()
+                assertChangedMode { RuntimeScope.initializeMultithreaded() }
+                activateJsonObject()
+            }
+        }
     }
 
     @Test
@@ -67,6 +128,7 @@ class RuntimeScopeJvmTest {
             var first: WinRTApplicationHostScope.Scope? = null
             try {
                 val configuration = WinRTApplicationHostConfiguration(
+                    packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
                     windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.None,
                 )
                 first = WinRTApplicationHostScope.initialize(configuration)
@@ -86,5 +148,39 @@ class RuntimeScopeJvmTest {
         worker.join()
 
         assertNull(failure.get())
+    }
+
+    private fun activateJsonObject() {
+        WinRTRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
+            assertEquals("Windows.Data.Json.JsonObject", instance.getRuntimeClassName())
+        }
+    }
+
+    private fun assertChangedMode(initialize: () -> RuntimeScope) {
+        val result = runCatching(initialize)
+        val failure = result.exceptionOrNull()
+        if (failure == null) {
+            result.getOrThrow().close()
+            throw AssertionError("CoInitializeEx unexpectedly accepted a conflicting apartment type.")
+        }
+        val error = assertIs<WinRTIllegalStateException>(failure)
+        assertEquals(KnownHResults.RPC_E_CHANGED_MODE, error.hResult)
+    }
+
+    private fun runOnFreshPlatformThread(block: () -> Unit) {
+        val failure = AtomicReference<Throwable?>()
+        val worker = Thread {
+            try {
+                block()
+            } catch (error: Throwable) {
+                failure.set(error)
+            }
+        }
+        worker.start()
+        worker.join(30_000)
+        assertFalse(worker.isAlive, "Timed out while running a WinRT apartment test on a platform thread.")
+        failure.get()?.let { error ->
+            throw AssertionError("WinRT apartment test failed on its platform thread.", error)
+        }
     }
 }

@@ -585,11 +585,14 @@ internal fun applicationHostSource(
         jmethodID initialize;
         jstring package_identity;
         jstring deployment_mode;
+        jstring runtime_assets_root;
+        wchar_t host_directory[MAX_PATH * 4];
+        char host_directory_utf8[MAX_PATH * 4];
         jobject result;
         if (support_class == NULL) {
             return NULL;
         }
-        initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;");
+        initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;");
         if (initialize == NULL) {
             (*env)->DeleteLocalRef(env, support_class);
             return NULL;
@@ -605,9 +608,20 @@ internal fun applicationHostSource(
             (*env)->DeleteLocalRef(env, support_class);
             return NULL;
         }
-        result = (*env)->CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode);
+        kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
+        host_directory_utf8[0] = '\0';
+        kotlin_winrt_append_utf8(host_directory_utf8, sizeof(host_directory_utf8), host_directory);
+        runtime_assets_root = (*env)->NewStringUTF(env, host_directory_utf8);
+        if (runtime_assets_root == NULL) {
+            (*env)->DeleteLocalRef(env, package_identity);
+            (*env)->DeleteLocalRef(env, deployment_mode);
+            (*env)->DeleteLocalRef(env, support_class);
+            return NULL;
+        }
+        result = (*env)->CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode, runtime_assets_root);
         (*env)->DeleteLocalRef(env, package_identity);
         (*env)->DeleteLocalRef(env, deployment_mode);
+        (*env)->DeleteLocalRef(env, runtime_assets_root);
         (*env)->DeleteLocalRef(env, support_class);
         return result;
     }

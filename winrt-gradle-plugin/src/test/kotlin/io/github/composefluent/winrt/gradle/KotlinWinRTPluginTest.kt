@@ -4539,10 +4539,11 @@ class KotlinWinRTPluginTest {
         assertTrue(source.contains("JNI_CreateJavaVM"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
         assertTrue(source.contains("WinRTWindowsAppSdkLauncherSupport"))
-        assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
+        assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
         assertTrue(source.contains("NewStringUTF(env, \"Unpackaged\")"))
         assertTrue(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
-        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode)"))
+        assertTrue(source.contains("NewStringUTF(env, host_directory_utf8)"))
+        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode, runtime_assets_root)"))
         assertTrue(source.contains("KOTLIN_WINRT_JVM_OPTIONS"))
         // The launcher resolves the bundled image beside its executable at runtime; it must
         // not embed the build machine's JDK location in generated native source.
@@ -4636,10 +4637,11 @@ class KotlinWinRTPluginTest {
 
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
         assertTrue(source.contains("WinRTWindowsAppSdkLauncherSupport"))
-        assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
+        assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
         assertTrue(source.contains("NewStringUTF(env, \"Packaged\")"))
         assertTrue(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
-        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode)"))
+        assertTrue(source.contains("NewStringUTF(env, host_directory_utf8)"))
+        assertTrue(source.contains("CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode, runtime_assets_root)"))
         assertFalse(source.contains("initializeForUnpackagedApp"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
     }
@@ -4672,12 +4674,14 @@ class KotlinWinRTPluginTest {
         val relativeSource = Path.of("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt")
         val unpackagedSource = Files.readString(unpackagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
         val packagedSource = Files.readString(packagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
-        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration(packageIdentity"))
+        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration.fromStagedRuntimeAssets("))
         assertTrue(unpackagedSource.contains("WinRTApplicationPackageIdentity.Unpackaged"))
         assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkDeploymentMode.FrameworkDependent"))
-        assertTrue(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration(packageIdentity"))
+        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
+        assertTrue(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration.fromStagedRuntimeAssets("))
         assertTrue(packagedSource.contains("WinRTApplicationPackageIdentity.Packaged"))
         assertTrue(packagedSource.contains("WinRTWindowsAppSdkDeploymentMode.FrameworkDependent"))
+        assertTrue(packagedSource.contains("WinRTWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
         assertFalse(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initialize()"))
         assertFalse(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initialize()"))
     }
@@ -9888,7 +9892,18 @@ class KotlinWinRTPluginTest {
             data class WinRTApplicationHostConfiguration(
                 val packageIdentity: WinRTApplicationPackageIdentity,
                 val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
-            )
+            ) {
+                companion object {
+                    fun fromStagedRuntimeAssets(
+                        packageIdentity: WinRTApplicationPackageIdentity,
+                        windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+                        runtimeAssetsRoot: Any?,
+                    ) = WinRTApplicationHostConfiguration(packageIdentity, windowsAppSdkDeployment)
+                }
+            }
+            object WinRTWindowsAppSdkDeployment {
+                fun discoverRuntimeAssetsRoot(): Any? = null
+            }
             object WinRTWindowsAppSdkBootstrap {
                 fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable =
                     AutoCloseable {
@@ -13001,7 +13016,7 @@ class KotlinWinRTPluginTest {
             runtimeVersionInfo,
             """
             #define WINDOWSAPPSDK_RELEASE_MAJORMINOR 0x00010008
-            #define WINDOWSAPPSDK_RELEASE_VERSION_TAG_W L""
+            #define WINDOWSAPPSDK_RELEASE_VERSION_TAG_W L"preview.7"
             #define WINDOWSAPPSDK_RUNTIME_VERSION_UINT64 0x0001000800000000u
             """.trimIndent(),
         )
@@ -13100,7 +13115,7 @@ class KotlinWinRTPluginTest {
             listOf(
                 "schemaVersion=1",
                 "majorMinorVersion=65544",
-                "versionTag=",
+                "versionTag=preview.7",
                 "minVersion=281509336449024",
             ),
             Files.readAllLines(assetsRoot.resolve("kotlin-winrt-windows-app-sdk.properties")),
@@ -13234,11 +13249,19 @@ class KotlinWinRTPluginTest {
             data class WinRTApplicationHostConfiguration(
                 val packageIdentity: WinRTApplicationPackageIdentity,
                 val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
-            )
-            object WinRTWindowsAppSdkBootstrap {
-                fun initialize() {
+            ) {
+                companion object {
+                    fun fromStagedRuntimeAssets(
+                        packageIdentity: WinRTApplicationPackageIdentity,
+                        windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+                        runtimeAssetsRoot: Any?,
+                    ) = WinRTApplicationHostConfiguration(packageIdentity, windowsAppSdkDeployment)
                 }
-
+            }
+            object WinRTWindowsAppSdkDeployment {
+                fun discoverRuntimeAssetsRoot(): Any? = null
+            }
+            object WinRTWindowsAppSdkBootstrap {
                 fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }

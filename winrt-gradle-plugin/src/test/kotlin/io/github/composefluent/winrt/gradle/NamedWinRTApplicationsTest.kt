@@ -240,7 +240,18 @@ class NamedWinRTApplicationsTest {
             data class WinRTApplicationHostConfiguration(
                 val packageIdentity: WinRTApplicationPackageIdentity,
                 val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
-            )
+            ) {
+                companion object {
+                    fun fromStagedRuntimeAssets(
+                        packageIdentity: WinRTApplicationPackageIdentity,
+                        windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+                        runtimeAssetsRoot: Any?,
+                    ) = WinRTApplicationHostConfiguration(packageIdentity, windowsAppSdkDeployment)
+                }
+            }
+            object WinRTWindowsAppSdkDeployment {
+                fun discoverRuntimeAssetsRoot(): Any? = null
+            }
             object WinRTWindowsAppSdkBootstrap {
                 fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable {
                     val unpackaged = configuration.packageIdentity == WinRTApplicationPackageIdentity.Unpackaged

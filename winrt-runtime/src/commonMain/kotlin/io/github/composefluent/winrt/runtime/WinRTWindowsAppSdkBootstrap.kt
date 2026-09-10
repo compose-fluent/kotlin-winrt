@@ -7,14 +7,6 @@ package io.github.composefluent.winrt.runtime
  * Projection constructors and `Application.Start` remain ordinary WinRT calls.
  */
 object WinRTWindowsAppSdkBootstrap {
-    @Deprecated("Pass WinRTWindowsAppSdkDeploymentConfiguration to keep deployment explicit.")
-    fun initialize(): AutoCloseable? =
-        WinRTWindowsAppSdkDeployment.initializeForUnpackagedApp()
-
     fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): WinRTApplicationHostScope.Scope =
         WinRTApplicationHostScope.initialize(configuration)
-
-    @Deprecated("Pass WinRTApplicationHostConfiguration to keep package identity and deployment explicit.")
-    fun initializeApplicationHost(unpackaged: Boolean = true): AutoCloseable =
-        WinRTApplicationHostScope.initialize(unpackaged)
 }
