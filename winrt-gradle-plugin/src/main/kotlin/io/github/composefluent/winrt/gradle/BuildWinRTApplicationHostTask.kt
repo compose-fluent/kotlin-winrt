@@ -42,6 +42,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         externalJvmHome.convention("")
         expectedJavaMajor.convention(25)
         console.convention(false)
+        windowsAppSdkDeployment.convention(WindowsAppSdkDeployment.FrameworkDependent)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
@@ -72,6 +73,9 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
 
     @get:Input
     abstract val packageType: Property<String>
+
+    @get:Input
+    abstract val windowsAppSdkDeployment: Property<WindowsAppSdkDeployment>
 
     @get:Input
     abstract val console: Property<Boolean>
@@ -148,7 +152,16 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name && isWindowsHost()) {
             stageRuntimeImage(outputRoot)
         }
-        Files.writeString(source, applicationHostSource(mainClassValue, packageType.get(), runtimeMode, externalHome))
+        Files.writeString(
+            source,
+            applicationHostSource(
+                mainClass = mainClassValue,
+                packageType = packageType.get(),
+                runtimeMode = runtimeMode,
+                externalJvmHome = externalHome,
+                windowsAppSdkDeployment = windowsAppSdkDeployment.get(),
+            ),
+        )
         stageRuntimeClasspath(outputRoot)
         stageRuntimeAssets(outputRoot)
         WinRTApplicationManifestGenerator.writeApplicationManifest(
@@ -304,13 +317,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         source: Path,
         output: Path,
     ) {
-        val javaHomeValue = javaHome.orNull?.trim().orEmpty()
-        if (javaHomeValue.isBlank()) {
-            throw IllegalStateException(
-                "Kotlin/WinRT application host requires a resolved Java toolchain home for JNI headers.",
-            )
-        }
-        val javaHomePath = Path.of(javaHomeValue)
+        val jniHeaders = resolveJvmNativeHeaderDirectories(javaHome.orNull.orEmpty())
         val sdk = toolchain.sdk
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
         val arguments = buildList {
@@ -321,8 +328,10 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                     "/nologo",
                     source.toString(),
                     "/Fe:${output}",
-                    "/I${javaHomePath.resolve("include")}",
-                    "/I${javaHomePath.resolve("include").resolve("win32")}",
+                    "/I",
+                    jniHeaders.includeDirectory.toString(),
+                    "/I",
+                    jniHeaders.platformIncludeDirectory.toString(),
                     "/I${sdk.includeRoot.resolve("shared")}",
                     "/I${sdk.includeRoot.resolve("um")}",
                     "/I${sdk.includeRoot.resolve("ucrt")}",
@@ -358,9 +367,14 @@ internal fun applicationHostSource(
     packageType: String,
     runtimeMode: String,
     externalJvmHome: String,
+    windowsAppSdkDeployment: WindowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent,
 ): String {
+    require(windowsAppSdkDeployment != WindowsAppSdkDeployment.Auto) {
+        "Generated application hosts require a concrete Windows App SDK deployment mode."
+    }
     val mainClassPath = mainClass.replace('.', '/')
     val unpackaged = packageType == WindowsPackageType.None.name
+    val packageIdentity = if (unpackaged) "Unpackaged" else "Packaged"
     val externalJvmHomePath = externalJvmHome
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
@@ -556,32 +570,84 @@ internal fun applicationHostSource(
         return create_vm(&kotlin_winrt_vm, (void **)env, &args) == JNI_OK ? 0 : 1;
     }
 
-    static jobject kotlin_winrt_initialize_application_host(JNIEnv *env) {
-        jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkLauncherSupport");
-        if (support_class == NULL) {
-            return NULL;
+    static int kotlin_winrt_handle_pending_exception(JNIEnv *env) {
+        if (!(*env)->ExceptionCheck(env)) {
+            return 0;
         }
-        jmethodID initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Z)Ljava/lang/AutoCloseable;");
-        if (initialize == NULL) {
-            return NULL;
-        }
-        return (*env)->CallStaticObjectMethod(env, support_class, initialize, ${if (unpackaged) "JNI_TRUE" else "JNI_FALSE"});
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+        return 1;
     }
 
-    static void kotlin_winrt_close_application_host(JNIEnv *env, jobject application_host) {
+    static jobject kotlin_winrt_initialize_application_host(JNIEnv *env) {
+        jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkLauncherSupport");
+        jmethodID initialize;
+        jstring package_identity;
+        jstring deployment_mode;
+        jstring runtime_assets_root;
+        wchar_t host_directory[MAX_PATH * 4];
+        char host_directory_utf8[MAX_PATH * 4];
+        jobject result;
+        if (support_class == NULL) {
+            return NULL;
+        }
+        initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;");
+        if (initialize == NULL) {
+            (*env)->DeleteLocalRef(env, support_class);
+            return NULL;
+        }
+        package_identity = (*env)->NewStringUTF(env, "$packageIdentity");
+        if (package_identity == NULL) {
+            (*env)->DeleteLocalRef(env, support_class);
+            return NULL;
+        }
+        deployment_mode = (*env)->NewStringUTF(env, "${windowsAppSdkDeployment.name}");
+        if (deployment_mode == NULL) {
+            (*env)->DeleteLocalRef(env, package_identity);
+            (*env)->DeleteLocalRef(env, support_class);
+            return NULL;
+        }
+        kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
+        host_directory_utf8[0] = '\0';
+        kotlin_winrt_append_utf8(host_directory_utf8, sizeof(host_directory_utf8), host_directory);
+        runtime_assets_root = (*env)->NewStringUTF(env, host_directory_utf8);
+        if (runtime_assets_root == NULL) {
+            (*env)->DeleteLocalRef(env, package_identity);
+            (*env)->DeleteLocalRef(env, deployment_mode);
+            (*env)->DeleteLocalRef(env, support_class);
+            return NULL;
+        }
+        result = (*env)->CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode, runtime_assets_root);
+        (*env)->DeleteLocalRef(env, package_identity);
+        (*env)->DeleteLocalRef(env, deployment_mode);
+        (*env)->DeleteLocalRef(env, runtime_assets_root);
+        (*env)->DeleteLocalRef(env, support_class);
+        return result;
+    }
+
+    static int kotlin_winrt_close_application_host(JNIEnv *env, jobject application_host) {
         jclass support_class;
         jmethodID close;
+        int failed = 0;
         if (application_host == NULL) {
-            return;
+            return 0;
         }
+        failed |= kotlin_winrt_handle_pending_exception(env);
         support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkLauncherSupport");
         if (support_class == NULL) {
-            return;
+            failed |= kotlin_winrt_handle_pending_exception(env);
+            return 1;
         }
         close = (*env)->GetStaticMethodID(env, support_class, "close", "(Ljava/lang/AutoCloseable;)V");
-        if (close != NULL) {
-            (*env)->CallStaticVoidMethod(env, support_class, close, application_host);
+        if (close == NULL) {
+            failed |= kotlin_winrt_handle_pending_exception(env);
+            (*env)->DeleteLocalRef(env, support_class);
+            return 1;
         }
+        (*env)->CallStaticVoidMethod(env, support_class, close, application_host);
+        failed |= kotlin_winrt_handle_pending_exception(env);
+        (*env)->DeleteLocalRef(env, support_class);
+        return failed;
     }
 
     int wmain(int argc, wchar_t **wargv) {
@@ -589,47 +655,77 @@ internal fun applicationHostSource(
         jobject application_host = NULL;
         jclass main_class;
         jmethodID main_method;
+        jclass string_class;
         jobjectArray args;
         int exit_code = 0;
         if (kotlin_winrt_create_vm(&env) != 0 || env == NULL) {
             return 1;
         }
         application_host = kotlin_winrt_initialize_application_host(env);
-        if ((*env)->ExceptionCheck(env)) {
-            (*env)->ExceptionDescribe(env);
+        if (application_host == NULL) {
+            kotlin_winrt_handle_pending_exception(env);
+            return 1;
+        }
+        if (kotlin_winrt_handle_pending_exception(env)) {
+            kotlin_winrt_close_application_host(env, application_host);
             return 1;
         }
         main_class = (*env)->FindClass(env, "$mainClassPath");
         if (main_class == NULL) {
-            (*env)->ExceptionDescribe(env);
-            kotlin_winrt_close_application_host(env, application_host);
-            return 1;
+            exit_code = 1;
+            kotlin_winrt_handle_pending_exception(env);
+            goto cleanup;
         }
         main_method = (*env)->GetStaticMethodID(env, main_class, "main", "([Ljava/lang/String;)V");
         if (main_method == NULL) {
-            (*env)->ExceptionDescribe(env);
-            kotlin_winrt_close_application_host(env, application_host);
-            return 1;
+            exit_code = 1;
+            kotlin_winrt_handle_pending_exception(env);
+            goto cleanup;
         }
-        jclass string_class = (*env)->FindClass(env, "java/lang/String");
+        string_class = (*env)->FindClass(env, "java/lang/String");
+        if (string_class == NULL) {
+            exit_code = 1;
+            kotlin_winrt_handle_pending_exception(env);
+            goto cleanup;
+        }
         args = (*env)->NewObjectArray(env, argc > 1 ? argc - 1 : 0, string_class, NULL);
+        if (args == NULL) {
+            exit_code = 1;
+            kotlin_winrt_handle_pending_exception(env);
+            goto cleanup;
+        }
         for (int i = 1; i < argc; ++i) {
             int length = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, NULL, 0, NULL, NULL);
+            if (length <= 0) {
+                exit_code = 1;
+                goto cleanup;
+            }
             char *utf8 = (char *)HeapAlloc(GetProcessHeap(), 0, length);
+            if (utf8 == NULL) {
+                exit_code = 1;
+                goto cleanup;
+            }
             WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, utf8, length, NULL, NULL);
             jstring value = (*env)->NewStringUTF(env, utf8);
             HeapFree(GetProcessHeap(), 0, utf8);
+            if (value == NULL) {
+                exit_code = 1;
+                kotlin_winrt_handle_pending_exception(env);
+                goto cleanup;
+            }
             (*env)->SetObjectArrayElement(env, args, i - 1, value);
             (*env)->DeleteLocalRef(env, value);
+            if (kotlin_winrt_handle_pending_exception(env)) {
+                exit_code = 1;
+                goto cleanup;
+            }
         }
         (*env)->CallStaticVoidMethod(env, main_class, main_method, args);
-        if ((*env)->ExceptionCheck(env)) {
-            (*env)->ExceptionDescribe(env);
+        if (kotlin_winrt_handle_pending_exception(env)) {
             exit_code = 1;
         }
-        kotlin_winrt_close_application_host(env, application_host);
-        if ((*env)->ExceptionCheck(env)) {
-            (*env)->ExceptionDescribe(env);
+    cleanup:
+        if (kotlin_winrt_close_application_host(env, application_host) != 0) {
             exit_code = 1;
         }
         return exit_code;

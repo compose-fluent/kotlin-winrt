@@ -351,13 +351,13 @@ internal object XamlSystemProjectionRuntimeHooks {
         }
 
         fun close() {
+            var failure: Throwable? = null
             lock.withLock {
-                providers.forEach { provider ->
-                    runCatching { provider.close() }
-                }
+                failure = runCatching { closeAllAutoCloseables(providers) }.exceptionOrNull()
                 providers = emptyList()
                 cacheKey = emptyList()
             }
+            failure?.let { throw it }
         }
     }
 

@@ -1,31 +1,26 @@
 package io.github.composefluent.winrt.runtime
 
+/**
+ * Owns one successful COM apartment initialization on the creating thread.
+ *
+ * This mirrors C++/WinRT `init_apartment`: a scope is created only after
+ * `CoInitializeEx` succeeds and closing it performs exactly one matching
+ * `CoUninitialize`.
+ */
 class RuntimeScope private constructor(
-    private val comInitialization: HResult,
-    private val winRTInitialization: HResult,
+    private val ownerThread: Long,
 ) : AutoCloseable {
     private var closed = false
 
-    val comInitialized: Boolean
-        get() = comInitialization.isSuccess
-
-    val winRTInitialized: Boolean
-        get() = winRTInitialization.isSuccess
-
     override fun close() {
+        check(platformCurrentThreadToken() == ownerThread) {
+            "RuntimeScope must be closed on its creating thread."
+        }
         if (closed) {
             return
         }
         closed = true
-        if (winRTInitialized) {
-            RuntimeScopeThreadInitialization.recordWinRTUninitialize()
-            PlatformRuntimeInitialization.uninitializeWinRT()
-        }
-        if (comInitialized && winRTInitialization != KnownHResults.RPC_E_CHANGED_MODE) {
-            RuntimeScopeThreadInitialization.recordComUninitialize()
-            PlatformRuntimeInitialization.uninitializeCom()
-        }
-        RuntimeScopeThreadInitialization.recordScopeClose()
+        PlatformRuntimeInitialization.uninitializeCom()
     }
 
     companion object {
@@ -36,38 +31,12 @@ class RuntimeScope private constructor(
             initialize(ApartmentType.MultiThreaded)
 
         private fun initialize(apartmentType: ApartmentType): RuntimeScope {
+            check(!platformCurrentThreadIsVirtual()) {
+                "RuntimeScope cannot initialize a COM apartment on a JVM virtual thread."
+            }
             val comResult = PlatformRuntimeInitialization.initializeCom(apartmentType)
-            val winRTResult = PlatformRuntimeInitialization.initializeWinRT(apartmentType)
-            RuntimeScopeThreadInitialization.recordScopeInitialize(comResult, winRTResult)
-            return RuntimeScope(comResult, winRTResult)
+            comResult.requireSuccess("CoInitializeEx")
+            return RuntimeScope(platformCurrentThreadToken())
         }
-    }
-}
-
-internal object RuntimeScopeThreadInitialization {
-    private val activeScopes = PlatformThreadLocalInt()
-    private val comInitializations = PlatformThreadLocalInt()
-    private val winRTInitializations = PlatformThreadLocalInt()
-
-    fun recordScopeInitialize(comResult: HResult, winRTResult: HResult) {
-        activeScopes.set(activeScopes.get() + 1)
-        if (winRTResult.isSuccess) {
-            winRTInitializations.set(winRTInitializations.get() + 1)
-        }
-        if (comResult.isSuccess && winRTResult != KnownHResults.RPC_E_CHANGED_MODE) {
-            comInitializations.set(comInitializations.get() + 1)
-        }
-    }
-
-    fun recordScopeClose() {
-        activeScopes.set((activeScopes.get() - 1).coerceAtLeast(0))
-    }
-
-    fun recordWinRTUninitialize() {
-        winRTInitializations.set((winRTInitializations.get() - 1).coerceAtLeast(0))
-    }
-
-    fun recordComUninitialize() {
-        comInitializations.set((comInitializations.get() - 1).coerceAtLeast(0))
     }
 }

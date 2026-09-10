@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 /**
- * Shared equivalent of the `.cswinrt/src/WinRT.Runtime/Module.cs` WinRT module owner.
+ * Shared equivalent of the `.cswinrt/src/WinRT.Runtime/ActivationFactory.cs` WinRT module owner.
  *
  * The runtime keeps one process-wide MTA usage cookie alive so activation and interop helpers do not
  * each invent their own initialization lifetime.

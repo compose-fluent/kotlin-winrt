@@ -91,8 +91,19 @@ private object ActiveComposableObjectReferences {
         val snapshot = lock.withLock {
             references.toList()
         }
-        snapshot.asReversed().forEach { reference ->
-            runCatching { reference.close() }
+        closeAllAutoCloseables(snapshot.asReversed())
+    }
+}
+
+/** Closes every resource while preserving the first failure and later failures as suppressed. */
+internal fun closeAllAutoCloseables(resources: Iterable<AutoCloseable>) {
+    var failure: Throwable? = null
+    resources.forEach { resource ->
+        try {
+            resource.close()
+        } catch (error: Throwable) {
+            failure?.addSuppressed(error) ?: run { failure = error }
         }
     }
+    failure?.let { throw it }
 }

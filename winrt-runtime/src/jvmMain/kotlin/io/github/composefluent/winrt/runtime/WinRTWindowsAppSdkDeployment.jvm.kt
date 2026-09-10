@@ -7,6 +7,7 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
+import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
@@ -70,7 +71,7 @@ internal actual fun platformActivateWindowsManifest(manifestPath: Path): AutoClo
         if (handle.address() == -1L) {
             error("CreateActCtxW failed with GetLastError=${getLastError()} for ${manifestPath.canonicalString()}")
         }
-        val cookieOut = callArena.allocate(ValueLayout.ADDRESS)
+        val cookieOut = callArena.allocate(ValueLayout.JAVA_LONG)
         val activated = downcall(
             "ActivateActCtx",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS),
@@ -79,15 +80,56 @@ internal actual fun platformActivateWindowsManifest(manifestPath: Path): AutoClo
             releaseActCtx(handle)
             error("ActivateActCtx failed with GetLastError=${getLastError()} for ${manifestPath.canonicalString()}")
         }
-        JvmActivationContextScope(handle, cookieOut.get(ValueLayout.ADDRESS, 0L))
+        JvmActivationContextScope(
+            handle = RawAddress(handle.address()),
+            cookie = RawAddress(cookieOut.get(ValueLayout.JAVA_LONG, 0L)),
+        )
     }
 
-internal actual fun platformSetWindowsEnvironmentVariable(name: String, value: String) {
+internal actual fun platformGetWindowsEnvironmentVariable(name: String): String? =
+    Arena.ofConfined().use { callArena ->
+        val nameSegment = allocateWideString(callArena, name)
+        var capacity = 256
+        while (true) {
+            val buffer = callArena.allocate(capacity.toLong() * ValueLayout.JAVA_CHAR.byteSize(), 2L)
+            val length = downcall(
+                "GetEnvironmentVariableW",
+                FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT,
+                ),
+            ).invokeWithArguments(nameSegment, buffer, capacity) as Int
+            if (length == 0) {
+                val lastError = getLastError()
+                if (lastError == windowsEnvironmentVariableNotFound) {
+                    return@use null
+                }
+                if (lastError == 0) {
+                    return@use ""
+                }
+                error("GetEnvironmentVariableW failed with GetLastError=$lastError for $name")
+            }
+            if (length < capacity) {
+                val chars = buffer.asSlice(0L, length.toLong() * ValueLayout.JAVA_CHAR.byteSize())
+                    .toArray(ValueLayout.JAVA_CHAR.withOrder(ByteOrder.LITTLE_ENDIAN))
+                return@use String(chars)
+            }
+            capacity = length + 1
+        }
+        error("GetEnvironmentVariableW did not return a value.")
+    }
+
+internal actual fun platformSetWindowsEnvironmentVariable(name: String, value: String?) {
     Arena.ofConfined().use { callArena ->
         val result = downcall(
             "SetEnvironmentVariableW",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS),
-        ).invokeWithArguments(allocateWideString(callArena, name), allocateWideString(callArena, value)) as Int
+        ).invokeWithArguments(
+            allocateWideString(callArena, name),
+            value?.let { allocateWideString(callArena, it) } ?: MemorySegment.NULL,
+        ) as Int
         if (result == 0) {
             error("SetEnvironmentVariableW failed with GetLastError=${getLastError()} for $name")
         }
@@ -101,6 +143,8 @@ internal actual fun platformLoadWindowsLibrary(path: Path): RawAddress =
     storePlatformHandle(SymbolLookup.libraryLookup(java.nio.file.Path.of(path.canonicalString()), arena))
 
 internal actual fun platformFreeWindowsLibrary(module: RawAddress) {
+    // FFM keeps libraries loaded by the process-wide arena. Remove only the lookup handle here;
+    // unloading the DLL would invalidate retained function pointers used by the runtime.
     platformHandles.remove(module.value)
 }
 
@@ -120,6 +164,7 @@ internal actual fun platformCallMddBootstrapInitialize2(
     majorMinorVersion: Int,
     versionTag: String?,
     minVersion: Long,
+    options: Int,
 ) {
     val handle = linker.downcallHandle(
         symbol(procedure),
@@ -133,7 +178,7 @@ internal actual fun platformCallMddBootstrapInitialize2(
     )
     Arena.ofConfined().use { callArena ->
         val tag = versionTag?.takeIf { it.isNotEmpty() }?.let { allocateWideString(callArena, it) } ?: MemorySegment.NULL
-        HResult(handle.invokeWithArguments(majorMinorVersion, tag, minVersion, 0) as Int)
+        HResult(handle.invokeWithArguments(majorMinorVersion, tag, minVersion, options) as Int)
             .requireSuccess("MddBootstrapInitialize2")
     }
 }
@@ -141,25 +186,42 @@ internal actual fun platformCallMddBootstrapInitialize2(
 internal actual fun platformRememberWindowsAppSdkBootstrapShutdown(module: RawAddress) {
     bootstrapShutdown = lookup(module).find("MddBootstrapShutdown").orElse(null)?.let { symbol ->
         linker.downcallHandle(symbol, FunctionDescriptor.ofVoid())
-    }
+    } ?: error("Microsoft.WindowsAppRuntime.Bootstrap.dll does not export MddBootstrapShutdown.")
+}
+
+internal actual fun platformForgetWindowsAppSdkBootstrapShutdown() {
+    bootstrapShutdown = null
 }
 
 internal actual fun platformWindowsAppSdkBootstrapShutdown() {
-    runCatching { bootstrapShutdown?.invokeWithArguments() }
+    val shutdown = bootstrapShutdown ?: error("Windows App SDK bootstrap shutdown was not initialized.")
+    bootstrapShutdown = null
+    shutdown.invokeWithArguments()
 }
 
 private class JvmActivationContextScope(
-    private val handle: MemorySegment,
-    private val cookie: MemorySegment,
+    private val handle: RawAddress,
+    private val cookie: RawAddress,
 ) : AutoCloseable {
     override fun close() {
-        runCatching {
-            downcall(
+        var failure: Throwable? = null
+        try {
+            val result = downcall(
                 "DeactivateActCtx",
-                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
-            ).invokeWithArguments(0, cookie)
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG),
+            ).invokeWithArguments(0, cookie.value) as Int
+            if (result == 0) {
+                error("DeactivateActCtx failed with GetLastError=${getLastError()}")
+            }
+        } catch (error: Throwable) {
+            failure = error
         }
-        releaseActCtx(handle)
+        try {
+            releaseActCtx(handle)
+        } catch (error: Throwable) {
+            failure?.addSuppressed(error) ?: run { failure = error }
+        }
+        failure?.let { throw it }
     }
 }
 
@@ -187,7 +249,13 @@ private fun releaseActCtx(handle: MemorySegment) {
     downcall("ReleaseActCtx", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS)).invokeWithArguments(handle)
 }
 
+private fun releaseActCtx(handle: RawAddress) {
+    releaseActCtx(MemorySegment.ofAddress(handle.value))
+}
+
 private fun allocateWideString(arena: Arena, value: String): MemorySegment {
     val bytes = (value + '\u0000').toByteArray(StandardCharsets.UTF_16LE)
     return arena.allocate(bytes.size.toLong(), 2).copyFrom(MemorySegment.ofArray(bytes))
 }
+
+private const val windowsEnvironmentVariableNotFound = 203

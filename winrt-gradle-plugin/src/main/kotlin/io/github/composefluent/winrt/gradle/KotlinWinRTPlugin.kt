@@ -94,7 +94,7 @@ internal val KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE: Attribute<String> =
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
 private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRTLibraryDependencyIdentity"
 
-/** Resolves the configured Gradle Java toolchain instead of inheriting the daemon JVM. */
+/** Resolves a complete JDK for JVM host generation instead of inheriting the daemon JVM. */
 private fun configuredJvmToolchainHome(
     project: Project,
     options: WinRTApplicationOptions,
@@ -107,7 +107,10 @@ private fun configuredJvmToolchainHome(
     val launcher = service.launcherFor(Action<JavaToolchainSpec> { spec ->
         spec.languageVersion.set(JavaLanguageVersion.of(options.jvmToolchainVersion.get()))
     }).get()
-    launcher.metadata.installationPath.asFile.absolutePath
+    resolveJvmDevelopmentKitHome(
+        selectedHome = launcher.metadata.installationPath.asFile.toPath(),
+        expectedJavaMajor = options.jvmToolchainVersion.get(),
+    ).toString()
 }
 
 fun Project.registerWinRTApplicationHostRunTask(
@@ -801,6 +804,18 @@ private fun configureWinRTApplicationTasks(
         "restoreWinAppDependencies",
         RestoreWinAppDependenciesTask::class.java,
     )
+    val resolvedWindowsAppSdkDeployment = project.provider {
+        val packageSpecs = allNuGetPackageSpecs(extension) +
+            dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+        resolveWindowsAppSdkDeployment(
+            requested = options.windowsAppSdkDeployment.get(),
+            packageSpecs = packageSpecs,
+            frameworkDependentAvailable = frameworkDependentDeploymentAvailable(
+                restoreEnabled = extension.restoreNuGetPackages.get(),
+                explicitRuntimeAssets = extension.runtimeAssets.get().map { project.file(it).toPath() },
+            ),
+        )
+    }
     project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -973,7 +988,7 @@ private fun configureWinRTApplicationTasks(
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 val outputFile = options.packageOutputFile.orNull?.asFile
-                options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.SelfContained ||
+                resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained ||
                     options.packageType.get() != WindowsPackageType.Packaged ||
                     !options.generatePackage.get() ||
                     options.makeAppxExecutable.get().isNotBlank() ||
@@ -1107,6 +1122,7 @@ private fun configureWinRTApplicationTasks(
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
             task.packageType.set(project.provider { options.packageType.get().name })
+            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1234,7 +1250,7 @@ private fun configureWinRTApplicationTasks(
                 val usesLegacyMakeAppx = options.makeAppxExecutable.get().isNotBlank() ||
                     packageOutput?.name?.endsWith(".appx", ignoreCase = true) == true
                 options.packageType.get() == WindowsPackageType.Packaged &&
-                    options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent &&
+                    resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent &&
                     usesLegacyMakeAppx
             })
             task.executableBaseName.set(project.name)
@@ -1282,6 +1298,7 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.packageType.set(project.provider { options.packageType.get().name })
+            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
             task.executableBaseName.set(project.name)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
@@ -1365,8 +1382,8 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.packageType.set(options.packageType.map { it.name })
-            task.selfContained.set(options.windowsAppSdkDeployment.map {
-                it == WinRTWindowsAppSdkDeployment.SelfContained
+            task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
+                it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
@@ -1405,8 +1422,8 @@ private fun configureWinRTApplicationTasks(
             )
             task.generatePackage.set(options.generatePackage)
             task.packageType.set(options.packageType.map { it.name })
-            task.selfContained.set(options.windowsAppSdkDeployment.map {
-                it == WinRTWindowsAppSdkDeployment.SelfContained
+            task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
+                it == WindowsAppSdkDeployment.SelfContained
             })
             task.makeAppxExecutable.set(options.makeAppxExecutable)
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
@@ -1547,7 +1564,7 @@ private fun configureWinRTApplicationTasks(
             task.installPackage.set(options.installPackage)
             task.packageType.set(options.packageType.map { it.name })
             task.includeRestoredFrameworkDependencies.set(project.provider {
-                options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
+                resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent
             })
             task.powerShellExecutable.set(options.installPowerShellExecutable)
             task.forceApplicationShutdown.set(options.installForceApplicationShutdown)
