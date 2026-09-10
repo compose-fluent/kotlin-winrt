@@ -2374,6 +2374,7 @@ class KotlinProjectionSupportRenderer private constructor(
         val className = winRTProjectedInterfaceCcwFactoriesClassName(supportOwnerIdentity)
         val fileBuilder = supportFileSpec(className.simpleName)
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
+            .addImport("io.github.composefluent.winrt.runtime", "RawAddress")
         entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
             projectedInterfaceInboundCallSiteFunctions(plan, semanticHelpers).forEach(fileBuilder::addFunction)
             fileBuilder.addType(
@@ -2577,6 +2578,7 @@ class KotlinProjectionSupportRenderer private constructor(
         }
         val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
+            .addImport("io.github.composefluent.winrt.runtime", "RawAddress")
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             plan.type.implementedInterfaces

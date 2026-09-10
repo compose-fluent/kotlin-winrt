@@ -9,11 +9,13 @@ import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegi
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
 import io.github.composefluent.winrt.compiler.authoring.writeAuthoringMetadataIndex
-import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
+import io.github.composefluent.winrt.metadata.WinRTMetadataCache
+import io.github.composefluent.winrt.metadata.WinRTMetadataSourceKind
+import io.github.composefluent.winrt.metadata.WinRTMetadataSourceResolver
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageIdentity
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
 import io.github.composefluent.winrt.metadata.WinRTTypeRef
@@ -28,6 +30,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.logging.Logging
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
@@ -35,6 +38,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
@@ -47,14 +51,19 @@ import org.gradle.workers.WorkAction
 import org.gradle.workers.WorkParameters
 import org.gradle.workers.WorkerExecutor
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.CodeSource
+import java.util.Base64
 import javax.inject.Inject
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 import kotlin.streams.asSequence
+
+private const val PREPARED_METADATA_MANIFEST_HEADER = "kotlin-winrt-prepared-metadata-v1"
+private const val PREPARED_METADATA_MANIFEST_RELATIVE_PATH = "kotlin-winrt-metadata/resolved-sources.tsv"
 
 @CacheableTask
 abstract class GenerateWinRTProjectionsTask : DefaultTask() {
@@ -65,6 +74,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     init {
         additionalAuthoringTargetArtifactNames.convention(emptyList())
         emitProjectionSources.convention(true)
+        prepareMetadataOnly.convention(false)
     }
 
     @get:OutputDirectory
@@ -90,10 +100,37 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataInputFiles: ConfigurableFileCollection
 
+    /** Tracks the SDK metadata selected by dynamic registry/environment discovery. */
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val windowsSdkMetadataFiles: ConfigurableFileCollection
+
+    @get:Input
+    @get:Optional
+    abstract val windowsSdkRootEnvironment: Property<String>
+
+    /** Legacy DSL property; authoring source roots are owned by the scanner task. */
+    @get:Internal
     abstract val sourceRoots: ConfigurableFileCollection
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoringCandidatesFile: RegularFileProperty
+
+    /**
+     * Resolved metadata produced by prepareWinRTProjectionMetadata. Keeping this as a
+     * separate input prevents SDK/NuGet discovery from being repeated by every consumer
+     * task and makes the preparation boundary visible to Gradle.
+     */
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val preparedMetadataManifest: RegularFileProperty
+
+    @get:Input
+    abstract val prepareMetadataOnly: Property<Boolean>
 
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
@@ -146,7 +183,8 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Internal
     abstract val nugetCliCacheDirectory: DirectoryProperty
 
-    @get:Input
+    /** Runtime environment is passed to the isolated worker but is not a projection input. */
+    @get:Internal
     abstract val workerEnvironment: MapProperty<String, String>
 
     @get:Input
@@ -206,6 +244,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.metadataInputs.set(metadataInputs)
             parameters.metadataInputFiles.from(metadataInputFiles)
             parameters.sourceRoots.from(sourceRoots)
+            parameters.authoringCandidatesFile.set(authoringCandidatesFile)
+            parameters.preparedMetadataManifest.set(preparedMetadataManifest)
+            parameters.prepareMetadataOnly.set(prepareMetadataOnly)
             parameters.includeNamespaces.set(includeNamespaces)
             parameters.includeTypes.set(includeTypes)
             parameters.excludeNamespaces.set(excludeNamespaces)
@@ -247,6 +288,9 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val metadataInputs: ListProperty<String>
     val metadataInputFiles: ConfigurableFileCollection
     val sourceRoots: ConfigurableFileCollection
+    val authoringCandidatesFile: RegularFileProperty
+    val preparedMetadataManifest: RegularFileProperty
+    val prepareMetadataOnly: Property<Boolean>
     val includeNamespaces: ListProperty<String>
     val includeTypes: ListProperty<String>
     val excludeNamespaces: ListProperty<String>
@@ -291,11 +335,16 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot { legacyRoot -> legacyRoot == generatedRoot || legacyRoot == authoringTypeDetailsRoot }
             .forEach(GradleFileOperations::deleteDirectory)
-        cleanDirectory(generatedRoot)
-        cleanDirectory(authoringTypeDetailsRoot)
-        val sources = metadataSources()
+        // KotlinProjectionGenerator.writeFiles preserves unchanged generated files and
+        // removes only stale files that it owns. Clearing this directory here would
+        // defeat Gradle's incremental source snapshots and the generator's write-if-changed path.
+        if (!parameters.emitProjectionSources.get()) {
+            cleanDirectory(generatedRoot)
+        }
+        val metadataCache = metadataCache()
+        val sources = metadataCache.files.map(WinRTMetadataSource::path)
         val effectiveExcludeTypes = parameters.excludeTypes.get()
-        val unfilteredModel = WinRTMetadataLoader.loadSources(sources)
+        val unfilteredModel = metadataCache.load()
         val effectiveIncludeTypes = parameters.includeTypes.get() +
             automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
         validateDependencyProjectionIdentityOwnership(parameters.dependencyIdentityFiles.files)
@@ -329,23 +378,31 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             mergedAuthoringMetadataIndexTypes(authoringMetadataBaseModel, parameters.dependencyIdentityFiles.files),
             authoringMetadataIndex,
         )
+        if (parameters.prepareMetadataOnly.get()) {
+            return
+        }
         val authoringSourceRoots = parameters.sourceRoots.files
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
             .filter(::containsKotlinSource)
-        val authoringCandidates = if (authoringSourceRoots.isEmpty()) {
-            emptyList()
-        } else {
-            val scannerWorkDirectory = parameters.workDirectory.get().asFile.toPath().resolve("authoring-scanner")
-            Files.createDirectories(scannerWorkDirectory)
-            val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
-            runAuthoringScanner(
-                sourceRoots = authoringSourceRoots,
-                metadataIndex = authoringMetadataIndex,
-                candidatesFile = candidatesFile,
-            )
-            KotlinWinRTAuthoringCandidateFile.read(candidatesFile)
-        }
+        val authoringCandidates = parameters.authoringCandidatesFile.orNull
+            ?.asFile
+            ?.toPath()
+            ?.takeIf(Files::isRegularFile)
+            ?.let(KotlinWinRTAuthoringCandidateFile::read)
+            ?: if (authoringSourceRoots.isEmpty()) {
+                emptyList()
+            } else {
+                val scannerWorkDirectory = parameters.workDirectory.get().asFile.toPath().resolve("authoring-scanner")
+                Files.createDirectories(scannerWorkDirectory)
+                val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
+                runAuthoringScanner(
+                    sourceRoots = authoringSourceRoots,
+                    metadataIndex = authoringMetadataIndex,
+                    candidatesFile = candidatesFile,
+                )
+                KotlinWinRTAuthoringCandidateFile.read(candidatesFile)
+            }
         KotlinWinRTAuthoringCandidateFile.write(
             generatedRoot.resolve("kotlin-winrt-authoring/authored-candidates.tsv"),
             authoringCandidates,
@@ -529,6 +586,130 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         val sources = explicitSources + sdkSource + nugetSources + dependencyAuthoredMetadataSources
         return sources
     }
+
+    /**
+     * Resolve external metadata once and hand the stable file list to downstream work. The
+     * manifest is deliberately text based so it can be inspected in build scans and restored
+     * by the build cache without retaining compiler objects or a mutable metadata model.
+     */
+    private fun metadataCache(): WinRTMetadataCache {
+        parameters.preparedMetadataManifest.orNull
+            ?.asFile
+            ?.toPath()
+            ?.takeIf(Files::isRegularFile)
+            ?.let(::readPreparedMetadataCache)
+            ?.let { return it }
+
+        val cache = WinRTMetadataSourceResolver.resolve(metadataSources())
+        if (parameters.prepareMetadataOnly.get()) {
+            val manifest = parameters.outputDirectory.get().asFile.toPath()
+                .resolve(PREPARED_METADATA_MANIFEST_RELATIVE_PATH)
+            writePreparedMetadataCache(manifest, cache)
+        }
+        return cache
+    }
+
+    private fun writePreparedMetadataCache(path: Path, cache: WinRTMetadataCache) {
+        Files.createDirectories(path.parent)
+        val lines = buildList {
+            add(PREPARED_METADATA_MANIFEST_HEADER)
+            cache.resolvedFiles
+                .sortedBy { resolved -> resolved.file.toString().lowercase() }
+                .forEach { resolved ->
+                    add(
+                        listOf(
+                            "file",
+                            resolved.sourceKind.name,
+                            encodePreparedMetadataValue(resolved.sourceDescription),
+                            encodePreparedMetadataValue(resolved.file.toAbsolutePath().normalize().toString()),
+                        ).joinToString("\t"),
+                    )
+                }
+            cache.windowsSdkSelections
+                .sortedBy { selection -> selection.version }
+                .forEach { selection ->
+                    val contracts = selection.contracts
+                        .sortedWith(compareBy({ it.name }, { it.version }))
+                        .joinToString(";") { contract ->
+                            "${encodePreparedMetadataValue(contract.name)}=${encodePreparedMetadataValue(contract.version)}"
+                        }
+                    add(
+                        listOf("sdk", selection.version, contracts).joinToString("\t"),
+                    )
+                }
+        }
+        Files.writeString(path, lines.joinToString(separator = "\n", postfix = "\n"))
+    }
+
+    private fun readPreparedMetadataCache(path: Path): WinRTMetadataCache {
+        val lines = Files.readAllLines(path)
+        require(lines.firstOrNull() == PREPARED_METADATA_MANIFEST_HEADER) {
+            "Prepared WinRT metadata manifest $path has an unexpected header."
+        }
+        val resolvedFiles = mutableListOf<io.github.composefluent.winrt.metadata.WinRTResolvedMetadataFile>()
+        val sdkSelections = mutableListOf<io.github.composefluent.winrt.metadata.WinRTWindowsSdkSelection>()
+        lines.drop(1).filter(String::isNotBlank).forEachIndexed { index, line ->
+            val parts = line.split('\t')
+            when (parts.firstOrNull()) {
+                "file" -> {
+                    require(parts.size == 4) {
+                        "Prepared WinRT metadata manifest $path has malformed file row ${index + 2}."
+                    }
+                    val sourceKind = runCatching { WinRTMetadataSourceKind.valueOf(parts[1]) }.getOrElse {
+                        throw GradleException("Prepared WinRT metadata manifest $path has unknown source kind '${parts[1]}'.")
+                    }
+                    val sourceDescription = decodePreparedMetadataValue(parts[2])
+                    val file = Path.of(decodePreparedMetadataValue(parts[3])).toAbsolutePath().normalize()
+                    require(Files.isRegularFile(file)) {
+                        "Prepared WinRT metadata manifest $path references missing metadata file $file."
+                    }
+                    resolvedFiles += io.github.composefluent.winrt.metadata.WinRTResolvedMetadataFile(
+                        file = file,
+                        sourceKind = sourceKind,
+                        sourceDescription = sourceDescription,
+                    )
+                }
+                "sdk" -> {
+                    require(parts.size == 3) {
+                        "Prepared WinRT metadata manifest $path has malformed SDK row ${index + 2}."
+                    }
+                    val contracts = if (parts[2].isBlank()) {
+                        emptyList()
+                    } else {
+                        parts[2].split(';').map { encodedContract ->
+                            val separator = encodedContract.indexOf('=')
+                            require(separator > 0 && separator < encodedContract.lastIndex) {
+                                "Prepared WinRT metadata manifest $path has malformed SDK contract row ${index + 2}."
+                            }
+                            io.github.composefluent.winrt.metadata.WinRTWindowsSdkContract(
+                                name = decodePreparedMetadataValue(encodedContract.substring(0, separator)),
+                                version = decodePreparedMetadataValue(encodedContract.substring(separator + 1)),
+                            )
+                        }
+                    }
+                    sdkSelections += io.github.composefluent.winrt.metadata.WinRTWindowsSdkSelection(
+                        version = parts[1],
+                        contracts = contracts,
+                    ).normalized()
+                }
+                else -> throw GradleException(
+                    "Prepared WinRT metadata manifest $path has unknown row kind '${parts.firstOrNull()}'.",
+                )
+            }
+        }
+        val files = resolvedFiles.map { it.file }
+        return WinRTMetadataCache(
+            files = files,
+            resolvedFiles = resolvedFiles,
+            windowsSdkSelections = sdkSelections,
+        )
+    }
+
+    private fun encodePreparedMetadataValue(value: String): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+
+    private fun decodePreparedMetadataValue(value: String): String =
+        String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
 
     private fun legacyNuGetMetadataSources(packageSpecs: List<String>): List<WinRTMetadataSource> {
         val explicitNuGetRoots = parameters.nugetGlobalPackagesRoots.get().map(Path::of)

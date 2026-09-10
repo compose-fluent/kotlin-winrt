@@ -162,6 +162,12 @@ class KotlinWinRTCommandLineProcessor : CommandLineProcessor {
             required = false,
         ),
         CliOption(
+            optionName = "projectionSupportOwnerArtifactName",
+            valueDescription = "<file>",
+            description = "Artifact identity used to address the external compiled projection support initializer.",
+            required = false,
+        ),
+        CliOption(
             optionName = "compilerSupportManifest",
             valueDescription = "<path>",
             description = "Path to the generator-emitted kotlin-winrt compiler support manifest.",
@@ -171,6 +177,12 @@ class KotlinWinRTCommandLineProcessor : CommandLineProcessor {
             optionName = "compilerSupportClassOutputDirectory",
             valueDescription = "<path>",
             description = "Directory for compiler-generated kotlin-winrt support class artifacts.",
+            required = false,
+        ),
+        CliOption(
+            optionName = "projectionSupportMode",
+            valueDescription = "<embedded|external>",
+            description = "Whether imported projection support is emitted in this compilation or supplied by a cached projection artifact.",
             required = false,
         ),
     )
@@ -196,10 +208,14 @@ class KotlinWinRTCommandLineProcessor : CommandLineProcessor {
             configuration.put(AUTHORING_ASSEMBLY_NAME_KEY, value)
         } else if (option.optionName == "authoringTargetArtifactName") {
             configuration.put(AUTHORING_TARGET_ARTIFACT_NAME_KEY, value)
+        } else if (option.optionName == "projectionSupportOwnerArtifactName") {
+            configuration.put(PROJECTION_SUPPORT_OWNER_ARTIFACT_NAME_KEY, value)
         } else if (option.optionName == "compilerSupportManifest") {
             configuration.put(COMPILER_SUPPORT_MANIFEST_KEY, value)
         } else if (option.optionName == "compilerSupportClassOutputDirectory") {
             configuration.put(COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY, value)
+        } else if (option.optionName == "projectionSupportMode") {
+            configuration.put(PROJECTION_SUPPORT_MODE_KEY, value)
         }
     }
 
@@ -221,10 +237,14 @@ class KotlinWinRTCommandLineProcessor : CommandLineProcessor {
             CompilerConfigurationKey("kotlin-winrt authoring assembly name")
         val AUTHORING_TARGET_ARTIFACT_NAME_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt authoring target artifact name")
+        val PROJECTION_SUPPORT_OWNER_ARTIFACT_NAME_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt projection support owner artifact name")
         val COMPILER_SUPPORT_MANIFEST_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt compiler support manifest")
         val COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt compiler support class output directory")
+        val PROJECTION_SUPPORT_MODE_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt projection support mode")
     }
 }
 
@@ -244,8 +264,10 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
                 authoredHostManifestOutputPath = configuration.get(KotlinWinRTCommandLineProcessor.AUTHORED_HOST_MANIFEST_OUTPUT_KEY),
                 authoringAssemblyName = configuration.get(KotlinWinRTCommandLineProcessor.AUTHORING_ASSEMBLY_NAME_KEY),
                 authoringTargetArtifactName = configuration.get(KotlinWinRTCommandLineProcessor.AUTHORING_TARGET_ARTIFACT_NAME_KEY),
+                projectionSupportOwnerArtifactName = configuration.get(KotlinWinRTCommandLineProcessor.PROJECTION_SUPPORT_OWNER_ARTIFACT_NAME_KEY),
                 compilerSupportManifestPath = configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY),
                 compilerSupportClassOutputDirectoryPath = configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY),
+                projectionSupportMode = configuration.get(KotlinWinRTCommandLineProcessor.PROJECTION_SUPPORT_MODE_KEY),
             ),
         )
     }
@@ -260,8 +282,10 @@ class KotlinWinRTIrGenerationExtension(
     private val authoredHostManifestOutputPath: String?,
     private val authoringAssemblyName: String?,
     private val authoringTargetArtifactName: String?,
+    private val projectionSupportOwnerArtifactName: String?,
     private val compilerSupportManifestPath: String?,
     private val compilerSupportClassOutputDirectoryPath: String?,
+    private val projectionSupportMode: String?,
 ) : IrGenerationExtension {
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
@@ -275,7 +299,9 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext = pluginContext,
             guidSignaturesByKotlinClass = guidSignaturesForLowering(projectionRegistrarEntries),
         )
-        val projectionSupportOwnerIdentity = authoringTargetArtifactName
+        val projectionSupportOwnerIdentity = projectionSupportOwnerArtifactName
+            ?.takeIf(String::isNotBlank)
+            ?: authoringTargetArtifactName
             ?.takeIf(String::isNotBlank)
             ?: compilerSupportEntries
                 .filter { entry -> entry.kind == "projection-registrar" }
@@ -283,7 +309,20 @@ class KotlinWinRTIrGenerationExtension(
                 ?.owner
                 .orEmpty()
         val authoringRegistrarEntries = readAuthoringTypeDetailsRegistrarEntries(compilerSupportEntries)
-        writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
+        val emitProjectionSupport = when (projectionSupportMode?.lowercase()) {
+            null, "", "embedded" -> true
+            "external" -> false
+            else -> error("Unsupported kotlin-winrt projectionSupportMode '$projectionSupportMode'.")
+        }
+        if (emitProjectionSupport) {
+            writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
+        } else {
+            clearEmbeddedProjectionSupport(
+                compilerSupportClassOutputDirectoryPath
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(Path::of),
+            )
+        }
         if (moduleFragment.files.isEmpty()) {
             val winRTTypes = metadataIndexPath
                 ?.takeIf(String::isNotBlank)
@@ -294,12 +333,21 @@ class KotlinWinRTIrGenerationExtension(
             writeAuthoredSupportArtifacts(emptyList())
             return
         }
-        val projectionSupportInitialize = addProjectionSupportInitializerFunction(
-            moduleFragment = moduleFragment,
-            pluginContext = pluginContext,
-            entries = projectionRegistrarEntries,
-            ownerIdentity = projectionSupportOwnerIdentity,
-        )
+        val projectionSupportInitialize = if (emitProjectionSupport) {
+            addProjectionSupportInitializerFunction(
+                moduleFragment = moduleFragment,
+                pluginContext = pluginContext,
+                entries = projectionRegistrarEntries,
+                ownerIdentity = projectionSupportOwnerIdentity,
+            )
+        } else {
+            addExternalProjectionSupportInitializerFunction(
+                moduleFragment = moduleFragment,
+                pluginContext = pluginContext,
+                entries = projectionRegistrarEntries,
+                ownerIdentity = projectionSupportOwnerIdentity,
+            )
+        }
         lowerProjectionSupportIntrinsicCalls(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
@@ -439,6 +487,15 @@ class KotlinWinRTIrGenerationExtension(
         )
     }
 
+    private fun clearEmbeddedProjectionSupport(outputDirectory: Path?) {
+        if (outputDirectory == null) {
+            return
+        }
+        deleteStaleCompilerSupportManifestClasses(outputDirectory, currentInternalName = null)
+        deleteStaleProjectionSupportInitializerClasses(outputDirectory, currentInternalName = null)
+        Files.deleteIfExists(outputDirectory.resolve(STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
+    }
+
     private fun readProjectionRegistrarEntries(
         manifestEntries: List<KotlinWinRTCompilerSupportManifestEntry>,
     ): List<KotlinWinRTProjectionRegistrarEntry> {
@@ -494,7 +551,7 @@ class KotlinWinRTIrGenerationExtension(
             .distinctBy(KotlinWinRTProjectionTypeIndexRecord::sourceTypeName)
             .sortedBy(KotlinWinRTProjectionTypeIndexRecord::sourceTypeName)
         outputPath.parent?.let(Files::createDirectories)
-        Files.writeString(
+        writeStringIfChanged(
             outputPath,
             records.joinToString(separator = "\n", postfix = if (records.isEmpty()) "" else "\n") { it.render() },
         )
@@ -1142,6 +1199,61 @@ class KotlinWinRTIrGenerationExtension(
             )
         }
         file.declarations += function
+        return function.symbol
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun addExternalProjectionSupportInitializerFunction(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        entries: List<KotlinWinRTProjectionRegistrarEntry>,
+        ownerIdentity: String,
+    ): IrSimpleFunctionSymbol? {
+        if (entries.isEmpty()) {
+            return null
+        }
+        val lookupFile = requireCompilerSupportPrerequisite(
+            description = "external projection registrar",
+            prerequisite = "module file",
+            value = moduleFragment.files.firstOrNull(),
+        )
+        val externalInitializerClassName = projectionSupportInitializerInternalName(entries, ownerIdentity)
+            .replace('/', '.')
+        val externalInitializerClass = requireCompilerSupportPrerequisite(
+            description = "external projection registrar",
+            prerequisite = "compiled initializer class $externalInitializerClassName",
+            value = pluginContext.findClassSymbol(
+                ClassId.topLevel(FqName(externalInitializerClassName)),
+                lookupFile,
+            ),
+        )
+        val externalInitializer = requireCompilerSupportPrerequisite(
+            description = "external projection registrar",
+            prerequisite = "static initialize() method on $externalInitializerClassName",
+            value = externalInitializerClass.owner.declarations
+                .filterIsInstance<IrSimpleFunction>()
+                .singleOrNull { function ->
+                    function.name.asString() == "initialize" &&
+                        function.parameters.none { parameter -> parameter.kind == IrParameterKind.Regular }
+                }
+                ?.symbol,
+        )
+        val functionName = Name.identifier(
+            "kotlinWinRTProjectionSupportInitialize_${projectionSupportInitializerHash(entries, ownerIdentity)}",
+        )
+        val function = pluginContext.irFactory.buildFun {
+            name = functionName
+            returnType = pluginContext.irBuiltIns.unitType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = lookupFile
+        }
+        val builder = DeclarationIrBuilder(pluginContext, function.symbol)
+        function.body = builder.irBlockBody {
+            +builder.irCall(externalInitializer)
+        }
+        lookupFile.declarations += function
         return function.symbol
     }
 
@@ -1796,6 +1908,18 @@ private const val STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
 
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
+private fun writeBytesIfChanged(target: Path, bytes: ByteArray) {
+    if (Files.isRegularFile(target) && Files.readAllBytes(target).contentEquals(bytes)) {
+        return
+    }
+    Files.createDirectories(target.parent)
+    Files.write(target, bytes)
+}
+
+private fun writeStringIfChanged(target: Path, contents: String) {
+    writeBytesIfChanged(target, contents.toByteArray(StandardCharsets.UTF_8))
+}
+
 fun writeCompilerSupportManifestClass(
     entries: List<KotlinWinRTCompilerSupportManifestEntry>,
     outputDirectory: Path,
@@ -1827,8 +1951,7 @@ fun writeCompilerSupportManifestClass(
     classWriter.visitEnd()
 
     val target = outputDirectory.resolve("$internalName.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
+        writeBytesIfChanged(target, classWriter.toByteArray())
     return internalName
 }
 
@@ -2084,8 +2207,7 @@ fun writeProjectionSupportInitializerClass(
     classWriter.visitEnd()
 
     val target = outputDirectory.resolve("$internalName.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
+        writeBytesIfChanged(target, classWriter.toByteArray())
     chunks.forEachIndexed { index, chunk ->
         writeProjectionRegistrarChunkClass(
             internalName = projectionRegistrarChunkInternalName(internalName, index),
@@ -2182,8 +2304,7 @@ private fun writeProjectionRegistrarChunkClass(
     classWriter.addProjectionRegistrarChunk("register", entries, Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC)
     classWriter.visitEnd()
     val target = outputDirectory.resolve("$internalName.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
+    writeBytesIfChanged(target, classWriter.toByteArray())
 }
 
 private fun ClassWriter.addProjectionRegistrarChunk(

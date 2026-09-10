@@ -126,27 +126,29 @@ private fun writeWinUiXamlComponentResourcesSource(
         return
     }
     val target = outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt")
-    Files.createDirectories(target.parent)
-    Files.writeString(
-        target,
-        buildString {
-            appendLine("// Deterministic merged WinUI component XAML resource bootstrap.")
-            appendLine("package io.github.composefluent.winrt.projections.support")
-            appendLine()
-            appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
-            appendLine("import microsoft.ui.xaml.ResourceDictionary")
-            appendLine()
-            appendLine("public object WinUiXamlComponentResources {")
-            appendLine("    public fun installInto(mergedDictionaries: MutableList<ResourceDictionary>) {")
-            runtimeClassNames.forEach { runtimeClassName ->
-                append("        mergedDictionaries.add(ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(")
-                append(runtimeClassName.kotlinStringLiteral())
-                appendLine(")))")
-            }
-            appendLine("    }")
-            appendLine("}")
-        },
-    )
+        Files.createDirectories(target.parent)
+        Files.writeString(
+            target,
+            buildString {
+                appendLine("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")")
+                appendLine()
+                appendLine("// Deterministic merged WinUI component XAML resource bootstrap.")
+                appendLine("package io.github.composefluent.winrt.projections.support")
+                appendLine()
+                appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
+                appendLine("import microsoft.ui.xaml.ResourceDictionary")
+                appendLine()
+                appendLine("public object WinUiXamlComponentResources {")
+                appendLine("    public fun installInto(mergedDictionaries: MutableList<ResourceDictionary>) {")
+                runtimeClassNames.forEach { runtimeClassName ->
+                    append("        mergedDictionaries.add(ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(")
+                    append(runtimeClassName.kotlinStringLiteral())
+                    appendLine(")))")
+                }
+                appendLine("    }")
+                appendLine("}")
+            },
+        )
 }
 
 private fun String.kotlinStringLiteral(): String =

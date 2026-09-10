@@ -61,6 +61,18 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
 
+    /** Package roots are inputs because the restore lock points into the external NuGet cache. */
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val packageContentFiles: ConfigurableFileCollection
+
+    /** Tracks inherited NuGet.Config files that WinApp CLI will discover from restoreBaseDirectory. */
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nugetConfigHierarchyFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val restoreEnabled: Property<Boolean>
 
@@ -80,7 +92,9 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     abstract val offline: Property<Boolean>
 
     init {
-        doNotTrackState("WinApp CLI restore updates external package caches and may inspect locked NuGet metadata.")
+        // The task still updates external caches, but its declared workspace output and
+        // configuration inputs are sufficient for Gradle's local up-to-date checks. Keeping
+        // state tracking enabled prevents every compile from invoking WinApp restore.
         winAppCliExecutable.convention("winapp")
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
         winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
@@ -119,12 +133,22 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         require(output.parent == workspace) {
             "WinApp restore output must be the .winapp directory directly below its generated workspace: $output"
         }
+        val packageSpecs = nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+        val existingLock = output.resolve("winmds.lock.json")
+        if (restoreEnabled.get() && existingLock.isRegularFile()) {
+            runCatching {
+                validateRestore(existingLock, packageSpecs)
+                validateRestoreContext(output, config, restoreBase, packageSpecs, existingLock)
+            }.onSuccess {
+                logger.lifecycle("Reusing verified WinApp restore from $output.")
+                return
+            }
+        }
         if (!restoreEnabled.get()) {
             GradleFileOperations.cleanDirectory(output)
             return
         }
 
-        val packageSpecs = nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
         if (packageSpecs.isEmpty() && !includeToolingPackages.get()) {
             GradleFileOperations.cleanDirectory(output)
             Files.createDirectories(output)
