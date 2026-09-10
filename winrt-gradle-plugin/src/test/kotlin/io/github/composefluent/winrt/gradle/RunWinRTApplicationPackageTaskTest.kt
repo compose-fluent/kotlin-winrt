@@ -112,7 +112,7 @@ class RunWinRTApplicationPackageTaskTest {
         task.selfContained.set(true)
         val deploymentModeError = runCatching { task.run() }.exceptionOrNull()
         assertTrue(deploymentModeError is GradleException)
-        assertTrue(deploymentModeError?.message.orEmpty().contains("frameworkDependent()"))
+        assertTrue(deploymentModeError?.message.orEmpty().contains("windowsAppSdkDeployment"))
 
         task.selfContained.set(false)
         task.packageDirectory.set(project.layout.projectDirectory)

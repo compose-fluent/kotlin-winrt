@@ -31,7 +31,7 @@ abstract class GenerateWinRTMingwApplicationEntryTask : DefaultTask() {
     abstract val packageType: Property<String>
 
     @get:Input
-    abstract val windowsAppSdkDeployment: Property<String>
+    abstract val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment>
 
     @get:Input
     abstract val entryPointFunctionName: Property<String>
@@ -43,7 +43,7 @@ abstract class GenerateWinRTMingwApplicationEntryTask : DefaultTask() {
     init {
         entryPointFunctionName.convention("main")
         packageType.convention(WindowsPackageType.Packaged.name)
-        windowsAppSdkDeployment.convention(WinRTWindowsAppSdkDeployment.FrameworkDependent.name)
+        windowsAppSdkDeployment.convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
     }
 
     @TaskAction
@@ -87,8 +87,11 @@ private fun mingwApplicationEntrySource(
     mainFunctionName: String,
     unpackaged: Boolean,
     entryFunctionName: String,
-    windowsAppSdkDeployment: String = WinRTWindowsAppSdkDeployment.FrameworkDependent.name,
+    windowsAppSdkDeployment: WinRTWindowsAppSdkDeployment = WinRTWindowsAppSdkDeployment.FrameworkDependent,
 ): FileSpec {
+    require(windowsAppSdkDeployment != WinRTWindowsAppSdkDeployment.Auto) {
+        "Generated application entries require a concrete Windows App SDK deployment mode."
+    }
     val userMainPackage = mainFunctionName.substringBeforeLast('.', missingDelimiterValue = "")
     val userMainName = mainFunctionName.substringAfterLast('.')
     if (userMainPackage.isBlank() || userMainName.isBlank()) {
@@ -115,7 +118,7 @@ private fun mingwApplicationEntrySource(
                     packageIdentity,
                     packageIdentityName,
                     deploymentMode,
-                    windowsAppSdkDeployment,
+                    windowsAppSdkDeployment.name,
                     deployment,
                 )
                 .addStatement("%M()", userMain)

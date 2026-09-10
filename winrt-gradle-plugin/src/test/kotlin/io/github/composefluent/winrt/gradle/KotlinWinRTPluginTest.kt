@@ -537,7 +537,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun application_without_windows_app_sdk_dependency_defaults_to_no_deployment() {
+    fun application_without_windows_app_sdk_dependency_keeps_auto_configuration() {
         val project = ProjectBuilder.builder().withName("pure-winrt-app").build()
         project.pluginManager.apply(KotlinWinRTPlugin::class.java)
         val extension = project.extensions.getByType(WinRTExtension::class.java)
@@ -547,9 +547,100 @@ class KotlinWinRTPluginTest {
         }
 
         assertEquals(
-            WinRTWindowsAppSdkDeployment.None,
+            WinRTWindowsAppSdkDeployment.Auto,
             extension.application.windowsAppSdkDeployment.get(),
         )
+
+        val host = project.tasks.named(
+            "buildWinRTApplicationHostJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        assertEquals(WinRTWindowsAppSdkDeployment.None, host.windowsAppSdkDeployment.get())
+    }
+
+    @Test
+    fun auto_deployment_selects_framework_dependent_for_windows_app_sdk_packages() {
+        val project = ProjectBuilder.builder().withName("winui-app").build()
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        extension.application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val host = project.tasks.named(
+            "buildWinRTApplicationHostJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        assertEquals(WinRTWindowsAppSdkDeployment.Auto, extension.application.windowsAppSdkDeployment.get())
+        assertEquals(WinRTWindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
+    }
+
+    @Test
+    fun auto_deployment_selects_framework_dependent_for_windows_app_sdk_winui_split_package() {
+        val project = ProjectBuilder.builder().withName("winui-split-package-app").build()
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.nugetPackage("Microsoft.WindowsAppSDK.WinUI", "2.2.0")
+        extension.application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val host = project.tasks.named(
+            "buildWinRTApplicationHostJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        assertEquals(WinRTWindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
+    }
+
+    @Test
+    fun auto_deployment_falls_back_to_self_contained_when_restore_cannot_supply_framework_bootstrap() {
+        val project = ProjectBuilder.builder().withName("winui-self-contained-fallback").build()
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        extension.restoreNuGetPackages.set(false)
+        extension.useNuGetCliGlobalPackages.set(false)
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        extension.application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val host = project.tasks.named(
+            "buildWinRTApplicationHostJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        assertEquals(WinRTWindowsAppSdkDeployment.SelfContained, host.windowsAppSdkDeployment.get())
+    }
+
+    @Test
+    fun auto_deployment_uses_explicit_framework_bootstrap_when_restore_is_disabled() {
+        val project = ProjectBuilder.builder().withName("winui-explicit-bootstrap").build()
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        val bootstrap = project.layout.buildDirectory
+            .file("runtime-assets/Microsoft.WindowsAppRuntime.Bootstrap.dll")
+            .get()
+            .asFile
+            .toPath()
+        Files.createDirectories(bootstrap.parent)
+        Files.writeString(bootstrap, "bootstrap")
+        extension.restoreNuGetPackages.set(false)
+        extension.useNuGetCliGlobalPackages.set(false)
+        extension.runtimeAsset(bootstrap)
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        extension.application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val host = project.tasks.named(
+            "buildWinRTApplicationHostJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        assertEquals(WinRTWindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
     }
 
     @Test

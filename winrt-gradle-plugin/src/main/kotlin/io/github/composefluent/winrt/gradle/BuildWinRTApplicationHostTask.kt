@@ -42,7 +42,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         externalJvmHome.convention("")
         expectedJavaMajor.convention(25)
         console.convention(false)
-        windowsAppSdkDeployment.convention(WinRTWindowsAppSdkDeployment.FrameworkDependent.name)
+        windowsAppSdkDeployment.convention(WinRTWindowsAppSdkDeployment.FrameworkDependent)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
@@ -75,7 +75,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     abstract val packageType: Property<String>
 
     @get:Input
-    abstract val windowsAppSdkDeployment: Property<String>
+    abstract val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment>
 
     @get:Input
     abstract val console: Property<Boolean>
@@ -367,8 +367,11 @@ internal fun applicationHostSource(
     packageType: String,
     runtimeMode: String,
     externalJvmHome: String,
-    windowsAppSdkDeployment: String = WinRTWindowsAppSdkDeployment.FrameworkDependent.name,
+    windowsAppSdkDeployment: WinRTWindowsAppSdkDeployment = WinRTWindowsAppSdkDeployment.FrameworkDependent,
 ): String {
+    require(windowsAppSdkDeployment != WinRTWindowsAppSdkDeployment.Auto) {
+        "Generated application hosts require a concrete Windows App SDK deployment mode."
+    }
     val mainClassPath = mainClass.replace('.', '/')
     val unpackaged = packageType == WindowsPackageType.None.name
     val packageIdentity = if (unpackaged) "Unpackaged" else "Packaged"
@@ -598,7 +601,7 @@ internal fun applicationHostSource(
             (*env)->DeleteLocalRef(env, support_class);
             return NULL;
         }
-        deployment_mode = (*env)->NewStringUTF(env, "$windowsAppSdkDeployment");
+        deployment_mode = (*env)->NewStringUTF(env, "${windowsAppSdkDeployment.name}");
         if (deployment_mode == NULL) {
             (*env)->DeleteLocalRef(env, package_identity);
             (*env)->DeleteLocalRef(env, support_class);

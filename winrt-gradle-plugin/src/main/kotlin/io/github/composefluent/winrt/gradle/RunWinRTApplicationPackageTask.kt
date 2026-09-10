@@ -101,7 +101,8 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
         if (selfContained.get()) {
             throw GradleException(
                 "WinApp CLI packaged development runs do not support self-contained Windows App SDK deployment. " +
-                    "Use winRT.application { frameworkDependent() } for development runs, " +
+                    "Use winRT.application { windowsAppSdkDeployment = WinRTWindowsAppSdkDeployment.FrameworkDependent } " +
+                    "for development runs, " +
                     "or install and activate the self-contained MSIX.",
             )
         }

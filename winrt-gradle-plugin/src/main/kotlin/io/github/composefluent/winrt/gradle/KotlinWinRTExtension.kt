@@ -312,9 +312,10 @@ abstract class WinRTApplicationOptions @Inject constructor(
     )
     /** Java major version used for JNI headers, jlink, and the runtime image contract. */
     val jvmToolchainVersion: Property<Int> = objects.property(Int::class.java).convention(25)
-    /** Windows App SDK deployment mode; independent from packaged/unpackaged identity. */
+    /** Windows App SDK deployment mode; [WinRTWindowsAppSdkDeployment.Auto] selects it from the app graph. */
     val windowsAppSdkDeployment: Property<WinRTWindowsAppSdkDeployment> =
         objects.property(WinRTWindowsAppSdkDeployment::class.java)
+            .convention(WinRTWindowsAppSdkDeployment.Auto)
 
     internal fun inheritFrom(defaults: WinRTApplicationOptions) {
         packageType.convention(defaults.packageType)
@@ -378,11 +379,6 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     fun selfContained() {
         windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.SelfContained)
-    }
-
-    /** Explicitly builds a pure WinRT application without Windows App SDK deployment files. */
-    fun noWindowsAppSdk() {
-        windowsAppSdkDeployment.set(WinRTWindowsAppSdkDeployment.None)
     }
 
     fun bundledJvmRuntime(image: Any? = null) {
@@ -502,6 +498,7 @@ enum class WinRTJvmRuntimeMode {
 }
 
 enum class WinRTWindowsAppSdkDeployment {
+    Auto,
     None,
     FrameworkDependent,
     SelfContained,

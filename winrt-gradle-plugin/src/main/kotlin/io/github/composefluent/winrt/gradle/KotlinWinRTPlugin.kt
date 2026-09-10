@@ -711,26 +711,6 @@ private fun configureWinRTApplicationTasks(
         },
     )
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
-    // A pure WinRT application should not inherit a Windows App SDK bootstrap requirement just
-    // because the application DSL is enabled. An explicit value, including one inherited by a
-    // named application, must remain authoritative over this convention.
-    if (options.windowsAppSdkDeployment.orNull == null) {
-        options.windowsAppSdkDeployment.convention(project.provider {
-            val packageSpecs = allNuGetPackageSpecs(extension) +
-                dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
-            val hasWindowsAppSdk = packageSpecs.any { spec ->
-                parseNuGetPackageIdentity(spec).normalizedPackageId.let { packageId ->
-                    packageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
-                        packageId.startsWith("Microsoft.WindowsAppSDK.", ignoreCase = true)
-                }
-            }
-            if (hasWindowsAppSdk) {
-                WinRTWindowsAppSdkDeployment.FrameworkDependent
-            } else {
-                WinRTWindowsAppSdkDeployment.None
-            }
-        })
-    }
     val dependencyAppxResources = project.configurations.maybeCreate(resourceConfigurationName).apply {
         isCanBeConsumed = false
         isCanBeResolved = true
@@ -824,6 +804,18 @@ private fun configureWinRTApplicationTasks(
         "restoreWinAppDependencies",
         RestoreWinAppDependenciesTask::class.java,
     )
+    val resolvedWindowsAppSdkDeployment = project.provider {
+        val packageSpecs = allNuGetPackageSpecs(extension) +
+            dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+        resolveWindowsAppSdkDeployment(
+            requested = options.windowsAppSdkDeployment.get(),
+            packageSpecs = packageSpecs,
+            frameworkDependentAvailable = frameworkDependentDeploymentAvailable(
+                restoreEnabled = extension.restoreNuGetPackages.get(),
+                explicitRuntimeAssets = extension.runtimeAssets.get().map { project.file(it).toPath() },
+            ),
+        )
+    }
     project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentityFiles)
     }
@@ -996,7 +988,7 @@ private fun configureWinRTApplicationTasks(
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 val outputFile = options.packageOutputFile.orNull?.asFile
-                options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.SelfContained ||
+                resolvedWindowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.SelfContained ||
                     options.packageType.get() != WindowsPackageType.Packaged ||
                     !options.generatePackage.get() ||
                     options.makeAppxExecutable.get().isNotBlank() ||
@@ -1130,7 +1122,7 @@ private fun configureWinRTApplicationTasks(
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
             task.packageType.set(project.provider { options.packageType.get().name })
-            task.windowsAppSdkDeployment.set(project.provider { options.windowsAppSdkDeployment.get().name })
+            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1258,7 +1250,7 @@ private fun configureWinRTApplicationTasks(
                 val usesLegacyMakeAppx = options.makeAppxExecutable.get().isNotBlank() ||
                     packageOutput?.name?.endsWith(".appx", ignoreCase = true) == true
                 options.packageType.get() == WindowsPackageType.Packaged &&
-                    options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent &&
+                    resolvedWindowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent &&
                     usesLegacyMakeAppx
             })
             task.executableBaseName.set(project.name)
@@ -1306,7 +1298,7 @@ private fun configureWinRTApplicationTasks(
                 },
             )
             task.packageType.set(project.provider { options.packageType.get().name })
-            task.windowsAppSdkDeployment.set(project.provider { options.windowsAppSdkDeployment.get().name })
+            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
             task.executableBaseName.set(project.name)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
@@ -1390,7 +1382,7 @@ private fun configureWinRTApplicationTasks(
                 ),
             )
             task.packageType.set(options.packageType.map { it.name })
-            task.selfContained.set(options.windowsAppSdkDeployment.map {
+            task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
                 it == WinRTWindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
@@ -1430,7 +1422,7 @@ private fun configureWinRTApplicationTasks(
             )
             task.generatePackage.set(options.generatePackage)
             task.packageType.set(options.packageType.map { it.name })
-            task.selfContained.set(options.windowsAppSdkDeployment.map {
+            task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
                 it == WinRTWindowsAppSdkDeployment.SelfContained
             })
             task.makeAppxExecutable.set(options.makeAppxExecutable)
@@ -1572,7 +1564,7 @@ private fun configureWinRTApplicationTasks(
             task.installPackage.set(options.installPackage)
             task.packageType.set(options.packageType.map { it.name })
             task.includeRestoredFrameworkDependencies.set(project.provider {
-                options.windowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
+                resolvedWindowsAppSdkDeployment.get() == WinRTWindowsAppSdkDeployment.FrameworkDependent
             })
             task.powerShellExecutable.set(options.installPowerShellExecutable)
             task.forceApplicationShutdown.set(options.installForceApplicationShutdown)

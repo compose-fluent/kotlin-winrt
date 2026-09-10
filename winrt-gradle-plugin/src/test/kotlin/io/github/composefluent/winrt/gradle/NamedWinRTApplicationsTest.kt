@@ -32,7 +32,7 @@ class NamedWinRTApplicationsTest {
         }
 
         val host = project.tasks.getByName("buildWinRTApplicationHostDesktop") as BuildWinRTApplicationHostTask
-        assertEquals(WinRTWindowsAppSdkDeployment.SelfContained.name, host.windowsAppSdkDeployment.get())
+        assertEquals(WinRTWindowsAppSdkDeployment.SelfContained, host.windowsAppSdkDeployment.get())
     }
 
     @Test
