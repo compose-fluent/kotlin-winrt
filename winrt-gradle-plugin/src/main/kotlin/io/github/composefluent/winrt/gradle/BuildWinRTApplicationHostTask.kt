@@ -3,12 +3,14 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
@@ -45,6 +47,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         windowsAppSdkDeployment.convention(WindowsAppSdkDeployment.FrameworkDependent)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
+        launcherOnly.convention(false)
     }
 
     @get:OutputDirectory
@@ -55,6 +58,16 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
 
     @get:OutputDirectory
     abstract val generatedSourceDirectory: DirectoryProperty
+
+    /** Produces only the launcher source and executable when enabled. */
+    @get:Input
+    abstract val launcherOnly: Property<Boolean>
+
+    /** Executable produced by the independent launcher task for aggregate staging. */
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val launcherExecutable: RegularFileProperty
 
     @get:Input
     abstract val mainClass: Property<String>
@@ -140,6 +153,30 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                 throw IllegalStateException(message)
             }
         }
+        if (launcherOnly.get()) {
+            GradleFileOperations.cleanDirectory(outputRoot)
+            Files.createDirectories(outputRoot)
+            Files.createDirectories(sourceRoot)
+            val source = sourceRoot.resolve("kotlin_winrt_application_host.c")
+            Files.writeString(
+                source,
+                applicationHostSource(
+                    mainClass = mainClassValue,
+                    packageType = packageType.get(),
+                    runtimeMode = runtimeMode,
+                    externalJvmHome = externalHome,
+                    windowsAppSdkDeployment = windowsAppSdkDeployment.get(),
+                ),
+            )
+            if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+                logger.warn("Kotlin/WinRT application launcher compilation is Windows-only; generated source without compiling EXE.")
+                return
+            }
+            val toolchain = nativeToolchain.get()
+            logger.info("Kotlin/WinRT JVM application launcher: {} ({}; Windows SDK {})", toolchain.compiler, runtimeIdentifier.get(), toolchain.sdkVersion)
+            compileHostExe(toolchain, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
+            return
+        }
         // Validate the image/output relationship before cleaning the host output. A configured
         // image inside that output would otherwise be deleted before it can be staged.
         GradleFileOperations.cleanDirectory(outputRoot)
@@ -176,7 +213,19 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         }
         val toolchain = nativeToolchain.get()
         logger.info("Kotlin/WinRT JVM application host: {} ({}; Windows SDK {})", toolchain.compiler, runtimeIdentifier.get(), toolchain.sdkVersion)
-        compileHostExe(toolchain, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
+        val launcher = launcherExecutable.orNull?.asFile?.toPath()
+        if (launcher != null) {
+            require(launcher.isRegularFile()) {
+                "Configured Kotlin/WinRT launcher executable is missing: $launcher"
+            }
+            Files.copy(
+                launcher,
+                outputRoot.resolve("${executableBaseName.get()}.exe"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+        } else {
+            compileHostExe(toolchain, source, outputRoot.resolve("${executableBaseName.get()}.exe"))
+        }
     }
 
     private fun stageRuntimeClasspath(outputRoot: Path) {

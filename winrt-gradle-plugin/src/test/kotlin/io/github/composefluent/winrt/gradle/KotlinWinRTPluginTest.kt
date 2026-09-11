@@ -3170,6 +3170,34 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun application_host_compiles_launcher_as_a_separate_incremental_task() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val launcherTask = project.tasks.named(
+            "compileWinRTApplicationLauncherWinuiJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        val hostTask = project.tasks.named(
+            "buildWinRTApplicationHostWinuiJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+
+        assertTrue(launcherTask.launcherOnly.get())
+        assertTrue(
+            launcherTask.outputDirectory.get().asFile.toPath().toString().contains("application-launcher"),
+        )
+        assertTrue("launcher task must feed the aggregate host", "compileWinRTApplicationLauncherWinuiJvmMain" in taskDependencyNames(hostTask))
+        assertTrue(hostTask.launcherExecutable.isPresent)
+    }
+
+    @Test
     fun run_host_is_first_class_typed_task() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 

@@ -1292,6 +1292,44 @@ private fun configureWinRTApplicationTasks(
         selectedVariant,
         options.console,
     )
+    val launcherCompileTask = project.tasks.register(
+        taskName("compileWinRTApplicationLauncher"),
+        BuildWinRTApplicationHostTask::class.java,
+        Action<BuildWinRTApplicationHostTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Compiles the native Kotlin/WinRT JVM application launcher independently from staging."
+            task.launcherOnly.set(true)
+            task.outputDirectory.set(
+                project.layout.buildDirectory.dir(
+                    selectedVariant.map { variant ->
+                        "kotlin-winrt/application-launcher/${variant.id.toSafeDirectoryName()}"
+                    },
+                ),
+            )
+            task.generatedSourceDirectory.set(
+                project.layout.buildDirectory.dir(
+                    selectedVariant.map { variant ->
+                        "kotlin-winrt/application-launcher/${variant.id.toSafeDirectoryName()}/src"
+                    },
+                ),
+            )
+            task.applicationVariant.set(selectedVariant.map { it.id })
+            task.packageType.set(project.provider { options.packageType.get().name })
+            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
+            task.console.set(options.console)
+            task.executableBaseName.set(project.name)
+            task.javaHome.set(configuredJvmToolchainHome(project, options))
+            task.expectedJavaMajor.set(options.jvmToolchainVersion)
+            task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
+            task.externalJvmHome.set(
+                project.provider { options.externalJvmHome.orNull?.asFile?.absolutePath.orEmpty() },
+            )
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+            task.onlyIf { selectedVariant.get().kind == WinRTApplicationVariantKind.Jvm }
+        },
+    )
     val applicationHostTask = project.tasks.register(
         taskName("buildWinRTApplicationHost"),
         BuildWinRTApplicationHostTask::class.java,
@@ -1325,6 +1363,11 @@ private fun configureWinRTApplicationTasks(
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
             task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
             task.runtimeImageDirectory.set(prepareJvmRuntimeImageTask.flatMap { it.outputDirectory })
+            task.launcherExecutable.set(
+                launcherCompileTask.flatMap { launcher ->
+                    launcher.outputDirectory.file("${project.name}.exe")
+                },
+            )
             task.externalJvmHome.set(
                 project.provider {
                     options.externalJvmHome.orNull?.asFile?.absolutePath.orEmpty()
@@ -1337,6 +1380,7 @@ private fun configureWinRTApplicationTasks(
             task.dependsOn(stageApplicationPackageTask)
             task.dependsOn(buildAuthoringHostTask)
             task.dependsOn(prepareJvmRuntimeImageTask)
+            task.dependsOn(launcherCompileTask)
         },
     )
     val runApplicationHostTask = project.registerWinRTApplicationHostRunTask(
@@ -3225,7 +3269,7 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
     // The plugin's own source-development build must keep project dependencies so edits to a
     // tool module rebuild and feed the plugin on the next invocation. Only consuming builds use
     // the already-produced artifacts from the included plugin build.
-    if (project.rootProject.name == "winrt-gradle-plugin" || !project.rootProject.buildFile.isFile) {
+    if (project.rootProject.name != "kotlin-winrt" || !project.rootProject.buildFile.isFile) {
         return emptyList()
     }
     val codeSource = kotlinWinRTCodeSourceFile(KotlinWinRTPlugin::class.java)?.toPath() ?: return emptyList()
