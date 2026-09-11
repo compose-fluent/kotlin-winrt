@@ -334,6 +334,22 @@ class KotlinProjectionSupportRenderer private constructor(
                 "$fileName.kt",
                 supportFileSpec(fileName)
                     .addFileComment("Owner-scoped compiler-plugin anchor for generated projection support initializers.")
+                    .apply {
+                        if (fileName == baseFileName) {
+                            // A source declaration gives Native consumers a serialized KLIB symbol.
+                            // Its intrinsic is lowered to the owning module's registration pass.
+                            addFunction(
+                                FunSpec.builder("${baseFileName}Initialize")
+                                    .addAnnotation(PublishedApi::class)
+                                    .addModifiers(KModifier.INTERNAL)
+                                    .addStatement(
+                                        "%T.ensureInitialized()",
+                                        ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionSupportIntrinsic"),
+                                    )
+                                    .build(),
+                            )
+                        }
+                    }
                     .build(),
             )
         }
@@ -995,7 +1011,7 @@ class KotlinProjectionSupportRenderer private constructor(
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val fileSpec = supportFileSpec("AuthoringMetadataTypeMappingHelper")
+        val fileSpec = authoringSupportFileSpec("AuthoringMetadataTypeMappingHelper")
             .addImport("io.github.composefluent.winrt.runtime", "ComWrappersSupport")
             .addType(
                 TypeSpec.objectBuilder("AuthoringMetadataTypeMappingHelper")
@@ -1076,7 +1092,7 @@ class KotlinProjectionSupportRenderer private constructor(
                     .addStatement("return WRAPPERS_BY_PROJECTED_TYPE[projectedTypeName]")
                     .build(),
             )
-        val fileSpec = supportFileSpec("WinRTAuthoringWrapperPlan")
+        val fileSpec = authoringSupportFileSpec("WinRTAuthoringWrapperPlan")
             .addType(
                 dataClass(
                     className = "AuthoringWrapperEntry",
@@ -1124,7 +1140,7 @@ class KotlinProjectionSupportRenderer private constructor(
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringAbiClassEntry")
-        val fileSpec = supportFileSpec("WinRTAuthoringAbiClassPlan")
+        val fileSpec = authoringSupportFileSpec("WinRTAuthoringAbiClassPlan")
             .addType(
                 dataClass(
                     className = "AuthoringAbiClassEntry",
@@ -1188,7 +1204,7 @@ class KotlinProjectionSupportRenderer private constructor(
         if (entries.isEmpty()) {
             return null
         }
-        val fileBuilder = supportFileSpec("WinRTAuthoringWrappers")
+        val fileBuilder = authoringSupportFileSpec("WinRTAuthoringWrappers")
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addType(authoringWrapperObject(plan))
         }
@@ -1217,7 +1233,7 @@ class KotlinProjectionSupportRenderer private constructor(
         if (entries.isEmpty()) {
             return null
         }
-        val fileBuilder = supportFileSpec("WinRTAuthoringAbiClasses")
+        val fileBuilder = authoringSupportFileSpec("WinRTAuthoringAbiClasses")
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addType(authoringAbiClassObject(plan))
         }
@@ -1247,7 +1263,7 @@ class KotlinProjectionSupportRenderer private constructor(
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringCustomQueryInterfaceEntry")
-        val fileSpec = supportFileSpec("WinRTAuthoringCustomQueryInterfacePlan")
+        val fileSpec = authoringSupportFileSpec("WinRTAuthoringCustomQueryInterfacePlan")
             .addType(
                 dataClass(
                     className = "AuthoringCustomQueryInterfaceEntry",
@@ -1313,7 +1329,7 @@ class KotlinProjectionSupportRenderer private constructor(
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringActivationFactoryEntry")
-        val fileSpec = supportFileSpec("WinRTAuthoringActivationFactoryPlan")
+        val fileSpec = authoringSupportFileSpec("WinRTAuthoringActivationFactoryPlan")
             .addType(
                 dataClass(
                     className = "AuthoringActivationFactoryEntry",
@@ -1520,7 +1536,7 @@ class KotlinProjectionSupportRenderer private constructor(
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringModuleActivationFactoryEntry")
-        val fileSpec = supportFileSpec(authoringModuleActivationFactoryPlanClassName.simpleName)
+        val fileSpec = authoringSupportFileSpec(authoringModuleActivationFactoryPlanClassName.simpleName)
             .addType(
                 dataClass(
                     className = "AuthoringModuleActivationFactoryEntry",
@@ -1612,7 +1628,7 @@ class KotlinProjectionSupportRenderer private constructor(
         if (entries.isEmpty()) {
             return null
         }
-        val fileBuilder = supportFileSpec(authoringServerActivationFactoriesClassName.simpleName)
+        val fileBuilder = authoringSupportFileSpec(authoringServerActivationFactoriesClassName.simpleName)
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers, plansByQualifiedName))
@@ -1699,7 +1715,7 @@ class KotlinProjectionSupportRenderer private constructor(
                         .build(),
                 )
         }
-        val fileBuilder = supportFileSpec(authoringHostExportsClassName.simpleName)
+        val fileBuilder = authoringSupportFileSpec(authoringHostExportsClassName.simpleName)
             .addType(
                 hostExportsBuilder.build(),
             )
@@ -2576,7 +2592,7 @@ class KotlinProjectionSupportRenderer private constructor(
         if (entries.isEmpty()) {
             return null
         }
-        val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
+        val fileBuilder = authoringSupportFileSpec("WinRTAuthoringCcwFactories")
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
             .addImport("io.github.composefluent.winrt.runtime", "RawAddress")
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
@@ -4372,6 +4388,9 @@ ${invocation.toString().prependIndent("                        ")}
 
     private fun supportFile(fileName: String, fileSpec: FileSpec): KotlinProjectionFile =
         supportFile(fileName, fileSpec.toString())
+
+    private fun authoringSupportFileSpec(fileName: String): FileSpec.Builder =
+        supportFileSpec(fileName).addFileComment("KOTLIN_WINRT_BUSINESS_OVERLAY")
 
     private fun supportFileSpec(fileName: String): FileSpec.Builder =
         FileSpec.builder(SUPPORT_PACKAGE, fileName)

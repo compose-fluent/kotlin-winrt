@@ -1217,6 +1217,19 @@ class KotlinWinRTIrGenerationExtension(
             prerequisite = "module file",
             value = moduleFragment.files.firstOrNull(),
         )
+        if (pluginContext.platform?.componentPlatforms?.any { it.platformName == "Native" } == true) {
+            return requireCompilerSupportPrerequisite(
+                description = "external Native projection registrar",
+                prerequisite = "compiled KLIB initializer for $ownerIdentity",
+                value = pluginContext.findFunctionSymbols(
+                    CallableId(
+                        FqName("io.github.composefluent.winrt.projections.support"),
+                        Name.identifier("${winRTProjectionSupportAnchorFileName(ownerIdentity)}Initialize"),
+                    ),
+                    lookupFile,
+                ).singleOrNull(),
+            )
+        }
         val externalInitializerClassName = projectionSupportInitializerInternalName(entries, ownerIdentity)
             .replace('/', '.')
         val externalInitializerClass = requireCompilerSupportPrerequisite(

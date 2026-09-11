@@ -1986,7 +1986,7 @@ private fun configureAppxResourceGeneration(
         kotlin.targets.withType(KotlinNativeTarget::class.java).configureEach { target ->
             if (!target.isMingwX64Target()) return@configureEach
             target.compilations.configureEach { compilation ->
-                if (!compilation.name.endsWith("Test", ignoreCase = true)) {
+                if (!compilation.name.endsWith("Test", ignoreCase = true) && compilation.name != "winRTProjection") {
                     configureSourceSet(compilation.defaultSourceSet)
                 }
             }
@@ -2477,6 +2477,11 @@ private fun configureWinRTGeneration(
             task.dependsOn(generateTask)
             task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
         })
+        configureStandaloneWinRTNativeProjectionCompilation(
+            project, generatedSources,
+            project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"),
+            generateTask,
+        )
         project.tasks.matching { task -> task.name == "compileWinuiMainKotlinMetadata" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
             task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
@@ -2651,6 +2656,7 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
                 ) && isGeneratedWinRTProjectionSource(element.file)
         }
         businessTask.libraries.from(projectionTask.flatMap { it.destinationDirectory })
+        businessTask.friendPaths.from(projectionTask.flatMap { it.destinationDirectory })
         businessTask.dependsOn(projectionTask)
 
         val jarTaskNames = if (!isMultiplatformProject && businessTask.name == "compileKotlin") {
@@ -2710,6 +2716,10 @@ private fun configureWinRTJvmProjectionClasspath(
         isCanBeConsumed = false
         isCanBeResolved = true
         attributes.attribute(
+            org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.attribute,
+            org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.jvm,
+        )
+        attributes.attribute(
             Usage.USAGE_ATTRIBUTE,
             project.objects.named(Usage::class.java, Usage.JAVA_API),
         )
@@ -2726,6 +2736,9 @@ private fun configureWinRTJvmProjectionClasspath(
             project.objects.named(Bundling::class.java, Bundling.EXTERNAL),
         )
     }
+    configuration.dependencies.add(
+        project.dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:${project.getKotlinPluginVersion()}"),
+    )
     configuration.dependencies.add(
         project.dependencies.create(kotlinWinRTRuntimeClasspathDependency(project)),
     )
@@ -2751,12 +2764,87 @@ private fun configureWinRTJvmProjectionClasspath(
                 }
             }
     }
-    if (project.state.executed) {
-        collectDependencies()
-    } else {
-        project.afterEvaluate(Action { collectDependencies() })
-    }
+    // KGP finalizes source-set dependency declarations after afterEvaluate callbacks.
+    configuration.withDependencies { collectDependencies() }
     return configuration
+}
+
+/** Native registration and declarations belong to one KLIB, as projection assemblies do in CsWinRT. */
+private fun configureStandaloneWinRTNativeProjectionCompilation(
+    project: Project,
+    generatedSources: Provider<Directory>,
+    supportSources: Provider<Directory>,
+    generateTask: TaskProvider<GenerateWinRTProjectionsTask>,
+) {
+    val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    val localGenerationRequired = project.provider { kotlinWinRTLocalGenerationRequired(project).get() }
+    kotlin.targets.withType(KotlinNativeTarget::class.java).all { target ->
+        if (!target.isMingwX64Target()) return@all
+        val sharedProjectionSources = kotlin.sourceSets.maybeCreate("winRTProjectionMain").apply {
+            this.kotlin.setSrcDirs(listOf(generatedSources, supportSources))
+            this.kotlin.include { element -> element.isDirectory || isGeneratedWinRTProjectionSource(element.file) }
+        }
+        // Register while KGP's model is open. No association with main: that would import
+        // business sources/dependencies and reverse the artifact dependency direction.
+        val projection = target.compilations.create("winRTProjection")
+        projection.defaultSourceSet.kotlin.setSrcDirs(emptyList<String>())
+        projection.defaultSourceSet.dependsOn(sharedProjectionSources)
+        projection.defaultSourceSet.dependencies {
+            implementation(kotlinWinRTRuntimeClasspathDependency(project))
+            implementation(kotlinWinRTAuthoringRuntimeClasspathDependency(project))
+        }
+        projection.compileTaskProvider.configure { task ->
+            // Publish a regular KLIB file even when business compilations use unpacked KLIBs.
+            task.produceUnpackagedKlib.set(false)
+            task.inputs.file(supportSources.map { it.file("projection-registrar.tsv") })
+                .withPropertyName("winRTProjectionRegistrar")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+            task.outputs.dir(nativeAuthoringOutputDirectory(project, task.name))
+            task.dependsOn(generateTask)
+            task.onlyIf { localGenerationRequired.get() }
+        }
+        project.afterEvaluate {
+            if (!kotlinWinRTLocalGenerationRequired(project).get()) return@afterEvaluate
+            project.configurations.getByName(projection.defaultSourceSet.implementationConfigurationName)
+                .withDependencies { dependencies ->
+                    val seen = linkedSetOf<String>()
+                    project.configurations.filter { it.name.isWinRTIdentityDependencySourceConfiguration() }
+                        .flatMap { it.dependencies.toList() }
+                        .filterIsInstance<ProjectDependency>()
+                        .filter { dependency ->
+                            project.findProject(dependency.path)?.plugins?.hasPlugin(KotlinWinRTPlugin::class.java) == true &&
+                                seen.add(dependency.path)
+                        }.forEach { dependency -> dependencies.add(dependency.copy()) }
+                }
+            val artifact = projection.compileTaskProvider.flatMap { it.outputFile }
+            val compiledLibrary = project.files(artifact).builtBy(projection.compileTaskProvider)
+            target.compilations.filter { it != projection }.forEach { business ->
+                // Business overlays retain access to internal helpers from their own projection
+                // module. Friendship is one-way; the projection never sees business declarations.
+                business.associateWith(projection)
+                project.dependencies.add(business.defaultSourceSet.implementationConfigurationName, compiledLibrary)
+                business.compileTaskProvider.configure { task ->
+                    task.exclude { element ->
+                        val path = element.file.toPath().toAbsolutePath().normalize()
+                        (path.startsWith(generatedSources.get().asFile.toPath().toAbsolutePath().normalize()) ||
+                            path.startsWith(supportSources.get().asFile.toPath().toAbsolutePath().normalize())) &&
+                            isGeneratedWinRTProjectionSource(element.file)
+                    }
+                }
+            }
+            target.binaries.configureEach { binary ->
+                binary.linkTaskProvider.configure { task -> task.libraries.from(compiledLibrary) }
+            }
+            // Gradle module metadata carries both KLIBs on the same Native variant.
+            // Consumers receive the business and static artifact, including producer edges.
+            project.configurations.getByName(target.apiElementsConfigurationName).outgoing.artifact(artifact) {
+                it.classifier = "winrt-projection"
+                it.extension = "klib"
+                it.type = "klib"
+                it.builtBy(projection.compileTaskProvider)
+            }
+        }
+    }
 }
 
 private fun configureWinRTAuthoredCandidateValidation(
@@ -3874,6 +3962,7 @@ private fun configureKmpAppxResourceArtifactVariants(
     val resourceCompilations = linkedMapOf<String, KotlinCompilation<*>>()
 
     fun configureCompilation(compilation: KotlinCompilation<*>, resourceTarget: String) {
+        if (compilation.name == "winRTProjection") return
         val sourceSetName = compilation.defaultSourceSet.name
         if (!configuredSourceSets.add(sourceSetName)) {
             return
@@ -4568,7 +4657,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
             authoringTargetArtifactName = nativeAuthoringTargetArtifactName,
             projectionSupportOwnerArtifactName = staticProjectionSupportOwnerArtifactName,
             compilerSupportManifest = compilerSupportManifest,
-            projectionSupportMode = "embedded",
+            projectionSupportMode = if (taskNameOwnsStaticProjectionSupport(task.name)) "embedded" else "external",
         )
     })
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
@@ -4812,7 +4901,8 @@ private fun windowsSdkMetadataInputFiles(
 }
 
 private fun taskNameOwnsStaticProjectionSupport(taskName: String): Boolean =
-    taskName.startsWith("compileKotlinWinRTProjection", ignoreCase = true)
+    taskName.startsWith("compileKotlinWinRTProjection", ignoreCase = true) ||
+        taskName.startsWith("compileWinRTProjectionKotlin", ignoreCase = true)
 
 private fun isGeneratedWinRTProjectionSource(file: File): Boolean {
     if (!file.isFile || !file.name.endsWith(".kt", ignoreCase = true)) {
@@ -4820,9 +4910,9 @@ private fun isGeneratedWinRTProjectionSource(file: File): Boolean {
     }
     return runCatching {
         file.useLines { lines ->
-            lines.take(32).any { line ->
-                line.contains("\"KOTLIN_WINRT_GENERATED\"")
-            }
+            val header = lines.take(32).toList()
+            header.any { it.contains("\"KOTLIN_WINRT_GENERATED\"") } &&
+                header.none { it.contains("KOTLIN_WINRT_BUSINESS_OVERLAY") }
         }
     }.getOrDefault(false)
 }

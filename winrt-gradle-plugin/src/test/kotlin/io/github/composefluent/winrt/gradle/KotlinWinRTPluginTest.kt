@@ -833,6 +833,67 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun native_projection_compilation_has_its_own_sources_and_published_klib() {
+        // CsWinRT projection assemblies own their registration; consumers reference that artifact.
+        val project = ProjectBuilder.builder().withName("native-projection-owner").build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        val target = kotlin.mingwX64()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val winmd = project.file("Sample.winmd").toPath()
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                interfaceName = "Sample.IProbe",
+                iid = "00000000-0000-0000-0000-000000000001",
+            )),
+            runtimeClasses = emptyList(),
+            outputFile = winmd,
+        )
+        project.extensions.getByType(WinRTExtension::class.java).apply {
+            metadataInputs.set(listOf(winmd.toString()))
+            type("Sample.IProbe")
+        }
+        val generated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/Projection.kt")
+        generated.parentFile.mkdirs()
+        generated.writeText("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Projection")
+        val overlay = generated.resolveSibling("Overlay.kt")
+        overlay.writeText("// KOTLIN_WINRT_BUSINESS_OVERLAY\n@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Overlay")
+        val business = project.file("src/winuiMain/kotlin/Business.kt")
+        business.parentFile.mkdirs()
+        business.writeText("class Business")
+        project.dependencies.add("winuiMainImplementation", "example:business-only:1.0")
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+
+        val projection = target.compilations.getByName("winRTProjection")
+        val producer = projection.compileTaskProvider.get()
+        val consumer = target.compilations.getByName("main").compileTaskProvider.get()
+        assertTrue(producer.sources.files.contains(generated))
+        assertFalse(producer.sources.files.contains(business))
+        assertFalse(consumer.sources.files.contains(generated))
+        assertTrue(consumer.sources.files.contains(business))
+        assertTrue(consumer.sources.files.contains(overlay))
+        assertFalse(producer.sources.files.contains(overlay))
+        assertTrue(projection.associatedCompilations.isEmpty())
+        assertFalse(projection.allKotlinSourceSets.any { it.name == "winuiMain" || it.name == "commonMain" })
+        assertFalse(project.configurations.getByName(projection.compileDependencyConfigurationName)
+            .allDependencies.any { it.name == "business-only" })
+        assertTrue(producer.compilerOptions.freeCompilerArgs.get().any { it.endsWith("projectionSupportMode=embedded") })
+        assertTrue(consumer.compilerOptions.freeCompilerArgs.get().any { it.endsWith("projectionSupportMode=external") })
+        assertFalse(producer.produceUnpackagedKlib.get())
+        assertFalse(project.tasks.names.contains("generateWinRTAppxResourcesMingwX64WinRTProjection"))
+        assertFalse(project.tasks.names.contains("packageWinRTAppxResourcesMingwX64WinRTProjection"))
+        val published = project.configurations.getByName(target.apiElementsConfigurationName)
+            .outgoing.artifacts.single { it.classifier == "winrt-projection" }
+        assertEquals(producer.outputFile.get(), published.file)
+        assertTrue(published.buildDependencies.getDependencies(null).contains(producer))
+        val localLibraries = project.configurations.getByName(
+            target.compilations.getByName("main").defaultSourceSet.implementationConfigurationName,
+        ).dependencies.withType(org.gradle.api.artifacts.FileCollectionDependency::class.java)
+        assertTrue(localLibraries.any { producer in it.files.buildDependencies.getDependencies(null) })
+    }
+
+    @Test
     fun runtime_only_multiplatform_native_compilation_keeps_authoring_options_without_projection_support() {
         val project = ProjectBuilder.builder().build()
 
