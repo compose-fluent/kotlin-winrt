@@ -2969,7 +2969,12 @@ private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
                 configuration.isCanBeConsumed = false
                 configuration.isCanBeResolved = true
                 val version = kotlinWinRTPluginVersion()
-                if (kotlinWinRTHasLocalGeneratorWorkerProjects(project)) {
+                val includedBuildArtifacts = kotlinWinRTIncludedBuildArtifacts(project, "winrt-runtime", "winrt-metadata", "winrt-generator")
+                if (includedBuildArtifacts.isNotEmpty()) {
+                    includedBuildArtifacts.forEach { artifact ->
+                        project.dependencies.add(configuration.name, project.files(artifact))
+                    }
+                } else if (kotlinWinRTHasLocalGeneratorWorkerProjects(project)) {
                     project.dependencies.add(
                         configuration.name,
                         kotlinWinRTProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version),
@@ -3037,6 +3042,9 @@ private fun kotlinWinRTPluginClasspathLocation(project: Project): Any =
     }
 
 private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
+    kotlinWinRTPluginMetadataArtifact(project, "winrt-compiler-plugin")?.let { artifact ->
+        return artifact
+    }
     val localCompilerPlugin = project.rootProject.findProject(":winrt-compiler-plugin")
     return if (localCompilerPlugin != null) {
         project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
@@ -3108,6 +3116,10 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
     )
     runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
+    kotlinWinRTPluginMetadataArtifact(project, "winrt-metadata")?.let { artifact ->
+        runtimeDependencies += artifact
+        return runtimeDependencies
+    }
     val localMetadataProject = project.rootProject.findProject(":winrt-metadata")
     if (localMetadataProject != null) {
         runtimeDependencies += project.dependencies.project(mapOf("path" to localMetadataProject.path))
@@ -3191,6 +3203,9 @@ private fun kotlinWinRTPluginUnderTestMetadataFile(): File? {
 }
 
 private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: String): Any? {
+    kotlinWinRTIncludedBuildArtifacts(project, moduleName).firstOrNull()?.let { artifact ->
+        return project.files(artifact)
+    }
     val metadataFile = kotlinWinRTPluginUnderTestMetadataFile() ?: return null
     val classpath = Properties().run {
         metadataFile.inputStream().use(::load)
@@ -3204,6 +3219,57 @@ private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: Stri
             name.startsWith(moduleName) && name.endsWith(".jar") && file.isFile
         }
         ?.let(project::files)
+}
+
+private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNames: String): List<File> {
+    // The plugin's own source-development build must keep project dependencies so edits to a
+    // tool module rebuild and feed the plugin on the next invocation. Only consuming builds use
+    // the already-produced artifacts from the included plugin build.
+    if (project.rootProject.name == "winrt-gradle-plugin" || !project.rootProject.buildFile.isFile) {
+        return emptyList()
+    }
+    val codeSource = kotlinWinRTCodeSourceFile(KotlinWinRTPlugin::class.java)?.toPath() ?: return emptyList()
+    var current = codeSource.toAbsolutePath().normalize()
+    if (Files.isRegularFile(current)) {
+        current = current.parent ?: return emptyList()
+    }
+    val includedRoot = generateSequence(current) { path -> path.parent }
+        .firstOrNull { path ->
+            path.fileName?.toString()?.equals("included-projects", ignoreCase = true) == true &&
+                path.parent?.fileName?.toString()?.equals("build", ignoreCase = true) == true &&
+                path.parent?.parent?.fileName?.toString()?.equals("winrt-gradle-plugin", ignoreCase = true) == true
+        }
+        ?: return emptyList()
+    return moduleNames
+        .flatMap { moduleName ->
+            val moduleRoot = when (moduleName) {
+                "callsite-contract", "callsite-lowering" ->
+                    includedRoot.resolve("winrt-compiler-plugin").resolve(moduleName)
+                else -> includedRoot.resolve(moduleName)
+            }
+            val prefix = when (moduleName) {
+                "winrt-runtime" -> "winrt-runtime-jvm-"
+                "winrt-authoring" -> "winrt-authoring-jvm-"
+                else -> "$moduleName-"
+            }
+            val libs = moduleRoot.resolve("libs")
+            if (!Files.isDirectory(libs)) {
+                emptyList()
+            } else {
+                Files.list(libs).use { entries ->
+                    entries
+                        .filter { path ->
+                            Files.isRegularFile(path) &&
+                                path.fileName.toString().startsWith(prefix) &&
+                                path.fileName.toString().endsWith(".jar", ignoreCase = true)
+                        }
+                        .sorted()
+                        .map(Path::toFile)
+                        .toList()
+                }
+            }
+        }
+        .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
 }
 
 private fun kotlinWinRTAuthoringScannerRuntimeClasspath(project: Project): Any {
