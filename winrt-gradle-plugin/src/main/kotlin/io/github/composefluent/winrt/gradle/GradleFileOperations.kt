@@ -13,6 +13,12 @@ internal object GradleFileOperations {
         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
     }
 
+    fun writeStringIfChanged(target: Path, content: String) {
+        if (Files.isRegularFile(target) && Files.readString(target) == content) return
+        Files.createDirectories(target.parent)
+        Files.writeString(target, content)
+    }
+
     fun cleanDirectory(directory: Path) {
         if (!directory.isDirectory()) return
         Files.walk(directory).use { stream ->
