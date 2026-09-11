@@ -21,22 +21,20 @@ dependencies.add(
     project(":winrt-compiler-plugin:callsite-lowering"),
 )
 
-val runtimeCallSiteLoweringCompilerArguments = runtimeCallSiteLoweringClasspath.elements.map { files ->
-    files.map { file -> "-Xplugin=${file.asFile.absolutePath}" }
-}
-
+// Keep the task-backed compiler plugin in the dedicated classpath properties. Exposing its
+// resolved paths through freeCompilerArgs makes Kotlin IDE model import query the jar task too early.
 tasks.withType<KotlinJvmCompile>().configureEach {
     inputs.files(runtimeCallSiteLoweringClasspath)
         .withPropertyName("runtimeCallSiteLoweringClasspath")
         .withNormalizer(ClasspathNormalizer::class.java)
-    compilerOptions.freeCompilerArgs.addAll(runtimeCallSiteLoweringCompilerArguments)
+    pluginClasspath.from(runtimeCallSiteLoweringClasspath)
 }
 
 tasks.withType<KotlinNativeCompile>().configureEach {
     inputs.files(runtimeCallSiteLoweringClasspath)
         .withPropertyName("runtimeCallSiteLoweringClasspath")
         .withNormalizer(ClasspathNormalizer::class.java)
-    compilerOptions.freeCompilerArgs.addAll(runtimeCallSiteLoweringCompilerArguments)
+    compilerPluginClasspath = runtimeCallSiteLoweringClasspath
 }
 
 val verifyJvmRuntimeCallSiteLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
