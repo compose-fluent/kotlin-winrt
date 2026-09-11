@@ -2025,8 +2025,8 @@ private fun configureWinRTGeneration(
         project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/commonMain/kotlin")
     val generatedLegacyMainAuthoringSources =
         project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
-    val generatedMingwApplicationEntrySources =
-        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry/src/mingwX64Main/kotlin")
+    val generatedMingwApplicationEntryRoot =
+        project.layout.buildDirectory.dir("generated/kotlin-winrt-application-entry")
     val compilerPluginClasspath = kotlinWinRTCompilerPluginClasspath(project)
     val generatorWorkerClasspath = kotlinWinRTGeneratorWorkerClasspath(project)
     val authoringTargetArtifactName = kotlinWinRTAuthoringTargetArtifactName(project)
@@ -2105,7 +2105,7 @@ private fun configureWinRTGeneration(
             generatedKmpWinuiAuthoringSources,
             generatedKmpCommonAuthoringSources,
             generatedLegacyMainAuthoringSources,
-            generatedMingwApplicationEntrySources,
+            generatedMingwApplicationEntryRoot,
             project.layout.buildDirectory.dir("generated/kotlin-winrt/appx-resources"),
         ).map { directory -> directory.get().asFile.toPath().toAbsolutePath().normalize() }
         kotlinWinRTAuthoringSourceDirs(project).filterNot { sourceDir ->
