@@ -26,6 +26,9 @@ import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.artifacts.result.UnresolvedDependencyResult
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.attributes.Bundling
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.LibraryElements
 import org.gradle.api.attributes.Usage
 import org.gradle.api.component.AdhocComponentWithVariants
 import org.gradle.api.distribution.DistributionContainer
@@ -2554,6 +2557,10 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
             projectionTaskName,
             projectionCompilerOptions,
         )
+        val projectionClasspath = configureWinRTJvmProjectionClasspath(
+            project = project,
+            taskName = projectionTaskName,
+        )
         projectionTask.configure(Action<KotlinJvmCompile> { task ->
             task.group = "kotlin-winrt"
             task.description = "Compiles generated WinRT projections independently from business sources."
@@ -2566,19 +2573,7 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
                 },
             )
             task.destinationDirectory.set(projectionOutput)
-            // Keep the projection classpath derived from the business classpath without
-            // retaining its live task dependency graph. The business classpath receives the
-            // projection output below; forwarding that live collection here would make this
-            // task depend on itself through its own destination directory.
-            task.libraries.from(
-                project.provider {
-                    val projectionPath = projectionOutput.get().asFile.toPath().toAbsolutePath().normalize()
-                    businessTask.libraries.files.filter { file ->
-                        !file.toPath().toAbsolutePath().normalize().startsWith(projectionPath)
-                    }
-                },
-            )
-            task.pluginClasspath.from(businessTask.pluginClasspath)
+            task.libraries.from(projectionClasspath)
             task.pluginClasspath.from(compilerPluginClasspath)
             addWinRTCompilerPluginOptions(
                 project = project,
@@ -2652,6 +2647,74 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
     project.afterEvaluate {
         project.tasks.withType(KotlinJvmCompile::class.java).toList().forEach(::configureBusinessTask)
     }
+}
+
+/**
+ * Resolves only the libraries that are part of the WinRT projection contract.
+ *
+ * The Kotlin compilation classpath is intentionally not used here: it contains arbitrary
+ * business dependencies and often carries their producer tasks into the fixed projection
+ * compiler. Project dependencies which publish the WinRT identity contract remain available so
+ * imported projection types can be referenced without coupling this task to ordinary libraries.
+ */
+private fun configureWinRTJvmProjectionClasspath(
+    project: Project,
+    taskName: String,
+): org.gradle.api.artifacts.Configuration {
+    val suffix = taskName.removePrefix("compileKotlinWinRTProjection")
+    val configuration = project.configurations.maybeCreate(
+        "kotlinWinRTProjection${suffix}CompileClasspath",
+    ).apply {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+        attributes.attribute(
+            Usage.USAGE_ATTRIBUTE,
+            project.objects.named(Usage::class.java, Usage.JAVA_API),
+        )
+        attributes.attribute(
+            Category.CATEGORY_ATTRIBUTE,
+            project.objects.named(Category::class.java, Category.LIBRARY),
+        )
+        attributes.attribute(
+            LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+            project.objects.named(LibraryElements::class.java, LibraryElements.JAR),
+        )
+        attributes.attribute(
+            Bundling.BUNDLING_ATTRIBUTE,
+            project.objects.named(Bundling::class.java, Bundling.EXTERNAL),
+        )
+    }
+    configuration.dependencies.add(
+        project.dependencies.create(kotlinWinRTRuntimeClasspathDependency(project)),
+    )
+    configuration.dependencies.add(
+        project.dependencies.create(kotlinWinRTAuthoringRuntimeClasspathDependency(project)),
+    )
+
+    val observed = linkedSetOf<String>()
+    fun addWinRTProjectDependency(dependency: ProjectDependency) {
+        val dependencyProject = project.findProject(dependency.path) ?: return
+        if (!dependencyProject.plugins.hasPlugin(KotlinWinRTPlugin::class.java)) return
+        if (!observed.add("project:${dependency.path}")) return
+        configuration.dependencies.add(dependency.copy())
+    }
+    val collectDependencies = {
+        project.configurations
+            .filter { it.name.isWinRTIdentityDependencySourceConfiguration() }
+            .forEach { source ->
+                source.dependencies.forEach { dependency ->
+                    if (dependency is ProjectDependency) {
+                        addWinRTProjectDependency(dependency)
+                    }
+                }
+            }
+    }
+    if (project.state.executed) {
+        collectDependencies()
+    } else {
+        project.afterEvaluate(Action { collectDependencies() })
+    }
+    return configuration
 }
 
 private fun configureWinRTAuthoredCandidateValidation(
