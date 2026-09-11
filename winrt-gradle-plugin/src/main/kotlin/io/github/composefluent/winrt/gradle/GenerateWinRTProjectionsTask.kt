@@ -38,6 +38,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -133,7 +134,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     abstract val prepareMetadataOnly: Property<Boolean>
 
     /** Persistent parsed-model cache; it is intentionally outside Gradle's build cleanup. */
-    @get:Internal
+    @get:InputDirectory
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataModelCacheDirectory: DirectoryProperty
 
     @get:Input

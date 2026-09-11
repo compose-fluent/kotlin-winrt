@@ -85,6 +85,8 @@ object WinRTMetadataModelCodec {
 
     fun cacheKey(files: List<Path>): String {
         val digest = MessageDigest.getInstance("SHA-256")
+        digest.update("kotlin-winrt-normalized-model-v1|cli-reader-v1".toByteArray(Charsets.UTF_8))
+        digest.update(0)
         files.map { it.toAbsolutePath().normalize() }
             .sortedBy { it.toString().lowercase() }
             .forEach { file ->
