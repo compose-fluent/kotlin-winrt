@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlinx.serialization.Serializable
 import kotlin.io.path.createDirectories
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
@@ -691,6 +692,7 @@ data class WinRTResolvedMetadataFile(
     val sourceDescription: String,
 )
 
+@Serializable
 data class WinRTWindowsSdkContract(
     val name: String,
     val version: String,
@@ -712,6 +714,7 @@ data class WinRTWindowsSdkContract(
     }
 }
 
+@Serializable
 data class WinRTWindowsSdkSelection(
     val version: String,
     val contracts: List<WinRTWindowsSdkContract>,
@@ -742,7 +745,24 @@ data class WinRTMetadataCache(
     val packageAssets: List<WinRTPackageAsset> = emptyList(),
     val windowsSdkSelections: List<WinRTWindowsSdkSelection> = emptyList(),
 ) {
-    fun load(): WinRTMetadataModel = WinRTMetadataLoader.loadDiscoveredFiles(files)
+    fun load(): WinRTMetadataModel = loadParsedModel()
+
+    /** Loads the normalized model from a content-keyed persistent cache when possible. */
+    fun load(modelCacheDirectory: Path): WinRTMetadataModel {
+        val cacheFile = modelCacheDirectory.resolve(
+            "${WinRTMetadataModelCodec.cacheKey(files)}.json",
+        )
+        if (Files.isRegularFile(cacheFile)) {
+            runCatching { WinRTMetadataModelCodec.read(cacheFile) }
+                .onSuccess { cached -> return cached.copy(windowsSdkSelections = windowsSdkSelections).normalized() }
+                .onFailure { Files.deleteIfExists(cacheFile) }
+        }
+        val model = loadParsedModel()
+        WinRTMetadataModelCodec.writeAtomic(cacheFile, model)
+        return model
+    }
+
+    private fun loadParsedModel(): WinRTMetadataModel = WinRTMetadataLoader.loadDiscoveredFiles(files)
         .copy(windowsSdkSelections = windowsSdkSelections)
         .normalized()
 }

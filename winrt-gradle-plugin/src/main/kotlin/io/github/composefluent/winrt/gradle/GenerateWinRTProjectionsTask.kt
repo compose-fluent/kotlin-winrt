@@ -132,6 +132,10 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Input
     abstract val prepareMetadataOnly: Property<Boolean>
 
+    /** Persistent parsed-model cache; it is intentionally outside Gradle's build cleanup. */
+    @get:Internal
+    abstract val metadataModelCacheDirectory: DirectoryProperty
+
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
 
@@ -247,6 +251,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.authoringCandidatesFile.set(authoringCandidatesFile)
             parameters.preparedMetadataManifest.set(preparedMetadataManifest)
             parameters.prepareMetadataOnly.set(prepareMetadataOnly)
+            parameters.metadataModelCacheDirectory.set(metadataModelCacheDirectory)
             parameters.includeNamespaces.set(includeNamespaces)
             parameters.includeTypes.set(includeTypes)
             parameters.excludeNamespaces.set(excludeNamespaces)
@@ -291,6 +296,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val authoringCandidatesFile: RegularFileProperty
     val preparedMetadataManifest: RegularFileProperty
     val prepareMetadataOnly: Property<Boolean>
+    val metadataModelCacheDirectory: DirectoryProperty
     val includeNamespaces: ListProperty<String>
     val includeTypes: ListProperty<String>
     val excludeNamespaces: ListProperty<String>
@@ -344,7 +350,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         val metadataCache = metadataCache()
         val sources = metadataCache.files.map(WinRTMetadataSource::path)
         val effectiveExcludeTypes = parameters.excludeTypes.get()
-        val unfilteredModel = metadataCache.load()
+        val unfilteredModel = metadataCache.load(parameters.metadataModelCacheDirectory.get().asFile.toPath())
         val effectiveIncludeTypes = parameters.includeTypes.get() +
             automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
         validateDependencyProjectionIdentityOwnership(parameters.dependencyIdentityFiles.files)

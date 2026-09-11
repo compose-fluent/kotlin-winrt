@@ -1,7 +1,10 @@
 package io.github.composefluent.winrt.metadata
 
 import io.github.composefluent.winrt.runtime.Guid
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+@Serializable
 enum class WinRTTypeKind {
     Unknown,
     Interface,
@@ -11,6 +14,7 @@ enum class WinRTTypeKind {
     Delegate,
 }
 
+@Serializable
 enum class WinRTIntegralType {
     Int8,
     UInt8,
@@ -22,12 +26,14 @@ enum class WinRTIntegralType {
     UInt64,
 }
 
+@Serializable
 enum class WinRTTypeLayoutKind {
     Auto,
     Sequential,
     Explicit,
 }
 
+@Serializable
 data class WinRTTypeLayout(
     val kind: WinRTTypeLayoutKind = WinRTTypeLayoutKind.Auto,
     val packingSize: Int? = null,
@@ -50,6 +56,7 @@ data class WinRTTypeLayout(
     }
 }
 
+@Serializable
 data class WinRTEnumMemberDefinition(
     val name: String,
     val valueBits: ULong,
@@ -67,6 +74,7 @@ data class WinRTEnumMemberDefinition(
     }
 }
 
+@Serializable
 data class WinRTFieldDefinition(
     val name: String,
     val typeName: String,
@@ -101,6 +109,7 @@ data class WinRTFieldDefinition(
     }
 }
 
+@Serializable
 data class WinRTGenericParameterDefinition(
     val name: String,
     val index: Int,
@@ -136,14 +145,31 @@ data class WinRTGenericParameterDefinition(
     }
 }
 
+@Serializable
 sealed interface WinRTCustomAttributeValue {
+    @Serializable
+    @SerialName("string")
     data class StringValue(val value: String?) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("type")
     data class TypeValue(val typeName: String?) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("boolean")
     data class BooleanValue(val value: Boolean) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("integral")
     data class IntegralValue(val value: Long) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("floatingPoint")
     data class FloatingPointValue(val value: Double) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("enum")
     data class EnumValue(val enumTypeName: String, val value: Long) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("array")
     data class ArrayValue(val values: List<WinRTCustomAttributeValue>) : WinRTCustomAttributeValue
+    @Serializable
+    @SerialName("null")
     data object NullValue : WinRTCustomAttributeValue
 
     val stringValue: String?
@@ -154,6 +180,7 @@ sealed interface WinRTCustomAttributeValue {
         }
 }
 
+@Serializable
 data class WinRTCustomAttributeNamedArgument(
     val name: String,
     val value: WinRTCustomAttributeValue,
@@ -162,6 +189,7 @@ data class WinRTCustomAttributeNamedArgument(
     fun normalized(): WinRTCustomAttributeNamedArgument = copy(name = name.trim())
 }
 
+@Serializable
 data class WinRTCustomAttributeDefinition(
     val typeName: String,
     val fixedArguments: List<WinRTCustomAttributeValue> = emptyList(),
@@ -177,6 +205,7 @@ data class WinRTCustomAttributeDefinition(
         )
 }
 
+@Serializable
 data class WinRTInterfaceImplementationDefinition(
     val interfaceName: String,
     val isDefault: Boolean = false,
@@ -204,12 +233,14 @@ data class WinRTInterfaceImplementationDefinition(
     }
 }
 
+@Serializable
 enum class WinRTMethodImplementationMemberKind {
     MethodDefinition,
     MemberReference,
     Unknown,
 }
 
+@Serializable
 data class WinRTMethodImplementationMember(
     val kind: WinRTMethodImplementationMemberKind,
     val rowId: Int,
@@ -223,6 +254,7 @@ data class WinRTMethodImplementationMember(
         )
 }
 
+@Serializable
 data class WinRTMethodImplementationDefinition(
     val classTypeName: String,
     val body: WinRTMethodImplementationMember,
@@ -236,6 +268,7 @@ data class WinRTMethodImplementationDefinition(
         )
 }
 
+@Serializable
 data class WinRTActivationShape(
     val isActivatable: Boolean = false,
     val activatableFactoryInterfaceName: String? = null,
@@ -278,12 +311,14 @@ data class WinRTActivationShape(
     }
 }
 
+@Serializable
 enum class WinRTAttributedFactoryKind {
     Activatable,
     Static,
     Composable,
 }
 
+@Serializable
 data class WinRTAttributedFactoryShape(
     val interfaceName: String,
     val kind: WinRTAttributedFactoryKind,
@@ -305,6 +340,7 @@ private fun List<WinRTAttributedFactoryShape>.normalizedAttributedFactories(): L
     return merged.values.sortedWith(compareBy(WinRTAttributedFactoryShape::interfaceName, { it.kind.ordinal }))
 }
 
+@Serializable
 data class WinRTContractVersionMetadata(
     val contractName: String?,
     val version: Long,
@@ -315,6 +351,7 @@ data class WinRTContractVersionMetadata(
         copy(contractName = contractName?.trim()?.takeIf(String::isNotEmpty))
 }
 
+@Serializable
 data class WinRTDeprecationMetadata(
     val message: String?,
     val kind: Long?,
@@ -328,6 +365,7 @@ data class WinRTDeprecationMetadata(
         )
 }
 
+@Serializable
 data class WinRTAvailabilityMetadata(
     val contractVersion: WinRTContractVersionMetadata? = null,
     val version: Long? = null,
@@ -361,12 +399,14 @@ data class WinRTAvailabilityMetadata(
     }
 }
 
+@Serializable
 enum class WinRTParameterDirection {
     In,
     Ref,
     Out,
 }
 
+@Serializable
 data class WinRTParameterDefinition(
     val name: String,
     val typeName: String,
@@ -396,6 +436,7 @@ data class WinRTParameterDefinition(
         "$name:${type.renderSignatureKey()}:$direction:$isInParameter:$isOutParameter:$hasDefaultValue:$defaultValueBits:$defaultValueElementType"
 }
 
+@Serializable
 enum class WinRTMethodVisibility {
     Private,
     FamilyAndAssembly,
@@ -406,6 +447,7 @@ enum class WinRTMethodVisibility {
     Unknown,
 }
 
+@Serializable
 data class WinRTMethodDefinition(
     val name: String,
     val returnTypeName: String,
@@ -499,6 +541,7 @@ data class WinRTMethodDefinition(
     }
 }
 
+@Serializable
 data class WinRTPropertyDefinition(
     val name: String,
     val typeName: String,
@@ -562,6 +605,7 @@ data class WinRTPropertyDefinition(
     }
 }
 
+@Serializable
 data class WinRTEventDefinition(
     val name: String,
     val delegateTypeName: String,
@@ -620,10 +664,12 @@ data class WinRTEventDefinition(
     }
 }
 
+@Serializable
 data class WinRTTypeDefinition(
     val namespace: String,
     val name: String,
     val kind: WinRTTypeKind = WinRTTypeKind.Unknown,
+    @kotlinx.serialization.Serializable(with = WinRTGuidAsStringSerializer::class)
     val iid: Guid? = null,
     val baseTypeName: String? = null,
     val enumUnderlyingType: WinRTIntegralType? = null,
@@ -815,6 +861,7 @@ data class WinRTTypeDefinition(
     }
 }
 
+@Serializable
 data class WinRTNamespace(
     val name: String,
     val types: List<WinRTTypeDefinition>,
@@ -831,6 +878,7 @@ data class WinRTNamespace(
         )
 }
 
+@Serializable
 data class WinRTMetadataModel(
     val namespaces: List<WinRTNamespace>,
     val windowsSdkSelections: List<WinRTWindowsSdkSelection> = emptyList(),

@@ -1,5 +1,8 @@
 package io.github.composefluent.winrt.metadata
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class WinRTTypeRefKind {
     Named,
     Array,
@@ -8,6 +11,7 @@ enum class WinRTTypeRefKind {
     Unknown,
 }
 
+@Serializable
 data class WinRTTypeRef(
     val kind: WinRTTypeRefKind = WinRTTypeRefKind.Unknown,
     val qualifiedName: String? = null,

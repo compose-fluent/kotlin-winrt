@@ -2240,6 +2240,9 @@ private fun configureWinRTGeneration(
         task.authoringScannerClasspath.from(kotlinWinRTAuthoringScannerRuntimeClasspath(project))
         task.sourceRoots.from(authoringSourceRoots)
         task.prepareMetadataOnly.set(prepareMetadataOnly)
+        task.metadataModelCacheDirectory.set(
+            project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models"),
+        )
     }
 
     val prepareMetadataTask = project.tasks.register(
