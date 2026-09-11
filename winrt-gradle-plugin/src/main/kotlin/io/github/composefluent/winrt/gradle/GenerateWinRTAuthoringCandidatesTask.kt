@@ -56,35 +56,41 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
     fun scan() {
         val output = outputFile.get().asFile.toPath().toAbsolutePath().normalize()
         Files.createDirectories(output.parent)
+        val temporaryOutput = output.resolveSibling(".${output.fileName}.tmp")
         val roots = sourceRoots.files
             .map { file -> file.toPath().toAbsolutePath().normalize() }
             .filter { path -> Files.exists(path) }
         if (roots.isEmpty()) {
-            Files.writeString(output, "")
+            GradleFileOperations.writeStringIfChanged(output, "")
             return
         }
-        execOperations.javaexec { spec ->
-            spec.classpath = scannerClasspath
-            spec.mainClass.set("io.github.composefluent.winrt.compiler.KotlinWinRTAuthoringScannerCli")
-            spec.workingDir(output.parent.toFile())
-            spec.jvmArgs(
-                scannerJvmArgs.get() + "-Djava.io.tmpdir=${output.parent}",
-            )
-            spec.args(
-                buildList {
-                    add("--metadata-index")
-                    add(metadataIndex.get().asFile.absolutePath)
-                    add("--output")
-                    add(output.toString())
-                    roots.forEach { root ->
-                        add("--source-root")
-                        add(root.toString())
+        try {
+            execOperations.javaexec { spec ->
+                spec.classpath = scannerClasspath
+                spec.mainClass.set("io.github.composefluent.winrt.compiler.KotlinWinRTAuthoringScannerCli")
+                spec.workingDir(output.parent.toFile())
+                spec.jvmArgs(
+                    scannerJvmArgs.get() + "-Djava.io.tmpdir=${output.parent}",
+                )
+                spec.args(
+                    buildList {
+                        add("--metadata-index")
+                        add(metadataIndex.get().asFile.absolutePath)
+                        add("--output")
+                        add(temporaryOutput.toString())
+                        roots.forEach { root ->
+                            add("--source-root")
+                            add(root.toString())
+                        }
                     }
-                },
-            )
-        }
-        check(Files.isRegularFile(output)) {
-            "kotlin-winrt authoring scanner did not produce $output"
+                )
+            }
+            check(Files.isRegularFile(temporaryOutput)) {
+                "kotlin-winrt authoring scanner did not produce $temporaryOutput"
+            }
+            GradleFileOperations.writeStringIfChanged(output, Files.readString(temporaryOutput))
+        } finally {
+            Files.deleteIfExists(temporaryOutput)
         }
     }
 }
