@@ -3264,7 +3264,8 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
     // The compiler-plugin artifact is loaded from plugin-under-test metadata in consuming
     // builds, so its implementation dependencies are not brought in transitively.
-    runtimeDependencies.add("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    runtimeDependencies.add("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0")
+    runtimeDependencies.add("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.9.0")
     kotlinWinRTPluginMetadataArtifact(project, "winrt-metadata")?.let { artifact ->
         runtimeDependencies += artifact
         return runtimeDependencies

@@ -3683,6 +3683,18 @@ class KotlinWinRTPluginTest {
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "callsite-lowering")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-authoring")
+        assertHasExternalDependency(
+            targetConfiguration.dependencies,
+            group = "org.jetbrains.kotlinx",
+            name = "kotlinx-serialization-core-jvm",
+            version = "1.9.0",
+        )
+        assertHasExternalDependency(
+            targetConfiguration.dependencies,
+            group = "org.jetbrains.kotlinx",
+            name = "kotlinx-serialization-json-jvm",
+            version = "1.9.0",
+        )
     }
 
     @Test
@@ -14109,6 +14121,25 @@ private fun assertHasKotlinWinRTClasspathDependency(
                 dependency is FileCollectionDependency && dependency.files.files.any { file ->
                     file.name.startsWith(moduleName) && file.name.endsWith(".jar")
                 }
+        },
+    )
+}
+
+private fun assertHasExternalDependency(
+    dependencies: Iterable<Dependency>,
+    group: String,
+    name: String,
+    version: String,
+) {
+    assertTrue(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
+        },
+        dependencies.any { dependency ->
+            dependency is ExternalModuleDependency &&
+                dependency.group == group &&
+                dependency.name == name &&
+                dependency.version == version
         },
     )
 }
