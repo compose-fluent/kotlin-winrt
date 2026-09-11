@@ -1,5 +1,17 @@
 rootProject.name = "winrt-gradle-plugin"
 
+// This build is included by the main build and reuses the same physical module
+// directories. Keep its Gradle/Kotlin state exclusive to the included build so
+// the two producers cannot invalidate each other's local state or outputs.
+gradle.beforeProject {
+    val projectSegments = project.path
+        .trimStart(':')
+        .split(':')
+        .filter(String::isNotEmpty)
+    val outputPath = listOf("build", "included-projects") + projectSegments
+    layout.buildDirectory.set(rootDir.resolve(outputPath.joinToString("/")))
+}
+
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
