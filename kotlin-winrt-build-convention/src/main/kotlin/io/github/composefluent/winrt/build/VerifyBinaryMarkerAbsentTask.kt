@@ -54,45 +54,50 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     @TaskAction
     fun verifyMarkerIsAbsent() {
         val report = verificationReport.get().asFile.toPath()
-        java.nio.file.Files.deleteIfExists(report)
-        val files = binaryArtifacts.files
-            .asSequence()
-            .flatMap { artifact ->
-                if (artifact.isDirectory) {
-                    artifact.walkTopDown().filter(File::isFile)
-                } else {
-                    sequenceOf(artifact).filter(File::isFile)
+        try {
+            val files = binaryArtifacts.files
+                .asSequence()
+                .flatMap { artifact ->
+                    if (artifact.isDirectory) {
+                        artifact.walkTopDown().filter(File::isFile)
+                    } else {
+                        sequenceOf(artifact).filter(File::isFile)
+                    }
+                }
+                .toList()
+            check(files.isNotEmpty()) {
+                "Missing ${artifactDescription.get()} binary artifacts."
+            }
+            val markerBytes = markers.get().associateWith(String::encodeToByteArray)
+            val requiredMarkerBytes = requiredMarkers.get().associateWith(String::encodeToByteArray)
+            check(markerBytes.isNotEmpty() || requiredMarkerBytes.isNotEmpty()) {
+                "At least one forbidden or required marker is needed for ${artifactDescription.get()}."
+            }
+            val scopedPrefixes = methodNamePrefixes.get()
+            val match = files.firstNotNullOfOrNull { file ->
+                findForbiddenMarker(file, markerBytes, scopedPrefixes)
+            }
+            check(match == null) {
+                val (containingFile, marker, methodName) = match!!
+                val methodSuffix = methodName?.let { " method '$it'" }.orEmpty()
+                "Forbidden WinRT call-site marker '$marker' escaped lowering in " +
+                    "${containingFile.absolutePath}$methodSuffix."
+            }
+            requiredMarkerBytes.forEach { (marker, bytes) ->
+                check(files.any { file -> file.readBytes().containsSequence(bytes) }) {
+                    "Required WinRT call-site marker '$marker' was not emitted in ${artifactDescription.get()}."
                 }
             }
-            .toList()
-        check(files.isNotEmpty()) {
-            "Missing ${artifactDescription.get()} binary artifacts."
-        }
-        val markerBytes = markers.get().associateWith(String::encodeToByteArray)
-        val requiredMarkerBytes = requiredMarkers.get().associateWith(String::encodeToByteArray)
-        check(markerBytes.isNotEmpty() || requiredMarkerBytes.isNotEmpty()) {
-            "At least one forbidden or required marker is needed for ${artifactDescription.get()}."
-        }
-        val scopedPrefixes = methodNamePrefixes.get()
-        val match = files.firstNotNullOfOrNull { file ->
-            findForbiddenMarker(file, markerBytes, scopedPrefixes)
-        }
-        check(match == null) {
-            val (containingFile, marker, methodName) = match!!
-            val methodSuffix = methodName?.let { " method '$it'" }.orEmpty()
-            "Forbidden WinRT call-site marker '$marker' escaped lowering in " +
-                "${containingFile.absolutePath}$methodSuffix."
-        }
-        requiredMarkerBytes.forEach { (marker, bytes) ->
-            check(files.any { file -> file.readBytes().containsSequence(bytes) }) {
-                "Required WinRT call-site marker '$marker' was not emitted in ${artifactDescription.get()}."
+            val reportContent = "verified=true\nartifactDescription=${artifactDescription.get()}\n"
+            if (!java.nio.file.Files.isRegularFile(report) || java.nio.file.Files.readString(report) != reportContent) {
+                java.nio.file.Files.createDirectories(report.parent)
+                java.nio.file.Files.writeString(report, reportContent)
             }
+        } catch (failure: Throwable) {
+            // A failed verification must never leave a previous success report behind.
+            java.nio.file.Files.deleteIfExists(report)
+            throw failure
         }
-        java.nio.file.Files.createDirectories(report.parent)
-        java.nio.file.Files.writeString(
-            report,
-            "verified=true\nartifactDescription=${artifactDescription.get()}\n",
-        )
     }
 
     private fun findForbiddenMarker(

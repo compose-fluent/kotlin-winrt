@@ -4,6 +4,7 @@ import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.nio.file.attribute.FileTime
 import java.nio.file.Path
 
 class VerifyBinaryMarkerAbsentTaskTest {
@@ -21,6 +22,48 @@ class VerifyBinaryMarkerAbsentTaskTest {
         val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
 
         assertTrue(failure?.message.orEmpty(), failure == null)
+    }
+
+    @Test
+    fun preserves_an_unchanged_success_report_when_verification_runs_again() {
+        val projectDirectory = Files.createTempDirectory("verify-binary-marker-report-")
+        val project = ProjectBuilder.builder().withProjectDir(projectDirectory.toFile()).build()
+        val artifact = projectDirectory.resolve("projection.bin")
+        val report = projectDirectory.resolve("verification.report")
+        Files.write(artifact, byteArrayOf(0, 1, 2, 3))
+        val task = project.tasks.create("verifyMarkerReport", VerifyBinaryMarkerAbsentTask::class.java)
+        task.binaryArtifacts.from(artifact.toFile())
+        task.markers.set(setOf("forbidden"))
+        task.artifactDescription.set("test projection")
+        task.verificationReport.set(report.toFile())
+
+        task.verifyMarkerIsAbsent()
+        val expectedTime = FileTime.fromMillis(123456789L)
+        Files.setLastModifiedTime(report, expectedTime)
+        task.verifyMarkerIsAbsent()
+
+        assertTrue(Files.exists(report))
+        assertTrue(Files.getLastModifiedTime(report) == expectedTime)
+    }
+
+    @Test
+    fun removes_a_previous_success_report_when_verification_fails() {
+        val projectDirectory = Files.createTempDirectory("verify-binary-marker-failed-report-")
+        val project = ProjectBuilder.builder().withProjectDir(projectDirectory.toFile()).build()
+        val artifact = projectDirectory.resolve("projection.bin")
+        val report = projectDirectory.resolve("verification.report")
+        Files.writeString(artifact, "contains forbidden marker")
+        Files.writeString(report, "verified=true\nartifactDescription=test projection\n")
+        val task = project.tasks.create("verifyMarkerFailedReport", VerifyBinaryMarkerAbsentTask::class.java)
+        task.binaryArtifacts.from(artifact.toFile())
+        task.markers.set(setOf("forbidden marker"))
+        task.artifactDescription.set("test projection")
+        task.verificationReport.set(report.toFile())
+
+        val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
+
+        assertTrue(failure?.message.orEmpty().contains("Forbidden WinRT call-site marker"))
+        assertTrue(!Files.exists(report))
     }
 
     @Test

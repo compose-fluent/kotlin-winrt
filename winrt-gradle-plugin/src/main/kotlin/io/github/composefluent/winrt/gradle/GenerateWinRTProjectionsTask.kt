@@ -532,7 +532,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         Files.createDirectories(supportRoot)
         val registrarClassName = "io.github.composefluent.winrt.projections.support." +
             authoringTypeDetailsRegistrarName(assemblyName)
-        Files.writeString(
+        GradleFileOperations.writeStringIfChanged(
             supportRoot.resolve("authoring-type-details-registrars.tsv"),
             "className\n$registrarClassName\n",
         )
@@ -549,9 +549,14 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             "1",
             "",
         ).joinToString("\t")
-        if (row !in existing.drop(1)) {
-            Files.writeString(manifest, (existing + row).joinToString(separator = "\n", postfix = "\n"))
-        }
+        val rows = (existing.drop(1) + row)
+            .distinct()
+            .sorted()
+        GradleFileOperations.writeStringIfChanged(
+            manifest,
+            (listOf(existing.firstOrNull() ?: "kind\tclassName\tsourceFile\tentries\towner") + rows)
+                .joinToString(separator = "\n", postfix = "\n"),
+        )
     }
 
     private fun cleanDirectory(path: Path) {
@@ -665,7 +670,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                     )
                 }
         }
-        Files.writeString(path, lines.joinToString(separator = "\n", postfix = "\n"))
+        GradleFileOperations.writeStringIfChanged(path, lines.joinToString(separator = "\n", postfix = "\n"))
     }
 
     private fun readPreparedMetadataCache(path: Path): WinRTMetadataCache {

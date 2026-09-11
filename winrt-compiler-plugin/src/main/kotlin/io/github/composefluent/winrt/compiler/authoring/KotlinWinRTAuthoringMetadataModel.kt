@@ -50,9 +50,7 @@ object KotlinWinRTAuthoringMetadataModel {
     ) {
         val runtimeClassNames = runtimeClassDescriptors(candidates).map { it.runtimeClassName }.sorted()
         Files.createDirectories(outputFile.parent)
-        Files.writeString(
-            outputFile,
-            buildString {
+        val content = buildString {
                 appendLine("{")
                 appendLine("  \"schemaVersion\": 1,")
                 appendLine("  \"model\": \"jvm-authoring-host\",")
@@ -62,8 +60,10 @@ object KotlinWinRTAuthoringMetadataModel {
                 appendLine("  \"activatableClasses\": ${runtimeClassNames.toJsonArray()},")
                 appendLine("  \"activatableClassTargets\": ${runtimeClassNames.associateWith { targetArtifactName }.toJsonObject()}")
                 appendLine("}")
-            },
-        )
+            }
+        if (!Files.isRegularFile(outputFile) || Files.readString(outputFile) != content) {
+            Files.writeString(outputFile, content)
+        }
     }
 
     private fun runtimeClassDescriptors(candidates: List<KotlinWinRTAuthoredTypeCandidate>): List<WinRTAuthoredRuntimeClassDescriptor> =

@@ -121,9 +121,7 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
             dslIncludeExtensions = includeWindowsSdkExtensions.get(),
         )
         Files.createDirectories(target.parent)
-        Files.writeString(
-            target,
-            buildString {
+        val content = buildString {
                 appendLine("{")
                 appendLine("  \"schemaVersion\": 1,")
                 appendLine("  \"model\": \"library\",")
@@ -149,8 +147,8 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"authoredTargetArtifactRecords\": ${authoredTargetArtifactRecordsToJsonArray(readAuthoredTargetArtifactRecords(authoredTargetArtifactFiles.files))},")
                 appendLine("  \"compilerSupportFileRecords\": ${compilerSupportFileRecordsToJsonArray(readCompilerSupportFileRecords(compilerSupportManifestFiles.files))}")
                 appendLine("}")
-            },
-        )
+            }
+        GradleFileOperations.writeStringIfChanged(target, content)
     }
 }
 

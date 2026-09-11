@@ -69,21 +69,24 @@ object WinRTAuthoredMetadataDescriptorWriter {
         outputFile: Path,
     ) {
         Files.createDirectories(outputFile.parent)
-        outputFile.writeText(
-            runtimeClasses
-                .sortedBy(WinRTAuthoredRuntimeClassDescriptor::runtimeClassName)
-                .joinToString(separator = "\n", postfix = "\n") { descriptor ->
-                    listOf(
-                        descriptor.runtimeClassName,
-                        descriptor.baseRuntimeClassName.orEmpty(),
-                        descriptor.interfaceNames.joinToString(";"),
-                        descriptor.overridableInterfaceNames.joinToString(";"),
-                        descriptor.isActivatable.toString(),
-                        descriptor.isSealed.toString(),
-                        descriptor.activatableFactoryInterfaceName.orEmpty(),
-                        descriptor.staticFactoryInterfaceNames.joinToString(";"),
-                    ).joinToString("\t")
-                },
-        )
+        val content = runtimeClasses
+            .sortedBy(WinRTAuthoredRuntimeClassDescriptor::runtimeClassName)
+            .joinToString(separator = "\n", postfix = "\n") { descriptor ->
+                listOf(
+                    descriptor.runtimeClassName,
+                    descriptor.baseRuntimeClassName.orEmpty(),
+                    descriptor.interfaceNames.joinToString(";"),
+                    descriptor.overridableInterfaceNames.joinToString(";"),
+                    descriptor.isActivatable.toString(),
+                    descriptor.isSealed.toString(),
+                    descriptor.activatableFactoryInterfaceName.orEmpty(),
+                    descriptor.staticFactoryInterfaceNames.joinToString(";"),
+                ).joinToString("\t")
+            }
+        if (!Files.isRegularFile(outputFile) || Files.readString(outputFile) != content) {
+            outputFile.writeText(
+                content,
+            )
+        }
     }
 }
