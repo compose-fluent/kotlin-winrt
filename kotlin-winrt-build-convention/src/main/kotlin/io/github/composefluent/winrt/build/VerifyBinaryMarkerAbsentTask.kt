@@ -6,10 +6,12 @@ import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -38,13 +40,21 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     @get:Input
     abstract val artifactDescription: Property<String>
 
+    @get:OutputFile
+    abstract val verificationReport: RegularFileProperty
+
     init {
         requiredMarkers.convention(emptySet())
         methodNamePrefixes.convention(emptySet())
+        verificationReport.convention(
+            project.layout.buildDirectory.file("reports/kotlin-winrt/${name}.verified"),
+        )
     }
 
     @TaskAction
     fun verifyMarkerIsAbsent() {
+        val report = verificationReport.get().asFile.toPath()
+        java.nio.file.Files.deleteIfExists(report)
         val files = binaryArtifacts.files
             .asSequence()
             .flatMap { artifact ->
@@ -78,6 +88,11 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
                 "Required WinRT call-site marker '$marker' was not emitted in ${artifactDescription.get()}."
             }
         }
+        java.nio.file.Files.createDirectories(report.parent)
+        java.nio.file.Files.writeString(
+            report,
+            "verified=true\nartifactDescription=${artifactDescription.get()}\n",
+        )
     }
 
     private fun findForbiddenMarker(
