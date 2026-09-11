@@ -53,12 +53,16 @@ kotlin {
 }
 
 val generatedWinRTProjectionSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
+val compiledJvmProjectionClasses = layout.buildDirectory.dir(
+    "classes/kotlin-winrt/projection/compileKotlinJvm",
+)
+val compileJvmProjectionTaskName = "compileKotlinWinRTProjectionJvm"
 
 val verifyJvmProjectionCallSiteLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
     description = "Verifies that no generated WinRT call-site placeholder reaches JVM bytecode."
-    dependsOn("compileKotlinJvm")
-    binaryArtifacts.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+    dependsOn(compileJvmProjectionTaskName)
+    binaryArtifacts.from(compiledJvmProjectionClasses)
     markers.set(setOf("Lowered while compiling the generated WinRT module"))
     artifactDescription.set("compiled JVM projection classes")
 }
@@ -111,9 +115,9 @@ val verifyMingwX64ProjectionThunkAccessors by tasks.registering(VerifyBinaryMark
 val verifyJvmProjectionCallSiteDirectLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
     description = "Verifies that generated JVM call-site owners contain only direct fixed-shape lowering."
-    dependsOn("compileKotlinJvm")
+    dependsOn(compileJvmProjectionTaskName)
     binaryArtifacts.from(
-        layout.buildDirectory.dir("classes/kotlin/jvm/main").map { classesDirectory ->
+        compiledJvmProjectionClasses.map { classesDirectory ->
             classesDirectory.asFileTree.matching {
                 include("io/github/composefluent/winrt/projections/support/WinRTModulePlatformAbiCall_*.class")
             }
@@ -136,12 +140,12 @@ val auditGeneratedWinRTProjectionOutput by tasks.registering(
     group = "verification"
     description = "Fails if generated projection source leaks fallback invocation or JVM-only reflection paths."
     dependsOn("generateWinRTProjections")
-    dependsOn("compileKotlinJvm")
+    dependsOn(compileJvmProjectionTaskName)
     dependsOn(verifyJvmProjectionCallSiteLowering)
     dependsOn(verifyJvmProjectionCallSiteDirectLowering)
     dependsOn(verifyMingwX64ProjectionCallSiteLowering)
     generatedSourcesDirectory.set(generatedWinRTProjectionSources)
-    compiledClassesDirectories.from(layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+    compiledClassesDirectories.from(compiledJvmProjectionClasses)
     maxTotalClassBytes.set(
         projectionUseFullWindowsSdk.map { useFullWindowsSdk ->
             if (useFullWindowsSdk) 150_000_000L else 75_000_000L
