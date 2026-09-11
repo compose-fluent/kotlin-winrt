@@ -139,6 +139,12 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataModelCacheDirectory: DirectoryProperty
 
+    /** Immutable imported source entry prepared during configuration completion when possible. */
+    @get:InputDirectory
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val preparedStaticSourceDirectory: DirectoryProperty
+
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
 
@@ -255,6 +261,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.preparedMetadataManifest.set(preparedMetadataManifest)
             parameters.prepareMetadataOnly.set(prepareMetadataOnly)
             parameters.metadataModelCacheDirectory.set(metadataModelCacheDirectory)
+            parameters.preparedStaticSourceDirectory.set(preparedStaticSourceDirectory)
             parameters.includeNamespaces.set(includeNamespaces)
             parameters.includeTypes.set(includeTypes)
             parameters.excludeNamespaces.set(excludeNamespaces)
@@ -300,6 +307,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val preparedMetadataManifest: RegularFileProperty
     val prepareMetadataOnly: Property<Boolean>
     val metadataModelCacheDirectory: DirectoryProperty
+    val preparedStaticSourceDirectory: DirectoryProperty
     val includeNamespaces: ListProperty<String>
     val includeTypes: ListProperty<String>
     val excludeNamespaces: ListProperty<String>
@@ -412,6 +420,13 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 )
                 KotlinWinRTAuthoringCandidateFile.read(candidatesFile)
             }
+        val hasPreparedStaticSources = parameters.preparedStaticSourceDirectory.orNull
+            ?.asFile
+            ?.toPath()
+            ?.takeIf(Files::isDirectory)
+            ?.also { preparedRoot ->
+                materializePreparedStaticSources(preparedRoot, generatedRoot)
+            } != null
         KotlinWinRTAuthoringCandidateFile.write(
             generatedRoot.resolve("kotlin-winrt-authoring/authored-candidates.tsv"),
             authoringCandidates,
@@ -478,7 +493,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
             component = exportedAuthoringCandidates.isNotEmpty(),
         )
-        if (parameters.emitProjectionSources.get()) {
+        if (parameters.emitProjectionSources.get() && !(hasPreparedStaticSources && authoringCandidates.isEmpty())) {
             KotlinProjectionGenerator(
                 emitSupportFiles = true,
                 groupProjectionFilesByPackageOnWrite = true,

@@ -97,7 +97,7 @@ const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-
 internal val KOTLIN_WINRT_APPX_RESOURCE_TARGET_ATTRIBUTE: Attribute<String> =
     Attribute.of("io.github.composefluent.winrt.appx-resource-target", String::class.java)
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
-private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRTLibraryDependencyIdentity"
+internal const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRTLibraryDependencyIdentity"
 
 /** Resolves a complete JDK for JVM host generation instead of inheriting the daemon JVM. */
 private fun configuredJvmToolchainHome(
@@ -504,6 +504,7 @@ private fun configureWinRTApplicationModel(
             }
         }
     }
+
 }
 
 private fun configureDefaultWinRTApplicationVariants(
@@ -2240,9 +2241,9 @@ private fun configureWinRTGeneration(
         task.authoringScannerClasspath.from(kotlinWinRTAuthoringScannerRuntimeClasspath(project))
         task.sourceRoots.from(authoringSourceRoots)
         task.prepareMetadataOnly.set(prepareMetadataOnly)
-        task.metadataModelCacheDirectory.set(
-            project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models"),
-        )
+        val metadataModelCacheDirectory = project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models")
+        Files.createDirectories(metadataModelCacheDirectory.asFile.toPath())
+        task.metadataModelCacheDirectory.set(metadataModelCacheDirectory)
     }
 
     val prepareMetadataTask = project.tasks.register(
@@ -2453,6 +2454,36 @@ private fun configureWinRTGeneration(
         project.tasks.matching { task -> task.name == "compileJava" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
         })
+    }
+
+    // Fixed local WinMD imports can be prepared once the DSL and target model are complete.
+    // Task-produced metadata, SDK discovery, and NuGet restore remain execution-time inputs.
+    project.afterEvaluate {
+        val prepared = runCatching {
+            prepareWinRTStaticProjectionSources(
+                project = project,
+                extension = extension,
+                dependencyIdentityFiles = emptyList(),
+                generatedOutputDirectory = generateTask.flatMap { it.outputDirectory },
+                supportOwnerIdentity = if (project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null) {
+                    authoringTargetArtifactName.get()
+                } else {
+                    kotlinWinRTNativeAuthoringTargetArtifactName(project).get()
+                },
+            )
+        }.getOrElse { error ->
+            if (error is StaticPreparationUnavailable) {
+                project.logger.info("Skipping configuration-time WinRT static preparation: ${error.message}")
+                null
+            } else {
+                throw error
+            }
+        }
+        if (prepared != null) {
+            generateTask.configure { task ->
+                task.preparedStaticSourceDirectory.set(prepared.toFile())
+            }
+        }
     }
 }
 
@@ -3163,6 +3194,9 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
     )
     runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
+    // The compiler-plugin artifact is loaded from plugin-under-test metadata in consuming
+    // builds, so its implementation dependencies are not brought in transitively.
+    runtimeDependencies.add("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     kotlinWinRTPluginMetadataArtifact(project, "winrt-metadata")?.let { artifact ->
         runtimeDependencies += artifact
         return runtimeDependencies

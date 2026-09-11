@@ -3170,6 +3170,49 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun local_winmd_static_sources_are_prepared_in_project_gradle_store() {
+        val project = ProjectBuilder.builder().withName("prepared-static-test").build()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        val winmd = project.projectDir.toPath().resolve("fixture/Sample.winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = winmd,
+        )
+        extension.winmd(winmd.toString())
+        extension.type("Sample.IProbe")
+        val output = project.layout.buildDirectory.dir("prepared-output")
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.isRegularFile(prepared!!.parent.resolve("manifest.tsv")))
+        assertTrue(Files.walk(prepared).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+        val dynamicOutput = output.get().asFile.toPath().resolve("business/Overlay.kt")
+        Files.createDirectories(dynamicOutput.parent)
+        Files.writeString(dynamicOutput, "package business\nclass Overlay")
+        materializePreparedStaticSources(prepared, output.get().asFile.toPath())
+        assertTrue(Files.isRegularFile(dynamicOutput))
+        assertTrue(Files.walk(output.get().asFile.toPath()).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+    }
+
+    @Test
     fun application_host_compiles_launcher_as_a_separate_incremental_task() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
