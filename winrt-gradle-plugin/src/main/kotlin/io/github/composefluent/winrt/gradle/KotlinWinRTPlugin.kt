@@ -46,6 +46,7 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinApiPlugin
 import org.jetbrains.kotlin.gradle.plugin.KotlinJvmFactory
+import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.Executable
 import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
@@ -87,6 +88,7 @@ const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRTIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRTIdentityElements"
 const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRTCompilerPlugin"
 const val KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION: String = "kotlinWinRTGeneratorWorker"
+private const val KOTLIN_WINRT_AUTHORING_SCANNER_CONFIGURATION: String = "kotlinWinRTAuthoringScanner"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_APPX_RESOURCES_ELEMENTS_CONFIGURATION: String = "kotlinWinRTAppxResourcesElements"
 const val KOTLIN_WINRT_APPX_RESOURCES_CONFIGURATION: String = "kotlinWinRTAppxResources"
@@ -3204,17 +3206,52 @@ private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: Stri
         ?.let(project::files)
 }
 
-private fun kotlinWinRTAuthoringScannerRuntimeClasspath(project: Project): Any =
-    project.files(
-        listOf(
-            "kotlin.Unit",
-            "kotlinx.coroutines.CoroutineScope",
-            "org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment",
-            "org.jetbrains.kotlin.psi.KtFile",
-        )
-            .mapNotNull(::kotlinWinRTCodeSourceFile)
-            .distinctBy { file -> file.toPath().toAbsolutePath().normalize() },
+private fun kotlinWinRTAuthoringScannerRuntimeClasspath(project: Project): Any {
+    val kotlinCompilerVersion = project.getKotlinPluginVersion()
+    val compilerRuntime = listOf(
+        "org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment",
+        "org.jetbrains.kotlin.com.intellij.core.JavaCoreApplicationEnvironment",
     )
+        .mapNotNull(::kotlinWinRTCodeSourceFile)
+        .filter { file -> file.name == "kotlin-compiler-embeddable-$kotlinCompilerVersion.jar" }
+        .ifEmpty { listOfNotNull(kotlinWinRTCachedCompilerEmbeddable(project, kotlinCompilerVersion)) }
+        .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
+    val compilerClasspath = if (compilerRuntime.isNotEmpty()) {
+        project.files(compilerRuntime)
+    } else {
+        val compilerConfiguration = project.configurations.findByName(KOTLIN_WINRT_AUTHORING_SCANNER_CONFIGURATION)
+            ?: project.configurations.create(KOTLIN_WINRT_AUTHORING_SCANNER_CONFIGURATION).also { configuration ->
+                configuration.isCanBeConsumed = false
+                configuration.isCanBeResolved = true
+                project.dependencies.add(
+                    configuration.name,
+                    "org.jetbrains.kotlin:kotlin-compiler-embeddable:$kotlinCompilerVersion",
+                )
+            }
+        compilerConfiguration
+    }
+    val runtimeClasses = listOf(
+        "kotlin.Unit",
+        "kotlinx.coroutines.CoroutineScope",
+        "org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment",
+        "org.jetbrains.kotlin.psi.KtFile",
+    )
+        .mapNotNull(::kotlinWinRTCodeSourceFile)
+        .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
+    return project.files(compilerClasspath, runtimeClasses)
+}
+
+private fun kotlinWinRTCachedCompilerEmbeddable(project: Project, kotlinCompilerVersion: String): File? {
+    val versionDirectory = project.gradle.gradleUserHomeDir
+        .resolve("caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable/$kotlinCompilerVersion")
+    if (!versionDirectory.isDirectory) {
+        return null
+    }
+    return versionDirectory.walkTopDown()
+        .firstOrNull { file ->
+            file.isFile && file.name == "kotlin-compiler-embeddable-$kotlinCompilerVersion.jar"
+        }
+}
 
 private fun kotlinWinRTCompilerPluginClasspathJar(project: Project): Any? {
     return kotlinWinRTPluginMetadataArtifact(project, "winrt-compiler-plugin")
@@ -3226,9 +3263,19 @@ private fun kotlinWinRTCodeSourceFile(type: Class<*>): File? {
 }
 
 private fun kotlinWinRTCodeSourceFile(typeName: String): File? =
-    runCatching { Class.forName(typeName, false, KotlinWinRTPlugin::class.java.classLoader) }
-        .getOrNull()
-        ?.let(::kotlinWinRTCodeSourceFile)
+    sequenceOf(
+        KotlinWinRTPlugin::class.java.classLoader,
+        Thread.currentThread().contextClassLoader,
+        ClassLoader.getSystemClassLoader(),
+    )
+        .filterNotNull()
+        .distinct()
+        .mapNotNull { loader ->
+            runCatching { Class.forName(typeName, false, loader) }
+                .getOrNull()
+                ?.let(::kotlinWinRTCodeSourceFile)
+        }
+        .firstOrNull()
 
 private fun kotlinWinRTPluginVersion(): String =
     KotlinWinRTPlugin::class.java.`package`.implementationVersion
