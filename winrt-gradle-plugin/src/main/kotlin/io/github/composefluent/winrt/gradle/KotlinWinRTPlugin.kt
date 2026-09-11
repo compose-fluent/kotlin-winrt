@@ -455,8 +455,14 @@ private fun configureWinRTApplicationModel(
         if (configured) return@whenApplicationConfigured
         configured = true
         val application = extension.application
+        val sharedArtifactRegistry = WinRTSharedArtifactRegistry()
         if (application.variants.isEmpty()) {
-            configureDefaultWinRTApplicationVariants(project, extension, windowsSdkRegistryRoots)
+            configureDefaultWinRTApplicationVariants(
+                project = project,
+                extension = extension,
+                windowsSdkRegistryRoots = windowsSdkRegistryRoots,
+                sharedArtifactRegistry = sharedArtifactRegistry,
+            )
         } else {
             application.bindRunTasks {
                 throw org.gradle.api.GradleException("Configure runTask inside an application variant when declaring named applications.")
@@ -480,6 +486,7 @@ private fun configureWinRTApplicationModel(
                     options = options,
                     selectedVariant = selectedVariant,
                     taskSuffix = suffix,
+                    sharedArtifactRegistry = sharedArtifactRegistry,
                     bindRunTasks = true,
                     eagerJvmSelection = false,
                     observeVariantDependenciesImmediately = false,
@@ -514,6 +521,7 @@ private fun configureDefaultWinRTApplicationVariants(
     project: Project,
     extension: WinRTExtension,
     windowsSdkRegistryRoots: Provider<List<String>>,
+    sharedArtifactRegistry: WinRTSharedArtifactRegistry,
 ) {
     val application = extension.application
     application.variants.whenObjectAdded {
@@ -540,6 +548,7 @@ private fun configureDefaultWinRTApplicationVariants(
             options = application,
             selectedVariant = project.provider { variant },
             taskSuffix = suffix,
+            sharedArtifactRegistry = sharedArtifactRegistry,
             integrateDefaultJvmLifecycle =
                 project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null,
             bindRunTasks = false,
@@ -698,6 +707,7 @@ private fun configureWinRTApplicationTasks(
     options: WinRTApplicationOptions,
     selectedVariant: Provider<WinRTApplicationVariant>,
     taskSuffix: String,
+    sharedArtifactRegistry: WinRTSharedArtifactRegistry,
     integrateDefaultJvmLifecycle: Boolean = false,
     bindRunTasks: Boolean,
     eagerJvmSelection: Boolean,
@@ -911,6 +921,23 @@ private fun configureWinRTApplicationTasks(
             }
         },
     )
+    project.gradle.projectsEvaluated {
+        if (selectedVariant.get().kind != WinRTApplicationVariantKind.Jvm) return@projectsEvaluated
+        val variantHostTask = buildAuthoringHostTask.get()
+        val sharedProducer = registerSharedAuthoringHostProducer(
+            project = project,
+            sourceTask = variantHostTask,
+            selectedVariant = selectedVariant.get(),
+            identityDependencies = identityDependencies,
+            registry = sharedArtifactRegistry,
+        )
+        buildAuthoringHostTask.configure { task ->
+            task.materializeOnly.set(true)
+            task.sourceDirectory.set(sharedProducer.flatMap { it.outputDirectory })
+            task.sourceGeneratedDirectory.set(sharedProducer.flatMap { it.generatedSourceDirectory })
+            task.dependsOn(sharedProducer)
+        }
+    }
     val resolveRuntimeNuGetPackagesTask = project.tasks.register(
         taskName("resolveWinRTRuntimeNuGetPackages"),
         ResolveWinRTRuntimeNuGetPackagesTask::class.java,
@@ -1123,6 +1150,16 @@ private fun configureWinRTApplicationTasks(
             }
         },
     )
+    val sharedJvmRuntimeImageProducer = registerSharedJvmRuntimeImageProducer(
+        project = project,
+        options = options,
+        runtimeIdentifier = currentWindowsRuntimeIdentifier(),
+        registry = sharedArtifactRegistry,
+    )
+    prepareJvmRuntimeImageTask.configure { task ->
+        task.sourceImage.set(sharedJvmRuntimeImageProducer.flatMap { it.outputDirectory })
+        task.dependsOn(sharedJvmRuntimeImageProducer)
+    }
     val mingwApplicationEntryTask = project.tasks.register(
         taskName("generateWinRTMingwApplicationEntry"),
         GenerateWinRTMingwApplicationEntryTask::class.java,
@@ -4858,3 +4895,100 @@ private fun discoverNuGetConfigHierarchyFiles(
 
 private fun Project.hasKotlinWinRTIdentityMetadata(): Boolean =
     configurations.findByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)?.isCanBeConsumed == true
+
+private fun registerSharedJvmRuntimeImageProducer(
+    project: Project,
+    options: WinRTApplicationOptions,
+    runtimeIdentifier: String,
+    registry: WinRTSharedArtifactRegistry,
+): TaskProvider<PrepareWinRTJvmRuntimeImageTask> {
+    val runtimeMode = options.jvmRuntimeMode.orNull?.name ?: WinRTJvmRuntimeMode.Bundled.name
+    val sourceImage = options.jvmRuntimeImage.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()?.toString().orEmpty()
+    val modules = options.jvmRuntimeModules.orNull.orEmpty().map(String::trim).filter(String::isNotBlank).distinct()
+    val javaMajor = options.jvmToolchainVersion.orNull ?: 25
+    val key = winRTSharedArtifactKey(
+        "jvm-runtime",
+        listOf(
+            "mode=$runtimeMode",
+            "sourceImage=${normalizedWinRTTaskIdentity(sourceImage)}",
+            "runtimeIdentifier=${normalizedWinRTTaskIdentity(runtimeIdentifier)}",
+            "javaMajor=$javaMajor",
+            "modules=${modules.joinToString(",")}",
+        ),
+    )
+    return registry.runtimeImageProducers.getOrPut(key) {
+        val safeKey = key.replaceFirstChar(Char::uppercaseChar)
+        project.tasks.register(
+            "prepareWinRTJvmRuntimeImageShared$safeKey",
+            PrepareWinRTJvmRuntimeImageTask::class.java,
+        ) { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Prepares one shared JVM runtime image for compatible Kotlin/WinRT application variants."
+            task.runtimeMode.set(options.jvmRuntimeMode.map { it.name })
+            task.javaHome.set(configuredJvmToolchainHome(project, options))
+            task.expectedJavaMajor.set(options.jvmToolchainVersion)
+            task.runtimeIdentifier.set(runtimeIdentifier)
+            task.sourceImage.set(options.jvmRuntimeImage)
+            task.modules.set(options.jvmRuntimeModules)
+            task.outputDirectory.set(
+                project.layout.buildDirectory.dir("kotlin-winrt/shared-artifacts/jvm-runtime/$key"),
+            )
+            task.onlyIf { task.runtimeMode.get() == WinRTJvmRuntimeMode.Bundled.name }
+        }
+    }
+}
+
+private fun registerSharedAuthoringHostProducer(
+    project: Project,
+    sourceTask: BuildWinRTAuthoringHostTask,
+    selectedVariant: WinRTApplicationVariant,
+    identityDependencies: org.gradle.api.artifacts.Configuration,
+    registry: WinRTSharedArtifactRegistry,
+): TaskProvider<BuildWinRTAuthoringHostTask> {
+    val dependencyShape = identityDependencies.dependencies
+        .map { dependency ->
+            when (dependency) {
+                is ProjectDependency -> "project:${dependency.path}:${dependency.targetConfiguration.orEmpty()}"
+                is ExternalModuleDependency -> "module:${dependency.group}:${dependency.name}:${dependency.version.orEmpty()}"
+                else -> dependency.toString()
+            }
+        }
+        .sorted()
+    val toolchainHome = runCatching { sourceTask.javaHome.orNull.orEmpty() }.getOrDefault("")
+    val key = winRTSharedArtifactKey(
+        "authoring-host",
+        listOf(
+            "target=${normalizedWinRTTaskIdentity(selectedVariant.targetName)}",
+            "compilation=${normalizedWinRTTaskIdentity(selectedVariant.compilationName)}",
+            "runtimeIdentifier=${normalizedWinRTTaskIdentity(selectedVariant.runtimeIdentifier)}",
+            "javaHome=${normalizedWinRTTaskIdentity(toolchainHome)}",
+            "windowsSdk=${normalizedWinRTTaskIdentity(sourceTask.windowsSdkVersion.orNull.orEmpty())}",
+            "dependencies=${dependencyShape.joinToString("|")}",
+            "compilationTasks=${sourceTask.applicationCompilationTasks.get().sorted().joinToString(",")}",
+        ),
+    )
+    return registry.authoringHostProducers.getOrPut(key) {
+        val safeKey = key.replaceFirstChar(Char::uppercaseChar)
+        project.tasks.register(
+            "buildWinRTAuthoringHostShared$safeKey",
+            BuildWinRTAuthoringHostTask::class.java,
+        ) { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Builds one shared authoring host for compatible Kotlin/WinRT application variants."
+            task.applicationCompilationTasks.set(sourceTask.applicationCompilationTasks)
+            task.outputDirectory.set(
+                project.layout.buildDirectory.dir("kotlin-winrt/shared-artifacts/authoring-host/$key/bin"),
+            )
+            task.generatedSourceDirectory.set(
+                project.layout.buildDirectory.dir("kotlin-winrt/shared-artifacts/authoring-host/$key/src"),
+            )
+            task.authoredHostManifestFiles.from(sourceTask.authoredHostManifestFiles)
+            task.dependencyIdentityFiles.from(sourceTask.dependencyIdentityFiles)
+            task.javaHome.set(sourceTask.javaHome)
+            task.runtimeIdentifier.set(sourceTask.runtimeIdentifier)
+            task.windowsSdkVersion.set(sourceTask.windowsSdkVersion)
+            task.windowsSdkRegistryRoots.set(sourceTask.windowsSdkRegistryRoots)
+            task.materializeOnly.set(false)
+        }
+    }
+}

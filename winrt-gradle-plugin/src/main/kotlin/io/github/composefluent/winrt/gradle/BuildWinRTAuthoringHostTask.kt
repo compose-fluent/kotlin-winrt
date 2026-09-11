@@ -9,6 +9,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
@@ -19,6 +20,7 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
+import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 
 abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
@@ -44,6 +46,23 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
 
     @get:OutputDirectory
     abstract val generatedSourceDirectory: DirectoryProperty
+
+    /**
+     * When set, this task materializes a shared authoring-host output into its variant layout
+     * instead of compiling the native DLLs again.
+     */
+    @get:Input
+    abstract val materializeOnly: Property<Boolean>
+
+    @get:InputDirectory
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceDirectory: DirectoryProperty
+
+    @get:InputDirectory
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceGeneratedDirectory: DirectoryProperty
 
     @get:InputFiles
     @get:Optional
@@ -72,6 +91,7 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
 
     init {
         applicationCompilationTasks.convention(emptySet())
+        materializeOnly.convention(false)
         windowsSdkVersion.convention("")
         windowsSdkRegistryRoots.convention(emptyList())
     }
@@ -80,6 +100,27 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
     fun build() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
+        if (materializeOnly.get()) {
+            val source = sourceDirectory.orNull?.asFile?.toPath()
+                ?: throw IllegalStateException("Shared Kotlin/WinRT authoring host output is missing.")
+            if (!source.isDirectory()) {
+                throw IllegalStateException("Shared Kotlin/WinRT authoring host output is not a directory: $source")
+            }
+            val generated = sourceGeneratedDirectory.orNull?.asFile?.toPath()
+                ?: throw IllegalStateException("Shared Kotlin/WinRT authoring host generated sources are missing.")
+            if (!generated.isDirectory()) {
+                throw IllegalStateException("Shared Kotlin/WinRT authoring host generated sources are not a directory: $generated")
+            }
+            GradleFileOperations.cleanDirectory(outputRoot)
+            GradleFileOperations.cleanDirectory(sourceRoot)
+            copyDirectory(source, outputRoot)
+            copyDirectory(generated, sourceRoot)
+            return
+        }
+        // A changed manifest set can remove a DLL. Clear the producer output before rendering the
+        // current set so a shared producer cannot leak a stale host into another variant.
+        GradleFileOperations.cleanDirectory(outputRoot)
+        GradleFileOperations.cleanDirectory(sourceRoot)
         Files.createDirectories(outputRoot)
         Files.createDirectories(sourceRoot)
         val manifests = hostBuildManifests()
@@ -151,6 +192,20 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
             throw IllegalStateException(
                 "Kotlin/WinRT authoring host DLL build failed with exit code ${result.exitCode}.\n${result.output}",
             )
+        }
+    }
+
+    private fun copyDirectory(sourceRoot: Path, targetRoot: Path) {
+        Files.walk(sourceRoot).use { stream ->
+            stream.forEach { source ->
+                val target = targetRoot.resolve(sourceRoot.relativize(source).toString())
+                if (Files.isDirectory(source)) {
+                    Files.createDirectories(target)
+                } else if (Files.isRegularFile(source)) {
+                    Files.createDirectories(target.parent)
+                    Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
         }
     }
 
