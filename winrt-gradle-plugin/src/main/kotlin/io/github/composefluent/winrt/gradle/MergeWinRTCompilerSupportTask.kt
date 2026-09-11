@@ -113,7 +113,18 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
             manifestRows.joinToString(separator = "\n", postfix = "\n"),
         )
         if (emitXamlComponentResourceSources.get()) {
-            writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows)
+            val hasXamlResourceRows = sourceRows.any { (key, lines) ->
+                key.kind == "xaml-component-resource" &&
+                    key.sourceFile == "xaml-component-resources.tsv" &&
+                    lines.drop(1).any(String::isNotBlank)
+            }
+            if (hasXamlResourceRows) {
+                writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows)
+            } else {
+                Files.deleteIfExists(
+                    outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+                )
+            }
         } else {
             Files.deleteIfExists(
                 outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
