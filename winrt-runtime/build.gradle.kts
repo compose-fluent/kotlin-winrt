@@ -34,7 +34,14 @@ tasks.withType<KotlinNativeCompile>().configureEach {
     inputs.files(runtimeCallSiteLoweringClasspath)
         .withPropertyName("runtimeCallSiteLoweringClasspath")
         .withNormalizer(ClasspathNormalizer::class.java)
-    compilerPluginClasspath = runtimeCallSiteLoweringClasspath
+}
+
+// KGP replaces the Native task's compilerPluginClasspath after evaluating the build script.
+// Extend its compilation configuration so that the runtime lowering survives that assignment.
+configurations.matching { it.name.startsWith("kotlinCompilerPluginClasspathMingwX64") }.configureEach {
+    extendsFrom(runtimeCallSiteLoweringClasspath)
+    // Native plugin configurations are non-transitive, so include the lowering contract explicitly.
+    dependencies.add(project.dependencies.project(mapOf("path" to ":winrt-compiler-plugin:callsite-contract")))
 }
 
 val verifyJvmRuntimeCallSiteLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
