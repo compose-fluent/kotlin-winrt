@@ -2158,10 +2158,7 @@ private fun configureWinRTGeneration(
             generatedMingwApplicationEntryRoot,
             project.layout.buildDirectory.dir("generated/kotlin-winrt/appx-resources"),
         ).map { directory -> directory.get().asFile.toPath().toAbsolutePath().normalize() }
-        kotlinWinRTAuthoringSourceDirs(project).filterNot { sourceDir ->
-            val normalizedSourceDir = sourceDir.toPath().toAbsolutePath().normalize()
-            generatedRoots.any { generatedRoot -> normalizedSourceDir.startsWith(generatedRoot) }
-        }
+        filterPluginOwnedAuthoringSourceRoots(project, kotlinWinRTAuthoringSourceDirs(project), generatedRoots)
     }
     val preparedMetadataSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/prepared")
     val preparedMetadataAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/prepared-authoring")
@@ -2299,7 +2296,15 @@ private fun configureWinRTGeneration(
     // scanner task so the compatibility DSL still controls the source scan without
     // making the projection task itself source-sensitive.
     authoringCandidatesTask.configure { task ->
-        task.sourceRoots.setFrom(project.provider { generateTask.get().sourceRoots.files })
+        task.sourceRoots.setFrom(
+            project.provider {
+                filterPluginOwnedAuthoringSourceRoots(
+                    project,
+                    generateTask.get().sourceRoots.files,
+                    emptyList(),
+                )
+            },
+        )
     }
     val mergeCompilerSupportTask = project.tasks.register(
         "mergeWinRTCompilerSupport",
@@ -4664,6 +4669,30 @@ private fun kotlinWinRTAuthoringSourceDirs(project: Project): List<File> {
         ?.srcDirs
         .orEmpty()
         .filter(::containsKotlinSourceFile)
+}
+
+/**
+ * Removes source roots owned by Kotlin/WinRT tasks from the scanner input. The compatibility
+ * sourceRoots override is evaluated after the normal source-set collection, so this check must be
+ * applied to both paths. Ownership is identified by the generated output family under this
+ * project, rather than by a single output directory prefix; this covers per-variant entry roots
+ * such as debug and release while retaining user generated source directories elsewhere.
+ */
+private fun filterPluginOwnedAuthoringSourceRoots(
+    project: Project,
+    sourceRoots: Iterable<File>,
+    knownGeneratedRoots: Iterable<Path>,
+): List<File> {
+    return sourceRoots
+        .map { sourceRoot -> sourceRoot.toPath().toAbsolutePath().normalize() to sourceRoot }
+        .filterNot { (path, _) ->
+            val isKnownGeneratedRoot = knownGeneratedRoots.any { generatedRoot ->
+                path == generatedRoot || path.startsWith(generatedRoot)
+            }
+            isKnownGeneratedRoot || isKotlinWinRTPluginOwnedAuthoringSourceRoot(path)
+        }
+        .distinctBy { (path, _) -> path }
+        .map { (_, sourceRoot) -> sourceRoot }
 }
 
 private fun containsKotlinSourceFile(sourceDir: File): Boolean {

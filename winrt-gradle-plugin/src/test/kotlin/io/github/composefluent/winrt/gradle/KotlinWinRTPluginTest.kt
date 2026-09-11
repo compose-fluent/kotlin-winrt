@@ -1336,6 +1336,44 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun authoring_scanner_excludes_debug_and_release_application_entry_roots_after_source_override() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-authoring-entry-roots-")
+        val project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+
+        val userRoot = projectDir.resolve("src/winuiMain/kotlin")
+        val debugEntryRoot = projectDir.resolve(
+            "build/generated/kotlin-winrt-application-entry/mingwX64_main_debugExecutable/src/kotlin",
+        )
+        val releaseEntryRoot = projectDir.resolve(
+            "build/generated/kotlin-winrt-application-entry/mingwX64_main_releaseExecutable/src/kotlin",
+        )
+        listOf(userRoot, debugEntryRoot, releaseEntryRoot).forEach { root ->
+            Files.createDirectories(root.resolve("sample"))
+            Files.writeString(root.resolve("sample/Root.kt"), "package sample\nobject Root\n")
+        }
+
+        val generateTask = project.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        )
+        generateTask.get().sourceRoots.setFrom(project.files(userRoot, debugEntryRoot, releaseEntryRoot))
+        val scannerTask = project.tasks.named(
+            "generateWinRTAuthoringCandidates",
+            GenerateWinRTAuthoringCandidatesTask::class.java,
+        ).get()
+        val scannerRoots = scannerTask.sourceRoots.files
+            .map { file -> file.toPath().toAbsolutePath().normalize() }
+
+        assertTrue(userRoot.toAbsolutePath().normalize() in scannerRoots)
+        assertFalse(debugEntryRoot.toAbsolutePath().normalize() in scannerRoots)
+        assertFalse(releaseEntryRoot.toAbsolutePath().normalize() in scannerRoots)
+    }
+
+    @Test
     fun prebuilt_projection_consumer_does_not_regenerate_dependency_nuget_surface_without_local_requests() {
         val root = ProjectBuilder.builder().withName("root").build()
         val projectionOwner = ProjectBuilder.builder().withName("projectionOwner").withParent(root).build()

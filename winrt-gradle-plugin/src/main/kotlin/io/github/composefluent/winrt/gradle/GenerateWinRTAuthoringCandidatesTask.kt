@@ -59,6 +59,7 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
         val temporaryOutput = output.resolveSibling(".${output.fileName}.tmp")
         val roots = sourceRoots.files
             .map { file -> file.toPath().toAbsolutePath().normalize() }
+            .filterNot(::isKotlinWinRTPluginOwnedAuthoringSourceRoot)
             .filter { path -> Files.exists(path) }
         if (roots.isEmpty()) {
             GradleFileOperations.writeStringIfChanged(output, "")

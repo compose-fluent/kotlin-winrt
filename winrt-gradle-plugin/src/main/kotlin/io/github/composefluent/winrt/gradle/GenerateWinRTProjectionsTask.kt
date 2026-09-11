@@ -400,7 +400,10 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         }
         val authoringSourceRoots = parameters.sourceRoots.files
             .map { it.toPath().toAbsolutePath().normalize() }
-            .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
+            .filterNot { sourceRoot ->
+                sourceRoot.startsWith(generatedRoot) ||
+                    isKotlinWinRTPluginOwnedAuthoringSourceRoot(sourceRoot)
+            }
             .filter(::containsKotlinSource)
         val authoringCandidates = parameters.authoringCandidatesFile.orNull
             ?.asFile
