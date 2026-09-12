@@ -1368,6 +1368,9 @@ private fun configureWinRTApplicationTasks(
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+            // The application DSL may configure mainClass after this launcher task is registered.
+            // Keep the provider connection so Gradle validation sees a value at execution time.
+            task.mainClass.convention(options.mainClass)
             task.onlyIf { selectedVariant.get().kind == WinRTApplicationVariantKind.Jvm }
         },
     )
@@ -2271,7 +2274,7 @@ private fun configureWinRTGeneration(
             listOf("-Xmx128m", "-Xss512k", "-XX:+UseSerialGC", "-XX:ReservedCodeCacheSize=32m"),
         )
         task.generatorWorkerJvmArgs.convention(
-            listOf("-Xmx1024m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"),
+            listOf("-Xmx2048m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"),
         )
         task.generatorWorkerClasspath.from(generatorWorkerClasspath)
         task.authoringScannerClasspath.from(compilerPluginClasspath)
