@@ -21,22 +21,27 @@ dependencies.add(
     project(":winrt-compiler-plugin:callsite-lowering"),
 )
 
-val runtimeCallSiteLoweringCompilerArguments = runtimeCallSiteLoweringClasspath.elements.map { files ->
-    files.map { file -> "-Xplugin=${file.asFile.absolutePath}" }
-}
-
+// Keep the task-backed compiler plugin in the dedicated classpath properties. Exposing its
+// resolved paths through freeCompilerArgs makes Kotlin IDE model import query the jar task too early.
 tasks.withType<KotlinJvmCompile>().configureEach {
     inputs.files(runtimeCallSiteLoweringClasspath)
         .withPropertyName("runtimeCallSiteLoweringClasspath")
         .withNormalizer(ClasspathNormalizer::class.java)
-    compilerOptions.freeCompilerArgs.addAll(runtimeCallSiteLoweringCompilerArguments)
+    pluginClasspath.from(runtimeCallSiteLoweringClasspath)
 }
 
 tasks.withType<KotlinNativeCompile>().configureEach {
     inputs.files(runtimeCallSiteLoweringClasspath)
         .withPropertyName("runtimeCallSiteLoweringClasspath")
         .withNormalizer(ClasspathNormalizer::class.java)
-    compilerOptions.freeCompilerArgs.addAll(runtimeCallSiteLoweringCompilerArguments)
+}
+
+// KGP replaces the Native task's compilerPluginClasspath after evaluating the build script.
+// Extend its compilation configuration so that the runtime lowering survives that assignment.
+configurations.matching { it.name.startsWith("kotlinCompilerPluginClasspathMingwX64") }.configureEach {
+    extendsFrom(runtimeCallSiteLoweringClasspath)
+    // Native plugin configurations are non-transitive, so include the lowering contract explicitly.
+    dependencies.add(project.dependencies.project(mapOf("path" to ":winrt-compiler-plugin:callsite-contract")))
 }
 
 val verifyJvmRuntimeCallSiteLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {

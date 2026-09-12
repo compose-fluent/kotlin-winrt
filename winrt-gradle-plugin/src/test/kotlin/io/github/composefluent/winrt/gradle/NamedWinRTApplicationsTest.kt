@@ -323,6 +323,133 @@ class NamedWinRTApplicationsTest {
     }
 
     @Test
+    fun compatible_jvm_variants_share_runtime_and_authoring_producers_but_keep_materializers() {
+        val root = fixture("shared-compatible-jvm-producers")
+        val suppliedRuntimeImage = createRuntimeImage(root.resolve("supplied-runtime-image"))
+        writeGradleFile(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
+            winRT { application {
+                mainClass = 'sample.Main'
+                jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinRTJvmRuntimeMode.Bundled
+                jvmRuntimeImage = file('${suppliedRuntimeImage.toString().replace("\\", "/")}')
+                variants {
+                    create('first') { variantName = 'jvm:main' }
+                    create('second') { variantName = 'jvm:main' }
+                }
+            } }
+            tasks.register('inspectSharedProducers') {
+                doLast {
+                    def materializers = ['First', 'Second'].collect {
+                        tasks.named('prepareWinRTJvmRuntimeImage' + it).get()
+                    }
+                    def authoringMaterializers = ['First', 'Second'].collect {
+                        tasks.named('buildWinRTAuthoringHost' + it).get()
+                    }
+                    def runtime = materializers.collectMany {
+                        it.taskDependencies.getDependencies(it)
+                    }.findAll { it.name.startsWith('prepareWinRTJvmRuntimeImageShared') }*.name.unique()
+                    def authoring = authoringMaterializers.collectMany {
+                        it.taskDependencies.getDependencies(it)
+                    }.findAll { it.name.startsWith('buildWinRTAuthoringHostShared') }*.name.unique()
+                    assert runtime.size() == 1 : runtime
+                    assert authoring.size() == 1 : authoring
+                    assert materializers*.outputDirectory*.get()*.asFile*.path.unique().size() == 2
+                    assert authoringMaterializers*.outputDirectory*.get()*.asFile*.path.unique().size() == 2
+                    ['First', 'Second'].each { suffix ->
+                        def materializer = tasks.named('prepareWinRTJvmRuntimeImage' + suffix).get()
+                        def authoringMaterializer = tasks.named('buildWinRTAuthoringHost' + suffix).get()
+                        assert materializer.taskDependencies.getDependencies(materializer)*.name == runtime*.toString()
+                        assert authoringMaterializer.taskDependencies.getDependencies(authoringMaterializer)*.name == authoring*.toString()
+                    }
+                    println('sharedRuntime=' + runtime)
+                    println('sharedAuthoring=' + authoring)
+                }
+            }
+        """.trimIndent())
+
+        val result = runner(root, "inspectSharedProducers").build()
+
+        assertTrue(result.output, result.output.contains("sharedRuntime=[prepareWinRTJvmRuntimeImageShared"))
+        assertTrue(result.output, result.output.contains("sharedAuthoring=[buildWinRTAuthoringHostShared"))
+
+        val firstExecution = runner(
+            root,
+            "prepareWinRTJvmRuntimeImageFirst",
+            "prepareWinRTJvmRuntimeImageSecond",
+            "buildWinRTAuthoringHostFirst",
+            "buildWinRTAuthoringHostSecond",
+        ).build()
+        val sharedRuntimeTask = firstExecution.tasks.single {
+            it.path.startsWith(":prepareWinRTJvmRuntimeImageShared")
+        }
+        val sharedAuthoringTask = firstExecution.tasks.single {
+            it.path.startsWith(":buildWinRTAuthoringHostShared")
+        }
+        assertEquals(TaskOutcome.SUCCESS, sharedRuntimeTask.outcome)
+        assertEquals(TaskOutcome.SUCCESS, sharedAuthoringTask.outcome)
+        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":prepareWinRTJvmRuntimeImageFirst")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":prepareWinRTJvmRuntimeImageSecond")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":buildWinRTAuthoringHostFirst")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":buildWinRTAuthoringHostSecond")?.outcome)
+
+        val repeatedExecution = runner(
+            root,
+            "prepareWinRTJvmRuntimeImageFirst",
+            "prepareWinRTJvmRuntimeImageSecond",
+            "buildWinRTAuthoringHostFirst",
+            "buildWinRTAuthoringHostSecond",
+        ).build()
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(sharedRuntimeTask.path)?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(sharedAuthoringTask.path)?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":prepareWinRTJvmRuntimeImageFirst")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":prepareWinRTJvmRuntimeImageSecond")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":buildWinRTAuthoringHostFirst")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":buildWinRTAuthoringHostSecond")?.outcome)
+    }
+
+    @Test
+    fun incompatible_jvm_runtime_modules_keep_separate_runtime_producers() {
+        val root = fixture("incompatible-jvm-runtime-producers")
+        writeGradleFile(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
+            winRT { application {
+                mainClass = 'sample.Main'
+                variants {
+                    create('first') {
+                        variantName = 'jvm:main'
+                        jvmRuntimeModules = ['java.base']
+                    }
+                    create('second') {
+                        variantName = 'jvm:main'
+                        jvmRuntimeModules = ['java.base', 'java.logging']
+                    }
+                }
+            } }
+            tasks.register('inspectIncompatibleProducers') {
+                doLast {
+                    def runtime = ['First', 'Second'].collectMany {
+                        tasks.named('prepareWinRTJvmRuntimeImage' + it).get()
+                            .taskDependencies.getDependencies(tasks.named('prepareWinRTJvmRuntimeImage' + it).get())
+                    }.findAll { it.name.startsWith('prepareWinRTJvmRuntimeImageShared') }*.name.unique()
+                    def authoring = ['First', 'Second'].collectMany {
+                        tasks.named('buildWinRTAuthoringHost' + it).get()
+                            .taskDependencies.getDependencies(tasks.named('buildWinRTAuthoringHost' + it).get())
+                    }.findAll { it.name.startsWith('buildWinRTAuthoringHostShared') }*.name.unique()
+                    assert runtime.size() == 2 : runtime
+                    assert authoring.size() == 1 : authoring
+                    println('incompatibleRuntime=' + runtime)
+                    println('compatibleAuthoring=' + authoring)
+                }
+            }
+        """.trimIndent())
+
+        val result = runner(root, "inspectIncompatibleProducers").build()
+
+        assertTrue(result.output, result.output.contains("incompatibleRuntime=[prepareWinRTJvmRuntimeImageShared"))
+        assertTrue(result.output, result.output.contains("compatibleAuthoring=[buildWinRTAuthoringHostShared"))
+    }
+
+    @Test
     fun rejects_two_applications_owning_the_same_native_binary() {
         val root = fixture("duplicate-native")
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
@@ -374,6 +501,25 @@ class NamedWinRTApplicationsTest {
     private fun writeGradleFile(path: Path, content: String) {
         Files.createDirectories(path.parent)
         Files.writeString(path, content)
+    }
+
+    private fun createRuntimeImage(output: Path): Path {
+        val javaHome = Path.of(System.getProperty("java.home"))
+        val jlink = javaHome.resolve("bin").resolve(if (isWindowsHost()) "jlink.exe" else "jlink")
+        assertTrue("Test JVM must provide jlink: $jlink", Files.isRegularFile(jlink))
+        val process = ProcessBuilder(
+            jlink.toString(),
+            "--add-modules",
+            "java.base",
+            "--strip-debug",
+            "--no-header-files",
+            "--no-man-pages",
+            "--output",
+            output.toString(),
+        ).redirectErrorStream(true).start()
+        val outputText = process.inputStream.bufferedReader().readText()
+        assertEquals("jlink output:\n$outputText", 0, process.waitFor())
+        return output
     }
 
     private val nativeBuildScript = """

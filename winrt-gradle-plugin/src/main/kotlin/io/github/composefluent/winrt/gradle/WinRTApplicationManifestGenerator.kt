@@ -29,7 +29,7 @@ internal object WinRTApplicationManifestGenerator {
                 .sorted()
                 .toList()
         }
-        Files.writeString(
+        GradleFileOperations.writeStringIfChanged(
             outputRoot.resolve("$executableBaseName.exe.manifest"),
             buildApplicationManifest(
                 fragmentXmls,

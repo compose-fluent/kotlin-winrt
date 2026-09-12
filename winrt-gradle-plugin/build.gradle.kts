@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.kotlin.gradle.plugin)
     testImplementation(libs.junit)
     testImplementation(gradleTestKit())
+    testRuntimeOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
 }
 
 tasks.withType<Test>().configureEach {

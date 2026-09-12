@@ -33,6 +33,7 @@ import io.github.composefluent.winrt.metadata.isWinRTGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -160,14 +161,42 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             .associateBy { type -> type.qualifiedName }
         val semanticHelpers = WinRTMetadataSemanticHelpers(metadataModel)
         val authoredRuntimeClassNames = candidates.mapTo(mutableSetOf(), KotlinWinRTAuthoredTypeCandidate::sourceTypeName)
+        val expectedFiles = linkedSetOf<Path>()
         val renderedCandidates = candidates.map { candidate ->
             val interfaces = resolveAuthoringInterfaces(candidate, typesByName, semanticHelpers)
             val packageDirectory = outputDirectory.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
-            render(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames).writeTo(outputDirectory)
+            val file = render(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames)
+            writeIfChanged(file, outputDirectory).also(expectedFiles::add)
             candidate
         }
-        renderRegistrar(renderedCandidates, authoringTypeDetailsRegistrarName(assemblyName)).writeTo(outputDirectory)
+        writeIfChanged(
+            renderRegistrar(renderedCandidates, authoringTypeDetailsRegistrarName(assemblyName)),
+            outputDirectory,
+        ).also(expectedFiles::add)
+        deleteStaleFiles(outputDirectory, expectedFiles)
+    }
+
+    private fun writeIfChanged(file: FileSpec, outputDirectory: Path): Path {
+        val relativeDirectory = file.packageName.replace('.', '/')
+        val target = outputDirectory.resolve(relativeDirectory).resolve("${file.name}.kt")
+        Files.createDirectories(target.parent)
+        val contents = file.toString()
+        if (!Files.isRegularFile(target) || Files.readString(target) != contents) {
+            Files.writeString(target, contents)
+        }
+        return target.toAbsolutePath().normalize()
+    }
+
+    private fun deleteStaleFiles(outputDirectory: Path, expectedFiles: Set<Path>) {
+        if (!Files.isDirectory(outputDirectory)) return
+        Files.walk(outputDirectory).use { stream ->
+            stream.filter(Files::isRegularFile)
+                .filter { path -> path.fileName.toString().endsWith(".kt") }
+                .map { path -> path.toAbsolutePath().normalize() }
+                .filter { path -> path !in expectedFiles }
+                .forEach { path -> Files.deleteIfExists(path) }
+        }
     }
 
     private fun resolveAuthoringInterfaces(

@@ -44,8 +44,16 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
     @TaskAction
     fun merge() {
         val outputRoot = outputDirectory.get().asFile.toPath()
-        cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
+        val previousManifest = outputRoot.resolve("compiler-support.tsv")
+        val previousSourceFiles = if (Files.isRegularFile(previousManifest)) {
+            runCatching { readCompilerSupportRows(previousManifest.toFile()) }
+                .getOrDefault(emptyList())
+                .map(CompilerSupportManifestRow::sourceFile)
+                .toSet()
+        } else {
+            emptySet()
+        }
         val manifests = buildList {
             localCompilerSupportManifest.orNull?.asFile?.takeIf(File::isFile)?.let(::add)
             writeDependencyCompilerSupportFileRecords(
@@ -88,23 +96,39 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
                     key.owner,
                 ).joinToString("\t")
             }
+        val expectedSourceFiles = sourceFileRows.keys.toSet()
+        (previousSourceFiles - expectedSourceFiles).forEach { sourceFile ->
+            Files.deleteIfExists(outputRoot.resolve(sourceFile))
+        }
         sourceFileRows.toSortedMap()
             .forEach { (sourceFile, lines) ->
                 val distinctLines = lines.take(1) + lines.drop(1).distinct()
-                Files.writeString(outputRoot.resolve(sourceFile), distinctLines.joinToString(separator = "\n", postfix = "\n"))
+                GradleFileOperations.writeStringIfChanged(
+                    outputRoot.resolve(sourceFile),
+                    distinctLines.joinToString(separator = "\n", postfix = "\n"),
+                )
             }
-        Files.writeString(outputRoot.resolve("compiler-support.tsv"), manifestRows.joinToString(separator = "\n", postfix = "\n"))
+        GradleFileOperations.writeStringIfChanged(
+            outputRoot.resolve("compiler-support.tsv"),
+            manifestRows.joinToString(separator = "\n", postfix = "\n"),
+        )
         if (emitXamlComponentResourceSources.get()) {
-            writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows)
-        }
-    }
-
-    private fun cleanDirectory(path: Path) {
-        if (!Files.exists(path)) {
-            return
-        }
-        Files.walk(path).use { stream ->
-            stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
+            val hasXamlResourceRows = sourceRows.any { (key, lines) ->
+                key.kind == "xaml-component-resource" &&
+                    key.sourceFile == "xaml-component-resources.tsv" &&
+                    lines.drop(1).any(String::isNotBlank)
+            }
+            if (hasXamlResourceRows) {
+                writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows)
+            } else {
+                Files.deleteIfExists(
+                    outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+                )
+            }
+        } else {
+            Files.deleteIfExists(
+                outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+            )
         }
     }
 }
@@ -126,27 +150,29 @@ private fun writeWinUiXamlComponentResourcesSource(
         return
     }
     val target = outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt")
-    Files.createDirectories(target.parent)
-    Files.writeString(
-        target,
-        buildString {
-            appendLine("// Deterministic merged WinUI component XAML resource bootstrap.")
-            appendLine("package io.github.composefluent.winrt.projections.support")
-            appendLine()
-            appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
-            appendLine("import microsoft.ui.xaml.ResourceDictionary")
-            appendLine()
-            appendLine("public object WinUiXamlComponentResources {")
-            appendLine("    public fun installInto(mergedDictionaries: MutableList<ResourceDictionary>) {")
-            runtimeClassNames.forEach { runtimeClassName ->
-                append("        mergedDictionaries.add(ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(")
-                append(runtimeClassName.kotlinStringLiteral())
-                appendLine(")))")
-            }
-            appendLine("    }")
-            appendLine("}")
-        },
-    )
+        Files.createDirectories(target.parent)
+        GradleFileOperations.writeStringIfChanged(
+            target,
+            buildString {
+                appendLine("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")")
+                appendLine()
+                appendLine("// Deterministic merged WinUI component XAML resource bootstrap.")
+                appendLine("package io.github.composefluent.winrt.projections.support")
+                appendLine()
+                appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
+                appendLine("import microsoft.ui.xaml.ResourceDictionary")
+                appendLine()
+                appendLine("public object WinUiXamlComponentResources {")
+                appendLine("    public fun installInto(mergedDictionaries: MutableList<ResourceDictionary>) {")
+                runtimeClassNames.forEach { runtimeClassName ->
+                    append("        mergedDictionaries.add(ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(")
+                    append(runtimeClassName.kotlinStringLiteral())
+                    appendLine(")))")
+                }
+                appendLine("    }")
+                appendLine("}")
+            },
+        )
 }
 
 private fun String.kotlinStringLiteral(): String =

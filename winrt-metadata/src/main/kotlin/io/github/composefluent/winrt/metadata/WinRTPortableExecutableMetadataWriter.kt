@@ -11,7 +11,7 @@ object WinRTPortableExecutableMetadataWriter {
         outputFile: Path,
     ) {
         Files.createDirectories(outputFile.parent)
-        Files.write(outputFile, WinmdBuilder(assemblyName, emptyList()).build())
+        writeIfChanged(outputFile, WinmdBuilder(assemblyName, emptyList()).build())
     }
 
     fun writeAuthoredWinmd(
@@ -20,7 +20,7 @@ object WinRTPortableExecutableMetadataWriter {
         outputFile: Path,
     ) {
         Files.createDirectories(outputFile.parent)
-        Files.write(outputFile, WinmdBuilder(assemblyName, runtimeClasses).build())
+        writeIfChanged(outputFile, WinmdBuilder(assemblyName, runtimeClasses).build())
     }
 
     fun writeProjectionFixtureWinmd(
@@ -30,7 +30,12 @@ object WinRTPortableExecutableMetadataWriter {
         outputFile: Path,
     ) {
         Files.createDirectories(outputFile.parent)
-        Files.write(outputFile, WinmdBuilder(assemblyName, runtimeClasses, interfaces).build())
+        writeIfChanged(outputFile, WinmdBuilder(assemblyName, runtimeClasses, interfaces).build())
+    }
+
+    private fun writeIfChanged(outputFile: Path, content: ByteArray) {
+        if (Files.isRegularFile(outputFile) && Files.readAllBytes(outputFile).contentEquals(content)) return
+        Files.write(outputFile, content)
     }
 }
 

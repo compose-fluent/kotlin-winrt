@@ -13,6 +13,8 @@ dependencies {
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
     implementation(libs.kotlinpoet)
-    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
+    implementation(libs.kotlinx.serialization.json)
+    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
+    testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
     testImplementation(libs.junit)
 }

@@ -52,7 +52,6 @@ abstract class GenerateWinAppConfigurationTask : DefaultTask() {
             },
         )
         val output = outputFile.get().asFile.toPath()
-        Files.createDirectories(output.parent)
-        Files.writeString(output, renderWinAppConfiguration(packages))
+        GradleFileOperations.writeStringIfChanged(output, renderWinAppConfiguration(packages))
     }
 }

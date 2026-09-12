@@ -82,21 +82,24 @@ object KotlinWinRTAuthoringCandidateFile {
 
     fun write(path: Path, candidates: List<KotlinWinRTAuthoredTypeCandidate>) {
         path.parent?.let(Files::createDirectories)
-        path.writeText(
-            candidates.joinToString(separator = "\n", postfix = if (candidates.isEmpty()) "" else "\n") { candidate ->
-                listOf(
-                    candidate.packageName,
-                    candidate.className,
-                    candidate.sourceTypeName,
-                    candidate.winRTBaseClassName.orEmpty(),
-                    candidate.winRTInterfaceNames.joinToString(";"),
-                    candidate.overridableInterfaceNames.joinToString(";"),
-                    candidate.isPublic.toString(),
-                    candidate.activatableFactoryInterfaceName.orEmpty(),
-                    candidate.staticFactoryInterfaceNames.joinToString(";"),
-                ).joinToString("\t")
-            },
-        )
+        val content = candidates.joinToString(separator = "\n", postfix = if (candidates.isEmpty()) "" else "\n") { candidate ->
+            listOf(
+                candidate.packageName,
+                candidate.className,
+                candidate.sourceTypeName,
+                candidate.winRTBaseClassName.orEmpty(),
+                candidate.winRTInterfaceNames.joinToString(";"),
+                candidate.overridableInterfaceNames.joinToString(";"),
+                candidate.isPublic.toString(),
+                candidate.activatableFactoryInterfaceName.orEmpty(),
+                candidate.staticFactoryInterfaceNames.joinToString(";"),
+            ).joinToString("\t")
+        }
+        if (!Files.isRegularFile(path) || Files.readString(path) != content) {
+            path.writeText(
+                content,
+            )
+        }
     }
 
     private fun parseLine(line: String): KotlinWinRTAuthoredTypeCandidate? {
@@ -200,7 +203,10 @@ fun writeAuthoringMetadataIndex(
         .distinctBy(IndexedWinRTType::qualifiedName)
         .sortedBy(IndexedWinRTType::qualifiedName)
         .map(::renderAuthoringMetadataIndexRow)
-    Files.write(output, lines)
+    val content = lines.joinToString(separator = "\n", postfix = if (lines.isEmpty()) "" else "\n")
+    if (!Files.isRegularFile(output) || Files.readString(output) != content) {
+        Files.writeString(output, content)
+    }
 }
 
 fun renderAuthoringMetadataIndexRow(type: IndexedWinRTType): String =

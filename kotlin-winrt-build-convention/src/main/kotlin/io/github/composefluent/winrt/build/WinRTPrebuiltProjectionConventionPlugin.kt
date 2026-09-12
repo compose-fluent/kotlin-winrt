@@ -30,6 +30,10 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         val compileOnlyConfiguration = project.configurations.named(COMMON_MAIN_COMPILE_ONLY_CONFIGURATION)
         val apiConfiguration = project.configurations.named(COMMON_MAIN_API_CONFIGURATION)
         val publishedArtifactName = project.extensions.getByType(BasePluginExtension::class.java).archivesName
+        val compiledJvmProjectionClasses = project.layout.buildDirectory.dir(
+            "classes/kotlin-winrt/projection/compileKotlinJvm",
+        )
+        val compileJvmProjectionTaskName = "compileKotlinWinRTProjectionJvm"
 
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(
             Action<KotlinJvmCompile> {
@@ -43,8 +47,8 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             Action<VerifyBinaryMarkerAbsentTask> {
                 group = "verification"
                 description = "Verifies that no generated WinRT call-site placeholder reaches JVM bytecode."
-                dependsOn("compileKotlinJvm")
-                binaryArtifacts.from(project.layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+                dependsOn(compileJvmProjectionTaskName)
+                binaryArtifacts.from(compiledJvmProjectionClasses)
                 markers.set(setOf(MODULE_CALL_SITE_PLACEHOLDER))
                 artifactDescription.set("compiled JVM projection classes")
             },
@@ -67,9 +71,9 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             Action<VerifyBinaryMarkerAbsentTask> {
                 group = "verification"
                 description = "Verifies that generated JVM call-site owners contain only direct fixed-shape lowering."
-                dependsOn("compileKotlinJvm")
+                dependsOn(compileJvmProjectionTaskName)
                 binaryArtifacts.from(
-                    project.layout.buildDirectory.dir("classes/kotlin/jvm/main").map { classesDirectory ->
+                    compiledJvmProjectionClasses.map { classesDirectory ->
                         classesDirectory.asFileTree.matching {
                             include("io/github/composefluent/winrt/projections/support/WinRTModulePlatformAbiCall_*.class")
                         }
@@ -111,15 +115,15 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             Action<ValidatePrebuiltProjectionOutputTask> {
             group = "verification"
             description = "Audits generated prebuilt projection output and direct projection-reference class ownership."
-            dependsOn("generateWinRTProjections", "compileKotlinJvm")
+            dependsOn("generateWinRTProjections", compileJvmProjectionTaskName)
             dependsOn(verifyJvmCallSiteLowering, verifyJvmDirectCallSiteLowering, verifyMingwX64CallSiteLowering)
             generatedSourcesDirectory.set(
                 project.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin"),
             )
-            compiledClassesDirectories.from(project.layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+            compiledClassesDirectories.from(compiledJvmProjectionClasses)
             maxTotalClassBytes.set(PREBUILT_MAX_TOTAL_CLASS_BYTES)
             crossArtifactClassOwners.add(project.name)
-            crossArtifactClassDirectories.from(project.layout.buildDirectory.dir("classes/kotlin/jvm/main"))
+            crossArtifactClassDirectories.from(compiledJvmProjectionClasses)
         })
         project.tasks.named("check").configure(Action<Task> { dependsOn(audit) })
 
@@ -170,10 +174,10 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             val reference = project.findProject(dependency.path) ?: return
             if (!configuredReferencePaths.add(reference.path)) return
             audit.configure(Action<ValidatePrebuiltProjectionOutputTask> {
-                dependsOn("${reference.path}:compileKotlinJvm")
+                dependsOn("${reference.path}:$compileJvmProjectionTaskName")
                 crossArtifactClassOwners.add(reference.name)
                 crossArtifactClassDirectories.from(
-                    reference.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+                    reference.layout.buildDirectory.dir("classes/kotlin-winrt/projection/compileKotlinJvm"),
                 )
             })
         }

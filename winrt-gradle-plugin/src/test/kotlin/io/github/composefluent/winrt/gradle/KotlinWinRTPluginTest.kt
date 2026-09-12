@@ -833,6 +833,67 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun native_projection_compilation_has_its_own_sources_and_published_klib() {
+        // CsWinRT projection assemblies own their registration; consumers reference that artifact.
+        val project = ProjectBuilder.builder().withName("native-projection-owner").build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        val target = kotlin.mingwX64()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val winmd = project.file("Sample.winmd").toPath()
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                interfaceName = "Sample.IProbe",
+                iid = "00000000-0000-0000-0000-000000000001",
+            )),
+            runtimeClasses = emptyList(),
+            outputFile = winmd,
+        )
+        project.extensions.getByType(WinRTExtension::class.java).apply {
+            metadataInputs.set(listOf(winmd.toString()))
+            type("Sample.IProbe")
+        }
+        val generated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/Projection.kt")
+        generated.parentFile.mkdirs()
+        generated.writeText("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Projection")
+        val overlay = generated.resolveSibling("Overlay.kt")
+        overlay.writeText("// KOTLIN_WINRT_BUSINESS_OVERLAY\n@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Overlay")
+        val business = project.file("src/winuiMain/kotlin/Business.kt")
+        business.parentFile.mkdirs()
+        business.writeText("class Business")
+        project.dependencies.add("winuiMainImplementation", "example:business-only:1.0")
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+
+        val projection = target.compilations.getByName("winRTProjection")
+        val producer = projection.compileTaskProvider.get()
+        val consumer = target.compilations.getByName("main").compileTaskProvider.get()
+        assertTrue(producer.sources.files.contains(generated))
+        assertFalse(producer.sources.files.contains(business))
+        assertFalse(consumer.sources.files.contains(generated))
+        assertTrue(consumer.sources.files.contains(business))
+        assertTrue(consumer.sources.files.contains(overlay))
+        assertFalse(producer.sources.files.contains(overlay))
+        assertTrue(projection.associatedCompilations.isEmpty())
+        assertFalse(projection.allKotlinSourceSets.any { it.name == "winuiMain" || it.name == "commonMain" })
+        assertFalse(project.configurations.getByName(projection.compileDependencyConfigurationName)
+            .allDependencies.any { it.name == "business-only" })
+        assertTrue(producer.compilerOptions.freeCompilerArgs.get().any { it.endsWith("projectionSupportMode=embedded") })
+        assertTrue(consumer.compilerOptions.freeCompilerArgs.get().any { it.endsWith("projectionSupportMode=external") })
+        assertFalse(producer.produceUnpackagedKlib.get())
+        assertFalse(project.tasks.names.contains("generateWinRTAppxResourcesMingwX64WinRTProjection"))
+        assertFalse(project.tasks.names.contains("packageWinRTAppxResourcesMingwX64WinRTProjection"))
+        val published = project.configurations.getByName(target.apiElementsConfigurationName)
+            .outgoing.artifacts.single { it.classifier == "winrt-projection" }
+        assertEquals(producer.outputFile.get(), published.file)
+        assertTrue(published.buildDependencies.getDependencies(null).contains(producer))
+        val localLibraries = project.configurations.getByName(
+            target.compilations.getByName("main").defaultSourceSet.implementationConfigurationName,
+        ).dependencies.withType(org.gradle.api.artifacts.FileCollectionDependency::class.java)
+        assertTrue(localLibraries.any { producer in it.files.buildDependencies.getDependencies(null) })
+    }
+
+    @Test
     fun runtime_only_multiplatform_native_compilation_keeps_authoring_options_without_projection_support() {
         val project = ProjectBuilder.builder().build()
 
@@ -1333,6 +1394,44 @@ class KotlinWinRTPluginTest {
                 projectDir.resolve("src/$sourceSetName/kotlin").toAbsolutePath().normalize() in sourceRoots,
             )
         }
+    }
+
+    @Test
+    fun authoring_scanner_excludes_debug_and_release_application_entry_roots_after_source_override() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-authoring-entry-roots-")
+        val project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+
+        val userRoot = projectDir.resolve("src/winuiMain/kotlin")
+        val debugEntryRoot = projectDir.resolve(
+            "build/generated/kotlin-winrt-application-entry/mingwX64_main_debugExecutable/src/kotlin",
+        )
+        val releaseEntryRoot = projectDir.resolve(
+            "build/generated/kotlin-winrt-application-entry/mingwX64_main_releaseExecutable/src/kotlin",
+        )
+        listOf(userRoot, debugEntryRoot, releaseEntryRoot).forEach { root ->
+            Files.createDirectories(root.resolve("sample"))
+            Files.writeString(root.resolve("sample/Root.kt"), "package sample\nobject Root\n")
+        }
+
+        val generateTask = project.tasks.named(
+            "generateWinRTProjections",
+            GenerateWinRTProjectionsTask::class.java,
+        )
+        generateTask.get().sourceRoots.setFrom(project.files(userRoot, debugEntryRoot, releaseEntryRoot))
+        val scannerTask = project.tasks.named(
+            "generateWinRTAuthoringCandidates",
+            GenerateWinRTAuthoringCandidatesTask::class.java,
+        ).get()
+        val scannerRoots = scannerTask.sourceRoots.files
+            .map { file -> file.toPath().toAbsolutePath().normalize() }
+
+        assertTrue(userRoot.toAbsolutePath().normalize() in scannerRoots)
+        assertFalse(debugEntryRoot.toAbsolutePath().normalize() in scannerRoots)
+        assertFalse(releaseEntryRoot.toAbsolutePath().normalize() in scannerRoots)
     }
 
     @Test
@@ -3170,6 +3269,77 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
+    fun local_winmd_static_sources_are_prepared_in_project_gradle_store() {
+        val project = ProjectBuilder.builder().withName("prepared-static-test").build()
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        val winmd = project.projectDir.toPath().resolve("fixture/Sample.winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = winmd,
+        )
+        extension.winmd(winmd.toString())
+        extension.type("Sample.IProbe")
+        val output = project.layout.buildDirectory.dir("prepared-output")
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.isRegularFile(prepared!!.parent.resolve("manifest.tsv")))
+        assertTrue(Files.walk(prepared).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+        val dynamicOutput = output.get().asFile.toPath().resolve("business/Overlay.kt")
+        Files.createDirectories(dynamicOutput.parent)
+        Files.writeString(dynamicOutput, "package business\nclass Overlay")
+        materializePreparedStaticSources(prepared, output.get().asFile.toPath())
+        assertTrue(Files.isRegularFile(dynamicOutput))
+        assertTrue(Files.walk(output.get().asFile.toPath()).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+    }
+
+    @Test
+    fun application_host_compiles_launcher_as_a_separate_incremental_task() {
+        val project = ProjectBuilder.builder().withName("sample-app").build()
+
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
+        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            application.mainClass.set("sample.MainKt")
+        }
+
+        val launcherTask = project.tasks.named(
+            "compileWinRTApplicationLauncherWinuiJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+        val hostTask = project.tasks.named(
+            "buildWinRTApplicationHostWinuiJvmMain",
+            BuildWinRTApplicationHostTask::class.java,
+        ).get()
+
+        assertTrue(launcherTask.launcherOnly.get())
+        assertTrue(
+            launcherTask.outputDirectory.get().asFile.toPath().toString().contains("application-launcher"),
+        )
+        assertTrue("launcher task must feed the aggregate host", "compileWinRTApplicationLauncherWinuiJvmMain" in taskDependencyNames(hostTask))
+        assertTrue(hostTask.launcherExecutable.isPresent)
+    }
+
+    @Test
     fun run_host_is_first_class_typed_task() {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
@@ -3574,6 +3744,18 @@ class KotlinWinRTPluginTest {
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "callsite-lowering")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-authoring")
+        assertHasExternalDependency(
+            targetConfiguration.dependencies,
+            group = "org.jetbrains.kotlinx",
+            name = "kotlinx-serialization-core-jvm",
+            version = "1.9.0",
+        )
+        assertHasExternalDependency(
+            targetConfiguration.dependencies,
+            group = "org.jetbrains.kotlinx",
+            name = "kotlinx-serialization-json-jvm",
+            version = "1.9.0",
+        )
     }
 
     @Test
@@ -12595,39 +12777,54 @@ class KotlinWinRTPluginTest {
 
                     import io.github.composefluent.winrt.runtime.ComObjectReference
                     import io.github.composefluent.winrt.runtime.RawAddress
+                    import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
+                    import io.github.composefluent.winrt.runtime.WinRTProjectionParameter
                     import io.github.composefluent.winrt.runtime.WinRTProjectionIntrinsic
                     import io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic
                     import windows.foundation.Point
                     import windows.foundation.Rect
 
                     object IntrinsicProbe {
-                        fun call(reference: ComObjectReference, value: RawAddress) {
-                            WinRTProjectionIntrinsic.callUnit(reference, 7, "RawAddress", value)
+                        @WinRTProjectionCallSite
+                        fun call(reference: ComObjectReference, slot: Int, value: RawAddress) {
+                            TODO()
                         }
 
-                        fun scalarWithStruct(reference: ComObjectReference, value: Point): Int =
-                            WinRTProjectionIntrinsic.callScalar(reference, 8, "Int32", "Struct8_4", value, Point.Metadata)
+                        @WinRTProjectionCallSite
+                        fun scalarWithStruct(reference: ComObjectReference, slot: Int, value: Point): Int =
+                            TODO()
 
-                        fun rawAddressScalar(reference: ComObjectReference): RawAddress =
-                            WinRTProjectionIntrinsic.callScalar(reference, 11, "RawAddress", "")
+                        @WinRTProjectionCallSite
+                        fun rawAddressScalar(reference: ComObjectReference, slot: Int): RawAddress =
+                            TODO()
 
-                        fun int16Scalar(reference: ComObjectReference): Short =
-                            WinRTProjectionIntrinsic.callScalar(reference, 12, "Int16", "")
+                        @WinRTProjectionCallSite
+                        fun int16Scalar(reference: ComObjectReference, slot: Int): Short =
+                            TODO()
 
-                        fun stringScalar(reference: ComObjectReference): String =
-                            WinRTProjectionIntrinsic.callScalar(reference, 13, "String", "")
+                        @WinRTProjectionCallSite
+                        fun stringScalar(reference: ComObjectReference, slot: Int): String =
+                            TODO()
 
-                        fun scalarWithUInt32(reference: ComObjectReference, value: UInt): Double =
-                            WinRTProjectionIntrinsic.callScalar(reference, 14, "Double", "UInt32", value)
+                        @WinRTProjectionCallSite
+                        fun scalarWithUInt32(
+                            reference: ComObjectReference,
+                            slot: Int,
+                            @WinRTProjectionParameter(abiType = "kotlin.UInt") value: UInt,
+                        ): Double =
+                            TODO()
 
-                        fun stringWithString(reference: ComObjectReference, value: String): String =
-                            WinRTProjectionIntrinsic.callScalar(reference, 15, "String", "String", value)
+                        @WinRTProjectionCallSite
+                        fun stringWithString(reference: ComObjectReference, slot: Int, value: String): String =
+                            TODO()
 
-                        fun booleanWithStruct(reference: ComObjectReference, value: Point): Boolean =
-                            WinRTProjectionIntrinsic.callBoolean(reference, 9, "Struct8_4", value, Point.Metadata)
+                        @WinRTProjectionCallSite
+                        fun booleanWithStruct(reference: ComObjectReference, slot: Int, value: Point): Boolean =
+                            TODO()
 
-                        fun unitWithLargeStruct(reference: ComObjectReference, value: Rect) {
-                            WinRTProjectionIntrinsic.callUnit(reference, 10, "Struct16_4", value, Rect.Metadata)
+                        @WinRTProjectionCallSite
+                        fun unitWithLargeStruct(reference: ComObjectReference, slot: Int, value: Rect) {
+                            TODO()
                         }
 
                         fun support() {
@@ -12662,20 +12859,27 @@ class KotlinWinRTPluginTest {
                     if (!contents.contains("kotlinWinRTProjectionSupportInitialize_")) {
                         throw new GradleException("KMP JVM class did not lower projection support marker to compiler-generated initializer")
                     }
-                    if (!contents.contains("WinRTJvmFfmDowncallHandles")) {
+                    def classContents = []
+                    classRoot.eachFileRecurse(groovy.io.FileType.FILES) {
+                        if (it.name.endsWith(".class")) {
+                            classContents << new String(it.bytes, "ISO-8859-1")
+                        }
+                    }
+                    def allContents = classContents.join("\u0000")
+                    if (!allContents.contains("WinRTJvmFfmDowncallHandles")) {
                         throw new GradleException("KMP JVM class did not lower projection intrinsic to JVM FFM")
                     }
-                    if (!contents.contains("hResultInt32Address")) {
-                        throw new GradleException("KMP JVM UInt32,Object intrinsic did not use the shared fixed FFM handle")
+                    if (!allContents.contains("kotlinWinRTExactHResultHandle_int32_address")) {
+                        throw new GradleException("KMP JVM UInt32,Object intrinsic did not use an exact shared FFM handle")
                     }
-                    if (!contents.contains("hResultAddressAddress")) {
-                        throw new GradleException("KMP JVM String,Object intrinsic did not use the shared fixed FFM handle")
+                    if (!allContents.contains("kotlinWinRTExactHResultHandle_address_address")) {
+                        throw new GradleException("KMP JVM String,Object intrinsic did not use an exact shared FFM handle")
                     }
                     if (!contents.contains("acquireNativeScalarScratchFrame")) {
                         throw new GradleException("KMP JVM scalar intrinsic did not acquire the reusable result frame")
                     }
-                    if (!contents.contains("getSegment")) {
-                        throw new GradleException("KMP JVM scalar intrinsic did not pass the result frame's FFM carrier directly")
+                    if (!contents.contains("getPointer")) {
+                        throw new GradleException("KMP JVM scalar intrinsic did not pass the result frame's native carrier directly")
                     }
                     if (!contents.contains("readInt16")) {
                         throw new GradleException("KMP JVM scalar intrinsic did not read the result through the typed frame carrier")
@@ -12683,19 +12887,17 @@ class KotlinWinRTPluginTest {
                     if (!contents.contains("readPointer")) {
                         throw new GradleException("KMP JVM HSTRING intrinsic did not read the result through the reusable frame")
                     }
-                    if (!contents.contains("Struct8_4")) {
-                        throw new GradleException("KMP JVM class did not preserve small struct ABI shape token")
+                    if (!contents.contains("Point")) {
+                        throw new GradleException("KMP JVM class did not preserve the compiled Point ABI shape")
                     }
-                    if (!contents.contains("Struct16_4")) {
-                        throw new GradleException("KMP JVM class did not preserve large struct ABI shape token")
+                    if (!contents.contains("Rect")) {
+                        throw new GradleException("KMP JVM class did not preserve the compiled Rect ABI shape")
                     }
                     if (contents.contains("([Ljava/lang/Object;)Ljava/lang/Object;")) {
                         throw new GradleException("KMP JVM class lowered MethodHandle.invoke as a single Object[] vararg call")
                     }
-                    if (!contents.contains(
-                        "(Ljava/lang/foreign/MemorySegment;Ljava/lang/foreign/MemorySegment;Ljava/lang/foreign/MemorySegment;)I",
-                    )) {
-                        throw new GradleException("KMP JVM class did not lower MethodHandle.invoke with expanded FFM carrier parameters")
+                    if (!contents.contains("invokeExact")) {
+                        throw new GradleException("KMP JVM class did not lower the call site through an exact FFM invocation")
                     }
                     def runtimeOwnedClassFile = new File(classRoot, "sample/RuntimeOwnedIntrinsicProbe.class")
                     def runtimeOwnedContents = new String(runtimeOwnedClassFile.bytes, "ISO-8859-1")
@@ -12967,12 +13169,29 @@ class KotlinWinRTPluginTest {
                         throw new GradleException("Transitive app bytecode still contains WinRTProjectionSupportIntrinsic fallback")
                     }
 
-                    def generatedInitializers = classContents.values().findAll { contents ->
+                    def businessGeneratedInitializers = classContents.values().findAll { contents ->
+                        contents.contains("kotlinWinRTProjectionSupportInitialize_") &&
+                            contents.contains("registerGeneratedProjectionTypeIndex")
+                    }
+                    if (!businessGeneratedInitializers.isEmpty()) {
+                        throw new GradleException("Business output must not embed the full projection support initializer")
+                    }
+
+                    def projectionClassRoot = layout.buildDirectory.dir(
+                        "classes/kotlin-winrt/projection/compileKotlinWinuiJvm",
+                    ).get().asFile
+                    def projectionClassContents = [:]
+                    projectionClassRoot.eachFileRecurse(groovy.io.FileType.FILES) { compiledClass ->
+                        if (compiledClass.name.endsWith(".class")) {
+                            projectionClassContents[compiledClass] = new String(compiledClass.bytes, "ISO-8859-1")
+                        }
+                    }
+                    def generatedInitializers = projectionClassContents.values().findAll { contents ->
                         contents.contains("kotlinWinRTProjectionSupportInitialize_") &&
                             contents.contains("registerGeneratedProjectionTypeIndex")
                     }
                     if (generatedInitializers.size() != 1) {
-                        throw new GradleException("Expected one compiler-generated projection support initializer method")
+                        throw new GradleException("Expected one compiler-generated projection support initializer method in the projection output")
                     }
                     def generatedInitializer = generatedInitializers[0]
                     [
@@ -12985,7 +13204,10 @@ class KotlinWinRTPluginTest {
                         }
                     }
 
-                    def supportRoot = new File(classRoot, "io/github/composefluent/winrt/projections/support")
+                    def supportRoot = new File(
+                        projectionClassRoot,
+                        "io/github/composefluent/winrt/projections/support",
+                    )
                     def projectionSupportArtifacts = []
                     supportRoot.eachFileRecurse(groovy.io.FileType.FILES) {
                         if (it.name.startsWith("WinRTProjectionSupport_") && it.name.endsWith(".class")) {
@@ -13960,6 +14182,25 @@ private fun assertHasKotlinWinRTClasspathDependency(
                 dependency is FileCollectionDependency && dependency.files.files.any { file ->
                     file.name.startsWith(moduleName) && file.name.endsWith(".jar")
                 }
+        },
+    )
+}
+
+private fun assertHasExternalDependency(
+    dependencies: Iterable<Dependency>,
+    group: String,
+    name: String,
+    version: String,
+) {
+    assertTrue(
+        dependencies.joinToString(separator = "\n") { dependency ->
+            "${dependency::class.qualifiedName}:${dependency.group}:${dependency.name}:${dependency.version}"
+        },
+        dependencies.any { dependency ->
+            dependency is ExternalModuleDependency &&
+                dependency.group == group &&
+                dependency.name == name &&
+                dependency.version == version
         },
     )
 }

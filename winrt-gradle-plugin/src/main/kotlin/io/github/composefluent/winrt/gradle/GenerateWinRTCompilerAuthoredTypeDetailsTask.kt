@@ -134,7 +134,6 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot(outputRoot::equals)
             .forEach(GradleFileOperations::deleteDirectory)
-        GradleFileOperations.cleanDirectory(outputRoot)
         val candidates = compilerCandidates.files
             .singleOrNull()
             ?.takeIf { file -> file.isFile }
