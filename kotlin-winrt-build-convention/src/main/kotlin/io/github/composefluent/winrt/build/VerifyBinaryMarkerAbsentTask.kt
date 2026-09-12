@@ -16,6 +16,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.io.File
+import java.util.zip.ZipFile
 
 abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     @get:InputFiles
@@ -37,6 +38,13 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     @get:Input
     abstract val methodNamePrefixes: SetProperty<String>
 
+    /**
+     * Optional prefixes used to scope marker checks to entries inside packed KLIB archives.
+     * Directory-based artifacts continue to inspect every file.
+     */
+    @get:Input
+    abstract val archiveEntryPrefixes: SetProperty<String>
+
     @get:Input
     abstract val artifactDescription: Property<String>
 
@@ -46,6 +54,7 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     init {
         requiredMarkers.convention(emptySet())
         methodNamePrefixes.convention(emptySet())
+        archiveEntryPrefixes.convention(emptySet())
         verificationReport.convention(
             project.layout.buildDirectory.file("reports/kotlin-winrt/${name}.verified"),
         )
@@ -68,23 +77,26 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
             check(files.isNotEmpty()) {
                 "Missing ${artifactDescription.get()} binary artifacts."
             }
+            val contents = files.asSequence()
+                .flatMap(::readBinaryContents)
+                .toList()
             val markerBytes = markers.get().associateWith(String::encodeToByteArray)
             val requiredMarkerBytes = requiredMarkers.get().associateWith(String::encodeToByteArray)
             check(markerBytes.isNotEmpty() || requiredMarkerBytes.isNotEmpty()) {
                 "At least one forbidden or required marker is needed for ${artifactDescription.get()}."
             }
             val scopedPrefixes = methodNamePrefixes.get()
-            val match = files.firstNotNullOfOrNull { file ->
-                findForbiddenMarker(file, markerBytes, scopedPrefixes)
+            val match = contents.firstNotNullOfOrNull { content ->
+                findForbiddenMarker(content, markerBytes, scopedPrefixes)
             }
             check(match == null) {
                 val (containingFile, marker, methodName) = match!!
                 val methodSuffix = methodName?.let { " method '$it'" }.orEmpty()
                 "Forbidden WinRT call-site marker '$marker' escaped lowering in " +
-                    "${containingFile.absolutePath}$methodSuffix."
+                    "${containingFile.path}$methodSuffix."
             }
             requiredMarkerBytes.forEach { (marker, bytes) ->
-                check(files.any { file -> file.readBytes().containsSequence(bytes) }) {
+                check(contents.any { content -> content.bytes.containsSequence(bytes) }) {
                     "Required WinRT call-site marker '$marker' was not emitted in ${artifactDescription.get()}."
                 }
             }
@@ -101,14 +113,14 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     }
 
     private fun findForbiddenMarker(
-        file: File,
+        content: BinaryContent,
         markerBytes: Map<String, ByteArray>,
         methodNamePrefixes: Set<String>,
     ): ForbiddenMarkerMatch? {
-        val bytes = file.readBytes()
-        if (methodNamePrefixes.isEmpty() || !file.name.endsWith(".class")) {
+        val bytes = content.bytes
+        if (methodNamePrefixes.isEmpty() || !content.path.endsWith(".class")) {
             return markerBytes.keys.firstOrNull { marker -> bytes.containsSequence(markerBytes.getValue(marker)) }
-                ?.let { marker -> ForbiddenMarkerMatch(file, marker, null) }
+                ?.let { marker -> ForbiddenMarkerMatch(content, marker, null) }
         }
 
         var match: ForbiddenMarkerMatch? = null
@@ -129,7 +141,7 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
                                 .filterNotNull()
                                 .flatMap { value -> markerBytes.keys.asSequence().filter(value::contains) }
                                 .firstOrNull()
-                            if (marker != null) match = ForbiddenMarkerMatch(file, marker, name)
+                            if (marker != null) match = ForbiddenMarkerMatch(content, marker, name)
                         }
 
                         override fun visitMethodInsn(
@@ -169,10 +181,39 @@ abstract class VerifyBinaryMarkerAbsentTask : DefaultTask() {
     }
 
     private data class ForbiddenMarkerMatch(
-        val file: File,
+        val content: BinaryContent,
         val marker: String,
         val methodName: String?,
     )
+
+    private data class BinaryContent(
+        val file: File,
+        val entryName: String? = null,
+        val bytes: ByteArray,
+    ) {
+        val path: String
+            get() = entryName?.let { "${file.absolutePath}!/$it" } ?: file.absolutePath
+    }
+
+    private fun readBinaryContents(file: File): Sequence<BinaryContent> = sequence {
+        if (!file.extension.equals("klib", ignoreCase = true)) {
+            yield(BinaryContent(file = file, bytes = file.readBytes()))
+            return@sequence
+        }
+        val entryPrefixes = archiveEntryPrefixes.get()
+        ZipFile(file).use { archive ->
+            archive.entries().asSequence()
+                .filterNot { it.isDirectory }
+                .filter { entry ->
+                    entryPrefixes.isEmpty() || entryPrefixes.any(entry.name::startsWith)
+                }
+                .forEach { entry ->
+                    archive.getInputStream(entry).use { input ->
+                        yield(BinaryContent(file, entry.name, input.readBytes()))
+                    }
+                }
+        }
+    }
 
     private fun ByteArray.containsSequence(sequence: ByteArray): Boolean {
         if (sequence.isEmpty()) return true

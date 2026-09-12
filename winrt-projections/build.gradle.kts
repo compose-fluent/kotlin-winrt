@@ -1,4 +1,5 @@
 import io.github.composefluent.winrt.build.VerifyBinaryMarkerAbsentTask
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -57,6 +58,8 @@ val compiledJvmProjectionClasses = layout.buildDirectory.dir(
     "classes/kotlin-winrt/projection/compileKotlinJvm",
 )
 val compileJvmProjectionTaskName = "compileKotlinWinRTProjectionJvm"
+val compileNativeProjectionTask = tasks.named<KotlinNativeCompile>("compileWinRTProjectionKotlinMingwX64")
+val compiledNativeProjectionKlib = compileNativeProjectionTask.flatMap { it.outputFile }
 
 val verifyJvmProjectionCallSiteLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
@@ -70,8 +73,8 @@ val verifyJvmProjectionCallSiteLowering by tasks.registering(VerifyBinaryMarkerA
 val verifyMingwX64ProjectionCallSiteLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
     description = "Verifies that no generated WinRT call-site placeholder reaches the mingwX64 klib."
-    dependsOn("compileKotlinMingwX64")
-    binaryArtifacts.from(layout.buildDirectory.dir("classes/kotlin/mingwX64/main/klib"))
+    dependsOn(compileNativeProjectionTask)
+    binaryArtifacts.from(compiledNativeProjectionKlib)
     markers.set(setOf("Lowered while compiling the generated WinRT module"))
     artifactDescription.set("compiled mingwX64 projection klib")
 }
@@ -79,12 +82,9 @@ val verifyMingwX64ProjectionCallSiteLowering by tasks.registering(VerifyBinaryMa
 val verifyMingwX64ProjectionCallSiteDirectLowering by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
     description = "Verifies that Native generated call sites use recipe thunk accessors without the old vtable reads."
-    dependsOn("compileKotlinMingwX64")
-    binaryArtifacts.from(
-        layout.buildDirectory.dir(
-            "classes/kotlin/mingwX64/main/klib/winrt-projections/default/linkdata",
-        ),
-    )
+    dependsOn(compileNativeProjectionTask)
+    binaryArtifacts.from(compiledNativeProjectionKlib)
+    archiveEntryPrefixes.set(setOf("default/linkdata/"))
     markers.set(setOf("readPointer", "readPointerAt", "kotlin/TODO"))
     artifactDescription.set("Native projection call-site linkdata")
 }
@@ -92,15 +92,8 @@ val verifyMingwX64ProjectionCallSiteDirectLowering by tasks.registering(VerifyBi
 val verifyMingwX64ProjectionThunkAccessors by tasks.registering(VerifyBinaryMarkerAbsentTask::class) {
     group = "verification"
     description = "Verifies that Native generated files contain the recipe thunk accessors used by this projection."
-    dependsOn("compileKotlinMingwX64")
-    binaryArtifacts.from(
-        layout.buildDirectory.file(
-            "classes/kotlin/mingwX64/main/klib/winrt-projections/default/ir/debugInfo.knd",
-        ),
-        layout.buildDirectory.file(
-            "classes/kotlin/mingwX64/main/klib/winrt-projections/default/ir/strings.knt",
-        ),
-    )
+    dependsOn(compileNativeProjectionTask)
+    binaryArtifacts.from(compiledNativeProjectionKlib)
     markers.set(emptySet())
     requiredMarkers.set(
         setOf(

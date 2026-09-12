@@ -6,6 +6,8 @@ import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 import java.nio.file.Path
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class VerifyBinaryMarkerAbsentTaskTest {
     @Test
@@ -96,6 +98,31 @@ class VerifyBinaryMarkerAbsentTaskTest {
         task.markers.set(emptySet())
         task.requiredMarkers.set(setOf("emitted-thunk"))
         task.artifactDescription.set("test projection")
+
+        val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
+
+        assertTrue(failure?.message.orEmpty(), failure == null)
+    }
+
+    @Test
+    fun reads_required_markers_from_a_packed_klib() {
+        val projectDirectory = Files.createTempDirectory("verify-binary-marker-klib-")
+        val project = ProjectBuilder.builder().withProjectDir(projectDirectory.toFile()).build()
+        val artifact = projectDirectory.resolve("projection.klib")
+        ZipOutputStream(Files.newOutputStream(artifact)).use { archive ->
+            archive.putNextEntry(ZipEntry("default/ir/debugInfo.knd"))
+            archive.write("kotlinWinRTNativeHResultThunk".encodeToByteArray())
+            archive.closeEntry()
+            archive.putNextEntry(ZipEntry("default/linkdata/module"))
+            archive.write("forbidden".encodeToByteArray())
+            archive.closeEntry()
+        }
+        val task = project.tasks.create("verifyPackedKlib", VerifyBinaryMarkerAbsentTask::class.java)
+        task.binaryArtifacts.from(artifact.toFile())
+        task.archiveEntryPrefixes.set(setOf("default/ir/"))
+        task.markers.set(setOf("forbidden"))
+        task.requiredMarkers.set(setOf("kotlinWinRTNativeHResultThunk"))
+        task.artifactDescription.set("packed projection")
 
         val failure = runCatching { task.verifyMarkerIsAbsent() }.exceptionOrNull()
 
