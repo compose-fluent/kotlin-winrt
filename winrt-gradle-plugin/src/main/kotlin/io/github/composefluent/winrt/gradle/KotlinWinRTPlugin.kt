@@ -2623,6 +2623,12 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
                 },
             )
             task.destinationDirectory.set(projectionOutput)
+            // A generated file can move from the static projection set to the business overlay
+            // set without changing its path. Kotlin's incremental compiler leaves the old class
+            // behind in that case, so clear this task's isolated output before a real execution.
+            task.doFirst {
+                task.destinationDirectory.get().asFile.deleteRecursively()
+            }
             task.libraries.from(projectionClasspath)
             task.pluginClasspath.from(compilerPluginClasspath)
             addWinRTCompilerPluginOptions(
