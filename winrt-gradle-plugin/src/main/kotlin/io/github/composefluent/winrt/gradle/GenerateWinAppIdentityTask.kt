@@ -16,7 +16,7 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 
 @CacheableTask
-abstract class GenerateWinRTApplicationIdentityTask : DefaultTask() {
+abstract class GenerateWinAppIdentityTask : DefaultTask() {
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 

@@ -39,7 +39,7 @@ class WindowsNativeHostBuildTest {
             {"assemblyName":"Component","hostExportsClass":"sample.Exports","activatableClasses":["sample.Component"]}
         """.trimIndent())
         Files.writeString(root.resolve("build.gradle"), """
-            plugins { id 'io.github.compose-fluent.winrt' apply false }
+            plugins { id 'io.github.compose-fluent.windows-toolkit' apply false }
             def hostRid = System.getProperty('os.arch').toLowerCase() in ['aarch64', 'arm64'] ? 'win-arm64' : 'win-x64'
             abstract class ComponentManifest extends DefaultTask {
                 @InputFile abstract RegularFileProperty getSourceFile()
@@ -54,7 +54,7 @@ class WindowsNativeHostBuildTest {
                 sourceFile.set(layout.projectDirectory.file('component.json'))
                 destinationDirectory.set(layout.buildDirectory.dir('generated-manifest'))
             }
-            tasks.register('buildExe', io.github.composefluent.winrt.gradle.BuildWinRTApplicationHostTask) {
+            tasks.register('buildExe', io.github.composefluent.winrt.gradle.BuildWinAppHostTask) {
                 mainClass.set('sample.Main')
                 executableBaseName.set('sample')
                 javaHome.set(System.getProperty('java.home'))

@@ -14,13 +14,13 @@ import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
 
-class RunWinRTApplicationPackageTaskTest {
+class RunWinAppPackageTaskTest {
     @Test
     fun each_packaged_run_builds_its_own_layout_without_msix_signing_or_installation() {
         val project = ProjectBuilder.builder().withName("packaged-run").build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application {
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application {
             it.mainClass.set("sample.MainKt")
             it.packageType.set(WindowsPackageType.Packaged)
         }
@@ -31,20 +31,20 @@ class RunWinRTApplicationPackageTaskTest {
         (project as ProjectInternal).evaluate()
 
         val expectedLayouts = mapOf(
-            "DesktopMain" to "buildWinRTApplicationHostDesktopMain",
-            "NativeDesktopMainDebugExecutable" to "stageWinRTApplicationPackageNativeDesktopMainDebugExecutable",
-            "NativeDesktopMainReleaseExecutable" to "stageWinRTApplicationPackageNativeDesktopMainReleaseExecutable",
+            "DesktopMain" to "buildWinAppHostDesktopMain",
+            "NativeDesktopMainDebugExecutable" to "stageWinAppPackageNativeDesktopMainDebugExecutable",
+            "NativeDesktopMainReleaseExecutable" to "stageWinAppPackageNativeDesktopMainReleaseExecutable",
         )
         val deploymentDirectories = expectedLayouts.map { (suffix, producer) ->
-            val run = project.tasks.named("runWinRTApplicationPackage$suffix", RunWinRTApplicationPackageTask::class.java).get()
+            val run = project.tasks.named("runWinAppPackage$suffix", RunWinAppPackageTask::class.java).get()
             val developmentStage = project.tasks.named(
-                "stageWinRTApplicationDevelopmentPackage$suffix", StageWinRTApplicationPackageTask::class.java,
+                "stageWinAppDevelopmentPackage$suffix", StageWinAppPackageTask::class.java,
             ).get()
             assertEquals(
                 setOf("restoreWinAppDependencies", developmentStage.name),
                 run.taskDependencies.getDependencies(run).map { it.name }.toSet(),
             )
-            val pack = project.tasks.named("packageWinRTApplication$suffix", PackageWinRTApplicationTask::class.java).get()
+            val pack = project.tasks.named("packageWinApp$suffix", PackageWinAppTask::class.java).get()
             assertEquals(pack.packageDirectory.get(), developmentStage.runtimeAssetsDirectory.get())
             assertEquals(developmentStage.outputDirectory.get(), run.packageDirectory.get())
             assertTrue(developmentStage.developmentIdentity.get())
@@ -56,10 +56,10 @@ class RunWinRTApplicationPackageTaskTest {
             deployment
         }
         assertEquals(3, deploymentDirectories.toSet().size)
-        assertFalse("runWinRTApplicationPackage" in project.tasks.names)
-        project.extensions.getByType(WinRTExtension::class.java).application { it.selfContained() }
+        assertFalse("runWinAppPackage" in project.tasks.names)
+        project.extensions.getByType(WindowsExtension::class.java).application { it.selfContained() }
         expectedLayouts.keys.forEach { suffix ->
-            val run = project.tasks.named("runWinRTApplicationPackage$suffix", RunWinRTApplicationPackageTask::class.java).get()
+            val run = project.tasks.named("runWinAppPackage$suffix", RunWinAppPackageTask::class.java).get()
             assertTrue(run.selfContained.get())
         }
     }
@@ -76,7 +76,7 @@ class RunWinRTApplicationPackageTaskTest {
         write(input.resolve("Assets/Logo.png"), "test logo")
         val original = Files.readString(input.resolve("AppxManifest.xml"))
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.register("developmentStage", StageWinRTApplicationPackageTask::class.java).get()
+        val task = project.tasks.register("developmentStage", StageWinAppPackageTask::class.java).get()
         task.runtimeAssetsDirectory.set(input.toFile())
         task.outputDirectory.set(root.resolve("output").toFile())
         task.runtimeIdentifier.set("win-x64")
@@ -102,7 +102,7 @@ class RunWinRTApplicationPackageTaskTest {
     fun rejects_unsupported_modes_and_overlapping_deployment_before_invoking_winapp() {
         assumeTrue(isWindowsHost())
         val project = ProjectBuilder.builder().build()
-        val task = project.tasks.register("runFixture", RunWinRTApplicationPackageTask::class.java).get()
+        val task = project.tasks.register("runFixture", RunWinAppPackageTask::class.java).get()
         task.packageType.set(WindowsPackageType.None.name)
         val modeError = runCatching { task.run() }.exceptionOrNull()
         assertTrue(modeError is GradleException)
@@ -132,8 +132,8 @@ class RunWinRTApplicationPackageTaskTest {
             org.gradle.workers.max=1
         """.trimIndent())
         write(root.resolve("build.gradle"), """
-            plugins { id 'io.github.compose-fluent.winrt' }
-            def developmentStage = tasks.register('developmentStage', io.github.composefluent.winrt.gradle.StageWinRTApplicationPackageTask) {
+            plugins { id 'io.github.compose-fluent.windows-toolkit' }
+            def developmentStage = tasks.register('developmentStage', io.github.composefluent.winrt.gradle.StageWinAppPackageTask) {
                 runtimeAssetsDirectory = layout.projectDirectory.dir('build output')
                 outputDirectory = layout.buildDirectory.dir('development-input')
                 runtimeIdentifier = 'win-x64'
@@ -142,7 +142,7 @@ class RunWinRTApplicationPackageTaskTest {
                 minWindowsVersion = providers.gradleProperty('minimum').orElse('10.0.19041.0')
                 windowsSdkVersion = providers.gradleProperty('sdkApi').orElse('10.0.26100.0')
             }
-            tasks.register('runFixture', io.github.composefluent.winrt.gradle.RunWinRTApplicationPackageTask) {
+            tasks.register('runFixture', io.github.composefluent.winrt.gradle.RunWinAppPackageTask) {
                 packageDirectory = developmentStage.flatMap { it.outputDirectory }
                 deploymentDirectory = layout.buildDirectory.dir('deployment')
                 winAppCliExecutable = file('fake-winapp.cmd').absolutePath

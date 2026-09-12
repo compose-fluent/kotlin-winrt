@@ -16,7 +16,7 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 
-abstract class GenerateWinRTMingwApplicationEntryTask : DefaultTask() {
+abstract class GenerateWinAppMingwEntryTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -100,11 +100,11 @@ private fun mingwApplicationEntrySource(
         )
     }
     val userMain = MemberName(userMainPackage, userMainName)
-    val bootstrap = ClassName("io.github.composefluent.winrt.runtime", "WinRTWindowsAppSdkBootstrap")
-    val hostConfiguration = ClassName("io.github.composefluent.winrt.runtime", "WinRTApplicationHostConfiguration")
-    val packageIdentity = ClassName("io.github.composefluent.winrt.runtime", "WinRTApplicationPackageIdentity")
-    val deploymentMode = ClassName("io.github.composefluent.winrt.runtime", "WinRTWindowsAppSdkDeploymentMode")
-    val deployment = ClassName("io.github.composefluent.winrt.runtime", "WinRTWindowsAppSdkDeployment")
+    val bootstrap = ClassName("io.github.composefluent.winrt.runtime", "WindowsAppSdkBootstrap")
+    val hostConfiguration = ClassName("io.github.composefluent.winrt.runtime", "WinAppHostConfiguration")
+    val packageIdentity = ClassName("io.github.composefluent.winrt.runtime", "WinAppPackageIdentity")
+    val deploymentMode = ClassName("io.github.composefluent.winrt.runtime", "WindowsAppSdkDeploymentMode")
+    val deployment = ClassName("io.github.composefluent.winrt.runtime", "WindowsAppSdkDeployment")
     val packageIdentityName = if (unpackaged) "Unpackaged" else "Packaged"
     val fileName = if (entryFunctionName == "main") "WinRTMingwApplicationEntry" else "WinRTMingwApplicationEntry_$entryFunctionName"
     return FileSpec.builder("io.github.composefluent.winrt.application", fileName)

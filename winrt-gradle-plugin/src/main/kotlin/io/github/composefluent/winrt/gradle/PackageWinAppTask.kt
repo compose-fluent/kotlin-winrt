@@ -20,7 +20,7 @@ import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 
 @CacheableTask
-abstract class PackageWinRTApplicationTask : DefaultTask() {
+abstract class PackageWinAppTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packageDirectory: DirectoryProperty

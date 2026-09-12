@@ -5,7 +5,7 @@ import org.gradle.api.tasks.testing.Test
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 description = "Cross-projection WinRT performance comparisons for Kotlin, CsWinRT, and C++/WinRT"
@@ -388,13 +388,17 @@ tasks.register("benchmarkAll") {
     dependsOn(benchmarkReport)
 }
 
-winRT {
-    windowsSdk(benchmarkWindowsSdkVersion.get(), includeExtensions = false, generateProjection = false)
-    namespace("BenchmarkComponent")
-    type("Windows.ApplicationModel.Chat.ChatMessage")
-    type("Windows.Storage.FileAttributes")
-    type("Windows.System.Power.PowerManager")
-    type("Windows.UI.Popups.PopupMenu")
-    winmd(referenceBenchmarkComponentWinmd.get().asFile.absolutePath)
-    runtimeAsset(referenceBenchmarkComponentDll.get().asFile.absolutePath)
+windows {
+    packageReferences {
+        windowsSdk(benchmarkWindowsSdkVersion.get(), includeExtensions = false, generateProjection = false)
+        namespace("BenchmarkComponent")
+        type("Windows.ApplicationModel.Chat.ChatMessage")
+        type("Windows.Storage.FileAttributes")
+        type("Windows.System.Power.PowerManager")
+        type("Windows.UI.Popups.PopupMenu")
+        winmd(referenceBenchmarkComponentWinmd.get().asFile.absolutePath)
+    }
+    application {
+        runtimeAsset(referenceBenchmarkComponentDll.get().asFile.absolutePath)
+    }
 }

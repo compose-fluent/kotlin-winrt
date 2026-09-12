@@ -17,7 +17,7 @@ import javax.inject.Inject
 
 typealias NamedNuGetPackageContainer = NamedDomainObjectContainer<KotlinWinRTNuGetPackage>
 
-interface BaseWinRTExtension {
+interface PackageReferencesConfiguration {
     val includeNamespaces: ListProperty<String>
     val includeTypes: ListProperty<String>
     val excludeNamespaces: ListProperty<String>
@@ -26,10 +26,8 @@ interface BaseWinRTExtension {
     val metadataInputs: ListProperty<String>
     val windowsSdkDeclared: Property<Boolean>
     val windowsSdkVersion: Property<String>
-    val windowsSdkToolsVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
     val generateWindowsSdkProjection: Property<Boolean>
-    val winAppCliExecutable: Property<String>
     val nugetExecutable: Property<String>
     val nugetCliVersion: Property<String>
     val restoreNuGetPackages: Property<Boolean>
@@ -38,7 +36,9 @@ interface BaseWinRTExtension {
     val nugetConfigFile: RegularFileProperty
     val nugetConfigDirectory: DirectoryProperty
     val nugetPackages: NamedNuGetPackageContainer
-    val runtimeAssets: ListProperty<String>
+
+    /** Uses NuGet's normal hierarchy from the selected file's directory and its ancestors. */
+    fun nugetConfig(input: Any)
 
     fun namespace(name: String)
 
@@ -51,8 +51,6 @@ interface BaseWinRTExtension {
     fun excludeAdditionNamespace(name: String)
 
     fun winmd(input: Any)
-
-    fun runtimeAsset(input: Any)
 
     fun windowsSdk(
         version: String? = null,
@@ -67,9 +65,10 @@ interface BaseWinRTExtension {
     fun nugetPackage(packageId: String, action: Action<in KotlinWinRTNuGetPackage>)
 }
 
-abstract class BaseWinRTExtensionSupport @Inject constructor(
+abstract class PackageReferencesConfigurationSupport @Inject constructor(
     objects: ObjectFactory,
-) : BaseWinRTExtension {
+    private val project: Project,
+) : PackageReferencesConfiguration {
     override val includeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val includeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val excludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
@@ -78,13 +77,9 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
     override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val windowsSdkDeclared: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
-    /** NuGet SDK toolchain revision, independent of the Windows API and OS version numbers. */
-    override val windowsSdkToolsVersion: Property<String> = objects.property(String::class.java)
-        .convention(WinAppConfigurationDefaults.WINDOWS_SDK_TOOLS_VERSION)
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     override val generateWindowsSdkProjection: Property<Boolean> =
         objects.property(Boolean::class.java).convention(false)
-    override val winAppCliExecutable: Property<String> = objects.property(String::class.java).convention("winapp")
     override val nugetExecutable: Property<String> = objects.property(String::class.java).convention("nuget")
     override val nugetCliVersion: Property<String> = objects.property(String::class.java).convention("7.3.1")
     override val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
@@ -92,7 +87,6 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
     override val nugetGlobalPackagesRoots: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val nugetConfigFile: RegularFileProperty = objects.fileProperty()
     override val nugetConfigDirectory: DirectoryProperty = objects.directoryProperty()
-    override val runtimeAssets: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
 
     @get:Nested
     override val nugetPackages: NamedNuGetPackageContainer =
@@ -126,8 +120,9 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
         metadataInputs.add(input.toString())
     }
 
-    override fun runtimeAsset(input: Any) {
-        runtimeAssets.add(input.toString())
+    override fun nugetConfig(input: Any) {
+        nugetConfigFile.set(project.file(input))
+        nugetConfigDirectory.set(project.layout.dir(nugetConfigFile.map { file -> file.asFile.parentFile }))
     }
 
     override fun windowsSdk(
@@ -166,10 +161,21 @@ abstract class BaseWinRTExtensionSupport @Inject constructor(
 
 }
 
-abstract class WinRTExtension @Inject constructor(
+abstract class WindowsExtension @Inject constructor(
     objects: ObjectFactory,
     private val project: Project,
-) : BaseWinRTExtensionSupport(objects) {
+) {
+    /** WinMD, Windows SDK metadata, projection filters and NuGet restore inputs. */
+    @get:Nested
+    val packageReferences: PackageReferencesConfigurationSupport =
+        objects.newInstance(PackageReferencesConfigurationSupport::class.java, project)
+
+    /** Shared CLI control used by package restore and Windows application packaging. */
+    val winAppCliExecutable: Property<String> = objects.property(String::class.java).convention("winapp")
+    /** NuGet SDK toolchain revision, independent of the Windows API and OS version numbers. */
+    val windowsSdkToolsVersion: Property<String> = objects.property(String::class.java)
+        .convention(WinAppConfigurationDefaults.WINDOWS_SDK_TOOLS_VERSION)
+
     val applicationEnabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     /** Stable namespace owned by this module's generated AppX resource accessor. */
     val appxResourcePackageName: Property<String> = objects.property(String::class.java).convention(
@@ -178,19 +184,17 @@ abstract class WinRTExtension @Inject constructor(
     private val applicationConfiguredActions = mutableListOf<() -> Unit>()
 
     @get:Nested
-    val application: WinRTApplicationConfiguration = objects.newInstance(WinRTApplicationConfiguration::class.java, project)
+    val application: WinAppConfiguration = objects.newInstance(WinAppConfiguration::class.java, project)
 
-    fun application(action: Action<in WinRTApplicationConfiguration>) {
+    fun packageReferences(action: Action<in PackageReferencesConfigurationSupport>) {
+        action.execute(packageReferences)
+    }
+
+    fun application(action: Action<in WinAppConfiguration>) {
         applicationEnabled.set(true)
         action.execute(application)
         applicationConfiguredActions.forEach { it() }
         applicationConfiguredActions.clear()
-    }
-
-    /** Uses NuGet's normal hierarchy from the selected file's directory and its ancestors. */
-    fun nugetConfig(input: Any) {
-        nugetConfigFile.set(project.file(input))
-        nugetConfigDirectory.set(project.layout.dir(nugetConfigFile.map { file -> file.asFile.parentFile }))
     }
 
     internal fun whenApplicationConfigured(action: () -> Unit) {
@@ -200,30 +204,50 @@ abstract class WinRTExtension @Inject constructor(
             applicationConfiguredActions += action
         }
     }
+
+    internal val includeNamespaces get() = packageReferences.includeNamespaces
+    internal val includeTypes get() = packageReferences.includeTypes
+    internal val excludeNamespaces get() = packageReferences.excludeNamespaces
+    internal val excludeTypes get() = packageReferences.excludeTypes
+    internal val additionExcludeNamespaces get() = packageReferences.additionExcludeNamespaces
+    internal val metadataInputs get() = packageReferences.metadataInputs
+    internal val windowsSdkDeclared get() = packageReferences.windowsSdkDeclared
+    internal val windowsSdkVersion get() = packageReferences.windowsSdkVersion
+    internal val includeWindowsSdkExtensions get() = packageReferences.includeWindowsSdkExtensions
+    internal val generateWindowsSdkProjection get() = packageReferences.generateWindowsSdkProjection
+    internal val nugetExecutable get() = packageReferences.nugetExecutable
+    internal val nugetCliVersion get() = packageReferences.nugetCliVersion
+    internal val restoreNuGetPackages get() = packageReferences.restoreNuGetPackages
+    internal val useNuGetCliGlobalPackages get() = packageReferences.useNuGetCliGlobalPackages
+    internal val nugetGlobalPackagesRoots get() = packageReferences.nugetGlobalPackagesRoots
+    internal val nugetConfigFile get() = packageReferences.nugetConfigFile
+    internal val nugetConfigDirectory get() = packageReferences.nugetConfigDirectory
+    internal val nugetPackages get() = packageReferences.nugetPackages
+    internal val runtimeAssets get() = application.runtimeAssets
 }
 
-abstract class WinRTApplicationConfiguration @Inject constructor(
+abstract class WinAppConfiguration @Inject constructor(
     objects: ObjectFactory,
     project: Project,
-) : WinRTApplicationOptions(objects, project) {
+) : WinAppOptions(objects, project) {
     @get:Nested
-    val variants: NamedDomainObjectContainer<NamedWinRTApplicationOptions> =
-        objects.domainObjectContainer(NamedWinRTApplicationOptions::class.java) { name ->
-            objects.newInstance(NamedWinRTApplicationOptions::class.java, name, project).also { variant ->
+    val variants: NamedDomainObjectContainer<NamedWinAppOptions> =
+        objects.domainObjectContainer(NamedWinAppOptions::class.java) { name ->
+            objects.newInstance(NamedWinAppOptions::class.java, name, project).also { variant ->
                 variant.inheritFrom(this)
             }
         }
 
-    fun variants(action: Action<in NamedDomainObjectContainer<NamedWinRTApplicationOptions>>) {
+    fun variants(action: Action<in NamedDomainObjectContainer<NamedWinAppOptions>>) {
         action.execute(variants)
     }
 }
 
-abstract class NamedWinRTApplicationOptions @Inject constructor(
+abstract class NamedWinAppOptions @Inject constructor(
     private val applicationName: String,
     objects: ObjectFactory,
     project: Project,
-) : WinRTApplicationOptions(objects, project), Named {
+) : WinAppOptions(objects, project), Named {
     override fun getName(): String = applicationName
 
     /** Exact Kotlin variant bound to this named application's task graph. */
@@ -234,12 +258,12 @@ abstract class NamedWinRTApplicationOptions @Inject constructor(
     }
 }
 
-abstract class WinRTApplicationOptions @Inject constructor(
+abstract class WinAppOptions @Inject constructor(
     objects: ObjectFactory,
     private val project: Project,
 ) {
-    internal val runTaskRegistrations = mutableListOf<WinRTApplicationRunTaskRegistration>()
-    private var runTaskRegistrar: ((WinRTApplicationRunTaskRegistration) -> Unit)? = null
+    internal val runTaskRegistrations = mutableListOf<WinAppRunTaskRegistration>()
+    private var runTaskRegistrar: ((WinAppRunTaskRegistration) -> Unit)? = null
 
     /**
      * Controls whether the application has an AppX/MSIX package identity. Applications are
@@ -267,6 +291,8 @@ abstract class WinRTApplicationOptions @Inject constructor(
     val projectPriContentFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriEmbedFiles: ConfigurableFileCollection = objects.fileCollection()
     val packagePayloadFiles: ConfigurableFileCollection = objects.fileCollection()
+    /** Explicit files supplied to the Windows package asset staging task. */
+    val runtimeAssets: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     val projectPriTargetPaths: MapProperty<String, String> =
         objects.mapProperty(String::class.java, String::class.java).convention(emptyMap())
     val projectPriExcludedFromBuildPaths: SetProperty<String> =
@@ -291,11 +317,11 @@ abstract class WinRTApplicationOptions @Inject constructor(
     val installPowerShellExecutable: Property<String> = objects.property(String::class.java).convention("powershell.exe")
     val installForceApplicationShutdown: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     /** Controls whether the application carries a JVM image or expects one on the machine. */
-    val jvmRuntimeMode: Property<WinRTJvmRuntimeMode> =
-        objects.property(WinRTJvmRuntimeMode::class.java).convention(WinRTJvmRuntimeMode.Bundled)
+    val jvmRuntimeMode: Property<WinAppJvmRuntimeMode> =
+        objects.property(WinAppJvmRuntimeMode::class.java).convention(WinAppJvmRuntimeMode.Bundled)
     /** Optional prebuilt image. When absent, the plugin creates one with the selected JDK's jlink. */
     val jvmRuntimeImage: DirectoryProperty = objects.directoryProperty()
-    /** JVM home used only when [jvmRuntimeMode] is [WinRTJvmRuntimeMode.External]. */
+    /** JVM home used only when [jvmRuntimeMode] is [WinAppJvmRuntimeMode.External]. */
     val externalJvmHome: DirectoryProperty = objects.directoryProperty()
     /** Modules used by jlink for the default bundled image. */
     val jvmRuntimeModules: ListProperty<String> = objects.listProperty(String::class.java).convention(
@@ -317,7 +343,7 @@ abstract class WinRTApplicationOptions @Inject constructor(
         objects.property(WindowsAppSdkDeployment::class.java)
             .convention(WindowsAppSdkDeployment.Auto)
 
-    internal fun inheritFrom(defaults: WinRTApplicationOptions) {
+    internal fun inheritFrom(defaults: WinAppOptions) {
         packageType.convention(defaults.packageType)
         minWindowsVersion.convention(defaults.minWindowsVersion)
         maxVersionTested.convention(defaults.maxVersionTested)
@@ -335,6 +361,7 @@ abstract class WinRTApplicationOptions @Inject constructor(
         projectPriContentFiles.convention(defaults.projectPriContentFiles)
         projectPriEmbedFiles.convention(defaults.projectPriEmbedFiles)
         packagePayloadFiles.convention(defaults.packagePayloadFiles)
+        runtimeAssets.convention(defaults.runtimeAssets)
         projectPriTargetPaths.convention(defaults.projectPriTargetPaths)
         projectPriExcludedFromBuildPaths.convention(defaults.projectPriExcludedFromBuildPaths)
         makePriExecutable.convention(defaults.makePriExecutable)
@@ -363,7 +390,7 @@ abstract class WinRTApplicationOptions @Inject constructor(
         windowsAppSdkDeployment.convention(defaults.windowsAppSdkDeployment)
     }
 
-    internal fun bindRunTasks(registrar: (WinRTApplicationRunTaskRegistration) -> Unit) {
+    internal fun bindRunTasks(registrar: (WinAppRunTaskRegistration) -> Unit) {
         runTaskRegistrar = registrar
         runTaskRegistrations.forEach(registrar)
         runTaskRegistrations.clear()
@@ -371,6 +398,10 @@ abstract class WinRTApplicationOptions @Inject constructor(
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
+    }
+
+    fun runtimeAsset(input: Any) {
+        runtimeAssets.add(input.toString())
     }
 
     fun frameworkDependent() {
@@ -382,14 +413,14 @@ abstract class WinRTApplicationOptions @Inject constructor(
     }
 
     fun bundledJvmRuntime(image: Any? = null) {
-        jvmRuntimeMode.set(WinRTJvmRuntimeMode.Bundled)
+        jvmRuntimeMode.set(WinAppJvmRuntimeMode.Bundled)
         if (image != null) {
             jvmRuntimeImage.set(project.layout.dir(project.provider { project.file(image) }))
         }
     }
 
     fun externalJvmRuntime(home: Any) {
-        jvmRuntimeMode.set(WinRTJvmRuntimeMode.External)
+        jvmRuntimeMode.set(WinAppJvmRuntimeMode.External)
         externalJvmHome.set(project.layout.dir(project.provider { project.file(home) }))
     }
 
@@ -402,8 +433,8 @@ abstract class WinRTApplicationOptions @Inject constructor(
         runTask(name, Action {})
     }
 
-    fun runTask(name: String, action: Action<in RunWinRTApplicationHostTask>) {
-        val registration = WinRTApplicationRunTaskRegistration(name, action)
+    fun runTask(name: String, action: Action<in RunWinAppHostTask>) {
+        val registration = WinAppRunTaskRegistration(name, action)
         runTaskRegistrar?.invoke(registration) ?: run { runTaskRegistrations += registration }
     }
 
@@ -492,7 +523,7 @@ internal fun defaultAppxResourcePackageName(projectName: String): String {
     return "io.github.composefluent.winrt.appx.$module"
 }
 
-enum class WinRTJvmRuntimeMode {
+enum class WinAppJvmRuntimeMode {
     Bundled,
     External,
 }
@@ -504,9 +535,9 @@ enum class WindowsAppSdkDeployment {
     SelfContained,
 }
 
-internal data class WinRTApplicationRunTaskRegistration(
+internal data class WinAppRunTaskRegistration(
     val name: String,
-    val action: Action<in RunWinRTApplicationHostTask>,
+    val action: Action<in RunWinAppHostTask>,
 )
 
 enum class WindowsPackageType {

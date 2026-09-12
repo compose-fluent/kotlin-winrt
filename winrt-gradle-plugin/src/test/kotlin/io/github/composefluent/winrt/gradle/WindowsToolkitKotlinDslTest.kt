@@ -7,7 +7,7 @@ import org.gradle.testkit.runner.TaskOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class KotlinWinRTKotlinDslTest {
+class WindowsToolkitKotlinDslTest {
     @Test
     fun kotlin_dsl_configures_winrt_properties_with_assignment_syntax() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kotlin-dsl-assignment-")
@@ -36,7 +36,7 @@ class KotlinWinRTKotlinDslTest {
             """
             plugins {
                 application
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             application {
@@ -45,16 +45,18 @@ class KotlinWinRTKotlinDslTest {
 
             val configuredMainClass = providers.provider { "sample.Main" }
 
-            winRT {
+            windows {
                 appxResourcePackageName = "sample.appx"
                 winAppCliExecutable = "custom-winapp"
-                restoreNuGetPackages = false
-                useNuGetCliGlobalPackages = false
-                nugetGlobalPackagesRoots = listOf("cache-a", "cache-b")
+                packageReferences {
+                    restoreNuGetPackages = false
+                    useNuGetCliGlobalPackages = false
+                    nugetGlobalPackagesRoots = listOf("cache-a", "cache-b")
 
-                nugetPackage("Sample.Package") {
-                    version = "1.2.3"
-                    generateProjection = false
+                    nugetPackage("Sample.Package") {
+                        version = "1.2.3"
+                        generateProjection = false
+                    }
                 }
 
                 application {
@@ -76,15 +78,15 @@ class KotlinWinRTKotlinDslTest {
             tasks.register("verifyWinRTKotlinDslAssignments") {
                 doLast {
                     val configured = project.extensions.getByType(
-                        io.github.composefluent.winrt.gradle.WinRTExtension::class.java,
+                        io.github.composefluent.winrt.gradle.WindowsExtension::class.java,
                     )
                     check(configured.appxResourcePackageName.get() == "sample.appx")
                     check(configured.winAppCliExecutable.get() == "custom-winapp")
-                    check(!configured.restoreNuGetPackages.get())
-                    check(!configured.useNuGetCliGlobalPackages.get())
-                    check(configured.nugetGlobalPackagesRoots.get() == listOf("cache-a", "cache-b"))
+                    check(!configured.packageReferences.restoreNuGetPackages.get())
+                    check(!configured.packageReferences.useNuGetCliGlobalPackages.get())
+                    check(configured.packageReferences.nugetGlobalPackagesRoots.get() == listOf("cache-a", "cache-b"))
 
-                    val nugetPackage = configured.nugetPackages.getByName("Sample.Package")
+                    val nugetPackage = configured.packageReferences.nugetPackages.getByName("Sample.Package")
                     check(nugetPackage.version.get() == "1.2.3")
                     check(!nugetPackage.generateProjection)
 

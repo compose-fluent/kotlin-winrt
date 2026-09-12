@@ -10,7 +10,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.mavenPublish) apply false
-    id("io.github.compose-fluent.winrt") apply false
+    id("io.github.compose-fluent.windows-toolkit") apply false
     id("winrt.prebuilt-projection") apply false
 }
 

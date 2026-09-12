@@ -9,12 +9,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class WinRTWindowsAppSdkDeploymentJvmTest {
+class WindowsAppSdkDeploymentJvmTest {
     @Test
     fun staged_configuration_preserves_a_nonempty_windows_app_sdk_version_tag() {
         val root = Files.createTempDirectory("kotlin-winrt-staged-windows-app-sdk-")
         Files.writeString(
-            root.resolve("kotlin-winrt-windows-app-sdk.properties"),
+            root.resolve("windows-app-sdk.properties"),
             """
             schemaVersion=1
             majorMinorVersion=65544
@@ -24,9 +24,9 @@ class WinRTWindowsAppSdkDeploymentJvmTest {
         )
 
         // MddBootstrapInitialize2 consumes all three staged version fields.
-        val configuration = WinRTApplicationHostConfiguration.fromStagedRuntimeAssets(
-            packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
-            windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
+        val configuration = WinAppHostConfiguration.fromStagedRuntimeAssets(
+            packageIdentity = WinAppPackageIdentity.Unpackaged,
+            windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.FrameworkDependent,
             runtimeAssetsRoot = kotlinx.io.files.Path(root.toString()),
         )
 
@@ -42,15 +42,15 @@ class WinRTWindowsAppSdkDeploymentJvmTest {
         val rootPath = kotlinx.io.files.Path(root.toString())
 
         assertFailsWith<IllegalArgumentException> {
-            WinRTApplicationHostConfiguration.fromStagedRuntimeAssets(
-                packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
-                windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
+            WinAppHostConfiguration.fromStagedRuntimeAssets(
+                packageIdentity = WinAppPackageIdentity.Unpackaged,
+                windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.FrameworkDependent,
                 runtimeAssetsRoot = rootPath,
             )
         }
 
         Files.writeString(
-            root.resolve("kotlin-winrt-windows-app-sdk.properties"),
+            root.resolve("windows-app-sdk.properties"),
             """
             schemaVersion=2
             majorMinorVersion=65544
@@ -60,9 +60,9 @@ class WinRTWindowsAppSdkDeploymentJvmTest {
         )
 
         assertFailsWith<IllegalStateException> {
-            WinRTApplicationHostConfiguration.fromStagedRuntimeAssets(
-                packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
-                windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
+            WinAppHostConfiguration.fromStagedRuntimeAssets(
+                packageIdentity = WinAppPackageIdentity.Unpackaged,
+                windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.FrameworkDependent,
                 runtimeAssetsRoot = rootPath,
             )
         }
@@ -81,10 +81,10 @@ class WinRTWindowsAppSdkDeploymentJvmTest {
         try {
             runOnFreshPlatformThread {
                 val failure = assertFailsWith<IllegalStateException> {
-                    WinRTWindowsAppSdkDeployment.initialize(
-                        WinRTWindowsAppSdkDeploymentConfiguration(
-                            mode = WinRTWindowsAppSdkDeploymentMode.SelfContained,
-                            packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
+                    WindowsAppSdkDeployment.initialize(
+                        WindowsAppSdkDeploymentConfiguration(
+                            mode = WindowsAppSdkDeploymentMode.SelfContained,
+                            packageIdentity = WinAppPackageIdentity.Unpackaged,
                             runtimeAssetsRoot = kotlinx.io.files.Path(root.toString()),
                         ),
                     )
@@ -96,10 +96,10 @@ class WinRTWindowsAppSdkDeploymentJvmTest {
                 assertEquals(originalValue, platformGetWindowsEnvironmentVariable(environmentVariable))
 
                 // A failed self-contained deployment must release its process owner reservation.
-                val recoveryOwner = WinRTWindowsAppSdkDeployment.initialize(
-                    WinRTWindowsAppSdkDeploymentConfiguration(
-                        mode = WinRTWindowsAppSdkDeploymentMode.ExternallyInitialized,
-                        packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
+                val recoveryOwner = WindowsAppSdkDeployment.initialize(
+                    WindowsAppSdkDeploymentConfiguration(
+                        mode = WindowsAppSdkDeploymentMode.ExternallyInitialized,
+                        packageIdentity = WinAppPackageIdentity.Unpackaged,
                     ),
                 )
                 assertNotNull(recoveryOwner).close()

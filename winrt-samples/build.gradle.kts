@@ -60,7 +60,7 @@ abstract class VerifyWinRTSampleModeTask : DefaultTask() {
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWinUI")
@@ -113,7 +113,7 @@ kotlin {
     }
 }
 
-winRT {
+windows {
     application {
         mainClass = "io.github.composefluent.winrt.samples.MainKt"
         minWindowsVersion = "10.0.19041.0"
@@ -127,6 +127,7 @@ winRT {
         }
     }
     if (sampleWinUIEnabled.get()) {
+        packageReferences {
         val windowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
         type("Windows.Foundation.IStringable")
         type("Windows.Foundation.Point")
@@ -207,6 +208,7 @@ winRT {
         type("Windows.System.VirtualKey")
         type("Windows.UI.Xaml.Interop.Type")
         type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
+        }
     }
 }
 
@@ -218,8 +220,8 @@ val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class)
     val winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
     val mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
     val packages = project.extensions
-        .getByType<io.github.composefluent.winrt.gradle.WinRTExtension>()
-        .nugetPackages
+        .getByType<io.github.composefluent.winrt.gradle.WindowsExtension>()
+        .packageReferences.nugetPackages
         .map { pkg -> pkg.packageId }
 
     winuiEnabled.set(sampleWinUIEnabled)
@@ -261,7 +263,7 @@ val standardSampleSmokeDefaults = mapOf(
 
 val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
+tasks.named<io.github.composefluent.winrt.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
     environmentVariables.put(
         "WEBVIEW2_USER_DATA_FOLDER",
         webView2UserDataRoot.map { it.dir("jvm").asFile.absolutePath },

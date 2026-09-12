@@ -30,13 +30,15 @@ class WindowsSdkSelectionTest {
         createSdk(sdkRoot, "10.0.19041.0")
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'sdk-selection'")
         Files.writeString(root.resolve("build.gradle"), """
-            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
             def selectedSdk = providers.of(io.github.composefluent.winrt.gradle.WindowsSdkVersionValueSource) {
                 parameters.registryRoots.set([file('sdk').absolutePath])
             }
-            winRT.windowsSdkVersion.convention(selectedSdk)
-            winRT {
-                windowsSdk(null, false, false)
+            windows.packageReferences.windowsSdkVersion.convention(selectedSdk)
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, false)
+                }
                 application {
                     mainClass = 'sample.Main'
                     minWindowsVersion = '10.0.17763.0'
@@ -46,11 +48,11 @@ class WindowsSdkSelectionTest {
             tasks.register('writeSdkSelection', WriteProperties) {
                 destinationFile = layout.buildDirectory.file('selected-sdk.properties')
                 property('projection', tasks.named('generateWinRTProjections').get().windowsSdkVersion.get())
-                property('host', tasks.named('buildWinRTApplicationHostDesktop').get().windowsSdkVersion.get())
+                property('host', tasks.named('buildWinAppHostDesktop').get().windowsSdkVersion.get())
                 property('authoringHost', tasks.named('buildWinRTAuthoringHostDesktop').get().windowsSdkVersion.get())
-                property('minimum', winRT.application.minWindowsVersion.get())
-                property('normal', tasks.named('stageWinRTApplicationPackageDesktop').get().maxVersionTested.get())
-                property('dev', tasks.named('stageWinRTApplicationDevelopmentPackageDesktop').get().maxVersionTested.get())
+                property('minimum', windows.application.minWindowsVersion.get())
+                property('normal', tasks.named('stageWinAppPackageDesktop').get().maxVersionTested.get())
+                property('dev', tasks.named('stageWinAppDevelopmentPackageDesktop').get().maxVersionTested.get())
             }
         """.trimIndent())
         fun runner() = GradleRunner.create()

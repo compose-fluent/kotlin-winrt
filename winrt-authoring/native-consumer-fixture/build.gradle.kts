@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 description = "Kotlin/WinRT native authoring dependency staging validation fixture"
@@ -19,20 +19,22 @@ kotlin {
     }
 }
 
-winRT {
-    windowsSdk(generateProjection = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
-        generateProjection = true
+windows {
+    packageReferences {
+        windowsSdk(generateProjection = true)
+        nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+            generateProjection = true
+        }
+        type("Windows.Foundation.IClosable")
+        type("Windows.Foundation.IStringable")
+        type("Windows.Data.Json.IJsonValue")
+        type("Windows.Data.Json.JsonValue")
+        type("Windows.Foundation.Collections.IPropertySet")
+        type("Windows.Storage.Streams.IDataReader")
+        type("Microsoft.UI.Xaml.Controls.Control")
+        type("Microsoft.UI.Xaml.Controls.ContentControl")
+        type("sample.NativeJsonValueThing")
     }
-    type("Windows.Foundation.IClosable")
-    type("Windows.Foundation.IStringable")
-    type("Windows.Data.Json.IJsonValue")
-    type("Windows.Data.Json.JsonValue")
-    type("Windows.Foundation.Collections.IPropertySet")
-    type("Windows.Storage.Streams.IDataReader")
-    type("Microsoft.UI.Xaml.Controls.Control")
-    type("Microsoft.UI.Xaml.Controls.ContentControl")
-    type("sample.NativeJsonValueThing")
     application {
         mainClass = "sample.consumer.MainKt"
         generateProjectPri = false
@@ -40,12 +42,12 @@ winRT {
 }
 
 tasks.named("runReleaseExecutableMingwX64") {
-    dependsOn("stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable")
+    dependsOn("stageWindowsPackageRuntimeAssetsMingwX64MainReleaseExecutable")
 }
 
 val stagedRuntimeAssets = tasks.named(
-    "stageWinRTRuntimeAssetsMingwX64MainReleaseExecutable",
-    io.github.composefluent.winrt.gradle.StageWinRTRuntimeAssetsTask::class,
+    "stageWindowsPackageRuntimeAssetsMingwX64MainReleaseExecutable",
+    io.github.composefluent.winrt.gradle.StageWindowsPackageRuntimeAssetsTask::class,
 )
 
 val verifyNativeAuthoringConsumerFixture by tasks.registering(

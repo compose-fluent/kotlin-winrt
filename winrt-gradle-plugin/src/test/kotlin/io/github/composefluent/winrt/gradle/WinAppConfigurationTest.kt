@@ -9,11 +9,11 @@ class WinAppConfigurationTest {
     @Test
     fun sdk_toolchain_revision_is_explicit_and_independent_from_manifest_os_versions() {
         val project = org.gradle.testfixtures.ProjectBuilder.builder().build()
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.windowsSdk("10.0.26100.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.windowsSdk("10.0.26100.0")
         extension.windowsSdkToolsVersion.set("10.0.26100.4654")
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
         val task = project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).get()
         task.generate()
         val yaml = java.nio.file.Files.readString(task.outputFile.get().asFile.toPath())

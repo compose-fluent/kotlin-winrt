@@ -24,7 +24,7 @@ import javax.inject.Inject
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
-abstract class BuildWinRTApplicationHostTask : DefaultTask() {
+abstract class BuildWinAppHostTask : DefaultTask() {
     @get:Inject
     protected abstract val providers: ProviderFactory
 
@@ -40,7 +40,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
     init {
         packageType.convention(WindowsPackageType.Packaged.name)
         applicationVariant.convention("jvm:main")
-        jvmRuntimeMode.convention(WinRTJvmRuntimeMode.Bundled.name)
+        jvmRuntimeMode.convention(WinAppJvmRuntimeMode.Bundled.name)
         externalJvmHome.convention("")
         expectedJavaMajor.convention(25)
         console.convention(false)
@@ -129,18 +129,18 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
         val mainClassValue = mainClass.orNull?.takeIf(String::isNotBlank)
-            ?: throw IllegalStateException("Kotlin/WinRT application host requires an application mainClass.")
+            ?: throw IllegalStateException("WinApp host requires an application mainClass.")
         val runtimeMode = jvmRuntimeMode.get()
         val externalHome = externalJvmHome.orNull?.trim().orEmpty()
-        if (runtimeMode == WinRTJvmRuntimeMode.External.name && externalHome.isBlank()) {
+        if (runtimeMode == WinAppJvmRuntimeMode.External.name && externalHome.isBlank()) {
             throw IllegalStateException(
                 "External JVM runtime mode requires application.externalJvmHome to point to a JVM home.",
             )
         }
-        if (runtimeMode == WinRTJvmRuntimeMode.External.name) {
+        if (runtimeMode == WinAppJvmRuntimeMode.External.name) {
             validateExternalJvmHome(Path.of(externalHome))
         }
-        val configuredRuntimeImage = if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name) {
+        val configuredRuntimeImage = if (runtimeMode == WinAppJvmRuntimeMode.Bundled.name) {
             runtimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
         } else {
             null
@@ -169,7 +169,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
                 ),
             )
             if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
-                logger.warn("Kotlin/WinRT application launcher compilation is Windows-only; generated source without compiling EXE.")
+                logger.warn("WinApp launcher compilation is Windows-only; generated source without compiling EXE.")
                 return
             }
             val toolchain = nativeToolchain.get()
@@ -186,7 +186,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         // Host compilation is Windows-only. On other hosts this task still emits the source
         // used by TestKit and cross-platform configuration checks, but it cannot consume a
         // Windows JVM image or compile the native launcher.
-        if (runtimeMode == WinRTJvmRuntimeMode.Bundled.name && isWindowsHost()) {
+        if (runtimeMode == WinAppJvmRuntimeMode.Bundled.name && isWindowsHost()) {
             stageRuntimeImage(outputRoot)
         }
         Files.writeString(
@@ -201,14 +201,14 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         )
         stageRuntimeClasspath(outputRoot)
         stageRuntimeAssets(outputRoot)
-        WinRTApplicationManifestGenerator.writeApplicationManifest(
+        WinAppManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
-            winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+            windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
             redirectDlls = packageType.get() != WindowsPackageType.Packaged.name,
         )
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
-            logger.warn("Kotlin/WinRT application host native EXE build is Windows-only; generated source without compiling EXE.")
+            logger.warn("WinApp host native EXE build is Windows-only; generated source without compiling EXE.")
             return
         }
         val toolchain = nativeToolchain.get()
@@ -256,7 +256,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         val source = runtimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
             ?: throw IllegalStateException(
                 "Bundled JVM runtime image is missing. Configure application.jvmRuntimeImage or ensure the " +
-                    "prepareWinRTJvmRuntimeImage task is wired before building the application host.",
+                    "prepareWinAppJvmRuntimeImage task is wired before building the application host.",
             )
         if (!source.isDirectory()) {
             throw IllegalStateException("Bundled JVM runtime image is not a directory: $source")
@@ -406,7 +406,7 @@ abstract class BuildWinRTApplicationHostTask : DefaultTask() {
         }
         val result = toolchain.compile(arguments, output.parent)
         if (result.exitCode != 0) {
-            throw IllegalStateException("Kotlin/WinRT application host build failed with exit code ${result.exitCode}.\n${result.output}")
+            throw IllegalStateException("WinApp host build failed with exit code ${result.exitCode}.\n${result.output}")
         }
     }
 }
@@ -427,7 +427,7 @@ internal fun applicationHostSource(
     val externalJvmHomePath = externalJvmHome
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
-    val bundledRuntime = runtimeMode == WinRTJvmRuntimeMode.Bundled.name
+    val bundledRuntime = runtimeMode == WinAppJvmRuntimeMode.Bundled.name
     val bundledRuntimeCondition = if (bundledRuntime) "1" else "0"
     return """
     #define WIN32_LEAN_AND_MEAN
@@ -629,7 +629,7 @@ internal fun applicationHostSource(
     }
 
     static jobject kotlin_winrt_initialize_application_host(JNIEnv *env) {
-        jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkLauncherSupport");
+        jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WindowsAppSdkLauncherSupport");
         jmethodID initialize;
         jstring package_identity;
         jstring deployment_mode;
@@ -682,7 +682,7 @@ internal fun applicationHostSource(
             return 0;
         }
         failed |= kotlin_winrt_handle_pending_exception(env);
-        support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkLauncherSupport");
+        support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WindowsAppSdkLauncherSupport");
         if (support_class == NULL) {
             failed |= kotlin_winrt_handle_pending_exception(env);
             return 1;

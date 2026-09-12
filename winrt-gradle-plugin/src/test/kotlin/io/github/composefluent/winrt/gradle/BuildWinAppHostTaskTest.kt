@@ -4,13 +4,13 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class BuildWinRTApplicationHostTaskTest {
+class BuildWinAppHostTaskTest {
     @Test
     fun generated_host_uses_c_integer_condition_for_bundled_runtime() {
         val source = applicationHostSource(
             mainClass = "sample.MainKt",
             packageType = WindowsPackageType.Packaged.name,
-            runtimeMode = WinRTJvmRuntimeMode.Bundled.name,
+            runtimeMode = WinAppJvmRuntimeMode.Bundled.name,
             externalJvmHome = "",
         )
 
@@ -28,7 +28,7 @@ class BuildWinRTApplicationHostTaskTest {
         val source = applicationHostSource(
             mainClass = "sample.MainKt",
             packageType = WindowsPackageType.None.name,
-            runtimeMode = WinRTJvmRuntimeMode.External.name,
+            runtimeMode = WinAppJvmRuntimeMode.External.name,
             externalJvmHome = "C:\\Program Files\\Java\\jdk",
         )
 

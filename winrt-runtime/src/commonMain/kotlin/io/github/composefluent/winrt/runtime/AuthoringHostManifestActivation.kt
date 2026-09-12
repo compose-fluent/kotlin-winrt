@@ -55,8 +55,7 @@ internal object AuthoringHostManifestActivation {
     private fun runtimeAssetsRootCandidates(): List<String> =
         listOf(
             runtimeAssetsDirectoryName,
-            "kotlin-winrt/runtime-assets",
-            "build/kotlin-winrt/runtime-assets",
+            "build/$runtimeAssetsDirectoryName",
         )
 
     private fun readJsonString(content: String, name: String): String? =
@@ -97,5 +96,5 @@ internal object AuthoringHostManifestActivation {
     private fun failure(): ActivationResult =
         ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
 
-    private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"
+    private const val runtimeAssetsDirectoryName = "windows-package-runtime-assets"
 }

@@ -18,7 +18,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 @DisableCachingByDefault(because = "Installing app packages mutates the local Windows user profile.")
-abstract class InstallWinRTApplicationPackageTask : DefaultTask() {
+abstract class InstallWinAppPackageTask : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packageFile: RegularFileProperty

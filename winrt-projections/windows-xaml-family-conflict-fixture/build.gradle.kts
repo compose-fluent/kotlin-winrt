@@ -2,7 +2,7 @@ import io.github.composefluent.winrt.gradle.GenerateWinRTProjectionsTask
 
 plugins {
     kotlin("multiplatform") version "2.4.0"
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 repositories {

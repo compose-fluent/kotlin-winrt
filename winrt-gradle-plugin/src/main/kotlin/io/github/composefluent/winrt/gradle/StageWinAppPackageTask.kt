@@ -28,7 +28,7 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
 @CacheableTask
-abstract class StageWinRTApplicationPackageTask : DefaultTask() {
+abstract class StageWinAppPackageTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val runtimeAssetsDirectory: DirectoryProperty
@@ -276,10 +276,10 @@ abstract class StageWinRTApplicationPackageTask : DefaultTask() {
             runtimeIdentifier = runtimeIdentifier.get(),
             includeFrameworkDependencies = includeFrameworkPackageDependencies.get(),
         )
-        WinRTApplicationManifestGenerator.writeApplicationManifest(
+        WinAppManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
-            winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+            windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
             redirectDlls = false,
         )
         val generatedPri = generateProjectPri(

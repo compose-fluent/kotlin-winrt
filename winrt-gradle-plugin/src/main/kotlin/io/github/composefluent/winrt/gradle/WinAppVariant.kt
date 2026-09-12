@@ -10,14 +10,14 @@ import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 import java.util.Locale
 
 /** The only native application target currently supported by the packaging pipeline. */
-internal enum class WinRTApplicationVariantKind {
+internal enum class WinAppVariantKind {
     Jvm,
     MingwX64,
 }
 
-internal data class WinRTApplicationVariant(
+internal data class WinAppVariant(
     val id: String,
-    val kind: WinRTApplicationVariantKind,
+    val kind: WinAppVariantKind,
     val targetName: String,
     val compilationName: String,
     val sourceSetName: String,
@@ -27,13 +27,13 @@ internal data class WinRTApplicationVariant(
 )
 
 /** Stable resource-variant identity shared by producers and consumers with different local names. */
-internal fun WinRTApplicationVariant.appxResourceTargetIdentity(): String = when (kind) {
-    WinRTApplicationVariantKind.Jvm -> appxResourceTargetIdentity(kind, compilationName)
-    WinRTApplicationVariantKind.MingwX64 -> appxResourceTargetIdentity(kind, compilationName)
+internal fun WinAppVariant.appxResourceTargetIdentity(): String = when (kind) {
+    WinAppVariantKind.Jvm -> appxResourceTargetIdentity(kind, compilationName)
+    WinAppVariantKind.MingwX64 -> appxResourceTargetIdentity(kind, compilationName)
 }
 
 @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
-internal fun WinRTApplicationVariant.compilationTaskNames(project: Project): Set<String> {
+internal fun WinAppVariant.compilationTaskNames(project: Project): Set<String> {
     val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java)
         ?: return setOf("compileKotlin")
     val compilation = kotlin.targets.getByName(targetName).compilations.getByName(compilationName)
@@ -41,22 +41,22 @@ internal fun WinRTApplicationVariant.compilationTaskNames(project: Project): Set
 }
 
 internal fun appxResourceTargetIdentity(
-    kind: WinRTApplicationVariantKind,
+    kind: WinAppVariantKind,
     compilationName: String,
 ): String = when (kind) {
-    WinRTApplicationVariantKind.Jvm -> "jvm:${compilationName.lowercase(Locale.ROOT)}"
-    WinRTApplicationVariantKind.MingwX64 -> "mingw_x64:${compilationName.lowercase(Locale.ROOT)}"
+    WinAppVariantKind.Jvm -> "jvm:${compilationName.lowercase(Locale.ROOT)}"
+    WinAppVariantKind.MingwX64 -> "mingw_x64:${compilationName.lowercase(Locale.ROOT)}"
 }
 
-internal fun resolveWinRTApplicationVariant(
+internal fun resolveWinAppVariant(
     project: Project,
-    options: NamedWinRTApplicationOptions,
-): WinRTApplicationVariant {
-    val candidates = discoverWinRTApplicationVariants(project)
+    options: NamedWinAppOptions,
+): WinAppVariant {
+    val candidates = discoverWinAppVariants(project)
     val variantId = options.variantName.orNull.orEmpty().trim()
     if (variantId.isBlank()) {
         throw GradleException(
-            "Named Kotlin/WinRT application '${options.name}' requires an explicit variantName. " +
+            "Named WinApp '${options.name}' requires an explicit variantName. " +
                 "Use a full Kotlin variant ID, such as 'desktop:main' or 'mingwX64:main:releaseExecutable'. " +
                 "Available candidates:${System.lineSeparator()}${candidates.describe()}",
         )
@@ -70,18 +70,18 @@ internal fun resolveWinRTApplicationVariant(
 
 // CsWinRT's application projects leave Configuration/Platform ownership to the build system
 // (.cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp). Here KGP owns targets and executable build types.
-internal val WinRTApplicationVariant.isDefaultApplicationVariant: Boolean
-    get() = kind == WinRTApplicationVariantKind.MingwX64 || compilationName == KotlinCompilation.MAIN_COMPILATION_NAME
+internal val WinAppVariant.isDefaultApplicationVariant: Boolean
+    get() = kind == WinAppVariantKind.MingwX64 || compilationName == KotlinCompilation.MAIN_COMPILATION_NAME
 
-internal fun defaultWinRTApplicationVariants(project: Project): List<WinRTApplicationVariant> =
-    discoverWinRTApplicationVariants(project).filter { it.isDefaultApplicationVariant }
+internal fun defaultWinAppVariants(project: Project): List<WinAppVariant> =
+    discoverWinAppVariants(project).filter { it.isDefaultApplicationVariant }
 
-internal fun jvmWinRTApplicationVariant(
+internal fun jvmWinAppVariant(
     target: KotlinJvmTarget,
     compilation: KotlinCompilation<*>,
-): WinRTApplicationVariant = WinRTApplicationVariant(
+): WinAppVariant = WinAppVariant(
     id = "${target.name}:${compilation.name}",
-    kind = WinRTApplicationVariantKind.Jvm,
+    kind = WinAppVariantKind.Jvm,
     targetName = target.name,
     compilationName = compilation.name,
     sourceSetName = compilation.defaultSourceSet.name,
@@ -90,14 +90,14 @@ internal fun jvmWinRTApplicationVariant(
     runtimeIdentifier = currentWindowsRuntimeIdentifier(),
 )
 
-internal fun mingwWinRTApplicationVariant(
+internal fun mingwWinAppVariant(
     target: KotlinNativeTarget,
     executable: Executable,
-): WinRTApplicationVariant {
+): WinAppVariant {
     val compilation = executable.compilation
-    return WinRTApplicationVariant(
+    return WinAppVariant(
         id = "${target.name}:${compilation.name}:${executable.name}",
-        kind = WinRTApplicationVariantKind.MingwX64,
+        kind = WinAppVariantKind.MingwX64,
         targetName = target.name,
         compilationName = compilation.name,
         sourceSetName = compilation.defaultSourceSet.name,
@@ -107,15 +107,15 @@ internal fun mingwWinRTApplicationVariant(
     )
 }
 
-internal fun discoverWinRTApplicationVariants(project: Project): List<WinRTApplicationVariant> {
+internal fun discoverWinAppVariants(project: Project): List<WinAppVariant> {
     val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java)
     if (kotlin == null) {
         // A Kotlin/JVM or Java application has one logical JVM variant. The classpath is wired
         // by the existing Java/Kotlin plugin callbacks, so no synthetic native candidate is made.
         return listOf(
-            WinRTApplicationVariant(
+            WinAppVariant(
                 id = "jvm:main",
-                kind = WinRTApplicationVariantKind.Jvm,
+                kind = WinAppVariantKind.Jvm,
                 targetName = "jvm",
                 compilationName = "main",
                 sourceSetName = "main",
@@ -126,17 +126,17 @@ internal fun discoverWinRTApplicationVariants(project: Project): List<WinRTAppli
         )
     }
 
-    val candidates = mutableListOf<WinRTApplicationVariant>()
+    val candidates = mutableListOf<WinAppVariant>()
     kotlin.targets.withType(KotlinJvmTarget::class.java).forEach { target ->
         target.compilations.forEach { compilation ->
-            candidates += jvmWinRTApplicationVariant(target, compilation)
+            candidates += jvmWinAppVariant(target, compilation)
         }
     }
     kotlin.targets.withType(KotlinNativeTarget::class.java)
         .filter(KotlinNativeTarget::isMingwX64Target)
         .forEach { target ->
             target.binaries.withType(Executable::class.java).forEach { executable ->
-                candidates += mingwWinRTApplicationVariant(target, executable)
+                candidates += mingwWinAppVariant(target, executable)
             }
         }
     return candidates.sortedBy { it.id.lowercase() }
@@ -151,7 +151,7 @@ internal fun String.toSafeDirectoryName(): String =
         }
     }.joinToString("").trim('_').ifBlank { "default" }
 
-private fun Iterable<WinRTApplicationVariant>.describe(): String =
+private fun Iterable<WinAppVariant>.describe(): String =
     joinToString(System.lineSeparator()) { candidate ->
         "- ${candidate.id} (${candidate.kind.name}, sourceSet=${candidate.sourceSetName}" +
             candidate.buildType?.let { ", buildType=$it" }.orEmpty() +

@@ -32,7 +32,7 @@ internal class StaticPreparationUnavailable(message: String) : RuntimeException(
  */
 internal fun prepareWinRTStaticProjectionSources(
     project: Project,
-    extension: BaseWinRTExtension,
+    extension: PackageReferencesConfiguration,
     dependencyIdentityFiles: Iterable<java.io.File>,
     generatedOutputDirectory: Provider<Directory>,
     supportOwnerIdentity: String,
@@ -60,7 +60,7 @@ internal fun prepareWinRTStaticProjectionSources(
     val effectiveIncludeTypes = extension.includeTypes.get() +
         automaticXamlComponentResourceDictionaryTypes(model, extension.includeTypes.get().toSet())
     val dependencySurfaceTypes = dependencyProjectionSurfaceTypeNames(identityFiles)
-    val applicationPackagingOnly = extension is WinRTExtension &&
+    val applicationPackagingOnly = extension is WindowsExtension &&
         extension.applicationEnabled.get() &&
         extension.metadataInputs.get().isEmpty() &&
         extension.includeNamespaces.get().isEmpty() &&
@@ -133,7 +133,7 @@ internal fun prepareWinRTStaticProjectionSources(
 
 private fun preparedStaticProjectionKey(
     files: List<Path>,
-    extension: BaseWinRTExtension,
+    extension: PackageReferencesConfiguration,
     identityFiles: List<java.io.File>,
     supportOwnerIdentity: String,
     project: Project,

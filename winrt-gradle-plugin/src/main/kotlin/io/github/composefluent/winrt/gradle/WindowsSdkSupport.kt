@@ -82,7 +82,7 @@ internal fun windowsSdkArchitecture(runtimeIdentifier: String): String {
     }
 }
 
-internal fun winRTManifestProcessorArchitecture(runtimeIdentifier: String): String {
+internal fun windowsManifestProcessorArchitecture(runtimeIdentifier: String): String {
     val rid = runtimeIdentifier.lowercase()
     return when {
         rid.endsWith("-arm64") -> "arm64"

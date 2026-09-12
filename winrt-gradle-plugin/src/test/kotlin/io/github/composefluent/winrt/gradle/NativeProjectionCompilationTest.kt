@@ -37,19 +37,19 @@ class NativeProjectionCompilationTest {
         write("base/build.gradle", """
             plugins {
                 id 'org.jetbrains.kotlin.multiplatform'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
                 id 'maven-publish'
             }
             group = 'test.winrt.w9'
             version = '1.0'
             kotlin { mingwX64() }
-            winRT { windowsSdk(null, false, true); type 'Windows.Foundation.IClosable' }
+            windows { packageReferences { windowsSdk(null, false, true); type 'Windows.Foundation.IClosable' } }
             publishing.repositories.maven { name = 'W9'; url = uri('$fixturePath/repository') }
         """)
         write("producer/build.gradle", """
             plugins {
                 id 'org.jetbrains.kotlin.multiplatform'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
                 id 'maven-publish'
             }
             group = 'test.winrt.w9'
@@ -58,10 +58,12 @@ class NativeProjectionCompilationTest {
                 mingwX64()
                 sourceSets.commonMain.dependencies { api project(':w9Base') }
             }
-            winRT {
-                windowsSdk(null, false, true)
-                type 'Windows.Foundation.Uri'
-                type 'Windows.Foundation.IStringable'
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type 'Windows.Foundation.Uri'
+                    type 'Windows.Foundation.IStringable'
+                }
             }
             publishing.repositories.maven { name = 'W9'; url = uri('$fixturePath/repository') }
         """)
@@ -81,7 +83,7 @@ class NativeProjectionCompilationTest {
         write("consumer/build.gradle", """
             plugins {
                 id 'org.jetbrains.kotlin.multiplatform'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
             repositories { maven { url = uri('$fixturePath/repository') }; mavenCentral() }
             configurations.configureEach {

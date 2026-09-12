@@ -49,7 +49,7 @@ import java.nio.ByteOrder
 import java.util.Base64
 import java.util.jar.JarFile
 
-class KotlinWinRTPluginTest {
+class WindowsToolkitPluginTest {
     @Test
     fun memoized_provider_computes_its_value_once() {
         val project = ProjectBuilder.builder().build()
@@ -100,7 +100,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
             """.trimIndent(),
         )
@@ -228,12 +228,14 @@ class KotlinWinRTPluginTest {
             }
 
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
             """.trimIndent(),
         )
@@ -302,13 +304,15 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                nugetPackage "$packageId", "$packageVersion"
-                namespace "Sample"
-                restoreNuGetPackages.set(false)
+            windows {
+                packageReferences {
+                    nugetPackage "$packageId", "$packageVersion"
+                    namespace "Sample"
+                    restoreNuGetPackages.set(false)
+                }
             }
 
             tasks.named("generateWinRTProjections") {
@@ -359,27 +363,27 @@ class KotlinWinRTPluginTest {
         Files.createDirectories(nugetPackageRoot.resolve("lib/net8.0"))
         Files.writeString(nugetPackageRoot.resolve("lib/net8.0/Microsoft.UI.Xaml.winmd"), "metadata")
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.namespace("Windows.Foundation")
-        extension.type("Windows.Foundation.IStringable")
-        extension.excludeNamespace("Sample.Hidden")
-        extension.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
-        extension.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
-        extension.winmd("sdk+")
-        extension.windowsSdk("10.0.26100.0", includeExtensions = true, generateProjection = true)
-        extension.nugetExecutable.set("nuget.exe")
-        extension.nugetCliVersion.set("7.3.1")
-        extension.restoreNuGetPackages.set(false)
-        extension.useNuGetCliGlobalPackages.set(false)
-        extension.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
-        extension.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.namespace("Windows.Foundation")
+        extension.packageReferences.type("Windows.Foundation.IStringable")
+        extension.packageReferences.excludeNamespace("Sample.Hidden")
+        extension.packageReferences.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
+        extension.packageReferences.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
+        extension.packageReferences.winmd("sdk+")
+        extension.packageReferences.windowsSdk("10.0.26100.0", includeExtensions = true, generateProjection = true)
+        extension.packageReferences.nugetExecutable.set("nuget.exe")
+        extension.packageReferences.nugetCliVersion.set("7.3.1")
+        extension.packageReferences.restoreNuGetPackages.set(false)
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
+        extension.application.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
             pkg.generateProjection = true
         }
-        extension.namespace("Microsoft")
-        extension.type("Windows.UI.Xaml.Interop.Type")
-        extension.excludeNamespace("Windows")
+        extension.packageReferences.namespace("Microsoft")
+        extension.packageReferences.type("Windows.UI.Xaml.Interop.Type")
+        extension.packageReferences.excludeNamespace("Windows")
 
         val task = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
 
@@ -406,7 +410,7 @@ class KotlinWinRTPluginTest {
         assertEquals(false, task.useNuGetCliGlobalPackages.get())
         assertEquals(
             listOf(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath),
-            project.extensions.getByType(WinRTExtension::class.java).runtimeAssets.get(),
+            project.extensions.getByType(WindowsExtension::class.java).runtimeAssets.get(),
         )
         assertEquals(
             listOf("Microsoft.WindowsAppSDK@1.8.260416003"),
@@ -486,7 +490,7 @@ class KotlinWinRTPluginTest {
         ProjectBuilder.builder().withParent(root).withName("winrt-generator").build()
         val project = ProjectBuilder.builder().withParent(root).withName("app").build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val generatorWorkerConfiguration = project.configurations.getByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
         val projectDependencyPaths = generatorWorkerConfiguration.dependencies
@@ -503,10 +507,10 @@ class KotlinWinRTPluginTest {
     fun microsoft_nuget_packages_default_to_local_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
-        extension.nugetPackage("Microsoft.Windows.SDK.NET.Ref", "10.0.26100.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+        extension.packageReferences.nugetPackage("Microsoft.Windows.SDK.NET.Ref", "10.0.26100.0")
 
         val generationTask = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
         val identityTask = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
@@ -525,9 +529,9 @@ class KotlinWinRTPluginTest {
     fun ordinary_nuget_package_defaults_to_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.nugetPackage("Sample.Package", "1.0.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.nugetPackage("Sample.Package", "1.0.0")
 
         val generationTask = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
         val identityTask = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
@@ -539,8 +543,8 @@ class KotlinWinRTPluginTest {
     @Test
     fun application_without_windows_app_sdk_dependency_keeps_auto_configuration() {
         val project = ProjectBuilder.builder().withName("pure-winrt-app").build()
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
 
         extension.application { application ->
             application.mainClass.set("sample.MainKt")
@@ -552,8 +556,8 @@ class KotlinWinRTPluginTest {
         )
 
         val host = project.tasks.named(
-            "buildWinRTApplicationHostJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "buildWinAppHostJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
         assertEquals(WindowsAppSdkDeployment.None, host.windowsAppSdkDeployment.get())
     }
@@ -562,16 +566,16 @@ class KotlinWinRTPluginTest {
     fun auto_deployment_selects_framework_dependent_for_windows_app_sdk_packages() {
         val project = ProjectBuilder.builder().withName("winui-app").build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
         extension.application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
         val host = project.tasks.named(
-            "buildWinRTApplicationHostJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "buildWinAppHostJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
         assertEquals(WindowsAppSdkDeployment.Auto, extension.application.windowsAppSdkDeployment.get())
         assertEquals(WindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
@@ -581,16 +585,16 @@ class KotlinWinRTPluginTest {
     fun auto_deployment_selects_framework_dependent_for_windows_app_sdk_winui_split_package() {
         val project = ProjectBuilder.builder().withName("winui-split-package-app").build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.nugetPackage("Microsoft.WindowsAppSDK.WinUI", "2.2.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK.WinUI", "2.2.0")
         extension.application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
         val host = project.tasks.named(
-            "buildWinRTApplicationHostJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "buildWinAppHostJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
         assertEquals(WindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
     }
@@ -599,18 +603,18 @@ class KotlinWinRTPluginTest {
     fun auto_deployment_falls_back_to_self_contained_when_restore_cannot_supply_framework_bootstrap() {
         val project = ProjectBuilder.builder().withName("winui-self-contained-fallback").build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.restoreNuGetPackages.set(false)
-        extension.useNuGetCliGlobalPackages.set(false)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.restoreNuGetPackages.set(false)
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
         extension.application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
         val host = project.tasks.named(
-            "buildWinRTApplicationHostJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "buildWinAppHostJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
         assertEquals(WindowsAppSdkDeployment.SelfContained, host.windowsAppSdkDeployment.get())
     }
@@ -619,8 +623,8 @@ class KotlinWinRTPluginTest {
     fun auto_deployment_uses_explicit_framework_bootstrap_when_restore_is_disabled() {
         val project = ProjectBuilder.builder().withName("winui-explicit-bootstrap").build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
         val bootstrap = project.layout.buildDirectory
             .file("runtime-assets/Microsoft.WindowsAppRuntime.Bootstrap.dll")
             .get()
@@ -628,17 +632,17 @@ class KotlinWinRTPluginTest {
             .toPath()
         Files.createDirectories(bootstrap.parent)
         Files.writeString(bootstrap, "bootstrap")
-        extension.restoreNuGetPackages.set(false)
-        extension.useNuGetCliGlobalPackages.set(false)
-        extension.runtimeAsset(bootstrap)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        extension.packageReferences.restoreNuGetPackages.set(false)
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.application.runtimeAsset(bootstrap)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
         extension.application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
         val host = project.tasks.named(
-            "buildWinRTApplicationHostJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "buildWinAppHostJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
         assertEquals(WindowsAppSdkDeployment.FrameworkDependent, host.windowsAppSdkDeployment.get())
     }
@@ -647,9 +651,9 @@ class KotlinWinRTPluginTest {
     fun prebuilt_nuget_package_can_opt_out_of_local_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
             pkg.generateProjection = false
         }
 
@@ -675,17 +679,17 @@ class KotlinWinRTPluginTest {
         Files.writeString(thirdPartyPackageRoot.resolve("lib/net8.0/Sample.Package.winmd"), "metadata")
         Files.writeString(preprojectedPackageRoot.resolve("lib/net8.0/Microsoft.UI.Xaml.winmd"), "metadata")
 
-        dependency.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        dependency.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         app.pluginManager.apply("java")
-        app.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        app.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         app.dependencies.add("implementation", dependency)
-        val extension = app.extensions.getByType(WinRTExtension::class.java)
-        extension.winmd(winmd)
-        extension.nugetGlobalPackagesRoots.add(app.projectDir.toPath().resolve("nuget-cache").toString())
-        extension.restoreNuGetPackages.set(false)
-        extension.useNuGetCliGlobalPackages.set(false)
-        extension.nugetPackage("Sample.Package", "1.0.0")
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
+        val extension = app.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.winmd(winmd)
+        extension.packageReferences.nugetGlobalPackagesRoots.add(app.projectDir.toPath().resolve("nuget-cache").toString())
+        extension.packageReferences.restoreNuGetPackages.set(false)
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.nugetPackage("Sample.Package", "1.0.0")
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
             pkg.generateProjection = true
         }
 
@@ -709,9 +713,9 @@ class KotlinWinRTPluginTest {
     fun windows_sdk_defaults_to_no_projection_generation() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.windowsSdk("10.0.26100.0", includeExtensions = true)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.windowsSdk("10.0.26100.0", includeExtensions = true)
 
         val generationTask = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
         val identityTask = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
@@ -728,7 +732,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val implementationDependencies = project.configurations.getByName("implementation").dependencies
         assertHasKotlinWinRTRuntimeDependency(implementationDependencies)
@@ -740,7 +744,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         assertDoesNotHaveKotlinWinRTRuntimeDependency(
             project.configurations.getByName("commonMainImplementation").dependencies,
@@ -758,7 +762,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val implementationDependencies = project.configurations.getByName("winuiMainImplementation").dependencies
         assertHasKotlinWinRTRuntimeDependency(implementationDependencies)
@@ -772,7 +776,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val implementationDependencies = project.configurations.getByName("winuiMainImplementation").dependencies
         assertHasKotlinWinRTAuthoringDependency(implementationDependencies)
@@ -784,7 +788,7 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val implementationDependencies = project.configurations.getByName("winuiJvmMainImplementation").dependencies
         assertHasKotlinWinRTAuthoringDependency(implementationDependencies)
@@ -795,7 +799,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val compileTask = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java).get()
         val outputPaths = compileTask.outputs.files.files
@@ -822,8 +826,8 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.jvmToolchain(21)
         }
 
@@ -839,7 +843,7 @@ class KotlinWinRTPluginTest {
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
         val target = kotlin.mingwX64()
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val winmd = project.file("Sample.winmd").toPath()
         WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
             assemblyName = "Sample",
@@ -850,7 +854,7 @@ class KotlinWinRTPluginTest {
             runtimeClasses = emptyList(),
             outputFile = winmd,
         )
-        project.extensions.getByType(WinRTExtension::class.java).apply {
+        project.extensions.getByType(WindowsExtension::class.java).packageReferences.apply {
             metadataInputs.set(listOf(winmd.toString()))
             type("Sample.IProbe")
         }
@@ -881,8 +885,8 @@ class KotlinWinRTPluginTest {
         assertTrue(producer.compilerOptions.freeCompilerArgs.get().any { it.endsWith("projectionSupportMode=embedded") })
         assertTrue(consumer.compilerOptions.freeCompilerArgs.get().any { it.endsWith("projectionSupportMode=external") })
         assertFalse(producer.produceUnpackagedKlib.get())
-        assertFalse(project.tasks.names.contains("generateWinRTAppxResourcesMingwX64WinRTProjection"))
-        assertFalse(project.tasks.names.contains("packageWinRTAppxResourcesMingwX64WinRTProjection"))
+        assertFalse(project.tasks.names.contains("generateAppxResourcesMingwX64WinRTProjection"))
+        assertFalse(project.tasks.names.contains("packageAppxResourcesMingwX64WinRTProjection"))
         val published = project.configurations.getByName(target.apiElementsConfigurationName)
             .outgoing.artifacts.single { it.classifier == "winrt-projection" }
         assertEquals(producer.outputFile.get(), published.file)
@@ -899,7 +903,7 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64("winuiMingw")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val compileTask = project.tasks.named("compileKotlinWinuiMingw").get() as KotlinNativeCompile
         val compilerArgs = compileTask.compilerOptions.freeCompilerArgs.get()
@@ -922,7 +926,7 @@ class KotlinWinRTPluginTest {
                 sharedLib()
             }
         }
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val sourceSet = kotlin.targets.getByName("winuiMingw").compilations.getByName("main").defaultSourceSet
         assertTrue(
@@ -976,8 +980,8 @@ class KotlinWinRTPluginTest {
             "jar",
             "assemble",
             "processResources",
-            "stageWinRTRuntimeAssets",
-            "stageWinRTApplicationPackage",
+            "stageWindowsPackageRuntimeAssets",
+            "stageWinAppPackage",
         )
         lifecycleTaskNames
             .filter { taskName -> taskName in project.tasks.names }
@@ -1060,7 +1064,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("mapped-component").build()
         project.version = "1.2.3"
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val task = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
 
@@ -1068,19 +1072,19 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun winrt_extension_defaults_to_library_and_application_block_selects_application_model() {
+    fun windows_extension_defaults_to_library_and_application_block_selects_application_model() {
         val libraryProject = ProjectBuilder.builder().build()
-        libraryProject.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        assertFalse(libraryProject.extensions.getByType(WinRTExtension::class.java).applicationEnabled.get())
+        libraryProject.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        assertFalse(libraryProject.extensions.getByType(WindowsExtension::class.java).applicationEnabled.get())
         assertEquals(
             KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION,
             libraryProject.extensions.extraProperties["kotlinWinRTIdentityElements"],
         )
 
         val applicationProject = ProjectBuilder.builder().build()
-        applicationProject.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        applicationProject.extensions.getByType(WinRTExtension::class.java).application {}
-        assertTrue(applicationProject.extensions.getByType(WinRTExtension::class.java).applicationEnabled.get())
+        applicationProject.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        applicationProject.extensions.getByType(WindowsExtension::class.java).application {}
+        assertTrue(applicationProject.extensions.getByType(WindowsExtension::class.java).applicationEnabled.get())
         assertFalse(
             applicationProject.configurations.getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION).isCanBeConsumed,
         )
@@ -1089,32 +1093,32 @@ class KotlinWinRTPluginTest {
             applicationProject.extensions.extraProperties["kotlinWinRTIdentityJvmMain"],
         )
         assertEquals(
-            "generateWinRTApplicationIdentityJvmMain",
-            applicationProject.extensions.extraProperties["kotlinWinRTApplicationIdentityTaskJvmMain"],
+            "generateWinAppIdentityJvmMain",
+            applicationProject.extensions.extraProperties["kotlinWinAppIdentityTaskJvmMain"],
         )
         assertEquals(
             "resolveWinRTRuntimeNuGetPackagesJvmMain",
             applicationProject.extensions.extraProperties["kotlinWinRTRuntimeNuGetPackagesTaskJvmMain"],
         )
         assertEquals(
-            "stageWinRTRuntimeAssetsJvmMain",
-            applicationProject.extensions.extraProperties["kotlinWinRTRuntimeAssetsTaskJvmMain"],
+            "stageWindowsPackageRuntimeAssetsJvmMain",
+            applicationProject.extensions.extraProperties["kotlinWindowsPackageRuntimeAssetsTaskJvmMain"],
         )
         assertEquals(
-            "stageWinRTApplicationPackageJvmMain",
-            applicationProject.extensions.extraProperties["kotlinWinRTApplicationPackageTaskJvmMain"],
+            "stageWinAppPackageJvmMain",
+            applicationProject.extensions.extraProperties["kotlinWinAppPackageTaskJvmMain"],
         )
         assertEquals(
-            "packageWinRTApplicationJvmMain",
-            applicationProject.extensions.extraProperties["kotlinWinRTPackageTaskJvmMain"],
+            "packageWinAppJvmMain",
+            applicationProject.extensions.extraProperties["kotlinWindowsPackageTaskJvmMain"],
         )
         assertEquals(
-            "signWinRTApplicationPackageJvmMain",
-            applicationProject.extensions.extraProperties["kotlinWinRTSignPackageTaskJvmMain"],
+            "signWinAppPackageJvmMain",
+            applicationProject.extensions.extraProperties["kotlinWindowsPackageSignTaskJvmMain"],
         )
         assertEquals(
-            "installWinRTApplicationPackageJvmMain",
-            applicationProject.extensions.extraProperties["kotlinWinRTInstallPackageTaskJvmMain"],
+            "installWinAppPackageJvmMain",
+            applicationProject.extensions.extraProperties["kotlinWindowsPackageInstallTaskJvmMain"],
         )
     }
 
@@ -1122,7 +1126,7 @@ class KotlinWinRTPluginTest {
     fun library_plugin_publishes_identity_variant() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val identityElements = project.configurations.getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
         assertTrue(identityElements.isCanBeConsumed)
@@ -1142,10 +1146,10 @@ class KotlinWinRTPluginTest {
         val libB = ProjectBuilder.builder().withName("libb").withParent(root).build()
         val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
 
-        libA.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        libA.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         runtime.pluginManager.apply("java")
         libB.pluginManager.apply("java")
-        libB.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        libB.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         libB.dependencies.add("implementation", libB.dependencies.project(mapOf("path" to ":liba")))
         libB.dependencies.add("implementation", libB.dependencies.project(mapOf("path" to ":runtime")))
 
@@ -1164,7 +1168,7 @@ class KotlinWinRTPluginTest {
         val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
 
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.dependencies.add(
             "commonMainApi",
             consumer.dependencies.project(mapOf("path" to ":projectionOwner")),
@@ -1186,7 +1190,7 @@ class KotlinWinRTPluginTest {
         val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
 
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.dependencies.add(
             "commonMainApi",
             consumer.dependencies.project(mapOf("path" to ":producer")),
@@ -1196,7 +1200,7 @@ class KotlinWinRTPluginTest {
             .getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
         assertTrue(identityElements.dependencies.isEmpty())
 
-        producer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        producer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         assertEquals(
             listOf(":producer"),
@@ -1211,7 +1215,7 @@ class KotlinWinRTPluginTest {
         val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
 
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.dependencies.add(
             "commonMainApi",
             consumer.dependencies.project(mapOf("path" to ":runtime")),
@@ -1238,10 +1242,10 @@ class KotlinWinRTPluginTest {
         val producer = ProjectBuilder.builder().withName("producer").withParent(root).build()
         val forwardingLibrary = ProjectBuilder.builder().withName("forwarding").withParent(root).build()
 
-        producer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        producer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         forwardingLibrary.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         forwardingLibrary.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        forwardingLibrary.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        forwardingLibrary.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         forwardingLibrary.dependencies.add(
             "winuiMainImplementation",
             forwardingLibrary.dependencies.project(mapOf("path" to ":producer")),
@@ -1284,10 +1288,10 @@ class KotlinWinRTPluginTest {
 
         projectionOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         projectionOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        projectionOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        projectionOwner.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         runtimeConsumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         runtimeConsumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        runtimeConsumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        runtimeConsumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         runtimeConsumer.dependencies.add(
             "winuiMainImplementation",
             runtimeConsumer.dependencies.project(mapOf("path" to ":projectionOwner")),
@@ -1336,7 +1340,7 @@ class KotlinWinRTPluginTest {
         }
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val localGenerationProvider =
             project.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as org.gradle.api.provider.Provider<*>
@@ -1355,7 +1359,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
         kotlin.jvm("winuiJvm")
         val commonMain = kotlin.sourceSets.getByName("commonMain")
@@ -1403,7 +1407,7 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val userRoot = projectDir.resolve("src/winuiMain/kotlin")
         val debugEntryRoot = projectDir.resolve(
@@ -1442,7 +1446,7 @@ class KotlinWinRTPluginTest {
 
         projectionOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         projectionOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        projectionOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        projectionOwner.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val dependencyIdentity = projectionOwner.layout.buildDirectory
             .file("generated/kotlin-winrt/identity/kotlin-winrt.json")
             .get()
@@ -1466,7 +1470,7 @@ class KotlinWinRTPluginTest {
 
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         consumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.dependencies.add(
             "winuiMainImplementation",
             consumer.dependencies.project(mapOf("path" to ":projectionOwner")),
@@ -1503,7 +1507,7 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         project.extensions.extraProperties["kotlinWinRTLocalGenerationRequired"] = project.provider { true }
         val sourcesJar = project.tasks.findByName("sourcesJar")
             ?: project.tasks.register("sourcesJar", Jar::class.java).get()
@@ -1523,7 +1527,7 @@ class KotlinWinRTPluginTest {
             jvm("winuiJvm")
             mingwX64()
         }
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         project.extensions.extraProperties["kotlinWinRTLocalGenerationRequired"] = project.provider { true }
 
         listOf("jvmSourcesJar", "mingwX64SourcesJar").forEach { taskName ->
@@ -1542,7 +1546,7 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val sourcesJar = project.tasks.findByName("sourcesJar")
             ?: project.tasks.register("sourcesJar", Jar::class.java).get()
 
@@ -1583,11 +1587,11 @@ class KotlinWinRTPluginTest {
 
         dependencyOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         dependencyOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        dependencyOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        dependencyOwner.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         consumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        consumer.extensions.getByType(WinRTExtension::class.java).type("Windows.Foundation.IStringable")
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        consumer.extensions.getByType(WindowsExtension::class.java).packageReferences.type("Windows.Foundation.IStringable")
         consumer.dependencies.add(
             "winuiMainImplementation",
             consumer.dependencies.project(mapOf("path" to ":dependencyOwner")),
@@ -1649,11 +1653,11 @@ class KotlinWinRTPluginTest {
 
         dependencyOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         dependencyOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        dependencyOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        dependencyOwner.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         consumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        consumer.extensions.getByType(WinRTExtension::class.java).type("Windows.Foundation.IStringable")
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        consumer.extensions.getByType(WindowsExtension::class.java).packageReferences.type("Windows.Foundation.IStringable")
         consumer.dependencies.add(
             "winuiMainImplementation",
             consumer.dependencies.project(mapOf("path" to ":dependencyOwner")),
@@ -1737,11 +1741,13 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("consumer/build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                type "Microsoft.UI.Windowing.AppWindow"
+            windows {
+                packageReferences {
+                    type "Microsoft.UI.Windowing.AppWindow"
+                }
             }
 
             dependencies {
@@ -1809,11 +1815,11 @@ class KotlinWinRTPluginTest {
 
         dependencyOwner.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         dependencyOwner.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        dependencyOwner.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        dependencyOwner.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         consumer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         consumer.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        consumer.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        consumer.extensions.getByType(WinRTExtension::class.java).apply {
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        consumer.extensions.getByType(WindowsExtension::class.java).packageReferences.apply {
             type("Windows.Foundation.IStringable")
             windowsSdk("0.0.0.0", includeExtensions = true)
         }
@@ -1858,7 +1864,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 kotlin("multiplatform") version "2.4.0"
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             kotlin {
@@ -1940,7 +1946,7 @@ class KotlinWinRTPluginTest {
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
                 id "maven-publish"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             group = "test.winrt"
@@ -1957,8 +1963,10 @@ class KotlinWinRTPluginTest {
                 enabled = false
             }
 
-            winRT {
-                runtimeAsset "UpstreamComponent.dll"
+            windows {
+                application {
+                    runtimeAsset "UpstreamComponent.dll"
+                }
             }
 
             publishing {
@@ -2061,7 +2069,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -2072,7 +2080,7 @@ class KotlinWinRTPluginTest {
                 implementation "test.winrt:producer-mingw:1.0"
             }
 
-            winRT {
+            windows {
                 application { }
             }
             """.trimIndent(),
@@ -2081,11 +2089,11 @@ class KotlinWinRTPluginTest {
         val consumeResult = GradleRunner.create()
             .withProjectDir(consumer.toFile())
             .withPluginClasspath()
-            .withArguments("generateWinRTApplicationIdentity", "--stacktrace")
+            .withArguments("generateWinAppIdentity", "--stacktrace")
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, consumeResult.task(":generateWinRTApplicationIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, consumeResult.task(":generateWinAppIdentity")?.outcome)
         val applicationIdentity = Files.readString(
             consumer.resolve("build/generated/kotlin-winrt/identity/variant-JvmMain/kotlin-winrt-application.json"),
         )
@@ -2113,19 +2121,19 @@ class KotlinWinRTPluginTest {
     fun identity_task_writes_projection_identity_json() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.winmd("sdk+")
-        extension.runtimeAsset("SimpleMathComponent.dll")
-        extension.namespace("Windows.Foundation")
-        extension.type("Windows.Foundation.IStringable")
-        extension.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
-        extension.windowsSdk("10.0.26100.0", includeExtensions = true)
-        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
-        extension.namespace("Microsoft")
-        extension.type("Windows.UI.Xaml.Interop.Type")
-        extension.excludeNamespace("Windows")
-        extension.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.winmd("sdk+")
+        extension.application.runtimeAsset("SimpleMathComponent.dll")
+        extension.packageReferences.namespace("Windows.Foundation")
+        extension.packageReferences.type("Windows.Foundation.IStringable")
+        extension.packageReferences.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
+        extension.packageReferences.windowsSdk("10.0.26100.0", includeExtensions = true)
+        extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+        extension.packageReferences.namespace("Microsoft")
+        extension.packageReferences.type("Windows.UI.Xaml.Interop.Type")
+        extension.packageReferences.excludeNamespace("Windows")
+        extension.packageReferences.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
 
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.generate()
@@ -2169,9 +2177,9 @@ class KotlinWinRTPluginTest {
         Files.createDirectories(runtimeDll.parent)
         Files.writeString(runtimeDll, "sample-runtime")
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.runtimeAsset(runtimeDll)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.application.runtimeAsset(runtimeDll)
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.generate()
 
@@ -2190,13 +2198,13 @@ class KotlinWinRTPluginTest {
         Files.createDirectories(localWinmd.parent)
         Files.writeString(localWinmd, "producer-winmd")
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.winmd("sdk+")
-        extension.winmd("10.0.26100.0+")
-        extension.winmd("nuget:Contoso.Metadata@1.2.3")
-        extension.winmd(localWinmd)
-        extension.winmd("""nuget:D:\a\producer\metadata""")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.winmd("sdk+")
+        extension.packageReferences.winmd("10.0.26100.0+")
+        extension.packageReferences.winmd("nuget:Contoso.Metadata@1.2.3")
+        extension.packageReferences.winmd(localWinmd)
+        extension.packageReferences.winmd("""nuget:D:\a\producer\metadata""")
 
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.generate()
@@ -2211,9 +2219,9 @@ class KotlinWinRTPluginTest {
     @Test
     fun identity_task_derives_windows_sdk_shape_from_explicit_sdk_metadata_input() {
         val project = ProjectBuilder.builder().build()
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.winmd("10.0.26100.0+")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.winmd("10.0.26100.0+")
 
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.generate()
@@ -2232,7 +2240,7 @@ class KotlinWinRTPluginTest {
         Files.createDirectories(authoredWinmd.parent)
         Files.writeString(authoredWinmd, "sample-winmd")
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.authoredMetadataFiles.from(authoredWinmd)
         task.generate()
@@ -2252,7 +2260,7 @@ class KotlinWinRTPluginTest {
         Files.createDirectories(authoredJar.parent)
         Files.writeString(authoredJar, "sample-jar")
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.authoredTargetArtifactFiles.from(authoredJar)
         task.generate()
@@ -3004,10 +3012,9 @@ class KotlinWinRTPluginTest {
     fun application_plugin_resolves_identity_configuration() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).apply {
-            application {}
-            runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
+            application.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
         }
 
         val identityConfiguration = project.configurations.getByName("${KOTLIN_WINRT_IDENTITY_CONFIGURATION}ApplicationJvmMain")
@@ -3017,14 +3024,14 @@ class KotlinWinRTPluginTest {
             KOTLIN_WINRT_IDENTITY_USAGE,
             identityConfiguration.attributes.getAttribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE)?.name,
         )
-        project.tasks.named("generateWinRTApplicationIdentityJvmMain", GenerateWinRTApplicationIdentityTask::class.java).get()
-        val stageRuntimeAssets = project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java).get()
+        project.tasks.named("generateWinAppIdentityJvmMain", GenerateWinAppIdentityTask::class.java).get()
+        val stageRuntimeAssets = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
         assertTrue(stageRuntimeAssets.runtimeAssetFiles.files.any { it.name == "SimpleMathComponent.dll" })
         project.tasks.named("buildWinRTAuthoringHostJvmMain", BuildWinRTAuthoringHostTask::class.java).get()
-        project.tasks.named("buildWinRTApplicationHostJvmMain", BuildWinRTApplicationHostTask::class.java).get()
-        project.tasks.named("runWinRTApplicationHostJvmMain").get()
-        assertEquals("buildWinRTApplicationHostJvmMain", project.extensions.extraProperties["kotlinWinRTApplicationHostTaskJvmMain"])
-        assertEquals("runWinRTApplicationHostJvmMain", project.extensions.extraProperties["kotlinWinRTRunApplicationHostTaskJvmMain"])
+        project.tasks.named("buildWinAppHostJvmMain", BuildWinAppHostTask::class.java).get()
+        project.tasks.named("runWinAppHostJvmMain").get()
+        assertEquals("buildWinAppHostJvmMain", project.extensions.extraProperties["kotlinWinAppHostTaskJvmMain"])
+        assertEquals("runWinAppHostJvmMain", project.extensions.extraProperties["kotlinWinAppRunHostTaskJvmMain"])
     }
 
     @Test
@@ -3033,8 +3040,8 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application {}
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application {}
 
         val scannerConfiguration = project.configurations.getByName(KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION)
         val task = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
@@ -3053,11 +3060,11 @@ class KotlinWinRTPluginTest {
         val application = ProjectBuilder.builder().withName("app").withParent(root).build()
         val library = ProjectBuilder.builder().withName("lib").withParent(root).build()
 
-        library.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        library.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         application.pluginManager.apply("java")
-        application.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        application.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":lib")))
-        application.extensions.getByType(WinRTExtension::class.java).application {}
+        application.extensions.getByType(WindowsExtension::class.java).application {}
 
         val identityConfiguration = application.configurations.getByName("${KOTLIN_WINRT_IDENTITY_CONFIGURATION}ApplicationJvmMain")
         identityConfiguration.incoming.artifactView { view ->
@@ -3079,11 +3086,11 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("java")
         project.pluginManager.apply("application")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         project.extensions.getByType(org.gradle.api.plugins.JavaApplication::class.java).mainClass.set("sample.MainKt")
-        project.extensions.getByType(WinRTExtension::class.java).application {}
+        project.extensions.getByType(WindowsExtension::class.java).application {}
 
-        val task = project.tasks.named("buildWinRTApplicationHostJvmMain", BuildWinRTApplicationHostTask::class.java).get()
+        val task = project.tasks.named("buildWinAppHostJvmMain", BuildWinAppHostTask::class.java).get()
 
         assertEquals("sample.MainKt", task.mainClass.get())
         assertEquals("sample-app", task.executableBaseName.get())
@@ -3095,20 +3102,20 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
             application.console.set(true)
         }
 
-        val task = project.tasks.named("buildWinRTApplicationHostJvmMain", BuildWinRTApplicationHostTask::class.java).get()
+        val task = project.tasks.named("buildWinAppHostJvmMain", BuildWinAppHostTask::class.java).get()
 
         assertTrue(task.console.get())
     }
 
     @Test
     fun application_plugin_uses_appx_resources_manifest_by_default_and_prefers_explicit_manifest() {
-        val projectDir = Files.createTempDirectory("kotlin-winrt-appx-resources-default-test-")
+        val projectDir = Files.createTempDirectory("kotlin-appx-resources-default-test-")
         val appxResources = projectDir.resolve("src/main/appxResources")
         Files.createDirectories(appxResources)
         val defaultManifest = appxResources.resolve("AppxManifest.xml")
@@ -3120,16 +3127,16 @@ class KotlinWinRTPluginTest {
             .withName("default-manifest-app")
             .withProjectDir(projectDir.toFile())
             .build()
-        defaultProject.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        defaultProject.extensions.getByType(WinRTExtension::class.java).application { application ->
+        defaultProject.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        defaultProject.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
         }
         val defaultStageTask = defaultProject.tasks
-            .named("stageWinRTApplicationPackageJvmMain", StageWinRTApplicationPackageTask::class.java)
+            .named("stageWinAppPackageJvmMain", StageWinAppPackageTask::class.java)
             .get()
         assertEquals(setOf(defaultManifest.toFile()), defaultStageTask.appxManifestFiles.files)
         val defaultRuntimeTask = defaultProject.tasks
-            .named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java)
+            .named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java)
             .get()
         assertEquals(setOf(defaultManifest.toFile()), defaultRuntimeTask.appxManifestFiles.files)
 
@@ -3137,20 +3144,20 @@ class KotlinWinRTPluginTest {
             .withName("explicit-manifest-app")
             .withProjectDir(projectDir.toFile())
             .build()
-        explicitProject.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        explicitProject.extensions.getByType(WinRTExtension::class.java).application { application ->
+        explicitProject.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        explicitProject.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
             application.appxManifest(explicitManifest)
         }
         val explicitStageTask = explicitProject.tasks
-            .named("stageWinRTApplicationPackageJvmMain", StageWinRTApplicationPackageTask::class.java)
+            .named("stageWinAppPackageJvmMain", StageWinAppPackageTask::class.java)
             .get()
         assertEquals(setOf(explicitManifest.toFile()), explicitStageTask.appxManifestFiles.files)
     }
 
     @Test
     fun application_plugin_excludes_target_appx_resources_from_default_pri_scans() {
-        val projectDir = Files.createTempDirectory("kotlin-winrt-appx-resources-pri-exclusion-test-")
+        val projectDir = Files.createTempDirectory("kotlin-appx-resources-pri-exclusion-test-")
         val appxResources = projectDir.resolve("src/main/appxResources")
         Files.createDirectories(appxResources.resolve("Assets"))
         Files.writeString(appxResources.resolve("Assets/Square44x44Logo.png"), "asset")
@@ -3160,13 +3167,13 @@ class KotlinWinRTPluginTest {
             .withName("appx-resources-pri-exclusion-app")
             .withProjectDir(projectDir.toFile())
             .build()
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
         }
 
         val stageTask = project.tasks
-            .named("stageWinRTApplicationPackageJvmMain", StageWinRTApplicationPackageTask::class.java)
+            .named("stageWinAppPackageJvmMain", StageWinAppPackageTask::class.java)
             .get()
         assertTrue(stageTask.defaultAppxResourceRoots.get().contains(appxResources.toString()))
         assertFalse(stageTask.defaultProjectPriResourceFiles.files.any { it.toPath().startsWith(appxResources) })
@@ -3187,30 +3194,30 @@ class KotlinWinRTPluginTest {
                 }
             }
         }
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
-        val hostTask = project.tasks.named("buildWinRTApplicationHostWinuiJvmMain", BuildWinRTApplicationHostTask::class.java).get()
+        val hostTask = project.tasks.named("buildWinAppHostWinuiJvmMain", BuildWinAppHostTask::class.java).get()
         val hostDependencies = taskDependencyNames(hostTask)
         val stagePackageTask = project.tasks.named(
-            "stageWinRTApplicationPackageWinuiJvmMain",
-            StageWinRTApplicationPackageTask::class.java,
+            "stageWinAppPackageWinuiJvmMain",
+            StageWinAppPackageTask::class.java,
         ).get()
         val stagePackageDependencies = taskDependencyNames(stagePackageTask)
         val nativeRunTask = project.tasks.named("runReleaseExecutableWinuiMingw", Exec::class.java).get()
 
         assertTrue(project.configurations.getByName("winuiJvmRuntimeClasspath").isCanBeResolved)
-        assertTrue("buildWinRTApplicationHost dependencies: $hostDependencies", "winuiJvmJar" in hostDependencies)
+        assertTrue("buildWinAppHost dependencies: $hostDependencies", "winuiJvmJar" in hostDependencies)
         assertFalse(
             "JVM variant must not link the unrelated mingw executable: $stagePackageDependencies",
             "linkReleaseExecutableWinuiMingw" in stagePackageDependencies,
         )
-        assertFalse("buildWinRTApplicationHost must not depend on mingw native link tasks: $hostDependencies", "linkReleaseExecutableWinuiMingw" in hostDependencies)
+        assertFalse("buildWinAppHost must not depend on mingw native link tasks: $hostDependencies", "linkReleaseExecutableWinuiMingw" in hostDependencies)
         assertFalse(
             "an unrelated native run task must not stage the selected JVM application layout: ${taskDependencyNames(nativeRunTask)}",
-            "stageWinRTApplicationPackageWinuiJvmMain" in taskDependencyNames(nativeRunTask),
+            "stageWinAppPackageWinuiJvmMain" in taskDependencyNames(nativeRunTask),
         )
     }
 
@@ -3223,15 +3230,15 @@ class KotlinWinRTPluginTest {
         val target = kotlin.jvm("customJvm")
         val smokeCompilation = target.compilations.create("smoke")
         project.tasks.register("customJvmSmokeJar", Jar::class.java)
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
             application.variants.create("customJvmSmoke") { it.variant("customJvm:smoke") }
         }
         (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
 
         val archiveTaskName = smokeCompilation.archiveTaskName ?: "customJvmSmokeJar"
-        val hostTask = project.tasks.named("buildWinRTApplicationHostCustomJvmSmoke", BuildWinRTApplicationHostTask::class.java).get()
+        val hostTask = project.tasks.named("buildWinAppHostCustomJvmSmoke", BuildWinAppHostTask::class.java).get()
         val hostDependencies = taskDependencyNames(hostTask)
 
         assertTrue("Host dependencies: $hostDependencies", archiveTaskName in hostDependencies)
@@ -3245,34 +3252,34 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
-        val hostTask = project.tasks.named("buildWinRTApplicationHostWinuiJvmMain", BuildWinRTApplicationHostTask::class.java).get()
-        val runTask = project.tasks.named("runWinRTApplicationHostWinuiJvmMain").get()
+        val hostTask = project.tasks.named("buildWinAppHostWinuiJvmMain", BuildWinAppHostTask::class.java).get()
+        val runTask = project.tasks.named("runWinAppHostWinuiJvmMain").get()
         val hostDependencies = taskDependencyNames(hostTask)
         val runDependencies = taskDependencyNames(runTask)
 
         listOf(
             "generateWinRTProjections",
             "mergeWinRTCompilerSupport",
-            "stageWinRTApplicationPackageWinuiJvmMain",
-            "stageWinRTRuntimeAssetsWinuiJvmMain",
+            "stageWinAppPackageWinuiJvmMain",
+            "stageWindowsPackageRuntimeAssetsWinuiJvmMain",
             "buildWinRTAuthoringHostWinuiJvmMain",
             "winuiJvmJar",
         ).forEach { expected ->
-            assertTrue("buildWinRTApplicationHost dependencies: $hostDependencies", expected in hostDependencies)
+            assertTrue("buildWinAppHost dependencies: $hostDependencies", expected in hostDependencies)
         }
-        assertTrue("runWinRTApplicationHost dependencies: $runDependencies", "buildWinRTApplicationHostWinuiJvmMain" in runDependencies)
+        assertTrue("runWinAppHost dependencies: $runDependencies", "buildWinAppHostWinuiJvmMain" in runDependencies)
     }
 
     @Test
     fun local_winmd_static_sources_are_prepared_in_project_gradle_store() {
         val project = ProjectBuilder.builder().withName("prepared-static-test").build()
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
         val winmd = project.projectDir.toPath().resolve("fixture/Sample.winmd")
         WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
             assemblyName = "Sample",
@@ -3285,12 +3292,12 @@ class KotlinWinRTPluginTest {
             runtimeClasses = emptyList(),
             outputFile = winmd,
         )
-        extension.winmd(winmd.toString())
-        extension.type("Sample.IProbe")
+        extension.packageReferences.winmd(winmd.toString())
+        extension.packageReferences.type("Sample.IProbe")
         val output = project.layout.buildDirectory.dir("prepared-output")
         val prepared = prepareWinRTStaticProjectionSources(
             project = project,
-            extension = extension,
+            extension = extension.packageReferences,
             dependencyIdentityFiles = emptyList(),
             generatedOutputDirectory = output,
             supportOwnerIdentity = "prepared-static-test.jar",
@@ -3317,25 +3324,25 @@ class KotlinWinRTPluginTest {
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
         val launcherTask = project.tasks.named(
-            "compileWinRTApplicationLauncherWinuiJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "compileWinAppLauncherWinuiJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
         val hostTask = project.tasks.named(
-            "buildWinRTApplicationHostWinuiJvmMain",
-            BuildWinRTApplicationHostTask::class.java,
+            "buildWinAppHostWinuiJvmMain",
+            BuildWinAppHostTask::class.java,
         ).get()
 
         assertTrue(launcherTask.launcherOnly.get())
         assertTrue(
             launcherTask.outputDirectory.get().asFile.toPath().toString().contains("application-launcher"),
         )
-        assertTrue("launcher task must feed the aggregate host", "compileWinRTApplicationLauncherWinuiJvmMain" in taskDependencyNames(hostTask))
+        assertTrue("launcher task must feed the aggregate host", "compileWinAppLauncherWinuiJvmMain" in taskDependencyNames(hostTask))
         assertTrue(hostTask.launcherExecutable.isPresent)
     }
 
@@ -3344,21 +3351,21 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
         }
 
-        val runTask = project.tasks.named("runWinRTApplicationHostJvmMain").get()
+        val runTask = project.tasks.named("runWinAppHostJvmMain").get()
 
         val runTaskType = runCatching {
-            Class.forName("io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask")
+            Class.forName("io.github.composefluent.winrt.gradle.RunWinAppHostTask")
         }.getOrNull()
-        assertTrue("RunWinRTApplicationHostTask must be a public Gradle task type.", runTaskType != null)
+        assertTrue("RunWinAppHostTask must be a public Gradle task type.", runTaskType != null)
         assertTrue(runTaskType!!.isInstance(runTask))
         listOf("getArgs", "getJvmArgs", "getEnvironmentVariables", "getWorkingDirectory", "getOutputLog").forEach { methodName ->
             assertTrue(
-                "RunWinRTApplicationHostTask must expose $methodName.",
+                "RunWinAppHostTask must expose $methodName.",
                 runTaskType.methods.any { method -> method.name == methodName },
             )
         }
@@ -3369,8 +3376,8 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
             application.runTask("runWinUISmoke") { task ->
                 task.args.add("--smoke")
@@ -3379,28 +3386,28 @@ class KotlinWinRTPluginTest {
                 task.outputLog.set(project.layout.buildDirectory.file("reports/winui-smoke.log"))
             }
         }
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.runTask("runWinUIReplay") { task ->
                 task.args.add("--replay")
             }
         }
 
-        val smokeTask = project.tasks.named("runWinUISmoke", RunWinRTApplicationHostTask::class.java).get()
-        val replayTask = project.tasks.named("runWinUIReplay", RunWinRTApplicationHostTask::class.java).get()
+        val smokeTask = project.tasks.named("runWinUISmoke", RunWinAppHostTask::class.java).get()
+        val replayTask = project.tasks.named("runWinUIReplay", RunWinAppHostTask::class.java).get()
         val smokeDependencies = taskDependencyNames(smokeTask)
 
         assertEquals(listOf("--smoke"), smokeTask.args.get())
         assertEquals(listOf("-Xmx256m"), smokeTask.jvmArgs.get())
         assertEquals(mapOf("SMOKE_MODE" to "skiko"), smokeTask.environmentVariables.get())
         assertEquals("winui-smoke.log", smokeTask.outputLog.get().asFile.name)
-        assertTrue("runWinUISmoke dependencies: $smokeDependencies", "buildWinRTApplicationHostJvmMain" in smokeDependencies)
+        assertTrue("runWinUISmoke dependencies: $smokeDependencies", "buildWinAppHostJvmMain" in smokeDependencies)
         assertEquals(listOf("--replay"), replayTask.args.get())
-        assertTrue(project.tasks.named("runWinRTApplicationHostJvmMain").get() is RunWinRTApplicationHostTask)
+        assertTrue(project.tasks.named("runWinAppHostJvmMain").get() is RunWinAppHostTask)
     }
 
     @Test
     fun run_host_launch_configuration_participates_in_gradle_task_state() {
-        val runTaskType = RunWinRTApplicationHostTask::class.java
+        val runTaskType = RunWinAppHostTask::class.java
 
         listOf("getArgs", "getJvmArgs", "getEnvironmentVariables").forEach { methodName ->
             val method = runTaskType.methods.single { method -> method.name == methodName }
@@ -3440,18 +3447,18 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val javaRunTask = project.tasks.register("runSample", JavaExec::class.java).get()
-        project.extensions.getByType(WinRTExtension::class.java).application {
+        project.extensions.getByType(WindowsExtension::class.java).application {
             it.packageType.set(WindowsPackageType.None)
         }
 
-        val runHostTask = project.tasks.named("runWinRTApplicationHostJvmMain").get()
+        val runHostTask = project.tasks.named("runWinAppHostJvmMain").get()
         val runHostDependencies = taskDependencyNames(runHostTask)
         val javaRunDependencies = taskDependencyNames(javaRunTask)
 
-        assertTrue("runWinRTApplicationHost dependencies: $runHostDependencies", "buildWinRTApplicationHostJvmMain" in runHostDependencies)
-        assertTrue("runSample dependencies: $javaRunDependencies", "stageWinRTApplicationPackageJvmMain" in javaRunDependencies)
+        assertTrue("runWinAppHost dependencies: $runHostDependencies", "buildWinAppHostJvmMain" in runHostDependencies)
+        assertTrue("runSample dependencies: $javaRunDependencies", "stageWinAppPackageJvmMain" in javaRunDependencies)
         assertTrue(
             javaRunTask.jvmArgumentProviders
                 .any { provider -> provider.javaClass.name.contains("RuntimeAssetsRootJvmArgumentProvider") },
@@ -3463,13 +3470,13 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val runTask = project.tasks.register("runSample", JavaExec::class.java).get()
-        project.extensions.getByType(WinRTExtension::class.java).application {
+        project.extensions.getByType(WindowsExtension::class.java).application {
             it.packageType.set(WindowsPackageType.None)
         }
 
-        val stageTask = project.tasks.named("stageWinRTApplicationPackageJvmMain").get()
+        val stageTask = project.tasks.named("stageWinAppPackageJvmMain").get()
 
         assertTrue(runTask.taskDependencies.getDependencies(runTask).contains(stageTask))
         assertTrue(
@@ -3483,15 +3490,15 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
 
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val runTask = project.tasks.register("runSample", JavaExec::class.java).get()
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
         }
 
         val dependencies = runTask.taskDependencies.getDependencies(runTask).map { it.name }
 
-        assertFalse("stageWinRTApplicationPackageJvmMain" in dependencies)
+        assertFalse("stageWinAppPackageJvmMain" in dependencies)
         assertFalse(
             runTask.jvmArgumentProviders
                 .any { provider -> provider.javaClass.name.contains("RuntimeAssetsRootJvmArgumentProvider") },
@@ -3533,10 +3540,10 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "java"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
+            windows {
                 application {
                     packageType.set io.github.composefluent.winrt.gradle.WindowsPackageType.None
                     generateProjectPri = false
@@ -3571,7 +3578,7 @@ class KotlinWinRTPluginTest {
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRTApplicationPackageJvmMain")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinAppPackageJvmMain")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":runSample")?.outcome)
         val actualRuntimeAssetsRoot = result.output
             .lineSequence()
@@ -3628,14 +3635,16 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
-                restoreNuGetPackages = false
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                    restoreNuGetPackages = false
+                    nugetPackage "Microsoft.WindowsAppSDK", "1.8.260416003"
+                }
                 application {}
-                nugetPackage "Microsoft.WindowsAppSDK", "1.8.260416003"
             }
             """.trimIndent(),
         )
@@ -3672,14 +3681,16 @@ class KotlinWinRTPluginTest {
         )
         Files.writeString(packageRoot.resolve("Sample.Package.dll"), "dll")
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).apply {
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).apply {
             application {}
-            nugetGlobalPackagesRoots.add(globalPackagesRoot.toString())
-            nugetPackage("Sample.Package", "1.0.0")
+            packageReferences { packageReferences ->
+                packageReferences.nugetGlobalPackagesRoots.add(globalPackagesRoot.toString())
+                packageReferences.nugetPackage("Sample.Package", "1.0.0")
+            }
         }
 
-        val task = project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java).get()
+        val task = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
 
         assertTrue(
             task.nugetPackageContentFiles.files.any {
@@ -3692,17 +3703,17 @@ class KotlinWinRTPluginTest {
     fun application_plugin_wires_runtime_nuget_resolution_manifest_into_runtime_staging() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).apply {
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).apply {
             application {}
-            nugetPackage("Sample.Package", "1.0.0")
+            packageReferences { packageReferences -> packageReferences.nugetPackage("Sample.Package", "1.0.0") }
         }
 
         val resolveTask = project.tasks.named(
             "resolveWinRTRuntimeNuGetPackagesJvmMain",
             ResolveWinRTRuntimeNuGetPackagesTask::class.java,
         ).get()
-        val stageTask = project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java).get()
+        val stageTask = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
 
         assertTrue(
             stageTask.taskDependencies.getDependencies(stageTask).any { it.name == "resolveWinRTRuntimeNuGetPackagesJvmMain" },
@@ -3735,7 +3746,7 @@ class KotlinWinRTPluginTest {
     fun plugin_registers_compiler_plugin_dependency_for_late_kmp_compiler_plugin_classpath_configurations() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         val targetConfiguration = project.configurations.create("kotlinCompilerPluginClasspathWinuiJvm")
 
@@ -3765,11 +3776,11 @@ class KotlinWinRTPluginTest {
         val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
         val application = ProjectBuilder.builder().withName("application").withParent(root).build()
 
-        library.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        library.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         runtime.pluginManager.apply("java")
         application.pluginManager.apply("java")
-        application.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        application.extensions.getByType(WinRTExtension::class.java).application {}
+        application.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        application.extensions.getByType(WindowsExtension::class.java).application {}
         application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":library")))
         application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":runtime")))
 
@@ -3779,8 +3790,8 @@ class KotlinWinRTPluginTest {
             identityConfiguration.dependencies.withType(ProjectDependency::class.java).map { dependency -> dependency.path },
         )
         val applicationIdentityTask = application.tasks.named(
-            "generateWinRTApplicationIdentityJvmMain",
-            GenerateWinRTApplicationIdentityTask::class.java,
+            "generateWinAppIdentityJvmMain",
+            GenerateWinAppIdentityTask::class.java,
         ).get()
 
         assertTrue(applicationIdentityTask.dependencyIdentityFiles.files.isNotEmpty())
@@ -3794,10 +3805,10 @@ class KotlinWinRTPluginTest {
         val application = ProjectBuilder.builder().withName("application").withParent(root).build()
 
         library.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        library.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        library.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         application.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        application.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        application.extensions.getByType(WinRTExtension::class.java).application {}
+        application.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        application.extensions.getByType(WindowsExtension::class.java).application {}
         application.extensions.configure(
             org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java,
         ) { kotlin ->
@@ -3816,8 +3827,8 @@ class KotlinWinRTPluginTest {
             identityConfiguration.dependencies.withType(ProjectDependency::class.java).map { dependency -> dependency.path },
         )
         val applicationIdentityTask = application.tasks.named(
-            "generateWinRTApplicationIdentityWinuiJvmMain",
-            GenerateWinRTApplicationIdentityTask::class.java,
+            "generateWinAppIdentityWinuiJvmMain",
+            GenerateWinAppIdentityTask::class.java,
         ).get()
 
         assertTrue(applicationIdentityTask.dependencyIdentityFiles.files.isNotEmpty())
@@ -3827,38 +3838,38 @@ class KotlinWinRTPluginTest {
     fun application_plugin_wires_runtime_assets_into_java_resources() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application {
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application {
             it.packageType.set(WindowsPackageType.None)
         }
         project.pluginManager.apply("java")
 
         val processResources = project.tasks.named("processResources").get()
         val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
-        assertTrue("stageWinRTApplicationPackageJvmMain" in dependencies)
+        assertTrue("stageWinAppPackageJvmMain" in dependencies)
     }
 
     @Test
     fun packaged_application_plugin_does_not_wire_appx_payload_into_java_resources() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
         }
         project.pluginManager.apply("java")
 
         val processResources = project.tasks.named("processResources").get()
         val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
-        assertFalse("stageWinRTApplicationPackageJvmMain" in dependencies)
+        assertFalse("stageWinAppPackageJvmMain" in dependencies)
     }
 
     @Test
     fun packaged_application_plugin_wires_the_configured_winapp_cli_through_restore_package_and_verify() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
         extension.winAppCliExecutable.set("C:/tools/winapp.cmd")
         extension.application { application -> application.packageType.set(WindowsPackageType.Packaged) }
         project.pluginManager.apply("application")
@@ -3870,16 +3881,16 @@ class KotlinWinRTPluginTest {
             .named("restoreWinAppDependencies", RestoreWinAppDependenciesTask::class.java)
             .get()
         val packageTask = project.tasks
-            .named("packageWinRTApplicationJvmMain", PackageWinRTApplicationTask::class.java)
+            .named("packageWinAppJvmMain", PackageWinAppTask::class.java)
             .get()
         val applicationHostTask = project.tasks
-            .named("buildWinRTApplicationHostJvmMain", BuildWinRTApplicationHostTask::class.java)
+            .named("buildWinAppHostJvmMain", BuildWinAppHostTask::class.java)
             .get()
         val stagePackageTask = project.tasks
-            .named("stageWinRTApplicationPackageJvmMain", StageWinRTApplicationPackageTask::class.java)
+            .named("stageWinAppPackageJvmMain", StageWinAppPackageTask::class.java)
             .get()
         val verifyTask = project.tasks
-            .named("verifyWinRTApplicationPackageJvmMain", VerifyWinRTApplicationPackageTask::class.java)
+            .named("verifyWinAppPackageJvmMain", VerifyWinAppPackageTask::class.java)
             .get()
 
         assertTrue(configurationTask.includeToolingPackages.get())
@@ -3888,7 +3899,7 @@ class KotlinWinRTPluginTest {
         assertEquals("C:/tools/winapp.cmd", packageTask.winAppCliExecutable.get())
         assertEquals("C:/tools/winapp.cmd", verifyTask.winAppCliExecutable.get())
         assertFalse(
-            project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java)
+            project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java)
                 .get()
                 .includeFrameworkRuntimeAssets.get(),
         )
@@ -3897,7 +3908,7 @@ class KotlinWinRTPluginTest {
         assertEquals("", verifyTask.makeAppxExecutable.get())
         assertTrue("restoreWinAppDependencies" in taskDependencyNames(packageTask))
         assertEquals(applicationHostTask.outputDirectory.get(), packageTask.packageDirectory.get())
-        assertTrue("buildWinRTApplicationHostJvmMain" in taskDependencyNames(packageTask))
+        assertTrue("buildWinAppHostJvmMain" in taskDependencyNames(packageTask))
         assertEquals(listOf("test.exe"), stagePackageTask.deferredManifestPayloadPaths.get())
     }
 
@@ -3914,21 +3925,21 @@ class KotlinWinRTPluginTest {
                 }
             }
         }
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.mainClass.set("sample.MainKt")
             application.packageType.set(WindowsPackageType.Packaged)
         }
 
         val packageTask = project.tasks
-            .named("packageWinRTApplicationWinuiMingwMainReleaseExecutable", PackageWinRTApplicationTask::class.java)
+            .named("packageWinAppWinuiMingwMainReleaseExecutable", PackageWinAppTask::class.java)
             .get()
         val nativeLayoutTask = project.tasks
-            .named("stageWinRTApplicationPackageWinuiMingwMainReleaseExecutable", StageWinRTApplicationPackageTask::class.java)
+            .named("stageWinAppPackageWinuiMingwMainReleaseExecutable", StageWinAppPackageTask::class.java)
             .get()
 
         assertEquals(nativeLayoutTask.outputDirectory.get(), packageTask.packageDirectory.get())
-        assertFalse("buildWinRTApplicationHost" in taskDependencyNames(packageTask))
+        assertFalse("buildWinAppHost" in taskDependencyNames(packageTask))
         assertTrue(nativeLayoutTask.deferredManifestPayloadPaths.get().isEmpty())
     }
 
@@ -3936,11 +3947,11 @@ class KotlinWinRTPluginTest {
     fun application_plugin_accepts_gradle_application_distribution_model() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val packageOutput = project.layout.buildDirectory.file("custom/Contoso.msix")
         val signedPackageOutput = project.layout.buildDirectory.file("custom/Contoso-signed.msix")
         val signingCertificate = project.layout.buildDirectory.file("certificates/contoso.pfx")
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
             application.frameworkDependent()
             application.packageOutputFile.set(packageOutput)
@@ -3963,24 +3974,24 @@ class KotlinWinRTPluginTest {
 
         assertEquals(
             WindowsPackageType.Packaged,
-            project.extensions.getByType(WinRTExtension::class.java).application.packageType.get(),
+            project.extensions.getByType(WindowsExtension::class.java).application.packageType.get(),
         )
-        project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java).get()
-        project.tasks.named("stageWinRTApplicationPackageJvmMain", StageWinRTApplicationPackageTask::class.java).get()
-        val packageTask = project.tasks.named("packageWinRTApplicationJvmMain", PackageWinRTApplicationTask::class.java).get()
+        project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
+        project.tasks.named("stageWinAppPackageJvmMain", StageWinAppPackageTask::class.java).get()
+        val packageTask = project.tasks.named("packageWinAppJvmMain", PackageWinAppTask::class.java).get()
         assertEquals(packageOutput.get().asFile, packageTask.outputFile.get().asFile)
         assertEquals("C:/Windows Kits/10/bin/makeappx.exe", packageTask.makeAppxExecutable.get())
         assertEquals(false, packageTask.generatePackage.get())
-        val verifyTask = project.tasks.named("verifyWinRTApplicationPackageJvmMain", VerifyWinRTApplicationPackageTask::class.java).get()
+        val verifyTask = project.tasks.named("verifyWinAppPackageJvmMain", VerifyWinAppPackageTask::class.java).get()
         assertEquals(packageOutput.get().asFile, verifyTask.packageFile.get().asFile)
         assertEquals("C:/Windows Kits/10/bin/makeappx.exe", verifyTask.makeAppxExecutable.get())
         assertEquals(true, verifyTask.verifyPackage.get())
         val stagePackageTask =
-            project.tasks.named("stageWinRTApplicationPackageJvmMain", StageWinRTApplicationPackageTask::class.java).get()
+            project.tasks.named("stageWinAppPackageJvmMain", StageWinAppPackageTask::class.java).get()
         assertTrue(stagePackageTask.includeFrameworkPackageDependencies.get())
         assertTrue(stagePackageTask.packagePayloadFiles.files.any { it.path.replace("\\", "/").endsWith("build/libs/app.jar") })
         assertTrue(stagePackageTask.projectPriTargetPaths.get().values.contains("App/app.jar"))
-        val signTask = project.tasks.named("signWinRTApplicationPackageJvmMain", SignWinRTApplicationPackageTask::class.java).get()
+        val signTask = project.tasks.named("signWinAppPackageJvmMain", SignWinAppPackageTask::class.java).get()
         assertEquals(packageOutput.get().asFile, signTask.inputPackageFile.get().asFile)
         assertEquals(signedPackageOutput.get().asFile, signTask.outputFile.get().asFile)
         assertEquals(true, signTask.signPackage.get())
@@ -3991,7 +4002,7 @@ class KotlinWinRTPluginTest {
         assertEquals("http://timestamp.example.test", signTask.signingTimestampUrl.get())
         assertEquals("SHA384", signTask.signingHashAlgorithm.get())
         val installTask =
-            project.tasks.named("installWinRTApplicationPackageJvmMain", InstallWinRTApplicationPackageTask::class.java).get()
+            project.tasks.named("installWinAppPackageJvmMain", InstallWinAppPackageTask::class.java).get()
         assertEquals(signedPackageOutput.get().asFile, installTask.packageFile.get().asFile)
         assertEquals(true, installTask.installPackage.get())
         assertEquals(
@@ -4006,10 +4017,10 @@ class KotlinWinRTPluginTest {
     fun application_install_task_uses_unsigned_package_when_signing_is_disabled() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val packageOutput = project.layout.buildDirectory.file("custom/UnsignedInstall.msix")
         val signedPackageOutput = project.layout.buildDirectory.file("custom/UnsignedInstall-signed.msix")
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
             application.packageOutputFile.set(packageOutput)
             application.signedPackageOutputFile.set(signedPackageOutput)
@@ -4018,9 +4029,9 @@ class KotlinWinRTPluginTest {
         }
         project.pluginManager.apply("application")
 
-        val signTask = project.tasks.named("signWinRTApplicationPackageJvmMain", SignWinRTApplicationPackageTask::class.java).get()
+        val signTask = project.tasks.named("signWinAppPackageJvmMain", SignWinAppPackageTask::class.java).get()
         val installTask =
-            project.tasks.named("installWinRTApplicationPackageJvmMain", InstallWinRTApplicationPackageTask::class.java).get()
+            project.tasks.named("installWinAppPackageJvmMain", InstallWinAppPackageTask::class.java).get()
 
         assertEquals(false, signTask.signPackage.get())
         assertFalse(signTask.onlyIf.isSatisfiedBy(signTask))
@@ -4033,11 +4044,11 @@ class KotlinWinRTPluginTest {
     fun application_install_task_uses_explicit_install_package_file() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val packageOutput = project.layout.buildDirectory.file("custom/Default.msix")
         val signedPackageOutput = project.layout.buildDirectory.file("custom/Default-signed.msix")
         val installPackageFile = project.layout.buildDirectory.file("custom/InstallOverride.msix")
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
             application.packageOutputFile.set(packageOutput)
             application.signedPackageOutputFile.set(signedPackageOutput)
@@ -4048,7 +4059,7 @@ class KotlinWinRTPluginTest {
         project.pluginManager.apply("application")
 
         val installTask =
-            project.tasks.named("installWinRTApplicationPackageJvmMain", InstallWinRTApplicationPackageTask::class.java).get()
+            project.tasks.named("installWinAppPackageJvmMain", InstallWinAppPackageTask::class.java).get()
 
         assertEquals(installPackageFile.get().asFile, installTask.packageFile.get().asFile)
         assertEquals(true, installTask.installPackage.get())
@@ -4059,21 +4070,21 @@ class KotlinWinRTPluginTest {
     fun application_packaging_tasks_are_enabled_in_default_packaged_mode() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application {
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application {
             it.signPackage.set(true)
             it.installPackage.set(true)
         }
 
-        val packageTask = project.tasks.named("packageWinRTApplicationJvmMain", PackageWinRTApplicationTask::class.java).get()
-        val verifyTask = project.tasks.named("verifyWinRTApplicationPackageJvmMain", VerifyWinRTApplicationPackageTask::class.java).get()
-        val signTask = project.tasks.named("signWinRTApplicationPackageJvmMain", SignWinRTApplicationPackageTask::class.java).get()
+        val packageTask = project.tasks.named("packageWinAppJvmMain", PackageWinAppTask::class.java).get()
+        val verifyTask = project.tasks.named("verifyWinAppPackageJvmMain", VerifyWinAppPackageTask::class.java).get()
+        val signTask = project.tasks.named("signWinAppPackageJvmMain", SignWinAppPackageTask::class.java).get()
         val installTask =
-            project.tasks.named("installWinRTApplicationPackageJvmMain", InstallWinRTApplicationPackageTask::class.java).get()
+            project.tasks.named("installWinAppPackageJvmMain", InstallWinAppPackageTask::class.java).get()
 
         assertEquals(
             WindowsPackageType.Packaged,
-            project.extensions.getByType(WinRTExtension::class.java).application.packageType.get(),
+            project.extensions.getByType(WindowsExtension::class.java).application.packageType.get(),
         )
         assertTrue(packageTask.onlyIf.isSatisfiedBy(packageTask))
         assertTrue(verifyTask.onlyIf.isSatisfiedBy(verifyTask))
@@ -4090,7 +4101,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "applicationIdentity",
-            GenerateWinRTApplicationIdentityTask::class.java,
+            GenerateWinAppIdentityTask::class.java,
         ) { registeredTask ->
             registeredTask.outputFile.set(project.layout.buildDirectory.file("application/kotlin-winrt-application.json"))
             registeredTask.metadataInputs.set(listOf("sdk+"))
@@ -4163,7 +4174,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageLocalComponentAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4228,7 +4239,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDependencyJvmAuthoredApplicationManifest",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4292,7 +4303,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDependencyNativeAuthoredApplicationManifest",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("native-runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4367,7 +4378,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDependencyMixedAuthoredApplicationManifest",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("mixed-runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4474,7 +4485,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMalformedHostManifestAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4524,7 +4535,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMissingRuntimeAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4580,7 +4591,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDependencyRuntimeAssetRecords",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4644,7 +4655,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDependencyWindowsAppSdkAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4694,7 +4705,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMissingDependencyAuthoredAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -4789,7 +4800,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(outputRoot.resolve("stale-runtime.dll"), "stale")
         val task = project.tasks.register(
             "buildApplicationHost",
-            BuildWinRTApplicationHostTask::class.java,
+            BuildWinAppHostTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-layout/jvm"))
             registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("application-host/src"))
@@ -4811,7 +4822,7 @@ class KotlinWinRTPluginTest {
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
         assertTrue(source.contains("JNI_CreateJavaVM"))
         assertTrue(source.contains("FindClass(env, \"sample/MainKt\")"))
-        assertTrue(source.contains("WinRTWindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("WindowsAppSdkLauncherSupport"))
         assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
         assertTrue(source.contains("NewStringUTF(env, \"Unpackaged\")"))
         assertTrue(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
@@ -4839,7 +4850,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(jar, "jar")
         val guiTask = project.tasks.register(
             "buildGuiApplicationHost",
-            BuildWinRTApplicationHostTask::class.java,
+            BuildWinAppHostTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("gui-application-host/bin"))
             registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("gui-application-host/src"))
@@ -4854,7 +4865,7 @@ class KotlinWinRTPluginTest {
         }.get()
         val consoleTask = project.tasks.register(
             "buildConsoleApplicationHost",
-            BuildWinRTApplicationHostTask::class.java,
+            BuildWinAppHostTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("console-application-host/bin"))
             registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("console-application-host/src"))
@@ -4890,7 +4901,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(jar, "jar")
         val task = project.tasks.register(
             "buildPackagedApplicationHost",
-            BuildWinRTApplicationHostTask::class.java,
+            BuildWinAppHostTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("packaged-application-host/bin"))
             registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("packaged-application-host/src"))
@@ -4909,7 +4920,7 @@ class KotlinWinRTPluginTest {
         }
 
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
-        assertTrue(source.contains("WinRTWindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("WindowsAppSdkLauncherSupport"))
         assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
         assertTrue(source.contains("NewStringUTF(env, \"Packaged\")"))
         assertTrue(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
@@ -4924,7 +4935,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
         val unpackagedTask = project.tasks.register(
             "generateUnpackagedMingwEntry",
-            GenerateWinRTMingwApplicationEntryTask::class.java,
+            GenerateWinAppMingwEntryTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("generated/unpackaged"))
             registeredTask.legacyOutputDirectories.from(project.files())
@@ -4933,7 +4944,7 @@ class KotlinWinRTPluginTest {
         }.get()
         val packagedTask = project.tasks.register(
             "generatePackagedMingwEntry",
-            GenerateWinRTMingwApplicationEntryTask::class.java,
+            GenerateWinAppMingwEntryTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("generated/packaged"))
             registeredTask.legacyOutputDirectories.from(project.files())
@@ -4947,16 +4958,16 @@ class KotlinWinRTPluginTest {
         val relativeSource = Path.of("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt")
         val unpackagedSource = Files.readString(unpackagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
         val packagedSource = Files.readString(packagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
-        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration.fromStagedRuntimeAssets("))
-        assertTrue(unpackagedSource.contains("WinRTApplicationPackageIdentity.Unpackaged"))
-        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkDeploymentMode.FrameworkDependent"))
-        assertTrue(unpackagedSource.contains("WinRTWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
-        assertTrue(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initializeApplicationHost(WinRTApplicationHostConfiguration.fromStagedRuntimeAssets("))
-        assertTrue(packagedSource.contains("WinRTApplicationPackageIdentity.Packaged"))
-        assertTrue(packagedSource.contains("WinRTWindowsAppSdkDeploymentMode.FrameworkDependent"))
-        assertTrue(packagedSource.contains("WinRTWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
-        assertFalse(unpackagedSource.contains("WinRTWindowsAppSdkBootstrap.initialize()"))
-        assertFalse(packagedSource.contains("WinRTWindowsAppSdkBootstrap.initialize()"))
+        assertTrue(unpackagedSource.contains("WindowsAppSdkBootstrap.initializeApplicationHost(WinAppHostConfiguration.fromStagedRuntimeAssets("))
+        assertTrue(unpackagedSource.contains("WinAppPackageIdentity.Unpackaged"))
+        assertTrue(unpackagedSource.contains("WindowsAppSdkDeploymentMode.FrameworkDependent"))
+        assertTrue(unpackagedSource.contains("WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
+        assertTrue(packagedSource.contains("WindowsAppSdkBootstrap.initializeApplicationHost(WinAppHostConfiguration.fromStagedRuntimeAssets("))
+        assertTrue(packagedSource.contains("WinAppPackageIdentity.Packaged"))
+        assertTrue(packagedSource.contains("WindowsAppSdkDeploymentMode.FrameworkDependent"))
+        assertTrue(packagedSource.contains("WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
+        assertFalse(unpackagedSource.contains("WindowsAppSdkBootstrap.initialize()"))
+        assertFalse(packagedSource.contains("WindowsAppSdkBootstrap.initialize()"))
     }
 
     @Test
@@ -5023,7 +5034,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageRuntimeAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5111,7 +5122,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMsBuildReferenceCopyLocalPaths",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-webview"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5179,7 +5190,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMsBuildWildcardImport",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-wildcard-import"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5242,7 +5253,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMsBuildFunction",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-msbuild-function"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5304,7 +5315,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMsBuildImportFunction",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-msbuild-import-function"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5364,7 +5375,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMsBuildResourceCopyLocalPaths",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-resources"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5423,7 +5434,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageMsBuildContentWithTargetPath",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-content-target-path"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5452,7 +5463,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
         val task = project.tasks.register(
             "stageArchitectureManifest",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-architecture"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5529,7 +5540,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDuplicateLiftedRegistrations",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-duplicate"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5595,7 +5606,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageFrameworkDependentRegistrations",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets-framework-dependent"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5652,7 +5663,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageCppWinRTNativeAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("cppwinrt-assets"))
             registeredTask.nugetPackages.set(listOf("Sample.CppWinRT@1.0.0"))
@@ -5725,7 +5736,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageWinAppResolvedRuntimeAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("winapp-runtime-assets"))
             registeredTask.nugetPackages.set(listOf("Sample.WinApp.Package@1.0.0"))
@@ -5795,7 +5806,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageCppWinUiNativeAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("cppwinui-assets"))
             registeredTask.nugetPackages.set(listOf("Sample.CppWinUI@1.0.0"))
@@ -5858,7 +5869,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageWindowsAppSdkAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("windowsappsdk-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -5934,7 +5945,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(projectResources.resolve("Strings/en-US/Resources.resw"), "resw")
         val task = project.tasks.register(
             "stagePriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-assets"))
             registeredTask.nugetPackages.set(listOf("Sample.Resources@1.0.0"))
@@ -6003,7 +6014,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-manifest-index.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageManifestIndexPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-manifest-index-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -6067,7 +6078,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(projectResources.resolve("Component/Controls.pri"), "project-pri")
         val task = project.tasks.register(
             "stagePriDedupeAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-dedupe-assets"))
             registeredTask.nugetPackages.set(listOf("Sample.Resources@1.0.0"))
@@ -6112,7 +6123,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-default-resw.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageDefaultReswPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-default-resw-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -6163,7 +6174,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-explicit-resw.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageExplicitReswPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-explicit-resw-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -6218,7 +6229,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-explicit-directories.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageExplicitDirectoryPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-explicit-directory-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -6276,7 +6287,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-target-path.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageTargetPathApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-target-path"))
@@ -6337,7 +6348,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageDirectoryTargetPathApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-directory-target-path"))
@@ -6391,7 +6402,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(resource, "resw")
         val task = project.tasks.register(
             "stageAbsoluteProjectPriInitialPathApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-pri-initial-path"))
@@ -6428,7 +6439,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(resource, "resw")
         val task = project.tasks.register(
             "stageAbsoluteProjectPriTargetPathApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-pri-target-path"))
@@ -6477,7 +6488,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageExcludedFromBuildApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-excluded-from-build"))
@@ -6534,7 +6545,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageEmbedFileApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-embed-files"))
@@ -6587,7 +6598,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stagePayloadWithoutMakePriApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-makepri"))
@@ -6640,7 +6651,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(makePri, "not an executable")
         val task = project.tasks.register(
             "stagePayloadWithBadMakePriApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-bad-makepri"))
@@ -6685,7 +6696,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageInvalidManifestApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-invalid-manifest"))
@@ -6747,7 +6758,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageIncompletePropertiesManifestPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-incomplete-properties-manifest"))
@@ -6803,7 +6814,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageIncompleteApplicationManifestPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-incomplete-application-manifest"))
@@ -6858,7 +6869,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageNoVisualElementsApplicationManifestPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-no-visual-elements-manifest"))
@@ -6903,7 +6914,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(nativePayload, "dll")
         val task = project.tasks.register(
             "stageExplicitPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-explicit-payload"))
@@ -6945,7 +6956,7 @@ class KotlinWinRTPluginTest {
             val override = project.projectDir.toPath().resolve("override.txt")
             Files.writeString(executable, "selected-executable")
             Files.writeString(override, "override")
-            val task = project.tasks.register("stageReservedPayload", StageWinRTApplicationPackageTask::class.java) {
+            val task = project.tasks.register("stageReservedPayload", StageWinAppPackageTask::class.java) {
                 it.runtimeAssetsDirectory.set(runtimeAssets.toFile())
                 it.outputDirectory.set(project.layout.buildDirectory.dir("package"))
                 it.runtimeIdentifier.set("win-x64")
@@ -6989,7 +7000,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stagePriOverlapApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-pri-overlap"))
@@ -7051,7 +7062,7 @@ class KotlinWinRTPluginTest {
 
         val task = project.tasks.register(
             "stageDefaultAppxResourcesApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-default-appx-resources"))
@@ -7099,7 +7110,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageMissingManifestPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-manifest-payload"))
@@ -7141,7 +7152,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(manifest, appxManifestXml())
         val task = project.tasks.register(
             "stageDeferredManifestPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-deferred-manifest-payload"))
@@ -7182,7 +7193,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageEscapedManifestPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-escaped-manifest-payload"))
@@ -7223,7 +7234,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageAbsoluteManifestPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-manifest-payload"))
@@ -7268,7 +7279,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageQualifiedVisualAssetsApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-qualified-visual-assets"))
@@ -7312,7 +7323,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(payload, "jar")
         val rootedTask = project.tasks.register(
             "stageRootedPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-rooted-payload"))
@@ -7334,7 +7345,7 @@ class KotlinWinRTPluginTest {
         }.get()
         val fallbackTask = project.tasks.register(
             "stageFallbackPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-fallback-payload"))
@@ -7379,7 +7390,7 @@ class KotlinWinRTPluginTest {
         val missingPayload = project.layout.buildDirectory.file("libs/missing-app.jar").get().asFile.toPath()
         val task = project.tasks.register(
             "stageMissingPayloadApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-payload"))
@@ -7423,7 +7434,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(payload, "jar")
         val task = project.tasks.register(
             "stageInvalidPackagePayloadTargetApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-invalid-payload-target"))
@@ -7468,7 +7479,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(payload, "jar")
         val task = project.tasks.register(
             "stageAbsolutePackagePayloadTargetApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-payload-target"))
@@ -7510,7 +7521,7 @@ class KotlinWinRTPluginTest {
         val missingResource = project.layout.buildDirectory.file("missing/Strings/en-US/Resources.resw").get().asFile.toPath()
         val task = project.tasks.register(
             "stageMissingProjectPriInputApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-pri-input"))
@@ -7555,7 +7566,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/WinApp.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithWinApp",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7600,7 +7611,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/WinAppSelfContained.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithWinAppSelfContained",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7641,7 +7652,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/Contoso.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplication",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7684,7 +7695,7 @@ class KotlinWinRTPluginTest {
         val outputFile = packageRoot.resolve("Contoso.msix")
         val task = project.tasks.register(
             "packageApplicationWithSelfIncludedOutput",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7723,7 +7734,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/Contoso.zip").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithInvalidOutputExtension",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7754,7 +7765,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(outputFile, "existing-msix")
         val task = project.tasks.register(
             "packageApplicationWithGenerationDisabled",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7781,7 +7792,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(outputFile, "existing-msix")
         val task = project.tasks.register(
             "packageApplicationWithGenerationDisabledMissingInputs",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7808,7 +7819,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/NoManifest.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithoutManifest",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7845,7 +7856,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/MissingPayload.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithMissingManifestPayload",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7882,7 +7893,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/MissingMakeAppx.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithoutMakeAppx",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7918,7 +7929,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/NoOutput.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithoutMakeAppxOutput",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7954,7 +7965,7 @@ class KotlinWinRTPluginTest {
         val outputFile = project.layout.buildDirectory.file("packages/BadMakeAppx.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "packageApplicationWithBadMakeAppx",
-            PackageWinRTApplicationTask::class.java,
+            PackageWinAppTask::class.java,
         ) { registeredTask ->
             registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
@@ -7989,7 +8000,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("winapp-verify-unpack").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyApplicationPackageWithWinApp",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8031,7 +8042,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyApplicationPackage",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8072,7 +8083,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-disabled").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyApplicationPackageDisabled",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8102,7 +8113,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-missing-disabled").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyMissingApplicationPackageDisabled",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8138,7 +8149,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "verifyApplicationPackageWithInvalidExtension",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8173,7 +8184,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "verifyMissingApplicationPackage",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8209,7 +8220,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-no-manifest").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyApplicationPackageWithoutUnpackedManifest",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8243,7 +8254,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-bad-makeappx").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyApplicationPackageWithBadMakeAppx",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8277,7 +8288,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-malformed").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyMalformedApplicationPackage",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8311,7 +8322,7 @@ class KotlinWinRTPluginTest {
         val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-no-payload").get().asFile.toPath()
         val task = project.tasks.register(
             "verifyApplicationPackageWithoutUnpackedPayload",
-            VerifyWinRTApplicationPackageTask::class.java,
+            VerifyWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
@@ -8349,7 +8360,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/Contoso-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signApplicationPackage",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8396,7 +8407,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/CertificateFile-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signApplicationPackageWithCertificateFile",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8437,7 +8448,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(signedPackage, "existing-signed-msix")
         val task = project.tasks.register(
             "skipDisabledApplicationPackageSigning",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8468,7 +8479,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(signedPackage, "existing-signed-msix")
         val task = project.tasks.register(
             "skipDisabledMissingInputApplicationPackageSigning",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8505,7 +8516,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "signApplicationPackageWithInvalidExtension",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8544,7 +8555,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "signApplicationPackageWithInvalidOutputExtension",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8581,7 +8592,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "signApplicationPackageSameInputOutput",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
@@ -8614,7 +8625,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/MissingSignTool-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signApplicationPackageWithoutSignTool",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8650,7 +8661,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/MissingInput-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signMissingApplicationPackage",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8690,7 +8701,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/MissingCertificate-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signApplicationPackageWithMissingCertificate",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8728,7 +8739,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/BadSignTool-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signApplicationPackageWithBadSignTool",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8764,7 +8775,7 @@ class KotlinWinRTPluginTest {
         val signedPackage = project.layout.buildDirectory.file("packages/FailedSign-signed.msix").get().asFile.toPath()
         val task = project.tasks.register(
             "signApplicationPackageWithFailingSignTool",
-            SignWinRTApplicationPackageTask::class.java,
+            SignWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
             registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
@@ -8801,7 +8812,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "installApplicationPackage",
-            InstallWinRTApplicationPackageTask::class.java,
+            InstallWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.installPackage.set(true)
@@ -8835,7 +8846,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "installApplicationPackageDisabled",
-            InstallWinRTApplicationPackageTask::class.java,
+            InstallWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.installPackage.set(false)
@@ -8863,7 +8874,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "installMissingApplicationPackage",
-            InstallWinRTApplicationPackageTask::class.java,
+            InstallWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.installPackage.set(true)
@@ -8894,7 +8905,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "installApplicationPackageWithInvalidExtension",
-            InstallWinRTApplicationPackageTask::class.java,
+            InstallWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.installPackage.set(true)
@@ -8920,7 +8931,7 @@ class KotlinWinRTPluginTest {
         Files.writeString(packageFile, "msix")
         val task = project.tasks.register(
             "installApplicationPackageWithoutPowerShell",
-            InstallWinRTApplicationPackageTask::class.java,
+            InstallWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.installPackage.set(true)
@@ -8948,7 +8959,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "installFailingApplicationPackage",
-            InstallWinRTApplicationPackageTask::class.java,
+            InstallWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
             registeredTask.installPackage.set(true)
@@ -8991,7 +9002,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageConfigurationInputApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-config-inputs"))
@@ -9077,7 +9088,7 @@ class KotlinWinRTPluginTest {
         )
         val task = project.tasks.register(
             "stageAppxResourceReswApplicationPackage",
-            StageWinRTApplicationPackageTask::class.java,
+            StageWinAppPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-appx-resw"))
@@ -9180,7 +9191,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-default-content.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageDefaultContentPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-default-content-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -9231,7 +9242,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-explicit-content.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageExplicitContentPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-explicit-content-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -9282,7 +9293,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-default-xaml.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageDefaultXamlPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-default-xaml-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -9340,7 +9351,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-layout-xbf.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageXbfPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-layout-xbf-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -9403,7 +9414,7 @@ class KotlinWinRTPluginTest {
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-explicit-xaml.cmd").get().asFile.toPath(), makePriLog)
         val task = project.tasks.register(
             "stageExplicitXamlPriAssets",
-            StageWinRTRuntimeAssetsTask::class.java,
+            StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-explicit-xaml-assets"))
             registeredTask.nugetPackages.set(emptyList())
@@ -9475,7 +9486,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -9486,9 +9497,11 @@ class KotlinWinRTPluginTest {
                 implementation files("$runtimeJar")
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
             """.trimIndent(),
         )
@@ -9531,12 +9544,12 @@ class KotlinWinRTPluginTest {
             )
             assertTrue(
                 jar.getEntry(
-                    "kotlin-winrt-runtime-assets/kotlin-winrt-plugin-test.winmd",
+                    "windows-package-runtime-assets/kotlin-winrt-plugin-test.winmd",
                 ) != null,
             )
             assertTrue(
                 jar.getEntry(
-                    "kotlin-winrt-runtime-assets/kotlin-winrt-plugin-test.host.json",
+                    "windows-package-runtime-assets/kotlin-winrt-plugin-test.host.json",
                 ) != null,
             )
         }
@@ -9591,7 +9604,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -9611,12 +9624,14 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
+            windows {
                 application {
                     mainClass.set "sample.MainKt"
                 }
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
 
             tasks.named("generateWinRTProjections") {
@@ -9763,7 +9778,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             kotlin {
@@ -9842,7 +9857,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             kotlin {
@@ -9923,7 +9938,7 @@ class KotlinWinRTPluginTest {
 
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             kotlin {
@@ -10034,7 +10049,7 @@ class KotlinWinRTPluginTest {
 
             plugins {
                 kotlin("multiplatform") version "2.3.20"
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             kotlin {
@@ -10120,7 +10135,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -10140,7 +10155,7 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
+            windows {
                 application {
                     mainClass.set "sample.MainKt"
                 }
@@ -10156,29 +10171,29 @@ class KotlinWinRTPluginTest {
             """.trimIndent(),
         )
         writeGradleFile(
-            projectDir.resolve("src/winuiMain/kotlin/io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkBootstrap.kt"),
+            projectDir.resolve("src/winuiMain/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"),
             """
             package io.github.composefluent.winrt.runtime
 
-            enum class WinRTApplicationPackageIdentity { Packaged, Unpackaged }
-            enum class WinRTWindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
-            data class WinRTApplicationHostConfiguration(
-                val packageIdentity: WinRTApplicationPackageIdentity,
-                val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            enum class WinAppPackageIdentity { Packaged, Unpackaged }
+            enum class WindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
+            data class WinAppHostConfiguration(
+                val packageIdentity: WinAppPackageIdentity,
+                val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
                     fun fromStagedRuntimeAssets(
-                        packageIdentity: WinRTApplicationPackageIdentity,
-                        windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+                        packageIdentity: WinAppPackageIdentity,
+                        windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
                         runtimeAssetsRoot: Any?,
-                    ) = WinRTApplicationHostConfiguration(packageIdentity, windowsAppSdkDeployment)
+                    ) = WinAppHostConfiguration(packageIdentity, windowsAppSdkDeployment)
                 }
             }
-            object WinRTWindowsAppSdkDeployment {
+            object WindowsAppSdkDeployment {
                 fun discoverRuntimeAssetsRoot(): Any? = null
             }
-            object WinRTWindowsAppSdkBootstrap {
-                fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable =
+            object WindowsAppSdkBootstrap {
+                fun initializeApplicationHost(configuration: WinAppHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }
             }
@@ -10200,7 +10215,7 @@ class KotlinWinRTPluginTest {
 
         assertEquals(
             TaskOutcome.SUCCESS,
-            result.task(":generateWinRTMingwApplicationEntryMingwX64MainReleaseExecutable")?.outcome,
+            result.task(":generateWinAppMingwEntryMingwX64MainReleaseExecutable")?.outcome,
         )
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinWinuiJvm")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinMingwX64")?.outcome)
@@ -10252,7 +10267,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -10266,7 +10281,7 @@ class KotlinWinRTPluginTest {
 
             def mingwTarget = kotlin.targets.getByName("customMingw")
 
-            winRT {
+            windows {
                 application {
                     mainClass.set "sample.MainKt"
                 }
@@ -10275,7 +10290,7 @@ class KotlinWinRTPluginTest {
             mingwTarget.binaries.withType(org.jetbrains.kotlin.gradle.plugin.mpp.Executable).all { executable ->
                 def suffix = "CustomMingwMain" + executable.name.capitalize()
                 tasks.register("verifyEntryOwnership" + suffix) {
-                    dependsOn("generateWinRTMingwApplicationEntry" + suffix)
+                dependsOn("generateWinAppMingwEntry" + suffix)
                     doLast {
                         def normalized = { file -> file.toPath().toAbsolutePath().normalize().toString().replace("\\\\", "/") }
                         def sourceDirs = executable.compilation.defaultSourceSet.kotlin.srcDirs.collect(normalized)
@@ -10302,8 +10317,8 @@ class KotlinWinRTPluginTest {
             firstResult.task(":verifyEntryOwnershipCustomMingwMainFirstExecutableReleaseExecutable")?.outcome,
         )
         assertEquals(
-            listOf(":generateWinRTMingwApplicationEntryCustomMingwMainFirstExecutableReleaseExecutable"),
-            firstResult.tasks.filter { it.path.startsWith(":generateWinRTMingwApplicationEntry") }.map { it.path },
+            listOf(":generateWinAppMingwEntryCustomMingwMainFirstExecutableReleaseExecutable"),
+            firstResult.tasks.filter { it.path.startsWith(":generateWinAppMingwEntry") }.map { it.path },
         )
         val firstEntry = projectDir.resolve(
             "build/generated/kotlin-winrt-application-entry/customMingw_main_firstExecutableReleaseExecutable/src/kotlin/" +
@@ -10324,8 +10339,8 @@ class KotlinWinRTPluginTest {
             secondResult.task(":verifyEntryOwnershipCustomMingwMainSecondExecutableReleaseExecutable")?.outcome,
         )
         assertEquals(
-            listOf(":generateWinRTMingwApplicationEntryCustomMingwMainSecondExecutableReleaseExecutable"),
-            secondResult.tasks.filter { it.path.startsWith(":generateWinRTMingwApplicationEntry") }.map { it.path },
+            listOf(":generateWinAppMingwEntryCustomMingwMainSecondExecutableReleaseExecutable"),
+            secondResult.tasks.filter { it.path.startsWith(":generateWinAppMingwEntry") }.map { it.path },
         )
         assertTrue(
             Files.isRegularFile(
@@ -10375,7 +10390,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -10393,9 +10408,11 @@ class KotlinWinRTPluginTest {
                 archiveFileName = "ui-winuijvm-9999.0.0-SNAPSHOT.jar"
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
 
             tasks.register("printWinuiJvmCompilerArgs") {
@@ -10612,7 +10629,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -10626,9 +10643,11 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
 
             tasks.named("generateWinRTProjections") {
@@ -10740,7 +10759,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             configurations.configureEach {
@@ -10754,8 +10773,10 @@ class KotlinWinRTPluginTest {
                 add("kotlinWinRTLibraryDependencyIdentity", files("dependency-identity.json"))
             }
 
-            winRT {
-                windowsSdk("10.0.26100.0", false, false)
+            windows {
+                packageReferences {
+                    windowsSdk("10.0.26100.0", false, false)
+                }
             }
 
             tasks.register("printAuthoringOnlyCompilerArgs") {
@@ -10910,7 +10931,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             def winuiEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWinUI")
@@ -10935,13 +10956,15 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
+            windows {
                 if (winuiEnabled.get()) {
-                    nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion.get()) {
-                        generateProjection = false
-                    }
-                    nugetPackage("WinUIEssential.WinUI3", "1.6.7") {
-                        generateProjection = false
+                    packageReferences {
+                        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion.get()) {
+                            generateProjection = false
+                        }
+                        nugetPackage("WinUIEssential.WinUI3", "1.6.7") {
+                            generateProjection = false
+                        }
                     }
                 }
             }
@@ -10952,7 +10975,7 @@ class KotlinWinRTPluginTest {
                     def winuiMain = kotlin.sourceSets.getByName("winuiMain")
                     def winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
                     def mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
-                    def packageIds = winRT.nugetPackages.collect { it.packageId }
+                    def packageIds = windows.packageReferences.nugetPackages.collect { it.packageId }
                     println("SAMPLE_MODE=" + (winuiEnabled.get() ? "winui" : "no-winui"))
                     println("NO_WINUI_SOURCE_SET=" + (noWinuiMain != null))
                     println("JVM_USES_NO_WINUI=" + (noWinuiMain != null && winuiJvmMain.dependsOn.contains(noWinuiMain)))
@@ -11030,7 +11053,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             configurations.configureEach {
@@ -11066,9 +11089,11 @@ class KotlinWinRTPluginTest {
                 archiveFileName = "ui-winuijvm-9999.0.0-SNAPSHOT.jar"
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
             """.trimIndent(),
         )
@@ -11184,12 +11209,14 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                winmd "${fixture.winmd.toString().replace("\\", "/")}"
-                namespace "Windows"
+            windows {
+                packageReferences {
+                    winmd "${fixture.winmd.toString().replace("\\", "/")}"
+                    namespace "Windows"
+                }
             }
             """.trimIndent(),
         )
@@ -11219,9 +11246,9 @@ class KotlinWinRTPluginTest {
     fun zero_argument_windows_sdk_call_is_an_explicit_source_addition_declaration() {
         val project = ProjectBuilder.builder().build()
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.windowsSdk()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.windowsSdk()
 
         val generationTask = project.tasks.named(
             "generateWinRTProjections",
@@ -11235,7 +11262,7 @@ class KotlinWinRTPluginTest {
             .withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java)
             .single()
 
-        assertTrue("BaseWinRTExtension must retain an explicit windowsSdk() declaration signal", extension.windowsSdkDeclared.get())
+        assertTrue("PackageReferencesConfiguration must retain an explicit windowsSdk() declaration signal", extension.packageReferences.windowsSdkDeclared.get())
         assertTrue("GenerateWinRTProjectionsTask must receive the declaration", generationTask.windowsSdkDeclared.get())
         assertTrue("GenerateWinRTIdentityTask must receive the declaration", identityTask.windowsSdkDeclared.get())
         assertTrue(
@@ -11282,7 +11309,7 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("producer/build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             tasks.named("generateWinRTIdentity") {
@@ -11302,12 +11329,14 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("consumer/build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                windowsSdk(null, false, false)
-                ${consumerNamespaces.joinToString("\n                ") { namespace -> "namespace \"$namespace\"" }}
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, false)
+                    ${consumerNamespaces.joinToString("\n                    ") { namespace -> "namespace \"$namespace\"" }}
+                }
             }
 
             dependencies {
@@ -11380,12 +11409,14 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("producer/build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                windowsSdk("$windowsSdkVersion", false, false)
-                type "$exactType"
+            windows {
+                packageReferences {
+                    windowsSdk("$windowsSdkVersion", false, false)
+                    type "$exactType"
+                }
             }
 
             tasks.named("generateWinRTProjections") {
@@ -11397,12 +11428,14 @@ class KotlinWinRTPluginTest {
             projectDir.resolve("consumer/build.gradle"),
             """
             plugins {
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
-            winRT {
-                windowsSdk("$windowsSdkVersion", false, false)
-                type "$exactType"
+            windows {
+                packageReferences {
+                    windowsSdk("$windowsSdkVersion", false, false)
+                    type "$exactType"
+                }
             }
 
             dependencies {
@@ -11602,16 +11635,18 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             dependencies {
                 implementation files("$runtimeJar")
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
 
             tasks.register("verifyAuthoredCandidateArtifacts") {
@@ -11710,7 +11745,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
 
         val validationTaskName = "validateCompileKotlinWinRTAuthoredCandidates"
         listOf(
@@ -11867,7 +11902,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         project.extensions.configure(KotlinMultiplatformExtension::class.java) { kotlin ->
             kotlin.mingwX64("winuiMingw")
             kotlin.linuxX64("linux")
@@ -11885,7 +11920,7 @@ class KotlinWinRTPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         project.extensions.getByType(BasePluginExtension::class.java).archivesName.set("custom-projection")
 
         val generateTask = project.tasks.named(
@@ -11941,16 +11976,18 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             dependencies {
                 implementation files("$runtimeJar")
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
 
             def writeGeneratedAuthoredCandidate = tasks.register("writeGeneratedAuthoredCandidate") {
@@ -12034,7 +12071,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.jvm" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
             """.trimIndent(),
         )
@@ -12448,7 +12485,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -12462,9 +12499,11 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
 
             def writeRuntimeClassCastProbe = tasks.register("writeRuntimeClassCastProbe") {
@@ -12618,9 +12657,11 @@ class KotlinWinRTPluginTest {
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
         val winRTConfiguration = if (includeWindowsSdkProjection) {
             """
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                }
             }
             """.trimIndent()
         } else {
@@ -12658,7 +12699,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -12745,7 +12786,7 @@ class KotlinWinRTPluginTest {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
             }
 
-            apply plugin: "io.github.compose-fluent.winrt"
+            apply plugin: "io.github.compose-fluent.windows-toolkit"
 
             kotlin {
                 jvm("winuiJvm")
@@ -12758,11 +12799,13 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IStringable"
-                type "Windows.Foundation.Point"
-                type "Windows.Foundation.Rect"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IStringable"
+                    type "Windows.Foundation.Point"
+                    type "Windows.Foundation.Rect"
+                }
             }
 
             def writeIntrinsicProbe = tasks.register("writeIntrinsicProbe") {
@@ -12934,7 +12977,7 @@ class KotlinWinRTPluginTest {
     }
 
     @Test
-    fun plugin_validates_multiplatform_winrt_library_consumed_by_multiplatform_winrt_application() {
+    fun plugin_validates_multiplatform_winrt_library_consumed_by_multiplatform_winapp_application() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-library-app-test-")
         val nugetRoot = projectDir.resolve("nuget")
         writeWindowsAppSdkPackage(
@@ -12945,7 +12988,7 @@ class KotlinWinRTPluginTest {
         )
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
         val generatorWorkerSetup = """
-            apply plugin: "io.github.compose-fluent.winrt"
+            apply plugin: "io.github.compose-fluent.windows-toolkit"
         """.trimIndent()
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
@@ -12986,9 +13029,11 @@ class KotlinWinRTPluginTest {
 
             $generatorWorkerSetup
 
-            winRT {
-                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
-                restoreNuGetPackages.set false
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                    restoreNuGetPackages.set false
+                }
             }
 
             kotlin {
@@ -13002,9 +13047,11 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IClosable"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IClosable"
+                }
             }
             """.trimIndent(),
         )
@@ -13017,9 +13064,11 @@ class KotlinWinRTPluginTest {
 
             $generatorWorkerSetup
 
-            winRT {
-                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
-                restoreNuGetPackages.set false
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                    restoreNuGetPackages.set false
+                }
             }
 
             kotlin {
@@ -13034,9 +13083,11 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.Uri"
+            windows {
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.Uri"
+                }
             }
 
             tasks.named("generateWinRTProjections") {
@@ -13059,9 +13110,11 @@ class KotlinWinRTPluginTest {
 
             $generatorWorkerSetup
 
-            winRT {
-                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
-                restoreNuGetPackages.set false
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                    restoreNuGetPackages.set false
+                }
             }
 
             kotlin {
@@ -13076,15 +13129,17 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
+            windows {
                 application {
                     mainClass.set "app.MainKt"
                 }
-                windowsSdk(null, false, true)
-                type "Windows.Foundation.IAsyncAction"
-                type "Microsoft.UI.Xaml.ResourceDictionary"
-                nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") {
-                    generateProjection = true
+                packageReferences {
+                    windowsSdk(null, false, true)
+                    type "Windows.Foundation.IAsyncAction"
+                    type "Microsoft.UI.Xaml.ResourceDictionary"
+                    nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") {
+                        generateProjection = true
+                    }
                 }
             }
 
@@ -13114,7 +13169,7 @@ class KotlinWinRTPluginTest {
             }
 
             tasks.register("printApplicationIdentity") {
-                dependsOn("generateWinRTApplicationIdentityWinuiJvmMain")
+                dependsOn("generateWinAppIdentityWinuiJvmMain")
                 doLast {
                     println(layout.buildDirectory.file(
                         "generated/kotlin-winrt/identity/variant-WinuiJvmMain/kotlin-winrt-application.json",
@@ -13259,7 +13314,7 @@ class KotlinWinRTPluginTest {
         )
         assertEquals(
             TaskOutcome.SUCCESS,
-            result.task(":winrt-app:generateWinRTApplicationIdentityWinuiJvmMain")?.outcome,
+            result.task(":winrt-app:generateWinAppIdentityWinuiJvmMain")?.outcome,
         )
         assertTrue(
             result.task(":winrt-app:compileKotlinWinuiJvm")?.outcome in
@@ -13384,17 +13439,19 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "application"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             application {
                 mainClass.set "sample.Main"
             }
 
-            winRT {
-                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
-                restoreNuGetPackages.set false
-                nugetPackage "Microsoft.WindowsAppSDK", "1.8.260416003"
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                    restoreNuGetPackages.set false
+                    nugetPackage "Microsoft.WindowsAppSDK", "1.8.260416003"
+                }
                 application {
                     packageType.set io.github.composefluent.winrt.gradle.WindowsPackageType.None
                     makePriExecutable.set "${makePri.toString().replace("\\", "\\\\")}"
@@ -13409,10 +13466,10 @@ class KotlinWinRTPluginTest {
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRTRuntimeAssetsJvmMain")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRTApplicationPackageJvmMain")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWindowsPackageRuntimeAssetsJvmMain")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinAppPackageJvmMain")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":installDist")?.outcome)
-        val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY")
+        val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$WINDOWS_PACKAGE_RUNTIME_ASSETS_DIRECTORY")
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
         assertTrue(Files.isRegularFile(assetsRoot.resolve("resources.pri")))
@@ -13431,7 +13488,7 @@ class KotlinWinRTPluginTest {
                 "versionTag=preview.7",
                 "minVersion=281509336449024",
             ),
-            Files.readAllLines(assetsRoot.resolve("kotlin-winrt-windows-app-sdk.properties")),
+            Files.readAllLines(assetsRoot.resolve("windows-app-sdk.properties")),
         )
     }
 
@@ -13439,13 +13496,13 @@ class KotlinWinRTPluginTest {
     fun packaged_application_keeps_framework_runtime_assets_for_legacy_appx_output() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
             application.packageOutputFile.set(project.layout.buildDirectory.file("packages/sample.appx"))
         }
 
-        val task = project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java).get()
+        val task = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
 
         assertTrue(task.includeFrameworkRuntimeAssets.get())
     }
@@ -13454,13 +13511,13 @@ class KotlinWinRTPluginTest {
     fun packaged_application_keeps_framework_runtime_assets_when_legacy_makeappx_is_configured() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        project.extensions.getByType(WinRTExtension::class.java).application { application ->
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).application { application ->
             application.packageType.set(WindowsPackageType.Packaged)
             application.makeAppxExecutable.set("C:/Windows Kits/10/bin/makeappx.exe")
         }
 
-        val task = project.tasks.named("stageWinRTRuntimeAssetsJvmMain", StageWinRTRuntimeAssetsTask::class.java).get()
+        val task = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
 
         assertTrue(task.includeFrameworkRuntimeAssets.get())
     }
@@ -13503,7 +13560,7 @@ class KotlinWinRTPluginTest {
             """
             plugins {
                 id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
-                id "io.github.compose-fluent.winrt"
+                id "io.github.compose-fluent.windows-toolkit"
             }
 
             kotlin {
@@ -13521,7 +13578,7 @@ class KotlinWinRTPluginTest {
                 }
             }
 
-            winRT {
+            windows {
                 application {
                     mainClass.set "sample.MainKt"
                     generateProjectPri.set false
@@ -13529,7 +13586,7 @@ class KotlinWinRTPluginTest {
             }
 
             tasks.register("verifyMingwApplicationPackageLayout") {
-                dependsOn("stageWinRTApplicationPackageMingwX64MainReleaseExecutable")
+                dependsOn("stageWinAppPackageMingwX64MainReleaseExecutable")
                 doLast {
                     def packageRoot = layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64_main_releaseExecutable/package").get().asFile
                     def executable = new File(packageRoot, "kotlin-winrt-mingw-package-test.exe")
@@ -13553,29 +13610,29 @@ class KotlinWinRTPluginTest {
             """.trimIndent(),
         )
         writeGradleFile(
-            projectDir.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkBootstrap.kt"),
+            projectDir.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"),
             """
             package io.github.composefluent.winrt.runtime
 
-            enum class WinRTApplicationPackageIdentity { Packaged, Unpackaged }
-            enum class WinRTWindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
-            data class WinRTApplicationHostConfiguration(
-                val packageIdentity: WinRTApplicationPackageIdentity,
-                val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            enum class WinAppPackageIdentity { Packaged, Unpackaged }
+            enum class WindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
+            data class WinAppHostConfiguration(
+                val packageIdentity: WinAppPackageIdentity,
+                val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
                     fun fromStagedRuntimeAssets(
-                        packageIdentity: WinRTApplicationPackageIdentity,
-                        windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+                        packageIdentity: WinAppPackageIdentity,
+                        windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
                         runtimeAssetsRoot: Any?,
-                    ) = WinRTApplicationHostConfiguration(packageIdentity, windowsAppSdkDeployment)
+                    ) = WinAppHostConfiguration(packageIdentity, windowsAppSdkDeployment)
                 }
             }
-            object WinRTWindowsAppSdkDeployment {
+            object WindowsAppSdkDeployment {
                 fun discoverRuntimeAssetsRoot(): Any? = null
             }
-            object WinRTWindowsAppSdkBootstrap {
-                fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable =
+            object WindowsAppSdkBootstrap {
+                fun initializeApplicationHost(configuration: WinAppHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }
             }
@@ -13590,7 +13647,7 @@ class KotlinWinRTPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":linkReleaseExecutableMingwX64")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRTApplicationPackageMingwX64MainReleaseExecutable")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinAppPackageMingwX64MainReleaseExecutable")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMingwApplicationPackageLayout")?.outcome)
         assertEquals(
             2,
@@ -13692,7 +13749,7 @@ private fun writeGradleWindowsSdkFixture(uac: Int): GradleWindowsSdkFixture {
 private fun writeIdentityFromSourceAdditionManifest(manifest: Path?): java.io.File {
     val projectDir = Files.createTempDirectory("kotlin-winrt-source-addition-identity-")
     val project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build()
-    project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+    project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
     val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
     task.sourceAdditionManifestFiles.setFrom(manifest?.toFile()?.let(::listOf).orEmpty())
     task.generate()

@@ -15,13 +15,13 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 
-class NamedWinRTApplicationsTest {
+class NamedWinAppsTest {
     @Test
     fun named_application_preserves_explicit_default_deployment_mode() {
         val project = ProjectBuilder.builder().withName("named-deployment").build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
 
         extension.application { application ->
             application.selfContained()
@@ -31,7 +31,7 @@ class NamedWinRTApplicationsTest {
             }
         }
 
-        val host = project.tasks.getByName("buildWinRTApplicationHostDesktop") as BuildWinRTApplicationHostTask
+        val host = project.tasks.getByName("buildWinAppHostDesktop") as BuildWinAppHostTask
         assertEquals(WindowsAppSdkDeployment.SelfContained, host.windowsAppSdkDeployment.get())
     }
 
@@ -39,9 +39,9 @@ class NamedWinRTApplicationsTest {
     fun named_applications_inherit_defaults_and_bind_their_own_run_tasks() {
         val project = ProjectBuilder.builder().withName("named-apps").build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
-        val extension = project.extensions.getByType(WinRTExtension::class.java)
-        extension.windowsSdk("10.0.26100.0")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.windowsSdk("10.0.26100.0")
         extension.application { application ->
             application.mainClass.set("sample.First")
             application.minWindowsVersion.set("10.0.19041.0")
@@ -64,27 +64,27 @@ class NamedWinRTApplicationsTest {
             application.variants.getByName("second").runTask("runSecondAgain")
         }
 
-        val first = project.tasks.getByName("buildWinRTApplicationHostFirst") as BuildWinRTApplicationHostTask
-        val second = project.tasks.getByName("buildWinRTApplicationHostSecond") as BuildWinRTApplicationHostTask
+        val first = project.tasks.getByName("buildWinAppHostFirst") as BuildWinAppHostTask
+        val second = project.tasks.getByName("buildWinAppHostSecond") as BuildWinAppHostTask
         assertEquals("sample.First", first.mainClass.get())
         assertEquals("sample.Second", second.mainClass.get())
         assertTrue(first.console.get())
         assertTrue(second.console.get())
         assertNotEquals(first.outputDirectory.get(), second.outputDirectory.get())
         assertNotEquals(first.generatedSourceDirectory.get(), second.generatedSourceDirectory.get())
-        val firstPackagedRun = project.tasks.getByName("runWinRTApplicationPackageFirst") as RunWinRTApplicationPackageTask
-        val secondPackagedRun = project.tasks.getByName("runWinRTApplicationPackageSecond") as RunWinRTApplicationPackageTask
-        val firstDevelopment = project.tasks.getByName("stageWinRTApplicationDevelopmentPackageFirst") as StageWinRTApplicationPackageTask
-        val secondDevelopment = project.tasks.getByName("stageWinRTApplicationDevelopmentPackageSecond") as StageWinRTApplicationPackageTask
+        val firstPackagedRun = project.tasks.getByName("runWinAppPackageFirst") as RunWinAppPackageTask
+        val secondPackagedRun = project.tasks.getByName("runWinAppPackageSecond") as RunWinAppPackageTask
+        val firstDevelopment = project.tasks.getByName("stageWinAppDevelopmentPackageFirst") as StageWinAppPackageTask
+        val secondDevelopment = project.tasks.getByName("stageWinAppDevelopmentPackageSecond") as StageWinAppPackageTask
         listOf("First", "Second").forEach { suffix ->
-            val stage = project.tasks.getByName("stageWinRTApplicationPackage$suffix") as StageWinRTApplicationPackageTask
-            val dev = project.tasks.getByName("stageWinRTApplicationDevelopmentPackage$suffix") as StageWinRTApplicationPackageTask
+            val stage = project.tasks.getByName("stageWinAppPackage$suffix") as StageWinAppPackageTask
+            val dev = project.tasks.getByName("stageWinAppDevelopmentPackage$suffix") as StageWinAppPackageTask
             assertEquals(if (suffix == "First") "10.0.19041.0" else "10.0.22000.0", stage.minWindowsVersion.get())
             assertEquals(if (suffix == "First") "10.0.26100.0" else "10.0.28000.0", stage.maxVersionTested.get())
             assertEquals(stage.minWindowsVersion.get(), dev.minWindowsVersion.get())
             assertEquals(stage.maxVersionTested.get(), dev.maxVersionTested.get())
         }
-        extension.windowsSdkVersion.set("10.0.22621.0")
+        extension.packageReferences.windowsSdkVersion.set("10.0.22621.0")
         assertEquals("10.0.22621.0", firstDevelopment.maxVersionTested.get())
         assertEquals("10.0.28000.0", secondDevelopment.maxVersionTested.get())
         assertEquals(first.outputDirectory.get(), firstDevelopment.runtimeAssetsDirectory.get())
@@ -97,15 +97,15 @@ class NamedWinRTApplicationsTest {
         assertEquals("shared.txt", extension.application.variants.getByName("first").packagePayloadFiles.singleFile.name)
         assertEquals("second.txt", extension.application.variants.getByName("second").packagePayloadFiles.singleFile.name)
         listOf("runFirst" to first, "runSecond" to second, "runSecondAgain" to second).forEach { (name, host) ->
-            val run = project.tasks.getByName(name) as RunWinRTApplicationHostTask
+            val run = project.tasks.getByName(name) as RunWinAppHostTask
             assertTrue(host in run.taskDependencies.getDependencies(run))
         }
-        val aggregate = project.tasks.getByName("packageWinRTApplication")
+        val aggregate = project.tasks.getByName("packageWinApp")
         assertEquals(
-            setOf("packageWinRTApplicationFirst", "packageWinRTApplicationSecond"),
+            setOf("packageWinAppFirst", "packageWinAppSecond"),
             aggregate.taskDependencies.getDependencies(aggregate).map { it.name }.toSet(),
         )
-        val error = runCatching { project.registerWinRTApplicationHostRunTask("ambiguousRun") }.exceptionOrNull()
+        val error = runCatching { project.registerWinAppHostRunTask("ambiguousRun") }.exceptionOrNull()
         assertTrue(error?.message.orEmpty().contains("select a host"))
     }
 
@@ -113,9 +113,9 @@ class NamedWinRTApplicationsTest {
     fun rejects_variant_task_suffix_collisions() {
         val project = ProjectBuilder.builder().build()
         project.pluginManager.apply("java")
-        project.pluginManager.apply(KotlinWinRTPlugin::class.java)
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val error = runCatching {
-            project.extensions.getByType(WinRTExtension::class.java).application { application ->
+            project.extensions.getByType(WindowsExtension::class.java).application { application ->
                 application.variants.create("desk-top")
                 application.variants.create("desk_top")
             }
@@ -129,15 +129,15 @@ class NamedWinRTApplicationsTest {
         writeGradleFile(root.resolve("settings.gradle"), "rootProject.name = 'jvm-variants'\ninclude 'firstLib', 'secondLib'")
         listOf("firstLib", "secondLib").forEach { name ->
             writeGradleFile(root.resolve("$name/build.gradle"), """
-                plugins { id 'java-library'; id 'io.github.compose-fluent.winrt' }
+                plugins { id 'java-library'; id 'io.github.compose-fluent.windows-toolkit' }
                 repositories { mavenCentral() }
             """.trimIndent())
             writeGradleFile(root.resolve("$name/src/main/appxResources/Assets/$name.txt"), name)
         }
         writeGradleFile(root.resolve("build.gradle"), """
-            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.winrt' }
+            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.windows-toolkit' }
             repositories { mavenCentral() }
-            winRT { application {
+            windows { application {
                 mainClass = 'sample.FirstKt'
                 generateProjectPri = false
                 enableDefaultProjectPriResources = false
@@ -154,14 +154,14 @@ class NamedWinRTApplicationsTest {
                     firstJvmPreview.dependencies { implementation project(':secondLib') }
                 }
             }
-            winRT { application { variants { create('second') {
+            windows { application { variants { create('second') {
                 variantName = 'firstJvm:preview'
                 mainClass = 'sample.SecondKt'
             } } } }
             ['First', 'Second'].each { suffix ->
                 tasks.register('inspect' + suffix) {
-                    def host = tasks.named('buildWinRTApplicationHost' + suffix).get()
-                    def stage = tasks.named('stageWinRTApplicationPackage' + suffix).get()
+                    def host = tasks.named('buildWinAppHost' + suffix).get()
+                    def stage = tasks.named('stageWinAppPackage' + suffix).get()
                     inputs.files(host.runtimeClasspath, stage.appxResourceArchives)
                     dependsOn(stage)
                     doLast {
@@ -182,7 +182,7 @@ class NamedWinRTApplicationsTest {
                         assert identity.dependencies.findAll { it instanceof ProjectDependency }*.path == [':' + own + 'Lib']
                         assert host.mainClass.get() == 'sample.' + suffix + 'Kt'
                         assert host.outputDirectory.get().asFile.path.contains(own + '--')
-                        assert tasks.named('generateWinRTApplicationIdentity' + suffix).get().outputFile.get().asFile.path.contains('variant-' + suffix)
+                        assert tasks.named('generateWinAppIdentity' + suffix).get().outputFile.get().asFile.path.contains('variant-' + suffix)
                     }
                 }
             }
@@ -194,8 +194,8 @@ class NamedWinRTApplicationsTest {
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":compilePrimaryKotlinFirstJvm")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":compilePreviewKotlinFirstJvm")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":firstLib:packageWinRTAppxResources")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":secondLib:packageWinRTAppxResources")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":firstLib:packageAppxResources")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":secondLib:packageAppxResources")?.outcome)
         assertFalse(result.tasks.any { it.path.startsWith(":link") })
         assertTrue(result.task(":compileKotlinUnselectedNative") == null)
         assertTrue(result.task(":compileKotlinFirstJvm") == null)
@@ -207,7 +207,7 @@ class NamedWinRTApplicationsTest {
         assumeNotNull(makeAppx)
         val root = fixture("native-variants")
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
-            winRT { application {
+            windows { application {
                 packageType = io.github.composefluent.winrt.gradle.WindowsPackageType.Packaged
                 minWindowsVersion = '10.0.17763.0'
                 maxVersionTested = '10.0.26100.0'
@@ -233,28 +233,28 @@ class NamedWinRTApplicationsTest {
         """.trimIndent())
         // The wrapper keeps the CsWinRT application-host scope contract. This fixture isolates
         // KGP compilation/link/packaging ownership from WinUI deployment and projection loading.
-        writeGradleFile(root.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WinRTWindowsAppSdkBootstrap.kt"), """
+        writeGradleFile(root.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"), """
             package io.github.composefluent.winrt.runtime
-            enum class WinRTApplicationPackageIdentity { Packaged, Unpackaged }
-            enum class WinRTWindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
-            data class WinRTApplicationHostConfiguration(
-                val packageIdentity: WinRTApplicationPackageIdentity,
-                val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            enum class WinAppPackageIdentity { Packaged, Unpackaged }
+            enum class WindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
+            data class WinAppHostConfiguration(
+                val packageIdentity: WinAppPackageIdentity,
+                val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
                     fun fromStagedRuntimeAssets(
-                        packageIdentity: WinRTApplicationPackageIdentity,
-                        windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+                        packageIdentity: WinAppPackageIdentity,
+                        windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
                         runtimeAssetsRoot: Any?,
-                    ) = WinRTApplicationHostConfiguration(packageIdentity, windowsAppSdkDeployment)
+                    ) = WinAppHostConfiguration(packageIdentity, windowsAppSdkDeployment)
                 }
             }
-            object WinRTWindowsAppSdkDeployment {
+            object WindowsAppSdkDeployment {
                 fun discoverRuntimeAssetsRoot(): Any? = null
             }
-            object WinRTWindowsAppSdkBootstrap {
-                fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): AutoCloseable {
-                    val unpackaged = configuration.packageIdentity == WinRTApplicationPackageIdentity.Unpackaged
+            object WindowsAppSdkBootstrap {
+                fun initializeApplicationHost(configuration: WinAppHostConfiguration): AutoCloseable {
+                    val unpackaged = configuration.packageIdentity == WinAppPackageIdentity.Unpackaged
                     println("bootstrap=${'$'}unpackaged")
                     return AutoCloseable { }
                 }
@@ -270,11 +270,11 @@ class NamedWinRTApplicationsTest {
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
         ))
 
-        val result = runner(root, "verifyWinRTApplicationPackage").build()
+        val result = runner(root, "verifyWinAppPackage").build()
         listOf("First", "Second").forEach { name ->
             assertEquals(TaskOutcome.SUCCESS, result.task(":link${name}ReleaseExecutableDesktop")?.outcome)
-            assertEquals(TaskOutcome.SUCCESS, result.task(":packageWinRTApplication$name")?.outcome)
-            assertEquals(TaskOutcome.SUCCESS, result.task(":verifyWinRTApplicationPackage$name")?.outcome)
+            assertEquals(TaskOutcome.SUCCESS, result.task(":packageWinApp$name")?.outcome)
+            assertEquals(TaskOutcome.SUCCESS, result.task(":verifyWinAppPackage$name")?.outcome)
             val id = "${name.lowercase()}--desktop_main_${name.lowercase()}ReleaseExecutable"
             val packageFile = root.resolve("build/kotlin-winrt/packages/native-variants-$id.msix")
             ZipFile(packageFile.toFile()).use { zip ->
@@ -294,19 +294,19 @@ class NamedWinRTApplicationsTest {
                 if (process.isAlive) process.destroyForcibly()
             }
         }
-        val repeated = runner(root, "verifyWinRTApplicationPackage").build()
-        assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":packageWinRTApplicationFirst")?.outcome)
-        assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":packageWinRTApplicationSecond")?.outcome)
+        val repeated = runner(root, "verifyWinAppPackage").build()
+        assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":packageWinAppFirst")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":packageWinAppSecond")?.outcome)
     }
 
     @Test
     fun runtime_preparation_does_not_capture_application_models_in_configuration_cache() {
         val root = fixture("cached-runtime-preparation")
         writeGradleFile(root.resolve("build.gradle"), """
-            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
-            winRT { application {
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
+            windows { application {
                 mainClass = 'sample.Main'
-                jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinRTJvmRuntimeMode.External
+                jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinAppJvmRuntimeMode.External
                 externalJvmHome = file('${System.getProperty("java.home").replace("\\", "/")}')
                 variants {
                     create('first') { variantName = 'jvm:main' }
@@ -314,12 +314,12 @@ class NamedWinRTApplicationsTest {
                 }
             } }
         """.trimIndent())
-        val first = runner(root, "prepareWinRTJvmRuntimeImage", "--configuration-cache").build()
+        val first = runner(root, "prepareWinAppJvmRuntimeImage", "--configuration-cache").build()
         assertTrue(first.output, first.output.contains("Configuration cache entry stored"))
-        val second = runner(root, "prepareWinRTJvmRuntimeImage", "--configuration-cache").build()
+        val second = runner(root, "prepareWinAppJvmRuntimeImage", "--configuration-cache").build()
         assertTrue(second.output, second.output.contains("Reusing configuration cache"))
-        assertEquals(TaskOutcome.SKIPPED, second.task(":prepareWinRTJvmRuntimeImageFirst")?.outcome)
-        assertEquals(TaskOutcome.SKIPPED, second.task(":prepareWinRTJvmRuntimeImageSecond")?.outcome)
+        assertEquals(TaskOutcome.SKIPPED, second.task(":prepareWinAppJvmRuntimeImageFirst")?.outcome)
+        assertEquals(TaskOutcome.SKIPPED, second.task(":prepareWinAppJvmRuntimeImageSecond")?.outcome)
     }
 
     @Test
@@ -327,10 +327,10 @@ class NamedWinRTApplicationsTest {
         val root = fixture("shared-compatible-jvm-producers")
         val suppliedRuntimeImage = createRuntimeImage(root.resolve("supplied-runtime-image"))
         writeGradleFile(root.resolve("build.gradle"), """
-            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
-            winRT { application {
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
+            windows { application {
                 mainClass = 'sample.Main'
-                jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinRTJvmRuntimeMode.Bundled
+                jvmRuntimeMode = io.github.composefluent.winrt.gradle.WinAppJvmRuntimeMode.Bundled
                 jvmRuntimeImage = file('${suppliedRuntimeImage.toString().replace("\\", "/")}')
                 variants {
                     create('first') { variantName = 'jvm:main' }
@@ -340,14 +340,14 @@ class NamedWinRTApplicationsTest {
             tasks.register('inspectSharedProducers') {
                 doLast {
                     def materializers = ['First', 'Second'].collect {
-                        tasks.named('prepareWinRTJvmRuntimeImage' + it).get()
+                        tasks.named('prepareWinAppJvmRuntimeImage' + it).get()
                     }
                     def authoringMaterializers = ['First', 'Second'].collect {
                         tasks.named('buildWinRTAuthoringHost' + it).get()
                     }
                     def runtime = materializers.collectMany {
                         it.taskDependencies.getDependencies(it)
-                    }.findAll { it.name.startsWith('prepareWinRTJvmRuntimeImageShared') }*.name.unique()
+                    }.findAll { it.name.startsWith('prepareWinAppJvmRuntimeImageShared') }*.name.unique()
                     def authoring = authoringMaterializers.collectMany {
                         it.taskDependencies.getDependencies(it)
                     }.findAll { it.name.startsWith('buildWinRTAuthoringHostShared') }*.name.unique()
@@ -356,7 +356,7 @@ class NamedWinRTApplicationsTest {
                     assert materializers*.outputDirectory*.get()*.asFile*.path.unique().size() == 2
                     assert authoringMaterializers*.outputDirectory*.get()*.asFile*.path.unique().size() == 2
                     ['First', 'Second'].each { suffix ->
-                        def materializer = tasks.named('prepareWinRTJvmRuntimeImage' + suffix).get()
+                        def materializer = tasks.named('prepareWinAppJvmRuntimeImage' + suffix).get()
                         def authoringMaterializer = tasks.named('buildWinRTAuthoringHost' + suffix).get()
                         assert materializer.taskDependencies.getDependencies(materializer)*.name == runtime*.toString()
                         assert authoringMaterializer.taskDependencies.getDependencies(authoringMaterializer)*.name == authoring*.toString()
@@ -369,40 +369,40 @@ class NamedWinRTApplicationsTest {
 
         val result = runner(root, "inspectSharedProducers").build()
 
-        assertTrue(result.output, result.output.contains("sharedRuntime=[prepareWinRTJvmRuntimeImageShared"))
+        assertTrue(result.output, result.output.contains("sharedRuntime=[prepareWinAppJvmRuntimeImageShared"))
         assertTrue(result.output, result.output.contains("sharedAuthoring=[buildWinRTAuthoringHostShared"))
 
         val firstExecution = runner(
             root,
-            "prepareWinRTJvmRuntimeImageFirst",
-            "prepareWinRTJvmRuntimeImageSecond",
+            "prepareWinAppJvmRuntimeImageFirst",
+            "prepareWinAppJvmRuntimeImageSecond",
             "buildWinRTAuthoringHostFirst",
             "buildWinRTAuthoringHostSecond",
         ).build()
         val sharedRuntimeTask = firstExecution.tasks.single {
-            it.path.startsWith(":prepareWinRTJvmRuntimeImageShared")
+            it.path.startsWith(":prepareWinAppJvmRuntimeImageShared")
         }
         val sharedAuthoringTask = firstExecution.tasks.single {
             it.path.startsWith(":buildWinRTAuthoringHostShared")
         }
         assertEquals(TaskOutcome.SUCCESS, sharedRuntimeTask.outcome)
         assertEquals(TaskOutcome.SUCCESS, sharedAuthoringTask.outcome)
-        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":prepareWinRTJvmRuntimeImageFirst")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":prepareWinRTJvmRuntimeImageSecond")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":prepareWinAppJvmRuntimeImageFirst")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":prepareWinAppJvmRuntimeImageSecond")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":buildWinRTAuthoringHostFirst")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, firstExecution.task(":buildWinRTAuthoringHostSecond")?.outcome)
 
         val repeatedExecution = runner(
             root,
-            "prepareWinRTJvmRuntimeImageFirst",
-            "prepareWinRTJvmRuntimeImageSecond",
+            "prepareWinAppJvmRuntimeImageFirst",
+            "prepareWinAppJvmRuntimeImageSecond",
             "buildWinRTAuthoringHostFirst",
             "buildWinRTAuthoringHostSecond",
         ).build()
         assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(sharedRuntimeTask.path)?.outcome)
         assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(sharedAuthoringTask.path)?.outcome)
-        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":prepareWinRTJvmRuntimeImageFirst")?.outcome)
-        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":prepareWinRTJvmRuntimeImageSecond")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":prepareWinAppJvmRuntimeImageFirst")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":prepareWinAppJvmRuntimeImageSecond")?.outcome)
         assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":buildWinRTAuthoringHostFirst")?.outcome)
         assertEquals(TaskOutcome.UP_TO_DATE, repeatedExecution.task(":buildWinRTAuthoringHostSecond")?.outcome)
     }
@@ -411,8 +411,8 @@ class NamedWinRTApplicationsTest {
     fun incompatible_jvm_runtime_modules_keep_separate_runtime_producers() {
         val root = fixture("incompatible-jvm-runtime-producers")
         writeGradleFile(root.resolve("build.gradle"), """
-            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
-            winRT { application {
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
+            windows { application {
                 mainClass = 'sample.Main'
                 variants {
                     create('first') {
@@ -428,9 +428,9 @@ class NamedWinRTApplicationsTest {
             tasks.register('inspectIncompatibleProducers') {
                 doLast {
                     def runtime = ['First', 'Second'].collectMany {
-                        tasks.named('prepareWinRTJvmRuntimeImage' + it).get()
-                            .taskDependencies.getDependencies(tasks.named('prepareWinRTJvmRuntimeImage' + it).get())
-                    }.findAll { it.name.startsWith('prepareWinRTJvmRuntimeImageShared') }*.name.unique()
+                        tasks.named('prepareWinAppJvmRuntimeImage' + it).get()
+                            .taskDependencies.getDependencies(tasks.named('prepareWinAppJvmRuntimeImage' + it).get())
+                    }.findAll { it.name.startsWith('prepareWinAppJvmRuntimeImageShared') }*.name.unique()
                     def authoring = ['First', 'Second'].collectMany {
                         tasks.named('buildWinRTAuthoringHost' + it).get()
                             .taskDependencies.getDependencies(tasks.named('buildWinRTAuthoringHost' + it).get())
@@ -445,7 +445,7 @@ class NamedWinRTApplicationsTest {
 
         val result = runner(root, "inspectIncompatibleProducers").build()
 
-        assertTrue(result.output, result.output.contains("incompatibleRuntime=[prepareWinRTJvmRuntimeImageShared"))
+        assertTrue(result.output, result.output.contains("incompatibleRuntime=[prepareWinAppJvmRuntimeImageShared"))
         assertTrue(result.output, result.output.contains("compatibleAuthoring=[buildWinRTAuthoringHostShared"))
     }
 
@@ -453,7 +453,7 @@ class NamedWinRTApplicationsTest {
     fun rejects_two_applications_owning_the_same_native_binary() {
         val root = fixture("duplicate-native")
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
-            winRT { application {
+            windows { application {
                 mainClass = 'sample.main'
                 variants {
                     create('first') { variantName = 'desktop:main:firstReleaseExecutable' }
@@ -469,8 +469,8 @@ class NamedWinRTApplicationsTest {
     fun rejects_explicit_package_output_colliding_with_another_variants_default() {
         val root = fixture("output-conflict")
         writeGradleFile(root.resolve("build.gradle"), """
-            plugins { id 'java'; id 'io.github.compose-fluent.winrt' }
-            winRT { application {
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
+            windows { application {
                 mainClass = 'sample.Main'
                 variants {
                     create('first') { variantName = 'jvm:main' }
@@ -523,7 +523,7 @@ class NamedWinRTApplicationsTest {
     }
 
     private val nativeBuildScript = """
-        plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.winrt' }
+        plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.windows-toolkit' }
         repositories { mavenCentral() }
         kotlin { mingwX64('desktop') { binaries {
             executable('first', [org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE])

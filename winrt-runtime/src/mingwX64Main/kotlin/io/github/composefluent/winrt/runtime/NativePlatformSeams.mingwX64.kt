@@ -1401,7 +1401,7 @@ internal inline fun invokeUnknownRefCountMethod(
     return function.invoke(objectMemory.reinterpret<COpaque>())
 }
 
-private const val runtimeAssetsDirectoryName = "kotlin-winrt-runtime-assets"
+private const val runtimeAssetsDirectoryName = "windows-package-runtime-assets"
 private const val runtimeAssetsRootEnvironmentVariableName = "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"
 private const val errorSuccess = 0
 private const val errorInsufficientBuffer = 122
@@ -1500,8 +1500,7 @@ private fun nativeRuntimeAssetCandidates(fileName: String): Sequence<String> = s
     }
     yield(fileName)
     yield("$runtimeAssetsDirectoryName/$fileName")
-    yield("kotlin-winrt/runtime-assets/$fileName")
-    yield("build/kotlin-winrt/runtime-assets/$fileName")
+    yield("build/$runtimeAssetsDirectoryName/$fileName")
 }
 
 private fun <T : Function<Int>> RawAddress.asCFunction(): CPointer<CFunction<T>> =

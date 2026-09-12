@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("winrt.prebuilt-projection") apply false
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
@@ -26,18 +26,20 @@ kotlin {
     }
 }
 
-winRT {
+windows {
     application {
         mainClass = "io.github.composefluent.winrt.samples.kmp.app.MainKt"
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
-        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
-        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
-        type("Windows.Foundation.Uri")
-        type("Windows.System.Launcher")
-        type("Microsoft.UI.Xaml.Automation.AutomationProperties")
-        type("Microsoft.UI.Xaml.Controls.Button")
-        type("Microsoft.UI.Xaml.Controls.TextBox")
+        packageReferences {
+            windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
+            nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
+            type("Windows.Foundation.Uri")
+            type("Windows.System.Launcher")
+            type("Microsoft.UI.Xaml.Automation.AutomationProperties")
+            type("Microsoft.UI.Xaml.Controls.Button")
+            type("Microsoft.UI.Xaml.Controls.TextBox")
+        }
     }
 }
 
@@ -60,7 +62,7 @@ private val winuiKmpOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
+tasks.named<io.github.composefluent.winrt.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
     jvmArgs.addAll(
         providers.provider {
             winuiKmpOptionProperties.map { name ->

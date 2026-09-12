@@ -39,7 +39,7 @@ internal object AppxManifestPackageSupport {
             require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+").matches(value) &&
                 value.split('.').all { (it.toIntOrNull() ?: -1) in 0..65535 }
             ) {
-                "Configure winRT.application.$setting with a four-component Windows version (0..65535 per component). " +
+                "Configure windows.application.$setting with a four-component Windows version (0..65535 per component). " +
                     "maxVersionTested defaults to windowsSdk(version); no version is taken from AppxManifest.xml. " +
                     "Received '$value' for $manifest."
             }
@@ -67,7 +67,7 @@ internal object AppxManifestPackageSupport {
                 require(!family.hasAttribute(attribute) || declared == expected) {
                     "AppX manifest TargetDeviceFamily '${family.getAttribute("Name")}' declares $attribute='$declared', " +
                         "but Gradle configures '$expected'. Remove $attribute from the source manifest and configure " +
-                        "the version in winRT.application: $manifest"
+                        "the version in windows.application: $manifest"
                 }
                 family.setAttribute(attribute, expected)
             }

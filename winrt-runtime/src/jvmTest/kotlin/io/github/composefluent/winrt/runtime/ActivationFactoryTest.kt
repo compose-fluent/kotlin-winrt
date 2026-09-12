@@ -7,7 +7,7 @@ import java.nio.file.Files
 class ActivationFactoryJvmTest {
     @Test
     fun jvm_module_path_prefers_runtime_assets_root_property() {
-        val root = Files.createTempDirectory("kotlin-winrt-runtime-assets-")
+        val root = Files.createTempDirectory("windows-package-runtime-assets-")
         val asset = root.resolve("SimpleMathComponent.dll")
         Files.write(asset, byteArrayOf(0))
         withSystemProperty(WinRTRuntimeAssets.runtimeAssetsRootPropertyName, root.toString()) {

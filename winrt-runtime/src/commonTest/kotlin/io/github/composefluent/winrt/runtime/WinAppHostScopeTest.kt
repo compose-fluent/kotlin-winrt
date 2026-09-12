@@ -3,7 +3,7 @@ package io.github.composefluent.winrt.runtime
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 
-class WinRTApplicationHostScopeTest {
+class WinAppHostScopeTest {
     @Test
     fun non_windows_application_host_fails_explicitly() {
         if (PlatformRuntime.isWindows) {
@@ -11,10 +11,10 @@ class WinRTApplicationHostScopeTest {
         }
 
         assertFailsWith<IllegalStateException> {
-            WinRTApplicationHostScope.initialize(
-                WinRTApplicationHostConfiguration(
-                    packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
-                    windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.None,
+            WinAppHostScope.initialize(
+                WinAppHostConfiguration(
+                    packageIdentity = WinAppPackageIdentity.Unpackaged,
+                    windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.None,
                 ),
             )
         }

@@ -11,7 +11,7 @@ plugins {
 
 apply(plugin = "org.jetbrains.kotlin.jvm")
 
-description = "Gradle plugin for Kotlin WinRT and WinUI projection generation, compiler wiring, and packaging"
+description = "Kotlin Windows toolkit Gradle plugin for WinRT projections, NuGet references, and Windows application packaging"
 
 java {
     toolchain {
@@ -54,9 +54,9 @@ tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
 
 gradlePlugin {
     plugins {
-        create("kotlinWinRT") {
-            id = "io.github.compose-fluent.winrt"
-            implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRTPlugin"
+        create("kotlinWindowsToolkit") {
+            id = "io.github.compose-fluent.windows-toolkit"
+            implementationClass = "io.github.composefluent.winrt.gradle.KotlinWindowsToolkitPlugin"
         }
     }
 }

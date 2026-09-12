@@ -2,26 +2,26 @@ package io.github.composefluent.winrt.runtime
 
 import kotlinx.io.files.Path
 
-enum class WinRTApplicationPackageIdentity {
+enum class WinAppPackageIdentity {
     Packaged,
     Unpackaged,
 }
 
-internal val WinRTApplicationPackageIdentity.mddBootstrapInitializeOptions: Int
-    get() = if (this == WinRTApplicationPackageIdentity.Packaged) {
+internal val WinAppPackageIdentity.mddBootstrapInitializeOptions: Int
+    get() = if (this == WinAppPackageIdentity.Packaged) {
         mddBootstrapInitializeOptionsOnPackageIdentityNoop
     } else {
         mddBootstrapInitializeOptionsNone
     }
 
-enum class WinRTWindowsAppSdkDeploymentMode {
+enum class WindowsAppSdkDeploymentMode {
     None,
     FrameworkDependent,
     SelfContained,
     ExternallyInitialized,
 }
 
-data class WinRTWindowsAppSdkVersion(
+data class WindowsAppSdkVersion(
     val majorMinorVersion: Int,
     val versionTag: String? = null,
     val minVersion: Long,
@@ -32,19 +32,19 @@ data class WinRTWindowsAppSdkVersion(
     }
 }
 
-data class WinRTWindowsAppSdkDeploymentConfiguration(
-    val mode: WinRTWindowsAppSdkDeploymentMode,
-    val packageIdentity: WinRTApplicationPackageIdentity,
+data class WindowsAppSdkDeploymentConfiguration(
+    val mode: WindowsAppSdkDeploymentMode,
+    val packageIdentity: WinAppPackageIdentity,
     val runtimeAssetsRoot: Path? = null,
-    val windowsAppSdkVersion: WinRTWindowsAppSdkVersion? = null,
+    val windowsAppSdkVersion: WindowsAppSdkVersion? = null,
 )
 
 /** Configuration shared by generated and custom application hosts. */
-data class WinRTApplicationHostConfiguration(
-    val packageIdentity: WinRTApplicationPackageIdentity,
-    val windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+data class WinAppHostConfiguration(
+    val packageIdentity: WinAppPackageIdentity,
+    val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
     val runtimeAssetsRoot: Path? = null,
-    val windowsAppSdkVersion: WinRTWindowsAppSdkVersion? = null,
+    val windowsAppSdkVersion: WindowsAppSdkVersion? = null,
 ) {
     companion object {
         /**
@@ -53,29 +53,29 @@ data class WinRTApplicationHostConfiguration(
          * a runtime-default SDK version.
          */
         fun fromStagedRuntimeAssets(
-            packageIdentity: WinRTApplicationPackageIdentity,
-            windowsAppSdkDeployment: WinRTWindowsAppSdkDeploymentMode,
+            packageIdentity: WinAppPackageIdentity,
+            windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             runtimeAssetsRoot: Path? = null,
-        ): WinRTApplicationHostConfiguration {
+        ): WinAppHostConfiguration {
             if (!windowsAppSdkDeployment.requiresRuntimeAssets) {
-                return WinRTApplicationHostConfiguration(
+                return WinAppHostConfiguration(
                     packageIdentity = packageIdentity,
                     windowsAppSdkDeployment = windowsAppSdkDeployment,
                 )
             }
 
-            val root = runtimeAssetsRoot ?: WinRTWindowsAppSdkDeployment.discoverRuntimeAssetsRoot()
+            val root = runtimeAssetsRoot ?: WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()
                 ?: error("Windows App SDK application hosting requires a staged runtime assets root.")
             require(root.isDirectory()) {
                 "Windows App SDK runtime assets root is not a directory: $root"
             }
-            return WinRTApplicationHostConfiguration(
+            return WinAppHostConfiguration(
                 packageIdentity = packageIdentity,
                 windowsAppSdkDeployment = windowsAppSdkDeployment,
                 runtimeAssetsRoot = root,
                 windowsAppSdkVersion = when (windowsAppSdkDeployment) {
-                    WinRTWindowsAppSdkDeploymentMode.FrameworkDependent ->
-                        WinRTWindowsAppSdkDeployment.readStagedVersion(root)
+                    WindowsAppSdkDeploymentMode.FrameworkDependent ->
+                        WindowsAppSdkDeployment.readStagedVersion(root)
                     else -> null
                 },
             )
@@ -83,9 +83,9 @@ data class WinRTApplicationHostConfiguration(
     }
 }
 
-object WinRTWindowsAppSdkDeployment {
+object WindowsAppSdkDeployment {
     class Scope internal constructor(
-        val deploymentMode: WinRTWindowsAppSdkDeploymentMode,
+        val deploymentMode: WindowsAppSdkDeploymentMode,
         private val activationContexts: List<AutoCloseable>,
         // Windows App SDK and FFM can retain function pointers after startup. These modules stay
         // loaded for the process lifetime; closing an owner ends deployment, not those leases.
@@ -136,8 +136,8 @@ object WinRTWindowsAppSdkDeployment {
      * touch Windows App SDK files; all other modes fail explicitly when their required inputs
      * are unavailable.
      */
-    fun initialize(configuration: WinRTWindowsAppSdkDeploymentConfiguration): Scope? {
-        if (configuration.mode == WinRTWindowsAppSdkDeploymentMode.None) {
+    fun initialize(configuration: WindowsAppSdkDeploymentConfiguration): Scope? {
+        if (configuration.mode == WindowsAppSdkDeploymentMode.None) {
             return null
         }
         if (!PlatformRuntime.isWindows) {
@@ -146,11 +146,11 @@ object WinRTWindowsAppSdkDeployment {
         reserveOwner()
         try {
             val scope = when (configuration.mode) {
-                WinRTWindowsAppSdkDeploymentMode.FrameworkDependent ->
+                WindowsAppSdkDeploymentMode.FrameworkDependent ->
                     initializeFrameworkDependent(configuration)
-                WinRTWindowsAppSdkDeploymentMode.SelfContained ->
+                WindowsAppSdkDeploymentMode.SelfContained ->
                     initializeSelfContained(configuration)
-                WinRTWindowsAppSdkDeploymentMode.ExternallyInitialized ->
+                WindowsAppSdkDeploymentMode.ExternallyInitialized ->
                     Scope(
                         deploymentMode = configuration.mode,
                         activationContexts = emptyList(),
@@ -158,7 +158,7 @@ object WinRTWindowsAppSdkDeployment {
                         shutdownDynamicDependency = false,
                         ownerThread = platformCurrentThreadToken(),
                     )
-                WinRTWindowsAppSdkDeploymentMode.None -> error("None deployment must not reserve an owner.")
+                WindowsAppSdkDeploymentMode.None -> error("None deployment must not reserve an owner.")
             }
             ownerLock.withLock {
                 activeOwner = scope
@@ -173,7 +173,7 @@ object WinRTWindowsAppSdkDeployment {
     fun discoverRuntimeAssetsRoot(): Path? =
         platformDiscoverWindowsAppSdkRuntimeAssetsRoot(windowsAppRuntimeBootstrapDllName)
 
-    internal fun readStagedVersion(root: Path): WinRTWindowsAppSdkVersion {
+    internal fun readStagedVersion(root: Path): WindowsAppSdkVersion {
         val properties = Path(root, versionInfoPropertiesRelativePath)
         require(properties.isRegularFile()) {
             "Framework-dependent Windows App SDK deployment requires staged version information at $properties."
@@ -186,7 +186,7 @@ object WinRTWindowsAppSdkDeployment {
     }
 
     private fun initializeFrameworkDependent(
-        configuration: WinRTWindowsAppSdkDeploymentConfiguration,
+        configuration: WindowsAppSdkDeploymentConfiguration,
     ): Scope {
         val root = requireRuntimeAssetsRoot(configuration)
         val bootstrapDll = findAsset(root, windowsAppRuntimeBootstrapDllName)
@@ -198,8 +198,8 @@ object WinRTWindowsAppSdkDeployment {
             val initialize = platformTryGetWindowsProcAddress(module, "MddBootstrapInitialize2")
                 ?: error("$windowsAppRuntimeBootstrapDllName does not export MddBootstrapInitialize2.")
             val versionInfo = requireNotNull(configuration.windowsAppSdkVersion) {
-                "Framework-dependent Windows App SDK deployment requires an explicit WinRTWindowsAppSdkVersion. " +
-                    "Use WinRTApplicationHostConfiguration.fromStagedRuntimeAssets for a staged application host."
+                "Framework-dependent Windows App SDK deployment requires an explicit WindowsAppSdkVersion. " +
+                    "Use WinAppHostConfiguration.fromStagedRuntimeAssets for a staged application host."
             }
             platformRememberWindowsAppSdkBootstrapShutdown(module)
             platformCallMddBootstrapInitialize2(
@@ -211,7 +211,7 @@ object WinRTWindowsAppSdkDeployment {
             )
             bootstrapInitialized = true
             return Scope(
-                deploymentMode = WinRTWindowsAppSdkDeploymentMode.FrameworkDependent,
+                deploymentMode = WindowsAppSdkDeploymentMode.FrameworkDependent,
                 activationContexts = emptyList(),
                 // Keep the bootstrap module loaded for the lifetime of the process. The runtime
                 // may retain function pointers after MddBootstrapShutdown.
@@ -232,7 +232,7 @@ object WinRTWindowsAppSdkDeployment {
     }
 
     private fun initializeSelfContained(
-        configuration: WinRTWindowsAppSdkDeploymentConfiguration,
+        configuration: WindowsAppSdkDeploymentConfiguration,
     ): Scope {
         val root = requireRuntimeAssetsRoot(configuration)
         var activationContext: AutoCloseable? = null
@@ -241,7 +241,7 @@ object WinRTWindowsAppSdkDeployment {
             activationContext = activateWindowsAppSdk(root)
             module = loadSelfContainedWindowsAppRuntime(root)
             return Scope(
-                deploymentMode = WinRTWindowsAppSdkDeploymentMode.SelfContained,
+                deploymentMode = WindowsAppSdkDeploymentMode.SelfContained,
                 activationContexts = listOf(activationContext),
                 retainedProcessModules = listOf(module),
                 shutdownDynamicDependency = false,
@@ -261,7 +261,7 @@ object WinRTWindowsAppSdkDeployment {
     }
 
     private fun requireRuntimeAssetsRoot(
-        configuration: WinRTWindowsAppSdkDeploymentConfiguration,
+        configuration: WindowsAppSdkDeploymentConfiguration,
     ): Path {
         val root = configuration.runtimeAssetsRoot
             ?: error("Windows App SDK deployment requires an explicit runtime assets root.")
@@ -341,7 +341,7 @@ object WinRTWindowsAppSdkDeployment {
             .sortedBy { path -> path.canonicalString() }
             .firstOrNull()
 
-    private fun parseVersionProperties(content: String): WinRTWindowsAppSdkVersion? {
+    private fun parseVersionProperties(content: String): WindowsAppSdkVersion? {
         val values = content.lineSequence()
             .map(String::trim)
             .filter { line -> line.isNotEmpty() && !line.startsWith('#') }
@@ -354,7 +354,7 @@ object WinRTWindowsAppSdkDeployment {
         val majorMinor = values["majorMinorVersion"]?.toIntOrNull() ?: return null
         val versionTag = values["versionTag"] ?: return null
         val minVersion = values["minVersion"]?.toULongOrNull()?.toLong() ?: return null
-        return WinRTWindowsAppSdkVersion(
+        return WindowsAppSdkVersion(
             majorMinorVersion = majorMinor,
             versionTag = versionTag.takeIf(String::isNotEmpty),
             minVersion = minVersion,
@@ -413,13 +413,13 @@ internal expect fun platformRememberWindowsAppSdkBootstrapShutdown(module: RawAd
 internal expect fun platformForgetWindowsAppSdkBootstrapShutdown()
 internal expect fun platformWindowsAppSdkBootstrapShutdown()
 
-private val versionInfoPropertiesRelativePath = "kotlin-winrt-windows-app-sdk.properties"
+private val versionInfoPropertiesRelativePath = "windows-app-sdk.properties"
 private const val windowsAppRuntimeBootstrapDllName = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
 private const val windowsAppRuntimeDllName = "Microsoft.WindowsAppRuntime.dll"
 private const val windowsAppRuntimeBaseDirectoryVariableName = "MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY"
 private const val mddBootstrapInitializeOptionsNone = 0
 private const val mddBootstrapInitializeOptionsOnPackageIdentityNoop = 0x0010
 
-private val WinRTWindowsAppSdkDeploymentMode.requiresRuntimeAssets: Boolean
-    get() = this == WinRTWindowsAppSdkDeploymentMode.FrameworkDependent ||
-        this == WinRTWindowsAppSdkDeploymentMode.SelfContained
+private val WindowsAppSdkDeploymentMode.requiresRuntimeAssets: Boolean
+    get() = this == WindowsAppSdkDeploymentMode.FrameworkDependent ||
+        this == WindowsAppSdkDeploymentMode.SelfContained

@@ -6,7 +6,7 @@ package io.github.composefluent.winrt.runtime
  * Generated application hosts create a broader application-host scope before user code starts.
  * Projection constructors and `Application.Start` remain ordinary WinRT calls.
  */
-object WinRTWindowsAppSdkBootstrap {
-    fun initializeApplicationHost(configuration: WinRTApplicationHostConfiguration): WinRTApplicationHostScope.Scope =
-        WinRTApplicationHostScope.initialize(configuration)
+object WindowsAppSdkBootstrap {
+    fun initializeApplicationHost(configuration: WinAppHostConfiguration): WinAppHostScope.Scope =
+        WinAppHostScope.initialize(configuration)
 }

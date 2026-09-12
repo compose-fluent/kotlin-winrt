@@ -27,7 +27,7 @@ import kotlin.io.path.isRegularFile
  * from the Gradle daemon: external mode is wired separately and never produces this output.
  */
 @DisableCachingByDefault(because = "jlink output is toolchain-specific and may contain platform metadata.")
-abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
+abstract class PrepareWinAppJvmRuntimeImageTask : DefaultTask() {
     @get:Input
     abstract val runtimeMode: Property<String>
 
@@ -52,7 +52,7 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
     abstract val outputDirectory: DirectoryProperty
 
     init {
-        runtimeMode.convention(WinRTJvmRuntimeMode.Bundled.name)
+        runtimeMode.convention(WinAppJvmRuntimeMode.Bundled.name)
         javaHome.convention("")
         expectedJavaMajor.convention(25)
         runtimeIdentifier.convention(currentWindowsRuntimeIdentifier())
@@ -61,7 +61,7 @@ abstract class PrepareWinRTJvmRuntimeImageTask : DefaultTask() {
 
     @TaskAction
     fun prepare() {
-        if (runtimeMode.get() != WinRTJvmRuntimeMode.Bundled.name) {
+        if (runtimeMode.get() != WinAppJvmRuntimeMode.Bundled.name) {
             GradleFileOperations.cleanDirectory(outputDirectory.get().asFile.toPath())
             return
         }

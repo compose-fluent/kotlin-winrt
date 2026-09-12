@@ -17,7 +17,7 @@ import org.gradle.process.ExecOperations
 import java.io.FileOutputStream
 import javax.inject.Inject
 
-abstract class RunWinRTApplicationHostTask @Inject constructor(
+abstract class RunWinAppHostTask @Inject constructor(
     private val execOperations: ExecOperations,
 ) : DefaultTask() {
     init {

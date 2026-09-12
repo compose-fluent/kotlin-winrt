@@ -8,7 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PrepareWinRTJvmRuntimeImageTaskTest {
+class PrepareWinAppJvmRuntimeImageTaskTest {
     @Test
     fun copies_a_supplied_bundled_runtime_image() {
         val root = Files.createTempDirectory("kotlin-winrt-jvm-image-")
@@ -16,7 +16,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         val output = root.resolve("output")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.sourceImage.set(source.toFile())
         task.outputDirectory.set(output.toFile())
         task.expectedJavaMajor.set(currentJavaMajor())
@@ -62,8 +62,8 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         Files.writeString(output.resolve("stale.txt"), "stale")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
-        task.runtimeMode.set(WinRTJvmRuntimeMode.External.name)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
+        task.runtimeMode.set(WinAppJvmRuntimeMode.External.name)
         task.outputDirectory.set(output.toFile())
         task.prepare()
 
@@ -81,7 +81,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         Files.writeString(source.resolve("bin/server/jvm.dll"), "jvm")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.sourceImage.set(source.toFile())
         task.outputDirectory.set(output.toFile())
 
@@ -103,7 +103,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         Files.writeString(sentinel, "must-survive")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.sourceImage.set(source.toFile())
         task.outputDirectory.set(output.toFile())
 
@@ -124,7 +124,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         Files.writeString(sentinel, "must-survive")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.sourceImage.set(image.toFile())
         task.outputDirectory.set(image.toFile())
 
@@ -147,7 +147,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         Files.writeString(sentinel, "must-survive")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.javaHome.set(javaHome.toString())
         task.outputDirectory.set(output.toFile())
         task.modules.set(listOf("java.base"))
@@ -171,7 +171,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
         Files.writeString(sentinel, "must-survive")
 
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.javaHome.set(javaHome.toString())
         task.outputDirectory.set(output.toFile())
         task.modules.set(listOf("java.base"))
@@ -193,7 +193,7 @@ class PrepareWinRTJvmRuntimeImageTaskTest {
 
         val output = root.resolve("output")
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
-        val task = project.tasks.create("prepareRuntime", PrepareWinRTJvmRuntimeImageTask::class.java)
+        val task = project.tasks.create("prepareRuntime", PrepareWinAppJvmRuntimeImageTask::class.java)
         task.javaHome.set(javaHome.toString())
         task.outputDirectory.set(output.toFile())
         task.expectedJavaMajor.set(currentJavaMajor())

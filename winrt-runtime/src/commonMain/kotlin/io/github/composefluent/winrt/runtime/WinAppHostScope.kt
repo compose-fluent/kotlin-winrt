@@ -6,17 +6,17 @@ package io.github.composefluent.winrt.runtime
  * An application host is intentionally unique per process because its close operation drains
  * global projection state. Ordinary [RuntimeScope] instances remain nestable and independent.
  */
-object WinRTApplicationHostScope {
+object WinAppHostScope {
     class Scope internal constructor(
         private val runtime: RuntimeScope,
-        private val deployment: WinRTWindowsAppSdkDeployment.Scope?,
+        private val deployment: WindowsAppSdkDeployment.Scope?,
         private val ownerThread: Long,
     ) : AutoCloseable {
         private var closed = false
 
         override fun close() {
             check(platformCurrentThreadToken() == ownerThread) {
-                "WinRT application host must be closed on its creating thread."
+                "WinApp host must be closed on its creating thread."
             }
             if (closed) {
                 return
@@ -49,16 +49,16 @@ object WinRTApplicationHostScope {
     private var ownerReserved = false
     private var activeOwner: Scope? = null
 
-    fun initialize(configuration: WinRTApplicationHostConfiguration): Scope {
+    fun initialize(configuration: WinAppHostConfiguration): Scope {
         if (!PlatformRuntime.isWindows) {
-            throw IllegalStateException("WinRT application hosts are only supported on Windows.")
+            throw IllegalStateException("WinApp hosts are only supported on Windows.")
         }
         reserveHost()
-        var deployment: WinRTWindowsAppSdkDeployment.Scope? = null
+        var deployment: WindowsAppSdkDeployment.Scope? = null
         var runtime: RuntimeScope? = null
         try {
-            deployment = WinRTWindowsAppSdkDeployment.initialize(
-                WinRTWindowsAppSdkDeploymentConfiguration(
+            deployment = WindowsAppSdkDeployment.initialize(
+                WindowsAppSdkDeploymentConfiguration(
                     mode = configuration.windowsAppSdkDeployment,
                     packageIdentity = configuration.packageIdentity,
                     runtimeAssetsRoot = configuration.runtimeAssetsRoot,
@@ -95,7 +95,7 @@ object WinRTApplicationHostScope {
     private fun reserveHost() {
         ownerLock.withLock {
             check(!ownerReserved && activeOwner == null) {
-                "Only one active WinRT application host is allowed per process."
+                "Only one active WinApp host is allowed per process."
             }
             ownerReserved = true
         }

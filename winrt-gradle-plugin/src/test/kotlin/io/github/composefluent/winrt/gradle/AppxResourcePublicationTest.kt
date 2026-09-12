@@ -15,13 +15,13 @@ class AppxResourcePublicationTest {
         val root = Files.createTempDirectory("kotlin-winrt-compilation-resources-")
         writeGradleFile(root.resolve("settings.gradle"), "rootProject.name = 'resource-graph'\ninclude 'base', 'shared', 'other', 'consumer'")
         listOf("base", "shared", "other").forEach { name ->
-            writeGradleFile(root.resolve("$name/build.gradle"), "plugins { id 'java-library'; id 'io.github.compose-fluent.winrt' }")
+            writeGradleFile(root.resolve("$name/build.gradle"), "plugins { id 'java-library'; id 'io.github.compose-fluent.windows-toolkit' }")
             writeGradleFile(root.resolve("$name/src/main/appxResources/Assets/$name.txt"), name)
         }
         writeGradleFile(root.resolve("consumer/build.gradle"), """
             plugins {
                 id 'org.jetbrains.kotlin.multiplatform'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
             repositories { mavenCentral() }
             kotlin {
@@ -36,15 +36,15 @@ class AppxResourcePublicationTest {
                     unselectedMain { dependencies { implementation project(':other') } }
                 }
             }
-            winRT { application {
+            windows { application {
                 mainClass = 'sample.Main'
                 variants { create('desktopPreview') { variantName = 'desktop:preview' } }
             } }
             tasks.register('inspectResources') {
-                def archives = tasks.named('stageWinRTApplicationPackageDesktopPreview').get().appxResourceArchives
+                def archives = tasks.named('stageWinAppPackageDesktopPreview').get().appxResourceArchives
                 inputs.files(archives)
                 doLast {
-                    println 'resourceProjects=' + configurations.kotlinWinRTAppxResourcesApplicationDesktopPreview.dependencies
+                    println 'resourceProjects=' + configurations.kotlinAppxResourcesApplicationDesktopPreview.dependencies
                         .findAll { it instanceof ProjectDependency }.collect { it.path }.sort().join(',')
                     println 'archives=' + archives.files.collect { it.name }.sort().join(',')
                     assert archives.files.every { it.isFile() }
@@ -57,9 +57,9 @@ class AppxResourcePublicationTest {
 
         assertTrue(result.output, result.output.contains("resourceProjects=:base,:shared"))
         assertTrue(result.output, result.output.contains("archives=base-appx-resources.zip,shared-appx-resources.zip"))
-        assertEquals(TaskOutcome.SUCCESS, result.task(":base:packageWinRTAppxResources")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":shared:packageWinRTAppxResources")?.outcome)
-        assertTrue(result.task(":other:packageWinRTAppxResources") == null)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":base:packageAppxResources")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":shared:packageAppxResources")?.outcome)
+        assertTrue(result.task(":other:packageAppxResources") == null)
     }
 
     @Test
@@ -69,7 +69,7 @@ class AppxResourcePublicationTest {
         writeGradleFile(root.resolve("producer/build.gradle"), """
             plugins {
                 id 'org.jetbrains.kotlin.multiplatform'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
                 id 'maven-publish'
             }
             repositories { mavenCentral() }
@@ -77,8 +77,8 @@ class AppxResourcePublicationTest {
             tasks.register('inspectPublication') {
                 doLast {
                     def usages = publishing.publications.kotlinMultiplatform.component.get().usages.collect { it.name }
-                    assert !usages.contains('kotlinWinRTAppxResourcesElements')
-                    assert usages.contains('kotlinWinRTAppxResourcesElementsLibraryDesktopMain')
+                    assert !usages.contains('kotlinAppxResourcesElements')
+                    assert usages.contains('kotlinAppxResourcesElementsLibraryDesktopMain')
                 }
             }
         """.trimIndent())
@@ -86,16 +86,16 @@ class AppxResourcePublicationTest {
         writeGradleFile(root.resolve("consumer/build.gradle"), """
             plugins {
                 id 'org.jetbrains.kotlin.multiplatform'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
             repositories { mavenCentral() }
             kotlin {
                 jvm('appDesktop')
                 sourceSets.appDesktopMain.dependencies { implementation project(':producer') }
             }
-            winRT { application { mainClass = 'sample.Main' } }
+            windows { application { mainClass = 'sample.Main' } }
             tasks.register('inspectResources') {
-                def archives = tasks.named('stageWinRTApplicationPackageAppDesktopMain').get().appxResourceArchives
+                def archives = tasks.named('stageWinAppPackageAppDesktopMain').get().appxResourceArchives
                 inputs.files(archives)
                 doLast {
                     def archive = archives.singleFile
@@ -111,7 +111,7 @@ class AppxResourcePublicationTest {
             .withArguments(":producer:inspectPublication", ":consumer:inspectResources", "--offline", "--stacktrace").build()
 
         assertTrue(result.output, result.output.contains("selected=producer-libraryDesktopMain-appx-resources.zip"))
-        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:packageWinRTAppxResourcesLibraryDesktopMain")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:packageAppxResourcesLibraryDesktopMain")?.outcome)
     }
 
     @Test
@@ -119,23 +119,23 @@ class AppxResourcePublicationTest {
         val root = Files.createTempDirectory("kotlin-winrt-kmp-resource-mismatch-")
         writeMultiProjectSettings(root)
         writeGradleFile(root.resolve("producer/build.gradle"), """
-            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.winrt' }
+            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.windows-toolkit' }
             repositories { mavenCentral() }
             kotlin { jvm('desktop'); mingwX64('nativeDesktop') }
         """.trimIndent())
         writeGradleFile(root.resolve("consumer/build.gradle"), """
-            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.winrt' }
+            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.windows-toolkit' }
             repositories { mavenCentral() }
             kotlin {
                 jvm('desktop') { compilations.create('preview') }
                 sourceSets.desktopPreview.dependencies { implementation project(':producer') }
             }
-            winRT { application {
+            windows { application {
                 mainClass = 'sample.Main'
                 variants { create('desktopPreview') { variantName = 'desktop:preview' } }
             } }
             tasks.register('inspectResources') {
-                doLast { tasks.named('stageWinRTApplicationPackageDesktopPreview').get().appxResourceArchives.files }
+                doLast { tasks.named('stageWinAppPackageDesktopPreview').get().appxResourceArchives.files }
             }
         """.trimIndent())
 
@@ -171,10 +171,10 @@ class AppxResourcePublicationTest {
             """
             plugins {
                 id 'java-library'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
 
-            winRT {
+            windows {
                 application {
                     mainClass = 'sample.Main'
                 }
@@ -189,7 +189,7 @@ class AppxResourcePublicationTest {
                 doLast {
                     def output = file("${'$'}buildDir/appx-resources.txt")
                     output.parentFile.mkdirs()
-                    def appxResources = tasks.named('stageWinRTApplicationPackageJvmMain').get().appxResourceArchives
+                    def appxResources = tasks.named('stageWinAppPackageJvmMain').get().appxResourceArchives
                     output.text = appxResources.files.collect { it.absolutePath }.sort().join(System.lineSeparator())
                 }
             }
@@ -225,7 +225,7 @@ class AppxResourcePublicationTest {
         // silently treated like an ordinary dependency. Mutate the published Gradle metadata to
         // model that target-only producer, then force a fresh consumer resolution.
         val libraryModule = repository.resolve("test/winrt/library/1.0/library-1.0.module")
-        val resourceUsage = "\"org.gradle.usage\": \"kotlin-winrt-appx\""
+        val resourceUsage = "\"org.gradle.usage\": \"kotlin-appx\""
         val targetOnlyModule = Files.readString(libraryModule).replace(
             resourceUsage,
             "$resourceUsage,\n        \"io.github.composefluent.winrt.appx-resource-target\": \"mingw_x64:main\"",
@@ -268,10 +268,10 @@ class AppxResourcePublicationTest {
             """
             plugins {
                 id 'java-library'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
 
-            configurations.named('kotlinWinRTAppxResourcesElements') {
+            configurations.named('kotlinAppxResourcesElements') {
                 canBeConsumed = false
             }
 
@@ -279,9 +279,9 @@ class AppxResourcePublicationTest {
                 canBeConsumed = true
                 canBeResolved = false
                 attributes {
-                    // Maven publication normalizes this optional usage to kotlin-winrt-appx;
+                    // Maven publication normalizes this optional usage to kotlin-appx;
                     // project variants use the same published name.
-                    attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, 'kotlin-winrt-appx'))
+                    attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, 'kotlin-appx'))
                     attribute(
                         Attribute.of('io.github.composefluent.winrt.appx-resource-target', String),
                         'mingw_x64:main',
@@ -296,10 +296,10 @@ class AppxResourcePublicationTest {
             """
             plugins {
                 id 'java-library'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
 
-            winRT {
+            windows {
                 application {
                     mainClass = 'sample.Main'
                 }
@@ -311,7 +311,7 @@ class AppxResourcePublicationTest {
 
             tasks.register('inspectAppxResources') {
                 doLast {
-                    tasks.named('stageWinRTApplicationPackageJvmMain').get().appxResourceArchives.files
+                    tasks.named('stageWinAppPackageJvmMain').get().appxResourceArchives.files
                 }
             }
             """.trimIndent(),
@@ -363,7 +363,7 @@ class AppxResourcePublicationTest {
             plugins {
                 id 'java-library'
                 id 'maven-publish'
-                id 'io.github.compose-fluent.winrt'
+                id 'io.github.compose-fluent.windows-toolkit'
             }
 
             group = 'test.winrt'

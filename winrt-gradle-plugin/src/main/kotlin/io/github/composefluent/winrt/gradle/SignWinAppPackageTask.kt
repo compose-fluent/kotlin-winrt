@@ -17,7 +17,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 @DisableCachingByDefault(because = "Authenticode signatures are time- and certificate-store-dependent.")
-abstract class SignWinRTApplicationPackageTask : DefaultTask() {
+abstract class SignWinAppPackageTask : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val inputPackageFile: RegularFileProperty

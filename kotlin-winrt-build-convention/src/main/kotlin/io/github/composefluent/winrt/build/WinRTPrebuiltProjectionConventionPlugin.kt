@@ -18,7 +18,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.pluginManager.apply("build-convention")
         project.pluginManager.apply("winrt.publish")
-        project.pluginManager.withPlugin(PUBLIC_WINRT_PLUGIN_ID) {
+        project.pluginManager.withPlugin(PUBLIC_WINDOWS_TOOLKIT_PLUGIN_ID) {
             project.pluginManager.withPlugin(KOTLIN_MULTIPLATFORM_PLUGIN_ID) {
                 configurePrebuiltProjection(project)
             }
@@ -240,7 +240,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
     }
 
     private companion object {
-        const val PUBLIC_WINRT_PLUGIN_ID = "io.github.compose-fluent.winrt"
+        const val PUBLIC_WINDOWS_TOOLKIT_PLUGIN_ID = "io.github.compose-fluent.windows-toolkit"
         const val KOTLIN_MULTIPLATFORM_PLUGIN_ID = "org.jetbrains.kotlin.multiplatform"
         const val IDENTITY_CONFIGURATION_NAME = "kotlinWinRTLibraryDependencyIdentity"
         const val COMMON_MAIN_COMPILE_ONLY_CONFIGURATION = "commonMainCompileOnly"

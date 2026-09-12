@@ -32,7 +32,7 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
 internal const val WINDOWS_APP_SDK_STARTUP_PROPERTIES: String =
-    "kotlin-winrt-windows-app-sdk.properties"
+    "windows-app-sdk.properties"
 
 private val windowsAppSdkMajorMinorRegex =
     Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJORMINOR\s+(0x[0-9A-Fa-f]+)""")
@@ -42,7 +42,7 @@ private val windowsAppSdkRuntimeVersionRegex =
     Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_VERSION_UINT64\s+(0x[0-9A-Fa-f]+)u""")
 
 @CacheableTask
-abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
+abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
     @get:Internal
     abstract val applicationCompilationTasks: SetProperty<String>
 
@@ -376,10 +376,10 @@ abstract class StageWinRTRuntimeAssetsTask : DefaultTask() {
         }
         stageGeneratedComponentRegistrations(outputRoot)
         stageXamlMetadataProviderManifest(outputRoot)
-        WinRTApplicationManifestGenerator.writeApplicationManifest(
+        WinAppManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
-            winRTManifestProcessorArchitecture(runtimeIdentifier.get()),
+            windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
         )
         generateProjectPri(outputRoot)
     }

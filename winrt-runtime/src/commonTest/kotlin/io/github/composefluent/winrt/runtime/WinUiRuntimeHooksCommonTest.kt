@@ -37,8 +37,8 @@ class WinUiRuntimeHooksCommonTest {
 
     @Test
     fun xaml_metadata_provider_registry_loads_runtime_asset_manifest() {
-        val runtimeAssetsRoot = Path("build/kotlin-winrt/runtime-assets")
-        val manifest = Path("build/kotlin-winrt/runtime-assets/${WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName}")
+        val runtimeAssetsRoot = Path("build/windows-package-runtime-assets")
+        val manifest = Path("build/windows-package-runtime-assets/${WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName}")
         val previousContents = manifest.takeIf { it.isRegularFile() }?.readText()
         SystemFileSystem.createDirectories(runtimeAssetsRoot)
         manifest.writeText(

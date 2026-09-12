@@ -22,7 +22,7 @@ import java.security.MessageDigest
 import kotlin.io.path.isRegularFile
 
 @CacheableTask
-abstract class VerifyWinRTApplicationPackageTask : DefaultTask() {
+abstract class VerifyWinAppPackageTask : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packageFile: RegularFileProperty

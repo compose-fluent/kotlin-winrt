@@ -7,7 +7,7 @@ import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
-internal object WinRTApplicationManifestGenerator {
+internal object WinAppManifestGenerator {
     fun writeApplicationManifest(
         outputRoot: Path,
         executableBaseName: String,

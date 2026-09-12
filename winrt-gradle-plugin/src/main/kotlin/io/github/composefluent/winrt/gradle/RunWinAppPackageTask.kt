@@ -18,7 +18,7 @@ import javax.inject.Inject
 
 /** Package-aware development launch, corresponding to CsWinRT's MsixPackage launch profiles. */
 @DisableCachingByDefault(because = "Registers and launches a development package in the local Windows user profile.")
-abstract class RunWinRTApplicationPackageTask @Inject constructor(
+abstract class RunWinAppPackageTask @Inject constructor(
     private val execOperations: ExecOperations,
 ) : DefaultTask() {
     @get:InputDirectory
@@ -93,7 +93,7 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
         }
         if (packageType.get() != WindowsPackageType.Packaged.name) {
             throw GradleException(
-                "Configure winRT.application { packageType = WindowsPackageType.Packaged } " +
+                "Configure windows.application { packageType = WindowsPackageType.Packaged } " +
                     "before running a packaged application.",
             )
         }
@@ -101,7 +101,7 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
         if (selfContained.get()) {
             throw GradleException(
                 "WinApp CLI packaged development runs do not support self-contained Windows App SDK deployment. " +
-                    "Use winRT.application { windowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent } " +
+                    "Use windows.application { windowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent } " +
                     "for development runs, " +
                     "or install and activate the self-contained MSIX.",
             )
@@ -139,7 +139,7 @@ abstract class RunWinRTApplicationPackageTask @Inject constructor(
                 add("--args=${args.get()}")
             }
         }
-        logger.lifecycle("Running packaged Kotlin/WinRT application ${applicationVariant.get()}")
+        logger.lifecycle("Running packaged WinApp ${applicationVariant.get()}")
         // Gradle owns the CLI process so output is streamed and cancellation reaches the runner.
         execOperations.exec { spec ->
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))

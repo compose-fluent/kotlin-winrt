@@ -10,7 +10,7 @@ private val KOTLIN_WINRT_PLUGIN_GENERATED_SOURCE_OWNERS = setOf(
 )
 
 /** Identifies plugin-owned generated source families independent of their per-variant suffix. */
-internal fun isKotlinWinRTPluginOwnedAuthoringSourceRoot(path: Path): Boolean {
+internal fun isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(path: Path): Boolean {
     val components = path.toAbsolutePath().normalize().iterator().asSequence().toList()
     return components.zipWithNext().any { (parent, child) ->
         parent.toString().equals("generated", ignoreCase = true) &&

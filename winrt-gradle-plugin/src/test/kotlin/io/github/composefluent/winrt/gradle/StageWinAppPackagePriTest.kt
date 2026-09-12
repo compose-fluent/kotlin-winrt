@@ -9,7 +9,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
 
-class StageWinRTApplicationPackagePriTest {
+class StageWinAppPackagePriTest {
     @Test
     fun runtime_component_payload_is_copied_without_reindexing_its_pri_resources() {
         // Microsoft.WinUI.References.targets supplies component assets as ReferenceCopyLocalPaths,
@@ -66,7 +66,7 @@ class StageWinRTApplicationPackagePriTest {
             </Package>
         """.trimIndent())
         val task = project.tasks.register(
-            "stageComponentApplication", StageWinRTApplicationPackageTask::class.java,
+            "stageComponentApplication", StageWinAppPackageTask::class.java,
         ) { registered ->
             registered.runtimeAssetsDirectory.set(runtimeRoot.toFile())
             registered.outputDirectory.set(root.resolve("package").toFile())
