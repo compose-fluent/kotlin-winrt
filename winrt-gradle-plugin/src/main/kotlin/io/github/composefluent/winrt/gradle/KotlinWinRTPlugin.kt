@@ -41,6 +41,7 @@ import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.process.CommandLineArgumentProvider
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
@@ -2702,7 +2703,43 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
     // task from a task collection callback is rejected by Gradle's mutation guard, so take a
     // stable snapshot after the model has been evaluated and then add the standalone tasks.
     project.afterEvaluate {
-        project.tasks.withType(KotlinJvmCompile::class.java).toList().forEach(::configureBusinessTask)
+        val businessTasks = project.tasks.withType(KotlinJvmCompile::class.java)
+            .toList()
+            .filterNot { task ->
+                task.name.contains("Test", ignoreCase = true) ||
+                    taskNameOwnsStaticProjectionSupport(task.name)
+            }
+        businessTasks.forEach(::configureBusinessTask)
+
+        // Test compilations do not inherit the custom `libraries` added to their corresponding
+        // main compilation. Attach the fixed projection classes explicitly so tests can resolve
+        // generated WinRT types without putting the generated sources back into the test compile.
+        project.tasks.withType(KotlinJvmCompile::class.java)
+            .filter { task -> task.isKotlinJvmTestCompileTask() }
+            .forEach { testTask ->
+                val projectionTaskName = testTask.kotlinWinRTProjectionTaskName()
+                if (project.tasks.findByName(projectionTaskName) !is KotlinJvmCompile) {
+                    return@forEach
+                }
+                val projectionTask = project.tasks.named(projectionTaskName, KotlinJvmCompile::class.java)
+                testTask.libraries.from(projectionTask.flatMap { it.destinationDirectory })
+                testTask.friendPaths.from(projectionTask.flatMap { it.destinationDirectory })
+                testTask.dependsOn(projectionTask)
+            }
+        project.tasks.withType(Test::class.java)
+            .forEach { testTask ->
+                val projectionTaskName = testTask.kotlinWinRTProjectionTaskName()
+                if (project.tasks.findByName(projectionTaskName) !is KotlinJvmCompile) {
+                    return@forEach
+                }
+                val projectionTask = project.tasks.named(projectionTaskName, KotlinJvmCompile::class.java)
+                testTask.setClasspath(
+                    testTask.classpath.plus(
+                        project.files(projectionTask.flatMap { it.destinationDirectory }),
+                    ),
+                )
+                testTask.dependsOn(projectionTask)
+            }
     }
 }
 
@@ -4912,6 +4949,33 @@ private fun windowsSdkMetadataInputFiles(
 private fun taskNameOwnsStaticProjectionSupport(taskName: String): Boolean =
     taskName.startsWith("compileKotlinWinRTProjection", ignoreCase = true) ||
         taskName.startsWith("compileWinRTProjectionKotlin", ignoreCase = true)
+
+private fun KotlinJvmCompile.isKotlinJvmTestCompileTask(): Boolean =
+    name.startsWith("compileTestKotlin", ignoreCase = true) ||
+        name.startsWith("compileKotlin", ignoreCase = true) &&
+        name.endsWith("Test", ignoreCase = true)
+
+private fun KotlinJvmCompile.kotlinWinRTProjectionTaskName(): String {
+    val suffix = when {
+        name.startsWith("compileTestKotlin", ignoreCase = true) ->
+            name.substring("compileTestKotlin".length)
+        name.startsWith("compileKotlin", ignoreCase = true) &&
+            name.endsWith("Test", ignoreCase = true) ->
+            name.substring("compileKotlin".length, name.length - "Test".length)
+        else -> error("Not a Kotlin JVM test compilation: $name")
+    }
+    return "compileKotlinWinRTProjection$suffix"
+}
+
+private fun Test.kotlinWinRTProjectionTaskName(): String {
+    val normalizedName = name.takeIf { it.isNotBlank() } ?: return "compileKotlinWinRTProjection"
+    val suffix = normalizedName
+        .removeSuffix("Test")
+        .takeUnless { it.equals("test", ignoreCase = true) }
+        ?.replaceFirstChar(Char::uppercaseChar)
+        .orEmpty()
+    return "compileKotlinWinRTProjection$suffix"
+}
 
 private fun isGeneratedWinRTProjectionSource(file: File): Boolean {
     if (!file.isFile || !file.name.endsWith(".kt", ignoreCase = true)) {
