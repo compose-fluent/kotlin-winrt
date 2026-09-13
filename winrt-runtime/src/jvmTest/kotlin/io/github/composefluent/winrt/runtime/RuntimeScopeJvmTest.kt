@@ -125,19 +125,19 @@ class RuntimeScopeJvmTest {
 
         val failure = AtomicReference<Throwable?>()
         val worker = Thread {
-            var first: WinRTApplicationHostScope.Scope? = null
+            var first: WinAppHostScope.Scope? = null
             try {
-                val configuration = WinRTApplicationHostConfiguration(
-                    packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
-                    windowsAppSdkDeployment = WinRTWindowsAppSdkDeploymentMode.None,
+                val configuration = WinAppHostConfiguration(
+                    packageIdentity = WinAppPackageIdentity.Unpackaged,
+                    windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.None,
                 )
-                first = WinRTApplicationHostScope.initialize(configuration)
+                first = WinAppHostScope.initialize(configuration)
                 assertFailsWith<IllegalStateException> {
-                    WinRTApplicationHostScope.initialize(configuration)
+                    WinAppHostScope.initialize(configuration)
                 }
                 first.close()
                 first = null
-                WinRTApplicationHostScope.initialize(configuration).close()
+                WinAppHostScope.initialize(configuration).close()
             } catch (error: Throwable) {
                 failure.set(error)
             } finally {

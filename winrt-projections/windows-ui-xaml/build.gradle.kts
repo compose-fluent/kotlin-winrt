@@ -3,7 +3,7 @@ import io.github.composefluent.winrt.build.projectionArtifactVersion
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("winrt.prebuilt-projection")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 description = "Prebuilt Kotlin/WinRT projection for the Windows.UI.Xaml metadata surface."
@@ -32,10 +32,12 @@ dependencies {
     commonMainCompileOnly(project(":winrt-projections:windows-sdk"))
 }
 
-winRT {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
-    namespace("Windows.UI.Xaml")
-    excludeNamespace("Windows.UI.Xaml.Controls.Maps")
-    excludeType("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
-    excludeAdditionNamespace("Windows.UI.Xaml.Media.Animation")
+windows {
+    packageReferences {
+        windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+        namespace("Windows.UI.Xaml")
+        excludeNamespace("Windows.UI.Xaml.Controls.Maps")
+        excludeType("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
+        excludeAdditionNamespace("Windows.UI.Xaml.Media.Animation")
+    }
 }

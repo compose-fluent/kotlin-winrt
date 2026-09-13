@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 description = "Kotlin/WinRT native authoring component validation fixture"
@@ -13,22 +13,24 @@ kotlin {
     }
 }
 
-winRT {
-    windowsSdk(generateProjection = true)
-    nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
-        generateProjection = true
+windows {
+    packageReferences {
+        windowsSdk(generateProjection = true)
+        nugetPackage("Microsoft.WindowsAppSDK", "2.1.3") {
+            generateProjection = true
+        }
+        type("Windows.Foundation.IClosable")
+        type("Windows.Foundation.IStringable")
+        type("Windows.Foundation.Collections.IPropertySet")
+        type("Windows.Data.Json.IJsonValue")
+        type("Windows.Storage.Streams.IDataReader")
+        type("Microsoft.UI.Xaml.Controls.Control")
+        type("Microsoft.UI.Xaml.Controls.ContentControl")
     }
-    type("Windows.Foundation.IClosable")
-    type("Windows.Foundation.IStringable")
-    type("Windows.Foundation.Collections.IPropertySet")
-    type("Windows.Data.Json.IJsonValue")
-    type("Windows.Storage.Streams.IDataReader")
-    type("Microsoft.UI.Xaml.Controls.Control")
-    type("Microsoft.UI.Xaml.Controls.ContentControl")
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
-    io.github.composefluent.winrt.gradle.VerifyWinRTNativeAuthoringComponentFixtureTask::class,
+    io.github.composefluent.windows.toolkit.gradle.VerifyWinRTNativeAuthoringComponentFixtureTask::class,
 ) {
     group = "verification"
     description = "Validates that a real authored mingwX64 component exports WinRT activation entry points."

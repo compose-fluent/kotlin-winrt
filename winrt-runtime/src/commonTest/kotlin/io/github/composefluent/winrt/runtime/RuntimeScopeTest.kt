@@ -51,10 +51,10 @@ class RuntimeScopeTest {
     @Test
     fun none_deployment_does_not_acquire_an_owner() {
         assertNull(
-            WinRTWindowsAppSdkDeployment.initialize(
-                WinRTWindowsAppSdkDeploymentConfiguration(
-                    mode = WinRTWindowsAppSdkDeploymentMode.None,
-                    packageIdentity = WinRTApplicationPackageIdentity.Packaged,
+            WindowsAppSdkDeployment.initialize(
+                WindowsAppSdkDeploymentConfiguration(
+                    mode = WindowsAppSdkDeploymentMode.None,
+                    packageIdentity = WinAppPackageIdentity.Packaged,
                 ),
             ),
         )
@@ -62,8 +62,8 @@ class RuntimeScopeTest {
 
     @Test
     fun packaged_bootstrap_uses_the_package_identity_noop_option() {
-        assertEquals(0, WinRTApplicationPackageIdentity.Unpackaged.mddBootstrapInitializeOptions)
-        assertEquals(0x0010, WinRTApplicationPackageIdentity.Packaged.mddBootstrapInitializeOptions)
+        assertEquals(0, WinAppPackageIdentity.Unpackaged.mddBootstrapInitializeOptions)
+        assertEquals(0x0010, WinAppPackageIdentity.Packaged.mddBootstrapInitializeOptions)
     }
 
     @Test
@@ -89,21 +89,21 @@ class RuntimeScopeTest {
             return
         }
 
-        val configuration = WinRTWindowsAppSdkDeploymentConfiguration(
-            mode = WinRTWindowsAppSdkDeploymentMode.ExternallyInitialized,
-            packageIdentity = WinRTApplicationPackageIdentity.Unpackaged,
+        val configuration = WindowsAppSdkDeploymentConfiguration(
+            mode = WindowsAppSdkDeploymentMode.ExternallyInitialized,
+            packageIdentity = WinAppPackageIdentity.Unpackaged,
         )
-        val first = WinRTWindowsAppSdkDeployment.initialize(configuration)
+        val first = WindowsAppSdkDeployment.initialize(configuration)
         checkNotNull(first)
         try {
             assertFailsWith<IllegalStateException> {
-                WinRTWindowsAppSdkDeployment.initialize(configuration)
+                WindowsAppSdkDeployment.initialize(configuration)
             }
         } finally {
             first.close()
             first.close()
         }
 
-        WinRTWindowsAppSdkDeployment.initialize(configuration)?.close()
+        WindowsAppSdkDeployment.initialize(configuration)?.close()
     }
 }

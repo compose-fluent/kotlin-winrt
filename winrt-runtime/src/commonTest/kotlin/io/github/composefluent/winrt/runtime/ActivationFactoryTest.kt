@@ -48,9 +48,9 @@ class ActivationFactoryTest {
 
     @Test
     fun module_path_resolves_working_directory_runtime_assets() {
-        val fileName = "kotlin-winrt-runtime-assets-resolve-test.dll"
-        val runtimeAssetsRoot = Path("build/kotlin-winrt/runtime-assets")
-        val asset = Path("build/kotlin-winrt/runtime-assets/$fileName")
+        val fileName = "windows-package-runtime-assets-resolve-test.dll"
+        val runtimeAssetsRoot = Path("build/windows-package-runtime-assets")
+        val asset = Path("build/windows-package-runtime-assets/$fileName")
         SystemFileSystem.createDirectories(runtimeAssetsRoot)
         SystemFileSystem.sink(asset).close()
         try {
@@ -65,8 +65,8 @@ class ActivationFactoryTest {
 
     @Test
     fun authoring_host_manifest_activation_maps_runtime_classes_to_native_dll_targets() {
-        val runtimeAssetsRoot = Path("build/kotlin-winrt/runtime-assets")
-        val manifest = Path("build/kotlin-winrt/runtime-assets/runtime-test-authoring-host.host.json")
+        val runtimeAssetsRoot = Path("build/windows-package-runtime-assets")
+        val manifest = Path("build/windows-package-runtime-assets/runtime-test-authoring-host.host.json")
         SystemFileSystem.createDirectories(runtimeAssetsRoot)
         SystemFileSystem.sink(manifest).buffered().use { sink ->
             sink.writeString(

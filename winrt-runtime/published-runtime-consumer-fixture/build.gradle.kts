@@ -222,7 +222,7 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
     dependsOn("compileKotlinJvm", "linkReleaseExecutableMingwX64")
 
     doLast {
-        check(!pluginManager.hasPlugin("io.github.compose-fluent.winrt"))
+        check(!pluginManager.hasPlugin("io.github.compose-fluent.windows-toolkit"))
         check(!pluginManager.hasPlugin("io.github.composefluent.winrt"))
 
         val compilerArguments = buildList {

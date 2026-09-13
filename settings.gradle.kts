@@ -4,7 +4,7 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
     includeBuild("kotlin-winrt-build-convention")
-    includeBuild("winrt-gradle-plugin")
+    includeBuild("windows-toolkit-gradle-plugin")
 
     repositories {
         mavenCentral()

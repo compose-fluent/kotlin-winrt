@@ -3,7 +3,7 @@ import io.github.composefluent.winrt.build.projectionArtifactVersion
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("winrt.prebuilt-projection")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 description = "Prebuilt Kotlin/WinRT projection for the Windows SDK metadata surface."
@@ -35,20 +35,22 @@ tasks.named<io.github.composefluent.winrt.build.ValidatePrebuiltProjectionOutput
     maxTotalClassBytes.set(172_000_000L)
 }
 
-winRT {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
-    namespace("Windows")
-    excludeNamespace("Windows.UI.Xaml")
-    excludeNamespace("Windows.ApplicationModel.Store.Preview")
-    excludeType("Windows.UI.Colors")
-    excludeType("Windows.UI.IColors")
-    excludeType("Windows.UI.ColorHelper")
-    excludeType("Windows.UI.IColorHelper")
-    excludeType("Windows.UI.IColorHelperStatics")
-    excludeType("Windows.UI.IColorHelperStatics2")
-    type("Windows.UI.Text.FontStretch")
-    type("Windows.UI.Text.FontStyle")
-    type("Windows.UI.Text.FontWeight")
-    type("Windows.UI.Text.UnderlineType")
-    type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
+windows {
+    packageReferences {
+        windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+        namespace("Windows")
+        excludeNamespace("Windows.UI.Xaml")
+        excludeNamespace("Windows.ApplicationModel.Store.Preview")
+        excludeType("Windows.UI.Colors")
+        excludeType("Windows.UI.IColors")
+        excludeType("Windows.UI.ColorHelper")
+        excludeType("Windows.UI.IColorHelper")
+        excludeType("Windows.UI.IColorHelperStatics")
+        excludeType("Windows.UI.IColorHelperStatics2")
+        type("Windows.UI.Text.FontStretch")
+        type("Windows.UI.Text.FontStyle")
+        type("Windows.UI.Text.FontWeight")
+        type("Windows.UI.Text.UnderlineType")
+        type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
+    }
 }

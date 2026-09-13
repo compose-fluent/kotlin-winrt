@@ -10,7 +10,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.mavenPublish) apply false
-    id("io.github.compose-fluent.winrt") apply false
+    id("io.github.compose-fluent.windows-toolkit") apply false
     id("winrt.prebuilt-projection") apply false
 }
 
@@ -84,7 +84,7 @@ val validateWinRTPluginGraph by tasks.registering {
     group = "verification"
     description = "Runs Gradle plugin graph validation, including TestKit and identity/resource wiring tests."
     dependsOn(validateWinRTGenerator)
-    dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
+    dependsOn(gradle.includedBuild("windows-toolkit-gradle-plugin").task(":test"))
 }
 
 val splitProjectionModules = listOf(
@@ -423,7 +423,7 @@ tasks.register("validateProjectReviewRemediation") {
     dependsOn(":winrt-authoring:jvmTest")
     dependsOn(":winrt-authoring:mingwX64Test")
     dependsOn(gradle.includedBuild("kotlin-winrt-build-convention").task(":test"))
-    dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
+    dependsOn(gradle.includedBuild("windows-toolkit-gradle-plugin").task(":test"))
     dependsOn(":winrt-projections:windows-ui-xaml:auditGeneratedWinRTProjectionOutput")
     dependsOn(":winrt-projections:windows-app-sdk:auditGeneratedWinRTProjectionOutput")
     dependsOn(validateWinRTSplitProjectionPublication)

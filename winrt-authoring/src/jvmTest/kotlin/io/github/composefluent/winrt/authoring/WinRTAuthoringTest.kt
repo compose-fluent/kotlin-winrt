@@ -144,7 +144,7 @@ class WinRTAuthoringTest {
         WinRTAuthoringHostManifestLoader.registerHostExports(RuntimeAssetsHostExports::class.java.name, RuntimeAssetsHostExports)
 
         val root = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-")
-        val assets = root.resolve("kotlin-winrt-runtime-assets")
+        val assets = root.resolve("windows-package-runtime-assets")
         Files.createDirectories(assets)
         Files.writeString(
             assets.resolve("RuntimeAssetsHostComponent.host.json"),
@@ -188,9 +188,9 @@ class WinRTAuthoringTest {
 
         val jarPath = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-").resolve("runtime-assets.jar")
         JarOutputStream(Files.newOutputStream(jarPath)).use { jar ->
-            jar.putNextEntry(JarEntry("kotlin-winrt-runtime-assets/"))
+            jar.putNextEntry(JarEntry("windows-package-runtime-assets/"))
             jar.closeEntry()
-            jar.putNextEntry(JarEntry("kotlin-winrt-runtime-assets/RuntimeAssetsHostComponent.host.json"))
+            jar.putNextEntry(JarEntry("windows-package-runtime-assets/RuntimeAssetsHostComponent.host.json"))
             jar.write(
                 """
                 {

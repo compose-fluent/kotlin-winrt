@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
     id("winrt.prebuilt-projection") apply false
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
@@ -95,13 +95,7 @@ val verifyMingwX64ProjectionThunkAccessors by tasks.registering(VerifyBinaryMark
     dependsOn(compileNativeProjectionTask)
     binaryArtifacts.from(compiledNativeProjectionKlib)
     markers.set(emptySet())
-    requiredMarkers.set(
-        setOf(
-            "kotlinWinRTNativeHResultThunk",
-            "kotlinWinRTNativePackedScalarResultThunk",
-            "kotlinWinRTNativeWideScalarResultThunk",
-        ),
-    )
+    requiredMarkers.set(setOf("kotlinWinRTNativeWideScalarResultThunk"))
     artifactDescription.set("Native projection thunk-accessor metadata")
 }
 
@@ -161,50 +155,51 @@ tasks.named("check") {
     dependsOn(auditGeneratedWinRTProjectionOutput)
 }
 
-winRT {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
-    if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
-        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
-            generateProjection = true
+windows {
+    packageReferences {
+        windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+        if (projectionIncludeWinAppSdk.get()) projectionWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
+            nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
+                generateProjection = true
+            }
         }
-    }
 
-    if (projectionUseFullWindowsSdk.get()) {
-        namespace("Windows")
-        excludeNamespace("Windows.UI.Xaml")
-        excludeNamespace("Windows.ApplicationModel.Store.Preview")
-        excludeType("Windows.UI.Colors")
-        excludeType("Windows.UI.IColors")
-        excludeType("Windows.UI.ColorHelper")
-        excludeType("Windows.UI.IColorHelper")
-        excludeType("Windows.UI.IColorHelperStatics")
-        excludeType("Windows.UI.IColorHelperStatics2")
-    } else {
-        namespace("Windows.Foundation")
-        namespace("Windows.Foundation.Collections")
-        namespace("Windows.Data.Json")
-        namespace("Windows.System")
-        namespace("Windows.ApplicationModel.DataTransfer")
-        namespace("Windows.System.Display")
-        namespace("Windows.UI.ViewManagement")
-        namespace("Windows.UI.Xaml.Interop")
+        if (projectionUseFullWindowsSdk.get()) {
+            namespace("Windows")
+            excludeNamespace("Windows.UI.Xaml")
+            excludeNamespace("Windows.ApplicationModel.Store.Preview")
+            excludeType("Windows.UI.Colors")
+            excludeType("Windows.UI.IColors")
+            excludeType("Windows.UI.ColorHelper")
+            excludeType("Windows.UI.IColorHelper")
+            excludeType("Windows.UI.IColorHelperStatics")
+            excludeType("Windows.UI.IColorHelperStatics2")
+        } else {
+            namespace("Windows.Foundation")
+            namespace("Windows.Foundation.Collections")
+            namespace("Windows.Data.Json")
+            namespace("Windows.System")
+            namespace("Windows.ApplicationModel.DataTransfer")
+            namespace("Windows.System.Display")
+            namespace("Windows.UI.ViewManagement")
+            namespace("Windows.UI.Xaml.Interop")
+        }
+        if (projectionIncludeWinAppSdk.get()) {
+            excludeNamespace("Windows.UI.Composition")
+            excludeType("Windows.UI.Composition")
+            namespace("Microsoft.UI.Dispatching")
+            namespace("Microsoft.UI.Windowing")
+            namespace("Microsoft.UI.Xaml")
+            namespace("Microsoft.UI.Xaml.Automation")
+            namespace("Microsoft.UI.Xaml.Automation.Peers")
+            namespace("Microsoft.UI.Xaml.Controls")
+            namespace("Microsoft.UI.Xaml.Media")
+        }
+        namespace("SimpleMathComponent")
+        winmd(
+            providers.gradleProperty("kotlinWinRT.samples.simpleMathWinmd")
+                .getOrElse(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.winmd").asFile.absolutePath),
+        )
+        type("Windows.Foundation.IStringable")
     }
-    if (projectionIncludeWinAppSdk.get()) {
-        excludeNamespace("Windows.UI.Composition")
-        excludeType("Windows.UI.Composition")
-        namespace("Microsoft.UI.Dispatching")
-        namespace("Microsoft.UI.Windowing")
-        namespace("Microsoft.UI.Xaml")
-        namespace("Microsoft.UI.Xaml.Automation")
-        namespace("Microsoft.UI.Xaml.Automation.Peers")
-        namespace("Microsoft.UI.Xaml.Controls")
-        namespace("Microsoft.UI.Xaml.Media")
-    }
-    namespace("SimpleMathComponent")
-    winmd(
-        providers.gradleProperty("kotlinWinRT.samples.simpleMathWinmd")
-            .getOrElse(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.winmd").asFile.absolutePath),
-    )
-    runtimeAsset(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.dll").asFile.absolutePath)
-    type("Windows.Foundation.IStringable")
 }

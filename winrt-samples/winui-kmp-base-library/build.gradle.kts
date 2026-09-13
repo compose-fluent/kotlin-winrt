@@ -1,8 +1,8 @@
-import io.github.composefluent.winrt.gradle.GenerateWinRTProjectionsTask
+import io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 tasks.named<GenerateWinRTProjectionsTask>("generateWinRTProjections") {
@@ -18,9 +18,11 @@ kotlin {
     mingwX64()
 }
 
-winRT {
-    windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
-    type("Windows.Foundation.IStringable")
-    type("Windows.Foundation.Uri")
-    type("Windows.System.Launcher")
+windows {
+    packageReferences {
+        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+        type("Windows.Foundation.IStringable")
+        type("Windows.Foundation.Uri")
+        type("Windows.System.Launcher")
+    }
 }

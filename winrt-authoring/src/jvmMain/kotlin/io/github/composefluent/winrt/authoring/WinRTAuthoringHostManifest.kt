@@ -28,7 +28,7 @@ data class WinRTAuthoringHostManifest(
 )
 
 object WinRTAuthoringHostManifestLoader {
-    private const val RUNTIME_ASSETS_RESOURCE_DIRECTORY = "kotlin-winrt-runtime-assets"
+    private const val RUNTIME_ASSETS_RESOURCE_DIRECTORY = "windows-package-runtime-assets"
 
     private data class HostExportEntry(
         val exports: WinRTAuthoringHostExports,

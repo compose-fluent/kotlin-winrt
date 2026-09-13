@@ -1,4 +1,4 @@
-import io.github.composefluent.winrt.gradle.WindowsPackageType
+import io.github.composefluent.windows.toolkit.gradle.WindowsPackageType
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -60,7 +60,7 @@ abstract class VerifyWinRTSampleModeTask : DefaultTask() {
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("build-convention")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWinUI")
@@ -113,10 +113,15 @@ kotlin {
     }
 }
 
-winRT {
+windows {
     application {
         mainClass = "io.github.composefluent.winrt.samples.MainKt"
         minWindowsVersion = "10.0.19041.0"
+        runtimeAsset(
+            rootProject.layout.projectDirectory
+                .file("winrt-projections/src/main/winrt/SimpleMathComponent.dll")
+                .asFile.absolutePath,
+        )
         packageType = when (sampleApplicationPackageType.get()) {
             "packaged" -> WindowsPackageType.Packaged
             "none" -> WindowsPackageType.None
@@ -127,86 +132,88 @@ winRT {
         }
     }
     if (sampleWinUIEnabled.get()) {
-        val windowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
-        type("Windows.Foundation.IStringable")
-        type("Windows.Foundation.Point")
-        namespace("Windows.Data.Json")
-        sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
-            nugetGlobalPackagesRoots.add(globalPackagesRoot)
-            useNuGetCliGlobalPackages = false
-            restoreNuGetPackages = false
+        packageReferences {
+            val windowsAppSdkVersion = sampleWindowsAppSdkVersion.get()
+            type("Windows.Foundation.IStringable")
+            type("Windows.Foundation.Point")
+            namespace("Windows.Data.Json")
+            sampleNuGetGlobalPackagesRoot.orNull?.let { globalPackagesRoot ->
+                nugetGlobalPackagesRoots.add(globalPackagesRoot)
+                useNuGetCliGlobalPackages = false
+                restoreNuGetPackages = false
+            }
+            windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = true, generateProjection = true)
+            nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
+                generateProjection = true
+            }
+            nugetPackage("WinUIEssential.WinUI3", sampleWinUIEssentialVersion.get())
+            type("Microsoft.UI.Xaml.Application")
+            type("Microsoft.UI.Xaml.DependencyProperty")
+            type("Microsoft.UI.Xaml.FrameworkElement")
+            type("Microsoft.UI.Xaml.GridLength")
+            type("Microsoft.UI.Xaml.GridUnitType")
+            type("Microsoft.UI.Xaml.HorizontalAlignment")
+            type("Microsoft.UI.Xaml.RoutedEventArgs")
+            type("Microsoft.UI.Xaml.RoutedEventHandler")
+            type("Microsoft.UI.Xaml.ResourceDictionary")
+            type("Microsoft.UI.Xaml.Thickness")
+            type("Microsoft.UI.Xaml.UIElement")
+            type("Microsoft.UI.Xaml.VerticalAlignment")
+            type("Microsoft.UI.Xaml.Visibility")
+            type("Microsoft.UI.Xaml.Window")
+            type("Microsoft.UI.Xaml.Automation.AutomationProperties")
+            type("Microsoft.UI.Xaml.Controls.Border")
+            type("Microsoft.UI.Xaml.Controls.Button")
+            type("Microsoft.UI.Xaml.Controls.ColumnDefinition")
+            type("Microsoft.UI.Xaml.Controls.ComboBox")
+            type("Microsoft.UI.Xaml.Controls.ComboBoxItem")
+            type("Microsoft.UI.Xaml.Controls.ContentControl")
+            type("Microsoft.UI.Xaml.Controls.Grid")
+            type("Microsoft.UI.Xaml.Controls.ItemsControl")
+            type("Microsoft.UI.Xaml.Controls.ListView")
+            type("Microsoft.UI.Xaml.Controls.ListViewItem")
+            type("Microsoft.UI.Xaml.Controls.MenuFlyout")
+            type("Microsoft.UI.Xaml.Controls.MenuFlyoutItem")
+            type("Microsoft.UI.Xaml.Controls.MenuFlyoutItemBase")
+            type("Microsoft.UI.Xaml.Controls.Orientation")
+            type("Microsoft.UI.Xaml.Controls.Page")
+            type("Microsoft.UI.Xaml.Controls.ProgressBar")
+            type("Microsoft.UI.Xaml.Controls.Primitives.ButtonBase")
+            type("Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase")
+            type("Microsoft.UI.Xaml.Controls.Primitives.RangeBase")
+            type("Microsoft.UI.Xaml.Controls.Primitives.Selector")
+            type("Microsoft.UI.Xaml.Controls.Primitives.SelectorItem")
+            type("Microsoft.UI.Xaml.Controls.RowDefinition")
+            type("Microsoft.UI.Xaml.Controls.Slider")
+            type("Microsoft.UI.Xaml.Controls.StackPanel")
+            type("Microsoft.UI.Xaml.Controls.Symbol")
+            type("Microsoft.UI.Xaml.Controls.SymbolIcon")
+            type("Microsoft.UI.Xaml.Controls.TabView")
+            type("Microsoft.UI.Xaml.Controls.TabViewItem")
+            type("Microsoft.UI.Xaml.Controls.TabViewWidthMode")
+            type("Microsoft.UI.Xaml.Controls.TextBox")
+            type("Microsoft.UI.Xaml.Controls.TextBlock")
+            type("Microsoft.UI.Xaml.Controls.TextWrapping")
+            type("Microsoft.UI.Xaml.Controls.ToolTipService")
+            type("Microsoft.UI.Xaml.Controls.ToggleSwitch")
+            type("Microsoft.UI.Xaml.Controls.Viewbox")
+            type("Microsoft.UI.Xaml.Controls.WebView2")
+            type("Microsoft.UI.Xaml.Controls.XamlControlsResources")
+            type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs")
+            type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs")
+            type("Microsoft.UI.Xaml.Input.KeyEventHandler")
+            type("Microsoft.UI.Xaml.Input.KeyRoutedEventArgs")
+            type("Microsoft.UI.Xaml.Input.TappedEventHandler")
+            type("Microsoft.UI.Xaml.Input.TappedRoutedEventArgs")
+            type("Microsoft.UI.Xaml.Markup.XamlReader")
+            type("Microsoft.UI.Xaml.Media.MicaBackdrop")
+            type("Microsoft.UI.Xaml.Media.SystemBackdrop")
+            type("WinUI3Package.SettingsCard")
+            type("WinUI3Package.Shimmer")
+            type("Windows.System.VirtualKey")
+            type("Windows.UI.Xaml.Interop.Type")
+            type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
         }
-        windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = true, generateProjection = true)
-        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
-            generateProjection = true
-        }
-        nugetPackage("WinUIEssential.WinUI3", sampleWinUIEssentialVersion.get())
-        type("Microsoft.UI.Xaml.Application")
-        type("Microsoft.UI.Xaml.DependencyProperty")
-        type("Microsoft.UI.Xaml.FrameworkElement")
-        type("Microsoft.UI.Xaml.GridLength")
-        type("Microsoft.UI.Xaml.GridUnitType")
-        type("Microsoft.UI.Xaml.HorizontalAlignment")
-        type("Microsoft.UI.Xaml.RoutedEventArgs")
-        type("Microsoft.UI.Xaml.RoutedEventHandler")
-        type("Microsoft.UI.Xaml.ResourceDictionary")
-        type("Microsoft.UI.Xaml.Thickness")
-        type("Microsoft.UI.Xaml.UIElement")
-        type("Microsoft.UI.Xaml.VerticalAlignment")
-        type("Microsoft.UI.Xaml.Visibility")
-        type("Microsoft.UI.Xaml.Window")
-        type("Microsoft.UI.Xaml.Automation.AutomationProperties")
-        type("Microsoft.UI.Xaml.Controls.Border")
-        type("Microsoft.UI.Xaml.Controls.Button")
-        type("Microsoft.UI.Xaml.Controls.ColumnDefinition")
-        type("Microsoft.UI.Xaml.Controls.ComboBox")
-        type("Microsoft.UI.Xaml.Controls.ComboBoxItem")
-        type("Microsoft.UI.Xaml.Controls.ContentControl")
-        type("Microsoft.UI.Xaml.Controls.Grid")
-        type("Microsoft.UI.Xaml.Controls.ItemsControl")
-        type("Microsoft.UI.Xaml.Controls.ListView")
-        type("Microsoft.UI.Xaml.Controls.ListViewItem")
-        type("Microsoft.UI.Xaml.Controls.MenuFlyout")
-        type("Microsoft.UI.Xaml.Controls.MenuFlyoutItem")
-        type("Microsoft.UI.Xaml.Controls.MenuFlyoutItemBase")
-        type("Microsoft.UI.Xaml.Controls.Orientation")
-        type("Microsoft.UI.Xaml.Controls.Page")
-        type("Microsoft.UI.Xaml.Controls.ProgressBar")
-        type("Microsoft.UI.Xaml.Controls.Primitives.ButtonBase")
-        type("Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase")
-        type("Microsoft.UI.Xaml.Controls.Primitives.RangeBase")
-        type("Microsoft.UI.Xaml.Controls.Primitives.Selector")
-        type("Microsoft.UI.Xaml.Controls.Primitives.SelectorItem")
-        type("Microsoft.UI.Xaml.Controls.RowDefinition")
-        type("Microsoft.UI.Xaml.Controls.Slider")
-        type("Microsoft.UI.Xaml.Controls.StackPanel")
-        type("Microsoft.UI.Xaml.Controls.Symbol")
-        type("Microsoft.UI.Xaml.Controls.SymbolIcon")
-        type("Microsoft.UI.Xaml.Controls.TabView")
-        type("Microsoft.UI.Xaml.Controls.TabViewItem")
-        type("Microsoft.UI.Xaml.Controls.TabViewWidthMode")
-        type("Microsoft.UI.Xaml.Controls.TextBox")
-        type("Microsoft.UI.Xaml.Controls.TextBlock")
-        type("Microsoft.UI.Xaml.Controls.TextWrapping")
-        type("Microsoft.UI.Xaml.Controls.ToolTipService")
-        type("Microsoft.UI.Xaml.Controls.ToggleSwitch")
-        type("Microsoft.UI.Xaml.Controls.Viewbox")
-        type("Microsoft.UI.Xaml.Controls.WebView2")
-        type("Microsoft.UI.Xaml.Controls.XamlControlsResources")
-        type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs")
-        type("Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs")
-        type("Microsoft.UI.Xaml.Input.KeyEventHandler")
-        type("Microsoft.UI.Xaml.Input.KeyRoutedEventArgs")
-        type("Microsoft.UI.Xaml.Input.TappedEventHandler")
-        type("Microsoft.UI.Xaml.Input.TappedRoutedEventArgs")
-        type("Microsoft.UI.Xaml.Markup.XamlReader")
-        type("Microsoft.UI.Xaml.Media.MicaBackdrop")
-        type("Microsoft.UI.Xaml.Media.SystemBackdrop")
-        type("WinUI3Package.SettingsCard")
-        type("WinUI3Package.Shimmer")
-        type("Windows.System.VirtualKey")
-        type("Windows.UI.Xaml.Interop.Type")
-        type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
     }
 }
 
@@ -218,8 +225,8 @@ val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class)
     val winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
     val mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
     val packages = project.extensions
-        .getByType<io.github.composefluent.winrt.gradle.WinRTExtension>()
-        .nugetPackages
+        .getByType<io.github.composefluent.windows.toolkit.gradle.WindowsExtension>()
+        .packageReferences.nugetPackages
         .map { pkg -> pkg.packageId }
 
     winuiEnabled.set(sampleWinUIEnabled)
@@ -261,7 +268,7 @@ val standardSampleSmokeDefaults = mapOf(
 
 val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinRTApplicationHostTask>("runWinRTApplicationHostWinuiJvmMain") {
+tasks.named<io.github.composefluent.windows.toolkit.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
     environmentVariables.put(
         "WEBVIEW2_USER_DATA_FOLDER",
         webView2UserDataRoot.map { it.dir("jvm").asFile.absolutePath },

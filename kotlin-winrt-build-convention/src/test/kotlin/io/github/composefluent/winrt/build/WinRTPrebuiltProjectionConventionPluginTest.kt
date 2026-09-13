@@ -85,7 +85,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             gradlePlugin {
                 plugins {
                     create("fakeWinRT") {
-                        id = "io.github.compose-fluent.winrt"
+                        id = "io.github.compose-fluent.windows-toolkit"
                         implementationClass = "fixture.FakeWinRTPlugin"
                     }
                 }
@@ -139,7 +139,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             """
             plugins {
                 id("org.jetbrains.kotlin.multiplatform") apply false
-                id("io.github.compose-fluent.winrt") apply false
+                id("io.github.compose-fluent.windows-toolkit") apply false
                 id("winrt.prebuilt-projection") apply false
             }
             """.trimIndent(),
@@ -150,7 +150,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                 """
                 plugins {
                     id("org.jetbrains.kotlin.multiplatform")
-                    id("io.github.compose-fluent.winrt")
+                    id("io.github.compose-fluent.windows-toolkit")
                     id("winrt.publish")
                 }
 
@@ -179,7 +179,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             plugins {
                 id("org.jetbrains.kotlin.multiplatform")
                 id("winrt.prebuilt-projection")
-                id("io.github.compose-fluent.winrt")
+                id("io.github.compose-fluent.windows-toolkit")
             }
 
             kotlin {

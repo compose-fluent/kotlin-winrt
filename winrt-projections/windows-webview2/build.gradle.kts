@@ -3,7 +3,7 @@ import io.github.composefluent.winrt.build.projectionArtifactVersion
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("winrt.prebuilt-projection")
-    id("io.github.compose-fluent.winrt")
+    id("io.github.compose-fluent.windows-toolkit")
 }
 
 description = "Prebuilt Kotlin/WinRT projection for the Microsoft WebView2 Core metadata surface."
@@ -34,11 +34,13 @@ dependencies {
     commonMainCompileOnly(project(":winrt-projections:windows-sdk"))
 }
 
-winRT {
-    windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
-    nugetPackage("Microsoft.Web.WebView2", projectionWebView2Version.get()) {
-        generateProjection = true
+windows {
+    packageReferences {
+        windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
+        nugetPackage("Microsoft.Web.WebView2", projectionWebView2Version.get()) {
+            generateProjection = true
+        }
+        excludeNamespace("Windows")
+        namespace("Microsoft.Web.WebView2.Core")
     }
-    excludeNamespace("Windows")
-    namespace("Microsoft.Web.WebView2.Core")
 }
