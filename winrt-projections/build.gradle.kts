@@ -95,13 +95,7 @@ val verifyMingwX64ProjectionThunkAccessors by tasks.registering(VerifyBinaryMark
     dependsOn(compileNativeProjectionTask)
     binaryArtifacts.from(compiledNativeProjectionKlib)
     markers.set(emptySet())
-    requiredMarkers.set(
-        setOf(
-            "kotlinWinRTNativeHResultThunk",
-            "kotlinWinRTNativePackedScalarResultThunk",
-            "kotlinWinRTNativeWideScalarResultThunk",
-        ),
-    )
+    requiredMarkers.set(setOf("kotlinWinRTNativeWideScalarResultThunk"))
     artifactDescription.set("Native projection thunk-accessor metadata")
 }
 

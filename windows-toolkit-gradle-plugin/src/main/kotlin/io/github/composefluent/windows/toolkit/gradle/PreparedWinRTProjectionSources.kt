@@ -41,6 +41,12 @@ internal fun prepareWinRTStaticProjectionSources(
     if (parsedSources.isEmpty() || parsedSources.any { source ->
             source !is WinRTMetadataSource.PathSource && source !is WinRTMetadataSource.NuGetPackage
         }) throw StaticPreparationUnavailable("fixed metadata is not a local path")
+    if (extension.windowsSdkDeclared.get()) {
+        throw StaticPreparationUnavailable("Windows SDK metadata is resolved at execution time")
+    }
+    if (extension.nugetPackages.any { packageReference -> packageReference.generateProjection }) {
+        throw StaticPreparationUnavailable("projected NuGet metadata is resolved at execution time")
+    }
     if (project.configurations.findByName(KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION)
             ?.allDependencies
             ?.isNotEmpty() == true
