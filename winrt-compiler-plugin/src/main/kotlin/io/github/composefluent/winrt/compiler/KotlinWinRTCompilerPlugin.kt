@@ -353,7 +353,12 @@ class KotlinWinRTIrGenerationExtension(
             pluginContext = pluginContext,
             initialize = projectionSupportInitialize,
         )
-        lowerAuthoringSupportIntrinsicCalls(moduleFragment, pluginContext, authoringRegistrarEntries)
+        lowerAuthoringSupportIntrinsicCalls(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            manifestEntries = authoringRegistrarEntries,
+            allowMissingRegistrar = projectionSupportMode.equals("embedded", ignoreCase = true),
+        )
         if (metadataIndexPath.isNullOrBlank()) {
             writeProjectionTypeIndex(emptyList(), emptyMap())
             writeAuthoredCandidates(emptyList(), emptyMap())
@@ -1339,6 +1344,7 @@ class KotlinWinRTIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
         manifestEntries: List<KotlinWinRTAuthoringTypeDetailsRegistrarEntry>,
+        allowMissingRegistrar: Boolean,
     ) {
         val lookupFile = moduleFragment.files.firstOrNull()
         val registrars = authoringTypeDetailsRegistrarRegisters(pluginContext, lookupFile, manifestEntries)
@@ -1356,11 +1362,19 @@ class KotlinWinRTIrGenerationExtension(
                             )
                         }
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
-                    val resolvedRegistrars = requireCompilerSupportPrerequisite(
-                        description = "authoring type-details registrar",
-                        prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
-                        value = registrars.takeIf(List<*>::isNotEmpty),
-                    )
+                    val resolvedRegistrars = registrars.takeIf(List<*>::isNotEmpty)
+                        ?: if (allowMissingRegistrar) {
+                            // The isolated projection compilation cannot depend on the current
+                            // module's business overlay. Its authored constructors register the
+                            // local type details before delegating to this generated base class.
+                            return builder.irUnit()
+                        } else {
+                            requireCompilerSupportPrerequisite(
+                                description = "authoring type-details registrar",
+                                prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
+                                value = null,
+                            )
+                        }
                     return builder.irBlock(resultType = call.type) {
                         resolvedRegistrars.forEach { resolvedRegistrar ->
                             +builder.irCall(resolvedRegistrar.register).apply {
