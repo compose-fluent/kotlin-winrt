@@ -764,15 +764,15 @@ internal class KotlinExpectActualProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         type: TypeSpec,
     ): KotlinProjectionFile {
-        val contents = FileSpec.builder(plan.packageName, plan.type.name)
+        val file = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
             .addType(type)
             .build()
-            .toString()
         return KotlinProjectionFile(
             relativePath = "$sourceSetPrefix/${plan.relativePath}",
             packageName = plan.packageName,
-            contents = contents,
+            contents = file.toString(),
+            kotlinPoetFile = file,
         )
     }
 
@@ -781,6 +781,7 @@ internal class KotlinExpectActualProjectionRenderer(
             relativePath = "$prefix/${file.relativePath}",
             packageName = file.packageName,
             contents = file.contents,
+            kotlinPoetFile = file.kotlinPoetFile,
         )
 
     private fun jvmInterfaceProjectionSupportClassName(

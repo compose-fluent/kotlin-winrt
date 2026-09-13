@@ -93,10 +93,12 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.Import
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeAliasSpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
@@ -2073,130 +2075,217 @@ internal fun interface KotlinProjectionFileRenderer {
     fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile>
 }
 
-private fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFile> =
+internal fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFile> =
     groupBy(KotlinProjectionFile::packageName)
         .toSortedMap()
         .flatMap { (packageName, files) ->
-            files
+            val structuredFiles = files
                 .sortedBy(KotlinProjectionFile::relativePath)
-                .map(::parseGeneratedKotlinFile)
-                .let { parsedFiles ->
-                    parsedFiles.chunkByGeneratedBodySizeAndImports(
-                        packageDeclaredNames = parsedFiles.flatMap { it.declaredTopLevelNames() }.toSet(),
+                .map { file ->
+                    val kotlinPoetFile = requireNotNull(file.kotlinPoetFile) {
+                        "Projection file ${file.relativePath} is missing its KotlinPoet structure."
+                    }
+                    val imports = kotlinPoetFile.toBuilder().imports
+                    KotlinPoetGeneratedFile(
+                        source = file,
+                        file = kotlinPoetFile,
+                        fileComment = kotlinPoetFile.comment.toString().takeIf(String::isNotBlank),
+                        annotations = kotlinPoetFile.annotations,
+                        imports = imports,
+                        importedSimpleNames = imports.importedSimpleNames(),
+                        importedTargetsBySimpleName = imports.importedTargetsBySimpleName(),
+                        declaredTopLevelNames = kotlinPoetFile.declaredTopLevelNames(),
                     )
                 }
-                .mapIndexed { index, parsedFiles ->
-            val imports = parsedFiles
-                .flatMap(ParsedGeneratedKotlinFile::imports)
-                .toSortedSet()
-            val body = parsedFiles
-                .joinToString("\n") { it.body.trim() }
-                .trim()
-            KotlinProjectionFile(
-                relativePath = packageName.replace('.', '/') + "/${packageName.split('.').joinToString("_")}${if (index == 0) "" else "_$index"}.kt",
-                packageName = packageName,
-                contents = buildString {
-                    append(parsedFiles.first().fileAnnotations.trimEnd())
-                    append("\n\n")
-                    append(parsedFiles.first().packageDeclaration)
-                    append("\n\n")
-                    if (imports.isNotEmpty()) {
-                        imports.forEach { importLine ->
-                            append(importLine)
-                            append('\n')
-                        }
-                        append('\n')
-                    }
-                    append(body)
-                    append('\n')
-                },
+            val chunks = structuredFiles.chunkByGeneratedBodySizeAndImports(
+                packageDeclaredNames = structuredFiles
+                    .flatMap(KotlinPoetGeneratedFile::declaredTopLevelNames)
+                    .toSet(),
             )
+            chunks
+                .map { chunk ->
+                    val fileName = packageName.split('.').joinToString("_") +
+                        if (chunks.size == 1) "" else "_${chunk.stableId}"
+                    val merged = FileSpec.builder(packageName, fileName)
+                        .apply {
+                            chunk.files.firstOrNull()?.fileComment?.let { comment ->
+                                addFileComment("%L", CodeBlock.of(comment))
+                            }
+                        }
+                        .addAnnotations(
+                            chunk.files.flatMap(KotlinPoetGeneratedFile::annotations).distinct(),
+                        )
+                        .apply {
+                            chunk.files.flatMap(KotlinPoetGeneratedFile::imports)
+                                .distinct()
+                                .sortedWith(compareBy({ it.qualifiedName }, { it.alias.orEmpty() }))
+                                .forEach(::addImport)
+                            chunk.files.forEach { file -> file.file.addMembersTo(this) }
+                        }
+                        .build()
+                    KotlinProjectionFile(
+                        relativePath = packageName.replace('.', '/') + "/$fileName.kt",
+                        packageName = packageName,
+                        contents = merged.toString(),
+                        kotlinPoetFile = merged,
+                    )
                 }
         }
 
 private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
+private const val MAX_STABLE_SHARD_COUNT = 1 shl 20
 
-private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySizeAndImports(
-    packageDeclaredNames: Set<String>,
-): List<List<ParsedGeneratedKotlinFile>> =
-    buildList {
-        var current = mutableListOf<ParsedGeneratedKotlinFile>()
-        var currentSize = 0
-        var currentImportedNames = emptySet<String>()
-        var currentImportedTargetsByName = emptyMap<String, Set<String>>()
-        var currentDeclaredNames = emptySet<String>()
-        var currentHasPackageShadowingImport = false
-        for (file in this@chunkByGeneratedBodySizeAndImports) {
-            val fileSize = file.body.length
-            val fileImportedNames = file.importedSimpleNames()
-            val fileImportedTargetsByName = file.importedTargetsBySimpleName()
-            val fileDeclaredNames = file.declaredTopLevelNames()
-            val fileHasPackageShadowingImport = fileImportedNames.any(packageDeclaredNames::contains)
-            val hasImportDeclarationCollision =
-                currentImportedNames.any(fileDeclaredNames::contains) ||
-                    fileImportedNames.any(currentDeclaredNames::contains)
-            val hasImportTargetCollision =
-                fileImportedTargetsByName.any { (name, targets) ->
-                    val currentTargets = currentImportedTargetsByName[name].orEmpty()
-                    currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
-                }
-            if (
-                current.isNotEmpty() &&
-                (
-                    currentSize + fileSize > MAX_GROUPED_PROJECTION_BODY_CHARS ||
-                        hasImportDeclarationCollision ||
-                        hasImportTargetCollision ||
-                        currentHasPackageShadowingImport ||
-                        fileHasPackageShadowingImport
-                )
-            ) {
-                add(current)
-                current = mutableListOf()
-                currentSize = 0
-                currentImportedNames = emptySet()
-                currentImportedTargetsByName = emptyMap()
-                currentDeclaredNames = emptySet()
-                currentHasPackageShadowingImport = false
-            }
-            current += file
-            currentSize += fileSize
-            currentImportedNames = currentImportedNames + fileImportedNames
-            currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
-            currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
-            currentHasPackageShadowingImport = currentHasPackageShadowingImport || fileHasPackageShadowingImport
-        }
-        if (current.isNotEmpty()) {
-            add(current)
-        }
-    }
-
-private data class ParsedGeneratedKotlinFile(
-    val fileAnnotations: String,
-    val packageDeclaration: String,
-    val imports: List<String>,
-    val body: String,
+private data class KotlinPoetGeneratedFile(
+    val source: KotlinProjectionFile,
+    val file: FileSpec,
+    val fileComment: String?,
+    val annotations: List<AnnotationSpec>,
+    val imports: List<Import>,
+    val importedSimpleNames: Set<String>,
+    val importedTargetsBySimpleName: Map<String, Set<String>>,
+    val declaredTopLevelNames: Set<String>,
 )
 
-private fun ParsedGeneratedKotlinFile.importedSimpleNames(): Set<String> =
-    imports.mapNotNullTo(mutableSetOf()) { importLine ->
-        val imported = importLine.removePrefix("import ").trim()
-        imported.substringAfter(" as ", missingDelimiterValue = "")
-            .ifBlank { imported.substringAfterLast('.') }
-            .takeIf(String::isNotBlank)
+private data class KotlinProjectionShard(
+    val stableId: String,
+    val files: List<KotlinPoetGeneratedFile>,
+)
+
+private fun List<KotlinPoetGeneratedFile>.chunkByGeneratedBodySizeAndImports(
+    packageDeclaredNames: Set<String>,
+): List<KotlinProjectionShard> {
+    if (isEmpty()) return emptyList()
+    val initialShardCount = stableInitialShardCount()
+    return groupBy { file ->
+        (file.source.relativePath.stableShardHash() % initialShardCount).toInt()
+    }
+        .toSortedMap()
+        .flatMap { (baseShard, files) ->
+            files.splitStableShard(
+                baseShard = baseShard,
+                baseShardCount = initialShardCount,
+                packageDeclaredNames = packageDeclaredNames,
+            )
+        }
+}
+
+private fun List<KotlinPoetGeneratedFile>.stableInitialShardCount(): Int {
+    val totalSize = sumOf { file -> file.source.contents.length.toLong() }
+    val required = ((totalSize + MAX_GROUPED_PROJECTION_BODY_CHARS - 1L) /
+        MAX_GROUPED_PROJECTION_BODY_CHARS).coerceAtLeast(1L)
+    var count = 1
+    while (count.toLong() < required && count < MAX_STABLE_SHARD_COUNT) {
+        count = count shl 1
+    }
+    return count
+}
+
+private fun List<KotlinPoetGeneratedFile>.splitStableShard(
+    baseShard: Int,
+    baseShardCount: Int,
+    packageDeclaredNames: Set<String>,
+): List<KotlinProjectionShard> {
+    var partitionCount = 1
+    while (partitionCount <= MAX_STABLE_SHARD_COUNT) {
+        val partitions = groupBy { file ->
+            ((file.source.relativePath.stableShardHash() / baseShardCount) % partitionCount).toInt()
+        }
+            .toSortedMap()
+            .mapValues { (_, files) -> files.sortedBy { file -> file.source.relativePath } }
+        if (partitions.values.all { files -> files.fitsInStableShard(packageDeclaredNames) }) {
+            return partitions.map { (partition, files) ->
+                KotlinProjectionShard(
+                    stableId = stableShardId(baseShard, partition, partitionCount),
+                    files = files,
+                )
+            }
+        }
+        if (partitions.size == size) {
+            return sortedBy { file -> file.source.relativePath }
+                .map { file ->
+                    KotlinProjectionShard(
+                        stableId = stableFileShardId(baseShard, file.source.relativePath),
+                        files = listOf(file),
+                    )
+                }
+        }
+        partitionCount = partitionCount shl 1
+    }
+    return sortedBy { file -> file.source.relativePath }
+        .map { file ->
+            KotlinProjectionShard(
+                stableId = stableFileShardId(baseShard, file.source.relativePath),
+                files = listOf(file),
+            )
+        }
+}
+
+private fun List<KotlinPoetGeneratedFile>.fitsInStableShard(
+    packageDeclaredNames: Set<String>,
+): Boolean {
+    if (size <= 1) return true
+    var currentSize = 0
+    var currentImportedNames = emptySet<String>()
+    var currentImportedTargetsByName = emptyMap<String, Set<String>>()
+    var currentDeclaredNames = emptySet<String>()
+    for (file in sortedBy { candidate -> candidate.source.relativePath }) {
+        val fileImportedNames = file.importedSimpleNames
+        val fileImportedTargetsByName = file.importedTargetsBySimpleName
+        val fileDeclaredNames = file.declaredTopLevelNames
+        if (fileImportedNames.any(packageDeclaredNames::contains)) return false
+        val hasImportDeclarationCollision =
+            currentImportedNames.any(fileDeclaredNames::contains) ||
+                fileImportedNames.any(currentDeclaredNames::contains)
+        val hasImportTargetCollision =
+            fileImportedTargetsByName.any { (name, targets) ->
+                val currentTargets = currentImportedTargetsByName[name].orEmpty()
+                currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
+            }
+        if (
+            currentSize + file.source.contents.length > MAX_GROUPED_PROJECTION_BODY_CHARS ||
+                hasImportDeclarationCollision ||
+                hasImportTargetCollision
+        ) {
+            return false
+        }
+        currentSize += file.source.contents.length
+        currentImportedNames = currentImportedNames + fileImportedNames
+        currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
+        currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
+    }
+    return true
+}
+
+private fun stableShardId(baseShard: Int, partition: Int, partitionCount: Int): String =
+    if (partitionCount == 1 && baseShard == 0) {
+        "0"
+    } else {
+        "${baseShard.toString(36)}_${partition.toString(36)}"
     }
 
-private fun ParsedGeneratedKotlinFile.importedTargetsBySimpleName(): Map<String, Set<String>> =
-    imports
-        .mapNotNull { importLine ->
-            val imported = importLine.removePrefix("import ").trim()
-            val target = imported.substringBefore(" as ").trim()
-            val simpleName = imported.substringAfter(" as ", missingDelimiterValue = "")
-                .ifBlank { target.substringAfterLast('.') }
-                .takeIf(String::isNotBlank)
-                ?: return@mapNotNull null
-            simpleName to target
-        }
-        .groupBy({ it.first }, { it.second })
+private fun stableFileShardId(baseShard: Int, relativePath: String): String =
+    "${baseShard.toString(36)}_${relativePath.stableShardHash().toString(36)}"
+
+private fun String.stableShardHash(): Long {
+    var hash = 1125899906842597L
+    for (character in this) {
+        hash = hash * 31 + character.code
+    }
+    return hash and Long.MAX_VALUE
+}
+
+private fun List<Import>.importedSimpleNames(): Set<String> =
+    mapTo(mutableSetOf()) { import ->
+        import.alias?.takeIf(String::isNotBlank) ?: import.qualifiedName.substringAfterLast('.')
+    }
+
+private fun List<Import>.importedTargetsBySimpleName(): Map<String, Set<String>> =
+    groupBy(
+        keySelector = { import ->
+            import.alias?.takeIf(String::isNotBlank) ?: import.qualifiedName.substringAfterLast('.')
+        },
+        valueTransform = { import -> import.qualifiedName },
+    )
         .mapValues { (_, targets) -> targets.toSet() }
 
 private fun Map<String, Set<String>>.mergeImportTargets(
@@ -2213,44 +2302,26 @@ private fun Map<String, Set<String>>.mergeImportTargets(
         }
     }
 
-private fun ParsedGeneratedKotlinFile.declaredTopLevelNames(): Set<String> =
-    generatedTopLevelDeclarationRegex.findAll(body)
-        .map { match -> match.groupValues[1] }
-        .toSet()
-
-private val generatedTopLevelDeclarationRegex =
-    Regex("""(?m)^(?:public|internal)\s+(?:open\s+|sealed\s+|data\s+|value\s+)?(?:class|interface|enum\s+class|object)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-
-private fun parseGeneratedKotlinFile(file: KotlinProjectionFile): ParsedGeneratedKotlinFile {
-    val allLines = file.contents.lines()
-    val packageLineIndex = allLines.indexOfFirst { it.trim().startsWith("package ") }
-    require(packageLineIndex >= 0) {
-        "Generated file ${file.relativePath} does not contain a package declaration."
-    }
-    val annotations = allLines.take(packageLineIndex).joinToString("\n").trim()
-    val lines = allLines.drop(packageLineIndex + 1).dropWhile(String::isBlank)
-    val imports = mutableListOf<String>()
-    var index = 0
-    while (index < lines.size) {
-        val line = lines[index]
-        when {
-            line.startsWith("import ") -> {
-                imports += line
-                index += 1
-            }
-            line.isBlank() -> {
-                index += 1
-                if (imports.isNotEmpty()) {
-                    break
-                }
-            }
-            else -> break
+private fun FileSpec.declaredTopLevelNames(): Set<String> =
+    members.mapNotNullTo(mutableSetOf()) { member ->
+        when (member) {
+            is TypeSpec -> member.name
+            is TypeAliasSpec -> member.name
+            is FunSpec -> member.name
+            is PropertySpec -> member.name
+            else -> null
         }
     }
-    return ParsedGeneratedKotlinFile(
-        fileAnnotations = annotations,
-        packageDeclaration = allLines[packageLineIndex].trim(),
-        imports = imports,
-        body = lines.drop(index).joinToString("\n"),
-    )
+
+private fun FileSpec.addMembersTo(builder: FileSpec.Builder) {
+    members.forEach { member ->
+        when (member) {
+            is TypeSpec -> builder.addType(member)
+            is TypeAliasSpec -> builder.addTypeAlias(member)
+            is FunSpec -> builder.addFunction(member)
+            is PropertySpec -> builder.addProperty(member)
+            is CodeBlock -> builder.addCode(member)
+            else -> error("Unsupported KotlinPoet file member ${member::class.qualifiedName} in $name")
+        }
+    }
 }

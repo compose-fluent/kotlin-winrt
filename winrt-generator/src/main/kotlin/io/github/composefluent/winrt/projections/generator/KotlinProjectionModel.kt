@@ -1567,6 +1567,8 @@ data class KotlinProjectionFile(
     val relativePath: String,
     val packageName: String,
     val contents: String,
+    /** KotlinPoet structure retained for package grouping; null for non-grouped support files. */
+    val kotlinPoetFile: FileSpec? = null,
 ) {
     fun writeToIfChanged(outputRoot: Path): Boolean {
         val target = outputRoot.resolve(relativePath)

@@ -163,7 +163,7 @@ class KotlinProjectionRenderer(
     }
 
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
-        val contents = FileSpec.builder(plan.packageName, plan.type.name)
+        val file = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
             .addGeneratedProjectionAtomicOptIn()
             .apply {
@@ -194,11 +194,11 @@ class KotlinProjectionRenderer(
             }
             .apply { addType(renderType(plan)) }
             .build()
-            .toString()
         return KotlinProjectionFile(
             relativePath = plan.relativePath,
             packageName = plan.packageName,
-            contents = contents,
+            contents = file.toString(),
+            kotlinPoetFile = file,
         )
     }
 
