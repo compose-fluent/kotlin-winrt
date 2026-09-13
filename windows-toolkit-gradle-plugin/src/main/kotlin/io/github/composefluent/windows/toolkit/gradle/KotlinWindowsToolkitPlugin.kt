@@ -2875,6 +2875,15 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
             // Retain the KLIB in transitive project dependency resolution without asking
             // IDE import to produce it. Build tasks carry the producer edge below.
             val projectionLibraryReference = project.files(project.provider { artifact.get() })
+            // The direct file reference above is intentionally not builtBy-linked: adding that
+            // edge to a source-set dependency makes IDE metadata import compile the projection.
+            // Metadata transforms still inspect the file during a regular build, so establish an
+            // ordering edge without pulling the producer into sync-only task graphs.
+            project.tasks.matching { task ->
+                task.name.startsWith("transform") && task.name.endsWith("DependenciesMetadata")
+            }.configureEach { task ->
+                task.mustRunAfter(projection.compileTaskProvider)
+            }
             target.compilations.filter { it != projection }.forEach { business ->
                 // Business overlays retain access to internal helpers from their own projection
                 // module. Friendship is one-way; the projection never sees business declarations.

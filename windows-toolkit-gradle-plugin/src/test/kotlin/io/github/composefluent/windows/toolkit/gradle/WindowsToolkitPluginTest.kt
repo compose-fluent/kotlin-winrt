@@ -867,11 +867,16 @@ class WindowsToolkitPluginTest {
         business.parentFile.mkdirs()
         business.writeText("class Business")
         project.dependencies.add("winuiMainImplementation", "example:business-only:1.0")
+        val metadataTransform = project.tasks.register(
+            "transformCommonMainDependenciesMetadata",
+            org.gradle.api.DefaultTask::class.java,
+        )
         (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
 
         val projection = target.compilations.getByName("winRTProjection")
         val producer = projection.compileTaskProvider.get()
         val consumer = target.compilations.getByName("main").compileTaskProvider.get()
+        val metadataTransformTask = metadataTransform.get()
         assertTrue(producer.sources.files.contains(generated))
         assertFalse(producer.sources.files.contains(business))
         assertFalse(consumer.sources.files.contains(generated))
@@ -898,6 +903,7 @@ class WindowsToolkitPluginTest {
         assertTrue(localLibraries.any { producer.outputFile.get() in it.files.files })
         assertTrue(consumer.libraries.buildDependencies.getDependencies(consumer).contains(producer))
         assertTrue(target.compilations.getByName("main").associatedCompilations.contains(projection))
+        assertTrue(producer in metadataTransformTask.mustRunAfter.getDependencies(metadataTransformTask))
     }
 
     @Test
