@@ -47,7 +47,9 @@ import java.nio.file.Path
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Base64
+import java.util.jar.JarEntry
 import java.util.jar.JarFile
+import java.util.jar.JarOutputStream
 
 class WindowsToolkitPluginTest {
     @Test
@@ -3325,6 +3327,50 @@ class WindowsToolkitPluginTest {
         assertTrue(Files.walk(output.get().asFile.toPath()).use { stream ->
             stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
         })
+
+        extension.packageReferences.type("Sample.Missing")
+        val changedPrepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+        assertTrue(changedPrepared != null)
+        assertTrue(changedPrepared != prepared)
+    }
+
+    @Test
+    fun prepared_static_implementation_fingerprint_tracks_jar_and_classes_content() {
+        val root = Files.createTempDirectory("kotlin-winrt-prepared-fingerprint-test-")
+        val classesRoot = root.resolve("classes")
+        Files.createDirectories(classesRoot.resolve("sample"))
+        val classFile = classesRoot.resolve("sample/Generator.class")
+        Files.write(classFile, byteArrayOf(1, 2, 3))
+
+        val jar = root.resolve("generator.jar")
+        fun writeJar(bytes: ByteArray) {
+            JarOutputStream(Files.newOutputStream(jar)).use { output ->
+                output.putNextEntry(JarEntry("sample/Generator.class"))
+                output.write(bytes)
+                output.closeEntry()
+            }
+        }
+        writeJar(byteArrayOf(4, 5, 6))
+
+        val initial = preparedStaticImplementationFingerprint(listOf(classesRoot, jar))
+        assertEquals(
+            initial,
+            preparedStaticImplementationFingerprint(listOf(jar, classesRoot)),
+        )
+
+        Files.write(classFile, byteArrayOf(1, 2, 4))
+        val changedClasses = preparedStaticImplementationFingerprint(listOf(classesRoot, jar))
+        assertFalse(changedClasses == initial)
+
+        writeJar(byteArrayOf(4, 5, 7))
+        val changedJar = preparedStaticImplementationFingerprint(listOf(classesRoot, jar))
+        assertFalse(changedJar == changedClasses)
     }
 
     @Test

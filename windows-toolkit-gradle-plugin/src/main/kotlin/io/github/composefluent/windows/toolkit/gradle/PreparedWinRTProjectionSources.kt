@@ -1,5 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import com.squareup.kotlinpoet.ClassName
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
@@ -7,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataSourceResolver
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.Project
 import org.gradle.api.file.Directory
 import org.gradle.api.provider.Provider
@@ -18,8 +20,9 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.jar.JarFile
 
-private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources-v1"
+private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources-v2"
 
 internal class StaticPreparationUnavailable(message: String) : RuntimeException(message)
 
@@ -91,12 +94,14 @@ internal fun prepareWinRTStaticProjectionSources(
         excludedTypes = extension.excludeTypes.get().toSet(),
         additionExclude = extension.additionExcludeNamespaces.get().toSet(),
     )
+    val emitJvmAuthoringHostExports = project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null
     val key = preparedStaticProjectionKey(
         cache.files,
         extension,
         identityFiles,
         supportOwnerIdentity,
         project,
+        emitJvmAuthoringHostExports,
     )
     val storeRoot = project.layout.projectDirectory.dir(".gradle/kotlin-winrt/prepared-imports").asFile.toPath()
     val entry = storeRoot.resolve(key)
@@ -118,7 +123,7 @@ internal fun prepareWinRTStaticProjectionSources(
                         suppressedProjectionTypeNames = dependencyProjectedTypeNames(staticModel, identityFiles),
                         suppressedSourceAdditionTypeNames = dependencySourceAdditionTypeNames(identityFiles),
                         supportOwnerIdentity = supportOwnerIdentity,
-                        emitJvmAuthoringHostExports = project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null,
+                        emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
                     ).generateTo(staticModel, temporary.resolve("sources"))
                     writePreparedStaticManifest(temporary.resolve("manifest.tsv"), cache.files, staticModel)
                     runCatching {
@@ -143,14 +148,21 @@ private fun preparedStaticProjectionKey(
     identityFiles: List<java.io.File>,
     supportOwnerIdentity: String,
     project: Project,
+    emitJvmAuthoringHostExports: Boolean,
 ): String {
     val digest = MessageDigest.getInstance("SHA-256")
     fun update(value: String) {
         digest.update(value.toByteArray(Charsets.UTF_8))
         digest.update(0)
     }
-    update("prepared-static-sources-v1")
-    update(KotlinProjectionGenerator::class.java.protectionDomain?.codeSource?.location?.toString().orEmpty())
+    update("prepared-static-sources-v2")
+    update("emitSupportFiles=true")
+    update("groupProjectionFilesByPackageOnWrite=true")
+    update("generationLayout=SingleSourceSet")
+    update("emitJvmAuthoringHostExports=$emitJvmAuthoringHostExports")
+    preparedStaticImplementationRoots().forEach { root ->
+        updateImplementationRoot(digest, root)
+    }
     update(project.name)
     update(supportOwnerIdentity)
     extension.metadataInputs.get().forEach(::update)
@@ -159,25 +171,133 @@ private fun preparedStaticProjectionKey(
     extension.excludeNamespaces.get().sorted().forEach(::update)
     extension.excludeTypes.get().sorted().forEach(::update)
     extension.additionExcludeNamespaces.get().sorted().forEach(::update)
+    update("windowsSdkDeclared=${extension.windowsSdkDeclared.get()}")
+    update("windowsSdkVersion=${extension.windowsSdkVersion.orNull.orEmpty()}")
+    update("includeWindowsSdkExtensions=${extension.includeWindowsSdkExtensions.get()}")
+    update("generateWindowsSdkProjection=${extension.generateWindowsSdkProjection.get()}")
+    extension.nugetPackages
+        .map { packageReference ->
+            "${packageReference.packageId}@${packageReference.version.get()}@${packageReference.generateProjection}"
+        }
+        .sorted()
+        .forEach(::update)
     files.sortedBy(Path::toString).forEach { file ->
         update(file.toAbsolutePath().normalize().toString())
-        digest.update(Files.readAllBytes(file))
+        updateFileContents(digest, file)
         digest.update(0)
     }
     identityFiles.sortedBy(java.io.File::getAbsolutePath).forEach { file ->
         update(file.absolutePath)
-        digest.update(Files.readAllBytes(file.toPath()))
+        updateFileContents(digest, file.toPath())
         digest.update(0)
     }
     return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
 }
 
+private fun preparedStaticImplementationRoots(): List<Path> = listOf(
+    KotlinWindowsToolkitPlugin::class.java,
+    KotlinProjectionGenerator::class.java,
+    WinRTMetadataModel::class.java,
+    Guid::class.java,
+    ClassName::class.java,
+).mapNotNull { type ->
+    type.protectionDomain?.codeSource?.location?.toURI()?.let(Path::of)
+}.plus(
+    listOfNotNull(
+        preparedStaticCodeSourcePath("io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteCatalog"),
+    ),
+).map { path ->
+    path.toAbsolutePath().normalize()
+}.distinct()
+    .sortedBy(Path::toString)
+
+private fun preparedStaticCodeSourcePath(typeName: String): Path? = runCatching {
+    Class.forName(typeName, false, KotlinProjectionGenerator::class.java.classLoader)
+        .protectionDomain
+        ?.codeSource
+        ?.location
+        ?.toURI()
+        ?.let(Path::of)
+}.getOrNull()
+
+internal fun preparedStaticImplementationFingerprint(roots: Iterable<Path>): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    roots.map { path -> path.toAbsolutePath().normalize() }
+        .distinct()
+        .sortedBy(Path::toString)
+        .forEach { root -> updateImplementationRoot(digest, root) }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
+
+private fun updateImplementationRoot(digest: MessageDigest, root: Path) {
+    fun update(value: String) {
+        digest.update(value.toByteArray(Charsets.UTF_8))
+        digest.update(0)
+    }
+    val normalizedRoot = root.toAbsolutePath().normalize()
+    update("implementation-root")
+    update(normalizedRoot.toString())
+    when {
+        Files.isDirectory(normalizedRoot) -> {
+            update("classes-directory")
+            Files.walk(normalizedRoot).use { stream ->
+                stream.filter(Files::isRegularFile)
+                    .map(normalizedRoot::relativize)
+                    .sorted()
+                    .forEach { relative ->
+                        update(relative.toString().replace('\\', '/'))
+                        updateFileContents(digest, normalizedRoot.resolve(relative))
+                        digest.update(0)
+                    }
+            }
+        }
+
+        Files.isRegularFile(normalizedRoot) -> {
+            update("archive")
+            JarFile(normalizedRoot.toFile()).use { jar ->
+                val entries = mutableListOf<String>()
+                val enumeration = jar.entries()
+                while (enumeration.hasMoreElements()) {
+                    val entry = enumeration.nextElement()
+                    if (!entry.isDirectory) entries += entry.name
+                }
+                entries.sorted().forEach { name ->
+                    update(name)
+                    jar.getInputStream(jar.getJarEntry(name)).use { input ->
+                        val buffer = ByteArray(16 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
+                    }
+                    digest.update(0)
+                }
+            }
+        }
+
+        else -> update("missing")
+    }
+}
+
+private fun updateFileContents(digest: MessageDigest, path: Path) {
+    Files.newInputStream(path).use { input ->
+        val buffer = ByteArray(16 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+}
+
 private fun writePreparedStaticManifest(path: Path, files: List<Path>, model: WinRTMetadataModel) {
     val names = model.namespaces.flatMap { namespace -> namespace.types }.map { type -> type.qualifiedName }.sorted()
     val encodedFiles = files.sortedBy(Path::toString).joinToString("\n") { file ->
-        val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))
-            .joinToString("") { byte -> "%02x".format(byte) }
-        "file\t${Base64.getUrlEncoder().withoutPadding().encodeToString(file.toString().toByteArray())}\t$digest"
+        val digest = MessageDigest.getInstance("SHA-256")
+        updateFileContents(digest, file)
+        val digestHex = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+        "file\t${Base64.getUrlEncoder().withoutPadding().encodeToString(file.toString().toByteArray())}\t$digestHex"
     }
     val content = buildString {
         append(PREPARED_STATIC_HEADER).append('\n')
