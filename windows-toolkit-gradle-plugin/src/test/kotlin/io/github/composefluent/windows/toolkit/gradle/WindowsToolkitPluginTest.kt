@@ -3844,6 +3844,40 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun application_identity_excludes_runtime_and_authoring_implementation_projects() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        ProjectBuilder.builder().withName("winrt-runtime").withParent(root).build()
+        ProjectBuilder.builder().withName("winrt-authoring").withParent(root).build()
+        val library = ProjectBuilder.builder().withName("library").withParent(root).build()
+        val application = ProjectBuilder.builder().withName("application").withParent(root).build()
+
+        library.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        application.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        application.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        application.extensions.getByType(WindowsExtension::class.java).application {}
+        application.extensions.configure(
+            org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java,
+        ) { kotlin ->
+            kotlin.jvm("winuiJvm")
+            kotlin.sourceSets.named("commonMain").configure { sourceSet ->
+                sourceSet.dependencies {
+                    implementation(project(mapOf("path" to ":library")))
+                    implementation(project(mapOf("path" to ":winrt-runtime")))
+                    implementation(project(mapOf("path" to ":winrt-authoring")))
+                }
+            }
+        }
+
+        val identityConfiguration = application.configurations.getByName(
+            "${KOTLIN_WINRT_IDENTITY_CONFIGURATION}ApplicationWinuiJvmMain",
+        )
+        assertEquals(
+            listOf(":library"),
+            identityConfiguration.dependencies.withType(ProjectDependency::class.java).map { dependency -> dependency.path },
+        )
+    }
+
+    @Test
     fun application_plugin_wires_runtime_assets_into_java_resources() {
         val project = ProjectBuilder.builder().build()
 

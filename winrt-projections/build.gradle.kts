@@ -208,7 +208,4 @@ windows {
         )
         type("Windows.Foundation.IStringable")
     }
-    application {
-        runtimeAsset(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.dll").asFile.absolutePath)
-    }
 }

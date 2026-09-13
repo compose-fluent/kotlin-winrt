@@ -117,6 +117,11 @@ windows {
     application {
         mainClass = "io.github.composefluent.winrt.samples.MainKt"
         minWindowsVersion = "10.0.19041.0"
+        runtimeAsset(
+            rootProject.layout.projectDirectory
+                .file("winrt-projections/src/main/winrt/SimpleMathComponent.dll")
+                .asFile.absolutePath,
+        )
         packageType = when (sampleApplicationPackageType.get()) {
             "packaged" -> WindowsPackageType.Packaged
             "none" -> WindowsPackageType.None

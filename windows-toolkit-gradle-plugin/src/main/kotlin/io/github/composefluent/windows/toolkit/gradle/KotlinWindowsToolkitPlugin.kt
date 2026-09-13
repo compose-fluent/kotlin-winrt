@@ -3943,6 +3943,9 @@ private fun configureWinRTIdentityProjectDependencies(
         !resolutionStarted && identityDependencies.state == org.gradle.api.artifacts.Configuration.State.UNRESOLVED
 
     fun registerKnownWinRTProjectDependency(dependency: ProjectDependency) {
+        if (dependencyProjectIsKotlinWinRTRuntimeOrAuthoring(project, dependency)) {
+            return
+        }
         if (!canRegisterIdentityDependency() || !registeredProjectPaths.add(dependency.path)) {
             return
         }
@@ -3964,6 +3967,9 @@ private fun configureWinRTIdentityProjectDependencies(
         )
     }
     fun registerDependency(dependency: ExternalModuleDependency) {
+        if (dependency.isKotlinWinRTRuntimeOrAuthoringModule()) {
+            return
+        }
         if (!canRegisterIdentityDependency()) {
             return
         }
@@ -5082,6 +5088,18 @@ private fun discoverNuGetConfigHierarchyFiles(
 
 private fun Project.hasKotlinWinRTIdentityMetadata(): Boolean =
     configurations.findByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)?.isCanBeConsumed == true
+
+private fun dependencyProjectIsKotlinWinRTRuntimeOrAuthoring(
+    project: Project,
+    dependency: ProjectDependency,
+): Boolean {
+    val dependencyProject = project.findProject(dependency.path) ?: return false
+    return dependencyProject == project.rootProject.findProject(":winrt-runtime") ||
+        dependencyProject == project.rootProject.findProject(":winrt-authoring")
+}
+
+private fun ExternalModuleDependency.isKotlinWinRTRuntimeOrAuthoringModule(): Boolean =
+    group == "io.github.compose-fluent" && name in setOf("winrt-runtime", "winrt-authoring")
 
 private fun registerSharedJvmRuntimeImageProducer(
     project: Project,
