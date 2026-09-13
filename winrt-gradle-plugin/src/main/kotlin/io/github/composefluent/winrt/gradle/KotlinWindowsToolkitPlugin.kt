@@ -2872,12 +2872,19 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
                 }
             val artifact = projection.compileTaskProvider.flatMap { it.outputFile }
             val compiledLibrary = project.files(artifact).builtBy(projection.compileTaskProvider)
+            // Retain the KLIB in transitive project dependency resolution without asking
+            // IDE import to produce it. Build tasks carry the producer edge below.
+            val projectionLibraryReference = project.files(project.provider { artifact.get() })
             target.compilations.filter { it != projection }.forEach { business ->
                 // Business overlays retain access to internal helpers from their own projection
                 // module. Friendship is one-way; the projection never sees business declarations.
                 business.associateWith(projection)
-                project.dependencies.add(business.defaultSourceSet.implementationConfigurationName, compiledLibrary)
+                project.dependencies.add(business.defaultSourceSet.implementationConfigurationName, projectionLibraryReference)
                 business.compileTaskProvider.configure { task ->
+                    // Keep the producer edge on the build classpath only. A source-set file
+                    // dependency with builtBy makes IDE import compile during sync; the
+                    // associated compilation already exposes projection sources to the IDE.
+                    task.libraries.from(compiledLibrary)
                     task.exclude { element ->
                         val path = element.file.toPath().toAbsolutePath().normalize()
                         (path.startsWith(generatedSources.get().asFile.toPath().toAbsolutePath().normalize()) ||

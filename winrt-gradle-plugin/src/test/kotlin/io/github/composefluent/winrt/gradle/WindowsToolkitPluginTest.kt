@@ -894,7 +894,10 @@ class WindowsToolkitPluginTest {
         val localLibraries = project.configurations.getByName(
             target.compilations.getByName("main").defaultSourceSet.implementationConfigurationName,
         ).dependencies.withType(org.gradle.api.artifacts.FileCollectionDependency::class.java)
-        assertTrue(localLibraries.any { producer in it.files.buildDependencies.getDependencies(null) })
+        assertFalse(localLibraries.any { producer in it.files.buildDependencies.getDependencies(null) })
+        assertTrue(localLibraries.any { producer.outputFile.get() in it.files.files })
+        assertTrue(consumer.libraries.buildDependencies.getDependencies(consumer).contains(producer))
+        assertTrue(target.compilations.getByName("main").associatedCompilations.contains(projection))
     }
 
     @Test
