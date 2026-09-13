@@ -202,12 +202,24 @@ class KotlinProjectionGenerator(
             plan.type.qualifiedName in authoredTypeNames ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
+        val projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite) {
+            projectedSlotLiteralMap(renderedPlans)
+        } else {
+            emptyMap()
+        }
+        val durationAliasPackages = if (emitSupportFiles) {
+            renderedPlans.kotlinDurationAliasPackages()
+        } else {
+            emptySet()
+        }
         val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(
             model = normalizedModel,
             plans = projectionPlans,
             semanticHelpers = semanticHelpers,
             renderedPlans = renderedPlans,
+            projectedSlotLiterals = projectedSlotLiterals,
+            durationAliasPackages = durationAliasPackages,
         )
         val projectionRenderer = projectionFileRenderer(
             plans = renderedPlans,
@@ -215,6 +227,8 @@ class KotlinProjectionGenerator(
             projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
                 .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
             semanticHelpers = semanticHelpers,
+            projectedSlotLiterals = projectedSlotLiterals,
+            durationAliasPackages = durationAliasPackages,
         )
         val projectionFiles = projectionPlans
             .flatMap(projectionRenderer::render)
@@ -1800,31 +1814,44 @@ class KotlinProjectionGenerator(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
         projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
         semanticHelpers: WinRTMetadataSemanticHelpers,
-    ): KotlinProjectionFileRenderer =
-        when (generationLayout) {
+        projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int>? = null,
+        durationAliasPackages: Set<String>? = null,
+    ): KotlinProjectionFileRenderer {
+        val effectiveProjectedSlotLiterals = projectedSlotLiterals ?: if (groupProjectionFilesByPackageOnWrite && plans != null) {
+            projectedSlotLiteralMap(plans)
+        } else {
+            emptyMap()
+        }
+        val effectiveDurationAliasPackages = durationAliasPackages ?: plans?.kotlinDurationAliasPackages().orEmpty()
+        return when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
                 listOf(
                     projectionRendererForLayout(
-                        plans,
-                        plan,
-                        modulePlatformAbiCalls,
-                        projectedInterfaceCcwInputTypeNames,
-                        semanticHelpers,
+                        plans = plans,
+                        currentPlan = plan,
+                        modulePlatformAbiCalls = modulePlatformAbiCalls,
+                        projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                        semanticHelpers = semanticHelpers,
+                        projectedSlotLiterals = effectiveProjectedSlotLiterals,
+                        durationAliasPackages = effectiveDurationAliasPackages,
                     ).render(plan),
                 )
             }
             KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinProjectionFileRenderer { plan ->
                 KotlinExpectActualProjectionRenderer(
                     projectionRendererForLayout(
-                        plans,
-                        plan,
-                        modulePlatformAbiCalls,
-                        projectedInterfaceCcwInputTypeNames,
-                        semanticHelpers,
+                        plans = plans,
+                        currentPlan = plan,
+                        modulePlatformAbiCalls = modulePlatformAbiCalls,
+                        projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                        semanticHelpers = semanticHelpers,
+                        projectedSlotLiterals = effectiveProjectedSlotLiterals,
+                        durationAliasPackages = effectiveDurationAliasPackages,
                     ),
                 ).render(plan)
             }
         }
+    }
 
     private fun projectionRendererForLayout(
         plans: List<KotlinTypeProjectionPlan>? = null,
@@ -1832,18 +1859,16 @@ class KotlinProjectionGenerator(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
         projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
         semanticHelpers: WinRTMetadataSemanticHelpers,
+        projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
+        durationAliasPackages: Set<String> = emptySet(),
     ): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
                 useInterfaceProjectionArtifacts = true,
                 suppressProjectedMemberSlotConstants = groupProjectionFilesByPackageOnWrite,
-                projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite && plans != null) {
-                    projectedSlotLiteralMap(plans)
-                } else {
-                    emptyMap()
-                },
+                projectedSlotLiterals = projectedSlotLiterals,
                 useWinAppSdkTypeRedirects = currentPlan?.requiresWinAppSdkTypeRedirects() == true,
-                useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
+                useKotlinDurationAlias = currentPlan?.packageName?.let(durationAliasPackages::contains) == true,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 supportOwnerIdentity = supportOwnerIdentity,
                 projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
@@ -1875,13 +1900,13 @@ class KotlinProjectionGenerator(
     private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
         type.qualifiedName.startsWith("Microsoft.UI.")
 
-    private fun List<KotlinTypeProjectionPlan>.requiresKotlinDurationAlias(currentPlan: KotlinTypeProjectionPlan?): Boolean =
-        currentPlan != null &&
-            any { plan ->
-                plan.packageName == currentPlan.packageName &&
-                    plan.type.kind == WinRTTypeKind.Struct &&
+    private fun List<KotlinTypeProjectionPlan>.kotlinDurationAliasPackages(): Set<String> =
+        asSequence()
+            .filter { plan ->
+                plan.type.kind == WinRTTypeKind.Struct &&
                     plan.type.name == "Duration"
             }
+            .mapTo(linkedSetOf(), KotlinTypeProjectionPlan::packageName)
 
     private fun projectedSlotLiteralMap(plans: List<KotlinTypeProjectionPlan>): Map<KotlinProjectionSlotLiteralKey, Int> =
         plans
@@ -1960,6 +1985,8 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
         renderedPlans: List<KotlinTypeProjectionPlan> = plans,
+        projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int>? = null,
+        durationAliasPackages: Set<String>? = null,
     ): KotlinModulePlatformAbiCallSupport? {
         val abiSupportShardCount = if (plans.size >= LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD) {
             LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT
@@ -1983,6 +2010,8 @@ class KotlinProjectionGenerator(
             plans = renderedPlans,
             modulePlatformAbiCalls = collector,
             semanticHelpers = semanticHelpers,
+            projectedSlotLiterals = projectedSlotLiterals,
+            durationAliasPackages = durationAliasPackages,
         )
         plans.forEach { plan -> collectorRenderer.render(plan) }
         supportRenderer.collectModulePlatformAbiCalls(

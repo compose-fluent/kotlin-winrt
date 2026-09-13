@@ -45,8 +45,23 @@ internal data class KotlinTypedProjectionCallSitePlan(
         },
     )
 
+    private val stableFunctionName: String = "callSite_${stableSignatureHash()}"
+
+    private val runtimeOwnedKey: WinRTProjectionCallSiteCatalogKey =
+        WinRTProjectionCallSiteCatalogKey(
+            metadata = metadata,
+            jvmMethodDescriptor = buildString {
+                append('(')
+                append(COM_OBJECT_REFERENCE_JVM_DESCRIPTOR)
+                append('I')
+                parameters.forEach { parameter -> append(parameter.type.jvmDescriptor()) }
+                append(')')
+                append(returnType.jvmDescriptor(isReturnType = true))
+            },
+        )
+
     val functionName: String
-        get() = "callSite_${stableSignatureHash()}"
+        get() = stableFunctionName
 
     private fun stableSignatureHash(): String {
         val signature = buildString {
@@ -69,18 +84,7 @@ internal data class KotlinTypedProjectionCallSitePlan(
     }
 
 
-    fun runtimeOwnedCatalogKey(): WinRTProjectionCallSiteCatalogKey =
-        WinRTProjectionCallSiteCatalogKey(
-            metadata = metadata,
-            jvmMethodDescriptor = buildString {
-                append('(')
-                append(COM_OBJECT_REFERENCE_JVM_DESCRIPTOR)
-                append('I')
-                parameters.forEach { parameter -> append(parameter.type.jvmDescriptor()) }
-                append(')')
-                append(returnType.jvmDescriptor(isReturnType = true))
-            },
-        )
+    fun runtimeOwnedCatalogKey(): WinRTProjectionCallSiteCatalogKey = runtimeOwnedKey
 }
 
 internal data class KotlinTypedProjectionCallSiteParameter(

@@ -123,6 +123,9 @@ class KotlinProjectionRenderer(
     internal val projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
     internal val guidSignatureHelpers: WinRTMetadataSemanticHelpers? = null,
 ) {
+    private var cachedRuntimeClassForwardTargetsPlan: KotlinTypeProjectionPlan? = null
+    private var cachedRuntimeClassForwardTargets: Map<String, RuntimeClassInterfaceProjectionForwardTarget> = emptyMap()
+
     internal fun withModulePlatformAbiCalls(
         calls: KotlinModulePlatformAbiCallSupport?,
         ownerIdentity: String? = supportOwnerIdentity,
@@ -1826,6 +1829,18 @@ class KotlinProjectionRenderer(
     }
 
     private fun runtimeClassInterfaceProjectionForwardTargets(
+        plan: KotlinTypeProjectionPlan,
+    ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> {
+        if (cachedRuntimeClassForwardTargetsPlan === plan) {
+            return cachedRuntimeClassForwardTargets
+        }
+        val targets = computeRuntimeClassInterfaceProjectionForwardTargets(plan)
+        cachedRuntimeClassForwardTargetsPlan = plan
+        cachedRuntimeClassForwardTargets = targets
+        return targets
+    }
+
+    private fun computeRuntimeClassInterfaceProjectionForwardTargets(
         plan: KotlinTypeProjectionPlan,
     ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> {
         val ownerInterfaceBindings = plan.instanceMemberBindings
