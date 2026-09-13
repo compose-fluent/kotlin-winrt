@@ -2006,14 +2006,21 @@ class KotlinProjectionGenerator(
             enabledCalls = emptySet(),
             abiSupportShardCount = abiSupportShardCount,
         )
-        val collectorRenderer = projectionFileRenderer(
-            plans = renderedPlans,
-            modulePlatformAbiCalls = collector,
-            semanticHelpers = semanticHelpers,
-            projectedSlotLiterals = projectedSlotLiterals,
-            durationAliasPackages = durationAliasPackages,
-        )
-        plans.forEach { plan -> collectorRenderer.render(plan) }
+        plans.forEach { plan ->
+            val layoutRenderer = projectionRendererForLayout(
+                plans = renderedPlans,
+                currentPlan = plan,
+                modulePlatformAbiCalls = collector,
+                semanticHelpers = semanticHelpers,
+                projectedSlotLiterals = projectedSlotLiterals ?: emptyMap(),
+                durationAliasPackages = durationAliasPackages ?: emptySet(),
+            )
+            when (generationLayout) {
+                KotlinProjectionGenerationLayout.SingleSourceSet -> layoutRenderer.collectCallSites(plan)
+                KotlinProjectionGenerationLayout.ExpectActualJvm ->
+                    KotlinExpectActualProjectionRenderer(layoutRenderer).collectCallSites(plan)
+            }
+        }
         supportRenderer.collectModulePlatformAbiCalls(
             model = model,
             semanticHelpers = semanticHelpers,
@@ -2028,6 +2035,7 @@ class KotlinProjectionGenerator(
             className = modulePlatformAbiCallClassName,
             enabledCalls = collector.plannedCalls(),
             abiSupportShardCount = abiSupportShardCount,
+            preparedSource = collector,
         )
     }
 

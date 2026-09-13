@@ -143,6 +143,25 @@ class KotlinProjectionRenderer(
         guidSignatureHelpers = guidSignatureHelpers,
     )
 
+    /**
+     * Walks the declaration shape to prepare typed ABI call sites without creating a generated
+     * file or formatting a KotlinPoet FileSpec. The same render helpers are reused so collection
+     * and final output cannot drift into separate ABI classification rules.
+     */
+    internal fun collectCallSites(plan: KotlinTypeProjectionPlan) {
+        if (plan.declarationKind == KotlinProjectionDeclarationKind.Delegate) {
+            val invokeShape = plan.delegateInvokeShape
+            if (invokeShape != null && supportsProjectedDelegateStaticInbound(plan, invokeShape)) {
+                renderDelegateInboundCallSite(
+                    plan = plan,
+                    invokeMethod = requireDelegateInvokeMethod(plan.type),
+                    invokeShape = invokeShape,
+                )
+            }
+        }
+        renderType(plan)
+    }
+
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()

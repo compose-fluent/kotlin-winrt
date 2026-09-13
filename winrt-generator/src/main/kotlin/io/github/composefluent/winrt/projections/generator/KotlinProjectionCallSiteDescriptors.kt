@@ -20,6 +20,12 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
     hResultPolicy: WinRTProjectionCallSiteHResultPolicy? = null,
     callerOwnedResultType: TypeName? = null,
 ): KotlinTypedProjectionCallSiteInvocation {
+    callSiteSupport?.preparedCallSitePlan(callPlan, hResultPolicy, callerOwnedResultType)?.let { preparedPlan ->
+        return KotlinTypedProjectionCallSiteInvocation(
+            plan = preparedPlan,
+            arguments = callSiteArguments(callPlan, preparedPlan),
+        )
+    }
     val slots = mutableListOf<WinRTProjectionCallSiteSlot>()
     val parameters = mutableListOf<KotlinTypedProjectionCallSiteParameter>()
     val arguments = mutableListOf<CodeBlock>()
@@ -143,7 +149,7 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
         callPlan.returnBinding.kind == KotlinProjectionAbiValueKind.Unit -> parameterResultAbiType
         else -> callPlan.returnBinding.explicitCallSiteAbiTypeName()
     }
-    return KotlinTypedProjectionCallSiteInvocation(
+    val invocation = KotlinTypedProjectionCallSiteInvocation(
         plan = KotlinTypedProjectionCallSitePlan(
             descriptor = descriptor,
             returnType = returnType,
@@ -157,7 +163,22 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
         ),
         arguments = arguments,
     )
+    callSiteSupport?.rememberPreparedCallSitePlan(
+        callPlan = callPlan,
+        hResultPolicy = hResultPolicy,
+        callerOwnedResultType = callerOwnedResultType,
+        plan = invocation.plan,
+    )
+    return invocation
 }
+
+private fun callSiteArguments(
+    callPlan: KotlinProjectionAbiCallPlan,
+    preparedPlan: KotlinTypedProjectionCallSitePlan,
+): List<CodeBlock> = callPlan.parameterSlots
+    .zip(preparedPlan.descriptor.slots)
+    .filter { (_, slot) -> slot.functionParameterCount > 0 }
+    .map { (slotPlan, _) -> CodeBlock.of("%L", slotPlan.binding.name.escapeAsKotlinIdentifierIfNeeded()) }
 
 internal data class KotlinDirectInboundCallSiteParameter(
     val projectedType: TypeName,

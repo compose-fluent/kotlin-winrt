@@ -22,6 +22,14 @@ import com.squareup.kotlinpoet.UNIT
 internal class KotlinExpectActualProjectionRenderer(
     private val baseRenderer: KotlinProjectionRenderer,
 ) : KotlinProjectionFileRenderer {
+    internal fun collectCallSites(plan: KotlinTypeProjectionPlan) {
+        when {
+            canRenderExpectActualInterfaceSlice(plan) -> renderJvmInterfaceNativeProjection(plan)
+            canRenderExpectActualRuntimeClassSlice(plan) -> buildJvmActualRuntimeClass(plan)
+            else -> baseRenderer.collectCallSites(plan)
+        }
+    }
+
     override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> {
         return when {
             canRenderExpectActualInterfaceSlice(plan) -> listOf(
@@ -400,7 +408,10 @@ internal class KotlinExpectActualProjectionRenderer(
         return renderSourceSetFile("commonMain/kotlin", plan, builder.build())
     }
 
-    private fun renderJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+    private fun renderJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
+        renderSourceSetFile("jvmMain/kotlin", plan, buildJvmActualRuntimeClass(plan))
+
+    private fun buildJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
             .addModifiers(KModifier.ACTUAL)
         val hasPrimaryTypeHandle = plan.type.genericParameterCount == 0 && plan.defaultInterfaceIid != null
@@ -447,7 +458,7 @@ internal class KotlinExpectActualProjectionRenderer(
         addJvmRuntimeClassInterfaceForwards(builder, plan, delegatedInterfaceNames = proxyTypesByName.keys)
         builder.addType(baseRenderer.buildMetadataCompanionShell(plan, emptyList(), emptyList(), emptyList()))
         baseRenderer.appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
-        return renderSourceSetFile("jvmMain/kotlin", plan, builder.build())
+        return builder.build()
     }
 
     private fun addJvmRuntimeClassInterfaceForwards(

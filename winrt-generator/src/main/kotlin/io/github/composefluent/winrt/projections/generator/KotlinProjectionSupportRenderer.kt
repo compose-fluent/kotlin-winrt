@@ -295,12 +295,12 @@ class KotlinProjectionSupportRenderer private constructor(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
         supportOwnerIdentity: String?,
     ) {
-        renderSourceAdditionFiles(
+        collectSourceAdditionCallSites(
             model = model,
             inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames),
             modulePlatformAbiCalls = modulePlatformAbiCalls,
         )
-        renderClosedGenericProjectionHelpers(
+        collectClosedGenericProjectionHelpers(
             planner = planner,
             model = model,
             plans = plans,
@@ -309,11 +309,37 @@ class KotlinProjectionSupportRenderer private constructor(
             supportOwnerIdentity = supportOwnerIdentity,
         )
         withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
-            .renderProjectedInterfaceCcwFactories(
+            .collectProjectedInterfaceCcwFactories(
                 entries = plans.projectedInterfaceCcwInputPlans(),
                 semanticHelpers = semanticHelpers,
                 supportOwnerIdentity = supportOwnerIdentity,
             )
+    }
+
+    private fun collectSourceAdditionCallSites(
+        model: WinRTMetadataModel,
+        inventory: WinRTMetadataProjectionInventory,
+        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
+    ) {
+        val comInteropAdaptersByTypeName = inventory.namespaceAdditions
+            .flatMap(WinRTNamespaceAddition::comInteropAdapters)
+            .associateBy { adapter -> adapter.projectedTypeName }
+        inventory.namespaceAdditions
+            .flatMap(WinRTNamespaceAddition::generatedTypeNames)
+            .distinct()
+            .sorted()
+            .forEach { typeName ->
+                comInteropAdaptersByTypeName[typeName]
+                    ?.let { adapter ->
+                        KotlinComInteropSourceRenderer(typeRenderer, modulePlatformAbiCalls)
+                            .collectCallSites(adapter, model)
+                    }
+                    ?: when (typeName) {
+                        "winrt.interop.WindowNative" -> winRTInteropWindowNativeSource(modulePlatformAbiCalls)
+                        "winrt.interop.InitializeWithWindow" -> winRTInteropInitializeWithWindowSource(modulePlatformAbiCalls)
+                        else -> Unit
+                    }
+            }
     }
 
     private fun projectionInventory(
@@ -2408,6 +2434,18 @@ class KotlinProjectionSupportRenderer private constructor(
                 .build(),
         )
         return supportFile("${className.simpleName}.kt", fileBuilder.build())
+    }
+
+    internal fun collectProjectedInterfaceCcwFactories(
+        entries: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+        supportOwnerIdentity: String?,
+    ) {
+        entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
+            projectedInterfaceInboundCallSiteFunctions(plan, semanticHelpers)
+            projectedInterfaceCcwDefinitionHolder(plan, semanticHelpers, supportOwnerIdentity)
+            projectedInterfaceCcwRegisterFunction(plan, supportOwnerIdentity)
+        }
     }
 
     private fun projectedInterfaceCcwDefinitionHolder(

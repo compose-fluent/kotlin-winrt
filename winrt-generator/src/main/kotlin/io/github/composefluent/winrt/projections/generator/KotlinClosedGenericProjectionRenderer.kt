@@ -90,6 +90,62 @@ internal fun renderClosedGenericProjectionHelpers(
     modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     supportOwnerIdentity: String?,
 ): List<KotlinProjectionFile> {
+    val helperTypes = collectClosedGenericProjectionHelperTypes(
+        planner = planner,
+        model = model,
+        plans = plans,
+        instantiations = instantiations,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
+        supportOwnerIdentity = supportOwnerIdentity,
+    )
+    if (helperTypes.isEmpty()) return emptyList()
+
+    val filePrefix = buildString {
+        append("WinRTClosedGenericProjectionHelper")
+        winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)?.let { suffix -> append('_').append(suffix) }
+    }
+    return helperTypes.chunked(96).mapIndexed { index, chunk ->
+        val fileName = "${filePrefix}_${index.toString().padStart(3, '0')}"
+        val fileSpec = FileSpec.builder(CLOSED_GENERIC_SUPPORT_PACKAGE, fileName)
+            .addGeneratedProjectionSuppressions()
+            .addGeneratedProjectionAtomicOptIn()
+            .addFileComment("Metadata-composed closed generic projection helpers.")
+            .apply { chunk.forEach(::addType) }
+            .build()
+        KotlinProjectionFile(
+            relativePath = "io/github/composefluent/winrt/projections/support/$fileName.kt",
+            packageName = CLOSED_GENERIC_SUPPORT_PACKAGE,
+            contents = fileSpec.toString(),
+        )
+    }
+}
+
+internal fun collectClosedGenericProjectionHelpers(
+    planner: KotlinProjectionPlanner,
+    model: WinRTMetadataModel,
+    plans: List<KotlinTypeProjectionPlan>,
+    instantiations: List<WinRTGenericTypeInstantiationDescriptor>,
+    modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
+    supportOwnerIdentity: String?,
+) {
+    collectClosedGenericProjectionHelperTypes(
+        planner = planner,
+        model = model,
+        plans = plans,
+        instantiations = instantiations,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
+        supportOwnerIdentity = supportOwnerIdentity,
+    )
+}
+
+private fun collectClosedGenericProjectionHelperTypes(
+    planner: KotlinProjectionPlanner,
+    model: WinRTMetadataModel,
+    plans: List<KotlinTypeProjectionPlan>,
+    instantiations: List<WinRTGenericTypeInstantiationDescriptor>,
+    modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
+    supportOwnerIdentity: String?,
+): List<TypeSpec> {
     val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
     val typesByQualifiedName = model.namespaces
         .flatMap { namespace -> namespace.types }
@@ -134,26 +190,7 @@ internal fun renderClosedGenericProjectionHelpers(
         .distinctBy(TypeSpec::name)
         .sortedBy(TypeSpec::name)
         .toList()
-    if (helperTypes.isEmpty()) return emptyList()
-
-    val filePrefix = buildString {
-        append("WinRTClosedGenericProjectionHelper")
-        winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)?.let { suffix -> append('_').append(suffix) }
-    }
-    return helperTypes.chunked(96).mapIndexed { index, chunk ->
-        val fileName = "${filePrefix}_${index.toString().padStart(3, '0')}"
-        val fileSpec = FileSpec.builder(CLOSED_GENERIC_SUPPORT_PACKAGE, fileName)
-            .addGeneratedProjectionSuppressions()
-            .addGeneratedProjectionAtomicOptIn()
-            .addFileComment("Metadata-composed closed generic projection helpers.")
-            .apply { chunk.forEach(::addType) }
-            .build()
-        KotlinProjectionFile(
-            relativePath = "io/github/composefluent/winrt/projections/support/$fileName.kt",
-            packageName = CLOSED_GENERIC_SUPPORT_PACKAGE,
-            contents = fileSpec.toString(),
-        )
-    }
+    return helperTypes
 }
 
 private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(

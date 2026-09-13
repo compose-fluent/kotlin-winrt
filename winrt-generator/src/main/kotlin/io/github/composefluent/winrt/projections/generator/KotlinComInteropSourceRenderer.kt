@@ -95,6 +95,27 @@ internal class KotlinComInteropSourceRenderer(
         )
     }
 
+    internal fun collectCallSites(
+        descriptor: WinRTComInteropAdapterDescriptor,
+        model: WinRTMetadataModel,
+    ) {
+        val typesByQualifiedName = model.namespaces
+            .flatMap(WinRTNamespace::types)
+            .associateBy(WinRTTypeDefinition::qualifiedName)
+        val queryIidName = "I_${descriptor.name.toScreamingSnakeCase()}_IID"
+        descriptor.methods.forEach { method ->
+            when (method.result) {
+                is WinRTComInteropResultDescriptor.ProjectedRuntimeClass ->
+                    renderRuntimeClassMethod(descriptor, method, queryIidName, typesByQualifiedName)
+                WinRTComInteropResultDescriptor.UnitResult ->
+                    renderUnitMethod(descriptor, method, queryIidName)
+                WinRTComInteropResultDescriptor.AsyncAction,
+                is WinRTComInteropResultDescriptor.AsyncOperation,
+                -> renderAsyncMethod(descriptor, method, queryIidName, typesByQualifiedName)
+            }
+        }
+    }
+
     private fun renderForeignProjectedImports(
         descriptor: WinRTComInteropAdapterDescriptor,
         metadataLookupIndex: WinRTMetadataLookupIndex,
