@@ -2340,6 +2340,18 @@ private fun configureWinRTGeneration(
             task.dependsOn(authoringCandidatesTask)
         },
     )
+    // The metadata preparation task feeds the generation task's prepared manifest. Keep all
+    // NuGet inputs on that edge aligned so a task-level override cannot make preparation resolve
+    // a different package set or restore policy than the consumer that uses its manifest.
+    prepareMetadataTask.configure { task ->
+        task.nugetExecutable.set(generateTask.flatMap { it.nugetExecutable })
+        task.nugetCliVersion.set(generateTask.flatMap { it.nugetCliVersion })
+        task.nugetCliCacheDirectory.set(generateTask.flatMap { it.nugetCliCacheDirectory })
+        task.restoreNuGetPackages.set(generateTask.flatMap { it.restoreNuGetPackages })
+        task.useNuGetCliGlobalPackages.set(generateTask.flatMap { it.useNuGetCliGlobalPackages })
+        task.nugetGlobalPackagesRoots.set(generateTask.flatMap { it.nugetGlobalPackagesRoots })
+        task.nugetPackages.set(generateTask.flatMap { it.nugetPackages })
+    }
     // A build script may narrow the legacy generateWinRTProjections.sourceRoots
     // collection after plugin application. Resolve that collection lazily from the
     // scanner task so the compatibility DSL still controls the source scan without
@@ -2518,8 +2530,9 @@ private fun configureWinRTGeneration(
         })
     }
 
-    // Fixed local WinMD imports can be prepared once the DSL and target model are complete.
-    // Task-produced metadata, SDK discovery, and NuGet restore remain execution-time inputs.
+    // Fixed metadata and declared projection NuGet packages can be prepared once the DSL and
+    // target model are complete. SDK discovery and task-produced metadata remain execution-time
+    // inputs so their producer dependencies stay visible to Gradle.
     project.afterEvaluate {
         val prepared = runCatching {
             prepareWinRTStaticProjectionSources(

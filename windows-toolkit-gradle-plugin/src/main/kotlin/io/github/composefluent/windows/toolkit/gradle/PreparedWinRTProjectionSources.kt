@@ -9,6 +9,7 @@ import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import io.github.composefluent.winrt.runtime.Guid
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.file.Directory
 import org.gradle.api.provider.Provider
@@ -27,11 +28,12 @@ private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources
 internal class StaticPreparationUnavailable(message: String) : RuntimeException(message)
 
 /**
- * Prepares imported projection sources once fixed, local metadata is available.
+ * Prepares imported projection sources once the DSL and target model are complete.
  *
- * SDK discovery, NuGet restore, and task-produced metadata intentionally return null here.
- * Those inputs still use the execution-time generation path, which preserves producer
- * dependencies instead of reading a previous build's output during configuration.
+ * SDK discovery and task-produced metadata intentionally remain on the execution-time path,
+ * which preserves producer dependencies instead of reading a previous build's output during
+ * configuration. NuGet packages are different: their declared identity is a fixed input, so
+ * the same cache-first resolver used by the generation task can restore and prepare them here.
  */
 internal fun prepareWinRTStaticProjectionSources(
     project: Project,
@@ -41,14 +43,13 @@ internal fun prepareWinRTStaticProjectionSources(
     supportOwnerIdentity: String,
 ): Path? {
     val parsedSources = extension.metadataInputs.get().map { input -> WinRTMetadataSource.parse(input) }
-    if (parsedSources.isEmpty() || parsedSources.any { source ->
-            source !is WinRTMetadataSource.PathSource && source !is WinRTMetadataSource.NuGetPackage
-        }) throw StaticPreparationUnavailable("fixed metadata is not a local path")
+    if (parsedSources.any { source ->
+            source !is WinRTMetadataSource.PathSource &&
+                source !is WinRTMetadataSource.NuGetPackage &&
+                source !is WinRTMetadataSource.NuGetPackageReference
+        }) throw StaticPreparationUnavailable("metadata includes a dynamic source")
     if (extension.windowsSdkDeclared.get()) {
         throw StaticPreparationUnavailable("Windows SDK metadata is resolved at execution time")
-    }
-    if (extension.nugetPackages.any { packageReference -> packageReference.generateProjection }) {
-        throw StaticPreparationUnavailable("projected NuGet metadata is resolved at execution time")
     }
     if (project.configurations.findByName(KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION)
             ?.allDependencies
@@ -61,39 +62,77 @@ internal fun prepareWinRTStaticProjectionSources(
         throw StaticPreparationUnavailable("dependency identity outputs are not available")
     }
 
-    val cache = WinRTMetadataSourceResolver.resolve(parsedSources)
+    val explicitNuGetReferences = parsedSources.filterIsInstance<WinRTMetadataSource.NuGetPackageReference>()
+    val projectionPackageSpecs = extension.nugetPackages
+        .filter { packageReference -> packageReference.generateProjection }
+        .map { packageReference -> "${packageReference.packageId}@${packageReference.version.get()}" }
+    val explicitNuGetSpecs = explicitNuGetReferences.map { source ->
+        "${source.packageId}@${source.version}"
+    }
+    val packageSpecs = (projectionPackageSpecs + explicitNuGetSpecs).distinct()
+    val persistentNuGetRoot = project.layout.projectDirectory
+        .dir(".gradle/kotlin-winrt/prepared-nuget")
+        .asFile
+        .toPath()
+    val explicitNuGetRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of) +
+        explicitNuGetReferences.flatMap { source -> source.globalPackagesRoots }
+    val preparedNuGetSources = if (packageSpecs.isEmpty()) {
+        emptyList()
+    } else {
+        val cliNuGetRoots = resolveNuGetCliGlobalPackagesRoots(
+            enabled = extension.useNuGetCliGlobalPackages.get(),
+            executable = extension.nugetExecutable.get(),
+            cliVersion = extension.nugetCliVersion.get(),
+            cliCacheDirectory = project.gradle.gradleUserHomeDir.toPath().resolve("caches/kotlin-winrt/nuget-cli"),
+            scratchDirectory = project.layout.projectDirectory
+                .dir(".gradle/kotlin-winrt/nuget-scratch")
+                .asFile
+                .toPath(),
+            logger = project.logger,
+        )
+        try {
+            resolveNuGetProjectionMetadataSources(
+                packageSpecs = packageSpecs,
+                explicitGlobalPackagesRoots = explicitNuGetRoots + persistentNuGetRoot,
+                cliGlobalPackagesRoots = cliNuGetRoots,
+                restoreNuGetPackages = extension.restoreNuGetPackages.get(),
+                restoreMissing = { identities ->
+                    restoreNuGetPackagesToDirectory(
+                        packageIdentities = identities,
+                        installRoot = persistentNuGetRoot,
+                        nuGetCli = NuGetCliSupport(
+                            executable = extension.nugetExecutable.get(),
+                            cliVersion = extension.nugetCliVersion.get(),
+                            cliCacheDirectory = project.gradle.gradleUserHomeDir.toPath()
+                                .resolve("caches/kotlin-winrt/nuget-cli"),
+                            scratchDirectory = project.layout.projectDirectory
+                                .dir(".gradle/kotlin-winrt/nuget-scratch")
+                                .asFile
+                                .toPath(),
+                            logger = project.logger,
+                        ),
+                    )
+                },
+            )
+        } catch (error: GradleException) {
+            if (!extension.restoreNuGetPackages.get()) {
+                throw StaticPreparationUnavailable(
+                    "projected NuGet metadata is not available in the configured cache",
+                )
+            }
+            throw error
+        }
+    }
+    val effectiveSources = parsedSources.filterNot { source ->
+        source is WinRTMetadataSource.NuGetPackageReference
+    } + preparedNuGetSources
+    if (effectiveSources.isEmpty()) {
+        throw StaticPreparationUnavailable("no fixed metadata or projected NuGet package is configured")
+    }
+    val cache = WinRTMetadataSourceResolver.resolve(effectiveSources)
     if (cache.files.isEmpty() || cache.files.any { file -> !Files.isRegularFile(file) }) {
         throw StaticPreparationUnavailable("local metadata files are missing")
     }
-    val model = cache.load(project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models").asFile.toPath())
-    val effectiveIncludeTypes = extension.includeTypes.get() +
-        automaticXamlComponentResourceDictionaryTypes(model, extension.includeTypes.get().toSet())
-    val dependencySurfaceTypes = dependencyProjectionSurfaceTypeNames(identityFiles)
-    val applicationPackagingOnly = extension is WindowsExtension &&
-        extension.applicationEnabled.get() &&
-        extension.metadataInputs.get().isEmpty() &&
-        extension.includeNamespaces.get().isEmpty() &&
-        extension.includeTypes.get().isEmpty() &&
-        !extension.generateWindowsSdkProjection.get()
-    val staticModel = if (applicationPackagingOnly) {
-        WinRTMetadataModel(emptyList())
-    } else {
-        model.filterProjectionSurface(
-            namespaces = extension.includeNamespaces.get().toSet(),
-            types = (effectiveIncludeTypes + dependencySurfaceTypes).toSet(),
-            excludedNamespaces = extension.excludeNamespaces.get().toSet(),
-            excludedTypes = extension.excludeTypes.get().toSet(),
-            additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
-        )
-    }
-    val context = WinRTMetadataProjectionContext(
-        sources = parsedSources,
-        include = extension.includeNamespaces.get().toSet() +
-            effectiveIncludeTypes.toSet() + dependencySurfaceTypes.toSet(),
-        exclude = extension.excludeNamespaces.get().toSet() + extension.excludeTypes.get().toSet(),
-        excludedTypes = extension.excludeTypes.get().toSet(),
-        additionExclude = extension.additionExcludeNamespaces.get().toSet(),
-    )
     val emitJvmAuthoringHostExports = project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null
     val key = preparedStaticProjectionKey(
         cache.files,
@@ -114,6 +153,37 @@ internal fun prepareWinRTStaticProjectionSources(
     ).use { channel ->
         channel.lock().use {
             if (!Files.isRegularFile(entry.resolve("manifest.tsv")) || !Files.isDirectory(sourceRoot)) {
+                val model = cache.load(
+                    project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models").asFile.toPath(),
+                )
+                val effectiveIncludeTypes = extension.includeTypes.get() +
+                    automaticXamlComponentResourceDictionaryTypes(model, extension.includeTypes.get().toSet())
+                val dependencySurfaceTypes = dependencyProjectionSurfaceTypeNames(identityFiles)
+                val applicationPackagingOnly = extension is WindowsExtension &&
+                    extension.applicationEnabled.get() &&
+                    extension.metadataInputs.get().isEmpty() &&
+                    extension.includeNamespaces.get().isEmpty() &&
+                    extension.includeTypes.get().isEmpty() &&
+                    !extension.generateWindowsSdkProjection.get()
+                val staticModel = if (applicationPackagingOnly) {
+                    WinRTMetadataModel(emptyList())
+                } else {
+                    model.filterProjectionSurface(
+                        namespaces = extension.includeNamespaces.get().toSet(),
+                        types = (effectiveIncludeTypes + dependencySurfaceTypes).toSet(),
+                        excludedNamespaces = extension.excludeNamespaces.get().toSet(),
+                        excludedTypes = extension.excludeTypes.get().toSet(),
+                        additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
+                    )
+                }
+                val context = WinRTMetadataProjectionContext(
+                    sources = effectiveSources,
+                    include = extension.includeNamespaces.get().toSet() +
+                        effectiveIncludeTypes.toSet() + dependencySurfaceTypes.toSet(),
+                    exclude = extension.excludeNamespaces.get().toSet() + extension.excludeTypes.get().toSet(),
+                    excludedTypes = extension.excludeTypes.get().toSet(),
+                    additionExclude = extension.additionExcludeNamespaces.get().toSet(),
+                )
                 val temporary = Files.createTempDirectory(storeRoot, ".${key}-")
                 try {
                     KotlinProjectionGenerator(

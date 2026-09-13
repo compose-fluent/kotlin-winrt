@@ -17,7 +17,6 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataCache
 import io.github.composefluent.winrt.metadata.WinRTMetadataSourceKind
 import io.github.composefluent.winrt.metadata.WinRTMetadataSourceResolver
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageIdentity
-import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
 import io.github.composefluent.winrt.metadata.WinRTTypeRef
 import io.github.composefluent.winrt.metadata.WinRTTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
@@ -607,7 +606,20 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 rootPackageSpecs = packageSpecs,
             ).map(WinRTMetadataSource::path)
         } else {
-            legacyNuGetMetadataSources(packageSpecs)
+            resolveNuGetProjectionMetadataSources(
+                packageSpecs = packageSpecs,
+                explicitGlobalPackagesRoots = parameters.nugetGlobalPackagesRoots.get().map(Path::of),
+                cliGlobalPackagesRoots = resolveNuGetCliGlobalPackagesRoots(
+                    enabled = parameters.useNuGetCliGlobalPackages.get(),
+                    executable = parameters.nugetExecutable.get(),
+                    cliVersion = parameters.nugetCliVersion.get(),
+                    cliCacheDirectory = parameters.nugetCliCacheDirectory.get().asFile.toPath(),
+                    scratchDirectory = parameters.workDirectory.get().asFile.toPath().resolve("nuget-scratch"),
+                    logger = logger,
+                ),
+                restoreNuGetPackages = parameters.restoreNuGetPackages.get(),
+                restoreMissing = ::restoreNuGetPackages,
+            )
         }
         val dependencyRecords = parameters.dependencyIdentityFiles.files.flatMap(::readDependencyAuthoredMetadataRecords)
         val dependencyAuthoredMetadataSources = writeDependencyAuthoredMetadataRecords(
@@ -743,47 +755,6 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
     private fun decodePreparedMetadataValue(value: String): String =
         String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
 
-    private fun legacyNuGetMetadataSources(packageSpecs: List<String>): List<WinRTMetadataSource> {
-        val explicitNuGetRoots = parameters.nugetGlobalPackagesRoots.get().map(Path::of)
-        val cliNuGetRoots = nugetCliGlobalPackagesRoots()
-        val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
-        val nugetRoots = explicitNuGetRoots + cliNuGetRoots
-        val packageIdentitiesFromRoots = if (parameters.restoreNuGetPackages.get()) {
-            packageIdentities.filter { identity -> isNuGetPackageClosureAvailable(identity, nugetRoots) }
-        } else {
-            val missingNuGetIdentities = packageIdentities.filterNot { identity ->
-                isNuGetPackageClosureAvailable(identity, nugetRoots)
-            }
-            require(missingNuGetIdentities.isEmpty()) {
-                "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingNuGetIdentities.joinToString()}"
-            }
-            packageIdentities
-        }
-        val restoredPackageDirectories = if (parameters.restoreNuGetPackages.get()) {
-            val identitiesFromRoots = packageIdentitiesFromRoots.toSet()
-            restoreNuGetPackages(packageIdentities.filterNot { identity -> identity in identitiesFromRoots })
-        } else {
-            emptyList()
-        }
-        return packageIdentitiesFromRoots.map { identity ->
-            WinRTMetadataSource.nugetPackage(
-                packageId = identity.normalizedPackageId,
-                version = identity.normalizedVersion,
-                globalPackagesRoots = nugetRoots,
-            )
-        } + restoredPackageDirectories.map(WinRTMetadataSource::nugetPackage)
-    }
-
-    private fun isNuGetPackageClosureAvailable(
-        identity: WinRTNuGetPackageIdentity,
-        globalPackagesRoots: List<Path>,
-    ): Boolean {
-        val roots = WinRTNuGetPackageResolver.globalPackagesRoots(explicitRoots = globalPackagesRoots)
-        return runCatching {
-            WinRTNuGetPackageResolver.resolveClosure(identity, roots)
-        }.isSuccess
-    }
-
     private fun restoreNuGetPackages(
         packageIdentities: List<WinRTNuGetPackageIdentity>,
     ): List<Path> {
@@ -794,64 +765,11 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         val installRoot = prepareNuGetInstallRoot(
             parameters.workDirectory.get().asFile.toPath().resolve("nuget-install"),
         )
-        packageIdentities.forEach { identity ->
-            runNuGetInstall(identity, installRoot)
-        }
-        return discoverInstalledPackages(installRoot)
-    }
-
-    private fun runNuGetInstall(
-        identity: WinRTNuGetPackageIdentity,
-        installRoot: Path,
-    ) {
-        nuGetCli().run(
-            arguments = listOf(
-                "install",
-                identity.normalizedPackageId,
-                "-Version",
-                identity.normalizedVersion,
-                "-NonInteractive",
-                "-OutputDirectory",
-                installRoot.toString(),
-            ),
-            workingDirectory = installRoot,
-            description = "install $identity",
+        return restoreNuGetPackagesToDirectory(
+            packageIdentities = packageIdentities,
+            installRoot = installRoot,
+            nuGetCli = nuGetCli(),
         )
-    }
-
-    private fun discoverInstalledPackages(installRoot: Path): List<Path> =
-        Files.list(installRoot).use { stream ->
-            stream.asSequence()
-                .filter { it.isDirectory() }
-                .sortedBy { it.name.lowercase() }
-                .toList()
-        }
-
-    private fun parseNuGetPackageIdentity(spec: String): WinRTNuGetPackageIdentity {
-        val separator = spec.lastIndexOf('@')
-        require(separator > 0 && separator < spec.lastIndex) {
-            "NuGet package must use '<id>@<version>' format: $spec"
-        }
-        return WinRTNuGetPackageIdentity(
-            packageId = spec.substring(0, separator),
-            version = spec.substring(separator + 1),
-        )
-    }
-
-    private fun nugetCliGlobalPackagesRoots(): List<Path> {
-        if (!parameters.useNuGetCliGlobalPackages.get()) {
-            return emptyList()
-        }
-        return runCatching {
-            val invocation = nuGetCli().run(
-                arguments = listOf("locals", "global-packages", "-list"),
-                description = "locate global-packages",
-            )
-            WinRTNuGetPackageResolver.parseNuGetGlobalPackagesOutput(invocation.output)
-        }.getOrElse { error ->
-            logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
-            emptyList()
-        }
     }
 
     private fun containsKotlinSource(root: Path): Boolean {

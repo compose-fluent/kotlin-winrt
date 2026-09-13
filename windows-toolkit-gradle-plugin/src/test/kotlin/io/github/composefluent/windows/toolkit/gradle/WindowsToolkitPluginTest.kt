@@ -434,7 +434,7 @@ class WindowsToolkitPluginTest {
         )
         assertEquals(
             listOf(
-                "-Xmx1024m",
+                "-Xmx2048m",
                 "-XX:+UseSerialGC",
                 "-Dfile.encoding=UTF-8",
             ),
@@ -3338,6 +3338,170 @@ class WindowsToolkitPluginTest {
         )
         assertTrue(changedPrepared != null)
         assertTrue(changedPrepared != prepared)
+    }
+
+    @Test
+    fun projected_nuget_static_sources_are_prepared_from_configured_global_packages_root() {
+        val project = ProjectBuilder.builder().withName("prepared-static-nuget-test").build()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        val packageRoot = project.projectDir.toPath()
+            .resolve("nuget-cache/sample.package/1.0.0")
+        val winmd = packageRoot.resolve("metadata/Sample.winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = winmd,
+        )
+        extension.packageReferences.nugetGlobalPackagesRoots.add(
+            project.projectDir.toPath().resolve("nuget-cache").toString(),
+        )
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.restoreNuGetPackages.set(false)
+        extension.packageReferences.nugetPackage("Sample.Package", "1.0.0")
+        extension.packageReferences.type("Sample.IProbe")
+
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = project.layout.buildDirectory.dir("prepared-output"),
+            supportOwnerIdentity = "prepared-static-nuget-test.jar",
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.walk(prepared!!).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+    }
+
+    @Test
+    fun projected_nuget_static_sources_restore_missing_packages_during_configuration() {
+        assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
+        val root = Files.createTempDirectory("kotlin-winrt-prepared-nuget-restore-test-")
+        val project = ProjectBuilder.builder()
+            .withName("prepared-static-nuget-restore-test")
+            .withProjectDir(root.toFile())
+            .build()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val packageId = "Kotlin.WinRT.Config.Restore.Probe"
+        val packageVersion = "1.0.0"
+        val fixtureWinmd = root.resolve("fixture/Sample.winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = fixtureWinmd,
+        )
+        val invocationLog = root.resolve("nuget-invocation.txt")
+        val nugetExecutable = root.resolve("nuget.cmd")
+        Files.writeString(
+            nugetExecutable,
+            """
+            @echo off
+            setlocal
+            >>"$invocationLog" echo args=%*
+            set "OUTPUT="
+            :parse
+            if "%~1"=="" goto install
+            if /I "%~1"=="-OutputDirectory" (
+              set "OUTPUT=%~2"
+              shift
+            )
+            shift
+            goto parse
+            :install
+            if not defined OUTPUT exit /b 1
+            mkdir "%OUTPUT%\${packageId.lowercase()}\$packageVersion\metadata" 2>nul
+            copy /Y "$fixtureWinmd" "%OUTPUT%\${packageId.lowercase()}\$packageVersion\metadata\Sample.winmd" >nul
+            exit /b %ERRORLEVEL%
+            """.trimIndent(),
+        )
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.restoreNuGetPackages.set(true)
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.nugetExecutable.set(nugetExecutable.toString())
+        extension.packageReferences.nugetPackage(packageId, packageVersion)
+        extension.packageReferences.type("Sample.IProbe")
+
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = project.layout.buildDirectory.dir("prepared-output"),
+            supportOwnerIdentity = "prepared-static-nuget-restore-test.jar",
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.readString(invocationLog).contains("install $packageId"))
+        assertTrue(
+            Files.isRegularFile(
+                root.resolve(
+                    ".gradle/kotlin-winrt/prepared-nuget/${packageId.lowercase()}/$packageVersion/metadata/Sample.winmd",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun configuration_sync_prepares_projected_nuget_sources_without_generation_task() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-preparation-test-")
+        val packageRoot = projectDir.resolve("nuget-cache/sample.package/1.0.0")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = packageRoot.resolve("metadata/Sample.winmd"),
+        )
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-preparation-test")
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.windows-toolkit"
+            }
+
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add(file("nuget-cache").absolutePath)
+                    useNuGetCliGlobalPackages.set(false)
+                    restoreNuGetPackages.set(false)
+                    nugetPackage "Sample.Package", "1.0.0"
+                    type "Sample.IProbe"
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("help", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":help")?.outcome)
+        assertTrue(
+            Files.walk(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")).use { stream ->
+                stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+            },
+        )
     }
 
     @Test
