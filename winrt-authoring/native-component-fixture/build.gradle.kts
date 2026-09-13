@@ -30,7 +30,7 @@ windows {
 }
 
 val verifyNativeAuthoringComponentFixture by tasks.registering(
-    io.github.composefluent.winrt.gradle.VerifyWinRTNativeAuthoringComponentFixtureTask::class,
+    io.github.composefluent.windows.toolkit.gradle.VerifyWinRTNativeAuthoringComponentFixtureTask::class,
 ) {
     group = "verification"
     description = "Validates that a real authored mingwX64 component exports WinRT activation entry points."

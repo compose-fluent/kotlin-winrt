@@ -1,4 +1,4 @@
-import io.github.composefluent.winrt.gradle.GenerateWinRTProjectionsTask
+import io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)

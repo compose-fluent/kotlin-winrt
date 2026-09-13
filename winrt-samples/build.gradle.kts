@@ -1,4 +1,4 @@
-import io.github.composefluent.winrt.gradle.WindowsPackageType
+import io.github.composefluent.windows.toolkit.gradle.WindowsPackageType
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -220,7 +220,7 @@ val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class)
     val winuiJvmMain = kotlin.sourceSets.getByName("winuiJvmMain")
     val mingwX64Main = kotlin.sourceSets.getByName("mingwX64Main")
     val packages = project.extensions
-        .getByType<io.github.composefluent.winrt.gradle.WindowsExtension>()
+        .getByType<io.github.composefluent.windows.toolkit.gradle.WindowsExtension>()
         .packageReferences.nugetPackages
         .map { pkg -> pkg.packageId }
 
@@ -263,7 +263,7 @@ val standardSampleSmokeDefaults = mapOf(
 
 val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
+tasks.named<io.github.composefluent.windows.toolkit.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
     environmentVariables.put(
         "WEBVIEW2_USER_DATA_FOLDER",
         webView2UserDataRoot.map { it.dir("jvm").asFile.absolutePath },

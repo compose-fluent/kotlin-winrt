@@ -47,11 +47,11 @@ tasks.named("runReleaseExecutableMingwX64") {
 
 val stagedRuntimeAssets = tasks.named(
     "stageWindowsPackageRuntimeAssetsMingwX64MainReleaseExecutable",
-    io.github.composefluent.winrt.gradle.StageWindowsPackageRuntimeAssetsTask::class,
+    io.github.composefluent.windows.toolkit.gradle.StageWindowsPackageRuntimeAssetsTask::class,
 )
 
 val verifyNativeAuthoringConsumerFixture by tasks.registering(
-    io.github.composefluent.winrt.gradle.VerifyWinRTNativeAuthoringConsumerFixtureTask::class,
+    io.github.composefluent.windows.toolkit.gradle.VerifyWinRTNativeAuthoringConsumerFixtureTask::class,
 ) {
     group = "verification"
     description = "Validates staging and runtime activation of native authored dependency artifacts."

@@ -1,7 +1,7 @@
 rootProject.name = "windows-webview2-published-consumer-fixture"
 
 pluginManagement {
-    includeBuild("../../winrt-gradle-plugin")
+    includeBuild("../../windows-toolkit-gradle-plugin")
     repositories {
         mavenCentral()
         gradlePluginPortal()

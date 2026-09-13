@@ -62,7 +62,7 @@ private val winuiKmpOptionProperties = listOf(
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
-tasks.named<io.github.composefluent.winrt.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
+tasks.named<io.github.composefluent.windows.toolkit.gradle.RunWinAppHostTask>("runWinAppHostWinuiJvmMain") {
     jvmArgs.addAll(
         providers.provider {
             winuiKmpOptionProperties.map { name ->

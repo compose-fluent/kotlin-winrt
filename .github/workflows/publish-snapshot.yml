@@ -102,7 +102,7 @@ jobs:
             :winrt-authoring:publishToMavenLocal \
             :winrt-compiler-plugin:publishToMavenLocal \
             --no-configuration-cache
-          ./gradlew -p winrt-gradle-plugin :publishToMavenLocal --no-configuration-cache
+          ./gradlew -p windows-toolkit-gradle-plugin :publishToMavenLocal --no-configuration-cache
 
       - name: Check Maven Central snapshot secrets
         shell: bash
@@ -140,4 +140,4 @@ jobs:
             :winrt-authoring:publishAllPublicationsToMavenCentralRepository \
             :winrt-compiler-plugin:publishAllPublicationsToMavenCentralRepository \
             --no-configuration-cache
-          ./gradlew -p winrt-gradle-plugin :publishAllPublicationsToMavenCentralRepository --no-configuration-cache
+          ./gradlew -p windows-toolkit-gradle-plugin :publishAllPublicationsToMavenCentralRepository --no-configuration-cache

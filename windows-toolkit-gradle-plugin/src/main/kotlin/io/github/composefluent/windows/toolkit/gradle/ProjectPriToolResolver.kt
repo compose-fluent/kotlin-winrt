@@ -1,0 +1,54 @@
+package io.github.composefluent.windows.toolkit.gradle
+
+import java.nio.file.Path
+import kotlin.io.path.isRegularFile
+
+internal object ProjectPriToolResolver {
+    fun makePriExecutable(
+        configuredExecutable: String,
+        windowsSdkVersion: String,
+        runtimeIdentifier: String,
+        registryRoots: List<String>? = null,
+    ): Path? {
+        configuredExecutable.takeIf { it.isNotBlank() }?.let { configured ->
+            return Path.of(configured).takeIf { it.isRegularFile() }
+        }
+        val sdk = findWindowsSdk(
+            version = windowsSdkVersion.takeIf { it.isNotBlank() },
+            registryRoots = registryRoots?.orNullIfEmpty(),
+        ) ?: return null
+        return sdk.tool("makepri.exe", windowsSdkArchitecture(runtimeIdentifier))
+    }
+
+    fun makeAppxExecutable(
+        configuredExecutable: String,
+        windowsSdkVersion: String,
+        runtimeIdentifier: String,
+        registryRoots: List<String>? = null,
+    ): Path? {
+        configuredExecutable.takeIf { it.isNotBlank() }?.let { configured ->
+            return Path.of(configured).takeIf { it.isRegularFile() }
+        }
+        val sdk = findWindowsSdk(
+            version = windowsSdkVersion.takeIf { it.isNotBlank() },
+            registryRoots = registryRoots?.orNullIfEmpty(),
+        ) ?: return null
+        return sdk.tool("makeappx.exe", windowsSdkArchitecture(runtimeIdentifier))
+    }
+
+    fun signToolExecutable(
+        configuredExecutable: String,
+        windowsSdkVersion: String,
+        runtimeIdentifier: String,
+        registryRoots: List<String>? = null,
+    ): Path? {
+        configuredExecutable.takeIf { it.isNotBlank() }?.let { configured ->
+            return Path.of(configured).takeIf { it.isRegularFile() }
+        }
+        val sdk = findWindowsSdk(
+            version = windowsSdkVersion.takeIf { it.isNotBlank() },
+            registryRoots = registryRoots?.orNullIfEmpty(),
+        ) ?: return null
+        return sdk.tool("signtool.exe", windowsSdkArchitecture(runtimeIdentifier))
+    }
+}
