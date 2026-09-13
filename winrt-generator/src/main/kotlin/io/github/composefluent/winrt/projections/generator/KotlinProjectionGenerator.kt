@@ -195,11 +195,9 @@ class KotlinProjectionGenerator(
         val semanticHelpers = normalizedModel.semanticHelpers()
         validateGeneratorContracts(normalizedModel, plans, semanticHelpers)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
-        val renderedPlans = if (groupProjectionFilesByPackageOnWrite) {
-            plans.map(KotlinTypeProjectionPlan::withoutRenderedProjectedAttributes)
-        } else {
-            plans
-        }
+        // File grouping changes only the output container. Keep the projected attributes on the
+        // planned declarations so a layout choice cannot change the public projection surface.
+        val renderedPlans = plans
         val projectionPlans = renderedPlans.filterNot { plan ->
             plan.type.qualifiedName in authoredTypeNames ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
@@ -2078,17 +2076,6 @@ private fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFi
             )
                 }
         }
-
-private fun KotlinTypeProjectionPlan.withoutRenderedProjectedAttributes(): KotlinTypeProjectionPlan =
-    copy(
-        projectedAttributes = emptyList(),
-        instanceMemberBindings = instanceMemberBindings.map { binding ->
-            binding.copy(projectedAttributes = emptyList())
-        },
-        staticMemberBindings = staticMemberBindings.map { binding ->
-            binding.copy(projectedAttributes = emptyList())
-        },
-    )
 
 private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
 

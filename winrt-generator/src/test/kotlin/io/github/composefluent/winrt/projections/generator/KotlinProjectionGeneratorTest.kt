@@ -12298,6 +12298,13 @@ class KotlinProjectionGeneratorTest {
         )
 
         val contents = KotlinProjectionGenerator().generate(model).single { it.relativePath.endsWith("IWidget.kt") }.contents
+        val groupedOutputRoot = Files.createTempDirectory("kotlin-winrt-grouped-attributes-")
+        KotlinProjectionGenerator(groupProjectionFilesByPackageOnWrite = true)
+            .generateTo(model, groupedOutputRoot)
+        val groupedContents = groupedOutputRoot
+            .resolve("sample/foundation/sample_foundation.kt")
+            .toFile()
+            .readText()
 
         assertTrue(contents.contains("@WinRTAttributeUsage("))
         assertTrue(contents.contains("targets = 16L"))
@@ -12311,6 +12318,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("listOf("))
         assertTrue(contents.contains("System.Runtime.Versioning.SupportedOSPlatform"))
         assertTrue(contents.contains("Windows.Foundation.Metadata.Experimental"))
+        assertTrue(groupedContents.contains("@WinRTExperimental"))
+        assertTrue(groupedContents.contains("@WinRTContractVersion("))
+        assertTrue(groupedContents.contains("val PROJECTED_ATTRIBUTES: List<String>"))
     }
 
     @Test
