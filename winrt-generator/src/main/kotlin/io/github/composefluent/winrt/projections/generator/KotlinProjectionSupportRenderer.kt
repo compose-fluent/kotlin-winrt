@@ -308,12 +308,8 @@ class KotlinProjectionSupportRenderer private constructor(
             modulePlatformAbiCalls = modulePlatformAbiCalls,
             supportOwnerIdentity = supportOwnerIdentity,
         )
-        withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
-            .collectProjectedInterfaceCcwFactories(
-                entries = plans.projectedInterfaceCcwInputPlans(),
-                semanticHelpers = semanticHelpers,
-                supportOwnerIdentity = supportOwnerIdentity,
-            )
+        // Static CCW holders and inbound functions contain no outbound call-site registration.
+        // Their managed handlers and ABI annotations are emitted only in the final pass.
     }
 
     private fun collectSourceAdditionCallSites(
@@ -335,8 +331,11 @@ class KotlinProjectionSupportRenderer private constructor(
                             .collectCallSites(adapter, model)
                     }
                     ?: when (typeName) {
-                        "winrt.interop.WindowNative" -> winRTInteropWindowNativeSource(modulePlatformAbiCalls)
-                        "winrt.interop.InitializeWithWindow" -> winRTInteropInitializeWithWindowSource(modulePlatformAbiCalls)
+                        "winrt.interop.WindowNative", "winrt.interop.InitializeWithWindow" -> {
+                            modulePlatformAbiCalls.observe(typeRenderer.composeTypedProjectionCallSite(
+                                prepareWindowInteropCall(typeName), modulePlatformAbiCalls,
+                            ))
+                        }
                         else -> Unit
                     }
             }
@@ -2436,18 +2435,6 @@ class KotlinProjectionSupportRenderer private constructor(
         return supportFile("${className.simpleName}.kt", fileBuilder.build())
     }
 
-    internal fun collectProjectedInterfaceCcwFactories(
-        entries: List<KotlinTypeProjectionPlan>,
-        semanticHelpers: WinRTMetadataSemanticHelpers,
-        supportOwnerIdentity: String?,
-    ) {
-        entries.sortedBy { plan -> plan.type.qualifiedName }.forEach { plan ->
-            projectedInterfaceInboundCallSiteFunctions(plan, semanticHelpers)
-            projectedInterfaceCcwDefinitionHolder(plan, semanticHelpers, supportOwnerIdentity)
-            projectedInterfaceCcwRegisterFunction(plan, supportOwnerIdentity)
-        }
-    }
-
     private fun projectedInterfaceCcwDefinitionHolder(
         plan: KotlinTypeProjectionPlan,
         semanticHelpers: WinRTMetadataSemanticHelpers,
@@ -4180,14 +4167,23 @@ class KotlinProjectionSupportRenderer private constructor(
             else -> "null"
         }
 
+    private fun prepareWindowInteropCall(typeName: String): KotlinProjectionAbiCallPlan =
+        requireNotNull(typeRenderer.buildAbiCallPlan(
+            returnBinding = if (typeName == "winrt.interop.WindowNative") typeRenderer.renderAbiTypeBinding("RawAddress")
+                else KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+            parameterBindings = if (typeName == "winrt.interop.WindowNative") emptyList()
+                else listOf(KotlinProjectionAbiParameterBinding("hwnd", typeRenderer.renderAbiTypeBinding("RawAddress"))),
+        ))
+
     private fun winRTInteropWindowNativeSource(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
     ): String {
-        val invocation = renderSupportCallSite(
-            modulePlatformAbiCalls = modulePlatformAbiCalls,
+        val invocation = modulePlatformAbiCalls.typedInvocation(
             referenceExpression = "reference",
-            slot = 3,
-            returnBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
+            slotExpression = CodeBlock.of("3"),
+            invocation = typeRenderer.composeTypedProjectionCallSite(
+                prepareWindowInteropCall("winrt.interop.WindowNative"), modulePlatformAbiCalls,
+            ),
         )
         return """
         package winrt.interop
@@ -4218,16 +4214,11 @@ ${invocation.toString().prependIndent("                        ")}
     private fun winRTInteropInitializeWithWindowSource(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
     ): String {
-        val invocation = renderSupportCallSite(
-            modulePlatformAbiCalls = modulePlatformAbiCalls,
+        val invocation = modulePlatformAbiCalls.typedInvocation(
             referenceExpression = "reference",
-            slot = 3,
-            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-            parameterBindings = listOf(
-                KotlinProjectionAbiParameterBinding(
-                    name = "hwnd",
-                    typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
-                ),
+            slotExpression = CodeBlock.of("3"),
+            invocation = typeRenderer.composeTypedProjectionCallSite(
+                prepareWindowInteropCall("winrt.interop.InitializeWithWindow"), modulePlatformAbiCalls,
             ),
         )
         return """
@@ -4255,29 +4246,6 @@ ${invocation.toString().prependIndent("                        ")}
             }
         }
         """.trimIndent() + "\n"
-    }
-
-    private fun renderSupportCallSite(
-        modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport,
-        referenceExpression: String,
-        slot: Int,
-        returnBinding: KotlinProjectionAbiTypeBinding,
-        parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
-    ): CodeBlock {
-        val callPlan = requireNotNull(
-            typeRenderer.buildAbiCallPlan(
-                returnBinding = returnBinding,
-                parameterBindings = parameterBindings,
-            ),
-        ) { "Support call site must have a complete WinMD ABI plan." }
-        val invocation = requireNotNull(typeRenderer.composeTypedProjectionCallSite(callPlan, modulePlatformAbiCalls)) {
-            "Support call site must fold every ABI marshaler slot into its typed descriptor."
-        }
-        return modulePlatformAbiCalls.typedInvocation(
-            referenceExpression = referenceExpression,
-            slotExpression = CodeBlock.of("%L", slot),
-            invocation = invocation,
-        )
     }
 
     private fun microsoftUiWin32InteropSource(): String =

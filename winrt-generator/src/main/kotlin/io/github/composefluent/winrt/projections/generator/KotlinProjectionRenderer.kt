@@ -149,16 +149,8 @@ class KotlinProjectionRenderer(
      * and final output cannot drift into separate ABI classification rules.
      */
     internal fun collectCallSites(plan: KotlinTypeProjectionPlan) {
-        if (plan.declarationKind == KotlinProjectionDeclarationKind.Delegate) {
-            val invokeShape = plan.delegateInvokeShape
-            if (invokeShape != null && supportsProjectedDelegateStaticInbound(plan, invokeShape)) {
-                renderDelegateInboundCallSite(
-                    plan = plan,
-                    invokeMethod = requireDelegateInvokeMethod(plan.type),
-                    invokeShape = invokeShape,
-                )
-            }
-        }
+        // Inbound delegate declarations contain managed calls and annotations only. They do
+        // not register outbound ABI calls; emit them once in the final projection pass.
         collectCallSitePlans(plan)
     }
 
@@ -175,7 +167,7 @@ class KotlinProjectionRenderer(
         }
     }
 
-    private fun collectCallSite(
+    internal fun collectCallSite(
         callPlan: KotlinProjectionAbiCallPlan,
         hResultPolicy: io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteHResultPolicy? = null,
         callerOwnedResultType: TypeName? = null,
@@ -354,7 +346,7 @@ class KotlinProjectionRenderer(
         } else {
             mappedCollectionMemberNames
         }
-        renderRequiredInterfaceForwardMembers(plan, requiredForwardSuppressedMemberNames)
+        collectRequiredInterfaceForwardCallSites(plan, requiredForwardSuppressedMemberNames)
 
         plan.type.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
@@ -373,8 +365,9 @@ class KotlinProjectionRenderer(
             .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" && it.parameters.isEmpty() }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
             .forEach { method ->
-                if (renderRuntimeClassInterfaceForwardMethod(plan, method) == null) {
-                    renderRuntimeMethod(plan, method)
+                val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                if (runtimeClassForwardTarget(plan, binding) == null) {
+                    prepareBoundMethodCall(plan, method)?.second?.let(::collectCallSite)
                 }
             }
         plan.type.properties
@@ -394,15 +387,25 @@ class KotlinProjectionRenderer(
             }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
             .forEach { property ->
-                if (renderRuntimeClassInterfaceForwardProperty(plan, property) == null) {
-                    renderRuntimeProperty(plan, property)
+                if (runtimeClassPropertyForwardTarget(plan, property) == null) {
+                    prepareBoundPropertyCalls(plan, property).forEach { (_, callPlan) -> collectCallSite(callPlan) }
                 }
             }
 
         val staticMethods = plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedStaticMethod)
         val staticProperties = plan.type.properties.filter { it.isStatic }
-        mergedStaticMethods(plan, staticMethods).forEach { method -> renderBoundStaticMethod(plan, method) }
-        mergedStaticProperties(plan, staticProperties).forEach { property -> renderBoundStaticProperty(plan, property) }
+        mergedStaticMethods(plan, staticMethods).filterNot { isActivationFactoryCreateMethod(plan, it) }.forEach { method ->
+            plan.staticMemberBindings.firstOrNull { it.bindingName == staticMethodBindingName(plan, method) }
+                ?.let { collectCallSite(prepareBoundStaticInvocation(it)) }
+        }
+        mergedStaticProperties(plan, staticProperties).forEach { property ->
+            val getter = plan.staticMemberBindings.firstOrNull { it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT" }
+            if (getter != null) {
+                collectCallSite(prepareBoundStaticInvocation(getter))
+                if (!property.isReadOnly) plan.staticMemberBindings.firstOrNull { it.bindingName == "STATIC_${property.name.uppercase()}_SETTER_SLOT" }
+                    ?.let { collectCallSite(prepareBoundStaticInvocation(it)) }
+            }
+        }
         plan.type.events.filter { it.isStatic }.forEach { event ->
             val addBinding = plan.staticMemberBindings.firstOrNull {
                 it.bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT"
@@ -411,9 +414,7 @@ class KotlinProjectionRenderer(
                 renderBoundStaticEventFunctions(plan, event)
             }
         }
-        renderActivationFactoryCreateFunctions(plan)
-        renderComposableFactoryCreateFunctions(plan)
-        collectDerivedComposableFactoryCallSites(plan)
+        collectFactoryCallSites(plan)
     }
 
     private fun collectNativeProjectionCloseCallSite() {
@@ -1953,20 +1954,21 @@ class KotlinProjectionRenderer(
         }
     }
 
+    private fun runtimeClassForwardTarget(
+        plan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionInstanceMemberBinding?,
+    ): RuntimeClassInterfaceProjectionForwardTarget? {
+        if (suppressProjectedMemberSlotConstants || binding == null || plan.usesDirectFastAbiVtableSlot(binding)) return null
+        return runtimeClassInterfaceProjectionForwardTargets(plan)[binding.ownerInterfaceQualifiedName.substringBefore('<')]
+    }
+
     private fun renderRuntimeClassInterfaceForwardMethod(
         plan: KotlinTypeProjectionPlan,
         method: WinRTMethodDefinition,
     ): FunSpec? {
-        if (suppressProjectedMemberSlotConstants) {
-            return null
-        }
         val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
             ?: return null
-        if (plan.usesDirectFastAbiVtableSlot(binding)) {
-            return null
-        }
-        val target = runtimeClassInterfaceProjectionForwardTargets(plan)[binding.ownerInterfaceQualifiedName.substringBefore('<')]
-            ?: return null
+        val target = runtimeClassForwardTarget(plan, binding) ?: return null
         val objectShape = runtimeObjectMethodShape(method)
         val modifiers = objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding)
         val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
@@ -1995,21 +1997,27 @@ class KotlinProjectionRenderer(
             .build()
     }
 
+    private fun runtimeClassPropertyForwardTarget(
+        plan: KotlinTypeProjectionPlan,
+        property: WinRTPropertyDefinition,
+    ): RuntimeClassInterfaceProjectionForwardTarget? {
+        val getter = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
+            ?: return null
+        val target = runtimeClassForwardTarget(plan, getter) ?: return null
+        if (!property.isReadOnly) {
+            val setter = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${property.name.uppercase()}_SETTER_SLOT" }
+                ?: return null
+            if (setter.ownerInterfaceQualifiedName.substringBefore('<') != getter.ownerInterfaceQualifiedName.substringBefore('<')) return null
+        }
+        return target
+    }
+
     private fun renderRuntimeClassInterfaceForwardProperty(
         plan: KotlinTypeProjectionPlan,
         property: WinRTPropertyDefinition,
     ): PropertySpec? {
-        if (suppressProjectedMemberSlotConstants) {
-            return null
-        }
-        val getterBinding = plan.instanceMemberBindings.firstOrNull {
-            it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
-        } ?: return null
-        if (plan.usesDirectFastAbiVtableSlot(getterBinding)) {
-            return null
-        }
-        val target = runtimeClassInterfaceProjectionForwardTargets(plan)[getterBinding.ownerInterfaceQualifiedName.substringBefore('<')]
-            ?: return null
+        val target = runtimeClassPropertyForwardTarget(plan, property) ?: return null
+        val getterBinding = plan.instanceMemberBindings.first { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
         val propertyName = property.name.replaceFirstChar(Char::lowercase)
         val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
         val builder = PropertySpec.builder(propertyName, resolveTypeName(propertyTypeName))
