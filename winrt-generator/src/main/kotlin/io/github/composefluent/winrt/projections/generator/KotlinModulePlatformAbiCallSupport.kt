@@ -40,6 +40,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCalls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCallCounts = linkedMapOf<String, Int>()
+    private val platformShapeDescriptorsByHash = linkedMapOf<String, String>()
     private val preparedCallSitePlans = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val codecs = linkedMapOf<String, KotlinProjectionCallSiteCodec>()
     private val codecsByIdentity = linkedMapOf<KotlinProjectionCallSiteCodecIdentity, KotlinProjectionCallSiteCodec>()
@@ -60,7 +61,17 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         abiSupportClassName(abiTypeName).canonicalName
 
     internal fun callSiteOwnerFqName(plan: KotlinTypedProjectionCallSitePlan): String =
-        callSiteSupportClassName(plan.functionName).canonicalName
+        callSiteSupportClassName(plan.platformShape).canonicalName
+
+    /** Typed plans and physical shapes are intentionally exposed as separate inventories. */
+    internal fun observedTypedCallSitePlans(): Set<KotlinTypedProjectionCallSitePlan> =
+        observedCalls.values.toSet()
+
+    internal fun observedPlatformCallShapes(): Set<KotlinProjectionPlatformCallShape> =
+        observedCalls.values.mapTo(linkedSetOf(), KotlinTypedProjectionCallSitePlan::platformShape)
+
+    internal fun platformShapeOwnerFqName(shape: KotlinProjectionPlatformCallShape): String =
+        callSiteSupportClassName(shape).canonicalName
 
     internal fun preparedCallSitePlan(
         callPlan: KotlinProjectionAbiCallPlan,
@@ -208,7 +219,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             )
         }
 
-        val callsByOwner = calls.values.groupBy { plan -> callSiteSupportClassName(plan.functionName) }
+        val callsByOwner = calls.values.groupBy { plan -> callSiteSupportClassName(plan.platformShape) }
         val codecsByOwner = codecs.values.groupBy { codec -> abiSupportClassName(codec.abiTypeName) }
         val abiTypesByOwner = abiTypes.values.groupBy { metadata -> abiSupportClassName(metadata.abiTypeName) }
         val metadataByOwner = renderedMetadata.groupBy(KotlinProjectionModuleMetadata::owner)
@@ -248,6 +259,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             "Prepared WinRT CallSite state uses ${source.abiSupportShardCount} shards, not $abiSupportShardCount."
         }
         preparedCallSitePlans.putAll(source.preparedCallSitePlans)
+        platformShapeDescriptorsByHash.putAll(source.platformShapeDescriptorsByHash)
         enabledCallNames.orEmpty().forEach { functionName ->
             source.observedCalls[functionName]?.let { plan ->
                 calls[functionName] = plan
@@ -261,6 +273,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
 
     private fun record(plan: KotlinTypedProjectionCallSitePlan): ModuleCallTarget {
         val functionName = plan.functionName
+        registerPlatformShape(plan.platformShape)
         observedCalls.putCallSite(functionName, plan)
         observedCallCounts[functionName] = (observedCallCounts[functionName] ?: 0) + 1
         KotlinRuntimeOwnedProjectionCallSites.declarationFor(plan)?.let { declaration ->
@@ -277,9 +290,17 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         }
         calls.putCallSite(functionName, plan)
         return ModuleCallTarget(
-            className = callSiteSupportClassName(functionName),
+            className = callSiteSupportClassName(plan.platformShape),
             functionName = functionName,
         )
+    }
+
+    private fun registerPlatformShape(shape: KotlinProjectionPlatformCallShape) {
+        val existing = platformShapeDescriptorsByHash.putIfAbsent(shape.stableHash, shape.canonicalDescriptor)
+        require(existing == null || existing == shape.canonicalDescriptor) {
+            "Generated WinRT platform call-shape hash collision '${shape.stableHash}': " +
+                "'$existing' vs '${shape.canonicalDescriptor}'."
+        }
     }
 
     private fun MutableMap<String, KotlinTypedProjectionCallSitePlan>.putCallSite(
@@ -349,8 +370,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private fun metadataSupportClassName(identity: String): ClassName =
         supportShardClassName("metadata-shard", identity)
 
-    private fun callSiteSupportClassName(functionName: String): ClassName {
-        return supportShardClassName("call-shard", functionName)
+    private fun callSiteSupportClassName(shape: KotlinProjectionPlatformCallShape): ClassName {
+        return supportShardClassName("call-shape-shard", shape.canonicalDescriptor)
     }
 
     private fun supportShardClassName(kind: String, identity: String): ClassName {

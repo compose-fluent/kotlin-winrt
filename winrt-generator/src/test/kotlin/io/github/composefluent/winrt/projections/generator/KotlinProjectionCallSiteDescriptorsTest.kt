@@ -17,6 +17,77 @@ import org.junit.Test
 
 class KotlinProjectionCallSiteDescriptorsTest {
     @Test
+    fun platform_shape_is_shared_when_only_public_projection_identity_differs() {
+        val first = modulePlan("sample.FirstResult")
+        val second = modulePlan("sample.SecondResult")
+        assertNotEquals(first.functionName, second.functionName)
+        assertEquals(first.platformShape, second.platformShape)
+        assertTrue(first.platformShape.canonicalDescriptor.contains("ADDRESS:1"))
+
+        val support = KotlinModulePlatformAbiCallSupport(
+            className = ClassName("sample", "ModulePlatformAbi"),
+            abiSupportShardCount = 4,
+        )
+        support.observe(KotlinTypedProjectionCallSiteInvocation(first, listOf(CodeBlock.of("value"))))
+        support.observe(KotlinTypedProjectionCallSiteInvocation(second, listOf(CodeBlock.of("value"))))
+
+        assertEquals(setOf(first.platformShape), support.observedPlatformCallShapes())
+        assertEquals(
+            support.callSiteOwnerFqName(first),
+            support.callSiteOwnerFqName(second),
+        )
+        assertEquals(1, support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).size)
+    }
+
+    @Test
+    fun platform_shape_retains_hstring_transport_and_ordered_carriers() {
+        val renderer = KotlinProjectionRenderer()
+        val stringPlan = renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan(
+                bindingName = "sample.consumeString",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        name = "value",
+                        typeBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.String, "String"),
+                    ),
+                ),
+            ),
+        ).plan
+        val addressPlan = renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan(
+                bindingName = "sample.consumeAddress",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        name = "value",
+                        typeBinding = KotlinProjectionAbiTypeBinding(
+                            KotlinProjectionAbiValueKind.RawAddress,
+                            "io.github.composefluent.winrt.runtime.RawAddress",
+                        ),
+                    ),
+                ),
+            ),
+        ).plan
+
+        assertEquals(
+            listOf(
+                KotlinProjectionPlatformCallArgument.INSTANCE,
+                KotlinProjectionPlatformCallArgument.hstring(),
+            ),
+            stringPlan.platformShape.arguments,
+        )
+        assertEquals(
+            listOf(
+                KotlinProjectionPlatformCallArgument.INSTANCE,
+                KotlinProjectionPlatformCallArgument.pointer(),
+            ),
+            addressPlan.platformShape.arguments,
+        )
+        assertNotEquals(stringPlan.platformShape, addressPlan.platformShape)
+    }
+
+    @Test
     fun module_metadata_emits_only_reachable_values_in_dependency_order() {
         // CsWinRT main.cpp emits ABI support beside the projected declarations. Kotlin's
         // shared initializer support additionally needs dependency-before-user ordering.

@@ -47,6 +47,14 @@ internal data class KotlinTypedProjectionCallSitePlan(
 
     private val stableFunctionName: String = "callSite_${stableSignatureHash()}"
 
+    /**
+     * The physical call identity is deliberately separate from the typed wrapper identity.
+     * Public Kotlin types, IID selection, nullability and ownership stay in [descriptor] and the
+     * generated wrapper; only the ordered ABI carriers participate in platform support placement.
+     */
+    val platformShape: KotlinProjectionPlatformCallShape =
+        KotlinProjectionPlatformCallShape.from(descriptor)
+
     private val runtimeOwnedKey: WinRTProjectionCallSiteCatalogKey =
         WinRTProjectionCallSiteCatalogKey(
             metadata = metadata,
@@ -86,6 +94,138 @@ internal data class KotlinTypedProjectionCallSitePlan(
 
     fun runtimeOwnedCatalogKey(): WinRTProjectionCallSiteCatalogKey = runtimeOwnedKey
 }
+
+/**
+ * Canonical physical shape of a WinRT vtable call within one generated artifact and target.
+ *
+ * This is a generator-side placement key, not a marshaling recipe.  The vtable slot remains a
+ * runtime argument, so it is intentionally absent.  Likewise, public type names, IIDs and
+ * ownership are absent: those decisions belong to each typed wrapper.  HSTRING is kept as a
+ * distinct carrier because the Native recipe transport expands it to address plus length words,
+ * while an ordinary address is passed as one word.
+ */
+internal data class KotlinProjectionPlatformCallShape(
+    val targetAbi: String,
+    val arguments: List<KotlinProjectionPlatformCallArgument>,
+    val returnCarrier: KotlinProjectionPlatformCallCarrier = KotlinProjectionPlatformCallCarrier.INT32,
+) {
+    init {
+        require(targetAbi.isNotBlank()) { "A platform call shape requires a target ABI." }
+        require(arguments.isNotEmpty()) {
+            "A platform call shape must include the COM instance carrier."
+        }
+        require(arguments.first() == KotlinProjectionPlatformCallArgument.INSTANCE) {
+            "A platform call shape must start with the COM instance carrier."
+        }
+    }
+
+    /** Stable, human-readable descriptor used for sharding and generated names. */
+    val canonicalDescriptor: String = buildString {
+        append(targetAbi)
+        append('|')
+        arguments.joinTo(this, separator = ",") { argument -> argument.canonicalDescriptor }
+        append('|')
+        append(returnCarrier.name)
+    }
+
+    val stableHash: String = MessageDigest.getInstance("SHA-256")
+        .digest(canonicalDescriptor.toByteArray(Charsets.UTF_8))
+        .take(8)
+        .joinToString("") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
+
+    companion object {
+        private const val WINDOWS_X64_WINRT_ABI = "windows-x64-winrt-com-vtable"
+
+        fun from(descriptor: WinRTProjectionCallSiteDescriptor): KotlinProjectionPlatformCallShape {
+            val arguments = buildList {
+                add(KotlinProjectionPlatformCallArgument.INSTANCE)
+                descriptor.slots.forEach { slot ->
+                    when (slot.direction) {
+                        WinRTProjectionCallSiteSlotDirection.IN,
+                        WinRTProjectionCallSiteSlotDirection.PASS_ARRAY,
+                        WinRTProjectionCallSiteSlotDirection.FILL_ARRAY,
+                        -> slot.recipe.platformInputArguments().forEach(::add)
+
+                        WinRTProjectionCallSiteSlotDirection.REF,
+                        WinRTProjectionCallSiteSlotDirection.OUT,
+                        WinRTProjectionCallSiteSlotDirection.CALLER_OUT,
+                        -> repeat(slot.functionParameterCount) {
+                            add(KotlinProjectionPlatformCallArgument.pointer())
+                        }
+
+                        WinRTProjectionCallSiteSlotDirection.RECEIVE_ARRAY,
+                        WinRTProjectionCallSiteSlotDirection.RETURN,
+                        -> slot.abiCarriers.forEach { add(KotlinProjectionPlatformCallArgument.pointer()) }
+                    }
+                }
+            }
+            return KotlinProjectionPlatformCallShape(
+                targetAbi = WINDOWS_X64_WINRT_ABI,
+                arguments = arguments,
+            )
+        }
+    }
+}
+
+internal data class KotlinProjectionPlatformCallArgument(
+    val carrier: KotlinProjectionPlatformCallCarrier,
+    val wordCount: Int = 1,
+) {
+    init {
+        require(wordCount > 0) { "A platform call argument must occupy at least one word." }
+        require(carrier != KotlinProjectionPlatformCallCarrier.HSTRING || wordCount == 2) {
+            "An HSTRING platform argument must retain its two-word Native transport shape."
+        }
+    }
+
+    val canonicalDescriptor: String
+        get() = "${carrier.name}:$wordCount"
+
+    companion object {
+        val INSTANCE = KotlinProjectionPlatformCallArgument(
+            carrier = KotlinProjectionPlatformCallCarrier.ADDRESS,
+        )
+
+        fun pointer(): KotlinProjectionPlatformCallArgument = INSTANCE
+
+        fun hstring(): KotlinProjectionPlatformCallArgument = KotlinProjectionPlatformCallArgument(
+            carrier = KotlinProjectionPlatformCallCarrier.HSTRING,
+            wordCount = 2,
+        )
+    }
+}
+
+internal enum class KotlinProjectionPlatformCallCarrier {
+    ADDRESS,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    FLOAT32,
+    FLOAT64,
+    HSTRING,
+}
+
+private fun WinRTProjectionCallSiteRecipe.platformInputArguments(): List<KotlinProjectionPlatformCallArgument> =
+    when (kind) {
+        WinRTProjectionCallSiteRecipeKind.HSTRING -> listOf(KotlinProjectionPlatformCallArgument.hstring())
+        else -> abiCarriers.map { carrier ->
+            KotlinProjectionPlatformCallArgument(carrier.platformCarrier())
+        }
+    }
+
+private fun WinRTProjectionCallSiteAbiCarrier.platformCarrier(): KotlinProjectionPlatformCallCarrier =
+    when (this) {
+        WinRTProjectionCallSiteAbiCarrier.ADDRESS -> KotlinProjectionPlatformCallCarrier.ADDRESS
+        WinRTProjectionCallSiteAbiCarrier.INT8 -> KotlinProjectionPlatformCallCarrier.INT8
+        WinRTProjectionCallSiteAbiCarrier.INT16 -> KotlinProjectionPlatformCallCarrier.INT16
+        WinRTProjectionCallSiteAbiCarrier.INT32 -> KotlinProjectionPlatformCallCarrier.INT32
+        WinRTProjectionCallSiteAbiCarrier.INT64 -> KotlinProjectionPlatformCallCarrier.INT64
+        WinRTProjectionCallSiteAbiCarrier.FLOAT32 -> KotlinProjectionPlatformCallCarrier.FLOAT32
+        WinRTProjectionCallSiteAbiCarrier.FLOAT64 -> KotlinProjectionPlatformCallCarrier.FLOAT64
+    }
 
 internal data class KotlinTypedProjectionCallSiteParameter(
     val type: TypeName,
