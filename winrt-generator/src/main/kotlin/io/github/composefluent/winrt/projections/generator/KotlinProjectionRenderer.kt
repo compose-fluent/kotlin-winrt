@@ -159,7 +159,270 @@ class KotlinProjectionRenderer(
                 )
             }
         }
-        renderType(plan)
+        collectCallSitePlans(plan)
+    }
+
+    private fun collectCallSitePlans(plan: KotlinTypeProjectionPlan) {
+        when (plan.declarationKind) {
+            KotlinProjectionDeclarationKind.Interface -> collectInterfaceCallSites(plan)
+            KotlinProjectionDeclarationKind.Class -> collectClassCallSites(plan)
+            KotlinProjectionDeclarationKind.Delegate -> plan.delegateInvokeShape
+                ?.takeIf { shape -> supportsProjectedDelegateObjectMarshaller(plan, shape) }
+                ?.let(::collectDelegateCallSite)
+            KotlinProjectionDeclarationKind.Enum,
+            KotlinProjectionDeclarationKind.Struct,
+            -> Unit
+        }
+    }
+
+    private fun collectCallSite(
+        callPlan: KotlinProjectionAbiCallPlan,
+        hResultPolicy: io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteHResultPolicy? = null,
+        callerOwnedResultType: TypeName? = null,
+    ) {
+        val support = modulePlatformAbiCalls ?: return
+        val invocation = composeTypedProjectionCallSite(
+            callPlan = callPlan,
+            callSiteSupport = support,
+            hResultPolicy = hResultPolicy,
+            callerOwnedResultType = callerOwnedResultType,
+        )
+        support.observe(invocation)
+    }
+
+    private fun collectBindingCallSite(
+        bindingName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor? = null,
+        suppressHResultCheck: Boolean = false,
+    ) {
+        buildAbiCallPlan(
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            marshalerPlanDescriptor = marshalerPlanDescriptor,
+            suppressHResultCheck = suppressHResultCheck,
+        )?.let { callPlan -> collectCallSite(callPlan) }
+    }
+
+    private fun collectDelegateCallSite(invokeShape: KotlinProjectionDelegateInvokeShape) {
+        buildAbiCallPlan(
+            returnBinding = invokeShape.returnBinding,
+            parameterBindings = invokeShape.parameterBindings,
+        )?.let { callPlan -> collectCallSite(callPlan) }
+    }
+
+    internal fun collectInterfaceNativeProjectionCallSites(
+        plan: KotlinTypeProjectionPlan,
+        genericArguments: List<WinRTTypeRef> = emptyList(),
+        genericTypeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
+        interfaceInstanceName: String = plan.type.qualifiedName,
+    ) {
+        val proxyBindings = collectInterfaceNativeProjectionProxyBindings(
+            plan = plan,
+            interfaceInstanceName = interfaceInstanceName,
+            genericArguments = genericArguments,
+            genericTypeArguments = genericTypeArguments,
+        )
+        proxyBindings.forEach { proxyBinding ->
+            val interfaceType = proxyBinding.interfaceType
+            interfaceType.methods
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+                .forEach { method ->
+                    collectInterfaceProxyMethodCallSite(
+                        slotInterfaceType = interfaceType,
+                        method = method,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                        genericTypeArguments = proxyBinding.genericTypeArguments,
+                    )
+                }
+            interfaceType.properties
+                .filterNot(WinRTPropertyDefinition::isStatic)
+                .filter { it.hasNativeProjectionPropertyAccessor() }
+                .forEach { property ->
+                    collectInterfaceProxyPropertyCallSites(
+                        slotInterfaceType = interfaceType,
+                        property = property,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                        genericTypeArguments = proxyBinding.genericTypeArguments,
+                    )
+                }
+        }
+    }
+
+    internal fun collectInterfaceProxyMethodCallSite(
+        slotInterfaceType: WinRTTypeDefinition,
+        method: WinRTMethodDefinition,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+        genericTypeArguments: List<KotlinProjectionAbiTypeBinding>,
+    ) {
+        val returnBinding = renderAbiTypeBinding(
+            method.returnTypeName,
+            typesByQualifiedName,
+            slotInterfaceType.namespace,
+        ).substituteGenericTypeArguments(genericTypeArguments)
+        val parameterBindings = method.parameters.map { parameter ->
+            KotlinProjectionAbiParameterBinding(
+                name = parameter.name,
+                typeBinding = renderAbiTypeBinding(
+                    parameter.typeName,
+                    typesByQualifiedName,
+                    slotInterfaceType.namespace,
+                ).substituteGenericTypeArguments(genericTypeArguments),
+                category = metadataParameterCategoryFor(parameter),
+            )
+        }
+        collectBindingCallSite(
+            bindingName = "${slotInterfaceType.qualifiedName}.${method.name}",
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
+        )
+    }
+
+    internal fun collectInterfaceProxyPropertyCallSites(
+        slotInterfaceType: WinRTTypeDefinition,
+        property: WinRTPropertyDefinition,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+        genericTypeArguments: List<KotlinProjectionAbiTypeBinding>,
+    ) {
+        val propertyTypeName = property
+            .projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName)
+            .substituteProjectedGenericTypeArguments(genericTypeArguments)
+        if (property.hasNativeProjectionGetterAccessor()) {
+            collectBindingCallSite(
+                bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
+                returnBinding = renderAbiTypeBinding(
+                    property.projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName),
+                    typesByQualifiedName,
+                    slotInterfaceType.namespace,
+                ).substituteGenericTypeArguments(genericTypeArguments),
+                parameterBindings = emptyList(),
+                suppressHResultCheck = property.isNoException,
+            )
+        }
+        if (!property.isReadOnly && property.hasNativeProjectionSetterAccessor()) {
+            collectBindingCallSite(
+                bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.set",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        name = "value",
+                        typeBinding = renderAbiTypeBinding(
+                            propertyTypeName,
+                            typesByQualifiedName,
+                            slotInterfaceType.namespace,
+                        ),
+                    ),
+                ),
+                suppressHResultCheck = property.isNoException,
+            )
+        }
+    }
+
+    private fun collectInterfaceCallSites(plan: KotlinTypeProjectionPlan) {
+        if (canRenderInterfaceProxy(plan)) {
+            collectInterfaceNativeProjectionCallSites(plan)
+            plan.mutableCollectionBindings.forEach { binding ->
+                renderMutableCollectionDelegateInitializer(interfaceNativeProjectionCollectionBinding(plan, binding))
+            }
+            plan.readOnlyCollectionBindings
+                .filterNot { readOnlyBinding ->
+                    plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
+                }
+                .forEach { binding ->
+                    renderReadOnlyCollectionDelegateInitializer(interfaceNativeProjectionCollectionBinding(plan, binding))
+                }
+            if (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) {
+                collectNativeProjectionCloseCallSite()
+            }
+        }
+    }
+
+    private fun collectClassCallSites(plan: KotlinTypeProjectionPlan) {
+        val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
+        plan.mutableCollectionBindings.forEach(::renderMutableCollectionDelegateInitializer)
+        plan.readOnlyCollectionBindings
+            .filterNot { readOnlyBinding ->
+                plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
+            }
+            .forEach(::renderReadOnlyCollectionDelegateInitializer)
+
+        val requiredIteratorBinding = requiredIteratorBinding(plan)
+        val requiredForwardSuppressedMemberNames = if (requiredIteratorBinding != null) {
+            mappedCollectionMemberNames + requiredIteratorMemberNames
+        } else {
+            mappedCollectionMemberNames
+        }
+        renderRequiredInterfaceForwardMembers(plan, requiredForwardSuppressedMemberNames)
+
+        plan.type.methods
+            .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+            .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
+            .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
+            .filterNot { method ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                    ?.isRuntimeOwnedMappedBinding == true
+            }
+            .filterNot { method ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+                    ?.isMappedRuntimeHelperBinding == true
+            }
+            .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" && it.parameters.isEmpty() }
+            .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
+            .forEach { method ->
+                if (renderRuntimeClassInterfaceForwardMethod(plan, method) == null) {
+                    renderRuntimeMethod(plan, method)
+                }
+            }
+        plan.type.properties
+            .filterNot { it.isStatic }
+            .filter { it.hasNativeProjectionGetterAccessor() }
+            .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
+            .filterNot { property -> isRuntimeClassDelegatedMember(plan, "${property.name.uppercase()}_GETTER_SLOT") }
+            .filterNot { property ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
+                    ?.isRuntimeOwnedMappedBinding == true
+            }
+            .filterNot { property ->
+                plan.instanceMemberBindings
+                    .firstOrNull { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
+                    ?.isMappedRuntimeHelperBinding == true
+            }
+            .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
+            .forEach { property ->
+                if (renderRuntimeClassInterfaceForwardProperty(plan, property) == null) {
+                    renderRuntimeProperty(plan, property)
+                }
+            }
+
+        val staticMethods = plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedStaticMethod)
+        val staticProperties = plan.type.properties.filter { it.isStatic }
+        mergedStaticMethods(plan, staticMethods).forEach { method -> renderBoundStaticMethod(plan, method) }
+        mergedStaticProperties(plan, staticProperties).forEach { property -> renderBoundStaticProperty(plan, property) }
+        plan.type.events.filter { it.isStatic }.forEach { event ->
+            val addBinding = plan.staticMemberBindings.firstOrNull {
+                it.bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT"
+            }
+            if (addBinding == null) {
+                renderBoundStaticEventFunctions(plan, event)
+            }
+        }
+        renderActivationFactoryCreateFunctions(plan)
+        renderComposableFactoryCreateFunctions(plan)
+        collectDerivedComposableFactoryCallSites(plan)
+    }
+
+    private fun collectNativeProjectionCloseCallSite() {
+        val callPlan = requireAbiCallPlan(
+            bindingName = "Windows.Foundation.IClosable.Close",
+            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+            parameterBindings = emptyList(),
+        )
+        collectCallSite(callPlan)
     }
 
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
@@ -209,6 +472,7 @@ class KotlinProjectionRenderer(
         KotlinProjectionDeclarationKind.Struct -> renderStruct(plan)
         KotlinProjectionDeclarationKind.Delegate -> renderDelegate(plan)
     }
+
 
     internal fun renderInterfaceShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)

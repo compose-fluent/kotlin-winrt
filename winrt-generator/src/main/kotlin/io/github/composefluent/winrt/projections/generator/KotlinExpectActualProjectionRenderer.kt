@@ -24,9 +24,61 @@ internal class KotlinExpectActualProjectionRenderer(
 ) : KotlinProjectionFileRenderer {
     internal fun collectCallSites(plan: KotlinTypeProjectionPlan) {
         when {
-            canRenderExpectActualInterfaceSlice(plan) -> renderJvmInterfaceNativeProjection(plan)
-            canRenderExpectActualRuntimeClassSlice(plan) -> buildJvmActualRuntimeClass(plan)
+            canRenderExpectActualInterfaceSlice(plan) -> collectJvmInterfaceNativeProjectionCallSites(plan)
+            canRenderExpectActualRuntimeClassSlice(plan) -> collectJvmActualRuntimeClassCallSites(plan)
             else -> baseRenderer.collectCallSites(plan)
+        }
+    }
+
+    private fun collectJvmInterfaceNativeProjectionCallSites(plan: KotlinTypeProjectionPlan) {
+        baseRenderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
+            interfaceType.methods
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+                .forEach { method ->
+                    baseRenderer.collectInterfaceProxyMethodCallSite(
+                        slotInterfaceType = interfaceType,
+                        method = method,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                        genericTypeArguments = emptyList(),
+                    )
+                }
+            interfaceType.properties
+                .filterNot(WinRTPropertyDefinition::isStatic)
+                .filter { it.hasNativeProjectionPropertyAccessor() }
+                .forEach { property ->
+                    baseRenderer.collectInterfaceProxyPropertyCallSites(
+                        slotInterfaceType = interfaceType,
+                        property = property,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                        genericTypeArguments = emptyList(),
+                    )
+                }
+        }
+    }
+
+    private fun collectJvmActualRuntimeClassCallSites(plan: KotlinTypeProjectionPlan) {
+        publicRuntimeClassInterfaceProxyTypes(plan).forEach { interfaceType ->
+            interfaceType.methods
+                .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+                .forEach { method ->
+                    baseRenderer.collectInterfaceProxyMethodCallSite(
+                        slotInterfaceType = interfaceType,
+                        method = method,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                        genericTypeArguments = emptyList(),
+                    )
+                }
+            interfaceType.properties
+                .filterNot(WinRTPropertyDefinition::isStatic)
+                .filter { it.hasNativeProjectionPropertyAccessor() }
+                .forEach { property ->
+                    baseRenderer.collectInterfaceProxyPropertyCallSites(
+                        slotInterfaceType = interfaceType,
+                        property = property,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                        genericTypeArguments = emptyList(),
+                    )
+                }
         }
     }
 
@@ -758,6 +810,7 @@ internal class KotlinExpectActualProjectionRenderer(
         }
         return builder.build()
     }
+
 
     private fun renderSourceSetFile(
         sourceSetPrefix: String,

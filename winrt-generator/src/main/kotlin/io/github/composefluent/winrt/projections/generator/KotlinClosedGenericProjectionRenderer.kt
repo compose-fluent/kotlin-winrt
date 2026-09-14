@@ -128,7 +128,7 @@ internal fun collectClosedGenericProjectionHelpers(
     modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     supportOwnerIdentity: String?,
 ) {
-    collectClosedGenericProjectionHelperTypes(
+    val (renderer, inputs) = closedGenericProjectionHelperInputs(
         planner = planner,
         model = model,
         plans = plans,
@@ -136,16 +136,29 @@ internal fun collectClosedGenericProjectionHelpers(
         modulePlatformAbiCalls = modulePlatformAbiCalls,
         supportOwnerIdentity = supportOwnerIdentity,
     )
+    inputs.forEach { input ->
+        renderer.collectClosedGenericProjectionHelperCallSites(
+            plan = input.plan,
+            binding = input.binding,
+            genericArguments = input.genericArguments,
+        )
+    }
 }
 
-private fun collectClosedGenericProjectionHelperTypes(
+private data class ClosedGenericProjectionHelperInput(
+    val plan: KotlinTypeProjectionPlan,
+    val binding: KotlinProjectionAbiTypeBinding,
+    val genericArguments: List<io.github.composefluent.winrt.metadata.WinRTTypeRef>,
+)
+
+private fun closedGenericProjectionHelperInputs(
     planner: KotlinProjectionPlanner,
     model: WinRTMetadataModel,
     plans: List<KotlinTypeProjectionPlan>,
     instantiations: List<WinRTGenericTypeInstantiationDescriptor>,
     modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
     supportOwnerIdentity: String?,
-): List<TypeSpec> {
+): Pair<KotlinProjectionRenderer, List<ClosedGenericProjectionHelperInput>> {
     val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
     val typesByQualifiedName = model.namespaces
         .flatMap { namespace -> namespace.types }
@@ -166,7 +179,7 @@ private fun collectClosedGenericProjectionHelperTypes(
         modulePlatformAbiCalls = modulePlatformAbiCalls,
         supportOwnerIdentity = supportOwnerIdentity,
     )
-    val helperTypes = instantiations
+    val inputs = instantiations
         .asSequence()
         .mapNotNull { instantiation ->
             val definition = instantiation.definitionType
@@ -181,16 +194,66 @@ private fun collectClosedGenericProjectionHelperTypes(
             if (binding.closedGenericProjectionHelperClassName(supportOwnerIdentity) == null) {
                 return@mapNotNull null
             }
-            renderer.renderClosedGenericProjectionHelper(
+            ClosedGenericProjectionHelperInput(
                 plan = plan,
                 binding = binding,
                 genericArguments = instantiation.genericArguments,
             )
         }
+        .distinctBy { input -> input.binding.closedGenericProjectionHelperClassName(supportOwnerIdentity)?.canonicalName }
+        .sortedBy { input -> input.binding.closedGenericProjectionHelperClassName(supportOwnerIdentity)?.canonicalName }
+        .toList()
+    return renderer to inputs
+}
+
+private fun collectClosedGenericProjectionHelperTypes(
+    planner: KotlinProjectionPlanner,
+    model: WinRTMetadataModel,
+    plans: List<KotlinTypeProjectionPlan>,
+    instantiations: List<WinRTGenericTypeInstantiationDescriptor>,
+    modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
+    supportOwnerIdentity: String?,
+): List<TypeSpec> {
+    val (renderer, inputs) = closedGenericProjectionHelperInputs(
+        planner = planner,
+        model = model,
+        plans = plans,
+        instantiations = instantiations,
+        modulePlatformAbiCalls = modulePlatformAbiCalls,
+        supportOwnerIdentity = supportOwnerIdentity,
+    )
+    val helperTypes = inputs
+        .map { input ->
+            renderer.renderClosedGenericProjectionHelper(
+                plan = input.plan,
+                binding = input.binding,
+                genericArguments = input.genericArguments,
+            )
+        }
         .distinctBy(TypeSpec::name)
         .sortedBy(TypeSpec::name)
-        .toList()
     return helperTypes
+}
+
+private fun KotlinProjectionRenderer.collectClosedGenericProjectionHelperCallSites(
+    plan: KotlinTypeProjectionPlan,
+    binding: KotlinProjectionAbiTypeBinding,
+    genericArguments: List<io.github.composefluent.winrt.metadata.WinRTTypeRef>,
+) {
+    val mappedAdapter = listOf(binding.resolvedTypeName, binding.typeName)
+        .asSequence()
+        .map { typeName -> typeName.removeSuffix("?").substringBefore('<') }
+        .mapNotNull(::mappedTypeByAbiName)
+        .mapNotNull(KotlinProjectionMappedType::closedGenericAdapter)
+        .firstOrNull()
+    if (mappedAdapter == null) {
+        collectInterfaceNativeProjectionCallSites(
+            plan = plan,
+            genericArguments = genericArguments,
+            genericTypeArguments = binding.typeArguments,
+            interfaceInstanceName = binding.typeName.removeSuffix("?"),
+        )
+    }
 }
 
 private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(

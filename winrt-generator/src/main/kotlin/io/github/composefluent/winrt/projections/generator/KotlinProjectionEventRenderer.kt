@@ -882,6 +882,10 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
         }
 }
 
+internal fun KotlinProjectionRenderer.collectDerivedComposableFactoryCallSites(plan: KotlinTypeProjectionPlan) {
+    renderDerivedComposableFactoryCreateFunctions(plan)
+}
+
 private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
     plan: KotlinTypeProjectionPlan,
     factory: KotlinProjectionComposableFactoryBinding,

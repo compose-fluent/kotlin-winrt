@@ -84,6 +84,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         }
     }
 
+
     internal fun registerCodec(
         operation: String,
         role: KotlinProjectionAbiCodecRole? = null,
@@ -183,6 +184,10 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         )
     }
 
+    internal fun observe(invocation: KotlinTypedProjectionCallSiteInvocation) {
+        record(invocation.plan)
+    }
+
     internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
         val renderedMetadata = reachableMetadata()
         if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
@@ -243,6 +248,11 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             "Prepared WinRT CallSite state uses ${source.abiSupportShardCount} shards, not $abiSupportShardCount."
         }
         preparedCallSitePlans.putAll(source.preparedCallSitePlans)
+        enabledCallNames.orEmpty().forEach { functionName ->
+            source.observedCalls[functionName]?.let { plan ->
+                calls[functionName] = plan
+            }
+        }
         codecs.putAll(source.codecs)
         codecsByIdentity.putAll(source.codecsByIdentity)
         abiTypes.putAll(source.abiTypes)
