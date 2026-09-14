@@ -23,7 +23,7 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.jar.JarFile
 
-private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources-v3"
+private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources-v4"
 
 internal class StaticPreparationUnavailable(message: String) : RuntimeException(message)
 
@@ -194,7 +194,7 @@ internal fun prepareWinRTStaticProjectionSources(
         StandardOpenOption.WRITE,
     ).use { channel ->
         channel.lock().use {
-            if (!Files.isRegularFile(entry.resolve("manifest.tsv")) || !Files.isDirectory(sourceRoot)) {
+            if (!isPreparedStaticSourceValid(sourceRoot)) {
                 val model = cache.load(
                     project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models").asFile.toPath(),
                 )
@@ -238,6 +238,8 @@ internal fun prepareWinRTStaticProjectionSources(
                         emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
                     ).generateTo(staticModel, temporary.resolve("sources"))
                     writePreparedStaticManifest(temporary.resolve("manifest.tsv"), cache.files, staticModel)
+                    // Replace an invalid entry only after its replacement has been fully generated.
+                    if (Files.exists(entry)) GradleFileOperations.deleteDirectory(entry)
                     runCatching {
                         Files.move(temporary, entry, StandardCopyOption.ATOMIC_MOVE)
                     }.getOrElse {
@@ -284,7 +286,7 @@ private fun preparedStaticProjectionKey(
             update(value)
         }
     }
-    updateField("schema", "prepared-static-sources-v3")
+    updateField("schema", "prepared-static-sources-v4")
     updateField("emitSupportFiles", "true")
     updateField("groupProjectionFilesByPackageOnWrite", "true")
     updateField("generationLayout", "SingleSourceSet")
@@ -448,9 +450,44 @@ private fun writePreparedStaticManifest(path: Path, files: List<Path>, model: Wi
         append(PREPARED_STATIC_HEADER).append('\n')
         append("types\t").append(names.joinToString(",")).append('\n')
         if (encodedFiles.isNotEmpty()) append(encodedFiles).append('\n')
+        val root = path.parent.resolve("sources")
+        Files.walk(root).use { paths ->
+            paths.filter(Files::isRegularFile).sorted().forEach { file ->
+                val relative = root.relativize(file).toString().replace('\\', '/')
+                val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(relative.toByteArray(Charsets.UTF_8))
+                append("output\t").append(encoded).append('\t').append(preparedOutputHash(file)).append('\n')
+            }
+        }
     }
     GradleFileOperations.writeStringIfChanged(path, content)
 }
+
+private fun preparedOutputHash(path: Path): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    updateFileContents(digest, path)
+    return java.util.HexFormat.of().formatHex(digest.digest())
+}
+
+/** Validate both the output inventory and bytes before reusing a prepared projection. */
+internal fun isPreparedStaticSourceValid(sourceRoot: Path): Boolean = runCatching {
+    val manifest = sourceRoot.parent.resolve("manifest.tsv")
+    if (!Files.isDirectory(sourceRoot) || !Files.isRegularFile(manifest)) return false
+    val lines = Files.readAllLines(manifest)
+    if (lines.firstOrNull() != PREPARED_STATIC_HEADER) return false
+    val root = sourceRoot.toAbsolutePath().normalize()
+    val expected = mutableSetOf<Path>()
+    for (line in lines.drop(1).filter { it.startsWith("output\t") }) {
+        val fields = line.split('\t')
+        if (fields.size != 3) return false
+        val relative = Path.of(String(Base64.getUrlDecoder().decode(fields[1]), Charsets.UTF_8))
+        val file = root.resolve(relative).normalize()
+        if (relative.isAbsolute || !file.startsWith(root) || !expected.add(file)) return false
+        if (!Files.isRegularFile(file) || preparedOutputHash(file) != fields[2]) return false
+    }
+    Files.walk(root).use { paths ->
+        paths.filter(Files::isRegularFile).allMatch { it in expected }
+    }
+}.getOrDefault(false)
 
 internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: Path) {
     if (!Files.isDirectory(sourceRoot)) {

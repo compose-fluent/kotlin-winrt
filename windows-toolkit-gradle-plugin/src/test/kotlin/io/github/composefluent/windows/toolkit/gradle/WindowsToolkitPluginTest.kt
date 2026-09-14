@@ -3324,6 +3324,26 @@ class WindowsToolkitPluginTest {
         Files.writeString(dynamicOutput, "package business\nclass Overlay")
         materializePreparedStaticSources(prepared, output.get().asFile.toPath())
         assertTrue(Files.isRegularFile(dynamicOutput))
+        // Gradle-specific cache integrity: missing/corrupted outputs must not be published as hits.
+        val cachedFile = Files.walk(prepared).use { paths ->
+            paths.filter(Files::isRegularFile).findFirst().orElseThrow()
+        }
+        val expectedContents = Files.readString(cachedFile)
+        for (damage in listOf<() -> Unit>(
+            { Files.delete(cachedFile) },
+            { Files.writeString(cachedFile, "corrupt") },
+            { Files.delete(prepared.parent.resolve("manifest.tsv")) },
+        )) {
+            damage()
+            assertFalse(isPreparedStaticSourceValid(prepared))
+            val repaired = prepareWinRTStaticProjectionSources(
+                project, extension.packageReferences, emptyList(), output, "prepared-static-test.jar",
+            )
+            assertEquals(prepared, repaired)
+            assertTrue(isPreparedStaticSourceValid(prepared))
+            assertEquals(expectedContents, Files.readString(cachedFile))
+            assertTrue(Files.isRegularFile(dynamicOutput))
+        }
         assertTrue(Files.walk(output.get().asFile.toPath()).use { stream ->
             stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
         })

@@ -425,7 +425,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         val hasPreparedStaticSources = parameters.preparedStaticSourceDirectory.orNull
             ?.asFile
             ?.toPath()
-            ?.takeIf(Files::isDirectory)
+            ?.takeIf(::isPreparedStaticSourceValid)
             ?.also { preparedRoot ->
                 materializePreparedStaticSources(preparedRoot, generatedRoot)
             } != null
