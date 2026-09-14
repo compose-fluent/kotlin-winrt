@@ -47,7 +47,9 @@ import java.nio.file.Path
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Base64
+import java.util.jar.JarEntry
 import java.util.jar.JarFile
+import java.util.jar.JarOutputStream
 
 class WindowsToolkitPluginTest {
     @Test
@@ -234,11 +236,26 @@ class WindowsToolkitPluginTest {
             windows {
                 packageReferences {
                     windowsSdk(null, false, true)
-                    type "Windows.Foundation.IStringable"
+                    type "Windows.Foundation.Uri"
                 }
             }
             """.trimIndent(),
         )
+
+        // The SDK model previously overflowed the 384 MiB configuration daemon before
+        // task workers could run. A clean help/import must prepare usable sources too.
+        val sync = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("help", "--stacktrace")
+            .build()
+        assertEquals(TaskOutcome.SUCCESS, sync.task(":help")?.outcome)
+        assertEquals(null, sync.task(":generateWinRTProjections"))
+        val sources = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        assertTrue(Files.walk(sources).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .anyMatch { Files.readString(it).contains("class Uri") }
+        })
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
@@ -309,13 +326,16 @@ class WindowsToolkitPluginTest {
 
             windows {
                 packageReferences {
-                    nugetPackage "$packageId", "$packageVersion"
                     namespace "Sample"
-                    restoreNuGetPackages.set(false)
+                    metadataInputs.add(file("fixture/Sample.winmd").absolutePath)
                 }
             }
 
-            tasks.named("generateWinRTProjections") {
+            // Exercise task/worker restore directly. A declared DSL package is now
+            // prepared during configuration, before any worker can be started.
+            tasks.withType(io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask).configureEach {
+                nugetPackages.set(["$packageId@$packageVersion"])
+                winAppRestoreLockFiles.setFrom([])
                 nugetExecutable.set(file("nuget.cmd").absolutePath)
                 restoreNuGetPackages.set(true)
                 useNuGetCliGlobalPackages.set(false)
@@ -432,7 +452,7 @@ class WindowsToolkitPluginTest {
         )
         assertEquals(
             listOf(
-                "-Xmx1024m",
+                "-Xmx2048m",
                 "-XX:+UseSerialGC",
                 "-Dfile.encoding=UTF-8",
             ),
@@ -858,10 +878,10 @@ class WindowsToolkitPluginTest {
             metadataInputs.set(listOf(winmd.toString()))
             type("Sample.IProbe")
         }
-        val generated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/Projection.kt")
-        generated.parentFile.mkdirs()
-        generated.writeText("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Projection")
-        val overlay = generated.resolveSibling("Overlay.kt")
+        val legacyGenerated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/Projection.kt")
+        legacyGenerated.parentFile.mkdirs()
+        legacyGenerated.writeText("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Projection")
+        val overlay = legacyGenerated.resolveSibling("Overlay.kt")
         overlay.writeText("// KOTLIN_WINRT_BUSINESS_OVERLAY\n@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Overlay")
         val business = project.file("src/winuiMain/kotlin/Business.kt")
         business.parentFile.mkdirs()
@@ -873,6 +893,10 @@ class WindowsToolkitPluginTest {
         )
         (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
 
+        assertFalse(legacyGenerated.exists())
+        val generated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/sample/sample.kt")
+        assertTrue(generated.isFile)
+        assertTrue(overlay.isFile)
         val projection = target.compilations.getByName("winRTProjection")
         val producer = projection.compileTaskProvider.get()
         val consumer = target.compilations.getByName("main").compileTaskProvider.get()
@@ -3322,17 +3346,72 @@ class WindowsToolkitPluginTest {
         Files.writeString(dynamicOutput, "package business\nclass Overlay")
         materializePreparedStaticSources(prepared, output.get().asFile.toPath())
         assertTrue(Files.isRegularFile(dynamicOutput))
+        // Gradle-specific cache integrity: missing/corrupted outputs must not be published as hits.
+        val cachedFile = Files.walk(prepared).use { paths ->
+            paths.filter(Files::isRegularFile).findFirst().orElseThrow()
+        }
+        val expectedContents = Files.readString(cachedFile)
+        for (damage in listOf<() -> Unit>(
+            { Files.delete(cachedFile) },
+            { Files.writeString(cachedFile, "corrupt") },
+            { Files.delete(prepared.parent.resolve("manifest.tsv")) },
+        )) {
+            damage()
+            assertFalse(isPreparedStaticSourceValid(prepared))
+            val repaired = prepareWinRTStaticProjectionSources(
+                project, extension.packageReferences, emptyList(), output, "prepared-static-test.jar",
+            )
+            assertEquals(prepared, repaired)
+            assertTrue(isPreparedStaticSourceValid(prepared))
+            assertEquals(expectedContents, Files.readString(cachedFile))
+            assertTrue(Files.isRegularFile(dynamicOutput))
+        }
         assertTrue(Files.walk(output.get().asFile.toPath()).use { stream ->
             stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
         })
+
+        extension.packageReferences.type("Sample.Missing")
+        val changedPrepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+        assertTrue(changedPrepared != null)
+        assertTrue(changedPrepared != prepared)
+
+        extension.includeNamespaces.set(listOf("Sample"))
+        extension.excludeNamespaces.set(emptyList())
+        val includedPrepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+        extension.includeNamespaces.set(emptyList())
+        extension.excludeNamespaces.set(listOf("Sample"))
+        val excludedPrepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+        assertTrue(includedPrepared != null)
+        assertTrue(excludedPrepared != null)
+        assertTrue(includedPrepared != excludedPrepared)
     }
 
     @Test
-    fun local_winmd_static_sources_are_not_prepared_when_windows_sdk_is_declared() {
-        val project = ProjectBuilder.builder().withName("prepared-static-sdk-test").build()
+    fun projected_nuget_static_sources_are_prepared_from_configured_global_packages_root() {
+        val project = ProjectBuilder.builder().withName("prepared-static-nuget-test").build()
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val extension = project.extensions.getByType(WindowsExtension::class.java)
-        val winmd = project.projectDir.toPath().resolve("fixture/Sample.winmd")
+        val packageRoot = project.projectDir.toPath()
+            .resolve("nuget-cache/sample.package/1.0.0")
+        val winmd = packageRoot.resolve("metadata/Sample.winmd")
         WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
             assemblyName = "Sample",
             interfaces = listOf(
@@ -3344,25 +3423,443 @@ class WindowsToolkitPluginTest {
             runtimeClasses = emptyList(),
             outputFile = winmd,
         )
-        extension.packageReferences.winmd(winmd.toString())
-        extension.packageReferences.type("Sample.IProbe")
-        extension.packageReferences.windowsSdk("10.0.26100.0", generateProjection = true)
-
-        val failure = runCatching {
-            prepareWinRTStaticProjectionSources(
-                project = project,
-                extension = extension.packageReferences,
-                dependencyIdentityFiles = emptyList(),
-                generatedOutputDirectory = project.layout.buildDirectory.dir("prepared-output"),
-                supportOwnerIdentity = "prepared-static-sdk-test.jar",
-            )
-        }.exceptionOrNull()
-
-        assertTrue(
-            "Windows SDK metadata must remain on the execution-time generation path",
-            failure is StaticPreparationUnavailable,
+        extension.packageReferences.nugetGlobalPackagesRoots.add(
+            project.projectDir.toPath().resolve("nuget-cache").toString(),
         )
-        assertTrue(failure!!.message.orEmpty().contains("Windows SDK"))
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.restoreNuGetPackages.set(false)
+        extension.packageReferences.nugetPackage("Sample.Package", "1.0.0")
+        extension.packageReferences.type("Sample.IProbe")
+
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = project.layout.buildDirectory.dir("prepared-output"),
+            supportOwnerIdentity = "prepared-static-nuget-test.jar",
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.walk(prepared!!).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+    }
+
+    @Test
+    fun projected_nuget_static_sources_restore_missing_packages_during_configuration() {
+        assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
+        val root = Files.createTempDirectory("kotlin-winrt-prepared-nuget-restore-test-")
+        val project = ProjectBuilder.builder()
+            .withName("prepared-static-nuget-restore-test")
+            .withProjectDir(root.toFile())
+            .build()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val packageId = "Kotlin.WinRT.Config.Restore.Probe"
+        val packageVersion = "1.0.0"
+        val fixtureWinmd = root.resolve("fixture/Sample.winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = fixtureWinmd,
+        )
+        val invocationLog = root.resolve("nuget-invocation.txt")
+        val nugetExecutable = root.resolve("nuget.cmd")
+        Files.writeString(
+            nugetExecutable,
+            """
+            @echo off
+            setlocal
+            >>"$invocationLog" echo args=%*
+            set "OUTPUT="
+            :parse
+            if "%~1"=="" goto install
+            if /I "%~1"=="-OutputDirectory" (
+              set "OUTPUT=%~2"
+              shift
+            )
+            shift
+            goto parse
+            :install
+            if not defined OUTPUT exit /b 1
+            mkdir "%OUTPUT%\${packageId.lowercase()}\$packageVersion\metadata" 2>nul
+            copy /Y "$fixtureWinmd" "%OUTPUT%\${packageId.lowercase()}\$packageVersion\metadata\Sample.winmd" >nul
+            exit /b %ERRORLEVEL%
+            """.trimIndent(),
+        )
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.restoreNuGetPackages.set(true)
+        extension.packageReferences.useNuGetCliGlobalPackages.set(false)
+        extension.packageReferences.nugetExecutable.set(nugetExecutable.toString())
+        extension.packageReferences.nugetPackage(packageId, packageVersion)
+        extension.packageReferences.type("Sample.IProbe")
+
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = project.layout.buildDirectory.dir("prepared-output"),
+            supportOwnerIdentity = "prepared-static-nuget-restore-test.jar",
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.readString(invocationLog).contains("install $packageId"))
+        assertTrue(
+            Files.isRegularFile(
+                root.resolve(
+                    ".gradle/kotlin-winrt/prepared-nuget/${packageId.lowercase()}/$packageVersion/metadata/Sample.winmd",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun configuration_sync_prepares_projected_nuget_sources_without_generation_task() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-preparation-test-")
+        val packageRoot = projectDir.resolve("nuget-cache/sample.package/1.0.0")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = packageRoot.resolve("metadata/Sample.winmd"),
+        )
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-preparation-test")
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.windows-toolkit"
+            }
+
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add(file("nuget-cache").absolutePath)
+                    useNuGetCliGlobalPackages.set(false)
+                    restoreNuGetPackages.set(false)
+                    nugetPackage "Sample.Package", "1.0.0"
+                    type "Sample.IProbe"
+                }
+            }
+            """.trimIndent(),
+        )
+
+        // A distributed plugin has no plugin-under-test metadata beside its jar.
+        // NuGet-only configuration must reuse its bundled generator dependencies even
+        // when the consumer has not declared Maven repositories for Kotlin compilation.
+        writeGradleFile(projectDir.resolve("settings.gradle.kts"), "rootProject.name = \"nuget-sync-without-maven\"")
+        val pluginClasspath = GradleRunner.create().withPluginClasspath().pluginClasspath
+        val pluginJar = pluginClasspath.single { it.name.startsWith("windows-toolkit-gradle-plugin-") && it.extension == "jar" }
+        val distributedJar = projectDir.resolve("plugin-distribution/${pluginJar.name}")
+        Files.createDirectories(distributedJar.parent)
+        Files.copy(pluginJar.toPath(), distributedJar)
+        val isolatedClasspath = pluginClasspath.map { if (it == pluginJar) distributedJar.toFile() else it }
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath(isolatedClasspath)
+            .withArguments("help", "--offline", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":help")?.outcome)
+        assertTrue(
+            Files.walk(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")).use { stream ->
+                stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+            },
+        )
+    }
+
+    @Test
+    fun prepared_static_materialization_removes_legacy_generated_shards_and_preserves_user_sources() {
+        val root = Files.createTempDirectory("kotlin-winrt-static-shard-migration")
+        val prepared = Files.createDirectories(root.resolve("prepared"))
+        val output = Files.createDirectories(root.resolve("output"))
+        Files.writeString(prepared.resolve("sample_0.kt"), "class Current")
+        Files.writeString(output.resolve("sample.kt"), "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Old")
+        Files.writeString(output.resolve("Overlay.kt"), "class Overlay")
+        val businessOverlay = "// KOTLIN_WINRT_BUSINESS_OVERLAY\n@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass BusinessOverlay"
+        Files.writeString(output.resolve("BusinessOverlay.kt"), businessOverlay)
+        // A manifest may already exist from an earlier sync while task-owned shards
+        // from before that sync still exist outside its inventory.
+        Files.writeString(output.resolve(".kotlin-winrt-prepared-static-files.tsv"), "sample_0.kt\n")
+        materializePreparedStaticSources(prepared, output)
+        assertFalse(Files.exists(output.resolve("sample.kt")))
+        assertEquals("class Current", Files.readString(output.resolve("sample_0.kt")))
+        assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
+        assertEquals(businessOverlay, Files.readString(output.resolve("BusinessOverlay.kt")))
+        Files.writeString(output.resolve("legacy.kt"), "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Legacy")
+        clearPreparedStaticSources(output)
+        assertFalse(Files.exists(output.resolve("sample_0.kt")))
+        assertFalse(Files.exists(output.resolve("legacy.kt")))
+        assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
+        assertEquals(businessOverlay, Files.readString(output.resolve("BusinessOverlay.kt")))
+    }
+
+    @Test
+    fun nuget_sync_replaces_changed_versions_and_filters_without_touching_user_sources() {
+        // Gradle lifecycle adaptation: the same namespace writer input must be reflected
+        // after configuration changes, as in cswinrt/main.cpp's filtered namespace output.
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-lifecycle-")
+        writeMinimalGradleFixture(projectDir, "nuget-sync-lifecycle")
+        for ((version, name) in listOf("1.0.0" to "IFirst", "2.0.0" to "ISecond")) {
+            WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+                assemblyName = "Sample",
+                interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.$name",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                )),
+                runtimeClasses = emptyList(),
+                outputFile = projectDir.resolve("nuget-cache/sample.package/$version/metadata/Sample.winmd"),
+            )
+        }
+        fun sync(version: String?, excluded: Boolean = false) {
+            writeGradleFile(projectDir.resolve("build.gradle"), """
+                plugins { id "io.github.compose-fluent.windows-toolkit" }
+                windows {
+                    packageReferences {
+                        nugetGlobalPackagesRoots.add(file("nuget-cache").absolutePath)
+                        useNuGetCliGlobalPackages.set(false)
+                        restoreNuGetPackages.set(false)
+                        ${version?.let { "nugetPackage 'Sample.Package', '$it'\nnamespace 'Sample'" }.orEmpty()}
+                        ${if (excluded) "excludeNamespace 'Sample'" else ""}
+                    }
+                }
+            """.trimIndent())
+            GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+                .withArguments("help", "--offline", "--stacktrace").build()
+        }
+        val output = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        fun containsInterface(name: String): Boolean = Files.walk(output).use { files ->
+            files.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .anyMatch { Files.readString(it).contains("interface $name") }
+        }
+        sync("1.0.0")
+        assertTrue(containsInterface("IFirst"))
+        val overlay = output.resolve("Overlay.kt")
+        Files.writeString(overlay, "class Overlay")
+        val firstFile = output.resolve("sample/sample.kt")
+        val timestamp = Files.getLastModifiedTime(firstFile)
+        sync("1.0.0")
+        assertEquals(timestamp, Files.getLastModifiedTime(firstFile))
+        sync("2.0.0")
+        assertFalse(containsInterface("IFirst"))
+        assertTrue(containsInterface("ISecond"))
+        sync("2.0.0", excluded = true)
+        assertFalse(containsInterface("ISecond"))
+        sync(null)
+        assertFalse(containsInterface("IFirst"))
+        assertFalse(containsInterface("ISecond"))
+        assertEquals("class Overlay", Files.readString(overlay))
+    }
+
+    @Test
+    fun configuration_sync_reports_missing_nuget_before_generation() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-missing-test-")
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-missing-test")
+        fun configure(restore: Boolean) {
+            writeGradleFile(projectDir.resolve("build.gradle"), """
+                plugins { id "io.github.compose-fluent.windows-toolkit" }
+                windows {
+                    packageReferences {
+                        nugetGlobalPackagesRoots.add(file("empty-cache").absolutePath)
+                        useNuGetCliGlobalPackages.set(false)
+                        restoreNuGetPackages.set($restore)
+                        nugetPackage "Sample.Missing.Package", "1.0.0"
+                        type "Sample.IProbe"
+                    }
+                }
+            """.trimIndent())
+        }
+        configure(true)
+        val offline = GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--offline", "--stacktrace").buildAndFail()
+        assertTrue(offline.output, offline.output.contains("Projected NuGet packages are missing while Gradle is offline"))
+        configure(false)
+        val disabled = GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--stacktrace").buildAndFail()
+        assertTrue(disabled.output, disabled.output.contains("sample.missing.package", ignoreCase = true))
+        assertFalse(Files.exists(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")))
+    }
+
+    @Test
+    fun configuration_cache_sync_restores_missing_nuget_and_repairs_deleted_sources() {
+        assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-preparation-test-")
+        val packageRoot = projectDir.resolve("fixture/sample.package/1.0.0")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = packageRoot.resolve("metadata/Sample.winmd"),
+        )
+        Files.writeString(projectDir.resolve("nuget.cmd"), """
+            @echo off
+            setlocal
+            set "OUTPUT="
+            :parse
+            if "%~1"=="" goto install
+            if /I "%~1"=="-OutputDirectory" (
+              set "OUTPUT=%~2"
+              shift
+            )
+            shift
+            goto parse
+            :install
+            if not defined OUTPUT exit /b 1
+            mkdir "%OUTPUT%\sample.package\1.0.0\metadata" 2>nul
+            copy /Y "$packageRoot\metadata\Sample.winmd" "%OUTPUT%\sample.package\1.0.0\metadata\Sample.winmd" >nul
+            exit /b %ERRORLEVEL%
+        """.trimIndent())
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-preparation-test")
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.windows-toolkit"
+            }
+
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add(file("nuget-cache").absolutePath)
+                    useNuGetCliGlobalPackages.set(false)
+                    restoreNuGetPackages.set(true)
+                    nugetExecutable.set(file("nuget.cmd").absolutePath)
+                    nugetPackage "Sample.Package", "1.0.0"
+                    type "Sample.IProbe"
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":help")?.outcome)
+        assertTrue(
+            Files.walk(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")).use { stream ->
+                stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+            },
+        )
+        assertTrue(result.output.contains("Configuration cache entry stored"))
+        val output = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        val generated = Files.walk(output).use { paths -> paths.filter { it.toString().endsWith(".kt") }.toList() }
+        val expected = generated.associateWith(Files::readString)
+        // The first cold configuration observed absent cache/output paths before creating them.
+        // Capture their settled state before asserting reuse and deletion invalidation.
+        GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace").build()
+        val repeat = GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace").build()
+        assertTrue(repeat.output, repeat.output.contains("Reusing configuration cache"))
+        Files.delete(generated.first())
+        GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace").build()
+        expected.forEach { (path, contents) -> assertEquals(contents, Files.readString(path)) }
+    }
+
+    @Test
+    fun ide_import_preparation_preserves_identity_producer_dependencies() {
+        val project = ProjectBuilder.builder().withName("ide-identity-producer-test").build()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val producer = project.tasks.register("produceIdentity")
+        val generation = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
+        generation.dependencyIdentityFiles.from(
+            project.files(project.layout.buildDirectory.file("producer/identity.json")).builtBy(producer),
+        )
+        val ideImport = project.tasks.register("prepareKotlinIdeaImport").get()
+        assertTrue(ideImport.taskDependencies.getDependencies(ideImport).contains(generation))
+        assertTrue(generation.taskDependencies.getDependencies(generation).contains(producer.get()))
+    }
+
+    @Test
+    fun prepared_static_implementation_fingerprint_tracks_jar_and_classes_content() {
+        val root = Files.createTempDirectory("kotlin-winrt-prepared-fingerprint-test-")
+        val classesRoot = root.resolve("classes")
+        Files.createDirectories(classesRoot.resolve("sample"))
+        val classFile = classesRoot.resolve("sample/Generator.class")
+        Files.write(classFile, byteArrayOf(1, 2, 3))
+
+        val jar = root.resolve("generator.jar")
+        fun writeJar(bytes: ByteArray) {
+            JarOutputStream(Files.newOutputStream(jar)).use { output ->
+                output.putNextEntry(JarEntry("sample/Generator.class"))
+                output.write(bytes)
+                output.closeEntry()
+            }
+        }
+        writeJar(byteArrayOf(4, 5, 6))
+
+        val initial = preparedStaticImplementationFingerprint(listOf(classesRoot, jar))
+        assertEquals(
+            initial,
+            preparedStaticImplementationFingerprint(listOf(jar, classesRoot)),
+        )
+
+        Files.write(classFile, byteArrayOf(1, 2, 4))
+        val changedClasses = preparedStaticImplementationFingerprint(listOf(classesRoot, jar))
+        assertFalse(changedClasses == initial)
+
+        writeJar(byteArrayOf(4, 5, 7))
+        val changedJar = preparedStaticImplementationFingerprint(listOf(classesRoot, jar))
+        assertFalse(changedJar == changedClasses)
+    }
+
+    @Test
+    fun windows_sdk_static_sources_are_prepared_when_registry_root_is_available() {
+        val sdk = writeGradleWindowsSdkFixture(15)
+        val project = ProjectBuilder.builder().withName("prepared-static-sdk-test").build()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val extension = project.extensions.getByType(WindowsExtension::class.java)
+        extension.packageReferences.windowsSdk(sdk.version, generateProjection = true)
+        extension.packageReferences.type("Windows.Graphics.Display.DisplayInformation")
+        val output = project.layout.buildDirectory.dir("prepared-output")
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-sdk-test.jar",
+            windowsSdkRegistryRoots = listOf(sdk.root.toString()),
+        )
+
+        assertTrue(prepared != null)
+        assertTrue(Files.walk(prepared!!).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
+
+        val generatedRoot = output.get().asFile.toPath()
+        materializePreparedStaticSources(prepared, generatedRoot)
+        val generatedFiles = Files.walk(generatedRoot).use { stream ->
+            stream.filter(Files::isRegularFile)
+                .filter { path -> path.fileName.toString().endsWith(".kt") }
+                .toList()
+        }
+        assertTrue(generatedFiles.isNotEmpty())
+        val userFile = generatedRoot.resolve("business/Overlay.kt")
+        Files.createDirectories(userFile.parent)
+        Files.writeString(userFile, "package business\nclass Overlay")
+        clearPreparedStaticSources(generatedRoot)
+        assertTrue(Files.isRegularFile(userFile))
+        generatedFiles.forEach { generated -> assertFalse(Files.exists(generated)) }
     }
 
     @Test

@@ -6,6 +6,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class WinRTMetadataModelCodecTest {
     @Test
@@ -92,6 +96,27 @@ class WinRTMetadataModelCodecTest {
         val path = directory.resolve("model.json")
         Files.writeString(path, "{\"header\":\"kotlin-winrt-normalized-model-v0\",\"schema\":0}")
 
+        assertThrows(IllegalArgumentException::class.java) { WinRTMetadataModelCodec.read(path) }
+    }
+
+    @Test
+    fun reads_existing_tree_encoded_cache_and_keeps_its_wire_format() {
+        // Kotlin persistent equivalent of cswinrt/main.cpp's metadata input cache.
+        val json = Json { classDiscriminator = "kind"; encodeDefaults = true }
+        val model = WinRTMetadataModel(namespaces = emptyList()).normalized()
+        val oldDocument = buildJsonObject {
+            put("header", "kotlin-winrt-normalized-model-v1")
+            put("schema", 1)
+            put("model", json.encodeToJsonElement(WinRTMetadataModel.serializer(), model))
+        }
+        val path = Files.createTempDirectory("winrt-model-codec-compatible-").resolve("model.json")
+        Files.writeString(path, json.encodeToString(JsonObject.serializer(), oldDocument))
+        assertEquals(model, WinRTMetadataModelCodec.read(path))
+        WinRTMetadataModelCodec.writeAtomic(path, model)
+        assertEquals(oldDocument, json.parseToJsonElement(Files.readString(path)))
+        Files.writeString(path, "{\"header\":\"kotlin-winrt-normalized-model-v1\",\"schema\":1}")
+        assertThrows(IllegalArgumentException::class.java) { WinRTMetadataModelCodec.read(path) }
+        Files.writeString(path, "{broken")
         assertThrows(IllegalArgumentException::class.java) { WinRTMetadataModelCodec.read(path) }
     }
 

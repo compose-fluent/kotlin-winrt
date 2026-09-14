@@ -93,10 +93,12 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.Import
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeAliasSpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
@@ -195,14 +197,22 @@ class KotlinProjectionGenerator(
         val semanticHelpers = normalizedModel.semanticHelpers()
         validateGeneratorContracts(normalizedModel, plans, semanticHelpers)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
-        val renderedPlans = if (groupProjectionFilesByPackageOnWrite) {
-            plans.map(KotlinTypeProjectionPlan::withoutRenderedProjectedAttributes)
-        } else {
-            plans
-        }
+        // File grouping changes only the output container. Keep the projected attributes on the
+        // planned declarations so a layout choice cannot change the public projection surface.
+        val renderedPlans = plans
         val projectionPlans = renderedPlans.filterNot { plan ->
             plan.type.qualifiedName in authoredTypeNames ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
+        }
+        val projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite) {
+            projectedSlotLiteralMap(renderedPlans)
+        } else {
+            emptyMap()
+        }
+        val durationAliasPackages = if (emitSupportFiles) {
+            renderedPlans.kotlinDurationAliasPackages()
+        } else {
+            emptySet()
         }
         val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(
@@ -210,6 +220,8 @@ class KotlinProjectionGenerator(
             plans = projectionPlans,
             semanticHelpers = semanticHelpers,
             renderedPlans = renderedPlans,
+            projectedSlotLiterals = projectedSlotLiterals,
+            durationAliasPackages = durationAliasPackages,
         )
         val projectionRenderer = projectionFileRenderer(
             plans = renderedPlans,
@@ -217,11 +229,21 @@ class KotlinProjectionGenerator(
             projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
                 .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
             semanticHelpers = semanticHelpers,
+            projectedSlotLiterals = projectedSlotLiterals,
+            durationAliasPackages = durationAliasPackages,
         )
+        val groupedProjectionOutput = groupProjectionFilesByPackageOnWrite &&
+            generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet
         val projectionFiles = projectionPlans
-            .flatMap(projectionRenderer::render)
+            .flatMap { plan ->
+                if (groupedProjectionOutput) {
+                    projectionRenderer.renderStructured(plan)
+                } else {
+                    projectionRenderer.render(plan)
+                }
+            }
             .let { files ->
-                if (groupProjectionFilesByPackageOnWrite && generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet) {
+                if (groupedProjectionOutput) {
                     files.groupByPackage()
                 } else {
                     files
@@ -1802,31 +1824,55 @@ class KotlinProjectionGenerator(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
         projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
         semanticHelpers: WinRTMetadataSemanticHelpers,
-    ): KotlinProjectionFileRenderer =
-        when (generationLayout) {
-            KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(
+        projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int>? = null,
+        durationAliasPackages: Set<String>? = null,
+    ): KotlinProjectionFileRenderer {
+        val effectiveProjectedSlotLiterals = projectedSlotLiterals ?: if (groupProjectionFilesByPackageOnWrite && plans != null) {
+            projectedSlotLiteralMap(plans)
+        } else {
+            emptyMap()
+        }
+        val effectiveDurationAliasPackages = durationAliasPackages ?: plans?.kotlinDurationAliasPackages().orEmpty()
+        return when (generationLayout) {
+            KotlinProjectionGenerationLayout.SingleSourceSet -> object : KotlinProjectionFileRenderer {
+                private fun renderer(plan: KotlinTypeProjectionPlan): KotlinProjectionRenderer =
                     projectionRendererForLayout(
-                        plans,
-                        plan,
-                        modulePlatformAbiCalls,
-                        projectedInterfaceCcwInputTypeNames,
-                        semanticHelpers,
-                    ).render(plan),
-                )
+                        plans = plans,
+                        currentPlan = plan,
+                        modulePlatformAbiCalls = modulePlatformAbiCalls,
+                        projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                        semanticHelpers = semanticHelpers,
+                        projectedSlotLiterals = effectiveProjectedSlotLiterals,
+                        durationAliasPackages = effectiveDurationAliasPackages,
+                    )
+
+                override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+                    listOf(renderer(plan).render(plan))
+
+                override fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+                    listOf(renderer(plan).renderStructured(plan))
             }
-            KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinProjectionFileRenderer { plan ->
-                KotlinExpectActualProjectionRenderer(
-                    projectionRendererForLayout(
-                        plans,
-                        plan,
-                        modulePlatformAbiCalls,
-                        projectedInterfaceCcwInputTypeNames,
-                        semanticHelpers,
-                    ),
-                ).render(plan)
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> object : KotlinProjectionFileRenderer {
+                private fun renderer(plan: KotlinTypeProjectionPlan): KotlinExpectActualProjectionRenderer =
+                    KotlinExpectActualProjectionRenderer(
+                        projectionRendererForLayout(
+                            plans = plans,
+                            currentPlan = plan,
+                            modulePlatformAbiCalls = modulePlatformAbiCalls,
+                            projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                            semanticHelpers = semanticHelpers,
+                            projectedSlotLiterals = effectiveProjectedSlotLiterals,
+                            durationAliasPackages = effectiveDurationAliasPackages,
+                        ),
+                    )
+
+                override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> = renderer(plan).render(plan)
+
+                override fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+                    renderer(plan).renderStructured(plan)
             }
         }
+    }
 
     private fun projectionRendererForLayout(
         plans: List<KotlinTypeProjectionPlan>? = null,
@@ -1834,18 +1880,16 @@ class KotlinProjectionGenerator(
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
         projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
         semanticHelpers: WinRTMetadataSemanticHelpers,
+        projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
+        durationAliasPackages: Set<String> = emptySet(),
     ): KotlinProjectionRenderer =
         if (emitSupportFiles) {
             KotlinProjectionRenderer(
                 useInterfaceProjectionArtifacts = true,
                 suppressProjectedMemberSlotConstants = groupProjectionFilesByPackageOnWrite,
-                projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite && plans != null) {
-                    projectedSlotLiteralMap(plans)
-                } else {
-                    emptyMap()
-                },
+                projectedSlotLiterals = projectedSlotLiterals,
                 useWinAppSdkTypeRedirects = currentPlan?.requiresWinAppSdkTypeRedirects() == true,
-                useKotlinDurationAlias = plans?.requiresKotlinDurationAlias(currentPlan) == true,
+                useKotlinDurationAlias = currentPlan?.packageName?.let(durationAliasPackages::contains) == true,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 supportOwnerIdentity = supportOwnerIdentity,
                 projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
@@ -1877,13 +1921,13 @@ class KotlinProjectionGenerator(
     private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
         type.qualifiedName.startsWith("Microsoft.UI.")
 
-    private fun List<KotlinTypeProjectionPlan>.requiresKotlinDurationAlias(currentPlan: KotlinTypeProjectionPlan?): Boolean =
-        currentPlan != null &&
-            any { plan ->
-                plan.packageName == currentPlan.packageName &&
-                    plan.type.kind == WinRTTypeKind.Struct &&
+    private fun List<KotlinTypeProjectionPlan>.kotlinDurationAliasPackages(): Set<String> =
+        asSequence()
+            .filter { plan ->
+                plan.type.kind == WinRTTypeKind.Struct &&
                     plan.type.name == "Duration"
             }
+            .mapTo(linkedSetOf(), KotlinTypeProjectionPlan::packageName)
 
     private fun projectedSlotLiteralMap(plans: List<KotlinTypeProjectionPlan>): Map<KotlinProjectionSlotLiteralKey, Int> =
         plans
@@ -1962,6 +2006,8 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
         renderedPlans: List<KotlinTypeProjectionPlan> = plans,
+        projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int>? = null,
+        durationAliasPackages: Set<String>? = null,
     ): KotlinModulePlatformAbiCallSupport? {
         val abiSupportShardCount = if (plans.size >= LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD) {
             LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT
@@ -1981,12 +2027,21 @@ class KotlinProjectionGenerator(
             enabledCalls = emptySet(),
             abiSupportShardCount = abiSupportShardCount,
         )
-        val collectorRenderer = projectionFileRenderer(
-            plans = renderedPlans,
-            modulePlatformAbiCalls = collector,
-            semanticHelpers = semanticHelpers,
-        )
-        plans.forEach { plan -> collectorRenderer.render(plan) }
+        plans.forEach { plan ->
+            val layoutRenderer = projectionRendererForLayout(
+                plans = renderedPlans,
+                currentPlan = plan,
+                modulePlatformAbiCalls = collector,
+                semanticHelpers = semanticHelpers,
+                projectedSlotLiterals = projectedSlotLiterals ?: emptyMap(),
+                durationAliasPackages = durationAliasPackages ?: emptySet(),
+            )
+            when (generationLayout) {
+                KotlinProjectionGenerationLayout.SingleSourceSet -> layoutRenderer.collectCallSites(plan)
+                KotlinProjectionGenerationLayout.ExpectActualJvm ->
+                    KotlinExpectActualProjectionRenderer(layoutRenderer).collectCallSites(plan)
+            }
+        }
         supportRenderer.collectModulePlatformAbiCalls(
             model = model,
             semanticHelpers = semanticHelpers,
@@ -2001,6 +2056,7 @@ class KotlinProjectionGenerator(
             className = modulePlatformAbiCallClassName,
             enabledCalls = collector.plannedCalls(),
             abiSupportShardCount = abiSupportShardCount,
+            preparedSource = collector,
         )
     }
 
@@ -2034,145 +2090,157 @@ class KotlinProjectionGenerator(
     }
 }
 
-internal fun interface KotlinProjectionFileRenderer {
+internal interface KotlinProjectionFileRenderer {
     fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile>
+
+    /**
+     * Builds the same declarations without formatting each source file. Grouping consumes the
+     * retained KotlinPoet structures and formats only the final merged files.
+     */
+    fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> = render(plan)
 }
 
-private fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFile> =
+internal fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFile> =
     groupBy(KotlinProjectionFile::packageName)
         .toSortedMap()
         .flatMap { (packageName, files) ->
-            files
+            val structuredFiles = files
                 .sortedBy(KotlinProjectionFile::relativePath)
-                .map(::parseGeneratedKotlinFile)
-                .let { parsedFiles ->
-                    parsedFiles.chunkByGeneratedBodySizeAndImports(
-                        packageDeclaredNames = parsedFiles.flatMap { it.declaredTopLevelNames() }.toSet(),
+                .map { file ->
+                    val kotlinPoetFile = requireNotNull(file.kotlinPoetFile) {
+                        "Projection file ${file.relativePath} is missing its KotlinPoet structure."
+                    }
+                    val imports = kotlinPoetFile.toBuilder().imports
+                    KotlinPoetGeneratedFile(
+                        source = file,
+                        file = kotlinPoetFile,
+                        fileComment = kotlinPoetFile.comment.toString().takeIf(String::isNotBlank),
+                        annotations = kotlinPoetFile.annotations,
+                        imports = imports,
+                        importedSimpleNames = imports.importedSimpleNames(),
+                        importedTargetsBySimpleName = imports.importedTargetsBySimpleName(),
+                        declaredTopLevelNames = kotlinPoetFile.declaredTopLevelNames(),
                     )
                 }
-                .mapIndexed { index, parsedFiles ->
-            val imports = parsedFiles
-                .flatMap(ParsedGeneratedKotlinFile::imports)
-                .toSortedSet()
-            val body = parsedFiles
-                .joinToString("\n") { it.body.trim() }
-                .trim()
-            KotlinProjectionFile(
-                relativePath = packageName.replace('.', '/') + "/${packageName.split('.').joinToString("_")}${if (index == 0) "" else "_$index"}.kt",
+            structuredFiles.renderStablePackageShards(
                 packageName = packageName,
-                contents = buildString {
-                    append(parsedFiles.first().fileAnnotations.trimEnd())
-                    append("\n\n")
-                    append(parsedFiles.first().packageDeclaration)
-                    append("\n\n")
-                    if (imports.isNotEmpty()) {
-                        imports.forEach { importLine ->
-                            append(importLine)
-                            append('\n')
-                        }
-                        append('\n')
-                    }
-                    append(body)
-                    append('\n')
-                },
+                packageDeclaredNames = structuredFiles.flatMap(KotlinPoetGeneratedFile::declaredTopLevelNames).toSet(),
             )
-                }
         }
-
-private fun KotlinTypeProjectionPlan.withoutRenderedProjectedAttributes(): KotlinTypeProjectionPlan =
-    copy(
-        projectedAttributes = emptyList(),
-        instanceMemberBindings = instanceMemberBindings.map { binding ->
-            binding.copy(projectedAttributes = emptyList())
-        },
-        staticMemberBindings = staticMemberBindings.map { binding ->
-            binding.copy(projectedAttributes = emptyList())
-        },
-    )
 
 private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
 
-private fun List<ParsedGeneratedKotlinFile>.chunkByGeneratedBodySizeAndImports(
+/** Render a candidate once; only overflowing/conflicting nodes require further subdivision. */
+private fun List<KotlinPoetGeneratedFile>.renderStablePackageShards(
+    packageName: String,
     packageDeclaredNames: Set<String>,
-): List<List<ParsedGeneratedKotlinFile>> =
-    buildList {
-        var current = mutableListOf<ParsedGeneratedKotlinFile>()
-        var currentSize = 0
-        var currentImportedNames = emptySet<String>()
-        var currentImportedTargetsByName = emptyMap<String, Set<String>>()
-        var currentDeclaredNames = emptySet<String>()
-        var currentHasPackageShadowingImport = false
-        for (file in this@chunkByGeneratedBodySizeAndImports) {
-            val fileSize = file.body.length
-            val fileImportedNames = file.importedSimpleNames()
-            val fileImportedTargetsByName = file.importedTargetsBySimpleName()
-            val fileDeclaredNames = file.declaredTopLevelNames()
-            val fileHasPackageShadowingImport = fileImportedNames.any(packageDeclaredNames::contains)
-            val hasImportDeclarationCollision =
-                currentImportedNames.any(fileDeclaredNames::contains) ||
-                    fileImportedNames.any(currentDeclaredNames::contains)
-            val hasImportTargetCollision =
-                fileImportedTargetsByName.any { (name, targets) ->
-                    val currentTargets = currentImportedTargetsByName[name].orEmpty()
-                    currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
-                }
-            if (
-                current.isNotEmpty() &&
-                (
-                    currentSize + fileSize > MAX_GROUPED_PROJECTION_BODY_CHARS ||
-                        hasImportDeclarationCollision ||
-                        hasImportTargetCollision ||
-                        currentHasPackageShadowingImport ||
-                        fileHasPackageShadowingImport
-                )
-            ) {
-                add(current)
-                current = mutableListOf()
-                currentSize = 0
-                currentImportedNames = emptySet()
-                currentImportedTargetsByName = emptyMap()
-                currentDeclaredNames = emptySet()
-                currentHasPackageShadowingImport = false
+    bits: Int = 0,
+    suffix: String = "",
+): List<KotlinProjectionFile> {
+    if (isEmpty()) return emptyList()
+    val fileName = packageName.replace('.', '_') + suffix
+    if (fitsInStableShard(packageDeclaredNames)) {
+        val merged = FileSpec.builder(packageName, fileName)
+            .apply { first().fileComment?.let { addFileComment("%L", CodeBlock.of(it)) } }
+            .addAnnotations(flatMap(KotlinPoetGeneratedFile::annotations).distinct())
+            .apply {
+                flatMap(KotlinPoetGeneratedFile::imports).distinct()
+                    .sortedWith(compareBy({ it.qualifiedName }, { it.alias.orEmpty() }))
+                    .forEach(::addImport)
+                for (file in this@renderStablePackageShards) file.file.addMembersTo(this)
             }
-            current += file
-            currentSize += fileSize
-            currentImportedNames = currentImportedNames + fileImportedNames
-            currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
-            currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
-            currentHasPackageShadowingImport = currentHasPackageShadowingImport || fileHasPackageShadowingImport
-        }
-        if (current.isNotEmpty()) {
-            add(current)
+            .build()
+        val contents = merged.toString()
+        if (size == 1 || contents.length <= MAX_GROUPED_PROJECTION_BODY_CHARS) {
+            return listOf(KotlinProjectionFile(
+                relativePath = packageName.replace('.', '/') + "/$fileName.kt",
+                packageName = packageName,
+                contents = contents,
+            ))
         }
     }
-
-private data class ParsedGeneratedKotlinFile(
-    val fileAnnotations: String,
-    val packageDeclaration: String,
-    val imports: List<String>,
-    val body: String,
+    // Hash-prefix partitioning is independent of package size and prior runs. Do not fall back
+    // merely because one bit has no split: later bits may still distinguish these file names.
+    if (bits < 63) {
+        var splitBit = bits
+        var splitSuffix = suffix
+        while (splitBit < 62 && map { (it.source.relativePath.stableShardHash() ushr splitBit) and 1L }.distinct().size == 1) {
+            splitSuffix += "_${(first().source.relativePath.stableShardHash() ushr splitBit) and 1L}"
+            splitBit++
+        }
+        return groupBy { (it.source.relativePath.stableShardHash() ushr splitBit) and 1L }
+            .toSortedMap().flatMap { (bit, files) ->
+                files.renderStablePackageShards(packageName, packageDeclaredNames, splitBit + 1, "${splitSuffix}_$bit")
+            }
+    }
+    // Full hash collisions remain deterministic without relying on process/history state.
+    return sortedBy { it.source.relativePath }.flatMapIndexed { index, file ->
+        listOf(file).renderStablePackageShards(packageName, packageDeclaredNames, bits, "${suffix}_$index")
+    }
+}
+private data class KotlinPoetGeneratedFile(
+    val source: KotlinProjectionFile,
+    val file: FileSpec,
+    val fileComment: String?,
+    val annotations: List<AnnotationSpec>,
+    val imports: List<Import>,
+    val importedSimpleNames: Set<String>,
+    val importedTargetsBySimpleName: Map<String, Set<String>>,
+    val declaredTopLevelNames: Set<String>,
 )
 
-private fun ParsedGeneratedKotlinFile.importedSimpleNames(): Set<String> =
-    imports.mapNotNullTo(mutableSetOf()) { importLine ->
-        val imported = importLine.removePrefix("import ").trim()
-        imported.substringAfter(" as ", missingDelimiterValue = "")
-            .ifBlank { imported.substringAfterLast('.') }
-            .takeIf(String::isNotBlank)
+private fun List<KotlinPoetGeneratedFile>.fitsInStableShard(
+    packageDeclaredNames: Set<String>,
+): Boolean {
+    if (size <= 1) return true
+
+    var currentImportedNames = emptySet<String>()
+    var currentImportedTargetsByName = emptyMap<String, Set<String>>()
+    var currentDeclaredNames = emptySet<String>()
+    for (file in sortedBy { candidate -> candidate.source.relativePath }) {
+        val fileImportedNames = file.importedSimpleNames
+        val fileImportedTargetsByName = file.importedTargetsBySimpleName
+        val fileDeclaredNames = file.declaredTopLevelNames
+        if (fileImportedNames.any(packageDeclaredNames::contains)) return false
+        val hasImportDeclarationCollision =
+            currentImportedNames.any(fileDeclaredNames::contains) ||
+                fileImportedNames.any(currentDeclaredNames::contains)
+        val hasImportTargetCollision =
+            fileImportedTargetsByName.any { (name, targets) ->
+                val currentTargets = currentImportedTargetsByName[name].orEmpty()
+                currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
+            }
+        if (hasImportDeclarationCollision || hasImportTargetCollision) {
+            return false
+        }
+
+        currentImportedNames = currentImportedNames + fileImportedNames
+        currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
+        currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
+    }
+    return true
+}
+
+private fun String.stableShardHash(): Long {
+    var hash = 1125899906842597L
+    for (character in this) {
+        hash = hash * 31 + character.code
+    }
+    return hash and Long.MAX_VALUE
+}
+
+private fun List<Import>.importedSimpleNames(): Set<String> =
+    mapTo(mutableSetOf()) { import ->
+        import.alias?.takeIf(String::isNotBlank) ?: import.qualifiedName.substringAfterLast('.')
     }
 
-private fun ParsedGeneratedKotlinFile.importedTargetsBySimpleName(): Map<String, Set<String>> =
-    imports
-        .mapNotNull { importLine ->
-            val imported = importLine.removePrefix("import ").trim()
-            val target = imported.substringBefore(" as ").trim()
-            val simpleName = imported.substringAfter(" as ", missingDelimiterValue = "")
-                .ifBlank { target.substringAfterLast('.') }
-                .takeIf(String::isNotBlank)
-                ?: return@mapNotNull null
-            simpleName to target
-        }
-        .groupBy({ it.first }, { it.second })
+private fun List<Import>.importedTargetsBySimpleName(): Map<String, Set<String>> =
+    groupBy(
+        keySelector = { import ->
+            import.alias?.takeIf(String::isNotBlank) ?: import.qualifiedName.substringAfterLast('.')
+        },
+        valueTransform = { import -> import.qualifiedName },
+    )
         .mapValues { (_, targets) -> targets.toSet() }
 
 private fun Map<String, Set<String>>.mergeImportTargets(
@@ -2189,44 +2257,26 @@ private fun Map<String, Set<String>>.mergeImportTargets(
         }
     }
 
-private fun ParsedGeneratedKotlinFile.declaredTopLevelNames(): Set<String> =
-    generatedTopLevelDeclarationRegex.findAll(body)
-        .map { match -> match.groupValues[1] }
-        .toSet()
-
-private val generatedTopLevelDeclarationRegex =
-    Regex("""(?m)^(?:public|internal)\s+(?:open\s+|sealed\s+|data\s+|value\s+)?(?:class|interface|enum\s+class|object)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-
-private fun parseGeneratedKotlinFile(file: KotlinProjectionFile): ParsedGeneratedKotlinFile {
-    val allLines = file.contents.lines()
-    val packageLineIndex = allLines.indexOfFirst { it.trim().startsWith("package ") }
-    require(packageLineIndex >= 0) {
-        "Generated file ${file.relativePath} does not contain a package declaration."
-    }
-    val annotations = allLines.take(packageLineIndex).joinToString("\n").trim()
-    val lines = allLines.drop(packageLineIndex + 1).dropWhile(String::isBlank)
-    val imports = mutableListOf<String>()
-    var index = 0
-    while (index < lines.size) {
-        val line = lines[index]
-        when {
-            line.startsWith("import ") -> {
-                imports += line
-                index += 1
-            }
-            line.isBlank() -> {
-                index += 1
-                if (imports.isNotEmpty()) {
-                    break
-                }
-            }
-            else -> break
+private fun FileSpec.declaredTopLevelNames(): Set<String> =
+    members.mapNotNullTo(mutableSetOf()) { member ->
+        when (member) {
+            is TypeSpec -> member.name
+            is TypeAliasSpec -> member.name
+            is FunSpec -> member.name
+            is PropertySpec -> member.name
+            else -> null
         }
     }
-    return ParsedGeneratedKotlinFile(
-        fileAnnotations = annotations,
-        packageDeclaration = allLines[packageLineIndex].trim(),
-        imports = imports,
-        body = lines.drop(index).joinToString("\n"),
-    )
+
+private fun FileSpec.addMembersTo(builder: FileSpec.Builder) {
+    members.forEach { member ->
+        when (member) {
+            is TypeSpec -> builder.addType(member)
+            is TypeAliasSpec -> builder.addTypeAlias(member)
+            is FunSpec -> builder.addFunction(member)
+            is PropertySpec -> builder.addProperty(member)
+            is CodeBlock -> builder.addCode(member)
+            else -> error("Unsupported KotlinPoet file member ${member::class.qualifiedName} in $name")
+        }
+    }
 }

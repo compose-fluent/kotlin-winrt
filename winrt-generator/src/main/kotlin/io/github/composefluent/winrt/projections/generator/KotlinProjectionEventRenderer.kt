@@ -791,29 +791,59 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
         }
 }
 
+private fun KotlinProjectionRenderer.prepareActivationFactoryCall(
+    plan: KotlinTypeProjectionPlan,
+    factoryType: WinRTTypeDefinition,
+    method: WinRTMethodDefinition,
+): KotlinProjectionAbiCallPlan {
+    val returnBinding = KotlinProjectionAbiTypeBinding(
+        kind = KotlinProjectionAbiValueKind.InspectableReference,
+        typeName = IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
+    )
+    val parameterBindings = method.parameters.map { parameter ->
+        KotlinProjectionAbiParameterBinding(
+            parameter.name,
+            KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
+                .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+        )
+    }
+    return requireAbiCallPlan(
+        bindingName = "${factoryType.qualifiedName}.${method.name}",
+        returnBinding = returnBinding,
+        parameterBindings = parameterBindings,
+        suppressHResultCheck = method.isNoException,
+    )
+}
+
+internal fun KotlinProjectionRenderer.collectFactoryCallSites(plan: KotlinTypeProjectionPlan) {
+    plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get)?.let { factoryType ->
+        factoryType.methods.filter(WinRTMethodDefinition::isProjectedCallableMethod)
+            .filter { it.returnType.typeName == plan.type.qualifiedName }
+            .forEach { collectCallSite(prepareActivationFactoryCall(plan, factoryType, it)) }
+    }
+    plan.composableFactoryBindings.forEach { factory ->
+        val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@forEach
+        factoryType.methods.filter(WinRTMethodDefinition::isProjectedCallableMethod)
+            .filter { it.returnType.typeName == plan.type.qualifiedName }
+            .mapNotNull(::composableUserParameters)
+            .forEach { (method, parameters) ->
+                collectCallSite(prepareComposableFactoryCall(plan, factoryType, method, parameters, derived = false),
+                    callerOwnedResultType = WINRT_COMPOSABLE_FACTORY_RESULT_CLASS_NAME)
+                if (plan.supportsDerivedComposableConstruction()) {
+                    collectCallSite(prepareComposableFactoryCall(plan, factoryType, method, parameters, derived = true),
+                        callerOwnedResultType = WINRT_COMPOSABLE_FACTORY_RESULT_CLASS_NAME)
+                }
+            }
+    }
+}
+
 internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
         .filter(WinRTMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .map { method ->
-            val returnBinding = KotlinProjectionAbiTypeBinding(
-                kind = KotlinProjectionAbiValueKind.InspectableReference,
-                typeName = IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
-            )
-            val parameterBindings = method.parameters.map { parameter ->
-                KotlinProjectionAbiParameterBinding(
-                    parameter.name,
-                    KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
-                        .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
-                )
-            }
-            val callPlan = requireAbiCallPlan(
-                bindingName = "${factoryType.qualifiedName}.${method.name}",
-                returnBinding = returnBinding,
-                parameterBindings = parameterBindings,
-                suppressHResultCheck = method.isNoException,
-            )
+            val callPlan = prepareActivationFactoryCall(plan, factoryType, method)
             val invocation = renderInlineAbiInvocation(
                 invokeTargetExpression =
                     if (plan.activatableFactoryInterfaceIid != null) "_factoryInterface" else "acquire()",
@@ -882,13 +912,13 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
         }
 }
 
-private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
+private fun KotlinProjectionRenderer.prepareComposableFactoryCall(
     plan: KotlinTypeProjectionPlan,
-    factory: KotlinProjectionComposableFactoryBinding,
     factoryType: WinRTTypeDefinition,
     method: WinRTMethodDefinition,
     userParameters: List<WinRTParameterDefinition>,
-): CodeBlock {
+    derived: Boolean,
+): KotlinProjectionAbiCallPlan {
     val parameterBindings = userParameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             parameter.name,
@@ -896,11 +926,22 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
                 .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }
-    val typedCallPlan = requireAbiCallPlan(
+    return requireAbiCallPlan(
         bindingName = "${factoryType.qualifiedName}.${method.name}",
         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
         parameterBindings = parameterBindings + composableBaseInterfaceBinding(),
+        suppressHResultCheck = !derived && method.isNoException,
     )
+}
+
+private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
+    plan: KotlinTypeProjectionPlan,
+    factory: KotlinProjectionComposableFactoryBinding,
+    factoryType: WinRTTypeDefinition,
+    method: WinRTMethodDefinition,
+    userParameters: List<WinRTParameterDefinition>,
+): CodeBlock {
+    val typedCallPlan = prepareComposableFactoryCall(plan, factoryType, method, userParameters, derived = true)
     val support = modulePlatformAbiCalls ?: inlineOnlyModulePlatformAbiCallSupport()
     val invocation = composeTypedProjectionCallSite(
         callPlan = typedCallPlan,
@@ -935,19 +976,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     method: WinRTMethodDefinition,
     userParameters: List<WinRTParameterDefinition>,
 ): CodeBlock {
-    val parameterBindings = userParameters.map { parameter ->
-        KotlinProjectionAbiParameterBinding(
-            parameter.name,
-            KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
-                .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
-        )
-    }
-    val typedCallPlan = requireAbiCallPlan(
-        bindingName = "${factoryType.qualifiedName}.${method.name}",
-        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-        parameterBindings = parameterBindings + composableBaseInterfaceBinding(),
-        suppressHResultCheck = method.isNoException,
-    )
+    val typedCallPlan = prepareComposableFactoryCall(plan, factoryType, method, userParameters, derived = false)
     val support = modulePlatformAbiCalls ?: inlineOnlyModulePlatformAbiCallSupport()
     val invocation = composeTypedProjectionCallSite(
         callPlan = typedCallPlan,

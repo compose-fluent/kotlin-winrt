@@ -1038,6 +1038,30 @@ class WinRTMetadataLoaderTest {
     }
 
     @Test
+    fun resolves_only_requested_closure_from_flat_nuget_install_directories() {
+        val root = Files.createTempDirectory("kotlin-winrt-flat-nuget")
+        fun packageDirectory(id: String, version: String, dependency: String = "") {
+            val directory = Files.createDirectories(root.resolve("$id.$version"))
+            Files.writeString(directory.resolve("$id.nuspec"), """
+                <package><metadata><id>$id</id><version>$version</version>
+                <dependencies>$dependency</dependencies></metadata></package>
+            """.trimIndent())
+        }
+        packageDirectory("Sample.Root", "1.0.0")
+        packageDirectory("Sample.Root", "2.0.0", """<dependency id="Sample.Dependency" version="[1.0.0,2.0.0)" />""")
+        packageDirectory("Sample.Dependency", "1.1.0")
+        packageDirectory("Sample.Dependency", "2.0.0")
+        packageDirectory("Sample.Unrelated", "1.0.0")
+        val closure = WinRTNuGetPackageResolver.resolveClosure(
+            WinRTNuGetPackageIdentity("Sample.Root", "2.0.0"), listOf(root),
+        )
+        assertEquals(
+            listOf("Sample.Root@2.0.0", "Sample.Dependency@1.1.0"),
+            closure.map { it.identity.toString() },
+        )
+    }
+
+    @Test
     fun resolves_nuget_dependency_minimums_and_bounded_ranges_from_installed_versions() {
         val assembly = buildManagedMetadataSample()
         val globalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-version-range")

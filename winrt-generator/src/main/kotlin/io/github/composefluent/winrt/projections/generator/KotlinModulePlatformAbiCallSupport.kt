@@ -34,11 +34,13 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     enabledCalls: Set<KotlinTypedProjectionCallSitePlan>? = null,
     private val abiSupportShardCount: Int = 1,
     private val emitSupportFile: Boolean = true,
+    preparedSource: KotlinModulePlatformAbiCallSupport? = null,
 ) {
     private val enabledCallNames = enabledCalls?.mapTo(linkedSetOf()) { plan -> plan.functionName }
     private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCalls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCallCounts = linkedMapOf<String, Int>()
+    private val preparedCallSitePlans = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val codecs = linkedMapOf<String, KotlinProjectionCallSiteCodec>()
     private val codecsByIdentity = linkedMapOf<KotlinProjectionCallSiteCodecIdentity, KotlinProjectionCallSiteCodec>()
     private val abiTypes = linkedMapOf<String, KotlinProjectionAbiTypeMetadata>()
@@ -51,6 +53,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         ) {
             "The module ABI support shard count must be a positive power of two."
         }
+        preparedSource?.let(::copyPreparedStateFrom)
     }
 
     internal fun codecOwnerFqName(abiTypeName: String): String =
@@ -58,6 +61,29 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
 
     internal fun callSiteOwnerFqName(plan: KotlinTypedProjectionCallSitePlan): String =
         callSiteSupportClassName(plan.functionName).canonicalName
+
+    internal fun preparedCallSitePlan(
+        callPlan: KotlinProjectionAbiCallPlan,
+        hResultPolicy: WinRTProjectionCallSiteHResultPolicy?,
+        callerOwnedResultType: TypeName?,
+    ): KotlinTypedProjectionCallSitePlan? =
+        preparedCallSitePlans[callSitePreparationKey(callPlan, hResultPolicy, callerOwnedResultType)]
+
+    internal fun rememberPreparedCallSitePlan(
+        callPlan: KotlinProjectionAbiCallPlan,
+        hResultPolicy: WinRTProjectionCallSiteHResultPolicy?,
+        callerOwnedResultType: TypeName?,
+        plan: KotlinTypedProjectionCallSitePlan,
+    ) {
+        val key = callSitePreparationKey(callPlan, hResultPolicy, callerOwnedResultType)
+        val existing = preparedCallSitePlans.putIfAbsent(key, plan)
+        if (existing != null) {
+            require(existing.hasSameRenderedDeclarationAs(plan)) {
+                "Conflicting prepared WinRT CallSite plans for '$key'."
+            }
+        }
+    }
+
 
     internal fun registerCodec(
         operation: String,
@@ -158,6 +184,10 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         )
     }
 
+    internal fun observe(invocation: KotlinTypedProjectionCallSiteInvocation) {
+        record(invocation.plan)
+    }
+
     internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
         val renderedMetadata = reachableMetadata()
         if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
@@ -209,6 +239,25 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             }
             .keys
             .mapTo(linkedSetOf()) { functionName -> observedCalls.getValue(functionName) }
+
+    private fun copyPreparedStateFrom(source: KotlinModulePlatformAbiCallSupport) {
+        require(source.className == className) {
+            "Prepared WinRT CallSite state belongs to ${source.className}, not $className."
+        }
+        require(source.abiSupportShardCount == abiSupportShardCount) {
+            "Prepared WinRT CallSite state uses ${source.abiSupportShardCount} shards, not $abiSupportShardCount."
+        }
+        preparedCallSitePlans.putAll(source.preparedCallSitePlans)
+        enabledCallNames.orEmpty().forEach { functionName ->
+            source.observedCalls[functionName]?.let { plan ->
+                calls[functionName] = plan
+            }
+        }
+        codecs.putAll(source.codecs)
+        codecsByIdentity.putAll(source.codecsByIdentity)
+        abiTypes.putAll(source.abiTypes)
+        metadata.putAll(source.metadata)
+    }
 
     private fun record(plan: KotlinTypedProjectionCallSitePlan): ModuleCallTarget {
         val functionName = plan.functionName
@@ -352,8 +401,16 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         if (metadata.isEmpty() || codecs.isEmpty()) return emptyList()
         val values = metadata.values.toList()
         val byName = values.associateBy(KotlinProjectionModuleMetadata::name)
-        val renderedCodecText = codecs.values.joinToString("\n") { codec -> codec.body.toString() }
-        val roots = values.filter { value -> renderedCodecText.contains(value.name) }
+        // Generated names have a fixed-width hash. Scan each expression once instead of
+        // formatting and searching it separately for every registered metadata value.
+        val referencePattern = Regex("metadata_[0-9a-f]{16}")
+        fun references(text: String): List<KotlinProjectionModuleMetadata> =
+            referencePattern.findAll(text)
+                .mapNotNull { byName[it.value] }
+                .distinctBy(KotlinProjectionModuleMetadata::name)
+                .sortedBy(KotlinProjectionModuleMetadata::name)
+                .toList()
+        val roots = codecs.values.flatMap { references(it.body.toString()) }
         if (roots.isEmpty()) return emptyList()
 
         val reachable = linkedSetOf<String>()
@@ -363,12 +420,9 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             check(visiting.add(value.name)) {
                 "Cyclic generated module metadata dependency at '${value.name}'."
             }
-            values
+            references(value.initializer.toString())
                 .asSequence()
-                .filter { dependency ->
-                    dependency.name != value.name && value.initializer.toString().contains(dependency.name)
-                }
-                .sortedBy(KotlinProjectionModuleMetadata::name)
+                .filter { dependency -> dependency.name != value.name }
                 .forEach(::visit)
             visiting.remove(value.name)
             reachable += value.name
@@ -640,6 +694,23 @@ private data class KotlinProjectionCallSiteCodecIdentity(
             append(privateDiscriminator)
         }
     }
+}
+
+private fun callSitePreparationKey(
+    callPlan: KotlinProjectionAbiCallPlan,
+    hResultPolicy: WinRTProjectionCallSiteHResultPolicy?,
+    callerOwnedResultType: TypeName?,
+): String = buildString {
+    append("return=").append(callPlan.returnBinding)
+    append("|parameters=")
+    callPlan.parameterSlots.forEach { slot ->
+        append(slot.binding.typeBinding)
+        append(':').append(slot.binding.category)
+        append(';')
+    }
+    append("|suppressHResult=").append(callPlan.suppressHResultCheck)
+    append("|hResult=").append(hResultPolicy?.name ?: "default")
+    append("|callerOwned=").append(callerOwnedResultType ?: "")
 }
 
 internal enum class KotlinProjectionAbiCodecRole {

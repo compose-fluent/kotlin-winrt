@@ -2,6 +2,9 @@ package io.github.composefluent.winrt.projections.generator
 
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRTActivationShape
 import io.github.composefluent.winrt.metadata.WinRTAttributedFactoryKind
@@ -447,6 +450,66 @@ class KotlinProjectionGeneratorTest {
         assertTrue(groupedPackageFile, groupedPackageFile.contains("public interface IWidget"))
         assertFalse(groupedPackageFile, groupedPackageFile.contains("public class Widget"))
         assertTrue(ccwFactories, ccwFactories.contains("IWidget.Metadata.IID"))
+    }
+
+    @Test
+    fun grouped_projection_shards_keep_unrelated_shards_stable_when_a_type_is_added() {
+        fun generatedFile(index: Int, payloadSize: Int): KotlinProjectionFile {
+            val file = FileSpec.builder("sample.foundation", "Type$index")
+                .addType(
+                    TypeSpec.classBuilder("Type$index")
+                        .addFunction(
+                            FunSpec.builder("payload")
+                                .returns(ClassName("kotlin", "String"))
+                                .addCode(CodeBlock.of("return %S", "x".repeat(payloadSize)))
+                                .build(),
+                        )
+                        .build(),
+                )
+                .build()
+            return KotlinProjectionFile(
+                relativePath = "sample/foundation/Type$index.kt",
+                packageName = "sample.foundation",
+                contents = "",
+                kotlinPoetFile = file,
+            )
+        }
+
+        val sourceFiles = (0 until 12)
+            .map { index -> generatedFile(index, payloadSize = 25_000) }
+        val initial = sourceFiles
+            .groupByPackage()
+            .associateBy(KotlinProjectionFile::relativePath)
+        val expanded = (sourceFiles + generatedFile(99, payloadSize = 1_000))
+            .toList()
+            .groupByPackage()
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue("Expected the fixture to use more than one stable shard.", initial.size > 1)
+        assertTrue(initial.values.all { it.contents.length <= 220_000 })
+        assertEquals(initial, sourceFiles.reversed().groupByPackage().associateBy(KotlinProjectionFile::relativePath))
+        val unchangedShards = initial.count { (path, file) -> expanded[path]?.contents == file.contents }
+        assertTrue(
+            "Adding one type should not rewrite every existing shard: initial=$initial expanded=$expanded",
+            unchangedShards >= initial.size - 1,
+        )
+
+        val thresholdExpanded = (sourceFiles + generatedFile(100, payloadSize = 220_000))
+            .groupByPackage()
+            .associateBy(KotlinProjectionFile::relativePath)
+        val thresholdUnchangedShards = initial.count { (path, file) ->
+            thresholdExpanded[path]?.contents == file.contents
+        }
+        assertTrue(
+            "Crossing the package size threshold should only affect related shards: " +
+                "initial=$initial thresholdExpanded=$thresholdExpanded",
+            thresholdUnchangedShards >= initial.size - 1,
+        )
+        val grown = sourceFiles.mapIndexed { index, file ->
+            if (index == 0) generatedFile(0, 180_000) else file
+        }.groupByPackage().associateBy(KotlinProjectionFile::relativePath)
+        assertTrue(grown.values.all { it.contents.length <= 220_000 })
+        assertTrue(initial.count { (path, file) -> grown[path]?.contents == file.contents } >= initial.size - 1)
     }
 
     @Test
@@ -12298,6 +12361,13 @@ class KotlinProjectionGeneratorTest {
         )
 
         val contents = KotlinProjectionGenerator().generate(model).single { it.relativePath.endsWith("IWidget.kt") }.contents
+        val groupedOutputRoot = Files.createTempDirectory("kotlin-winrt-grouped-attributes-")
+        KotlinProjectionGenerator(groupProjectionFilesByPackageOnWrite = true)
+            .generateTo(model, groupedOutputRoot)
+        val groupedContents = groupedOutputRoot
+            .resolve("sample/foundation/sample_foundation.kt")
+            .toFile()
+            .readText()
 
         assertTrue(contents.contains("@WinRTAttributeUsage("))
         assertTrue(contents.contains("targets = 16L"))
@@ -12311,6 +12381,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("listOf("))
         assertTrue(contents.contains("System.Runtime.Versioning.SupportedOSPlatform"))
         assertTrue(contents.contains("Windows.Foundation.Metadata.Experimental"))
+        assertTrue(groupedContents.contains("@WinRTExperimental"))
+        assertTrue(groupedContents.contains("@WinRTContractVersion("))
+        assertTrue(groupedContents.contains("val PROJECTED_ATTRIBUTES: List<String>"))
     }
 
     @Test

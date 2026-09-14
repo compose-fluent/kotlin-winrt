@@ -343,13 +343,11 @@ internal fun KotlinProjectionRenderer.renderRuntimeProperty(
 ): PropertySpec =
     renderBoundProperty(plan, property) ?: renderStubProperty(plan.type.qualifiedName, property)
 
-internal fun KotlinProjectionRenderer.renderBoundMethod(
+internal fun KotlinProjectionRenderer.prepareBoundMethodCall(
     plan: KotlinTypeProjectionPlan,
     method: WinRTMethodDefinition,
-): FunSpec? {
+): Pair<KotlinProjectionInstanceMemberBinding, KotlinProjectionAbiCallPlan>? {
     val binding = matchingMethodBinding(plan, method) ?: return null
-    val slotExpression = binding.slotCodeBlock()
-    val objectShape = runtimeObjectMethodShape(method)
     val methodReturnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, plan.type.namespace)
     val methodParameterBindings = method.parameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
@@ -370,16 +368,23 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         binding.marshalerPlanDescriptor.takeIf {
             effectiveReturnBinding == binding.returnBinding && effectiveParameterBindings == binding.parameterBindings
         }
-    val invocation = if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
-        renderObjectEqualsInvocation(binding)
-    } else {
-        renderBoundInvocation(
-            binding = binding,
-            returnBinding = effectiveReturnBinding,
-            parameterBindings = effectiveParameterBindings,
-            marshalerPlanDescriptor = effectiveMarshalerPlanDescriptor,
-        )
-    }
+    val effectiveBinding = if (method.isObjectEquals) objectEqualsBinding(binding) else binding
+    return effectiveBinding to requireAbiCallPlan(
+        bindingName = effectiveBinding.bindingName,
+        returnBinding = if (method.isObjectEquals) effectiveBinding.returnBinding else effectiveReturnBinding,
+        parameterBindings = if (method.isObjectEquals) effectiveBinding.parameterBindings else effectiveParameterBindings,
+        marshalerPlanDescriptor = if (method.isObjectEquals) effectiveBinding.marshalerPlanDescriptor else effectiveMarshalerPlanDescriptor,
+        suppressHResultCheck = effectiveBinding.suppressHResultCheck,
+    )
+}
+
+internal fun KotlinProjectionRenderer.renderBoundMethod(
+    plan: KotlinTypeProjectionPlan,
+    method: WinRTMethodDefinition,
+): FunSpec? {
+    val (binding, callPlan) = prepareBoundMethodCall(plan, method) ?: return null
+    val objectShape = runtimeObjectMethodShape(method)
+    val invocation = renderInlineAbiInvocation(binding.ownerCachePropertyName, binding.slotExpressionString(), callPlan)
     val modifiers = objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding)
     val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
     return FunSpec.builder(functionName)
@@ -542,10 +547,10 @@ internal fun closableMethodShape(
         null
     }
 
-private fun KotlinProjectionRenderer.renderObjectEqualsInvocation(
+private fun objectEqualsBinding(
     binding: KotlinProjectionInstanceMemberBinding,
-): CodeBlock {
-    val equalsBinding = binding.copy(
+): KotlinProjectionInstanceMemberBinding =
+    binding.copy(
         parameterBindings = listOf(
             KotlinProjectionAbiParameterBinding(
                 name = "other",
@@ -557,60 +562,53 @@ private fun KotlinProjectionRenderer.renderObjectEqualsInvocation(
             ),
         ),
     )
-    return renderBoundInvocation(equalsBinding)
+
+
+internal fun KotlinProjectionRenderer.prepareBoundPropertyCalls(
+    plan: KotlinTypeProjectionPlan,
+    property: WinRTPropertyDefinition,
+): List<Pair<KotlinProjectionInstanceMemberBinding, KotlinProjectionAbiCallPlan>> {
+    val getter = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
+        ?: return emptyList()
+    val calls = mutableListOf(getter to prepareBoundInvocation(getter))
+    if (!property.isReadOnly) {
+        val setter = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${property.name.uppercase()}_SETTER_SLOT" }
+        if (setter != null) {
+            val parameters = setter.parameterBindings.takeIf { it.size == 1 && it.single().name == "value" }
+                ?: listOf(KotlinProjectionAbiParameterBinding(
+                    name = "value",
+                    typeBinding = renderAbiTypeBinding(
+                        property.projectedPropertyTypeName(getter.ownerInterfaceQualifiedName, plan.typesByQualifiedName),
+                        plan.typesByQualifiedName,
+                        setter.ownerInterfaceQualifiedName.substringBeforeLast('.', ""),
+                    ),
+                ))
+            calls += setter to prepareBoundInvocation(setter, parameterBindings = parameters)
+        }
+    }
+    return calls
 }
 
 internal fun KotlinProjectionRenderer.renderBoundProperty(
     plan: KotlinTypeProjectionPlan,
     property: WinRTPropertyDefinition,
 ): PropertySpec? {
-    val getterBinding = plan.instanceMemberBindings.firstOrNull {
-        it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
-    } ?: return null
+    val calls = prepareBoundPropertyCalls(plan, property)
+    val (getterBinding, getterPlan) = calls.firstOrNull() ?: return null
     val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
-    val builder = PropertySpec.builder(
-        property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(propertyTypeName),
-    ).mutable(!property.isReadOnly)
-    builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
-    val getterInvocation = renderBoundInvocation(binding = getterBinding)
-    builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
-    builder.getter(
-        FunSpec.getterBuilder()
-            .addCode("%L\n", getterInvocation)
-            .build(),
-    )
+    val builder = PropertySpec.builder(property.name.replaceFirstChar(Char::lowercase), resolveTypeName(propertyTypeName))
+        .mutable(!property.isReadOnly)
+        .addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
+        .addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
+        .getter(FunSpec.getterBuilder().addCode("%L\n", renderInlineAbiInvocation(
+            getterBinding.ownerCachePropertyName, getterBinding.slotExpressionString(), getterPlan,
+        )).build())
     if (!property.isReadOnly) {
-        val setterBinding = plan.instanceMemberBindings.firstOrNull {
-            it.bindingName == "${property.name.uppercase()}_SETTER_SLOT"
-        }
-        val setterParameterBindings = listOf(
-            KotlinProjectionAbiParameterBinding(
-                name = "value",
-                typeBinding = renderAbiTypeBinding(
-                    propertyTypeName,
-                    plan.typesByQualifiedName,
-                    setterBinding?.ownerInterfaceQualifiedName?.substringBeforeLast('.', "") ?: plan.type.namespace,
-                ),
-            ),
-        )
-        builder.setter(
-            FunSpec.setterBuilder()
-                .addParameter("value", resolveTypeName(propertyTypeName))
-                .addCode(
-                    "%L\n",
-                    setterBinding?.let {
-                        renderBoundInvocation(
-                            binding = it,
-                            parameterBindings = it.parameterBindings.takeIf { parameters ->
-                                parameters.size == 1 && parameters.single().name == "value"
-                            } ?: setterParameterBindings,
-                        )
-                    }
-                        ?: missingAbiBindingError("property ${property.name} setter"),
-                )
-                .build(),
-        )
+        val setterInvocation = calls.getOrNull(1)?.let { (binding, callPlan) ->
+            renderInlineAbiInvocation(binding.ownerCachePropertyName, binding.slotExpressionString(), callPlan)
+        } ?: missingAbiBindingError("property ${property.name} setter")
+        builder.setter(FunSpec.setterBuilder().addParameter("value", resolveTypeName(propertyTypeName))
+            .addCode("%L\n", setterInvocation).build())
     }
     return builder.build()
 }
@@ -672,19 +670,27 @@ internal fun runtimeClassMemberModifiers(
 internal fun authoringInvokeBridgeName(method: WinRTMethodDefinition): String =
     "__winrtAuthoringInvoke${method.name}"
 
-internal fun KotlinProjectionRenderer.renderBoundInvocation(
+internal fun KotlinProjectionRenderer.prepareBoundInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
     returnBinding: KotlinProjectionAbiTypeBinding = binding.returnBinding,
     parameterBindings: List<KotlinProjectionAbiParameterBinding> = binding.parameterBindings,
     marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor? = binding.marshalerPlanDescriptor,
-): CodeBlock {
-    val callPlan = requireAbiCallPlan(
+): KotlinProjectionAbiCallPlan =
+    requireAbiCallPlan(
         bindingName = binding.bindingName,
         returnBinding = returnBinding,
         parameterBindings = parameterBindings,
         marshalerPlanDescriptor = marshalerPlanDescriptor,
         suppressHResultCheck = binding.suppressHResultCheck,
     )
+
+internal fun KotlinProjectionRenderer.renderBoundInvocation(
+    binding: KotlinProjectionInstanceMemberBinding,
+    returnBinding: KotlinProjectionAbiTypeBinding = binding.returnBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding> = binding.parameterBindings,
+    marshalerPlanDescriptor: WinRTAbiMarshalerPlanDescriptor? = binding.marshalerPlanDescriptor,
+): CodeBlock {
+    val callPlan = prepareBoundInvocation(binding, returnBinding, parameterBindings, marshalerPlanDescriptor)
     return renderInlineAbiInvocation(
         invokeTargetExpression = binding.ownerCachePropertyName,
         slotExpression = binding.slotExpressionString(),
@@ -692,16 +698,21 @@ internal fun KotlinProjectionRenderer.renderBoundInvocation(
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
 }
 
-internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
+internal fun KotlinProjectionRenderer.prepareBoundStaticInvocation(
     binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock {
-    val callPlan = requireAbiCallPlan(
+): KotlinProjectionAbiCallPlan =
+    requireAbiCallPlan(
         bindingName = binding.bindingName,
         returnBinding = binding.returnBinding,
         parameterBindings = binding.parameterBindings,
         marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
         suppressHResultCheck = binding.suppressHResultCheck,
     )
+
+internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock {
+    val callPlan = prepareBoundStaticInvocation(binding)
     return renderInlineAbiInvocation(
         invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
         slotExpression = writeTimeSlotCodeBlock(binding),
@@ -737,15 +748,39 @@ private fun KotlinProjectionRenderer.writeTimeSlotCodeBlock(
 internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
     plan: KotlinTypeProjectionPlan,
     suppressedMemberNames: Set<String>,
-): List<Any> {
+): List<Any> = buildList {
+    visitRequiredInterfaceForwardMembers(plan, suppressedMemberNames,
+        methodConsumer = { owner, type, method -> renderRequiredForwardMethod(plan, owner, type, method)?.let(::add) },
+        propertyConsumer = { property -> renderRequiredForwardProperty(plan, property)?.let(::add) },
+    )
+}
+
+internal fun KotlinProjectionRenderer.collectRequiredInterfaceForwardCallSites(
+    plan: KotlinTypeProjectionPlan,
+    suppressedMemberNames: Set<String>,
+) {
+    visitRequiredInterfaceForwardMembers(plan, suppressedMemberNames,
+        methodConsumer = { _, type, method -> prepareRequiredForwardMethodCall(plan, type, method)?.let(::collectCallSite) },
+        propertyConsumer = { property ->
+            property.getter?.let { prepareRequiredForwardPropertyCall(plan, it, setter = false)?.let(::collectCallSite) }
+            property.setter?.let { prepareRequiredForwardPropertyCall(plan, it, setter = true)?.let(::collectCallSite) }
+        },
+    )
+}
+
+private fun KotlinProjectionRenderer.visitRequiredInterfaceForwardMembers(
+    plan: KotlinTypeProjectionPlan,
+    suppressedMemberNames: Set<String>,
+    methodConsumer: (String, WinRTTypeDefinition, WinRTMethodDefinition) -> Unit,
+    propertyConsumer: (RequiredForwardProperty) -> Unit,
+) {
     if (plan.type.kind != WinRTTypeKind.RuntimeClass) {
-        return emptyList()
+        return
     }
     val existingMethodNames = plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).mapTo(mutableSetOf(), WinRTMethodDefinition::name)
     val existingPropertyNames = plan.type.properties.filterNot(WinRTPropertyDefinition::isStatic).mapTo(mutableSetOf()) {
         it.name.replaceFirstChar(Char::lowercase)
     }
-    val members = mutableListOf<Any>()
     val emittedMethods = mutableSetOf<String>()
     val propertyForwards = linkedMapOf<String, RequiredForwardProperty>()
     plan.type.implementedInterfaces.forEach { implemented ->
@@ -768,7 +803,7 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
                     val substitutedMethod = requiredInterface.substitute(method)
                     val key = "${substitutedMethod.name}:${substitutedMethod.parameters.joinToString(",") { it.typeName }}"
                     if (emittedMethods.add(key)) {
-                        renderRequiredForwardMethod(plan, requiredInterface.interfaceName, interfaceType, substitutedMethod)?.let(members::add)
+                        methodConsumer(requiredInterface.interfaceName, interfaceType, substitutedMethod)
                     }
                 }
             interfaceType.properties
@@ -796,10 +831,7 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
                 }
         }
     }
-    propertyForwards.values.forEach { property ->
-        renderRequiredForwardProperty(plan, property)?.let(members::add)
-    }
-    return members
+    propertyForwards.values.forEach(propertyConsumer)
 }
 
 private val RequiredForwardInterfaceType.isMappedCollectionOrIteratorInterface: Boolean
@@ -932,6 +964,23 @@ private fun genericArgumentTypeRefs(typeName: String): List<WinRTTypeRef> {
         .map(WinRTTypeRef::fromDisplayName)
 }
 
+private fun KotlinProjectionRenderer.prepareRequiredForwardMethodCall(
+    plan: KotlinTypeProjectionPlan,
+    slotInterfaceType: WinRTTypeDefinition,
+    method: WinRTMethodDefinition,
+): KotlinProjectionAbiCallPlan? {
+    if (method.genericParameterCount > 0) return null
+    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, slotInterfaceType.namespace)
+    val parameterBindings = method.parameters.map { parameter ->
+        KotlinProjectionAbiParameterBinding(
+            name = parameter.name,
+            typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace),
+            category = metadataParameterCategoryFor(parameter),
+        )
+    }
+    return buildAbiCallPlan(returnBinding, parameterBindings, suppressHResultCheck = method.isNoException)
+}
+
 private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     plan: KotlinTypeProjectionPlan,
     ownerInterfaceName: String,
@@ -955,25 +1004,14 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
             .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
             .build()
     }
-    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, slotInterfaceType.namespace)
-    val parameterBindings = method.parameters.map { parameter ->
-        KotlinProjectionAbiParameterBinding(
-            name = parameter.name,
-            typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace),
-            category = metadataParameterCategoryFor(parameter),
-        )
-    }
+    val callPlan = prepareRequiredForwardMethodCall(plan, slotInterfaceType, method) ?: return null
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
     val referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName)
     val slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName)
     val invocation = renderInlineAbiInvocation(
         invokeTargetExpression = referenceExpression,
         slotExpression = slotExpression,
-        callPlan = buildAbiCallPlan(
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = method.isNoException,
-        ) ?: return null,
+        callPlan = callPlan,
     ) ?: return null
     val objectShape = closableMethodShape(slotInterfaceType, method)
     val projectedAttributes = slotInterfaceType.projectedAttributes()
@@ -1014,6 +1052,20 @@ internal fun KotlinProjectionRenderer.metadataSlotExpression(
     }
 }
 
+private fun KotlinProjectionRenderer.prepareRequiredForwardPropertyCall(
+    plan: KotlinTypeProjectionPlan,
+    accessor: RequiredForwardPropertyAccessor,
+    setter: Boolean,
+): KotlinProjectionAbiCallPlan? {
+    val typeName = accessor.property.projectedPropertyTypeName(accessor.ownerInterfaceName, plan.typesByQualifiedName)
+    val binding = renderAbiTypeBinding(typeName, plan.typesByQualifiedName, accessor.slotInterfaceType.namespace)
+    return buildAbiCallPlan(
+        returnBinding = if (setter) KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit") else binding,
+        parameterBindings = if (setter) listOf(KotlinProjectionAbiParameterBinding("value", binding)) else emptyList(),
+        suppressHResultCheck = accessor.property.isNoException,
+    )
+}
+
 private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     plan: KotlinTypeProjectionPlan,
     property: RequiredForwardProperty,
@@ -1028,12 +1080,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         .orEmpty()
     builder.addProjectedAttributeAnnotations(projectedAttributes)
     property.getter?.let { getter ->
-        val getterTypeName = getter.property.projectedPropertyTypeName(getter.ownerInterfaceName, plan.typesByQualifiedName)
-        val callPlan = buildAbiCallPlan(
-            returnBinding = renderAbiTypeBinding(getterTypeName, plan.typesByQualifiedName, getter.slotInterfaceType.namespace),
-            parameterBindings = emptyList(),
-            suppressHResultCheck = getter.property.isNoException,
-        ) ?: return null
+        val callPlan = prepareRequiredForwardPropertyCall(plan, getter, setter = false) ?: return null
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = requiredForwardOwnerCache(getter.ownerInterfaceName, plan.defaultInterfaceName),
             slotExpression = metadataSlotExpression(getter.slotInterfaceType.qualifiedName, "${getter.property.name.uppercase()}_GETTER_SLOT"),
@@ -1046,24 +1093,12 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         )
     }
     property.setter?.let { setter ->
-        val setterTypeName = setter.property.projectedPropertyTypeName(setter.ownerInterfaceName, plan.typesByQualifiedName)
-        val returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit")
-        val parameterBindings = listOf(
-            KotlinProjectionAbiParameterBinding(
-                "value",
-                renderAbiTypeBinding(setterTypeName, plan.typesByQualifiedName, setter.slotInterfaceType.namespace),
-            ),
-        )
         val referenceExpression = requiredForwardOwnerCache(setter.ownerInterfaceName, plan.defaultInterfaceName)
         val slotExpression = metadataSlotExpression(setter.slotInterfaceType.qualifiedName, "${setter.property.name.uppercase()}_SETTER_SLOT")
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = referenceExpression,
             slotExpression = slotExpression,
-            callPlan = buildAbiCallPlan(
-                returnBinding = returnBinding,
-                parameterBindings = parameterBindings,
-                suppressHResultCheck = setter.property.isNoException,
-            ) ?: return null,
+            callPlan = prepareRequiredForwardPropertyCall(plan, setter, setter = true) ?: return null,
         ) ?: return null
         builder.setter(
             FunSpec.setterBuilder()

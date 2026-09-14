@@ -17,6 +17,25 @@ import org.junit.Test
 
 class KotlinProjectionCallSiteDescriptorsTest {
     @Test
+    fun module_metadata_emits_only_reachable_values_in_dependency_order() {
+        // CsWinRT main.cpp emits ABI support beside the projected declarations. Kotlin's
+        // shared initializer support additionally needs dependency-before-user ordering.
+        val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "ModulePlatformAbi"))
+        val leaf = support.registerMetadataExpression("leaf", INT, CodeBlock.of("1"))
+        val parent = support.registerMetadataExpression("parent", INT, CodeBlock.of("%L + 1", leaf))
+        val unused = support.registerMetadataExpression("unused", INT, CodeBlock.of("3"))
+        support.registerCodec(
+            operation = "test", abiTypeName = "sample.Value", signature = "test",
+            parameters = emptyList(), returnType = INT, body = CodeBlock.of("return %L\n", parent),
+        )
+        val text = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).single().contents
+        fun name(reference: CodeBlock) = reference.toString().substringAfterLast('.')
+        assertTrue(text.indexOf("val ${name(leaf)}") >= 0)
+        assertTrue(text.indexOf("val ${name(leaf)}") < text.indexOf("val ${name(parent)}"))
+        assertFalse(text.contains(name(unused)))
+    }
+
+    @Test
     fun caller_owned_composable_outputs_are_derived_by_lowering_not_generator_slots() {
         val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "ModulePlatformAbi"))
         val renderer = KotlinProjectionRenderer(modulePlatformAbiCalls = support)

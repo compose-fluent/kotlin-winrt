@@ -14,16 +14,23 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.encodeToStream
 
 private const val MODEL_CACHE_HEADER = "kotlin-winrt-normalized-model-v1"
 private const val MODEL_CACHE_SCHEMA = 1
 
+@Serializable
+private data class ModelCacheDocument(
+    val header: String,
+    val schema: Int,
+    val model: WinRTMetadataModel? = null,
+)
+
 /** Stable serialization for the complete normalized metadata model. */
+@OptIn(ExperimentalSerializationApi::class)
 object WinRTMetadataModelCodec {
     private val json = Json {
         classDiscriminator = "kind"
@@ -32,40 +39,33 @@ object WinRTMetadataModelCodec {
     }
 
     fun read(path: Path): WinRTMetadataModel {
-        val root = runCatching { json.parseToJsonElement(Files.readString(path)) }
-            .getOrElse { error ->
-                throw SerializationException("Cannot read WinRT metadata model cache $path: ${error.message}", error)
-            }
-        val objectRoot = root as? JsonObject
-            ?: throw SerializationException("WinRT metadata model cache $path is not a JSON object.")
-        require(objectRoot["header"]?.jsonPrimitive?.content == MODEL_CACHE_HEADER) {
+        val document = runCatching {
+            Files.newInputStream(path).buffered().use { json.decodeFromStream<ModelCacheDocument>(it) }
+        }.getOrElse { error ->
+            throw SerializationException("Cannot read WinRT metadata model cache $path: ${error.message}", error)
+        }
+        require(document.header == MODEL_CACHE_HEADER) {
             "WinRT metadata model cache $path has an incompatible header."
         }
-        require(objectRoot["schema"]?.jsonPrimitive?.content?.toIntOrNull() == MODEL_CACHE_SCHEMA) {
+        require(document.schema == MODEL_CACHE_SCHEMA) {
             "WinRT metadata model cache $path has an incompatible schema."
         }
-        val modelElement = objectRoot["model"]
-            ?: throw SerializationException("WinRT metadata model cache $path is missing its model payload.")
-        return runCatching { json.decodeFromJsonElement(WinRTMetadataModel.serializer(), modelElement).normalized() }
-            .getOrElse { error ->
-                throw SerializationException("Cannot decode WinRT metadata model cache $path: ${error.message}", error)
-            }
+        return (document.model
+            ?: throw SerializationException("WinRT metadata model cache $path is missing its model payload.")).normalized()
     }
 
     fun writeAtomic(path: Path, model: WinRTMetadataModel) {
         val normalized = model.normalized()
-        val document = buildJsonObject {
-            put("header", MODEL_CACHE_HEADER)
-            put("schema", MODEL_CACHE_SCHEMA)
-            put("model", json.encodeToJsonElement(WinRTMetadataModel.serializer(), normalized))
-        }
+        // The metadata owner corresponds to cswinrt/main.cpp's input cache. Stream the
+        // Kotlin persistent representation without an additional JSON tree or full text copy.
+        val document = ModelCacheDocument(MODEL_CACHE_HEADER, MODEL_CACHE_SCHEMA, normalized)
         Files.createDirectories(path.parent)
         val lockPath = path.resolveSibling(".${path.fileName}.lock")
         FileChannel.open(lockPath, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE).use { channel ->
             channel.lock().use {
                 val temporary = path.resolveSibling(".${path.fileName}.tmp-${UUID.randomUUID()}")
                 try {
-                    Files.writeString(temporary, json.encodeToString(JsonObject.serializer(), document))
+                    Files.newOutputStream(temporary).buffered().use { json.encodeToStream(document, it) }
                     try {
                         Files.move(
                             temporary,

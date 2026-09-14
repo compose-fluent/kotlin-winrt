@@ -2340,6 +2340,18 @@ private fun configureWinRTGeneration(
             task.dependsOn(authoringCandidatesTask)
         },
     )
+    // The metadata preparation task feeds the generation task's prepared manifest. Keep all
+    // NuGet inputs on that edge aligned so a task-level override cannot make preparation resolve
+    // a different package set or restore policy than the consumer that uses its manifest.
+    prepareMetadataTask.configure { task ->
+        task.nugetExecutable.set(generateTask.flatMap { it.nugetExecutable })
+        task.nugetCliVersion.set(generateTask.flatMap { it.nugetCliVersion })
+        task.nugetCliCacheDirectory.set(generateTask.flatMap { it.nugetCliCacheDirectory })
+        task.restoreNuGetPackages.set(generateTask.flatMap { it.restoreNuGetPackages })
+        task.useNuGetCliGlobalPackages.set(generateTask.flatMap { it.useNuGetCliGlobalPackages })
+        task.nugetGlobalPackagesRoots.set(generateTask.flatMap { it.nugetGlobalPackagesRoots })
+        task.nugetPackages.set(generateTask.flatMap { it.nugetPackages })
+    }
     // A build script may narrow the legacy generateWinRTProjections.sourceRoots
     // collection after plugin application. Resolve that collection lazily from the
     // scanner task so the compatibility DSL still controls the source scan without
@@ -2518,20 +2530,30 @@ private fun configureWinRTGeneration(
         })
     }
 
-    // Fixed local WinMD imports can be prepared once the DSL and target model are complete.
-    // Task-produced metadata, SDK discovery, and NuGet restore remain execution-time inputs.
+    // KGP requests prepareKotlinIdeaImport during IDE import. Task-backed metadata must be
+    // prepared through Gradle's dependency graph, never by invoking producer actions here.
+    project.tasks.matching { it.name == "prepareKotlinIdeaImport" || it.name == "ideaModule" }
+        .configureEach { it.dependsOn(generateTask) }
+
+    // Published identity artifacts are fixed inputs; project-produced identities stay on the
+    // IDE preparation task path so a clean import does not consume stale build outputs.
     project.afterEvaluate {
         val prepared = runCatching {
+            val identities = generateTask.get().dependencyIdentityFiles
+            if (identities.buildDependencies.getDependencies(null).isNotEmpty()) {
+                throw StaticPreparationUnavailable("dependency identity producers require IDE preparation tasks")
+            }
             prepareWinRTStaticProjectionSources(
                 project = project,
                 extension = extension.packageReferences,
-                dependencyIdentityFiles = emptyList(),
+                dependencyIdentityFiles = identities.files,
                 generatedOutputDirectory = generateTask.flatMap { it.outputDirectory },
                 supportOwnerIdentity = if (project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null) {
                     authoringTargetArtifactName.get()
                 } else {
                     kotlinWinRTNativeAuthoringTargetArtifactName(project).get()
                 },
+                windowsSdkRegistryRoots = windowsSdkRegistryRoots.get(),
             )
         }.getOrElse { error ->
             if (error is StaticPreparationUnavailable) {
@@ -2545,6 +2567,8 @@ private fun configureWinRTGeneration(
             generateTask.configure { task ->
                 task.preparedStaticSourceDirectory.set(prepared.toFile())
             }
+        } else {
+            clearPreparedStaticSources(generateTask.flatMap { it.outputDirectory }.get().asFile.toPath())
         }
     }
 }
@@ -3301,6 +3325,18 @@ private fun kotlinWinRTCompilerPluginClasspath(project: Project) =
                 project.dependencies.add(configuration.name, dependency)
             }
         }
+
+/** Fixed plugin dependencies can prepare an import without resolving task-produced artifacts. */
+internal fun kotlinWinRTPreparedGeneratorClasspath(project: Project): org.gradle.api.file.FileCollection {
+    val localGenerator = kotlinWinRTLocalGeneratorWorkerClasspath(project)
+        ?: return kotlinWinRTGeneratorWorkerClasspath(project)
+    val bundledKotlinPoet = kotlinWinRTPluginMetadataArtifact(project, "kotlinpoet-jvm-1.18.1")
+        ?: kotlinWinRTCodeSourceFile("com.squareup.kotlinpoet.ClassName")
+            ?.takeIf { it.name == "kotlinpoet-jvm-1.18.1.jar" }
+            ?.let(project::files)
+        ?: return kotlinWinRTGeneratorWorkerClasspath(project)
+    return project.files(kotlinWinRTPluginClasspathLocation(project), localGenerator, bundledKotlinPoet)
+}
 
 private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
     project.files(
@@ -5007,18 +5043,6 @@ private fun Test.kotlinWinRTProjectionTaskName(): String {
     return "compileKotlinWinRTProjection$suffix"
 }
 
-private fun isGeneratedWinRTProjectionSource(file: File): Boolean {
-    if (!file.isFile || !file.name.endsWith(".kt", ignoreCase = true)) {
-        return false
-    }
-    return runCatching {
-        file.useLines { lines ->
-            val header = lines.take(32).toList()
-            header.any { it.contains("\"KOTLIN_WINRT_GENERATED\"") } &&
-                header.none { it.contains("KOTLIN_WINRT_BUSINESS_OVERLAY") }
-        }
-    }.getOrDefault(false)
-}
 
 private fun generatedWinRTProjectionSourceFiles(project: Project, directory: Directory): Set<File> =
     project.fileTree(directory) { spec -> spec.include("**/*.kt") }
