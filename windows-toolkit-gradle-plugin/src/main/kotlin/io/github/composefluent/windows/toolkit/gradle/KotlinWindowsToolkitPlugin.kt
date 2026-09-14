@@ -2545,6 +2545,7 @@ private fun configureWinRTGeneration(
                 } else {
                     kotlinWinRTNativeAuthoringTargetArtifactName(project).get()
                 },
+                windowsSdkRegistryRoots = windowsSdkRegistryRoots.get(),
             )
         }.getOrElse { error ->
             if (error is StaticPreparationUnavailable) {
@@ -2558,6 +2559,8 @@ private fun configureWinRTGeneration(
             generateTask.configure { task ->
                 task.preparedStaticSourceDirectory.set(prepared.toFile())
             }
+        } else {
+            clearPreparedStaticSources(generateTask.flatMap { it.outputDirectory }.get().asFile.toPath())
         }
     }
 }

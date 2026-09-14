@@ -23,7 +23,7 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.jar.JarFile
 
-private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources-v2"
+private const val PREPARED_STATIC_HEADER = "kotlin-winrt-prepared-static-sources-v3"
 
 internal class StaticPreparationUnavailable(message: String) : RuntimeException(message)
 
@@ -41,16 +41,19 @@ internal fun prepareWinRTStaticProjectionSources(
     dependencyIdentityFiles: Iterable<java.io.File>,
     generatedOutputDirectory: Provider<Directory>,
     supportOwnerIdentity: String,
+    windowsSdkRegistryRoots: Iterable<String> = emptyList(),
 ): Path? {
-    val parsedSources = extension.metadataInputs.get().map { input -> WinRTMetadataSource.parse(input) }
+    val registryRootPaths = windowsSdkRegistryRoots.toList()
+        .orNullIfEmpty()
+        ?.map(Path::of)
+    val parsedSources = extension.metadataInputs.get()
+        .map { input -> WinRTMetadataSource.parse(input) }
+        .map { source -> source.withWindowsSdkRegistryRoots(registryRootPaths) }
     if (parsedSources.any { source ->
             source !is WinRTMetadataSource.PathSource &&
                 source !is WinRTMetadataSource.NuGetPackage &&
                 source !is WinRTMetadataSource.NuGetPackageReference
         }) throw StaticPreparationUnavailable("metadata includes a dynamic source")
-    if (extension.windowsSdkDeclared.get()) {
-        throw StaticPreparationUnavailable("Windows SDK metadata is resolved at execution time")
-    }
     if (project.configurations.findByName(KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION)
             ?.allDependencies
             ?.isNotEmpty() == true
@@ -76,27 +79,46 @@ internal fun prepareWinRTStaticProjectionSources(
         .toPath()
     val explicitNuGetRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of) +
         explicitNuGetReferences.flatMap { source -> source.globalPackagesRoots }
+    val configuredNuGetRoots = explicitNuGetRoots + persistentNuGetRoot
+    val configurationCacheRequested = project.gradle.startParameter.isConfigurationCacheRequested
     val preparedNuGetSources = if (packageSpecs.isEmpty()) {
         emptyList()
     } else {
-        val cliNuGetRoots = resolveNuGetCliGlobalPackagesRoots(
-            enabled = extension.useNuGetCliGlobalPackages.get(),
-            executable = extension.nugetExecutable.get(),
-            cliVersion = extension.nugetCliVersion.get(),
-            cliCacheDirectory = project.gradle.gradleUserHomeDir.toPath().resolve("caches/kotlin-winrt/nuget-cli"),
-            scratchDirectory = project.layout.projectDirectory
-                .dir(".gradle/kotlin-winrt/nuget-scratch")
-                .asFile
-                .toPath(),
-            logger = project.logger,
-        )
+        val packageIdentities = packageSpecs.map(::parseNuGetPackageIdentity)
+        val configuredRootsContainPackages = packageIdentities.all { identity ->
+            isNuGetPackageClosureAvailable(identity, configuredNuGetRoots)
+        }
+        val cliNuGetRoots = if (
+            extension.useNuGetCliGlobalPackages.get() &&
+            !configuredRootsContainPackages &&
+            !configurationCacheRequested
+        ) {
+            resolveNuGetCliGlobalPackagesRoots(
+                enabled = true,
+                executable = extension.nugetExecutable.get(),
+                cliVersion = extension.nugetCliVersion.get(),
+                cliCacheDirectory = project.gradle.gradleUserHomeDir.toPath().resolve("caches/kotlin-winrt/nuget-cli"),
+                scratchDirectory = project.layout.projectDirectory
+                    .dir(".gradle/kotlin-winrt/nuget-scratch")
+                    .asFile
+                    .toPath(),
+                logger = project.logger,
+            )
+        } else {
+            emptyList()
+        }
         try {
             resolveNuGetProjectionMetadataSources(
                 packageSpecs = packageSpecs,
-                explicitGlobalPackagesRoots = explicitNuGetRoots + persistentNuGetRoot,
+                explicitGlobalPackagesRoots = configuredNuGetRoots,
                 cliGlobalPackagesRoots = cliNuGetRoots,
                 restoreNuGetPackages = extension.restoreNuGetPackages.get(),
                 restoreMissing = { identities ->
+                    if (configurationCacheRequested) {
+                        throw StaticPreparationUnavailable(
+                            "NuGet restore is deferred to the execution-time generation task while configuration cache is requested",
+                        )
+                    }
                     restoreNuGetPackagesToDirectory(
                         packageIdentities = identities,
                         installRoot = persistentNuGetRoot,
@@ -125,11 +147,30 @@ internal fun prepareWinRTStaticProjectionSources(
     }
     val effectiveSources = parsedSources.filterNot { source ->
         source is WinRTMetadataSource.NuGetPackageReference
-    } + preparedNuGetSources
+    } +
+        if (extension.windowsSdkDeclared.get()) {
+            listOf(
+                WinRTMetadataSource.windowsSdk(
+                    version = extension.windowsSdkVersion.orNull,
+                    includeExtensions = extension.includeWindowsSdkExtensions.get(),
+                    registryRoots = registryRootPaths,
+                ),
+            )
+        } else {
+            emptyList()
+        } + preparedNuGetSources
     if (effectiveSources.isEmpty()) {
         throw StaticPreparationUnavailable("no fixed metadata or projected NuGet package is configured")
     }
-    val cache = WinRTMetadataSourceResolver.resolve(effectiveSources)
+    val cache = runCatching { WinRTMetadataSourceResolver.resolve(effectiveSources) }
+        .getOrElse { error ->
+            if (extension.windowsSdkDeclared.get()) {
+                throw StaticPreparationUnavailable(
+                    "Windows SDK metadata is not available during configuration: ${error.message}",
+                )
+            }
+            throw error
+        }
     if (cache.files.isEmpty() || cache.files.any { file -> !Files.isRegularFile(file) }) {
         throw StaticPreparationUnavailable("local metadata files are missing")
     }
@@ -141,6 +182,7 @@ internal fun prepareWinRTStaticProjectionSources(
         supportOwnerIdentity,
         project,
         emitJvmAuthoringHostExports,
+        registryRootPaths.orEmpty(),
     )
     val storeRoot = project.layout.projectDirectory.dir(".gradle/kotlin-winrt/prepared-imports").asFile.toPath()
     val entry = storeRoot.resolve(key)
@@ -219,6 +261,7 @@ private fun preparedStaticProjectionKey(
     supportOwnerIdentity: String,
     project: Project,
     emitJvmAuthoringHostExports: Boolean,
+    windowsSdkRegistryRoots: List<Path>,
 ): String {
     val digest = MessageDigest.getInstance("SHA-256")
     fun update(value: String) {
@@ -262,6 +305,7 @@ private fun preparedStaticProjectionKey(
     updateField("windowsSdkVersion", extension.windowsSdkVersion.orNull.orEmpty())
     updateField("includeWindowsSdkExtensions", extension.includeWindowsSdkExtensions.get().toString())
     updateField("generateWindowsSdkProjection", extension.generateWindowsSdkProjection.get().toString())
+    updateList("windowsSdkRegistryRoots", windowsSdkRegistryRoots.map(Path::toString).sorted())
     updateField("restoreNuGetPackages", extension.restoreNuGetPackages.get().toString())
     updateField("useNuGetCliGlobalPackages", extension.useNuGetCliGlobalPackages.get().toString())
     updateField("nugetExecutable", extension.nugetExecutable.get())
@@ -409,7 +453,10 @@ private fun writePreparedStaticManifest(path: Path, files: List<Path>, model: Wi
 }
 
 internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: Path) {
-    if (!Files.isDirectory(sourceRoot)) return
+    if (!Files.isDirectory(sourceRoot)) {
+        clearPreparedStaticSources(generatedRoot)
+        return
+    }
     val manifest = generatedRoot.resolve(".kotlin-winrt-prepared-static-files.tsv")
     val previousFiles = if (Files.isRegularFile(manifest)) {
         Files.readAllLines(manifest).filter(String::isNotBlank).toSet()
@@ -436,4 +483,26 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
         manifest,
         currentFiles.sorted().joinToString(separator = "\n", postfix = if (currentFiles.isEmpty()) "" else "\n"),
     )
+}
+
+internal fun clearPreparedStaticSources(generatedRoot: Path) {
+    val manifest = generatedRoot.resolve(".kotlin-winrt-prepared-static-files.tsv")
+    if (!Files.isRegularFile(manifest)) return
+    val normalizedRoot = generatedRoot.toAbsolutePath().normalize()
+    Files.readAllLines(manifest)
+        .asSequence()
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .map { relative ->
+            require(!Path.of(relative).isAbsolute) {
+                "Prepared static manifest contains an absolute path: $relative"
+            }
+            normalizedRoot.resolve(relative).normalize().also { target ->
+                require(target.startsWith(normalizedRoot)) {
+                    "Prepared static manifest escapes its generated root: $relative"
+                }
+            }
+        }
+        .forEach(Files::deleteIfExists)
+    GradleFileOperations.writeStringIfChanged(manifest, "")
 }

@@ -3560,41 +3560,42 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
-    fun local_winmd_static_sources_are_not_prepared_when_windows_sdk_is_declared() {
+    fun windows_sdk_static_sources_are_prepared_when_registry_root_is_available() {
+        val sdk = writeGradleWindowsSdkFixture(15)
         val project = ProjectBuilder.builder().withName("prepared-static-sdk-test").build()
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val extension = project.extensions.getByType(WindowsExtension::class.java)
-        val winmd = project.projectDir.toPath().resolve("fixture/Sample.winmd")
-        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
-            assemblyName = "Sample",
-            interfaces = listOf(
-                WinRTPortableExecutableInterfaceDescriptor(
-                    interfaceName = "Sample.IProbe",
-                    iid = "00000000-0000-0000-0000-000000000001",
-                ),
-            ),
-            runtimeClasses = emptyList(),
-            outputFile = winmd,
+        extension.packageReferences.windowsSdk(sdk.version, generateProjection = true)
+        extension.packageReferences.type("Windows.Graphics.Display.DisplayInformation")
+        val output = project.layout.buildDirectory.dir("prepared-output")
+        val prepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-sdk-test.jar",
+            windowsSdkRegistryRoots = listOf(sdk.root.toString()),
         )
-        extension.packageReferences.winmd(winmd.toString())
-        extension.packageReferences.type("Sample.IProbe")
-        extension.packageReferences.windowsSdk("10.0.26100.0", generateProjection = true)
 
-        val failure = runCatching {
-            prepareWinRTStaticProjectionSources(
-                project = project,
-                extension = extension.packageReferences,
-                dependencyIdentityFiles = emptyList(),
-                generatedOutputDirectory = project.layout.buildDirectory.dir("prepared-output"),
-                supportOwnerIdentity = "prepared-static-sdk-test.jar",
-            )
-        }.exceptionOrNull()
+        assertTrue(prepared != null)
+        assertTrue(Files.walk(prepared!!).use { stream ->
+            stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+        })
 
-        assertTrue(
-            "Windows SDK metadata must remain on the execution-time generation path",
-            failure is StaticPreparationUnavailable,
-        )
-        assertTrue(failure!!.message.orEmpty().contains("Windows SDK"))
+        val generatedRoot = output.get().asFile.toPath()
+        materializePreparedStaticSources(prepared, generatedRoot)
+        val generatedFiles = Files.walk(generatedRoot).use { stream ->
+            stream.filter(Files::isRegularFile)
+                .filter { path -> path.fileName.toString().endsWith(".kt") }
+                .toList()
+        }
+        assertTrue(generatedFiles.isNotEmpty())
+        val userFile = generatedRoot.resolve("business/Overlay.kt")
+        Files.createDirectories(userFile.parent)
+        Files.writeString(userFile, "package business\nclass Overlay")
+        clearPreparedStaticSources(generatedRoot)
+        assertTrue(Files.isRegularFile(userFile))
+        generatedFiles.forEach { generated -> assertFalse(Files.exists(generated)) }
     }
 
     @Test
