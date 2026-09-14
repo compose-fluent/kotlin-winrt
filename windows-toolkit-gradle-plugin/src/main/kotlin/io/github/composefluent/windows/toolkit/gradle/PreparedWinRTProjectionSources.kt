@@ -467,11 +467,11 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
         return
     }
     val manifest = generatedRoot.resolve(".kotlin-winrt-prepared-static-files.tsv")
-    val previousFiles = if (Files.isRegularFile(manifest)) {
+    val previousFiles = (if (Files.isRegularFile(manifest)) {
         Files.readAllLines(manifest).filter(String::isNotBlank).toSet()
     } else {
         emptySet()
-    }
+    }) + markedGeneratedProjectionFiles(generatedRoot)
     val currentFiles = mutableSetOf<String>()
     Files.walk(sourceRoot).use { stream ->
         stream.filter(Files::isRegularFile).forEach { source ->
@@ -492,6 +492,23 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
         manifest,
         currentFiles.sorted().joinToString(separator = "\n", postfix = if (currentFiles.isEmpty()) "" else "\n"),
     )
+}
+
+/** Adopts files from task generation predating the prepared-source ownership manifest. */
+private fun markedGeneratedProjectionFiles(root: Path): Set<String> {
+    if (!Files.isDirectory(root)) return emptySet()
+    return Files.walk(root).use { paths ->
+        paths.filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".kt") }
+            .filter { file ->
+                Files.newBufferedReader(file).use { reader ->
+                    val header = CharArray(1024)
+                    val count = reader.read(header)
+                    count > 0 && String(header, 0, count).contains("\"KOTLIN_WINRT_GENERATED\"")
+                }
+            }
+            .map { root.relativize(it).toString().replace('\\', '/') }
+            .toList().toSet()
+    }
 }
 
 internal fun clearPreparedStaticSources(generatedRoot: Path) {

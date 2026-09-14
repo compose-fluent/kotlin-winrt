@@ -3547,6 +3547,23 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun prepared_static_materialization_removes_legacy_generated_shards_and_preserves_user_sources() {
+        val root = Files.createTempDirectory("kotlin-winrt-static-shard-migration")
+        val prepared = Files.createDirectories(root.resolve("prepared"))
+        val output = Files.createDirectories(root.resolve("output"))
+        Files.writeString(prepared.resolve("sample_0.kt"), "class Current")
+        Files.writeString(output.resolve("sample.kt"), "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Old")
+        Files.writeString(output.resolve("Overlay.kt"), "class Overlay")
+        // A manifest may already exist from an earlier sync while task-owned shards
+        // from before that sync still exist outside its inventory.
+        Files.writeString(output.resolve(".kotlin-winrt-prepared-static-files.tsv"), "sample_0.kt\n")
+        materializePreparedStaticSources(prepared, output)
+        assertFalse(Files.exists(output.resolve("sample.kt")))
+        assertEquals("class Current", Files.readString(output.resolve("sample_0.kt")))
+        assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
+    }
+
+    @Test
     fun configuration_sync_reports_missing_nuget_before_generation() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-missing-test-")
         writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-missing-test")
