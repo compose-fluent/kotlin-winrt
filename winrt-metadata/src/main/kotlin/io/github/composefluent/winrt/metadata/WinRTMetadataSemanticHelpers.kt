@@ -562,6 +562,26 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     private val closureResolver = normalizedModel.closureResolver()
     private val typeClassifier = normalizedModel.typeClassifier()
     private val typeSemanticsResolver = normalizedModel.typeSemanticsResolver()
+    // CsWinRT helpers.h caches find_fast_abi_class_type. Keep our fallback for
+    // normalized metadata without attribute arguments, but index it once per model.
+    private val interfaceOwnerIndex by lazy {
+        val owners = linkedMapOf<String, WinRTTypeDefinition>()
+        val fastAbiOwners = linkedMapOf<String, WinRTTypeDefinition>()
+        normalizedModel.namespaces.forEach { namespace ->
+            namespace.types.filter { it.kind == WinRTTypeKind.RuntimeClass }.forEach { candidate ->
+                candidate.implementedInterfaces.forEach { implemented ->
+                    val name = resolveTypeReference(
+                        implemented.interfaceType, candidate.namespace, typesByQualifiedName,
+                    ).definitionQualifiedName
+                    if (name != null) {
+                        owners.putIfAbsent(name, candidate)
+                        if (candidate.isFastAbi) fastAbiOwners.putIfAbsent(name, candidate)
+                    }
+                }
+            }
+        }
+        owners to fastAbiOwners
+    }
 
     fun getMappedTypesInNamespace(namespace: String): List<WinRTMappedTypeDescriptor> =
         typeClassifier.mappedTypesInNamespace(namespace)
@@ -736,14 +756,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         if (exclusiveTypeName != null) {
             resolveType(WinRTTypeRef.fromDisplayName(exclusiveTypeName), type.namespace)?.let { return it }
         }
-        return normalizedModel.namespaces
-            .flatMap(WinRTNamespace::types)
-            .firstOrNull { candidate ->
-                candidate.kind == WinRTTypeKind.RuntimeClass &&
-                    candidate.implementedInterfaces.any { implemented ->
-                        resolveTypeReference(implemented.interfaceType, candidate.namespace, typesByQualifiedName).definitionQualifiedName == type.qualifiedName
-                    }
-            }
+        return interfaceOwnerIndex.first[type.qualifiedName]
     }
 
     fun isCrossModuleOverridableExclusiveInterface(type: WinRTTypeDefinition): Boolean {
@@ -1042,16 +1055,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
                 return getFastAbiClassForClass(exclusiveToClass)
             }
         }
-        val owner = normalizedModel.namespaces
-            .flatMap(WinRTNamespace::types)
-            .firstOrNull { candidate ->
-                candidate.kind == WinRTTypeKind.RuntimeClass &&
-                    candidate.isFastAbi &&
-                    candidate.implementedInterfaces.any { implemented ->
-                        resolveTypeReference(implemented.interfaceType, candidate.namespace, typesByQualifiedName).definitionQualifiedName == type.qualifiedName
-                    }
-            }
-            ?: return null
+        val owner = interfaceOwnerIndex.second[type.qualifiedName] ?: return null
         return getFastAbiClassForClass(owner)
     }
 
