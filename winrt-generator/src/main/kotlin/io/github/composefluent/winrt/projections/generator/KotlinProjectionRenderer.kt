@@ -406,14 +406,8 @@ class KotlinProjectionRenderer(
                     ?.let { collectCallSite(prepareBoundStaticInvocation(it)) }
             }
         }
-        plan.type.events.filter { it.isStatic }.forEach { event ->
-            val addBinding = plan.staticMemberBindings.firstOrNull {
-                it.bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT"
-            }
-            if (addBinding == null) {
-                renderBoundStaticEventFunctions(plan, event)
-            }
-        }
+        // Static events use runtime event sources; without an add binding the
+        // fallback is an error stub, so neither path registers an outbound call.
         collectFactoryCallSites(plan)
     }
 
