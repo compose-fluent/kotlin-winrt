@@ -3547,6 +3547,35 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun configuration_sync_reports_missing_nuget_before_generation() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-missing-test-")
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-missing-test")
+        fun configure(restore: Boolean) {
+            writeGradleFile(projectDir.resolve("build.gradle"), """
+                plugins { id "io.github.compose-fluent.windows-toolkit" }
+                windows {
+                    packageReferences {
+                        nugetGlobalPackagesRoots.add(file("empty-cache").absolutePath)
+                        useNuGetCliGlobalPackages.set(false)
+                        restoreNuGetPackages.set($restore)
+                        nugetPackage "Sample.Missing.Package", "1.0.0"
+                        type "Sample.IProbe"
+                    }
+                }
+            """.trimIndent())
+        }
+        configure(true)
+        val offline = GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--offline", "--stacktrace").buildAndFail()
+        assertTrue(offline.output, offline.output.contains("Projected NuGet packages are missing while Gradle is offline"))
+        configure(false)
+        val disabled = GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--stacktrace").buildAndFail()
+        assertTrue(disabled.output, disabled.output.contains("sample.missing.package", ignoreCase = true))
+        assertFalse(Files.exists(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")))
+    }
+
+    @Test
     fun configuration_cache_sync_restores_missing_nuget_and_repairs_deleted_sources() {
         assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
         val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-preparation-test-")

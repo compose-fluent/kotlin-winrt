@@ -9,7 +9,6 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
-import kotlin.streams.asSequence
 
 /**
  * Resolves the projection package set using the same cache-first policy for configuration and
@@ -148,11 +147,9 @@ internal fun restoreNuGetPackagesToDirectory(
             }
         }
     }
-    return Files.list(installRoot).use { stream ->
-        stream.asSequence()
-            .filter(Files::isDirectory)
-            .filter { path -> path.fileName.toString() != ".kotlin-winrt-restore.lock" }
-            .sortedWith(compareBy<Path> { path -> path.fileName.toString().lowercase() })
-            .toList()
-    }
+    return packageIdentities
+        .flatMap { identity -> WinRTNuGetPackageResolver.resolveClosure(identity, listOf(installRoot)) }
+        .map { it.packageRoot }
+        .distinct()
+        .sortedBy { it.toString().lowercase() }
 }

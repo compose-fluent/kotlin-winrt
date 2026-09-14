@@ -327,6 +327,12 @@ object WinRTNuGetPackageResolver {
                 if (candidate.isDirectory()) {
                     return nuGetCanonicalizePath(candidate)
                 }
+                // `nuget install -OutputDirectory` uses id.version, unlike the
+                // global-packages cache's id/version layout.
+                val installed = root.resolve("${identity.normalizedPackageId}.$version")
+                if (installed.isDirectory()) {
+                    return nuGetCanonicalizePath(installed)
+                }
             }
         }
         throw IllegalArgumentException(
@@ -429,7 +435,7 @@ object WinRTNuGetPackageResolver {
         val packageDirectoryName = identity.normalizedPackageId.lowercase()
         val candidates = globalPackagesRoots.flatMap { root ->
             val packageRoot = root.resolve(packageDirectoryName)
-            if (!packageRoot.isDirectory()) {
+            val globalCandidates = if (!packageRoot.isDirectory()) {
                 emptyList()
             } else {
                 Files.list(packageRoot).use { versions ->
@@ -441,6 +447,19 @@ object WinRTNuGetPackageResolver {
                         .toList()
                 }
             }
+            val installedCandidates = if (!root.isDirectory()) emptyList() else {
+                val prefix = "$packageDirectoryName."
+                Files.list(root).use { entries ->
+                    entries.iterator().asSequence()
+                        .filter(Path::isDirectory)
+                        .filter { it.fileName.toString().startsWith(prefix, ignoreCase = true) }
+                        .mapNotNull { path ->
+                            NuGetVersion.parse(path.fileName.toString().substring(prefix.length))
+                                ?.let { version -> version to path }
+                        }.toList()
+                }
+            }
+            globalCandidates + installedCandidates
         }
         return candidates
             .filter { (version) -> constraint.accepts(version) }
