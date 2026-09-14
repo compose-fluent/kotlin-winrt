@@ -853,7 +853,7 @@ internal class KotlinExpectActualProjectionRenderer(
             relativePath = "$sourceSetPrefix/${plan.relativePath}",
             packageName = plan.packageName,
             contents = if (renderContents) file.toString() else "",
-            kotlinPoetFile = file,
+            kotlinPoetFile = file.takeUnless { renderContents },
         )
     }
 

@@ -471,7 +471,7 @@ class KotlinProjectionRenderer(
             packageName = plan.packageName,
             // Grouped output consumes the KotlinPoet structure and renders only the merged file.
             contents = if (renderContents) file.toString() else "",
-            kotlinPoetFile = file,
+            kotlinPoetFile = file.takeUnless { renderContents },
         )
     }
 
