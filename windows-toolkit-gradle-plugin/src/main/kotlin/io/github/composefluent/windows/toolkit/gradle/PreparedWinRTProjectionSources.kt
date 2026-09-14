@@ -513,10 +513,13 @@ private fun markedGeneratedProjectionFiles(root: Path): Set<String> {
 
 internal fun clearPreparedStaticSources(generatedRoot: Path) {
     val manifest = generatedRoot.resolve(".kotlin-winrt-prepared-static-files.tsv")
-    if (!Files.isRegularFile(manifest)) return
+    val previousFiles = (if (Files.isRegularFile(manifest)) Files.readAllLines(manifest) else emptyList()) +
+        markedGeneratedProjectionFiles(generatedRoot)
+    if (previousFiles.isEmpty()) return
     val normalizedRoot = generatedRoot.toAbsolutePath().normalize()
-    Files.readAllLines(manifest)
+    previousFiles
         .asSequence()
+        .distinct()
         .map(String::trim)
         .filter(String::isNotEmpty)
         .map { relative ->

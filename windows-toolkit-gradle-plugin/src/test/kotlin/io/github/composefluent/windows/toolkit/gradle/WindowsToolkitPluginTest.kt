@@ -311,13 +311,16 @@ class WindowsToolkitPluginTest {
 
             windows {
                 packageReferences {
-                    nugetPackage "$packageId", "$packageVersion"
                     namespace "Sample"
-                    restoreNuGetPackages.set(false)
+                    metadataInputs.add(file("fixture/Sample.winmd").absolutePath)
                 }
             }
 
-            tasks.named("generateWinRTProjections") {
+            // Exercise task/worker restore directly. A declared DSL package is now
+            // prepared during configuration, before any worker can be started.
+            tasks.withType(io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask).configureEach {
+                nugetPackages.set(["$packageId@$packageVersion"])
+                winAppRestoreLockFiles.setFrom([])
                 nugetExecutable.set(file("nuget.cmd").absolutePath)
                 restoreNuGetPackages.set(true)
                 useNuGetCliGlobalPackages.set(false)
@@ -3560,6 +3563,11 @@ class WindowsToolkitPluginTest {
         materializePreparedStaticSources(prepared, output)
         assertFalse(Files.exists(output.resolve("sample.kt")))
         assertEquals("class Current", Files.readString(output.resolve("sample_0.kt")))
+        assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
+        Files.writeString(output.resolve("legacy.kt"), "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Legacy")
+        clearPreparedStaticSources(output)
+        assertFalse(Files.exists(output.resolve("sample_0.kt")))
+        assertFalse(Files.exists(output.resolve("legacy.kt")))
         assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
     }
 
