@@ -3547,6 +3547,105 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun configuration_cache_sync_restores_missing_nuget_and_repairs_deleted_sources() {
+        assumeTrue(System.getProperty("os.name").contains("Windows", ignoreCase = true))
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-preparation-test-")
+        val packageRoot = projectDir.resolve("fixture/sample.package/1.0.0")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(
+                WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                ),
+            ),
+            runtimeClasses = emptyList(),
+            outputFile = packageRoot.resolve("metadata/Sample.winmd"),
+        )
+        Files.writeString(projectDir.resolve("nuget.cmd"), """
+            @echo off
+            setlocal
+            set "OUTPUT="
+            :parse
+            if "%~1"=="" goto install
+            if /I "%~1"=="-OutputDirectory" (
+              set "OUTPUT=%~2"
+              shift
+            )
+            shift
+            goto parse
+            :install
+            if not defined OUTPUT exit /b 1
+            mkdir "%OUTPUT%\sample.package\1.0.0\metadata" 2>nul
+            copy /Y "$packageRoot\metadata\Sample.winmd" "%OUTPUT%\sample.package\1.0.0\metadata\Sample.winmd" >nul
+            exit /b %ERRORLEVEL%
+        """.trimIndent())
+        writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-preparation-test")
+        writeGradleFile(
+            projectDir.resolve("build.gradle"),
+            """
+            plugins {
+                id "io.github.compose-fluent.windows-toolkit"
+            }
+
+            windows {
+                packageReferences {
+                    nugetGlobalPackagesRoots.add(file("nuget-cache").absolutePath)
+                    useNuGetCliGlobalPackages.set(false)
+                    restoreNuGetPackages.set(true)
+                    nugetExecutable.set(file("nuget.cmd").absolutePath)
+                    nugetPackage "Sample.Package", "1.0.0"
+                    type "Sample.IProbe"
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":help")?.outcome)
+        assertTrue(
+            Files.walk(projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")).use { stream ->
+                stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
+            },
+        )
+        assertTrue(result.output.contains("Configuration cache entry stored"))
+        val output = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        val generated = Files.walk(output).use { paths -> paths.filter { it.toString().endsWith(".kt") }.toList() }
+        val expected = generated.associateWith(Files::readString)
+        // The first cold configuration observed absent cache/output paths before creating them.
+        // Capture their settled state before asserting reuse and deletion invalidation.
+        GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace").build()
+        val repeat = GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace").build()
+        assertTrue(repeat.output, repeat.output.contains("Reusing configuration cache"))
+        Files.delete(generated.first())
+        GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+            .withArguments("help", "--configuration-cache", "--stacktrace").build()
+        expected.forEach { (path, contents) -> assertEquals(contents, Files.readString(path)) }
+    }
+
+    @Test
+    fun ide_import_preparation_preserves_identity_producer_dependencies() {
+        val project = ProjectBuilder.builder().withName("ide-identity-producer-test").build()
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val producer = project.tasks.register("produceIdentity")
+        val generation = project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
+        generation.dependencyIdentityFiles.from(
+            project.files(project.layout.buildDirectory.file("producer/identity.json")).builtBy(producer),
+        )
+        val ideImport = project.tasks.register("prepareKotlinIdeaImport").get()
+        assertTrue(ideImport.taskDependencies.getDependencies(ideImport).contains(generation))
+        assertTrue(generation.taskDependencies.getDependencies(generation).contains(producer.get()))
+    }
+
+    @Test
     fun prepared_static_implementation_fingerprint_tracks_jar_and_classes_content() {
         val root = Files.createTempDirectory("kotlin-winrt-prepared-fingerprint-test-")
         val classesRoot = root.resolve("classes")

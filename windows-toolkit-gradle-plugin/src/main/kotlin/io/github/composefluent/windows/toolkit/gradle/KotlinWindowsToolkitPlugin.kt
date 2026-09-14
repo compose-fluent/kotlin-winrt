@@ -2530,15 +2530,23 @@ private fun configureWinRTGeneration(
         })
     }
 
-    // Fixed metadata and declared projection NuGet packages can be prepared once the DSL and
-    // target model are complete. SDK discovery and task-produced metadata remain execution-time
-    // inputs so their producer dependencies stay visible to Gradle.
+    // KGP requests prepareKotlinIdeaImport during IDE import. Task-backed metadata must be
+    // prepared through Gradle's dependency graph, never by invoking producer actions here.
+    project.tasks.matching { it.name == "prepareKotlinIdeaImport" || it.name == "ideaModule" }
+        .configureEach { it.dependsOn(generateTask) }
+
+    // Published identity artifacts are fixed inputs; project-produced identities stay on the
+    // IDE preparation task path so a clean import does not consume stale build outputs.
     project.afterEvaluate {
         val prepared = runCatching {
+            val identities = generateTask.get().dependencyIdentityFiles
+            if (identities.buildDependencies.getDependencies(null).isNotEmpty()) {
+                throw StaticPreparationUnavailable("dependency identity producers require IDE preparation tasks")
+            }
             prepareWinRTStaticProjectionSources(
                 project = project,
                 extension = extension.packageReferences,
-                dependencyIdentityFiles = emptyList(),
+                dependencyIdentityFiles = identities.files,
                 generatedOutputDirectory = generateTask.flatMap { it.outputDirectory },
                 supportOwnerIdentity = if (project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null) {
                     authoringTargetArtifactName.get()

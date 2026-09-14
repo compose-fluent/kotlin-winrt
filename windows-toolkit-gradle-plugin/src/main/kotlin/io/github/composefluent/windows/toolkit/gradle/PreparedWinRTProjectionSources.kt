@@ -30,10 +30,9 @@ internal class StaticPreparationUnavailable(message: String) : RuntimeException(
 /**
  * Prepares imported projection sources once the DSL and target model are complete.
  *
- * SDK discovery and task-produced metadata intentionally remain on the execution-time path,
- * which preserves producer dependencies instead of reading a previous build's output during
- * configuration. NuGet packages are different: their declared identity is a fixed input, so
- * the same cache-first resolver used by the generation task can restore and prepare them here.
+ * Fixed SDK, metadata, and NuGet identities use the same cache-first resolver as generation.
+ * The caller routes task-produced metadata through IDE preparation tasks to preserve producer
+ * dependencies instead of reading a previous build's output during configuration.
  */
 internal fun prepareWinRTStaticProjectionSources(
     project: Project,
@@ -54,12 +53,6 @@ internal fun prepareWinRTStaticProjectionSources(
                 source !is WinRTMetadataSource.NuGetPackage &&
                 source !is WinRTMetadataSource.NuGetPackageReference
         }) throw StaticPreparationUnavailable("metadata includes a dynamic source")
-    if (project.configurations.findByName(KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION)
-            ?.allDependencies
-            ?.isNotEmpty() == true
-    ) {
-        throw StaticPreparationUnavailable("dependency identity producers are configured")
-    }
     val identityFiles = dependencyIdentityFiles.toList()
     if (identityFiles.any { file -> !file.isFile }) {
         throw StaticPreparationUnavailable("dependency identity outputs are not available")
@@ -80,7 +73,16 @@ internal fun prepareWinRTStaticProjectionSources(
     val explicitNuGetRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of) +
         explicitNuGetReferences.flatMap { source -> source.globalPackagesRoots }
     val configuredNuGetRoots = explicitNuGetRoots + persistentNuGetRoot
-    val configurationCacheRequested = project.gradle.startParameter.isConfigurationCacheRequested
+    fun nuGetRoots(lookupOnly: Boolean, specs: List<String> = emptyList()): List<Path> =
+        project.providers.of(PreparedNuGetRootsValueSource::class.java) { spec ->
+            spec.parameters.executable.set(extension.nugetExecutable)
+            spec.parameters.cliVersion.set(extension.nugetCliVersion)
+            spec.parameters.cliCacheDirectory.set(project.gradle.gradleUserHomeDir.toPath().resolve("caches/kotlin-winrt/nuget-cli").toString())
+            spec.parameters.scratchDirectory.set(project.layout.projectDirectory.dir(".gradle/kotlin-winrt/nuget-scratch").asFile.path)
+            spec.parameters.installRoot.set(persistentNuGetRoot.toString())
+            spec.parameters.packageSpecs.set(specs)
+            spec.parameters.lookupOnly.set(lookupOnly)
+        }.get().map(Path::of)
     val preparedNuGetSources = if (packageSpecs.isEmpty()) {
         emptyList()
     } else {
@@ -91,60 +93,30 @@ internal fun prepareWinRTStaticProjectionSources(
         val cliNuGetRoots = if (
             extension.useNuGetCliGlobalPackages.get() &&
             !configuredRootsContainPackages &&
-            !configurationCacheRequested
+            !project.gradle.startParameter.isOffline
         ) {
-            resolveNuGetCliGlobalPackagesRoots(
-                enabled = true,
-                executable = extension.nugetExecutable.get(),
-                cliVersion = extension.nugetCliVersion.get(),
-                cliCacheDirectory = project.gradle.gradleUserHomeDir.toPath().resolve("caches/kotlin-winrt/nuget-cli"),
-                scratchDirectory = project.layout.projectDirectory
-                    .dir(".gradle/kotlin-winrt/nuget-scratch")
-                    .asFile
-                    .toPath(),
-                logger = project.logger,
-            )
+            nuGetRoots(lookupOnly = true)
         } else {
             emptyList()
         }
-        try {
-            resolveNuGetProjectionMetadataSources(
-                packageSpecs = packageSpecs,
-                explicitGlobalPackagesRoots = configuredNuGetRoots,
-                cliGlobalPackagesRoots = cliNuGetRoots,
-                restoreNuGetPackages = extension.restoreNuGetPackages.get(),
-                restoreMissing = { identities ->
-                    if (configurationCacheRequested) {
-                        throw StaticPreparationUnavailable(
-                            "NuGet restore is deferred to the execution-time generation task while configuration cache is requested",
-                        )
+        resolveNuGetProjectionMetadataSources(
+            packageSpecs = packageSpecs,
+            explicitGlobalPackagesRoots = configuredNuGetRoots,
+            cliGlobalPackagesRoots = cliNuGetRoots,
+            restoreNuGetPackages = extension.restoreNuGetPackages.get(),
+            restoreMissing = { identities ->
+                if (identities.isEmpty()) {
+                    emptyList()
+                } else {
+                    if (project.gradle.startParameter.isOffline) {
+                        throw GradleException("Projected NuGet packages are missing while Gradle is offline: ${identities.joinToString()}")
                     }
-                    restoreNuGetPackagesToDirectory(
-                        packageIdentities = identities,
-                        installRoot = persistentNuGetRoot,
-                        nuGetCli = NuGetCliSupport(
-                            executable = extension.nugetExecutable.get(),
-                            cliVersion = extension.nugetCliVersion.get(),
-                            cliCacheDirectory = project.gradle.gradleUserHomeDir.toPath()
-                                .resolve("caches/kotlin-winrt/nuget-cli"),
-                            scratchDirectory = project.layout.projectDirectory
-                                .dir(".gradle/kotlin-winrt/nuget-scratch")
-                                .asFile
-                                .toPath(),
-                            logger = project.logger,
-                        ),
-                    )
-                },
-            )
-        } catch (error: GradleException) {
-            if (!extension.restoreNuGetPackages.get()) {
-                throw StaticPreparationUnavailable(
-                    "projected NuGet metadata is not available in the configured cache",
-                )
-            }
-            throw error
-        }
+                    nuGetRoots(lookupOnly = false, specs = identities.map { "${it.normalizedPackageId}@${it.normalizedVersion}" })
+                }
+            },
+        )
     }
+
     val effectiveSources = parsedSources.filterNot { source ->
         source is WinRTMetadataSource.NuGetPackageReference
     } +
