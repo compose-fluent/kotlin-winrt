@@ -2122,45 +2122,62 @@ internal fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionF
                         declaredTopLevelNames = kotlinPoetFile.declaredTopLevelNames(),
                     )
                 }
-            val chunks = structuredFiles.chunkByGeneratedBodySizeAndImports(
-                packageDeclaredNames = structuredFiles
-                    .flatMap(KotlinPoetGeneratedFile::declaredTopLevelNames)
-                    .toSet(),
+            structuredFiles.renderStablePackageShards(
+                packageName = packageName,
+                packageDeclaredNames = structuredFiles.flatMap(KotlinPoetGeneratedFile::declaredTopLevelNames).toSet(),
             )
-            chunks
-                .map { chunk ->
-                    val fileName = packageName.split('.').joinToString("_") +
-                        if (chunks.size == 1) "" else "_${chunk.stableId}"
-                    val merged = FileSpec.builder(packageName, fileName)
-                        .apply {
-                            chunk.files.firstOrNull()?.fileComment?.let { comment ->
-                                addFileComment("%L", CodeBlock.of(comment))
-                            }
-                        }
-                        .addAnnotations(
-                            chunk.files.flatMap(KotlinPoetGeneratedFile::annotations).distinct(),
-                        )
-                        .apply {
-                            chunk.files.flatMap(KotlinPoetGeneratedFile::imports)
-                                .distinct()
-                                .sortedWith(compareBy({ it.qualifiedName }, { it.alias.orEmpty() }))
-                                .forEach(::addImport)
-                            chunk.files.forEach { file -> file.file.addMembersTo(this) }
-                        }
-                        .build()
-                    KotlinProjectionFile(
-                        relativePath = packageName.replace('.', '/') + "/$fileName.kt",
-                        packageName = packageName,
-                        contents = merged.toString(),
-                        kotlinPoetFile = merged,
-                    )
-                }
         }
 
 private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
-private const val STABLE_BASE_SHARD_COUNT = 16
-private const val MAX_STABLE_SHARD_DEPTH = 20
 
+/** Render a candidate once; only overflowing/conflicting nodes require further subdivision. */
+private fun List<KotlinPoetGeneratedFile>.renderStablePackageShards(
+    packageName: String,
+    packageDeclaredNames: Set<String>,
+    bits: Int = 0,
+    suffix: String = "",
+): List<KotlinProjectionFile> {
+    if (isEmpty()) return emptyList()
+    val fileName = packageName.replace('.', '_') + suffix
+    if (fitsInStableShard(packageDeclaredNames)) {
+        val merged = FileSpec.builder(packageName, fileName)
+            .apply { first().fileComment?.let { addFileComment("%L", CodeBlock.of(it)) } }
+            .addAnnotations(flatMap(KotlinPoetGeneratedFile::annotations).distinct())
+            .apply {
+                flatMap(KotlinPoetGeneratedFile::imports).distinct()
+                    .sortedWith(compareBy({ it.qualifiedName }, { it.alias.orEmpty() }))
+                    .forEach(::addImport)
+                for (file in this@renderStablePackageShards) file.file.addMembersTo(this)
+            }
+            .build()
+        val contents = merged.toString()
+        if (size == 1 || contents.length <= MAX_GROUPED_PROJECTION_BODY_CHARS) {
+            return listOf(KotlinProjectionFile(
+                relativePath = packageName.replace('.', '/') + "/$fileName.kt",
+                packageName = packageName,
+                contents = contents,
+            ))
+        }
+    }
+    // Hash-prefix partitioning is independent of package size and prior runs. Do not fall back
+    // merely because one bit has no split: later bits may still distinguish these file names.
+    if (bits < 63) {
+        var splitBit = bits
+        var splitSuffix = suffix
+        while (splitBit < 62 && map { (it.source.relativePath.stableShardHash() ushr splitBit) and 1L }.distinct().size == 1) {
+            splitSuffix += "_${(first().source.relativePath.stableShardHash() ushr splitBit) and 1L}"
+            splitBit++
+        }
+        return groupBy { (it.source.relativePath.stableShardHash() ushr splitBit) and 1L }
+            .toSortedMap().flatMap { (bit, files) ->
+                files.renderStablePackageShards(packageName, packageDeclaredNames, splitBit + 1, "${splitSuffix}_$bit")
+            }
+    }
+    // Full hash collisions remain deterministic without relying on process/history state.
+    return sortedBy { it.source.relativePath }.flatMapIndexed { index, file ->
+        listOf(file).renderStablePackageShards(packageName, packageDeclaredNames, bits, "${suffix}_$index")
+    }
+}
 private data class KotlinPoetGeneratedFile(
     val source: KotlinProjectionFile,
     val file: FileSpec,
@@ -2170,134 +2187,13 @@ private data class KotlinPoetGeneratedFile(
     val importedSimpleNames: Set<String>,
     val importedTargetsBySimpleName: Map<String, Set<String>>,
     val declaredTopLevelNames: Set<String>,
-) {
-    /** Estimate only the declaration tree; grouped output renders the merged FileSpec once. */
-    val generatedBodySize: Int = source.contents.length.takeIf { it > 0 }
-        ?: file.members.sumOf(Any::estimatedKotlinPoetBodyChars)
-}
-
-// A TypeSpec contains its nested members, but KotlinPoet intentionally does not expose the
-// aggregate member list. Keep this bound conservative so the size guard remains useful without
-// formatting the type just to measure it.
-private const val ESTIMATED_TYPE_BODY_CHARS = 4_096
-private const val ESTIMATED_FUNCTION_BODY_CHARS = 8_192
-private const val ESTIMATED_PROPERTY_BODY_CHARS = 2_048
-private const val ESTIMATED_TYPE_ALIAS_BODY_CHARS = 512
-private const val ESTIMATED_OTHER_MEMBER_BODY_CHARS = 1_024
-
-/**
- * KotlinPoet does not expose a cheap formatted length. Use a conservative structural estimate so
- * the grouping decision does not format every source file before the final merged write.
- */
-private fun Any.estimatedKotlinPoetBodyChars(): Int = when (this) {
-    is TypeSpec -> ESTIMATED_TYPE_BODY_CHARS +
-        typeVariables.size * 128 +
-        (primaryConstructor?.estimatedKotlinPoetBodyChars() ?: 0) +
-        propertySpecs.sumOf(Any::estimatedKotlinPoetBodyChars) +
-        funSpecs.sumOf(Any::estimatedKotlinPoetBodyChars) +
-        typeSpecs.sumOf(Any::estimatedKotlinPoetBodyChars) +
-        enumConstants.values.sumOf(Any::estimatedKotlinPoetBodyChars)
-    is FunSpec -> ESTIMATED_FUNCTION_BODY_CHARS + parameters.size * 128 + typeVariables.size * 128
-    is PropertySpec -> ESTIMATED_PROPERTY_BODY_CHARS
-    is TypeAliasSpec -> ESTIMATED_TYPE_ALIAS_BODY_CHARS
-    else -> ESTIMATED_OTHER_MEMBER_BODY_CHARS
-}
-
-private data class KotlinProjectionShard(
-    val stableId: String,
-    val files: List<KotlinPoetGeneratedFile>,
 )
-
-private fun List<KotlinPoetGeneratedFile>.chunkByGeneratedBodySizeAndImports(
-    packageDeclaredNames: Set<String>,
-): List<KotlinProjectionShard> {
-    if (isEmpty()) return emptyList()
-    val initialShardCount = stableInitialShardCount()
-    if (fitsInStableShard(packageDeclaredNames)) {
-        return listOf(
-            KotlinProjectionShard(
-                stableId = "0",
-                files = sortedBy { file -> file.source.relativePath },
-            ),
-        )
-    }
-    return groupBy { file ->
-        (file.source.relativePath.stableShardHash() % initialShardCount).toInt()
-    }
-        .toSortedMap()
-        .flatMap { (baseShard, files) ->
-            files.splitStableShard(
-                baseShard = baseShard,
-                baseShardCount = initialShardCount,
-                packageDeclaredNames = packageDeclaredNames,
-            )
-        }
-}
-
-private fun List<KotlinPoetGeneratedFile>.stableInitialShardCount(): Int = STABLE_BASE_SHARD_COUNT
-
-private fun List<KotlinPoetGeneratedFile>.splitStableShard(
-    baseShard: Int,
-    baseShardCount: Int,
-    packageDeclaredNames: Set<String>,
-): List<KotlinProjectionShard> = sortedBy { file -> file.source.relativePath }.splitStableShardNode(
-    baseShard = baseShard,
-    baseShardCount = baseShardCount,
-    bitOffset = 0,
-    stableId = baseShard.toString(36),
-    packageDeclaredNames = packageDeclaredNames,
-)
-
-private fun List<KotlinPoetGeneratedFile>.splitStableShardNode(
-    baseShard: Int,
-    baseShardCount: Int,
-    bitOffset: Int,
-    stableId: String,
-    packageDeclaredNames: Set<String>,
-): List<KotlinProjectionShard> {
-    val ordered = sortedBy { file -> file.source.relativePath }
-    if (ordered.fitsInStableShard(packageDeclaredNames)) {
-        return listOf(KotlinProjectionShard(stableId = stableId, files = ordered))
-    }
-    if (ordered.size <= 1 || bitOffset >= MAX_STABLE_SHARD_DEPTH) {
-        return ordered.map { file ->
-            KotlinProjectionShard(
-                stableId = stableFileShardId(baseShard, file.source.relativePath),
-                files = listOf(file),
-            )
-        }
-    }
-
-    val partitions = ordered
-        .groupBy { file ->
-            val secondaryHash = file.source.relativePath.stableShardHash() / baseShardCount
-            ((secondaryHash ushr bitOffset) and 1L).toInt()
-        }
-        .toSortedMap()
-    if (partitions.size <= 1) {
-        return ordered.map { file ->
-            KotlinProjectionShard(
-                stableId = stableFileShardId(baseShard, file.source.relativePath),
-                files = listOf(file),
-            )
-        }
-    }
-    return partitions.flatMap { (partition, files) ->
-        files.splitStableShardNode(
-            baseShard = baseShard,
-            baseShardCount = baseShardCount,
-            bitOffset = bitOffset + 1,
-            stableId = "${stableId}_$partition",
-            packageDeclaredNames = packageDeclaredNames,
-        )
-    }
-}
 
 private fun List<KotlinPoetGeneratedFile>.fitsInStableShard(
     packageDeclaredNames: Set<String>,
 ): Boolean {
     if (size <= 1) return true
-    var currentSize = 0
+
     var currentImportedNames = emptySet<String>()
     var currentImportedTargetsByName = emptyMap<String, Set<String>>()
     var currentDeclaredNames = emptySet<String>()
@@ -2314,23 +2210,16 @@ private fun List<KotlinPoetGeneratedFile>.fitsInStableShard(
                 val currentTargets = currentImportedTargetsByName[name].orEmpty()
                 currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
             }
-        if (
-            currentSize + file.generatedBodySize > MAX_GROUPED_PROJECTION_BODY_CHARS ||
-                hasImportDeclarationCollision ||
-                hasImportTargetCollision
-        ) {
+        if (hasImportDeclarationCollision || hasImportTargetCollision) {
             return false
         }
-        currentSize += file.generatedBodySize
+
         currentImportedNames = currentImportedNames + fileImportedNames
         currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
         currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
     }
     return true
 }
-
-private fun stableFileShardId(baseShard: Int, relativePath: String): String =
-    "${baseShard.toString(36)}_${relativePath.stableShardHash().toString(36)}"
 
 private fun String.stableShardHash(): Long {
     var hash = 1125899906842597L

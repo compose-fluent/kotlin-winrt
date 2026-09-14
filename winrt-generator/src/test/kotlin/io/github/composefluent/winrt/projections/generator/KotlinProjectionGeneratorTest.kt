@@ -470,7 +470,7 @@ class KotlinProjectionGeneratorTest {
             return KotlinProjectionFile(
                 relativePath = "sample/foundation/Type$index.kt",
                 packageName = "sample.foundation",
-                contents = file.toString(),
+                contents = "",
                 kotlinPoetFile = file,
             )
         }
@@ -486,6 +486,8 @@ class KotlinProjectionGeneratorTest {
             .associateBy(KotlinProjectionFile::relativePath)
 
         assertTrue("Expected the fixture to use more than one stable shard.", initial.size > 1)
+        assertTrue(initial.values.all { it.contents.length <= 220_000 })
+        assertEquals(initial, sourceFiles.reversed().groupByPackage().associateBy(KotlinProjectionFile::relativePath))
         val unchangedShards = initial.count { (path, file) -> expanded[path]?.contents == file.contents }
         assertTrue(
             "Adding one type should not rewrite every existing shard: initial=$initial expanded=$expanded",
@@ -503,6 +505,11 @@ class KotlinProjectionGeneratorTest {
                 "initial=$initial thresholdExpanded=$thresholdExpanded",
             thresholdUnchangedShards >= initial.size - 1,
         )
+        val grown = sourceFiles.mapIndexed { index, file ->
+            if (index == 0) generatedFile(0, 180_000) else file
+        }.groupByPackage().associateBy(KotlinProjectionFile::relativePath)
+        assertTrue(grown.values.all { it.contents.length <= 220_000 })
+        assertTrue(initial.count { (path, file) -> grown[path]?.contents == file.contents } >= initial.size - 1)
     }
 
     @Test
