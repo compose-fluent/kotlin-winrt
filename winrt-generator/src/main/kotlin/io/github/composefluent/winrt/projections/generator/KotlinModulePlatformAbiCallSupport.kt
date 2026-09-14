@@ -401,8 +401,16 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         if (metadata.isEmpty() || codecs.isEmpty()) return emptyList()
         val values = metadata.values.toList()
         val byName = values.associateBy(KotlinProjectionModuleMetadata::name)
-        val renderedCodecText = codecs.values.joinToString("\n") { codec -> codec.body.toString() }
-        val roots = values.filter { value -> renderedCodecText.contains(value.name) }
+        // Generated names have a fixed-width hash. Scan each expression once instead of
+        // formatting and searching it separately for every registered metadata value.
+        val referencePattern = Regex("metadata_[0-9a-f]{16}")
+        fun references(text: String): List<KotlinProjectionModuleMetadata> =
+            referencePattern.findAll(text)
+                .mapNotNull { byName[it.value] }
+                .distinctBy(KotlinProjectionModuleMetadata::name)
+                .sortedBy(KotlinProjectionModuleMetadata::name)
+                .toList()
+        val roots = codecs.values.flatMap { references(it.body.toString()) }
         if (roots.isEmpty()) return emptyList()
 
         val reachable = linkedSetOf<String>()
@@ -412,12 +420,9 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             check(visiting.add(value.name)) {
                 "Cyclic generated module metadata dependency at '${value.name}'."
             }
-            values
+            references(value.initializer.toString())
                 .asSequence()
-                .filter { dependency ->
-                    dependency.name != value.name && value.initializer.toString().contains(dependency.name)
-                }
-                .sortedBy(KotlinProjectionModuleMetadata::name)
+                .filter { dependency -> dependency.name != value.name }
                 .forEach(::visit)
             visiting.remove(value.name)
             reachable += value.name
