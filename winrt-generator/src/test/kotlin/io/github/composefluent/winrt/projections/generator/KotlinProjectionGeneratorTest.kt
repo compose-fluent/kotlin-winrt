@@ -491,6 +491,18 @@ class KotlinProjectionGeneratorTest {
             "Adding one type should not rewrite every existing shard: initial=$initial expanded=$expanded",
             unchangedShards >= initial.size - 1,
         )
+
+        val thresholdExpanded = (sourceFiles + generatedFile(100, payloadSize = 220_000))
+            .groupByPackage()
+            .associateBy(KotlinProjectionFile::relativePath)
+        val thresholdUnchangedShards = initial.count { (path, file) ->
+            thresholdExpanded[path]?.contents == file.contents
+        }
+        assertTrue(
+            "Crossing the package size threshold should only affect related shards: " +
+                "initial=$initial thresholdExpanded=$thresholdExpanded",
+            thresholdUnchangedShards >= initial.size - 1,
+        )
     }
 
     @Test

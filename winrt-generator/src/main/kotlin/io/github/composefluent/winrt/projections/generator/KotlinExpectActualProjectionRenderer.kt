@@ -82,17 +82,31 @@ internal class KotlinExpectActualProjectionRenderer(
         }
     }
 
-    override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> {
+    override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+        renderFiles(plan, renderContents = true)
+
+    override fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+        renderFiles(plan, renderContents = false)
+
+    private fun renderFiles(
+        plan: KotlinTypeProjectionPlan,
+        renderContents: Boolean,
+    ): List<KotlinProjectionFile> {
         return when {
             canRenderExpectActualInterfaceSlice(plan) -> listOf(
-                renderCommonInterface(plan),
-                renderJvmInterfaceProjectionSupport(plan),
+                renderCommonInterface(plan, renderContents),
+                renderJvmInterfaceProjectionSupport(plan, renderContents),
             )
             canRenderExpectActualRuntimeClassSlice(plan) -> listOf(
-                renderCommonExpectRuntimeClass(plan),
-                renderJvmActualRuntimeClass(plan),
+                renderCommonExpectRuntimeClass(plan, renderContents),
+                renderJvmActualRuntimeClass(plan, renderContents),
             )
-            else -> listOf(prefixFile("commonMain/kotlin", baseRenderer.render(plan)))
+            else -> listOf(
+                prefixFile(
+                    "commonMain/kotlin",
+                    if (renderContents) baseRenderer.render(plan) else baseRenderer.renderStructured(plan),
+                ),
+            )
         }
     }
 
@@ -360,7 +374,10 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun projectedMethodSignatureKey(method: WinRTMethodDefinition): String =
         "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
 
-    private fun renderCommonInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+    private fun renderCommonInterface(
+        plan: KotlinTypeProjectionPlan,
+        renderContents: Boolean,
+    ): KotlinProjectionFile {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
         baseRenderer.applyCommonTypeShape(builder, plan)
         plan.type.implementedInterfaces.forEach { implemented ->
@@ -390,10 +407,13 @@ internal class KotlinExpectActualProjectionRenderer(
             baseRenderer.renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
         }
         builder.addType(renderCommonInterfaceMetadata(plan))
-        return renderSourceSetFile("commonMain/kotlin", plan, builder.build())
+        return renderSourceSetFile("commonMain/kotlin", plan, builder.build(), renderContents)
     }
 
-    private fun renderJvmInterfaceProjectionSupport(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
+    private fun renderJvmInterfaceProjectionSupport(
+        plan: KotlinTypeProjectionPlan,
+        renderContents: Boolean,
+    ): KotlinProjectionFile =
         renderSourceSetFile(
             "jvmMain/kotlin",
             plan,
@@ -406,8 +426,9 @@ internal class KotlinExpectActualProjectionRenderer(
                         .addCode("return NativeProjection(instance)\n")
                         .build(),
                 )
-                .addType(renderJvmInterfaceNativeProjection(plan))
+            .addType(renderJvmInterfaceNativeProjection(plan))
                 .build(),
+            renderContents = renderContents,
         )
 
     private fun renderCommonInterfaceMetadata(plan: KotlinTypeProjectionPlan): TypeSpec =
@@ -442,7 +463,10 @@ internal class KotlinExpectActualProjectionRenderer(
             }
             .build()
 
-    private fun renderCommonExpectRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+    private fun renderCommonExpectRuntimeClass(
+        plan: KotlinTypeProjectionPlan,
+        renderContents: Boolean,
+    ): KotlinProjectionFile {
         val builder = TypeSpec.classBuilder(plan.type.name)
             .addModifiers(KModifier.EXPECT)
             .primaryConstructor(
@@ -457,11 +481,14 @@ internal class KotlinExpectActualProjectionRenderer(
             builder.addSuperinterface(baseRenderer.resolveTypeName(interfaceType.qualifiedName))
         }
         builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
-        return renderSourceSetFile("commonMain/kotlin", plan, builder.build())
+        return renderSourceSetFile("commonMain/kotlin", plan, builder.build(), renderContents)
     }
 
-    private fun renderJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
-        renderSourceSetFile("jvmMain/kotlin", plan, buildJvmActualRuntimeClass(plan))
+    private fun renderJvmActualRuntimeClass(
+        plan: KotlinTypeProjectionPlan,
+        renderContents: Boolean,
+    ): KotlinProjectionFile =
+        renderSourceSetFile("jvmMain/kotlin", plan, buildJvmActualRuntimeClass(plan), renderContents)
 
     private fun buildJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
@@ -816,6 +843,7 @@ internal class KotlinExpectActualProjectionRenderer(
         sourceSetPrefix: String,
         plan: KotlinTypeProjectionPlan,
         type: TypeSpec,
+        renderContents: Boolean,
     ): KotlinProjectionFile {
         val file = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
@@ -824,7 +852,7 @@ internal class KotlinExpectActualProjectionRenderer(
         return KotlinProjectionFile(
             relativePath = "$sourceSetPrefix/${plan.relativePath}",
             packageName = plan.packageName,
-            contents = file.toString(),
+            contents = if (renderContents) file.toString() else "",
             kotlinPoetFile = file,
         )
     }

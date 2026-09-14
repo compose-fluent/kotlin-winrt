@@ -232,10 +232,18 @@ class KotlinProjectionGenerator(
             projectedSlotLiterals = projectedSlotLiterals,
             durationAliasPackages = durationAliasPackages,
         )
+        val groupedProjectionOutput = groupProjectionFilesByPackageOnWrite &&
+            generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet
         val projectionFiles = projectionPlans
-            .flatMap(projectionRenderer::render)
+            .flatMap { plan ->
+                if (groupedProjectionOutput) {
+                    projectionRenderer.renderStructured(plan)
+                } else {
+                    projectionRenderer.render(plan)
+                }
+            }
             .let { files ->
-                if (groupProjectionFilesByPackageOnWrite && generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet) {
+                if (groupedProjectionOutput) {
                     files.groupByPackage()
                 } else {
                     files
@@ -1826,8 +1834,8 @@ class KotlinProjectionGenerator(
         }
         val effectiveDurationAliasPackages = durationAliasPackages ?: plans?.kotlinDurationAliasPackages().orEmpty()
         return when (generationLayout) {
-            KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(
+            KotlinProjectionGenerationLayout.SingleSourceSet -> object : KotlinProjectionFileRenderer {
+                private fun renderer(plan: KotlinTypeProjectionPlan): KotlinProjectionRenderer =
                     projectionRendererForLayout(
                         plans = plans,
                         currentPlan = plan,
@@ -1836,21 +1844,32 @@ class KotlinProjectionGenerator(
                         semanticHelpers = semanticHelpers,
                         projectedSlotLiterals = effectiveProjectedSlotLiterals,
                         durationAliasPackages = effectiveDurationAliasPackages,
-                    ).render(plan),
-                )
+                    )
+
+                override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+                    listOf(renderer(plan).render(plan))
+
+                override fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+                    listOf(renderer(plan).renderStructured(plan))
             }
-            KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinProjectionFileRenderer { plan ->
-                KotlinExpectActualProjectionRenderer(
-                    projectionRendererForLayout(
-                        plans = plans,
-                        currentPlan = plan,
-                        modulePlatformAbiCalls = modulePlatformAbiCalls,
-                        projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
-                        semanticHelpers = semanticHelpers,
-                        projectedSlotLiterals = effectiveProjectedSlotLiterals,
-                        durationAliasPackages = effectiveDurationAliasPackages,
-                    ),
-                ).render(plan)
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> object : KotlinProjectionFileRenderer {
+                private fun renderer(plan: KotlinTypeProjectionPlan): KotlinExpectActualProjectionRenderer =
+                    KotlinExpectActualProjectionRenderer(
+                        projectionRendererForLayout(
+                            plans = plans,
+                            currentPlan = plan,
+                            modulePlatformAbiCalls = modulePlatformAbiCalls,
+                            projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
+                            semanticHelpers = semanticHelpers,
+                            projectedSlotLiterals = effectiveProjectedSlotLiterals,
+                            durationAliasPackages = effectiveDurationAliasPackages,
+                        ),
+                    )
+
+                override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> = renderer(plan).render(plan)
+
+                override fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> =
+                    renderer(plan).renderStructured(plan)
             }
         }
     }
@@ -2071,8 +2090,14 @@ class KotlinProjectionGenerator(
     }
 }
 
-internal fun interface KotlinProjectionFileRenderer {
+internal interface KotlinProjectionFileRenderer {
     fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile>
+
+    /**
+     * Builds the same declarations without formatting each source file. Grouping consumes the
+     * retained KotlinPoet structures and formats only the final merged files.
+     */
+    fun renderStructured(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> = render(plan)
 }
 
 internal fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionFile> =
@@ -2133,7 +2158,8 @@ internal fun List<KotlinProjectionFile>.groupByPackage(): List<KotlinProjectionF
         }
 
 private const val MAX_GROUPED_PROJECTION_BODY_CHARS = 220_000
-private const val MAX_STABLE_SHARD_COUNT = 1 shl 20
+private const val STABLE_BASE_SHARD_COUNT = 16
+private const val MAX_STABLE_SHARD_DEPTH = 20
 
 private data class KotlinPoetGeneratedFile(
     val source: KotlinProjectionFile,
@@ -2144,7 +2170,38 @@ private data class KotlinPoetGeneratedFile(
     val importedSimpleNames: Set<String>,
     val importedTargetsBySimpleName: Map<String, Set<String>>,
     val declaredTopLevelNames: Set<String>,
-)
+) {
+    /** Estimate only the declaration tree; grouped output renders the merged FileSpec once. */
+    val generatedBodySize: Int = source.contents.length.takeIf { it > 0 }
+        ?: file.members.sumOf(Any::estimatedKotlinPoetBodyChars)
+}
+
+// A TypeSpec contains its nested members, but KotlinPoet intentionally does not expose the
+// aggregate member list. Keep this bound conservative so the size guard remains useful without
+// formatting the type just to measure it.
+private const val ESTIMATED_TYPE_BODY_CHARS = 4_096
+private const val ESTIMATED_FUNCTION_BODY_CHARS = 8_192
+private const val ESTIMATED_PROPERTY_BODY_CHARS = 2_048
+private const val ESTIMATED_TYPE_ALIAS_BODY_CHARS = 512
+private const val ESTIMATED_OTHER_MEMBER_BODY_CHARS = 1_024
+
+/**
+ * KotlinPoet does not expose a cheap formatted length. Use a conservative structural estimate so
+ * the grouping decision does not format every source file before the final merged write.
+ */
+private fun Any.estimatedKotlinPoetBodyChars(): Int = when (this) {
+    is TypeSpec -> ESTIMATED_TYPE_BODY_CHARS +
+        typeVariables.size * 128 +
+        (primaryConstructor?.estimatedKotlinPoetBodyChars() ?: 0) +
+        propertySpecs.sumOf(Any::estimatedKotlinPoetBodyChars) +
+        funSpecs.sumOf(Any::estimatedKotlinPoetBodyChars) +
+        typeSpecs.sumOf(Any::estimatedKotlinPoetBodyChars) +
+        enumConstants.values.sumOf(Any::estimatedKotlinPoetBodyChars)
+    is FunSpec -> ESTIMATED_FUNCTION_BODY_CHARS + parameters.size * 128 + typeVariables.size * 128
+    is PropertySpec -> ESTIMATED_PROPERTY_BODY_CHARS
+    is TypeAliasSpec -> ESTIMATED_TYPE_ALIAS_BODY_CHARS
+    else -> ESTIMATED_OTHER_MEMBER_BODY_CHARS
+}
 
 private data class KotlinProjectionShard(
     val stableId: String,
@@ -2156,6 +2213,14 @@ private fun List<KotlinPoetGeneratedFile>.chunkByGeneratedBodySizeAndImports(
 ): List<KotlinProjectionShard> {
     if (isEmpty()) return emptyList()
     val initialShardCount = stableInitialShardCount()
+    if (fitsInStableShard(packageDeclaredNames)) {
+        return listOf(
+            KotlinProjectionShard(
+                stableId = "0",
+                files = sortedBy { file -> file.source.relativePath },
+            ),
+        )
+    }
     return groupBy { file ->
         (file.source.relativePath.stableShardHash() % initialShardCount).toInt()
     }
@@ -2169,55 +2234,63 @@ private fun List<KotlinPoetGeneratedFile>.chunkByGeneratedBodySizeAndImports(
         }
 }
 
-private fun List<KotlinPoetGeneratedFile>.stableInitialShardCount(): Int {
-    val totalSize = sumOf { file -> file.source.contents.length.toLong() }
-    val required = ((totalSize + MAX_GROUPED_PROJECTION_BODY_CHARS - 1L) /
-        MAX_GROUPED_PROJECTION_BODY_CHARS).coerceAtLeast(1L)
-    var count = 1
-    while (count.toLong() < required && count < MAX_STABLE_SHARD_COUNT) {
-        count = count shl 1
-    }
-    return count
-}
+private fun List<KotlinPoetGeneratedFile>.stableInitialShardCount(): Int = STABLE_BASE_SHARD_COUNT
 
 private fun List<KotlinPoetGeneratedFile>.splitStableShard(
     baseShard: Int,
     baseShardCount: Int,
     packageDeclaredNames: Set<String>,
+): List<KotlinProjectionShard> = sortedBy { file -> file.source.relativePath }.splitStableShardNode(
+    baseShard = baseShard,
+    baseShardCount = baseShardCount,
+    bitOffset = 0,
+    stableId = baseShard.toString(36),
+    packageDeclaredNames = packageDeclaredNames,
+)
+
+private fun List<KotlinPoetGeneratedFile>.splitStableShardNode(
+    baseShard: Int,
+    baseShardCount: Int,
+    bitOffset: Int,
+    stableId: String,
+    packageDeclaredNames: Set<String>,
 ): List<KotlinProjectionShard> {
-    var partitionCount = 1
-    while (partitionCount <= MAX_STABLE_SHARD_COUNT) {
-        val partitions = groupBy { file ->
-            ((file.source.relativePath.stableShardHash() / baseShardCount) % partitionCount).toInt()
-        }
-            .toSortedMap()
-            .mapValues { (_, files) -> files.sortedBy { file -> file.source.relativePath } }
-        if (partitions.values.all { files -> files.fitsInStableShard(packageDeclaredNames) }) {
-            return partitions.map { (partition, files) ->
-                KotlinProjectionShard(
-                    stableId = stableShardId(baseShard, partition, partitionCount),
-                    files = files,
-                )
-            }
-        }
-        if (partitions.size == size) {
-            return sortedBy { file -> file.source.relativePath }
-                .map { file ->
-                    KotlinProjectionShard(
-                        stableId = stableFileShardId(baseShard, file.source.relativePath),
-                        files = listOf(file),
-                    )
-                }
-        }
-        partitionCount = partitionCount shl 1
+    val ordered = sortedBy { file -> file.source.relativePath }
+    if (ordered.fitsInStableShard(packageDeclaredNames)) {
+        return listOf(KotlinProjectionShard(stableId = stableId, files = ordered))
     }
-    return sortedBy { file -> file.source.relativePath }
-        .map { file ->
+    if (ordered.size <= 1 || bitOffset >= MAX_STABLE_SHARD_DEPTH) {
+        return ordered.map { file ->
             KotlinProjectionShard(
                 stableId = stableFileShardId(baseShard, file.source.relativePath),
                 files = listOf(file),
             )
         }
+    }
+
+    val partitions = ordered
+        .groupBy { file ->
+            val secondaryHash = file.source.relativePath.stableShardHash() / baseShardCount
+            ((secondaryHash ushr bitOffset) and 1L).toInt()
+        }
+        .toSortedMap()
+    if (partitions.size <= 1) {
+        return ordered.map { file ->
+            KotlinProjectionShard(
+                stableId = stableFileShardId(baseShard, file.source.relativePath),
+                files = listOf(file),
+            )
+        }
+    }
+    return partitions.flatMap { (partition, files) ->
+        files.splitStableShardNode(
+            baseShard = baseShard,
+            baseShardCount = baseShardCount,
+            bitOffset = bitOffset + 1,
+            stableId = "${stableId}_$partition",
+            packageDeclaredNames = packageDeclaredNames,
+        )
+    }
 }
 
 private fun List<KotlinPoetGeneratedFile>.fitsInStableShard(
@@ -2242,26 +2315,19 @@ private fun List<KotlinPoetGeneratedFile>.fitsInStableShard(
                 currentTargets.isNotEmpty() && (currentTargets + targets).size > 1
             }
         if (
-            currentSize + file.source.contents.length > MAX_GROUPED_PROJECTION_BODY_CHARS ||
+            currentSize + file.generatedBodySize > MAX_GROUPED_PROJECTION_BODY_CHARS ||
                 hasImportDeclarationCollision ||
                 hasImportTargetCollision
         ) {
             return false
         }
-        currentSize += file.source.contents.length
+        currentSize += file.generatedBodySize
         currentImportedNames = currentImportedNames + fileImportedNames
         currentImportedTargetsByName = currentImportedTargetsByName.mergeImportTargets(fileImportedTargetsByName)
         currentDeclaredNames = currentDeclaredNames + fileDeclaredNames
     }
     return true
 }
-
-private fun stableShardId(baseShard: Int, partition: Int, partitionCount: Int): String =
-    if (partitionCount == 1 && baseShard == 0) {
-        "0"
-    } else {
-        "${baseShard.toString(36)}_${partition.toString(36)}"
-    }
 
 private fun stableFileShardId(baseShard: Int, relativePath: String): String =
     "${baseShard.toString(36)}_${relativePath.stableShardHash().toString(36)}"

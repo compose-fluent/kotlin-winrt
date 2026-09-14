@@ -1571,12 +1571,13 @@ data class KotlinProjectionFile(
     val kotlinPoetFile: FileSpec? = null,
 ) {
     fun writeToIfChanged(outputRoot: Path): Boolean {
+        val renderedContents = contents.ifEmpty { kotlinPoetFile?.toString().orEmpty() }
         val target = outputRoot.resolve(relativePath)
         Files.createDirectories(target.parent)
-        if (Files.isRegularFile(target) && Files.readString(target) == contents) {
+        if (Files.isRegularFile(target) && Files.readString(target) == renderedContents) {
             return false
         }
-        Files.writeString(target, contents)
+        Files.writeString(target, renderedContents)
         return true
     }
 }

@@ -425,7 +425,15 @@ class KotlinProjectionRenderer(
         collectCallSite(callPlan)
     }
 
-    fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+    fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile = renderInternal(plan, renderContents = true)
+
+    internal fun renderStructured(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
+        renderInternal(plan, renderContents = false)
+
+    private fun renderInternal(
+        plan: KotlinTypeProjectionPlan,
+        renderContents: Boolean,
+    ): KotlinProjectionFile {
         val file = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
             .addGeneratedProjectionAtomicOptIn()
@@ -460,7 +468,8 @@ class KotlinProjectionRenderer(
         return KotlinProjectionFile(
             relativePath = plan.relativePath,
             packageName = plan.packageName,
-            contents = file.toString(),
+            // Grouped output consumes the KotlinPoet structure and renders only the merged file.
+            contents = if (renderContents) file.toString() else "",
             kotlinPoetFile = file,
         )
     }
