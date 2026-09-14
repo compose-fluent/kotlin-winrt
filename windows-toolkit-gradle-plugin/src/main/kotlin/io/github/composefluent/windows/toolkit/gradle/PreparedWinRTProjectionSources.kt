@@ -188,7 +188,7 @@ internal fun prepareWinRTStaticProjectionSources(
     }.toMap()
     project.providers.of(PreparedProjectionValueSource::class.java) { spec ->
         spec.parameters.request.set(request)
-        spec.parameters.classpath.from(kotlinWinRTGeneratorWorkerClasspath(project))
+        spec.parameters.classpath.from(kotlinWinRTPreparedGeneratorClasspath(project))
         // Worker API supplies these parent dependencies for task workers; a standalone JVM
         // needs their locations explicitly. Keep KotlinPoet on the pinned worker classpath.
         spec.parameters.classpath.from(listOf(
@@ -197,7 +197,10 @@ internal fun prepareWinRTStaticProjectionSources(
             "kotlinx.serialization.KSerializer",
             "kotlinx.serialization.json.Json",
             "io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteCatalog",
-        ).mapNotNull(::preparedStaticCodeSourcePath).map(Path::toFile))
+            "io.github.composefluent.winrt.compiler.authoring.WinRTAuthoringMetadataContractsKt",
+        ).map { name ->
+            requireNotNull(preparedStaticCodeSourcePath(name)) { "Static generator dependency is unavailable: $name" }.toFile()
+        })
         // The plugin's existing identity/file helpers use Gradle API types. Supplying the
         // distribution API here does not expose the consumer's buildscript classpath.
         val gradleHome = project.gradle.gradleHomeDir
@@ -308,6 +311,7 @@ private fun preparedStaticImplementationRoots(): List<Path> = listOf(
 }.plus(
     listOfNotNull(
         preparedStaticCodeSourcePath("io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteCatalog"),
+        preparedStaticCodeSourcePath("io.github.composefluent.winrt.compiler.authoring.WinRTAuthoringMetadataContractsKt"),
     ),
 ).map { path ->
     path.toAbsolutePath().normalize()
@@ -482,14 +486,7 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
 private fun markedGeneratedProjectionFiles(root: Path): Set<String> {
     if (!Files.isDirectory(root)) return emptySet()
     return Files.walk(root).use { paths ->
-        paths.filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".kt") }
-            .filter { file ->
-                Files.newBufferedReader(file).use { reader ->
-                    val header = CharArray(1024)
-                    val count = reader.read(header)
-                    count > 0 && String(header, 0, count).contains("\"KOTLIN_WINRT_GENERATED\"")
-                }
-            }
+        paths.filter { isGeneratedWinRTProjectionSource(it.toFile()) }
             .map { root.relativize(it).toString().replace('\\', '/') }
             .toList().toSet()
     }

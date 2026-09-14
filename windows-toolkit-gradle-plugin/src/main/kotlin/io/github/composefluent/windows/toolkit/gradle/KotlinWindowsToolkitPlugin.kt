@@ -3326,7 +3326,19 @@ private fun kotlinWinRTCompilerPluginClasspath(project: Project) =
             }
         }
 
-internal fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
+/** Fixed plugin dependencies can prepare an import without resolving task-produced artifacts. */
+internal fun kotlinWinRTPreparedGeneratorClasspath(project: Project): org.gradle.api.file.FileCollection {
+    val localGenerator = kotlinWinRTLocalGeneratorWorkerClasspath(project)
+        ?: return kotlinWinRTGeneratorWorkerClasspath(project)
+    val bundledKotlinPoet = kotlinWinRTPluginMetadataArtifact(project, "kotlinpoet-jvm-1.18.1")
+        ?: kotlinWinRTCodeSourceFile("com.squareup.kotlinpoet.ClassName")
+            ?.takeIf { it.name == "kotlinpoet-jvm-1.18.1.jar" }
+            ?.let(project::files)
+        ?: return kotlinWinRTGeneratorWorkerClasspath(project)
+    return project.files(kotlinWinRTPluginClasspathLocation(project), localGenerator, bundledKotlinPoet)
+}
+
+private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
     project.files(
         kotlinWinRTPluginClasspathLocation(project),
         project.configurations.findByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
@@ -3373,7 +3385,7 @@ internal fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
                 }
                 project.dependencies.add(
                     configuration.name,
-                    kotlinWinRTPluginMetadataArtifact(project, "kotlinpoet-jvm-1.18.1") ?: project.dependencies.create("com.squareup:kotlinpoet-jvm:1.18.1").also { dependency ->
+                    project.dependencies.create("com.squareup:kotlinpoet-jvm:1.18.1").also { dependency ->
                         (dependency as? ExternalModuleDependency)?.isTransitive = false
                     },
                 )
@@ -5031,18 +5043,6 @@ private fun Test.kotlinWinRTProjectionTaskName(): String {
     return "compileKotlinWinRTProjection$suffix"
 }
 
-private fun isGeneratedWinRTProjectionSource(file: File): Boolean {
-    if (!file.isFile || !file.name.endsWith(".kt", ignoreCase = true)) {
-        return false
-    }
-    return runCatching {
-        file.useLines { lines ->
-            val header = lines.take(32).toList()
-            header.any { it.contains("\"KOTLIN_WINRT_GENERATED\"") } &&
-                header.none { it.contains("KOTLIN_WINRT_BUSINESS_OVERLAY") }
-        }
-    }.getOrDefault(false)
-}
 
 private fun generatedWinRTProjectionSourceFiles(project: Project, directory: Directory): Set<File> =
     project.fileTree(directory) { spec -> spec.include("**/*.kt") }

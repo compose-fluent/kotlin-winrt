@@ -878,10 +878,10 @@ class WindowsToolkitPluginTest {
             metadataInputs.set(listOf(winmd.toString()))
             type("Sample.IProbe")
         }
-        val generated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/Projection.kt")
-        generated.parentFile.mkdirs()
-        generated.writeText("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Projection")
-        val overlay = generated.resolveSibling("Overlay.kt")
+        val legacyGenerated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/Projection.kt")
+        legacyGenerated.parentFile.mkdirs()
+        legacyGenerated.writeText("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Projection")
+        val overlay = legacyGenerated.resolveSibling("Overlay.kt")
         overlay.writeText("// KOTLIN_WINRT_BUSINESS_OVERLAY\n@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Overlay")
         val business = project.file("src/winuiMain/kotlin/Business.kt")
         business.parentFile.mkdirs()
@@ -893,6 +893,10 @@ class WindowsToolkitPluginTest {
         )
         (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
 
+        assertFalse(legacyGenerated.exists())
+        val generated = project.file("build/generated/kotlin-winrt/src/winuiMain/kotlin/sample/sample.kt")
+        assertTrue(generated.isFile)
+        assertTrue(overlay.isFile)
         val projection = target.compilations.getByName("winRTProjection")
         val producer = projection.compileTaskProvider.get()
         val consumer = target.compilations.getByName("main").compileTaskProvider.get()
@@ -3549,10 +3553,21 @@ class WindowsToolkitPluginTest {
             """.trimIndent(),
         )
 
+        // A distributed plugin has no plugin-under-test metadata beside its jar.
+        // NuGet-only configuration must reuse its bundled generator dependencies even
+        // when the consumer has not declared Maven repositories for Kotlin compilation.
+        writeGradleFile(projectDir.resolve("settings.gradle.kts"), "rootProject.name = \"nuget-sync-without-maven\"")
+        val pluginClasspath = GradleRunner.create().withPluginClasspath().pluginClasspath
+        val pluginJar = pluginClasspath.single { it.name.startsWith("windows-toolkit-gradle-plugin-") && it.extension == "jar" }
+        val distributedJar = projectDir.resolve("plugin-distribution/${pluginJar.name}")
+        Files.createDirectories(distributedJar.parent)
+        Files.copy(pluginJar.toPath(), distributedJar)
+        val isolatedClasspath = pluginClasspath.map { if (it == pluginJar) distributedJar.toFile() else it }
+
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
-            .withPluginClasspath()
-            .withArguments("help", "--stacktrace")
+            .withPluginClasspath(isolatedClasspath)
+            .withArguments("help", "--offline", "--stacktrace")
             .forwardOutput()
             .build()
 
@@ -3572,6 +3587,8 @@ class WindowsToolkitPluginTest {
         Files.writeString(prepared.resolve("sample_0.kt"), "class Current")
         Files.writeString(output.resolve("sample.kt"), "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Old")
         Files.writeString(output.resolve("Overlay.kt"), "class Overlay")
+        val businessOverlay = "// KOTLIN_WINRT_BUSINESS_OVERLAY\n@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass BusinessOverlay"
+        Files.writeString(output.resolve("BusinessOverlay.kt"), businessOverlay)
         // A manifest may already exist from an earlier sync while task-owned shards
         // from before that sync still exist outside its inventory.
         Files.writeString(output.resolve(".kotlin-winrt-prepared-static-files.tsv"), "sample_0.kt\n")
@@ -3579,11 +3596,13 @@ class WindowsToolkitPluginTest {
         assertFalse(Files.exists(output.resolve("sample.kt")))
         assertEquals("class Current", Files.readString(output.resolve("sample_0.kt")))
         assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
+        assertEquals(businessOverlay, Files.readString(output.resolve("BusinessOverlay.kt")))
         Files.writeString(output.resolve("legacy.kt"), "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\nclass Legacy")
         clearPreparedStaticSources(output)
         assertFalse(Files.exists(output.resolve("sample_0.kt")))
         assertFalse(Files.exists(output.resolve("legacy.kt")))
         assertEquals("class Overlay", Files.readString(output.resolve("Overlay.kt")))
+        assertEquals(businessOverlay, Files.readString(output.resolve("BusinessOverlay.kt")))
     }
 
     @Test
