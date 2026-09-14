@@ -2,23 +2,18 @@ package io.github.composefluent.windows.toolkit.gradle
 
 import com.squareup.kotlinpoet.ClassName
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
-import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTMetadataSourceResolver
-import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
-import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.file.Directory
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.jar.JarFile
@@ -72,7 +67,7 @@ internal fun prepareWinRTStaticProjectionSources(
         .toPath()
     val explicitNuGetRoots = extension.nugetGlobalPackagesRoots.get().map(Path::of) +
         explicitNuGetReferences.flatMap { source -> source.globalPackagesRoots }
-    val configuredNuGetRoots = explicitNuGetRoots + persistentNuGetRoot
+    val configuredNuGetRoots = explicitNuGetRoots + listOf(persistentNuGetRoot)
     fun nuGetRoots(lookupOnly: Boolean, specs: List<String> = emptyList()): List<Path> =
         project.providers.of(PreparedNuGetRootsValueSource::class.java) { spec ->
             spec.parameters.executable.set(extension.nugetExecutable)
@@ -159,71 +154,60 @@ internal fun prepareWinRTStaticProjectionSources(
     val storeRoot = project.layout.projectDirectory.dir(".gradle/kotlin-winrt/prepared-imports").asFile.toPath()
     val entry = storeRoot.resolve(key)
     val sourceRoot = entry.resolve("sources")
-    Files.createDirectories(storeRoot)
-    FileChannel.open(
-        storeRoot.resolve("$key.lock"),
-        StandardOpenOption.CREATE,
-        StandardOpenOption.WRITE,
-    ).use { channel ->
-        channel.lock().use {
-            if (!isPreparedStaticSourceValid(sourceRoot)) {
-                val model = cache.load(
-                    project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models").asFile.toPath(),
-                )
-                val effectiveIncludeTypes = extension.includeTypes.get() +
-                    automaticXamlComponentResourceDictionaryTypes(model, extension.includeTypes.get().toSet())
-                val dependencySurfaceTypes = dependencyProjectionSurfaceTypeNames(identityFiles)
-                val applicationPackagingOnly = extension is WindowsExtension &&
-                    extension.applicationEnabled.get() &&
-                    extension.metadataInputs.get().isEmpty() &&
-                    extension.includeNamespaces.get().isEmpty() &&
-                    extension.includeTypes.get().isEmpty() &&
-                    !extension.generateWindowsSdkProjection.get()
-                val staticModel = if (applicationPackagingOnly) {
-                    WinRTMetadataModel(emptyList())
-                } else {
-                    model.filterProjectionSurface(
-                        namespaces = extension.includeNamespaces.get().toSet(),
-                        types = (effectiveIncludeTypes + dependencySurfaceTypes).toSet(),
-                        excludedNamespaces = extension.excludeNamespaces.get().toSet(),
-                        excludedTypes = extension.excludeTypes.get().toSet(),
-                        additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
-                    )
-                }
-                val context = WinRTMetadataProjectionContext(
-                    sources = effectiveSources,
-                    include = extension.includeNamespaces.get().toSet() +
-                        effectiveIncludeTypes.toSet() + dependencySurfaceTypes.toSet(),
-                    exclude = extension.excludeNamespaces.get().toSet() + extension.excludeTypes.get().toSet(),
-                    excludedTypes = extension.excludeTypes.get().toSet(),
-                    additionExclude = extension.additionExcludeNamespaces.get().toSet(),
-                )
-                val temporary = Files.createTempDirectory(storeRoot, ".${key}-")
-                try {
-                    KotlinProjectionGenerator(
-                        emitSupportFiles = true,
-                        groupProjectionFilesByPackageOnWrite = true,
-                        projectionContext = context,
-                        suppressedProjectionTypeNames = dependencyProjectedTypeNames(staticModel, identityFiles),
-                        suppressedSourceAdditionTypeNames = dependencySourceAdditionTypeNames(identityFiles),
-                        supportOwnerIdentity = supportOwnerIdentity,
-                        emitJvmAuthoringHostExports = emitJvmAuthoringHostExports,
-                    ).generateTo(staticModel, temporary.resolve("sources"))
-                    writePreparedStaticManifest(temporary.resolve("manifest.tsv"), cache.files, staticModel)
-                    // Replace an invalid entry only after its replacement has been fully generated.
-                    if (Files.exists(entry)) GradleFileOperations.deleteDirectory(entry)
-                    runCatching {
-                        Files.move(temporary, entry, StandardCopyOption.ATOMIC_MOVE)
-                    }.getOrElse {
-                        Files.move(temporary, entry)
-                    }
-                } catch (error: Throwable) {
-                    GradleFileOperations.deleteDirectory(temporary)
-                    throw error
-                }
+    // Keep the full metadata model and KotlinPoet graph out of the configuration daemon.
+    // Only a cold/invalid entry starts a bounded process; warm imports just validate/copy bytes.
+    val request = mapOf(
+        "entry" to entry.toString(),
+        "sources" to effectiveSources.joinToString("\u0000") { source ->
+            when (source) {
+                is WinRTMetadataSource.PathSource -> source.path.toAbsolutePath().normalize().toString()
+                is WinRTMetadataSource.NuGetPackage -> "nuget:${source.packagePath.toAbsolutePath().normalize()}"
+                is WinRTMetadataSource.NuGetPackageReference -> "nuget:${source.packageId}@${source.version}"
+                is WinRTMetadataSource.WindowsSdk -> (source.version ?: "sdk") +
+                    if (source.includeExtensions) "+" else ""
+                else -> error("Static projection source was not resolved: $source")
             }
+        },
+        "registryRoots" to registryRootPaths.orEmpty().joinToString("\u0000"),
+        "modelCache" to project.layout.projectDirectory.dir(".gradle/kotlin-winrt/metadata-models").asFile.path,
+        "identities" to identityFiles.joinToString("\u0000") { it.absolutePath },
+        "includeNamespaces" to extension.includeNamespaces.get().joinToString("\u0000"),
+        "includeTypes" to extension.includeTypes.get().joinToString("\u0000"),
+        "excludeNamespaces" to extension.excludeNamespaces.get().joinToString("\u0000"),
+        "excludeTypes" to extension.excludeTypes.get().joinToString("\u0000"),
+        "additionExclude" to extension.additionExcludeNamespaces.get().joinToString("\u0000"),
+        "packagingOnly" to (extension is WindowsExtension && extension.applicationEnabled.get() &&
+            extension.metadataInputs.get().isEmpty() && extension.includeNamespaces.get().isEmpty() &&
+            extension.includeTypes.get().isEmpty() && !extension.generateWindowsSdkProjection.get()).toString(),
+        "owner" to supportOwnerIdentity,
+        "emitJvmAuthoringHostExports" to emitJvmAuthoringHostExports.toString(),
+    ) + effectiveSources.mapIndexedNotNull { index, source ->
+        (source as? WinRTMetadataSource.NuGetPackageReference)?.let {
+            "nugetRoots.$index" to it.globalPackagesRoots.joinToString("\u0000") { root -> root.toAbsolutePath().normalize().toString() }
         }
-    }
+    }.toMap()
+    project.providers.of(PreparedProjectionValueSource::class.java) { spec ->
+        spec.parameters.request.set(request)
+        spec.parameters.classpath.from(kotlinWinRTGeneratorWorkerClasspath(project))
+        // Worker API supplies these parent dependencies for task workers; a standalone JVM
+        // needs their locations explicitly. Keep KotlinPoet on the pinned worker classpath.
+        spec.parameters.classpath.from(listOf(
+            "kotlin.Unit",
+            "kotlin.reflect.full.KClasses",
+            "kotlinx.serialization.KSerializer",
+            "kotlinx.serialization.json.Json",
+            "io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteCatalog",
+        ).mapNotNull(::preparedStaticCodeSourcePath).map(Path::toFile))
+        // The plugin's existing identity/file helpers use Gradle API types. Supplying the
+        // distribution API here does not expose the consumer's buildscript classpath.
+        val gradleHome = project.gradle.gradleHomeDir
+        spec.parameters.classpath.from(if (gradleHome != null) {
+            project.fileTree(gradleHome.resolve("lib")) { it.include("*.jar") }
+        } else {
+            // ProjectBuilder uses the test Gradle API jar instead of a distribution home.
+            project.files(java.io.File(Project::class.java.protectionDomain.codeSource.location.toURI()))
+        })
+    }.get()
     materializePreparedStaticSources(sourceRoot, generatedOutputDirectory.get().asFile.toPath())
     return sourceRoot
 }
@@ -410,7 +394,7 @@ private fun updateFileContents(digest: MessageDigest, path: Path) {
     }
 }
 
-private fun writePreparedStaticManifest(path: Path, files: List<Path>, model: WinRTMetadataModel) {
+internal fun writePreparedStaticManifest(path: Path, files: List<Path>, model: WinRTMetadataModel) {
     val names = model.namespaces.flatMap { namespace -> namespace.types }.map { type -> type.qualifiedName }.sorted()
     val encodedFiles = files.sortedBy(Path::toString).joinToString("\n") { file ->
         val digest = MessageDigest.getInstance("SHA-256")

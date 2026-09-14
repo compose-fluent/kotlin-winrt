@@ -236,11 +236,26 @@ class WindowsToolkitPluginTest {
             windows {
                 packageReferences {
                     windowsSdk(null, false, true)
-                    type "Windows.Foundation.IStringable"
+                    type "Windows.Foundation.Uri"
                 }
             }
             """.trimIndent(),
         )
+
+        // The SDK model previously overflowed the 384 MiB configuration daemon before
+        // task workers could run. A clean help/import must prepare usable sources too.
+        val sync = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("help", "--stacktrace")
+            .build()
+        assertEquals(TaskOutcome.SUCCESS, sync.task(":help")?.outcome)
+        assertEquals(null, sync.task(":generateWinRTProjections"))
+        val sources = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        assertTrue(Files.walk(sources).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .anyMatch { Files.readString(it).contains("class Uri") }
+        })
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())

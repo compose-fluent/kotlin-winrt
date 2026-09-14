@@ -3326,7 +3326,7 @@ private fun kotlinWinRTCompilerPluginClasspath(project: Project) =
             }
         }
 
-private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
+internal fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
     project.files(
         kotlinWinRTPluginClasspathLocation(project),
         project.configurations.findByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
@@ -3373,7 +3373,7 @@ private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
                 }
                 project.dependencies.add(
                     configuration.name,
-                    project.dependencies.create("com.squareup:kotlinpoet-jvm:1.18.1").also { dependency ->
+                    kotlinWinRTPluginMetadataArtifact(project, "kotlinpoet-jvm-1.18.1") ?: project.dependencies.create("com.squareup:kotlinpoet-jvm:1.18.1").also { dependency ->
                         (dependency as? ExternalModuleDependency)?.isTransitive = false
                     },
                 )
