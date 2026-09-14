@@ -3572,6 +3572,63 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun nuget_sync_replaces_changed_versions_and_filters_without_touching_user_sources() {
+        // Gradle lifecycle adaptation: the same namespace writer input must be reflected
+        // after configuration changes, as in cswinrt/main.cpp's filtered namespace output.
+        val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-lifecycle-")
+        writeMinimalGradleFixture(projectDir, "nuget-sync-lifecycle")
+        for ((version, name) in listOf("1.0.0" to "IFirst", "2.0.0" to "ISecond")) {
+            WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+                assemblyName = "Sample",
+                interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.$name",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                )),
+                runtimeClasses = emptyList(),
+                outputFile = projectDir.resolve("nuget-cache/sample.package/$version/metadata/Sample.winmd"),
+            )
+        }
+        fun sync(version: String?, excluded: Boolean = false) {
+            writeGradleFile(projectDir.resolve("build.gradle"), """
+                plugins { id "io.github.compose-fluent.windows-toolkit" }
+                windows {
+                    packageReferences {
+                        nugetGlobalPackagesRoots.add(file("nuget-cache").absolutePath)
+                        useNuGetCliGlobalPackages.set(false)
+                        restoreNuGetPackages.set(false)
+                        ${version?.let { "nugetPackage 'Sample.Package', '$it'\nnamespace 'Sample'" }.orEmpty()}
+                        ${if (excluded) "excludeNamespace 'Sample'" else ""}
+                    }
+                }
+            """.trimIndent())
+            GradleRunner.create().withProjectDir(projectDir.toFile()).withPluginClasspath()
+                .withArguments("help", "--offline", "--stacktrace").build()
+        }
+        val output = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        fun containsInterface(name: String): Boolean = Files.walk(output).use { files ->
+            files.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .anyMatch { Files.readString(it).contains("interface $name") }
+        }
+        sync("1.0.0")
+        assertTrue(containsInterface("IFirst"))
+        val overlay = output.resolve("Overlay.kt")
+        Files.writeString(overlay, "class Overlay")
+        val firstFile = output.resolve("sample/sample.kt")
+        val timestamp = Files.getLastModifiedTime(firstFile)
+        sync("1.0.0")
+        assertEquals(timestamp, Files.getLastModifiedTime(firstFile))
+        sync("2.0.0")
+        assertFalse(containsInterface("IFirst"))
+        assertTrue(containsInterface("ISecond"))
+        sync("2.0.0", excluded = true)
+        assertFalse(containsInterface("ISecond"))
+        sync(null)
+        assertFalse(containsInterface("IFirst"))
+        assertFalse(containsInterface("ISecond"))
+        assertEquals("class Overlay", Files.readString(overlay))
+    }
+
+    @Test
     fun configuration_sync_reports_missing_nuget_before_generation() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-nuget-sync-missing-test-")
         writeMinimalGradleFixture(projectDir, "kotlin-winrt-nuget-sync-missing-test")
