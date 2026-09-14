@@ -100,21 +100,18 @@ fun WinRTMetadataModel.filterProjectionSurface(
 }
 
 private fun WinRTTypeDefinition.isProjectionFilterRootIncluded(filter: WinRTProjectionSurfaceFilter): Boolean {
+    val qualifiedName = qualifiedName
     val hasIncludeFilter = filter.namespaces.isNotEmpty() || filter.types.isNotEmpty()
-    val explicitlyIncludedType = filter.types.any { qualifiedName.isProjectionFilterMatch(it) }
-    val included = !hasIncludeFilter ||
-        filter.namespaces.any { qualifiedName.isProjectionFilterMatch(it) } ||
-        explicitlyIncludedType
-    val excluded = filter.excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) } ||
-        filter.excludedNamespaces.any { qualifiedName.isProjectionFilterMatch(it) }
+    val included = !hasIncludeFilter || filter.namespaces.matchesProjectionName(qualifiedName) ||
+        filter.types.matchesProjectionName(qualifiedName)
+    val excluded = filter.excludedTypes.matchesProjectionName(qualifiedName) ||
+        filter.excludedNamespaces.matchesProjectionName(qualifiedName)
     return included && !excluded
 }
 
 private fun WinRTProjectionSurfaceFilter.isProjectionDependencyExcluded(qualifiedName: String): Boolean =
-    // Dependency closure is a Kotlin generator compile-surface boundary, not a
-    // root projection selection rule. Keep referenced metadata available across
-    // namespace excludes unless a concrete type is explicitly excluded.
-    excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) }
+    // Keep referenced metadata across namespace excludes unless a concrete type is excluded.
+    excludedTypes.matchesProjectionName(qualifiedName)
 
 private fun WinRTTypeDefinition.referencedProjectionTypeNames(
     typesByQualifiedName: Map<String, WinRTTypeDefinition>,
@@ -196,8 +193,17 @@ private fun MutableSet<String>.addTypeRef(type: WinRTTypeRef) {
     }
 }
 
-private fun String.isProjectionFilterMatch(prefixOrType: String): Boolean =
-    this == prefixOrType || startsWith("$prefixOrType.")
+/** Match exact names or dotted ancestors without scanning every declared identity. */
+private fun Set<String>.matchesProjectionName(qualifiedName: String): Boolean {
+    if (isEmpty()) return false
+    if (qualifiedName in this) return true
+    var boundary = qualifiedName.lastIndexOf('.')
+    while (boundary >= 0) {
+        if (qualifiedName.substring(0, boundary) in this) return true
+        boundary = qualifiedName.lastIndexOf('.', boundary - 1)
+    }
+    return false
+}
 
 private fun Set<String>.normalizedProjectionFilterSet(): Set<String> =
     map(String::trim).filter(String::isNotEmpty).toSortedSet()

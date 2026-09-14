@@ -2622,6 +2622,23 @@ class WinRTMetadataModelTest {
     }
 
     @Test
+    fun projection_surface_filter_matches_dotted_boundaries_with_large_identity_sets() {
+        // CsWinRT main.cpp uses the metadata reader filter at root selection. This Kotlin
+        // compile-surface filter retains its existing exact-or-dotted-prefix semantics.
+        val names = listOf("Sample.Type", "Sample.Type.Nested", "Sample.Types", "Sample.Other", "Else.Type")
+        val model = WinRTMetadataModel(names.groupBy { it.substringBeforeLast('.') }.map { (namespace, qualifiedNames) ->
+            WinRTNamespace(namespace, qualifiedNames.map { WinRTTypeDefinition(
+                namespace = namespace, name = it.substringAfterLast('.'), kind = WinRTTypeKind.Struct,
+            ) })
+        })
+        val identities = (0 until 20_000).mapTo(mutableSetOf()) { "Dependency.Type$it" } + " Sample.Type "
+        val filtered = model.filterProjectionSurface(types = identities, excludedTypes = setOf("Sample.Type.Nested"))
+        assertEquals(listOf("Sample.Type"), filtered.namespaces.flatMap { it.types }.map { it.qualifiedName })
+        assertEquals(listOf("Sample.Type", "Sample.Type.Nested"),
+            model.filterProjectionSurface(types = identities).namespaces.flatMap { it.types }.map { it.qualifiedName })
+    }
+
+    @Test
     fun projection_surface_filter_excluded_namespace_wins_over_explicit_root_include() {
         val model = WinRTMetadataModel(
             listOf(
