@@ -225,39 +225,70 @@ private fun preparedStaticProjectionKey(
         digest.update(value.toByteArray(Charsets.UTF_8))
         digest.update(0)
     }
-    update("prepared-static-sources-v2")
-    update("emitSupportFiles=true")
-    update("groupProjectionFilesByPackageOnWrite=true")
-    update("generationLayout=SingleSourceSet")
-    update("emitJvmAuthoringHostExports=$emitJvmAuthoringHostExports")
+    fun updateField(name: String, value: String) {
+        update("field")
+        update(name)
+        update(value.length.toString())
+        update(value)
+    }
+    fun updateList(name: String, values: List<String>) {
+        update("list")
+        update(name)
+        update(values.size.toString())
+        values.forEachIndexed { index, value ->
+            update(index.toString())
+            update(value.length.toString())
+            update(value)
+        }
+    }
+    updateField("schema", "prepared-static-sources-v3")
+    updateField("emitSupportFiles", "true")
+    updateField("groupProjectionFilesByPackageOnWrite", "true")
+    updateField("generationLayout", "SingleSourceSet")
+    updateField("emitJvmAuthoringHostExports", emitJvmAuthoringHostExports.toString())
     preparedStaticImplementationRoots().forEach { root ->
         updateImplementationRoot(digest, root)
     }
-    update(project.name)
-    update(supportOwnerIdentity)
-    extension.metadataInputs.get().forEach(::update)
-    extension.includeNamespaces.get().sorted().forEach(::update)
-    extension.includeTypes.get().sorted().forEach(::update)
-    extension.excludeNamespaces.get().sorted().forEach(::update)
-    extension.excludeTypes.get().sorted().forEach(::update)
-    extension.additionExcludeNamespaces.get().sorted().forEach(::update)
-    update("windowsSdkDeclared=${extension.windowsSdkDeclared.get()}")
-    update("windowsSdkVersion=${extension.windowsSdkVersion.orNull.orEmpty()}")
-    update("includeWindowsSdkExtensions=${extension.includeWindowsSdkExtensions.get()}")
-    update("generateWindowsSdkProjection=${extension.generateWindowsSdkProjection.get()}")
+    updateField("projectPath", project.path)
+    updateField("projectName", project.name)
+    updateField("supportOwnerIdentity", supportOwnerIdentity)
+    updateList("metadataInputs", extension.metadataInputs.get())
+    updateList("includeNamespaces", extension.includeNamespaces.get().sorted())
+    updateList("includeTypes", extension.includeTypes.get().sorted())
+    updateList("excludeNamespaces", extension.excludeNamespaces.get().sorted())
+    updateList("excludeTypes", extension.excludeTypes.get().sorted())
+    updateList("additionExcludeNamespaces", extension.additionExcludeNamespaces.get().sorted())
+    updateField("windowsSdkDeclared", extension.windowsSdkDeclared.get().toString())
+    updateField("windowsSdkVersion", extension.windowsSdkVersion.orNull.orEmpty())
+    updateField("includeWindowsSdkExtensions", extension.includeWindowsSdkExtensions.get().toString())
+    updateField("generateWindowsSdkProjection", extension.generateWindowsSdkProjection.get().toString())
+    updateField("restoreNuGetPackages", extension.restoreNuGetPackages.get().toString())
+    updateField("useNuGetCliGlobalPackages", extension.useNuGetCliGlobalPackages.get().toString())
+    updateField("nugetExecutable", extension.nugetExecutable.get())
+    updateField("nugetCliVersion", extension.nugetCliVersion.get())
+    updateList("nugetGlobalPackagesRoots", extension.nugetGlobalPackagesRoots.get().map(Path::of).map(Path::toString).sorted())
     extension.nugetPackages
         .map { packageReference ->
-            "${packageReference.packageId}@${packageReference.version.get()}@${packageReference.generateProjection}"
+            listOf(
+                packageReference.packageId,
+                packageReference.version.get(),
+                packageReference.generateProjection.toString(),
+            ).joinToString("\u0001")
         }
         .sorted()
-        .forEach(::update)
+        .let { packageRecords -> updateList("nugetPackages", packageRecords) }
+    if (extension is WindowsExtension) {
+        updateField("applicationEnabled", extension.applicationEnabled.get().toString())
+    }
+    updateList("metadataFiles", files.map { file -> file.toAbsolutePath().normalize().toString() }.sorted())
     files.sortedBy(Path::toString).forEach { file ->
-        update(file.toAbsolutePath().normalize().toString())
+        updateField("metadataFilePath", file.toAbsolutePath().normalize().toString())
         updateFileContents(digest, file)
         digest.update(0)
     }
+    updateList("identityFiles", identityFiles.map { file -> file.absolutePath }.sorted())
     identityFiles.sortedBy(java.io.File::getAbsolutePath).forEach { file ->
-        update(file.absolutePath)
+        updateField("identityFilePath", file.absolutePath)
         updateFileContents(digest, file.toPath())
         digest.update(0)
     }

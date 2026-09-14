@@ -3338,6 +3338,28 @@ class WindowsToolkitPluginTest {
         )
         assertTrue(changedPrepared != null)
         assertTrue(changedPrepared != prepared)
+
+        extension.includeNamespaces.set(listOf("Sample"))
+        extension.excludeNamespaces.set(emptyList())
+        val includedPrepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+        extension.includeNamespaces.set(emptyList())
+        extension.excludeNamespaces.set(listOf("Sample"))
+        val excludedPrepared = prepareWinRTStaticProjectionSources(
+            project = project,
+            extension = extension.packageReferences,
+            dependencyIdentityFiles = emptyList(),
+            generatedOutputDirectory = output,
+            supportOwnerIdentity = "prepared-static-test.jar",
+        )
+        assertTrue(includedPrepared != null)
+        assertTrue(excludedPrepared != null)
+        assertTrue(includedPrepared != excludedPrepared)
     }
 
     @Test
