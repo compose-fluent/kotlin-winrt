@@ -102,17 +102,45 @@ internal class KotlinComInteropSourceRenderer(
         val typesByQualifiedName = model.namespaces
             .flatMap(WinRTNamespace::types)
             .associateBy(WinRTTypeDefinition::qualifiedName)
-        val queryIidName = "I_${descriptor.name.toScreamingSnakeCase()}_IID"
         descriptor.methods.forEach { method ->
-            when (method.result) {
-                is WinRTComInteropResultDescriptor.ProjectedRuntimeClass ->
-                    renderRuntimeClassMethod(descriptor, method, queryIidName, typesByQualifiedName)
-                WinRTComInteropResultDescriptor.UnitResult ->
-                    renderUnitMethod(descriptor, method, queryIidName)
-                WinRTComInteropResultDescriptor.AsyncAction,
-                is WinRTComInteropResultDescriptor.AsyncOperation,
-                -> renderAsyncMethod(descriptor, method, queryIidName, typesByQualifiedName)
-            }
+            modulePlatformAbiCalls.observe(prepareMethodCall(descriptor, method, typesByQualifiedName))
+        }
+    }
+
+    private fun prepareMethodCall(
+        descriptor: WinRTComInteropAdapterDescriptor,
+        method: WinRTComInteropMethodDescriptor,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
+    ): KotlinTypedProjectionCallSiteInvocation {
+        val returnBinding = when (method.result) {
+            is WinRTComInteropResultDescriptor.ProjectedRuntimeClass -> KotlinProjectionAbiTypeBinding(
+                KotlinProjectionAbiValueKind.InspectableReference, IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
+            )
+            WinRTComInteropResultDescriptor.UnitResult ->
+                KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit")
+            WinRTComInteropResultDescriptor.AsyncAction,
+            is WinRTComInteropResultDescriptor.AsyncOperation,
+            -> KotlinProjectionAbiTypeBinding(
+                KotlinProjectionAbiValueKind.UnknownReference, IUNKNOWN_REFERENCE_CLASS_NAME.canonicalName,
+            )
+        }
+        val parameters = method.parameters.map { parameter ->
+            KotlinProjectionAbiParameterBinding(
+                parameter.name,
+                typeRenderer.renderAbiTypeBinding(
+                    comInteropParameterTypeName(parameter), typesByQualifiedName, descriptor.namespace,
+                ),
+            )
+        }
+        val callParameters = if (method.result == WinRTComInteropResultDescriptor.UnitResult) parameters else
+            parameters + KotlinProjectionAbiParameterBinding("resultIid", typeRenderer.renderAbiTypeBinding("RawAddress"))
+        val callPlan = typeRenderer.requireAbiCallPlan(
+            bindingName = "${descriptor.projectedTypeName}.${method.name}",
+            returnBinding = returnBinding,
+            parameterBindings = callParameters,
+        )
+        return requireNotNull(typeRenderer.composeTypedProjectionCallSite(callPlan, modulePlatformAbiCalls)) {
+            "COM interop method ${descriptor.projectedTypeName}.${method.name} must fold every ABI marshaler slot."
         }
     }
 
@@ -177,24 +205,7 @@ internal class KotlinComInteropSourceRenderer(
         val publicParameters = method.parameters.joinToString(", ") { parameter ->
             "${parameter.name}: RawAddress"
         }
-        val parameterBindings = method.parameters.map { parameter ->
-            KotlinProjectionAbiParameterBinding(
-                name = parameter.name,
-                typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
-            )
-        } + KotlinProjectionAbiParameterBinding(
-            name = "resultIid",
-            typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
-        )
-        val invocation = renderCallSite(
-            descriptor = descriptor,
-            method = method,
-            returnBinding = KotlinProjectionAbiTypeBinding(
-                KotlinProjectionAbiValueKind.InspectableReference,
-                IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
-            ),
-            parameterBindings = parameterBindings,
-        )
+        val invocation = renderCallSite(descriptor, method, typesByQualifiedName)
         return buildString {
             appendLine("public fun ${method.name}($publicParameters): $resultTypeName =")
             appendLine("    PlatformAbi.confinedScope().use { scope ->")
@@ -224,18 +235,7 @@ internal class KotlinComInteropSourceRenderer(
         val publicParameters = method.parameters.joinToString(", ") { parameter ->
             "${parameter.name}: RawAddress"
         }
-        val parameterBindings = method.parameters.map { parameter ->
-            KotlinProjectionAbiParameterBinding(
-                name = parameter.name,
-                typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
-            )
-        }
-        val invocation = renderCallSite(
-            descriptor = descriptor,
-            method = method,
-            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-            parameterBindings = parameterBindings,
-        )
+        val invocation = renderCallSite(descriptor, method, emptyMap())
         return buildString {
             appendLine("public fun ${method.name}($publicParameters) {")
             appendLine("    ActivationFactory.get($activationTypeName.Metadata.TYPE_NAME, $queryIidName).use { interop ->")
@@ -323,19 +323,7 @@ internal class KotlinComInteropSourceRenderer(
         val publicParameters = method.parameters.zip(parameterBindings).joinToString(", ") { (parameter, binding) ->
             "${parameter.name}: ${projectionClassNameForQualifiedName(binding.typeBinding.resolvedTypeName).simpleName}"
         }
-        val callParameterBindings = parameterBindings + KotlinProjectionAbiParameterBinding(
-            name = "resultIid",
-            typeBinding = typeRenderer.renderAbiTypeBinding("RawAddress"),
-        )
-        val invocation = renderCallSite(
-            descriptor = descriptor,
-            method = method,
-            returnBinding = KotlinProjectionAbiTypeBinding(
-                KotlinProjectionAbiValueKind.UnknownReference,
-                IUNKNOWN_REFERENCE_CLASS_NAME.canonicalName,
-            ),
-            parameterBindings = callParameterBindings,
-        )
+        val invocation = renderCallSite(descriptor, method, typesByQualifiedName)
         val activationTypeName = descriptor.activationTypeName.substringAfterLast('.')
         return buildString {
             appendLine("public fun ${method.name}($publicParameters): $publicReturnType =")
@@ -354,17 +342,9 @@ internal class KotlinComInteropSourceRenderer(
     private fun renderCallSite(
         descriptor: WinRTComInteropAdapterDescriptor,
         method: WinRTComInteropMethodDescriptor,
-        returnBinding: KotlinProjectionAbiTypeBinding,
-        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
     ): CodeBlock {
-        val callPlan = typeRenderer.requireAbiCallPlan(
-            bindingName = "${descriptor.projectedTypeName}.${method.name}",
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-        )
-        val invocation = requireNotNull(typeRenderer.composeTypedProjectionCallSite(callPlan, modulePlatformAbiCalls)) {
-            "COM interop method ${descriptor.projectedTypeName}.${method.name} must fold every ABI marshaler slot."
-        }
+        val invocation = prepareMethodCall(descriptor, method, typesByQualifiedName)
         return modulePlatformAbiCalls.typedInvocation(
             referenceExpression = "interop",
             slotExpression = CodeBlock.of("%L", method.slot),
