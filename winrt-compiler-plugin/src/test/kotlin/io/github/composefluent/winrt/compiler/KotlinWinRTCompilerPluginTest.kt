@@ -999,6 +999,29 @@ class KotlinWinRTCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_loads_the_generated_metadata_companion() {
+        val className = ProjectionRegistrarMetadataFixture::class.java.name
+        val output = Files.createTempDirectory("kotlin-winrt-companion-registration-")
+        val internalName = requireNotNull(writeProjectionSupportInitializerClass(
+            listOf(KotlinWinRTProjectionRegistrarEntry(
+                kotlinClassName = className,
+                projectedTypeName = "Sample.ProjectionRegistrarMetadataFixture",
+                kind = "RuntimeClass",
+                baseTypeName = "",
+                metadataClassName = "$className.Metadata",
+                interfaceIid = "",
+            )),
+            output,
+        ))
+        assertEquals(0, projectionRegistrarMetadataInitializations)
+        URLClassLoader(arrayOf(output.toUri().toURL()), javaClass.classLoader).use { loader ->
+            val initializer = Class.forName(internalName.replace('/', '.'), true, loader)
+            initializer.getDeclaredMethod("initialize").invoke(null)
+            assertEquals(1, projectionRegistrarMetadataInitializations)
+        }
+    }
+
+    @Test
     fun projection_support_initializer_input_owner_scopes_content_addressed_class_artifacts() {
         val entries = listOf(
             KotlinWinRTProjectionRegistrarEntry(
@@ -1471,4 +1494,14 @@ class KotlinWinRTCompilerPluginTest {
         assertEquals("", legacyEntries.single().guidSignature)
     }
 
+}
+
+private var projectionRegistrarMetadataInitializations = 0
+
+class ProjectionRegistrarMetadataFixture {
+    companion object Metadata {
+        init {
+            projectionRegistrarMetadataInitializations += 1
+        }
+    }
 }

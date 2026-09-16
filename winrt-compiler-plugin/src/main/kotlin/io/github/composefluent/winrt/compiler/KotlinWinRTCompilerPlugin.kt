@@ -2353,10 +2353,12 @@ private fun ClassWriter.addProjectionRegistrarChunk(
     entries.forEach { entry ->
         if (entry.metadataClassName.isNotBlank()) {
             val metadataInternalName = entry.metadataClassName.toMetadataInternalName()
+            // Generated Metadata is a named companion: JVM stores it on the projected class,
+            // while Native's IR path obtains the same object with irGetObject.
             method.visitFieldInsn(
                 Opcodes.GETSTATIC,
-                metadataInternalName,
-                "INSTANCE",
+                entry.kotlinClassName.toInternalName(),
+                "Metadata",
                 "L$metadataInternalName;",
             )
             method.visitInsn(Opcodes.POP)
