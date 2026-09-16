@@ -47,7 +47,7 @@ class ComVtableInvokerGeneratedShapeTest {
                 val input = PlatformAbi.allocatePointerSlot(scope)
                 val output = PlatformAbi.allocatePointerSlot(scope)
 
-                val hr = ComVtableInvoker.invokeRawArgs(
+                val hr = RawCarrierCallSiteFixture.invoke(
                     host.reference.pointer,
                     slot = 8,
                     input.value,
@@ -67,7 +67,7 @@ class ComVtableInvokerGeneratedShapeTest {
             PlatformAbi.confinedScope().use { scope ->
                 val output = PlatformAbi.allocatePointerSlot(scope)
 
-                val hr = ComVtableInvoker.invokeRawArgs(
+                val hr = RawCarrierCallSiteFixture.invoke(
                     host.reference.pointer,
                     slot = 9,
                     37,
@@ -84,8 +84,8 @@ class ComVtableInvokerGeneratedShapeTest {
     @Test
     fun raw_float_and_double_shapes_preserve_register_carriers() {
         GeneratedShapeComObject.create().use { host ->
-            val floatResult = ComVtableInvoker.invokeRawArgs(host.reference.pointer, slot = 10, 1.25f)
-            val doubleResult = ComVtableInvoker.invokeRawArgs(host.reference.pointer, slot = 11, 2.5)
+            val floatResult = RawCarrierCallSiteFixture.invoke(host.reference.pointer, slot = 10, 1.25f)
+            val doubleResult = RawCarrierCallSiteFixture.invoke(host.reference.pointer, slot = 11, 2.5)
 
             assertEquals(KnownHResults.S_OK.value, floatResult)
             assertEquals(KnownHResults.S_OK.value, doubleResult)
@@ -101,13 +101,13 @@ class ComVtableInvokerGeneratedShapeTest {
                 val floatOutput = PlatformAbi.allocatePointerSlot(scope)
                 val doubleOutput = PlatformAbi.allocatePointerSlot(scope)
 
-                val floatResult = ComVtableInvoker.invokeRawArgs(
+                val floatResult = RawCarrierCallSiteFixture.invoke(
                     host.reference.pointer,
                     slot = 12,
                     1.25f,
                     floatOutput.value,
                 )
-                val doubleResult = ComVtableInvoker.invokeRawArgs(
+                val doubleResult = RawCarrierCallSiteFixture.invoke(
                     host.reference.pointer,
                     slot = 13,
                     2.5,
@@ -127,7 +127,7 @@ class ComVtableInvokerGeneratedShapeTest {
     @Test
     fun raw_mixed_narrow_scalars_and_float_preserve_carrier_order() {
         GeneratedShapeComObject.create().use { host ->
-            val result = ComVtableInvoker.invokeRawArgs(
+            val result = RawCarrierCallSiteFixture.invoke(
                 host.reference.pointer,
                 slot = 14,
                 (-7).toByte(),
@@ -148,7 +148,7 @@ class ComVtableInvokerGeneratedShapeTest {
     fun raw_fixed_shape_remains_stable_under_repeated_calls() {
         GeneratedShapeComObject.create().use { host ->
             repeat(10_000) { index ->
-                val result = ComVtableInvoker.invokeRawArgs(
+                val result = RawCarrierCallSiteFixture.invoke(
                     host.reference.pointer,
                     slot = 6,
                     index,

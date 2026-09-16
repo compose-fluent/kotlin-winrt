@@ -57,8 +57,8 @@ data class WinRTProjectionParameterMetadata(
 /**
  * WinMD facts that cannot be recovered from a typed Kotlin call-site declaration.
  *
- * This is deliberately not an ABI recipe. Carrier selection, marshaling, cleanup, result
- * construction, and backend transport are compiler-plugin responsibilities.
+ * This is deliberately not an ABI recipe. The generator plans migrated source bodies; the
+ * compiler plans remaining typed stubs and emits platform transport for fixed ABI signatures.
  */
 data class WinRTProjectionCallSiteMetadata(
     val hResultPolicy: WinRTProjectionCallSiteHResultPolicy = WinRTProjectionCallSiteHResultPolicy.CHECK,

@@ -114,6 +114,7 @@ fun lowerWinRTProjectionCallSites(
     lowerWinRTGenericDelegateSamReferences(moduleFragment, pluginContext, guidSignaturesByKotlinClass)
     lowerWinRTEnumConstantReads(moduleFragment, pluginContext)
     val annotatedFunctions = mutableListOf<Pair<IrSimpleFunction, IrFunctionAccessExpression>>()
+    val abiFunctions = mutableListOf<IrSimpleFunction>()
     val inlineCallSites = mutableListOf<InlineProjectionCallSite>()
     moduleFragment.acceptChildrenVoid(
         object : IrVisitorVoid() {
@@ -138,8 +139,16 @@ fun lowerWinRTProjectionCallSites(
             }
 
             override fun visitSimpleFunction(declaration: IrSimpleFunction) {
+                if (declaration.annotations.any {
+                    it.type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.WinRTAbiCallSite"
+                }) abiFunctions += declaration
                 declaration.annotations.singleOrNull(::isProjectionCallSiteAnnotation)
-                    ?.let { annotation -> annotatedFunctions += declaration to annotation }
+                    ?.let { annotation ->
+                        val sourceGenerated = annotation.symbol.owner.parameters.indexOfFirst {
+                            it.name.asString() == "sourceGenerated"
+                        }.let { index -> (annotation.arguments.getOrNull(index) as? IrConst)?.value == true }
+                        if (!sourceGenerated) annotatedFunctions += declaration to annotation
+                    }
                 super.visitSimpleFunction(declaration)
             }
 
@@ -155,6 +164,10 @@ fun lowerWinRTProjectionCallSites(
         },
     )
     val context = WinRTCallSiteLoweringContext(moduleFragment, pluginContext)
+    abiFunctions.forEach { function ->
+        runCatching { lowerWinRTAbiCallSite(function, pluginContext, context.directBackend) }
+            .onFailure { pluginContext.reportError(function, "cannot lower fixed ABI signature: ${it.message}") }
+    }
     lowerWinRTProjectionInboundCallSites(moduleFragment, pluginContext, context)
 
     if (annotatedFunctions.isEmpty() && inlineCallSites.isEmpty()) return

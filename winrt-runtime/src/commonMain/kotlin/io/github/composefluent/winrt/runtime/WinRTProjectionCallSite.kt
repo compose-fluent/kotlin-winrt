@@ -24,7 +24,8 @@ enum class WinRTCallSiteResultKind {
 
 /**
  * Marks a typed projection call-site stub. The annotation contains only WinMD facts that are not
- * represented by the Kotlin declaration; the compiler plugin owns ABI planning and code emission.
+ * represented by the Kotlin declaration. Source-generated bodies own marshaling and lifetime;
+ * remaining typed stubs use compiler ABI planning until their generator slice is migrated.
  */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.LOCAL_VARIABLE)
 @Retention(AnnotationRetention.BINARY)
@@ -32,7 +33,14 @@ annotation class WinRTProjectionCallSite(
     val hResult: WinRTCallSiteHResultPolicy = WinRTCallSiteHResultPolicy.CHECK,
     val result: WinRTCallSiteResultKind = WinRTCallSiteResultKind.INFER,
     val returnAbiType: String = "",
+    /** The generator has emitted marshaling and lifetime code; only nested ABI stubs are lowered. */
+    val sourceGenerated: Boolean = false,
 )
+
+/** A fixed ABI signature: borrowed RawComPtr, vtable slot, carriers, and an Int HRESULT. */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+annotation class WinRTAbiCallSite
 
 /**
  * Marks a typed projected-interface CCW entry stub. The generated declaration contains the

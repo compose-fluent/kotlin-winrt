@@ -17,6 +17,25 @@ import org.junit.Test
 
 class KotlinProjectionCallSiteDescriptorsTest {
     @Test
+    fun scalar_result_pointee_types_share_only_the_physical_output_pointer_shape() {
+        val renderer = KotlinProjectionRenderer()
+        fun plan(kind: KotlinProjectionAbiValueKind, name: String) = renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan(
+                bindingName = "sample.read$name",
+                returnBinding = KotlinProjectionAbiTypeBinding(kind, name),
+                parameterBindings = emptyList(),
+            ),
+        ).plan
+        val integer = plan(KotlinProjectionAbiValueKind.Int32, "Int")
+        val floating = plan(KotlinProjectionAbiValueKind.Float, "Float")
+        assertEquals(integer.platformShape, floating.platformShape)
+        assertNotEquals(integer.functionName, floating.functionName)
+        val arguments = listOf(CodeBlock.of("instance"), CodeBlock.of("slot"))
+        assertTrue(integer.scalarSourceBody(arguments).toString().contains("readInt32"))
+        assertTrue(floating.scalarSourceBody(arguments).toString().contains("readFloat"))
+    }
+
+    @Test
     fun platform_shape_is_shared_when_only_public_projection_identity_differs() {
         val first = modulePlan("sample.FirstResult")
         val second = modulePlan("sample.SecondResult")

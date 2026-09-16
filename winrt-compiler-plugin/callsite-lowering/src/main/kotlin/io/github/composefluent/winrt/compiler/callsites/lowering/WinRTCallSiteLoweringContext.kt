@@ -8,9 +8,12 @@ internal class WinRTCallSiteLoweringContext(
     module: IrModuleFragment,
     pluginContext: IrPluginContext,
 ) {
+    val directBackend by lazy {
+        requireNotNull(WinRTDirectCallBackend.create(pluginContext, module.files.firstOrNull()))
+    }
     val projectedTypes by lazy { WinRTProjectedTypeCanonicalizer(pluginContext) }
     val planner by lazy { WinRTProjectionCallSitePlanner(module, pluginContext, projectedTypes) }
     val recipeResolution by lazy {
-        runCatching { WinRTCallSiteRecipeLowering.create(pluginContext, module) }
+        runCatching { WinRTCallSiteRecipeLowering.create(pluginContext, module) { directBackend } }
     }
 }

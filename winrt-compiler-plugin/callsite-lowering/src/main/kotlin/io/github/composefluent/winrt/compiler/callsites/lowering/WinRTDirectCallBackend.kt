@@ -1301,7 +1301,7 @@ private fun WINRT_RAW_ADDRESS_IR_TYPE(pluginContext: IrPluginContext): IrType =
 
 private const val MAX_NATIVE_RECIPE_THUNK_INPUT_COUNT = 20
 
-private val WinRTProjectionCallSiteAbiCarrier.kotlinCarrierFqName: FqName
+internal val WinRTProjectionCallSiteAbiCarrier.kotlinCarrierFqName: FqName
     get() = when (this) {
         WinRTProjectionCallSiteAbiCarrier.ADDRESS -> WINRT_RAW_ADDRESS_FQ_NAME
         WinRTProjectionCallSiteAbiCarrier.INT8 -> KOTLIN_BYTE_FQ_NAME

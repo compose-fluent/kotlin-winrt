@@ -74,6 +74,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val pluginContext: IrPluginContext,
     private val fromFile: IrFile?,
     private val resolver: CallSiteSymbolResolver,
+    private val backendFactory: () -> WinRTDirectCallBackend,
 ) {
     private val reference by lazy {
         requiredCallSiteSymbol(
@@ -150,10 +151,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     }
 
     private val directCallBackend: WinRTDirectCallBackend by lazy {
-        requiredCallSiteSymbol(
-            "WinRTDirectCallBackend",
-            WinRTDirectCallBackend.create(pluginContext, fromFile),
-        ) ?: abortCallSiteLowering()
+        backendFactory()
     }
 
     private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol by lazy {
@@ -4009,6 +4007,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         fun create(
             pluginContext: IrPluginContext,
             moduleFragment: IrModuleFragment,
+            backendFactory: () -> WinRTDirectCallBackend,
         ): WinRTCallSiteRecipeLowering? {
             val fromFile = moduleFragment.files.firstOrNull()
             val sourceClasses = mutableMapOf<FqName, IrClassSymbol>()
@@ -4037,7 +4036,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 sourceClasses,
                 sourceFunctions,
             )
-            return WinRTCallSiteRecipeLowering(pluginContext, fromFile, resolver)
+            return WinRTCallSiteRecipeLowering(pluginContext, fromFile, resolver, backendFactory)
         }
     }
 }

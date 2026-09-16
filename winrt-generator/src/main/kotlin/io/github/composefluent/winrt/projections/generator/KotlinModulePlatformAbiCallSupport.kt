@@ -473,8 +473,15 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                 }
             }
             .returns(plan.returnType)
-            .addAnnotation(plan.callSiteAnnotationSpec())
-            .addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
+            .apply {
+                val body = plan.scalarSourceBody(
+                    listOf(CodeBlock.of("instance"), CodeBlock.of("slot")) +
+                        plan.parameters.indices.map { CodeBlock.of("arg%L", it) },
+                )
+                addAnnotation(plan.callSiteAnnotationSpec(sourceGenerated = body != null))
+                if (body == null) addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
+                else addStatement("return %L", body)
+            }
             .build()
 
     private fun renderCodec(
@@ -537,6 +544,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         plan: KotlinTypedProjectionCallSitePlan,
         arguments: List<CodeBlock>,
     ): CodeBlock {
+        plan.scalarSourceBody(arguments)?.let { return it }
         val parameterTypes = listOf(COM_OBJECT_REFERENCE_CLASS_NAME, Int::class.asClassName()) +
             plan.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
         require(arguments.size == parameterTypes.size) {
@@ -615,10 +623,11 @@ private fun KotlinTypedProjectionCallSitePlan.hasSameRenderedDeclarationAs(
         parameters.map(KotlinTypedProjectionCallSiteParameter::type) ==
         other.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
 
-private fun KotlinTypedProjectionCallSitePlan.callSiteAnnotationSpec(): AnnotationSpec =
+private fun KotlinTypedProjectionCallSitePlan.callSiteAnnotationSpec(sourceGenerated: Boolean = false): AnnotationSpec =
     AnnotationSpec.builder(
         ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionCallSite"),
     ).apply {
+        if (sourceGenerated) addMember("sourceGenerated = true")
         if (metadata.hResultPolicy != WinRTProjectionCallSiteHResultPolicy.CHECK) {
             addMember(
                 "hResult = %T.%L",
