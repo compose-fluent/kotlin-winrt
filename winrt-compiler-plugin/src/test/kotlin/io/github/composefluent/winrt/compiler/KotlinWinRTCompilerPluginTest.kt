@@ -1022,6 +1022,30 @@ class KotlinWinRTCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_uses_resolved_alias_classes_without_changing_its_identity() {
+        val aliasName = "sample.ProjectedAlias"
+        val entry = KotlinWinRTProjectionRegistrarEntry(
+            kotlinClassName = aliasName,
+            projectedTypeName = "Sample.ProjectedAlias",
+            kind = "RuntimeClass",
+            baseTypeName = "",
+            metadataClassName = "",
+            interfaceIid = "",
+        )
+        val output = Files.createTempDirectory("kotlin-winrt-alias-registration-")
+        val unresolvedIdentity = writeProjectionSupportInitializerClass(listOf(entry), output)
+        val resolvedIdentity = requireNotNull(writeProjectionSupportInitializerClass(
+            listOf(entry), output,
+            classInternalNames = mapOf(aliasName to ProjectionRegistrarAliasFixture::class.java.name.replace('.', '/')),
+        ))
+        assertEquals(unresolvedIdentity, resolvedIdentity)
+        URLClassLoader(arrayOf(output.toUri().toURL()), javaClass.classLoader).use { loader ->
+            Class.forName(resolvedIdentity.replace('/', '.'), true, loader)
+                .getDeclaredMethod("initialize").invoke(null)
+        }
+    }
+
+    @Test
     fun projection_support_initializer_input_owner_scopes_content_addressed_class_artifacts() {
         val entries = listOf(
             KotlinWinRTProjectionRegistrarEntry(
@@ -1497,6 +1521,8 @@ class KotlinWinRTCompilerPluginTest {
 }
 
 private var projectionRegistrarMetadataInitializations = 0
+
+class ProjectionRegistrarAliasFixture
 
 class ProjectionRegistrarMetadataFixture {
     companion object Metadata {

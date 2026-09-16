@@ -72,6 +72,7 @@ import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
 import org.jetbrains.kotlin.ir.builders.irCall
@@ -315,7 +316,10 @@ class KotlinWinRTIrGenerationExtension(
             else -> error("Unsupported kotlin-winrt projectionSupportMode '$projectionSupportMode'.")
         }
         if (emitProjectionSupport) {
-            writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
+            writeCompilerSupportClasses(
+                compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity,
+                moduleFragment, pluginContext,
+            )
         } else {
             clearEmbeddedProjectionSupport(
                 compilerSupportClassOutputDirectoryPath
@@ -477,18 +481,30 @@ class KotlinWinRTIrGenerationExtension(
         return readCompilerSupportManifestIfConfigured(compilerSupportManifestPath)
     }
 
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun writeCompilerSupportClasses(
         entries: List<KotlinWinRTCompilerSupportManifestEntry>,
         projectionRegistrarEntries: List<KotlinWinRTProjectionRegistrarEntry>,
         projectionSupportOwnerIdentity: String,
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
     ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         Files.deleteIfExists(outputDirectory.resolve(STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
         writeCompilerSupportManifestClass(entries, outputDirectory)
+        val classInternalNames = resolveProjectionRegistrarClasses(projectionRegistrarEntries) { name ->
+            pluginContext.findClassSymbol(ClassId.topLevel(FqName(name)), moduleFragment.files.firstOrNull())
+        }.associate { (entry, symbol) ->
+            val classId = requireNotNull(symbol.owner.classId)
+            val jvmClassId = org.jetbrains.kotlin.builtins.jvm.JavaToKotlinClassMap
+                .mapKotlinToJava(classId.asSingleFqName().toUnsafe()) ?: classId
+            entry.kotlinClassName to org.jetbrains.kotlin.resolve.jvm.JvmClassName.byClassId(jvmClassId).internalName
+        }
         writeProjectionSupportInitializerClass(
             entries = projectionRegistrarEntries,
             outputDirectory = outputDirectory,
             ownerIdentity = projectionSupportOwnerIdentity,
+            classInternalNames = classInternalNames,
         )
     }
 
@@ -2160,6 +2176,7 @@ fun writeProjectionSupportInitializerClass(
     entries: List<KotlinWinRTProjectionRegistrarEntry>,
     outputDirectory: Path,
     ownerIdentity: String = "",
+    classInternalNames: Map<String, String> = emptyMap(),
 ): String? {
     if (entries.isEmpty()) {
         deleteStaleProjectionSupportInitializerClasses(outputDirectory, currentInternalName = null)
@@ -2243,6 +2260,7 @@ fun writeProjectionSupportInitializerClass(
             internalName = projectionRegistrarChunkInternalName(internalName, index),
             entries = chunk,
             outputDirectory = outputDirectory,
+            classInternalNames = classInternalNames,
         )
     }
     return internalName
@@ -2319,6 +2337,7 @@ private fun writeProjectionRegistrarChunkClass(
     internalName: String,
     entries: List<KotlinWinRTProjectionRegistrarEntry>,
     outputDirectory: Path,
+    classInternalNames: Map<String, String>,
 ) {
     val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
     classWriter.visit(
@@ -2331,7 +2350,7 @@ private fun writeProjectionRegistrarChunkClass(
     )
     classWriter.visitSource("compiler-support.tsv", null)
     classWriter.addDefaultConstructor()
-    classWriter.addProjectionRegistrarChunk("register", entries, Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC)
+    classWriter.addProjectionRegistrarChunk("register", entries, classInternalNames, Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC)
     classWriter.visitEnd()
     val target = outputDirectory.resolve("$internalName.class")
     writeBytesIfChanged(target, classWriter.toByteArray())
@@ -2340,6 +2359,7 @@ private fun writeProjectionRegistrarChunkClass(
 private fun ClassWriter.addProjectionRegistrarChunk(
     name: String,
     entries: List<KotlinWinRTProjectionRegistrarEntry>,
+    classInternalNames: Map<String, String>,
     access: Int = Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
 ) {
     val method = visitMethod(
@@ -2351,19 +2371,20 @@ private fun ClassWriter.addProjectionRegistrarChunk(
     )
     method.visitCode()
     entries.forEach { entry ->
+        val projectedInternalName = classInternalNames[entry.kotlinClassName] ?: entry.kotlinClassName.toInternalName()
         if (entry.metadataClassName.isNotBlank()) {
-            val metadataInternalName = entry.metadataClassName.toMetadataInternalName()
+            val metadataInternalName = "$projectedInternalName\$Metadata"
             // Generated Metadata is a named companion: JVM stores it on the projected class,
             // while Native's IR path obtains the same object with irGetObject.
             method.visitFieldInsn(
                 Opcodes.GETSTATIC,
-                entry.kotlinClassName.toInternalName(),
+                projectedInternalName,
                 "Metadata",
                 "L$metadataInternalName;",
             )
             method.visitInsn(Opcodes.POP)
         }
-        method.visitLdcInsn(Type.getObjectType(entry.kotlinClassName.toInternalName()))
+        method.visitLdcInsn(Type.getObjectType(projectedInternalName))
         method.visitMethodInsn(
             Opcodes.INVOKESTATIC,
             "kotlin/jvm/internal/Reflection",
@@ -2390,9 +2411,6 @@ private fun ClassWriter.addProjectionRegistrarChunk(
 
 private fun String.toInternalName(): String =
     replace('.', '/')
-
-private fun String.toMetadataInternalName(): String =
-    removeSuffix(".Metadata").toInternalName() + "\$Metadata"
 
 private fun String.splitListFieldOrNull(): List<String>? =
     splitSupportListFieldOrNull(',')
