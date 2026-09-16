@@ -306,6 +306,8 @@ private data class DirectStructProjection(
         fun fromAbi(source: RawAddress): DirectStructProjection =
             DirectStructProjection(PlatformAbi.readInt32(source))
 
+        fun fromAbi(source: Int): DirectStructProjection = error("Wrong direct metadata overload: $source")
+
         fun disposeAbi(source: RawAddress) {
             PlatformAbi.pointerKey(source)
         }

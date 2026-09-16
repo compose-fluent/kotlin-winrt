@@ -290,6 +290,8 @@ internal class WinRTProjectionCallSitePlanner(
                     ?: return null,
                 toAbi = toAbi.name.asString(),
                 fromAbi = fromAbi.name.asString(),
+                toAbiSymbol = toAbi.symbol,
+                fromAbiSymbol = fromAbi.symbol,
             ),
             children = listOf(carrier),
             typeSignature = AbiTypeKind.ENUM.typeSignature(projectedName),
@@ -341,6 +343,9 @@ internal class WinRTProjectionCallSitePlanner(
                 fromAbi = fromAbi.name.asString(),
                 copyToAbi = copyToAbi.name.asString(),
                 disposeAbi = disposeAbi.name.asString(),
+                fromAbiSymbol = fromAbi.symbol,
+                copyToAbiSymbol = copyToAbi.symbol,
+                disposeAbiSymbol = disposeAbi.symbol,
             ),
             typeSignature = AbiTypeKind.STRUCT.typeSignature(projectedName),
         )
