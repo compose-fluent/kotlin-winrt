@@ -71,96 +71,693 @@ import org.jetbrains.kotlin.name.Name
 
 /** Lowers every declaration placement through one ordered recipe fold. */
 internal class WinRTCallSiteRecipeLowering private constructor(
-    private val directCallBackend: WinRTDirectCallBackend,
+    private val pluginContext: IrPluginContext,
+    private val fromFile: IrFile?,
     private val resolver: CallSiteSymbolResolver,
-    private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol,
-    private val acquireScalarScratchFrame: IrSimpleFunctionSymbol,
-    private val scalarScratchFramePointerGetter: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameConsumeOwnedHString: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadPointer: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadInt8: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadInt16: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadInt32: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadInt64: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadFloat: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameReadDouble: IrSimpleFunctionSymbol,
-    private val scalarScratchFrameClose: IrSimpleFunctionSymbol,
-    private val acquireHStringReferenceFrame: IrSimpleFunctionSymbol,
-    private val hStringReferenceFrameHandleGetter: IrSimpleFunctionSymbol,
-    private val hStringReferenceFrameClose: IrSimpleFunctionSymbol,
-    private val winRTPinString: IrSimpleFunctionSymbol,
-    private val winRTStringAddress: IrSimpleFunctionSymbol,
-    private val winRTStringLength: IrSimpleFunctionSymbol,
-    private val acquireStructScratchFrame: IrSimpleFunctionSymbol?,
-    private val structScratchFramePointerGetter: IrSimpleFunctionSymbol?,
-    private val structScratchFrameReadInt8Carrier: IrSimpleFunctionSymbol?,
-    private val structScratchFrameReadInt16Carrier: IrSimpleFunctionSymbol?,
-    private val structScratchFrameReadInt32Carrier: IrSimpleFunctionSymbol?,
-    private val structScratchFrameReadInt64Carrier: IrSimpleFunctionSymbol?,
-    private val structScratchFrameClose: IrSimpleFunctionSymbol?,
-    private val platformAbi: IrClassSymbol?,
-    private val platformAbiNullPointerGetter: IrSimpleFunctionSymbol?,
-    private val platformAbiNullComPtrGetter: IrSimpleFunctionSymbol?,
-    private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol?,
-    private val platformAbiToRawComPtr: IrSimpleFunctionSymbol?,
-    private val platformAbiReadPointer: IrSimpleFunctionSymbol?,
-    private val platformAbiReadInt8: IrSimpleFunctionSymbol?,
-    private val platformAbiReadInt16: IrSimpleFunctionSymbol?,
-    private val platformAbiReadInt32: IrSimpleFunctionSymbol?,
-    private val platformAbiReadInt64: IrSimpleFunctionSymbol?,
-    private val platformAbiReadFloat: IrSimpleFunctionSymbol?,
-    private val platformAbiReadDouble: IrSimpleFunctionSymbol?,
-    private val platformAbiReadGuid: IrSimpleFunctionSymbol?,
-    private val platformAbiSlice: IrSimpleFunctionSymbol?,
-    private val platformAbiWritePointer: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteInt8: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteInt16: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteInt32: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteInt64: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteFloat: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteDouble: IrSimpleFunctionSymbol?,
-    private val platformAbiWriteGuid: IrSimpleFunctionSymbol?,
-    private val platformAbiIsNullPointer: IrSimpleFunctionSymbol?,
-    private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol?,
-    private val iWinRTObjectGetObjectReferenceForType: IrSimpleFunctionSymbol?,
-    private val tryAcquireWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol,
-    private val tryAcquireWinRTManagedProjectionCallLeaseWithState: IrSimpleFunctionSymbol,
-    private val releaseWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol,
-    private val tryBorrowWinRTManagedProjectionAbi: IrSimpleFunctionSymbol,
-    private val tryBorrowWinRTManagedProjectionAbiWithState: IrSimpleFunctionSymbol,
-    private val tryBorrowWinRTManagedInspectableAbi: IrSimpleFunctionSymbol,
-    private val winRTManagedProjectionStateAccessor: IrSimpleFunctionSymbol,
-    private val winRTProjectionMarshaler: IrSimpleFunctionSymbol,
-    private val winRTProjectionMarshalerAbiGetter: IrSimpleFunctionSymbol,
-    private val winRTProjectionMarshalerClose: IrSimpleFunctionSymbol,
-    private val winRTKeepAlive: IrSimpleFunctionSymbol,
-    private val winRTAbiArrayAllocateInput: IrSimpleFunctionSymbol,
-    private val winRTAbiArrayLengthGetter: IrSimpleFunctionSymbol,
-    private val winRTAbiArrayDataGetter: IrSimpleFunctionSymbol,
-    private val winRTAbiArrayClose: IrSimpleFunctionSymbol,
-    private val nativeStringMarshallerFromAbi: IrSimpleFunctionSymbol,
-    private val nativeStringMarshallerFromManaged: IrSimpleFunctionSymbol,
-    private val nativeStringMarshallerGetAbiHString: IrSimpleFunctionSymbol,
-    private val nativeStringMarshallerDisposeAbi: IrSimpleFunctionSymbol,
-    private val winRTProjectionInboundRetainAddress: IrSimpleFunctionSymbol,
-    private val tryConsumeOwnedRuntimeClassRcw: IrSimpleFunctionSymbol,
-    private val winRTPlatformApiReleaseRaw: IrSimpleFunctionSymbol,
-    private val winRTPlatformApiCoTaskMemFreeRaw: IrSimpleFunctionSymbol,
-    private val hResultConstructor: IrConstructorSymbol,
-    private val hResultIsFailureGetter: IrSimpleFunctionSymbol,
-    private val hResultRequireSuccess: IrSimpleFunctionSymbol,
-    private val winRTConsumeOwnedHStringScalarResult: IrSimpleFunctionSymbol,
-    private val winRTScalarResultRecord: IrSimpleFunctionSymbol?,
-    private val winRTScalarResultHResult: IrSimpleFunctionSymbol?,
-    private val winRTScalarResultValue: IrSimpleFunctionSymbol?,
-    private val winRTWideScalarResultFloat64: IrSimpleFunctionSymbol?,
-    private val winRTPackedScalarResultHResult: IrSimpleFunctionSymbol,
-    private val winRTPackedScalarResultInt8: IrSimpleFunctionSymbol,
-    private val winRTPackedScalarResultInt16: IrSimpleFunctionSymbol,
-    private val winRTPackedScalarResultInt32: IrSimpleFunctionSymbol,
-    private val winRTPackedScalarResultFloat32: IrSimpleFunctionSymbol,
-    private val primitiveSymbols: PrimitiveCallSiteSymbols,
 ) {
+    private val reference by lazy {
+        requiredCallSiteSymbol(
+            "ComObjectReference",
+            resolver.classSymbol(WINRT_COM_OBJECT_REFERENCE_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarFrame by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame",
+            resolver.classSymbol(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hStringFrame by lazy {
+        requiredCallSiteSymbol(
+            "NativeHStringReferenceFrame",
+            resolver.classSymbol(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTAbiArray by lazy {
+        requiredCallSiteSymbol(
+            "WinRTAbiArray",
+            resolver.classSymbol(WINRT_ABI_ARRAY_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTAbiArrayCompanion by lazy {
+        requiredCallSiteSymbol(
+            "WinRTAbiArray.Companion",
+            winRTAbiArray.owner.declarations.filterIsInstance<IrClass>()
+                .singleOrNull { declaration -> declaration.name.asString() == "Companion" }
+                ?.symbol,
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val nativeStringMarshaller by lazy {
+        requiredCallSiteSymbol(
+            "NativeStringMarshaller",
+            resolver.classSymbol(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPlatformApi by lazy {
+        requiredCallSiteSymbol(
+            "WinRTPlatformApi",
+            resolver.classSymbol(WINRT_PLATFORM_API_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hResult by lazy {
+        requiredCallSiteSymbol("HResult", resolver.classSymbol(WINRT_HRESULT_FQ_NAME)) ?: abortCallSiteLowering()
+    }
+
+    private val structFrame by lazy {
+        resolver.classSymbol(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME)
+    }
+
+    private val platformAbiClass by lazy {
+        resolver.classSymbol(WINRT_PLATFORM_ABI_FQ_NAME)
+    }
+
+    private val iWinRTObject by lazy {
+        resolver.classSymbol(WINRT_IWINRT_OBJECT_FQ_NAME)
+    }
+
+    private val winRTProjectionMarshalerClass by lazy {
+        requiredCallSiteSymbol(
+            "WinRTProjectionMarshaler",
+            resolver.classSymbol(WINRT_PROJECTION_MARSHALER_FQ_NAME),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val directCallBackend: WinRTDirectCallBackend by lazy {
+        requiredCallSiteSymbol(
+            "WinRTDirectCallBackend",
+            WinRTDirectCallBackend.create(pluginContext, fromFile),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "ComObjectReference.pointer",
+            reference.propertyGetter("pointer"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val acquireScalarScratchFrame: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "acquireNativeScalarScratchFrame",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "acquireNativeScalarScratchFrame", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFramePointerGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.pointer",
+            scalarFrame.propertyGetter("pointer"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameConsumeOwnedHString: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.consumeOwnedHString",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "consumeOwnedHString", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadPointer: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readPointer",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readPointer", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadInt8: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readInt8",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt8", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadInt16: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readInt16",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt16", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadInt32: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readInt32",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt32", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadInt64: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readInt64",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt64", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadFloat: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readFloat",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readFloat", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameReadDouble: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.readDouble",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readDouble", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val scalarScratchFrameClose: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeScalarScratchFrame.close",
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "close", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val acquireHStringReferenceFrame: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "acquireInitializedNativeHStringReferenceFrame",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "acquireInitializedNativeHStringReferenceFrame",
+                1,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hStringReferenceFrameHandleGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeHStringReferenceFrame.handle",
+            hStringFrame.propertyGetter("handle"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hStringReferenceFrameClose: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeHStringReferenceFrame.close",
+            resolver.function(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_FQ_NAME, "close", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPinString: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTPinString",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPinString", 2),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTStringAddress: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTStringAddress",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringAddress", 2),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTStringLength: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTStringLength",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringLength", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val acquireStructScratchFrame: IrSimpleFunctionSymbol? by lazy {
+        resolver.topLevelFunction(
+            WINRT_RUNTIME_PACKAGE_FQ_NAME,
+            "acquireNativeStructScratchFrame",
+            3,
+        )
+    }
+
+    private val structScratchFramePointerGetter: IrSimpleFunctionSymbol? by lazy {
+        structFrame?.propertyGetter("pointer")
+    }
+
+    private val structScratchFrameReadInt8Carrier: IrSimpleFunctionSymbol? by lazy {
+        structFrame?.let {
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt8Carrier", 0)
+    }
+    }
+
+    private val structScratchFrameReadInt16Carrier: IrSimpleFunctionSymbol? by lazy {
+        structFrame?.let {
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt16Carrier", 0)
+    }
+    }
+
+    private val structScratchFrameReadInt32Carrier: IrSimpleFunctionSymbol? by lazy {
+        structFrame?.let {
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt32Carrier", 0)
+    }
+    }
+
+    private val structScratchFrameReadInt64Carrier: IrSimpleFunctionSymbol? by lazy {
+        structFrame?.let {
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt64Carrier", 0)
+    }
+    }
+
+    private val structScratchFrameClose: IrSimpleFunctionSymbol? by lazy {
+        structFrame?.let {
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "close", 0)
+    }
+    }
+
+    private val platformAbi: IrClassSymbol? by lazy {
+        platformAbiClass
+    }
+
+    private val platformAbiNullPointerGetter: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.propertyGetter("nullPointer")
+    }
+
+    private val platformAbiNullComPtrGetter: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.propertyGetter("nullComPtr")
+    }
+
+    private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "fromRawComPtr", 1)
+    }
+    }
+
+    private val platformAbiToRawComPtr: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "toRawComPtr", 1)
+    }
+    }
+
+    private val platformAbiReadPointer: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readPointer", 1)
+    }
+    }
+
+    private val platformAbiReadInt8: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt8", 1)
+    }
+    }
+
+    private val platformAbiReadInt16: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt16", 1)
+    }
+    }
+
+    private val platformAbiReadInt32: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt32", 1)
+    }
+    }
+
+    private val platformAbiReadInt64: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt64", 1)
+    }
+    }
+
+    private val platformAbiReadFloat: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readFloat", 1)
+    }
+    }
+
+    private val platformAbiReadDouble: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readDouble", 1)
+    }
+    }
+
+    private val platformAbiReadGuid: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readGuid", 1) }
+    }
+
+    private val platformAbiSlice: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "slice", 3) }
+    }
+
+    private val platformAbiWritePointer: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let {
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writePointer", 2)
+    }
+    }
+
+    private val platformAbiWriteInt8: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt8", 2) }
+    }
+
+    private val platformAbiWriteInt16: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt16", 2) }
+    }
+
+    private val platformAbiWriteInt32: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt32", 2) }
+    }
+
+    private val platformAbiWriteInt64: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt64", 2) }
+    }
+
+    private val platformAbiWriteFloat: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeFloat", 2) }
+    }
+
+    private val platformAbiWriteDouble: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeDouble", 2) }
+    }
+
+    private val platformAbiWriteGuid: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeGuid", 2) }
+    }
+
+    private val platformAbiIsNullPointer: IrSimpleFunctionSymbol? by lazy {
+        platformAbiClass?.functionNamedWithRegularParameterTypes(
+            "isNull",
+            listOf(WINRT_RAW_ADDRESS_FQ_NAME),
+        )
+    }
+
+    private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol? by lazy {
+        iWinRTObject?.propertyGetter("nativeObject")
+    }
+
+    private val iWinRTObjectGetObjectReferenceForType: IrSimpleFunctionSymbol? by lazy {
+        iWinRTObject?.functionNamedWithRegularParameterCount("getObjectReferenceForType", 1)
+    }
+
+    private val tryAcquireWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "tryAcquireWinRTManagedProjectionCallLease",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "tryAcquireWinRTManagedProjectionCallLease",
+                2,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val tryAcquireWinRTManagedProjectionCallLeaseWithState: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "tryAcquireWinRTManagedProjectionCallLease with projected state",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "tryAcquireWinRTManagedProjectionCallLease",
+                3,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val releaseWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "releaseWinRTManagedProjectionCallLease",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "releaseWinRTManagedProjectionCallLease",
+                2,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val tryBorrowWinRTManagedProjectionAbi: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "tryBorrowWinRTManagedProjectionAbi",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "tryBorrowWinRTManagedProjectionAbi",
+                2,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val tryBorrowWinRTManagedProjectionAbiWithState: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "tryBorrowWinRTManagedProjectionAbi with projected state",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "tryBorrowWinRTManagedProjectionAbi",
+                3,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val tryBorrowWinRTManagedInspectableAbi: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "tryBorrowWinRTManagedInspectableAbi",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "tryBorrowWinRTManagedInspectableAbi",
+                1,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTManagedProjectionStateAccessor: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTManagedProjectionStateAccess.winRTManagedProjectionState",
+            resolver.classSymbol(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME)
+                ?.functionNamedWithRegularParameterCount("winRTManagedProjectionState", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTProjectionMarshaler: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTProjectionMarshaler",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "winRTProjectionMarshaler",
+                2,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTProjectionMarshalerAbiGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTProjectionMarshaler.abi",
+            winRTProjectionMarshalerClass.propertyGetter("abi"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTProjectionMarshalerClose: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTProjectionMarshaler.close",
+            winRTProjectionMarshalerClass.functionNamedWithRegularParameterCount("close", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTKeepAlive: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTKeepAlive",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTKeepAlive", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTAbiArrayAllocateInput: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTAbiArray.allocateInput",
+            winRTAbiArrayCompanion.functionNamedWithRegularParameterCount("allocateInput", 3),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTAbiArrayLengthGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTAbiArray.length",
+            winRTAbiArray.propertyGetter("length"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTAbiArrayDataGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTAbiArray.data",
+            winRTAbiArray.propertyGetter("data"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTAbiArrayClose: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTAbiArray.close",
+            winRTAbiArray.functionNamedWithRegularParameterCount("close", 0),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val nativeStringMarshallerFromAbi: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeStringMarshaller.fromAbi",
+            nativeStringMarshaller.functionNamedWithRegularParameterCount("fromAbi", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val nativeStringMarshallerFromManaged: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeStringMarshaller.fromManaged",
+            nativeStringMarshaller.functionNamedWithRegularParameterCount("fromManaged", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val nativeStringMarshallerGetAbiHString: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeStringMarshaller.getAbi(HString)",
+            nativeStringMarshaller.functionNamedWithRegularParameterTypes(
+                "getAbi",
+                listOf(WINRT_HSTRING_FQ_NAME),
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val nativeStringMarshallerDisposeAbi: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "NativeStringMarshaller.disposeAbi",
+            resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "disposeAbi", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTProjectionInboundRetainAddress: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTProjectionInboundRetainAddress",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "winRTProjectionInboundRetainAddress",
+                1,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val tryConsumeOwnedRuntimeClassRcw: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "tryConsumeOwnedRuntimeClassRcw",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "tryConsumeOwnedRuntimeClassRcw",
+                2,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPlatformApiReleaseRaw: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTPlatformApi.releaseRaw",
+            resolver.function(WINRT_PLATFORM_API_FQ_NAME, "releaseRaw", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPlatformApiCoTaskMemFreeRaw: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "WinRTPlatformApi.coTaskMemFreeRaw",
+            resolver.function(WINRT_PLATFORM_API_FQ_NAME, "coTaskMemFreeRaw", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hResultConstructor: IrConstructorSymbol by lazy {
+        requiredCallSiteSymbol(
+            "HResult constructor",
+            hResult.singleValueConstructor(),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hResultIsFailureGetter: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "HResult.isFailure",
+            hResult.propertyGetter("isFailure"),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val hResultRequireSuccess: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "HResult.requireSuccess",
+            resolver.function(WINRT_HRESULT_FQ_NAME, "requireSuccess", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTConsumeOwnedHStringScalarResult: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTConsumeOwnedHStringScalarResult",
+            resolver.topLevelFunction(
+                WINRT_RUNTIME_PACKAGE_FQ_NAME,
+                "winRTConsumeOwnedHStringScalarResult",
+                3,
+            ),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTScalarResultRecord: IrSimpleFunctionSymbol? by lazy {
+        resolver.topLevelFunction(
+            WINRT_RUNTIME_PACKAGE_FQ_NAME,
+            "winRTScalarResultRecord",
+            0,
+        )
+    }
+
+    private val winRTScalarResultHResult: IrSimpleFunctionSymbol? by lazy {
+        resolver.topLevelFunction(
+            WINRT_RUNTIME_PACKAGE_FQ_NAME,
+            "winRTScalarResultHResult",
+            1,
+        )
+    }
+
+    private val winRTScalarResultValue: IrSimpleFunctionSymbol? by lazy {
+        resolver.topLevelFunction(
+            WINRT_RUNTIME_PACKAGE_FQ_NAME,
+            "winRTScalarResultValue",
+            1,
+        )
+    }
+
+    private val winRTWideScalarResultFloat64: IrSimpleFunctionSymbol? by lazy {
+        resolver.topLevelFunction(
+            WINRT_RUNTIME_PACKAGE_FQ_NAME,
+            "winRTWideScalarResultFloat64",
+            1,
+        )
+    }
+
+    private val winRTPackedScalarResultHResult: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTPackedScalarResultHResult",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultHResult", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPackedScalarResultInt8: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTPackedScalarResultInt8",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt8", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPackedScalarResultInt16: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTPackedScalarResultInt16",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt16", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPackedScalarResultInt32: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTPackedScalarResultInt32",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt32", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val winRTPackedScalarResultFloat32: IrSimpleFunctionSymbol by lazy {
+        requiredCallSiteSymbol(
+            "winRTPackedScalarResultFloat32",
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultFloat32", 1),
+        ) ?: abortCallSiteLowering()
+    }
+
+    private val primitiveSymbols: PrimitiveCallSiteSymbols by lazy {
+        requiredCallSiteSymbol(
+            "PrimitiveCallSiteSymbols",
+            PrimitiveCallSiteSymbols.create(resolver),
+        ) ?: abortCallSiteLowering()
+    }
+
     var lastFailureDetail: String? = null
         private set
 
@@ -3440,399 +4037,13 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 sourceClasses,
                 sourceFunctions,
             )
-            val reference = requiredCallSiteSymbol(
-                "ComObjectReference",
-                resolver.classSymbol(WINRT_COM_OBJECT_REFERENCE_FQ_NAME),
-            ) ?: return null
-            val scalarFrame = requiredCallSiteSymbol(
-                "NativeScalarScratchFrame",
-                resolver.classSymbol(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME),
-            ) ?: return null
-            val hStringFrame = requiredCallSiteSymbol(
-                "NativeHStringReferenceFrame",
-                resolver.classSymbol(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_FQ_NAME),
-            ) ?: return null
-            val winRTAbiArray = requiredCallSiteSymbol(
-                "WinRTAbiArray",
-                resolver.classSymbol(WINRT_ABI_ARRAY_FQ_NAME),
-            ) ?: return null
-            val winRTAbiArrayCompanion = requiredCallSiteSymbol(
-                "WinRTAbiArray.Companion",
-                winRTAbiArray.owner.declarations.filterIsInstance<IrClass>()
-                    .singleOrNull { declaration -> declaration.name.asString() == "Companion" }
-                    ?.symbol,
-            ) ?: return null
-            val nativeStringMarshaller = requiredCallSiteSymbol(
-                "NativeStringMarshaller",
-                resolver.classSymbol(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME),
-            ) ?: return null
-            val winRTPlatformApi = requiredCallSiteSymbol(
-                "WinRTPlatformApi",
-                resolver.classSymbol(WINRT_PLATFORM_API_FQ_NAME),
-            ) ?: return null
-            val hResult = requiredCallSiteSymbol("HResult", resolver.classSymbol(WINRT_HRESULT_FQ_NAME)) ?: return null
-            val structFrame = resolver.classSymbol(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME)
-            val platformAbi = resolver.classSymbol(WINRT_PLATFORM_ABI_FQ_NAME)
-            val iWinRTObject = resolver.classSymbol(WINRT_IWINRT_OBJECT_FQ_NAME)
-            val winRTProjectionMarshaler = requiredCallSiteSymbol(
-                "WinRTProjectionMarshaler",
-                resolver.classSymbol(WINRT_PROJECTION_MARSHALER_FQ_NAME),
-            ) ?: return null
-            return WinRTCallSiteRecipeLowering(
-                directCallBackend = requiredCallSiteSymbol(
-                    "WinRTDirectCallBackend",
-                    WinRTDirectCallBackend.create(pluginContext, fromFile),
-                ) ?: return null,
-                resolver = resolver,
-                comObjectReferencePointerGetter = requiredCallSiteSymbol(
-                    "ComObjectReference.pointer",
-                    reference.propertyGetter("pointer"),
-                ) ?: return null,
-                acquireScalarScratchFrame = requiredCallSiteSymbol(
-                    "acquireNativeScalarScratchFrame",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "acquireNativeScalarScratchFrame", 1),
-                ) ?: return null,
-                scalarScratchFramePointerGetter = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.pointer",
-                    scalarFrame.propertyGetter("pointer"),
-                ) ?: return null,
-                scalarScratchFrameConsumeOwnedHString = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.consumeOwnedHString",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "consumeOwnedHString", 0),
-                ) ?: return null,
-                scalarScratchFrameReadPointer = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readPointer",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readPointer", 0),
-                ) ?: return null,
-                scalarScratchFrameReadInt8 = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readInt8",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt8", 0),
-                ) ?: return null,
-                scalarScratchFrameReadInt16 = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readInt16",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt16", 0),
-                ) ?: return null,
-                scalarScratchFrameReadInt32 = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readInt32",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt32", 0),
-                ) ?: return null,
-                scalarScratchFrameReadInt64 = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readInt64",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt64", 0),
-                ) ?: return null,
-                scalarScratchFrameReadFloat = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readFloat",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readFloat", 0),
-                ) ?: return null,
-                scalarScratchFrameReadDouble = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.readDouble",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readDouble", 0),
-                ) ?: return null,
-                scalarScratchFrameClose = requiredCallSiteSymbol(
-                    "NativeScalarScratchFrame.close",
-                    resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "close", 0),
-                ) ?: return null,
-                acquireHStringReferenceFrame = requiredCallSiteSymbol(
-                    "acquireInitializedNativeHStringReferenceFrame",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "acquireInitializedNativeHStringReferenceFrame",
-                        1,
-                    ),
-                ) ?: return null,
-                hStringReferenceFrameHandleGetter = requiredCallSiteSymbol(
-                    "NativeHStringReferenceFrame.handle",
-                    hStringFrame.propertyGetter("handle"),
-                ) ?: return null,
-                hStringReferenceFrameClose = requiredCallSiteSymbol(
-                    "NativeHStringReferenceFrame.close",
-                    resolver.function(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_FQ_NAME, "close", 0),
-                ) ?: return null,
-                winRTPinString = requiredCallSiteSymbol(
-                    "winRTPinString",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPinString", 2),
-                ) ?: return null,
-                winRTStringAddress = requiredCallSiteSymbol(
-                    "winRTStringAddress",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringAddress", 2),
-                ) ?: return null,
-                winRTStringLength = requiredCallSiteSymbol(
-                    "winRTStringLength",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringLength", 1),
-                ) ?: return null,
-                acquireStructScratchFrame = resolver.topLevelFunction(
-                    WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                    "acquireNativeStructScratchFrame",
-                    3,
-                ),
-                structScratchFramePointerGetter = structFrame?.propertyGetter("pointer"),
-                structScratchFrameReadInt8Carrier = structFrame?.let {
-                    resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt8Carrier", 0)
-                },
-                structScratchFrameReadInt16Carrier = structFrame?.let {
-                    resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt16Carrier", 0)
-                },
-                structScratchFrameReadInt32Carrier = structFrame?.let {
-                    resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt32Carrier", 0)
-                },
-                structScratchFrameReadInt64Carrier = structFrame?.let {
-                    resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt64Carrier", 0)
-                },
-                structScratchFrameClose = structFrame?.let {
-                    resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "close", 0)
-                },
-                platformAbi = platformAbi,
-                platformAbiNullPointerGetter = platformAbi?.propertyGetter("nullPointer"),
-                platformAbiNullComPtrGetter = platformAbi?.propertyGetter("nullComPtr"),
-                platformAbiFromRawComPtr = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "fromRawComPtr", 1)
-                },
-                platformAbiToRawComPtr = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "toRawComPtr", 1)
-                },
-                platformAbiReadPointer = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readPointer", 1)
-                },
-                platformAbiReadInt8 = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt8", 1)
-                },
-                platformAbiReadInt16 = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt16", 1)
-                },
-                platformAbiReadInt32 = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt32", 1)
-                },
-                platformAbiReadInt64 = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt64", 1)
-                },
-                platformAbiReadFloat = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readFloat", 1)
-                },
-                platformAbiReadDouble = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readDouble", 1)
-                },
-                platformAbiReadGuid = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readGuid", 1) },
-                platformAbiSlice = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "slice", 3) },
-                platformAbiWritePointer = platformAbi?.let {
-                    resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writePointer", 2)
-                },
-                platformAbiWriteInt8 = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt8", 2) },
-                platformAbiWriteInt16 = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt16", 2) },
-                platformAbiWriteInt32 = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt32", 2) },
-                platformAbiWriteInt64 = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt64", 2) },
-                platformAbiWriteFloat = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeFloat", 2) },
-                platformAbiWriteDouble = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeDouble", 2) },
-                platformAbiWriteGuid = platformAbi?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeGuid", 2) },
-                platformAbiIsNullPointer = platformAbi?.functionNamedWithRegularParameterTypes(
-                    "isNull",
-                    listOf(WINRT_RAW_ADDRESS_FQ_NAME),
-                ),
-                iWinRTObjectNativeObjectGetter = iWinRTObject?.propertyGetter("nativeObject"),
-                iWinRTObjectGetObjectReferenceForType =
-                    iWinRTObject?.functionNamedWithRegularParameterCount("getObjectReferenceForType", 1),
-                tryAcquireWinRTManagedProjectionCallLease = requiredCallSiteSymbol(
-                    "tryAcquireWinRTManagedProjectionCallLease",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "tryAcquireWinRTManagedProjectionCallLease",
-                        2,
-                    ),
-                ) ?: return null,
-                tryAcquireWinRTManagedProjectionCallLeaseWithState = requiredCallSiteSymbol(
-                    "tryAcquireWinRTManagedProjectionCallLease with projected state",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "tryAcquireWinRTManagedProjectionCallLease",
-                        3,
-                    ),
-                ) ?: return null,
-                releaseWinRTManagedProjectionCallLease = requiredCallSiteSymbol(
-                    "releaseWinRTManagedProjectionCallLease",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "releaseWinRTManagedProjectionCallLease",
-                        2,
-                    ),
-                ) ?: return null,
-                tryBorrowWinRTManagedProjectionAbi = requiredCallSiteSymbol(
-                    "tryBorrowWinRTManagedProjectionAbi",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "tryBorrowWinRTManagedProjectionAbi",
-                        2,
-                    ),
-                ) ?: return null,
-                tryBorrowWinRTManagedProjectionAbiWithState = requiredCallSiteSymbol(
-                    "tryBorrowWinRTManagedProjectionAbi with projected state",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "tryBorrowWinRTManagedProjectionAbi",
-                        3,
-                    ),
-                ) ?: return null,
-                tryBorrowWinRTManagedInspectableAbi = requiredCallSiteSymbol(
-                    "tryBorrowWinRTManagedInspectableAbi",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "tryBorrowWinRTManagedInspectableAbi",
-                        1,
-                    ),
-                ) ?: return null,
-                winRTManagedProjectionStateAccessor = requiredCallSiteSymbol(
-                    "WinRTManagedProjectionStateAccess.winRTManagedProjectionState",
-                    resolver.classSymbol(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME)
-                        ?.functionNamedWithRegularParameterCount("winRTManagedProjectionState", 0),
-                ) ?: return null,
-                winRTProjectionMarshaler = requiredCallSiteSymbol(
-                    "winRTProjectionMarshaler",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "winRTProjectionMarshaler",
-                        2,
-                    ),
-                ) ?: return null,
-                winRTProjectionMarshalerAbiGetter = requiredCallSiteSymbol(
-                    "WinRTProjectionMarshaler.abi",
-                    winRTProjectionMarshaler.propertyGetter("abi"),
-                ) ?: return null,
-                winRTProjectionMarshalerClose = requiredCallSiteSymbol(
-                    "WinRTProjectionMarshaler.close",
-                    winRTProjectionMarshaler.functionNamedWithRegularParameterCount("close", 0),
-                ) ?: return null,
-                winRTKeepAlive = requiredCallSiteSymbol(
-                    "winRTKeepAlive",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTKeepAlive", 1),
-                ) ?: return null,
-                winRTAbiArrayAllocateInput = requiredCallSiteSymbol(
-                    "WinRTAbiArray.allocateInput",
-                    winRTAbiArrayCompanion.functionNamedWithRegularParameterCount("allocateInput", 3),
-                ) ?: return null,
-                winRTAbiArrayLengthGetter = requiredCallSiteSymbol(
-                    "WinRTAbiArray.length",
-                    winRTAbiArray.propertyGetter("length"),
-                ) ?: return null,
-                winRTAbiArrayDataGetter = requiredCallSiteSymbol(
-                    "WinRTAbiArray.data",
-                    winRTAbiArray.propertyGetter("data"),
-                ) ?: return null,
-                winRTAbiArrayClose = requiredCallSiteSymbol(
-                    "WinRTAbiArray.close",
-                    winRTAbiArray.functionNamedWithRegularParameterCount("close", 0),
-                ) ?: return null,
-                nativeStringMarshallerFromAbi = requiredCallSiteSymbol(
-                    "NativeStringMarshaller.fromAbi",
-                    nativeStringMarshaller.functionNamedWithRegularParameterCount("fromAbi", 1),
-                ) ?: return null,
-                nativeStringMarshallerFromManaged = requiredCallSiteSymbol(
-                    "NativeStringMarshaller.fromManaged",
-                    nativeStringMarshaller.functionNamedWithRegularParameterCount("fromManaged", 1),
-                ) ?: return null,
-                nativeStringMarshallerGetAbiHString = requiredCallSiteSymbol(
-                    "NativeStringMarshaller.getAbi(HString)",
-                    nativeStringMarshaller.functionNamedWithRegularParameterTypes(
-                        "getAbi",
-                        listOf(WINRT_HSTRING_FQ_NAME),
-                    ),
-                ) ?: return null,
-                nativeStringMarshallerDisposeAbi = requiredCallSiteSymbol(
-                    "NativeStringMarshaller.disposeAbi",
-                    resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "disposeAbi", 1),
-                ) ?: return null,
-                winRTProjectionInboundRetainAddress = requiredCallSiteSymbol(
-                    "winRTProjectionInboundRetainAddress",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "winRTProjectionInboundRetainAddress",
-                        1,
-                    ),
-                ) ?: return null,
-                tryConsumeOwnedRuntimeClassRcw = requiredCallSiteSymbol(
-                    "tryConsumeOwnedRuntimeClassRcw",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "tryConsumeOwnedRuntimeClassRcw",
-                        2,
-                    ),
-                ) ?: return null,
-                winRTPlatformApiReleaseRaw = requiredCallSiteSymbol(
-                    "WinRTPlatformApi.releaseRaw",
-                    resolver.function(WINRT_PLATFORM_API_FQ_NAME, "releaseRaw", 1),
-                ) ?: return null,
-                winRTPlatformApiCoTaskMemFreeRaw = requiredCallSiteSymbol(
-                    "WinRTPlatformApi.coTaskMemFreeRaw",
-                    resolver.function(WINRT_PLATFORM_API_FQ_NAME, "coTaskMemFreeRaw", 1),
-                ) ?: return null,
-                hResultConstructor = requiredCallSiteSymbol(
-                    "HResult constructor",
-                    hResult.singleValueConstructor(),
-                ) ?: return null,
-                hResultIsFailureGetter = requiredCallSiteSymbol(
-                    "HResult.isFailure",
-                    hResult.propertyGetter("isFailure"),
-                ) ?: return null,
-                hResultRequireSuccess = requiredCallSiteSymbol(
-                    "HResult.requireSuccess",
-                    resolver.function(WINRT_HRESULT_FQ_NAME, "requireSuccess", 1),
-                ) ?: return null,
-                winRTConsumeOwnedHStringScalarResult = requiredCallSiteSymbol(
-                    "winRTConsumeOwnedHStringScalarResult",
-                    resolver.topLevelFunction(
-                        WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                        "winRTConsumeOwnedHStringScalarResult",
-                        3,
-                    ),
-                ) ?: return null,
-                winRTScalarResultRecord = resolver.topLevelFunction(
-                    WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                    "winRTScalarResultRecord",
-                    0,
-                ),
-                winRTScalarResultHResult = resolver.topLevelFunction(
-                    WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                    "winRTScalarResultHResult",
-                    1,
-                ),
-                winRTScalarResultValue = resolver.topLevelFunction(
-                    WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                    "winRTScalarResultValue",
-                    1,
-                ),
-                winRTWideScalarResultFloat64 = resolver.topLevelFunction(
-                    WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                    "winRTWideScalarResultFloat64",
-                    1,
-                ),
-                winRTPackedScalarResultHResult = requiredCallSiteSymbol(
-                    "winRTPackedScalarResultHResult",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultHResult", 1),
-                ) ?: return null,
-                winRTPackedScalarResultInt8 = requiredCallSiteSymbol(
-                    "winRTPackedScalarResultInt8",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt8", 1),
-                ) ?: return null,
-                winRTPackedScalarResultInt16 = requiredCallSiteSymbol(
-                    "winRTPackedScalarResultInt16",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt16", 1),
-                ) ?: return null,
-                winRTPackedScalarResultInt32 = requiredCallSiteSymbol(
-                    "winRTPackedScalarResultInt32",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt32", 1),
-                ) ?: return null,
-                winRTPackedScalarResultFloat32 = requiredCallSiteSymbol(
-                    "winRTPackedScalarResultFloat32",
-                    resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultFloat32", 1),
-                ) ?: return null,
-                primitiveSymbols = requiredCallSiteSymbol(
-                    "PrimitiveCallSiteSymbols",
-                    PrimitiveCallSiteSymbols.create(resolver),
-                ) ?: return null,
-            )
+            return WinRTCallSiteRecipeLowering(pluginContext, fromFile, resolver)
         }
     }
 }
 
 private fun <T> requiredCallSiteSymbol(name: String, value: T?): T? {
-    if (value == null) error("kotlin-winrt missing shared call-site symbol: $name")
+    if (value == null) abortCallSiteLowering("kotlin-winrt missing shared call-site symbol: $name")
     return value
 }
 
@@ -4068,12 +4279,18 @@ private class CallSiteSymbolResolver(
 ) {
     private val memberFunctionsByName = mutableMapOf<MemberFunctionName, List<IrSimpleFunctionSymbol>>()
     private val memberFunctionsByArity = mutableMapOf<MemberFunctionArity, IrSimpleFunctionSymbol?>()
+    private val classesByName = mutableMapOf<FqName, IrClassSymbol?>()
 
     fun classSymbol(fqName: FqName): IrClassSymbol? {
         sourceClasses[fqName]?.let { return it }
+        if (classesByName.containsKey(fqName)) return classesByName[fqName]
         for (classId in fqName.candidateClassIds()) {
-            pluginContext.findCallSiteClass(classId, fromFile)?.let { return it }
+            pluginContext.findCallSiteClass(classId, fromFile)?.let {
+                classesByName[fqName] = it
+                return it
+            }
         }
+        classesByName[fqName] = null
         return null
     }
 

@@ -67,6 +67,7 @@ import java.util.WeakHashMap
 internal fun lowerWinRTProjectionInboundCallSites(
     moduleFragment: IrModuleFragment,
     pluginContext: org.jetbrains.kotlin.backend.common.extensions.IrPluginContext,
+    context: WinRTCallSiteLoweringContext,
 ) {
     val semanticFunctions = mutableListOf<IrSimpleFunction>()
     moduleFragment.acceptChildrenVoid(
@@ -85,14 +86,8 @@ internal fun lowerWinRTProjectionInboundCallSites(
     )
     if (semanticFunctions.isEmpty()) return
 
-    val planner = WinRTProjectionCallSitePlanner(
-        moduleFragment,
-        pluginContext,
-        WinRTProjectedTypeCanonicalizer(pluginContext),
-    )
-    val recipeLowering = runCatching {
-        WinRTCallSiteRecipeLowering.create(pluginContext, moduleFragment)
-    }.getOrElse { failure ->
+    val planner = context.planner
+    val recipeLowering = context.recipeResolution.getOrElse { failure ->
         semanticFunctions.forEach { function ->
             pluginContext.reportInboundError(
                 function,

@@ -154,15 +154,14 @@ fun lowerWinRTProjectionCallSites(
             }
         },
     )
-    lowerWinRTProjectionInboundCallSites(moduleFragment, pluginContext)
+    val context = WinRTCallSiteLoweringContext(moduleFragment, pluginContext)
+    lowerWinRTProjectionInboundCallSites(moduleFragment, pluginContext, context)
 
     if (annotatedFunctions.isEmpty() && inlineCallSites.isEmpty()) return
 
-    val projectedTypes = WinRTProjectedTypeCanonicalizer(pluginContext)
-    val planner = WinRTProjectionCallSitePlanner(moduleFragment, pluginContext, projectedTypes)
-    val symbolResolution = runCatching {
-        WinRTCallSiteRecipeLowering.create(pluginContext, moduleFragment)
-    }
+    val projectedTypes = context.projectedTypes
+    val planner = context.planner
+    val symbolResolution = context.recipeResolution
     val symbols = symbolResolution.getOrNull()
     val symbolResolutionDetail = symbolResolution.exceptionOrNull()?.message
     for ((function, annotation) in annotatedFunctions) {
