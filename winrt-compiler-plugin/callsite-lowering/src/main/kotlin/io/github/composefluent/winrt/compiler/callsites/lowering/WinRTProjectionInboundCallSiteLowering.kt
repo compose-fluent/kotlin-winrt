@@ -200,6 +200,17 @@ private fun synthesizeDirectInboundEntry(
     val semanticTarget = semanticParameters.first()
     entry.body = builder.irBlockBody {
         val success = builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
+            // Match cswinrt write_managed_method_call/write_out_initialize: the caller's
+            // return slot must be empty even if target lookup, decoding or invocation fails.
+            plan.result?.let { result ->
+                val carrier = result.abiCarriers.single()
+                +requireNotNull(symbols.writeResult(
+                    builder = builder,
+                    carrier = carrier,
+                    resultAddress = builder.irGet(entryParameters.last()),
+                    value = requireNotNull(recipeLowering.zeroValue(builder, symbols.resultValueType(carrier))),
+                ))
+            }
             val managedValue = builder.irCall(symbols.managedValue).apply {
                 arguments[0] = builder.irGet(thisWord)
                 // The CCW was constructed for this projected interface. Preserve that invariant in
@@ -333,6 +344,9 @@ private class InboundRuntimeSymbols private constructor(
     private val nativeEntryPoint: IrSimpleFunctionSymbol?,
     private val nativeStaticCFunctionOverloads: Map<Int, IrSimpleFunctionSymbol>,
 ) {
+    fun resultValueType(carrier: WinRTProjectionCallSiteAbiCarrier): IrType =
+        resultWriters.getValue(carrier).owner.parameters.last { it.kind == IrParameterKind.Regular }.type
+
     fun writeResult(
         builder: DeclarationIrBuilder,
         carrier: WinRTProjectionCallSiteAbiCarrier,

@@ -45,6 +45,7 @@ import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrCatch
 import org.jetbrains.kotlin.ir.expressions.impl.IrCatchImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrThrowImpl
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
@@ -3387,7 +3388,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         }
     }
 
-    private fun zeroValue(builder: DeclarationIrBuilder, type: IrType): IrExpression? =
+    internal fun zeroValue(builder: DeclarationIrBuilder, type: IrType): IrExpression? =
         when (type.classFqName) {
             WINRT_RAW_ADDRESS_FQ_NAME -> platformAbiStaticProperty(builder, platformAbiNullPointerGetter)
             WINRT_RAW_COM_PTR_FQ_NAME -> platformAbiStaticProperty(builder, platformAbiNullComPtrGetter)
@@ -4018,10 +4019,10 @@ private class PrimitiveCallSiteSymbols private constructor(
         }
 
     fun zeroFloat(builder: DeclarationIrBuilder): IrExpression =
-        builder.irAs(builder.irInt(0), builder.context.irBuiltIns.floatType)
+        IrConstImpl.float(builder.startOffset, builder.endOffset, builder.context.irBuiltIns.floatType, 0.0f)
 
     fun zeroDouble(builder: DeclarationIrBuilder): IrExpression =
-        builder.irAs(builder.irLong(0L), builder.context.irBuiltIns.doubleType)
+        IrConstImpl.double(builder.startOffset, builder.endOffset, builder.context.irBuiltIns.doubleType, 0.0)
 
     companion object {
         fun create(resolver: CallSiteSymbolResolver): PrimitiveCallSiteSymbols? {
