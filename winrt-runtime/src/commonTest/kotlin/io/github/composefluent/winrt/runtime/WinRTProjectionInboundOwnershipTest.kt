@@ -58,6 +58,11 @@ private class BorrowedObjectTarget {
     reference = WinRTProjectionAbiReferenceKind.INSPECTABLE,
 )
 internal object BorrowedObjectCodec {
+    // Same name and arity must not override the annotated, fully typed codec contract.
+    fun fromAbi(address: Int): Any? = error("Wrong codec overload: $address")
+
+    fun createMarshaler(value: Int): WinRTObjectMarshaler = error("Wrong codec overload: $value")
+
     @WinRTProjectionAbiCodec(
         role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER,
         type = "System.Object",

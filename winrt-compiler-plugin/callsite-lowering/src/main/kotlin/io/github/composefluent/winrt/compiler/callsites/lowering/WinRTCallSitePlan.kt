@@ -75,6 +75,14 @@ internal data class WinRTProjectionCallSiteCallables(
     val fromAbiConsumesOwnedReference: Boolean = false,
     /** Exact generated IR entry point when overload resolution cannot be represented by name/arity. */
     val fromAbiSymbol: IrSimpleFunctionSymbol? = null,
+    /** Metadata.wrap entry requiring the projected COM identity/lifetime decode path. */
+    val projectedWrapSymbol: IrSimpleFunctionSymbol? = null,
+    val toAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val copyToAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val copyFromAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val disposeAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val fromAbiCarrierSymbol: IrSimpleFunctionSymbol? = null,
+    val createMarshalerSymbol: IrSimpleFunctionSymbol? = null,
 ) {
     init {
         require(ownerFqName.isNotBlank()) { "Typed ABI callables require an owner." }

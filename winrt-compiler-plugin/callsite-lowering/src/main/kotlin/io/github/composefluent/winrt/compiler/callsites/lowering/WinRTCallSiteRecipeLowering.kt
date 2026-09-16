@@ -692,7 +692,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         value: IrExpression,
         callables: WinRTProjectionCallSiteCallables,
     ): IrExpression? {
-        val converter = resolver.function(callables.ownerFqName, callables.toAbi, 1) ?: return null
+        val converter = (callables.toAbiSymbol ?: resolver.function(callables.ownerFqName, callables.toAbi, 1)) ?: return null
         val enumClass = value.type.classOrNull?.owner ?: return null
         if (!enumClass.isValue) return null
         val constructorParameter = enumClass.declarations
@@ -884,7 +884,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             WinRTProjectionCallSiteRecipeKind.ENUM -> {
                 val callables = requireNotNull(recipe.callables)
                 val abi = emitEnumToAbi(builder, value, callables)
-                    ?: resolver.call(builder, callables.ownerFqName, callables.toAbi, listOf(value))
+                    ?: resolver.codecCall(builder, callables.ownerFqName, callables.toAbi, callables.toAbiSymbol, listOf(value))
                     ?: return null
                 emitInputRecipe(
                     builder,
@@ -940,10 +940,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             val callables = storageRecipe.callables ?: return null
             if (callables.copyToAbi.isBlank()) return null
             return emitStructFrame(builder, function, storageRecipe, clear = false, pluginContext) { _, pointer ->
-                val copy = resolver.call(
+                val copy = resolver.codecCall(
                     builder,
                     callables.ownerFqName,
-                    callables.copyToAbi,
+                    callables.copyToAbi, callables.copyToAbiSymbol,
                     listOf(value, pointer),
                 ) ?: return@emitStructFrame null
                 builder.irBlock(resultType = function.returnType) {
@@ -956,10 +956,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                             type = function.returnType,
                             tryResult = downstream,
                             catches = emptyList(),
-                            finallyExpression = resolver.call(
+                            finallyExpression = resolver.codecCall(
                                 builder,
                                 callables.ownerFqName,
-                                callables.disposeAbi,
+                                callables.disposeAbi, callables.disposeAbiSymbol,
                                 listOf(pointer),
                             ) ?: abortCallSiteLowering(),
                         )
@@ -1071,13 +1071,13 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         WinRTProjectionCallSiteRecipeKind.ENUM -> {
             val callables = recipe.callables ?: return null
             val abi = emitEnumToAbi(builder, value, callables)
-                ?: resolver.call(builder, callables.ownerFqName, callables.toAbi, listOf(value))
+                ?: resolver.codecCall(builder, callables.ownerFqName, callables.toAbi, callables.toAbiSymbol, listOf(value))
                 ?: return null
             encodeArrayElement(builder, recipe.children.single(), abi, address)
         }
         WinRTProjectionCallSiteRecipeKind.STRUCT -> {
             val callables = recipe.callables ?: return null
-            resolver.call(builder, callables.ownerFqName, callables.copyToAbi, listOf(value, address))
+            resolver.codecCall(builder, callables.ownerFqName, callables.copyToAbi, callables.copyToAbiSymbol, listOf(value, address))
         }
         WinRTProjectionCallSiteRecipeKind.COM_REFERENCE,
         WinRTProjectionCallSiteRecipeKind.PROJECTION,
@@ -1110,14 +1110,14 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         }
         WinRTProjectionCallSiteRecipeKind.ENUM -> {
             val callables = recipe.callables ?: return null
-            val fromAbi = resolver.function(callables.ownerFqName, callables.fromAbi, 1) ?: return null
+            val fromAbi = (callables.fromAbiSymbol ?: resolver.function(callables.ownerFqName, callables.fromAbi, 1)) ?: return null
             val carrierType = fromAbi.owner.regularParameters().singleOrNull()?.type ?: return null
             val abi = decodeArrayElement(builder, recipe.children.single(), carrierType, address) ?: return null
             emitEnumFromAbi(builder, elementType, abi) ?: resolver.call(builder, fromAbi, listOf(abi))
         }
         WinRTProjectionCallSiteRecipeKind.STRUCT -> {
             val callables = recipe.callables ?: return null
-            resolver.call(builder, callables.ownerFqName, callables.fromAbi, listOf(address))
+            resolver.codecCall(builder, callables.ownerFqName, callables.fromAbi, callables.fromAbiSymbol, listOf(address))
         }
         WinRTProjectionCallSiteRecipeKind.COM_REFERENCE,
         WinRTProjectionCallSiteRecipeKind.PROJECTION,
@@ -1143,7 +1143,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         WinRTProjectionCallSiteRecipeKind.STRUCT -> {
             val callables = recipe.callables ?: return null
             if (callables.disposeAbi.isBlank()) builder.irUnit()
-            else resolver.call(builder, callables.ownerFqName, callables.disposeAbi, listOf(address))
+            else resolver.codecCall(builder, callables.ownerFqName, callables.disposeAbi, callables.disposeAbiSymbol, listOf(address))
         }
         WinRTProjectionCallSiteRecipeKind.COM_REFERENCE,
         WinRTProjectionCallSiteRecipeKind.PROJECTION,
@@ -1501,17 +1501,17 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             recipe.abiCarriers.single() != WinRTProjectionCallSiteAbiCarrier.ADDRESS &&
             callables.toAbi.isNotBlank()
         ) {
-            val abi = resolver.call(builder, callables.ownerFqName, callables.toAbi, listOf(value)) ?: return null
+            val abi = resolver.codecCall(builder, callables.ownerFqName, callables.toAbi, callables.toAbiSymbol, listOf(value)) ?: return null
             return continuation(
                 PreparedInput(listOf(normalizeCarrier(builder, recipe.abiCarriers.single(), abi) ?: return null)),
             )
         }
         if (callables.copyToAbi.isBlank()) return null
         return emitStructFrame(builder, function, recipe, clear = false, pluginContext) { frame, pointer ->
-            val copy = resolver.call(
+            val copy = resolver.codecCall(
                 builder,
                 callables.ownerFqName,
-                callables.copyToAbi,
+                callables.copyToAbi, callables.copyToAbiSymbol,
                 listOf(value, pointer),
             ) ?: return@emitStructFrame null
             val carrier = structCarrier(builder, frame, pointer, recipe.abiCarriers.singleOrNull() ?: return@emitStructFrame null)
@@ -1526,10 +1526,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                         type = function.returnType,
                         tryResult = downstream,
                         catches = emptyList(),
-                        finallyExpression = resolver.call(
+                        finallyExpression = resolver.codecCall(
                             builder,
                             callables.ownerFqName,
-                            callables.disposeAbi,
+                            callables.disposeAbi, callables.disposeAbiSymbol,
                             listOf(pointer),
                         ) ?: abortCallSiteLowering(),
                     )
@@ -1582,10 +1582,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 val abi = irTemporary(
-                    resolver.call(
+                    resolver.codecCall(
                         builder,
                         callables.ownerFqName,
-                        callables.toAbi,
+                        callables.toAbi, callables.toAbiSymbol,
                         listOf(builder.irGet(stableValue)),
                     ) ?: abortCallSiteLowering(),
                     nameHint = "projectedAbi",
@@ -1705,10 +1705,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         pluginContext: IrPluginContext,
         continuation: (PreparedInput) -> IrExpression?,
     ): IrExpression? {
-        val factoryCall = resolver.call(
+        val factoryCall = resolver.codecCall(
             builder,
             callables.ownerFqName,
-            callables.createMarshaler,
+            callables.createMarshaler, callables.createMarshalerSymbol,
             listOf(value),
         ) ?: return null
         val factoryClass = factoryCall.type.classOrNull ?: return null
@@ -1739,10 +1739,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             }
             val postCall = callables.copyFromAbi.takeIf(String::isNotBlank)?.let { copyName ->
                 {
-                    resolver.call(
+                    resolver.codecCall(
                         builder,
                         callables.ownerFqName,
-                        copyName,
+                        copyName, callables.copyFromAbiSymbol,
                         listOf(builder.irGet(marshaler), value),
                     )
                 }
@@ -2473,10 +2473,10 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 if (callables.disposeAbi.isBlank()) {
                     builder.irUnit()
                 } else {
-                    resolver.call(
+                    resolver.codecCall(
                         builder,
                         callables.ownerFqName,
-                        callables.disposeAbi,
+                        callables.disposeAbi, callables.disposeAbiSymbol,
                         listOf(storage.addresses.singleOrNull() ?: return null),
                     )
                 }
@@ -2503,7 +2503,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     cleanupOwnedRecipe(builder, function, recipe.children.single(), storage, pluginContext)
                 } else {
                     val abiValue = rawStoredValue(builder, recipe.children.single(), storage) ?: return null
-                    resolver.call(builder, callables.ownerFqName, callables.disposeAbi, listOf(abiValue))
+                    resolver.codecCall(builder, callables.ownerFqName, callables.disposeAbi, callables.disposeAbiSymbol, listOf(abiValue))
                 }
             }
             WinRTProjectionCallSiteRecipeKind.ARRAY -> {
@@ -2512,7 +2512,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     cleanupOwnedDirectArray(builder, function, recipe, storage, pluginContext)
                 } else {
                     if (callables.disposeAbi.isBlank() || storage.addresses.size != recipe.abiCarriers.size) return null
-                    resolver.call(builder, callables.ownerFqName, callables.disposeAbi, storage.addresses)
+                    resolver.codecCall(builder, callables.ownerFqName, callables.disposeAbi, callables.disposeAbiSymbol, storage.addresses)
                 }
             }
         }
@@ -2612,7 +2612,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             WinRTProjectionCallSiteRecipeKind.ENUM -> {
                 val child = recipe.children.single()
                 val callables = recipe.callables ?: return null
-                val fromAbi = resolver.function(callables.ownerFqName, callables.fromAbi, 1) ?: return null
+                val fromAbi = (callables.fromAbiSymbol ?: resolver.function(callables.ownerFqName, callables.fromAbi, 1)) ?: return null
                 val childProjectedType = fromAbi.owner.regularParameters().singleOrNull()?.type ?: return null
                 val raw = decodeDirectResult(builder, childProjectedType, child, storage, slot, pluginContext)
                     ?: return null
@@ -2627,13 +2627,13 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     decodeDirectArrayResult(builder, returnType, recipe, storage, pluginContext)
                 } else {
                     if (callables.fromAbi.isBlank()) return null
-                    resolver.call(builder, callables.ownerFqName, callables.fromAbi, storage.addresses)
+                    resolver.codecCall(builder, callables.ownerFqName, callables.fromAbi, callables.fromAbiSymbol, storage.addresses)
                 }
             }
             WinRTProjectionCallSiteRecipeKind.PROJECTION -> {
                 val callables = recipe.callables ?: return null
                 if (callables.fromAbi.isBlank()) return null
-                callables.fromAbiSymbol?.let { fromAbi ->
+                callables.projectedWrapSymbol?.let { fromAbi ->
                     return decodeDirectProjectionResult(
                         builder = builder,
                         returnType = returnType,
@@ -2653,7 +2653,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     slot,
                     pluginContext,
                 ) ?: return null
-                resolver.call(builder, callables.ownerFqName, callables.fromAbi, listOf(raw))
+                resolver.codecCall(builder, callables.ownerFqName, callables.fromAbi, callables.fromAbiSymbol, listOf(raw))
                     ?.let { expression ->
                         if (expression.type == returnType) expression else builder.irAs(expression, returnType)
                     }
@@ -2839,9 +2839,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 pointer,
                 recipe.abiCarriers.single(),
             ) ?: abortCallSiteLowering("struct result cannot read ${recipe.abiCarriers.single()} carrier")
-            resolver.call(builder, callables.ownerFqName, callables.fromAbiCarrier, listOf(raw))
+            resolver.codecCall(builder, callables.ownerFqName, callables.fromAbiCarrier, callables.fromAbiCarrierSymbol, listOf(raw))
         } else {
-            resolver.call(builder, callables.ownerFqName, callables.fromAbi, listOf(pointer))
+            resolver.codecCall(builder, callables.ownerFqName, callables.fromAbi, callables.fromAbiSymbol, listOf(pointer))
         } ?: abortCallSiteLowering(
             "struct result cannot call ${callables.ownerFqName}." +
                 if (recipe.abiCarriers.singleOrNull() != WinRTProjectionCallSiteAbiCarrier.ADDRESS &&
@@ -4088,6 +4088,23 @@ private class CallSiteSymbolResolver(
         return source.ifEmpty { pluginContext.finderForBuiltins().findFunctions(callableId) }
             .filter { it.owner.regularParameters().size == regularParameterCount }
             .uniqueImplementation()
+    }
+
+    fun codecCall(
+        builder: DeclarationIrBuilder,
+        ownerFqName: String,
+        functionName: String,
+        exactSymbol: IrSimpleFunctionSymbol?,
+        arguments: List<IrExpression>,
+    ): IrExpression? {
+        // Annotated codecs were selected by their full typed contract in the planner.
+        // Preserve that symbol, including when it comes from a compiled dependency.
+        val symbol = exactSymbol ?: return call(builder, ownerFqName, functionName, arguments)
+        require(symbol.owner.regularParameters().size == arguments.size) {
+            "Codec $ownerFqName.$functionName has an incompatible parameter count"
+        }
+        return if (symbol.owner.parent is IrClass) call(builder, symbol, arguments)
+        else topLevelCall(builder, symbol, arguments)
     }
 
     fun call(

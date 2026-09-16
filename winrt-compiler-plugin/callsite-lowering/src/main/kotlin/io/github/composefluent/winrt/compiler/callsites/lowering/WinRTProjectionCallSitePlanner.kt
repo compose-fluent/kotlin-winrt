@@ -389,7 +389,7 @@ internal class WinRTProjectionCallSitePlanner(
                 ownerFqName = owner,
                 fromAbi = wrap.name.asString(),
                 fromAbiConsumesOwnedReference = true,
-                fromAbiSymbol = wrap.symbol,
+                projectedWrapSymbol = wrap.symbol,
             ),
             children = listOf(storage),
             typeSignature = signature,
@@ -955,6 +955,13 @@ internal class WinRTProjectionCallSitePlanner(
         require(owners.size == 1) { "$projectedName typed ABI codecs are split across owners $owners" }
         return WinRTProjectionCallSiteCallables(
             ownerFqName = owners.single(),
+            toAbiSymbol = toAbi?.symbol,
+            fromAbiSymbol = fromAbi?.symbol,
+            copyToAbiSymbol = copyToAbi?.symbol,
+            copyFromAbiSymbol = copyFromAbi?.symbol,
+            disposeAbiSymbol = disposeAbi?.symbol,
+            fromAbiCarrierSymbol = fromAbiCarrier?.symbol,
+            createMarshalerSymbol = createMarshaler?.symbol,
             toAbi = toAbi?.functionName.orEmpty(),
             fromAbi = fromAbi?.functionName.orEmpty(),
             copyToAbi = copyToAbi?.functionName.orEmpty(),
@@ -1276,6 +1283,7 @@ internal class WinRTProjectionCallSitePlanner(
             ?: error("generated ABI codec ${function.name} has no stable FQ name")
         val parameters = function.regularParameters()
         val facts = CodecFacts(
+            symbol = function.symbol,
             role = annotation.enumArgument("role", AbiCodecRole.TO_ABI),
             consumesOwnedAbi = annotation.booleanArgument("consumesOwnedAbi"),
             ownerFqName = fqName.parent().asString(),
@@ -1422,6 +1430,7 @@ private enum class AbiCodecRole {
 }
 
 private data class CodecFacts(
+    val symbol: org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol,
     val role: AbiCodecRole,
     val consumesOwnedAbi: Boolean,
     val ownerFqName: String,
