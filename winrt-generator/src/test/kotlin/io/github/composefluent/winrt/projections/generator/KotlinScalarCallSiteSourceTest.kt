@@ -45,9 +45,10 @@ class KotlinScalarCallSiteSourceTest {
             Case(KotlinProjectionAbiValueKind.Double, "Double", "Double", "456.125", "456.125"),
             Case(KotlinProjectionAbiValueKind.Enum, "GeneratedSourceEnum", "Int32", "-1", "GeneratedSourceEnum(UInt.MAX_VALUE)"),
         )
-        val renderer = KotlinProjectionRenderer(modulePlatformAbiCalls = KotlinModulePlatformAbiCallSupport(
-            com.squareup.kotlinpoet.ClassName("sample", "ScalarAbiSupport"),
-        ))
+        val support = KotlinModulePlatformAbiCallSupport(
+            com.squareup.kotlinpoet.ClassName("io.github.composefluent.winrt.runtime", "ScalarAbiSupport"),
+        )
+        val renderer = KotlinProjectionRenderer(modulePlatformAbiCalls = support)
         val functions = cases.map { case ->
             val binding = KotlinProjectionAbiTypeBinding(
                 case.kind, case.type,
@@ -60,10 +61,10 @@ class KotlinScalarCallSiteSourceTest {
                 returnBinding = binding,
                 parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", binding)),
             )).plan
-            val source = plan.scalarSourceBody(listOf(CodeBlock.of("instance"), CodeBlock.of("slot"), CodeBlock.of("value")))
+            val source = support.sourceBody(plan, listOf(CodeBlock.of("instance"), CodeBlock.of("slot"), CodeBlock.of("value")))
             assertNotNull(case.type, source)
             val text = source.toString()
-            assertTrue(text, text.contains("WinRTAbiCallSite"))
+            assertTrue(text, text.contains("abiCall_"))
             assertTrue(text, text.contains("withWinRTScalarResult"))
             assertTrue(text, text.contains("requireSuccess()"))
             assertFalse(text, text.contains("Lowered while compiling the generated WinRT module"))
@@ -72,6 +73,9 @@ class KotlinScalarCallSiteSourceTest {
         // Export the actual generated source for Windows JVM/Native integration validation.
         // This is a build artifact, never a hand-maintained projection fixture.
         val outputDirectory = System.getProperty("winrt.callsite.integration.output") ?: return
+        support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).forEach { file ->
+            File(outputDirectory, file.relativePath).apply { parentFile.mkdirs(); writeText(file.contents) }
+        }
         File(outputDirectory, "GeneratedScalarSourceIntegrationTest.kt").apply {
             parentFile.mkdirs()
             writeText(buildString {

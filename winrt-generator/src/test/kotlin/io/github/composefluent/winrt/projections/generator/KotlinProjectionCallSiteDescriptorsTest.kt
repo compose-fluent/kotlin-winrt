@@ -31,8 +31,9 @@ class KotlinProjectionCallSiteDescriptorsTest {
         assertEquals(integer.platformShape, floating.platformShape)
         assertNotEquals(integer.functionName, floating.functionName)
         val arguments = listOf(CodeBlock.of("instance"), CodeBlock.of("slot"))
-        assertTrue(integer.scalarSourceBody(arguments).toString().contains("readInt32"))
-        assertTrue(floating.scalarSourceBody(arguments).toString().contains("readFloat"))
+        val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "ScalarAbi"))
+        assertTrue(support.sourceBody(integer, arguments).toString().contains("readInt32"))
+        assertTrue(support.sourceBody(floating, arguments).toString().contains("readFloat"))
     }
 
     @Test

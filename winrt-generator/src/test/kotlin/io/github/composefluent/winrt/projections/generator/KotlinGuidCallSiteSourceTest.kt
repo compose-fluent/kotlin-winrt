@@ -13,9 +13,10 @@ class KotlinGuidCallSiteSourceTest {
         // a blittable GUID has value semantics and no owned reference cleanup.
         val guid = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.GuidValue, "Guid")
         val scalar = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Int32, "Int")
-        val renderer = KotlinProjectionRenderer(modulePlatformAbiCalls = KotlinModulePlatformAbiCallSupport(
-            com.squareup.kotlinpoet.ClassName("sample", "GuidAbiSupport"),
-        ))
+        val support = KotlinModulePlatformAbiCallSupport(
+            com.squareup.kotlinpoet.ClassName("io.github.composefluent.winrt.runtime", "GuidAbiSupport"),
+        )
+        val renderer = KotlinProjectionRenderer(modulePlatformAbiCalls = support)
         val plan = renderer.composeTypedProjectionCallSite(renderer.requireAbiCallPlan(
             bindingName = "sample.GuidRoundTrip",
             returnBinding = guid,
@@ -25,12 +26,15 @@ class KotlinGuidCallSiteSourceTest {
                 KotlinProjectionAbiParameterBinding("second", guid),
             ),
         )).plan
-        val body = plan.scalarSourceBody(listOf("receiver", "slot", "first", "tag", "second").map { CodeBlock.of("%L", it) })
+        val body = support.sourceBody(plan, listOf("receiver", "slot", "first", "tag", "second").map { CodeBlock.of("%L", it) })
         assertNotNull(body)
         val source = body.toString()
         assertTrue(source, source.contains("writeGuid"))
         assertTrue(source, source.indexOf("requireSuccess") < source.indexOf("readGuid"))
         val output = System.getProperty("winrt.callsite.integration.output") ?: return
+        support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).forEach { file ->
+            File(output, file.relativePath).apply { parentFile.mkdirs(); writeText(file.contents) }
+        }
         File(output, "GeneratedGuidSourceIntegrationTest.kt").apply {
             parentFile.mkdirs()
             writeText("""

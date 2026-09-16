@@ -8,7 +8,10 @@ import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteH
 private const val RUNTIME = "io.github.composefluent.winrt.runtime"
 
 /** cswinrt code_writers.h abi_marshaler: conversions and cleanup belong to generated source. */
-internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(arguments: List<CodeBlock>): CodeBlock? {
+internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(
+    arguments: List<CodeBlock>,
+    abiCall: (List<ClassName>) -> CodeBlock,
+): CodeBlock? {
     val slots = descriptor.slots
     if (slots.any { it.direction != WinRTProjectionCallSiteSlotDirection.IN &&
             it.direction != WinRTProjectionCallSiteSlotDirection.RETURN }) return null
@@ -26,16 +29,14 @@ internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(arguments: List<
     if (result == null && returnType.toString() != "kotlin.Unit" &&
         !(descriptor.hResultPolicy == WinRTProjectionCallSiteHResultPolicy.RETURN && returnType.toString() == "kotlin.Int")) return null
     require(arguments.size == inputs.size + 2)
+    val carriers = inputs.map { it.recipe.scalarCarrierType() } +
+        if (result != null) listOf(ClassName(RUNTIME, "RawAddress")) else emptyList()
+    val rawCall = abiCall(carriers)
     return CodeBlock.builder().apply {
         // Keep the trailing lambda attached when KotlinPoet wraps a long expression-body signature.
         add("kotlin.run·{\n").indent()
         add("val __instance = %L\nval __slot = %L\n", arguments[0], arguments[1])
         inputs.forEachIndexed { index, _ -> add("val __arg%L: %T = %L\n", index, parameters[index].type, arguments[index + 2]) }
-        add("@%T\n", ClassName(RUNTIME, "WinRTAbiCallSite"))
-        add("fun __abi(receiver: %T, slot: kotlin.Int", ClassName(RUNTIME, "RawComPtr"))
-        inputs.forEachIndexed { index, input -> add(", p%L: %T", index, input.recipe.scalarCarrierType()) }
-        if (result != null) add(", result: %T", ClassName(RUNTIME, "RawAddress"))
-        add("): kotlin.Int = TODO(%S)\n", "Fixed WinRT ABI call")
         add("%M(__instance) { __receiver ->\n", MemberName(RUNTIME, "withWinRTAbiReference")).indent()
         val guidInputs = inputs.withIndex().filter { it.value.recipe.kind == WinRTProjectionCallSiteRecipeKind.GUID }
         guidInputs.forEach { (index, input) ->
@@ -47,7 +48,7 @@ internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(arguments: List<
                 add("%M(%LL, %LL) { __result ->\n", MemberName(RUNTIME, "withWinRTStructStorage"), result.recipe.sizeBytes, result.recipe.alignmentBytes).indent()
             } else add("%M { __result ->\n", MemberName(RUNTIME, "withWinRTScalarResult")).indent()
         }
-        add("val __hr = __abi(__receiver, __slot")
+        add("val __hr = %L(__receiver, __slot", rawCall)
         inputs.forEachIndexed { index, input ->
             add(", %L", if (input.recipe.kind == WinRTProjectionCallSiteRecipeKind.GUID) CodeBlock.of("__guid%L", index)
                 else input.recipe.scalarToAbi(CodeBlock.of("__arg%L", index)))

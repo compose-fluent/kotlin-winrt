@@ -39,6 +39,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
 ) {
     private val enabledCallNames = enabledCalls?.mapTo(linkedSetOf()) { plan -> plan.functionName }
     private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
+    private val rawCalls = linkedMapOf<List<ClassName>, Pair<ClassName, FunSpec>>()
     private val observedCalls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCallCounts = linkedMapOf<String, Int>()
     private val platformShapeDescriptorsByHash = linkedMapOf<String, String>()
@@ -201,8 +202,10 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     }
 
     internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
+        // Rendering typed bodies registers their physical calls before owner enumeration.
+        val renderedFunctions = calls.values.associate { it.functionName to renderFunction(it) }
         val renderedMetadata = reachableMetadata()
-        if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
+        if (calls.isEmpty() && rawCalls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
         val sourcePrefix = when (layout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> ""
             KotlinProjectionGenerationLayout.ExpectActualJvm -> "commonMain/kotlin/"
@@ -213,6 +216,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     sourcePrefix = sourcePrefix,
                     owner = className,
                     renderedCalls = calls.values,
+                    renderedFunctions = renderedFunctions,
                     renderedCodecs = codecs.values,
                     renderedAbiTypes = abiTypes.values,
                     renderedMetadata = renderedMetadata,
@@ -224,7 +228,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         val codecsByOwner = codecs.values.groupBy { codec -> abiSupportClassName(codec.abiTypeName) }
         val abiTypesByOwner = abiTypes.values.groupBy { metadata -> abiSupportClassName(metadata.abiTypeName) }
         val metadataByOwner = renderedMetadata.groupBy(KotlinProjectionModuleMetadata::owner)
-        val supportOwners = (callsByOwner.keys + codecsByOwner.keys + abiTypesByOwner.keys + metadataByOwner.keys)
+        val supportOwners = (callsByOwner.keys + codecsByOwner.keys + abiTypesByOwner.keys + metadataByOwner.keys + rawCalls.values.map { it.first })
             .distinct()
             .sortedBy(ClassName::canonicalName)
         return buildList {
@@ -234,6 +238,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                         sourcePrefix = sourcePrefix,
                         owner = owner,
                         renderedCalls = callsByOwner[owner].orEmpty(),
+                        renderedFunctions = renderedFunctions,
                         renderedCodecs = codecsByOwner[owner].orEmpty(),
                         renderedAbiTypes = abiTypesByOwner[owner].orEmpty(),
                         renderedMetadata = metadataByOwner[owner].orEmpty(),
@@ -318,6 +323,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         sourcePrefix: String,
         owner: ClassName,
         renderedCalls: Collection<KotlinTypedProjectionCallSitePlan>,
+        renderedFunctions: Map<String, FunSpec>,
         renderedCodecs: Collection<KotlinProjectionCallSiteCodec>,
         renderedAbiTypes: Collection<KotlinProjectionAbiTypeMetadata>,
         renderedMetadata: Collection<KotlinProjectionModuleMetadata>,
@@ -349,7 +355,9 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                         addFunction(renderCodec(codec, metadata))
                     }
                 renderedCalls.sortedBy(KotlinTypedProjectionCallSitePlan::functionName)
-                    .forEach { plan -> addFunction(renderFunction(plan)) }
+                    .forEach { plan -> addFunction(renderedFunctions.getValue(plan.functionName)) }
+                rawCalls.values.filter { it.first == owner }.map { it.second }
+                    .sortedBy(FunSpec::name).forEach(::addFunction)
             }
             .build()
         val contents = FileSpec.builder(owner.packageName, fileName)
@@ -478,6 +486,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                 val body = plan.scalarSourceBody(
                     listOf(CodeBlock.of("instance"), CodeBlock.of("slot")) +
                         plan.parameters.indices.map { CodeBlock.of("arg%L", it) },
+                    abiCall = ::rawAbiCall,
                 )
                 addAnnotation(plan.callSiteAnnotationSpec(sourceGenerated = body != null))
                 if (body == null) addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
@@ -545,7 +554,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         plan: KotlinTypedProjectionCallSitePlan,
         arguments: List<CodeBlock>,
     ): CodeBlock {
-        plan.scalarSourceBody(arguments)?.let { return it }
+        sourceBody(plan, arguments)?.let { return it }
         val parameterTypes = listOf(COM_OBJECT_REFERENCE_CLASS_NAME, Int::class.asClassName()) +
             plan.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
         require(arguments.size == parameterTypes.size) {
@@ -585,6 +594,32 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             .unindent()
             .add("}")
             .build()
+    }
+
+    internal fun sourceBody(plan: KotlinTypedProjectionCallSitePlan, arguments: List<CodeBlock>): CodeBlock? =
+        // Standalone renderer clients cannot publish a module support file. Keep their existing
+        // explicit recipe marker instead of referencing an ABI declaration that is never emitted.
+        if (emitSupportFile) plan.scalarSourceBody(arguments, ::rawAbiCall) else null
+
+    /** Physical carriers only: typed codecs, ownership and HRESULT policy stay in source bodies. */
+    private fun rawAbiCall(carriers: List<ClassName>): CodeBlock {
+        val (owner, function) = rawCalls.getOrPut(carriers.toList()) {
+            val signature = carriers.joinToString("|") { it.canonicalName }
+            val name = "abiCall_${stableCodecHash("raw-abi", signature)}"
+            val owner = supportShardClassName("raw-abi-shard", signature)
+            val function = FunSpec.builder(name)
+                .addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
+                .addAnnotation(ClassName("io.github.composefluent.winrt.runtime", "WinRTAbiCallSite"))
+                .addModifiers(KModifier.INTERNAL)
+                .addParameter("receiver", ClassName("io.github.composefluent.winrt.runtime", "RawComPtr"))
+                .addParameter("slot", Int::class)
+                .apply { carriers.forEachIndexed { index, type -> addParameter("p$index", type) } }
+                .returns(Int::class)
+                .addStatement("return TODO(%S)", "Fixed WinRT ABI call")
+                .build()
+            owner to function
+        }
+        return CodeBlock.of("%T.%L", owner, function.name)
     }
 
     private data class ModuleCallTarget(
