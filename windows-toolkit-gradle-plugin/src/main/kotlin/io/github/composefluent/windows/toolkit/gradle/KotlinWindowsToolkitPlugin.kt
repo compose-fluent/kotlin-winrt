@@ -1955,7 +1955,11 @@ private fun configureMingwApplicationEntry(
             ?: throw org.gradle.api.GradleException(
                 "Selected mingwX64 executable '${variant.executableName}' is no longer available on target '${target.name}'.",
             )
-        executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
+        // Runtime assets alone do not opt an executable into the generated application host.
+        // Keep its own entry (including main(args)) when no user main was supplied for a wrapper.
+        if (!entryTask.flatMap { it.mainClass }.orNull.isNullOrBlank()) {
+            executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
+        }
         executable.linkerOpts(if (console.get()) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
         // Kotlin/Native's model name (for example, releaseExecutable) is not the staged file
         // name. Keep the output file Provider as the single source for payload, manifest and run
