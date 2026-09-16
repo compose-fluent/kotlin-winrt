@@ -8,14 +8,15 @@ import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteH
 private const val RUNTIME = "io.github.composefluent.winrt.runtime"
 
 /** cswinrt code_writers.h abi_marshaler: conversions and cleanup belong to generated source. */
-internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(
+internal fun KotlinTypedProjectionCallSitePlan.sourceMarshalingBody(
     arguments: List<CodeBlock>,
     abiCall: (List<ClassName>) -> CodeBlock,
 ): CodeBlock? {
     val slots = descriptor.slots
     if (slots.any { it.direction != WinRTProjectionCallSiteSlotDirection.IN &&
             it.direction != WinRTProjectionCallSiteSlotDirection.RETURN }) return null
-    fun supported(recipe: WinRTProjectionCallSiteRecipe): Boolean = !recipe.nullable && when (recipe.kind) {
+    fun supported(recipe: WinRTProjectionCallSiteRecipe): Boolean =
+        recipe.kind == WinRTProjectionCallSiteRecipeKind.HSTRING || !recipe.nullable && when (recipe.kind) {
         WinRTProjectionCallSiteRecipeKind.VALUE -> recipe.valueCarrier != WinRTProjectionCallSiteAbiCarrier.ADDRESS
         WinRTProjectionCallSiteRecipeKind.GUID -> true
         WinRTProjectionCallSiteRecipeKind.ENUM -> recipe.children.singleOrNull()?.let(::supported) == true &&
@@ -26,6 +27,8 @@ internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(
     val inputs = slots.filter { it.direction == WinRTProjectionCallSiteSlotDirection.IN }
     val result = slots.singleOrNull { it.direction == WinRTProjectionCallSiteSlotDirection.RETURN }
     if (slots.count { it.direction == WinRTProjectionCallSiteSlotDirection.RETURN } > 1) return null
+    if (result?.recipe?.kind == WinRTProjectionCallSiteRecipeKind.HSTRING &&
+        result.ownership != WinRTProjectionCallSiteOwnership.OWNED) return null
     if (result == null && returnType.toString() != "kotlin.Unit" &&
         !(descriptor.hResultPolicy == WinRTProjectionCallSiteHResultPolicy.RETURN && returnType.toString() == "kotlin.Int")) return null
     require(arguments.size == inputs.size + 2)
@@ -38,19 +41,30 @@ internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(
         add("val __instance = %L\nval __slot = %L\n", arguments[0], arguments[1])
         inputs.forEachIndexed { index, _ -> add("val __arg%L: %T = %L\n", index, parameters[index].type, arguments[index + 2]) }
         add("%M(__instance) { __receiver ->\n", MemberName(RUNTIME, "withWinRTAbiReference")).indent()
-        val guidInputs = inputs.withIndex().filter { it.value.recipe.kind == WinRTProjectionCallSiteRecipeKind.GUID }
-        guidInputs.forEach { (index, input) ->
-            add("%M(%LL, %LL) { __guid%L ->\n", MemberName(RUNTIME, "withWinRTStructStorage"), input.recipe.sizeBytes, input.recipe.alignmentBytes, index).indent()
-            add("%T.writeGuid(__guid%L, __arg%L)\n", ClassName(RUNTIME, "PlatformAbi"), index, index)
+        val scopedInputs = inputs.withIndex().filter {
+            it.value.recipe.kind == WinRTProjectionCallSiteRecipeKind.GUID ||
+                it.value.recipe.kind == WinRTProjectionCallSiteRecipeKind.HSTRING
+        }
+        scopedInputs.forEach { (index, input) ->
+            if (input.recipe.kind == WinRTProjectionCallSiteRecipeKind.HSTRING) {
+                add("%M(__arg%L) { __input%L ->\n", MemberName(RUNTIME, "withWinRTHStringReference"), index, index).indent()
+            } else {
+                add("%M(%LL, %LL) { __input%L ->\n", MemberName(RUNTIME, "withWinRTStructStorage"), input.recipe.sizeBytes, input.recipe.alignmentBytes, index).indent()
+                add("%T.writeGuid(__input%L, __arg%L)\n", ClassName(RUNTIME, "PlatformAbi"), index, index)
+            }
         }
         if (result != null) {
             if (result.recipe.kind == WinRTProjectionCallSiteRecipeKind.GUID) {
                 add("%M(%LL, %LL) { __result ->\n", MemberName(RUNTIME, "withWinRTStructStorage"), result.recipe.sizeBytes, result.recipe.alignmentBytes).indent()
-            } else add("%M { __result ->\n", MemberName(RUNTIME, "withWinRTScalarResult")).indent()
+            } else {
+                val scope = if (result.recipe.kind == WinRTProjectionCallSiteRecipeKind.HSTRING)
+                    "withWinRTOwnedHStringResult" else "withWinRTScalarResult"
+                add("%M { __result ->\n", MemberName(RUNTIME, scope)).indent()
+            }
         }
         add("val __hr = %L(__receiver, __slot", rawCall)
         inputs.forEachIndexed { index, input ->
-            add(", %L", if (input.recipe.kind == WinRTProjectionCallSiteRecipeKind.GUID) CodeBlock.of("__guid%L", index)
+            add(", %L", if (scopedInputs.any { it.index == index }) CodeBlock.of("__input%L", index)
                 else input.recipe.scalarToAbi(CodeBlock.of("__arg%L", index)))
         }
         if (result != null) add(", __result")
@@ -59,6 +73,8 @@ internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(
             add("%T(__hr).requireSuccess()\n", ClassName(RUNTIME, "HResult"))
         }
         when {
+            result?.recipe?.kind == WinRTProjectionCallSiteRecipeKind.HSTRING ->
+                add("%T.fromAbi(%T.readPointer(__result))\n", ClassName(RUNTIME, "NativeStringMarshaller"), ClassName(RUNTIME, "PlatformAbi"))
             result?.recipe?.kind == WinRTProjectionCallSiteRecipeKind.GUID ->
                 add("%T.readGuid(__result)\n", ClassName(RUNTIME, "PlatformAbi"))
             result != null -> {
@@ -73,14 +89,14 @@ internal fun KotlinTypedProjectionCallSitePlan.scalarSourceBody(
             else -> add("kotlin.Unit\n")
         }
         if (result != null) unindent().add("}\n")
-        guidInputs.forEach { _ -> unindent().add("}\n") }
+        scopedInputs.forEach { _ -> unindent().add("}\n") }
         unindent().add("}\n")
         unindent().add("}")
     }.build()
 }
 
 private fun WinRTProjectionCallSiteRecipe.scalarCarrierType(): ClassName =
-    if (kind == WinRTProjectionCallSiteRecipeKind.GUID) ClassName(RUNTIME, "RawAddress")
+    if (kind == WinRTProjectionCallSiteRecipeKind.GUID || kind == WinRTProjectionCallSiteRecipeKind.HSTRING) ClassName(RUNTIME, "RawAddress")
     else if (kind == WinRTProjectionCallSiteRecipeKind.ENUM) children.single().scalarCarrierType()
     else ClassName.bestGuess(copy(valueTransform = WinRTProjectionCallSiteValueTransform.IDENTITY).projectedKotlinTypeName)
 

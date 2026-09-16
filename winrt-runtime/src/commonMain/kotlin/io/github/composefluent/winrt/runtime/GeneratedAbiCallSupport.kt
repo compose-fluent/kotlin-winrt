@@ -27,3 +27,30 @@ inline fun <T> withWinRTStructStorage(sizeBytes: Long, alignmentBytes: Long, blo
         frame.close()
     }
 }
+
+/** Borrowed HSTRING reference, matching cswinrt MarshalString.CreateMarshaler/DisposeMarshaler. */
+inline fun <T> withWinRTHStringReference(value: String?, block: (RawAddress) -> T): T {
+    if (value.isNullOrEmpty()) return block(PlatformAbi.nullPointer)
+    val frame = acquireInitializedNativeHStringReferenceFrame(value)
+    return try {
+        block(frame.handle)
+    } finally {
+        frame.close()
+    }
+}
+
+/** Owned HSTRING output lifetime; generated code performs HRESULT checking and conversion. */
+inline fun <T> withWinRTOwnedHStringResult(block: (RawAddress) -> T): T {
+    val frame = acquireNativeScalarScratchFrame()
+    return try {
+        block(frame.pointer)
+    } finally {
+        try {
+            val handle = frame.readPointer()
+            PlatformAbi.writePointer(frame.pointer, PlatformAbi.nullPointer)
+            NativeStringMarshaller.disposeAbi(handle)
+        } finally {
+            frame.close()
+        }
+    }
+}

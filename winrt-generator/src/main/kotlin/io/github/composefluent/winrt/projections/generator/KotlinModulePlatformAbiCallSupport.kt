@@ -483,7 +483,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             }
             .returns(plan.returnType)
             .apply {
-                val body = plan.scalarSourceBody(
+                val body = plan.sourceMarshalingBody(
                     listOf(CodeBlock.of("instance"), CodeBlock.of("slot")) +
                         plan.parameters.indices.map { CodeBlock.of("arg%L", it) },
                     abiCall = ::rawAbiCall,
@@ -599,7 +599,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     internal fun sourceBody(plan: KotlinTypedProjectionCallSitePlan, arguments: List<CodeBlock>): CodeBlock? =
         // Standalone renderer clients cannot publish a module support file. Keep their existing
         // explicit recipe marker instead of referencing an ABI declaration that is never emitted.
-        if (emitSupportFile) plan.scalarSourceBody(arguments, ::rawAbiCall) else null
+        if (emitSupportFile) plan.sourceMarshalingBody(arguments, ::rawAbiCall) else null
 
     /** Physical carriers only: typed codecs, ownership and HRESULT policy stay in source bodies. */
     private fun rawAbiCall(carriers: List<ClassName>): CodeBlock {
