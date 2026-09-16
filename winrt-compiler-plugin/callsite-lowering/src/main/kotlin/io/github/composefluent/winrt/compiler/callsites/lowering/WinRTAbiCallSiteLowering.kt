@@ -19,10 +19,13 @@ internal fun lowerWinRTAbiCallSite(
     backend: WinRTDirectCallBackend,
 ) {
     val parameters = function.parameters.filter { it.kind == IrParameterKind.Regular }
-    require(function.typeParameters.isEmpty() && parameters.size >= 2)
-    require(function.returnType == pluginContext.irBuiltIns.intType)
-    require(parameters[0].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.RawComPtr")
-    require(parameters[1].type == pluginContext.irBuiltIns.intType)
+    require(function.typeParameters.isEmpty()) { "fixed ABI stubs cannot have type parameters" }
+    require(parameters.size >= 2) { "fixed ABI stubs require a receiver and vtable slot" }
+    require(function.returnType == pluginContext.irBuiltIns.intType) { "fixed ABI stubs must return an Int HRESULT" }
+    require(parameters[0].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.RawComPtr" && !parameters[0].type.isNullable()) {
+        "receiver must be a non-null RawComPtr"
+    }
+    require(parameters[1].type == pluginContext.irBuiltIns.intType) { "vtable slot must be an Int" }
     val carriers = parameters.drop(2).map { parameter ->
         require(!parameter.type.isNullable()) { "ABI carriers cannot be nullable" }
         WinRTProjectionCallSiteAbiCarrier.entries.singleOrNull { it.kotlinCarrierFqName == parameter.type.classFqName }

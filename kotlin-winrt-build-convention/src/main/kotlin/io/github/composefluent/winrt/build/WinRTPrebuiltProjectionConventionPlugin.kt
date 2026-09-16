@@ -49,7 +49,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 description = "Verifies that no generated WinRT call-site placeholder reaches JVM bytecode."
                 dependsOn(compileJvmProjectionTaskName)
                 binaryArtifacts.from(compiledJvmProjectionClasses)
-                markers.set(setOf(MODULE_CALL_SITE_PLACEHOLDER))
+                markers.set(CALL_SITE_PLACEHOLDERS)
                 artifactDescription.set("compiled JVM projection classes")
             },
         )
@@ -61,7 +61,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 description = "Verifies that no generated WinRT call-site placeholder reaches the mingwX64 klib."
                 dependsOn("compileKotlinMingwX64")
                 binaryArtifacts.from(project.layout.buildDirectory.dir("classes/kotlin/mingwX64/main/klib"))
-                markers.set(setOf(MODULE_CALL_SITE_PLACEHOLDER))
+                markers.set(CALL_SITE_PLACEHOLDERS)
                 artifactDescription.set("compiled mingwX64 projection klib")
             },
         )
@@ -252,6 +252,11 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         const val JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteDirectLowering"
         const val MINGW_CALL_SITE_VERIFICATION_TASK_NAME = "verifyMingwX64ProjectionCallSiteLowering"
         const val MODULE_CALL_SITE_PLACEHOLDER = "Lowered while compiling the generated WinRT module"
+        val CALL_SITE_PLACEHOLDERS = setOf(
+            MODULE_CALL_SITE_PLACEHOLDER,
+            "Fixed WinRT ABI call",
+            "winRTProjectionCallSiteArguments",
+        )
         const val NO_SOURCE_DEBUG_EXTENSION_ARGUMENT = "-Xno-source-debug-extension"
         val DIRECT_CALL_SITE_FORBIDDEN_MARKERS = setOf(
             "confinedScope",

@@ -867,6 +867,14 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(method.contains("[J"), method)
     }
 
+    @Test
+    fun explicit_argument_markers_are_consumed_before_jvm_codegen() {
+        val bytecode = javap(ExplicitCallSiteArgumentsTest::class.java.name)
+        assertTrue(bytecode.contains("invokeExact"), bytecode)
+        assertFalse(bytecode.contains("winRTProjectionCallSiteArguments"), bytecode)
+        assertFalse(bytecode.contains("legacy call-site marker"), bytecode)
+    }
+
     private fun javap(className: String): String {
         val output = StringWriter()
         val errors = StringWriter()

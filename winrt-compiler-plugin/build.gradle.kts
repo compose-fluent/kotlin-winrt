@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.kotlinJvm)
     id("build-convention")
@@ -5,6 +7,18 @@ plugins {
 }
 
 description = "Kotlin compiler plugin for WinRT and WinUI projection support"
+
+val callSiteTestPluginClasspath by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+dependencies.add(callSiteTestPluginClasspath.name, project.childProjects.getValue("callsite-lowering"))
+tasks.withType<Test>().configureEach {
+    inputs.files(callSiteTestPluginClasspath).withPropertyName("callSiteTestPluginClasspath")
+    doFirst {
+        systemProperty("winrt.test.callsitePluginClasspath", callSiteTestPluginClasspath.asPath)
+    }
+}
 
 dependencies {
     implementation(project.childProjects.getValue("callsite-contract"))

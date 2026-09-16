@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.projections.generator
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
@@ -566,11 +567,18 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             }
             .add("%L\n", plan.callSiteAnnotationSpec())
             .add(
-                "val %L: %T = TODO(%S)\n",
+                "val %L: %T = %M(",
                 INLINE_CALL_SITE_RESULT_NAME,
                 plan.returnType,
-                MODULE_CALL_SITE_PLACEHOLDER,
+                MemberName("io.github.composefluent.winrt.runtime", "winRTProjectionCallSiteArguments"),
             )
+            .apply {
+                arguments.indices.forEach { index ->
+                    if (index != 0) add(", ")
+                    add("%L%L", INLINE_CALL_SITE_ARGUMENT_PREFIX, index)
+                }
+            }
+            .add(")\n")
             .apply {
                 if (plan.returnType != Unit::class.asClassName()) add("%L\n", INLINE_CALL_SITE_RESULT_NAME)
             }

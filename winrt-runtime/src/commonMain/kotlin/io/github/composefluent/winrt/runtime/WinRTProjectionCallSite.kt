@@ -43,6 +43,14 @@ annotation class WinRTProjectionCallSite(
 annotation class WinRTAbiCallSite
 
 /**
+ * Explicit references to a local typed call site's arguments, in ABI parameter order.
+ * Used only as the initializer of a @WinRTProjectionCallSite local. Lowering removes this
+ * marker and its vararg array; arguments must be local variables in the same function.
+ */
+fun <T> winRTProjectionCallSiteArguments(vararg arguments: Any?): T =
+    error("WinRT call-site argument marker was not lowered (${arguments.size} arguments)")
+
+/**
  * Marks a typed projected-interface CCW entry stub. The generated declaration contains the
  * projected member invocation and WinMD parameter facts; the compiler plugin owns ABI decoding,
  * result publication, and HRESULT completion.
