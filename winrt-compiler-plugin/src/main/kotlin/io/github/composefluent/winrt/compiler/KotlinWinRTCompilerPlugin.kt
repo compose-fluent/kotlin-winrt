@@ -2227,6 +2227,9 @@ fun writeProjectionSupportInitializerClass(
         )
     }
     initialize.visitLabel(alreadyInitialized)
+    // The early-return target has the same empty locals/stack as this static method's entry.
+    // COMPUTE_MAXS alone does not emit the stack map required by the JVM class-file version.
+    initialize.visitFrame(Opcodes.F_SAME, 0, null, 0, null)
     initialize.visitInsn(Opcodes.RETURN)
     initialize.visitMaxs(0, 0)
     initialize.visitEnd()

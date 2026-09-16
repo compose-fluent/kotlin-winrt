@@ -990,6 +990,12 @@ class KotlinWinRTCompilerPluginTest {
             0,
         )
         assertTrue(chunkMethodNames.contains("register"))
+        // Ask the JVM verifier to link the generated method; ASM inspection alone misses
+        // absent stack-map frames at the idempotent initializer's early-return branch.
+        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { loader ->
+            val initializer = Class.forName(internalName.replace('/', '.'), false, loader)
+            assertEquals(Void.TYPE, initializer.getDeclaredMethod("initialize").returnType)
+        }
     }
 
     @Test
