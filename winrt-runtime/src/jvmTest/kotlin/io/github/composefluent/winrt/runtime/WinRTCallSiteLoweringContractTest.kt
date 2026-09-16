@@ -31,6 +31,15 @@ private object Task2CallSiteLoweringFixture {
     ): Unit = TODO("Task 2 compiler-plugin fixture")
 }
 
+private object SourceGeneratedCallSiteFixture {
+    @WinRTProjectionCallSite(sourceGenerated = true)
+    fun alreadyGenerated(reference: ComObjectReference, slot: Int): Int {
+        reference.pointer
+        slot
+        return 17
+    }
+}
+
 @JvmInline
 private value class IntEnumConstantFixture(val abiValue: Int) {
     companion object {
@@ -381,6 +390,16 @@ private object DirectStructArrayCallSiteFixture {
 }
 
 class WinRTCallSiteLoweringContractTest {
+    @Test
+    fun source_generated_call_sites_keep_their_source_body() {
+        val bytecode = javap(SourceGeneratedCallSiteFixture::class.java.name)
+            .methodBytecode("alreadyGenerated")
+
+        assertTrue(bytecode.contains("bipush        17"), bytecode)
+        assertFalse(bytecode.contains("Lowered while compiling the generated WinRT module"), bytecode)
+        assertFalse(bytecode.contains("MethodHandle.invokeExact"), bytecode)
+    }
+
     @Test
     fun closed_delegate_signature_is_lowered_to_common_iid_words() {
         val bytecode = javap(ClosedDelegateInterfaceIdFixture::class.java.name)
@@ -833,6 +852,17 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(bytecode.contains("access\$getKotlinWinRTExactHResultHandle_int8_float32_float64"))
         assertTrue(fieldOwner.contains("kotlinWinRTExactHResultHandle_int8_float32_float64"))
         assertFalse(bytecode.contains("hResult:(Ljava/lang/String;)"))
+    }
+
+    @Test
+    fun mixed_carriers_do_not_fall_back_to_generic_argument_dispatch() {
+        val method = javap(Task2CallSiteLoweringFixture::class.java.name)
+            .methodBytecode("mixedCarriers")
+
+        assertEquals(1, method.countOccurrences("MethodHandle.invokeExact"), method)
+        assertFalse(method.contains("MethodHandle.invokeWithArguments"), method)
+        assertFalse(method.contains("invokeGeneric"), method)
+        assertFalse(method.contains("[J"), method)
     }
 
     private fun javap(className: String): String {
