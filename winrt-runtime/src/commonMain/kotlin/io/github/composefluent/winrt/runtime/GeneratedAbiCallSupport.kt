@@ -17,3 +17,13 @@ inline fun <T> withWinRTScalarResult(block: (RawAddress) -> T): T {
         frame.close()
     }
 }
+
+/** Storage/lifetime only; generated abi_marshaler code owns the layout and conversion. */
+inline fun <T> withWinRTStructStorage(sizeBytes: Long, alignmentBytes: Long, block: (RawAddress) -> T): T {
+    val frame = acquireNativeStructScratchFrame(sizeBytes, alignmentBytes, clear = true)
+    return try {
+        block(frame.pointer)
+    } finally {
+        frame.close()
+    }
+}

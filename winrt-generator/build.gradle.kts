@@ -40,6 +40,7 @@ val generateCallSiteIntegrationSources by tasks.registering(Test::class) {
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     filter.includeTestsMatching("*.KotlinScalarCallSiteSourceTest.scalar_conversions_and_storage_are_emitted_as_source")
+    filter.includeTestsMatching("*.KotlinGuidCallSiteSourceTest.guid_input_and_return_use_generated_marshaling")
     val outputDirectory = layout.buildDirectory.dir("generated/callsite-integration")
     outputs.dir(outputDirectory).withPropertyName("generatedCallSiteSources")
     systemProperty("winrt.callsite.integration.output", outputDirectory.get().asFile.absolutePath)
