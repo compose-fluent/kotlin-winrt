@@ -11,6 +11,16 @@ plugins {
 
 description = "Kotlin/JVM and Kotlin/Native runtime for WinRT and WinUI projection"
 
+val callSiteIntegrationSources by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+dependencies.add(
+    callSiteIntegrationSources.name,
+    dependencies.project(mapOf("path" to ":winrt-generator", "configuration" to "callSiteIntegrationSources")),
+)
+
 val runtimeCallSiteLoweringClasspath = configurations.create("runtimeCallSiteLoweringClasspath") {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -105,6 +115,9 @@ kotlin {
     }
 
     sourceSets {
+        commonTest {
+            kotlin.srcDir(callSiteIntegrationSources)
+        }
         commonMain.dependencies {
             api(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.io.core)

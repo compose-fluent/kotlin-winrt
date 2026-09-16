@@ -71,7 +71,8 @@ class KotlinScalarCallSiteSourceTest {
         }
         // Export the actual generated source for Windows JVM/Native integration validation.
         // This is a build artifact, never a hand-maintained projection fixture.
-        File("build/generated-test-sources/GeneratedScalarSourceIntegrationTest.kt").apply {
+        val outputDirectory = System.getProperty("winrt.callsite.integration.output") ?: return
+        File(outputDirectory, "GeneratedScalarSourceIntegrationTest.kt").apply {
             parentFile.mkdirs()
             writeText(buildString {
                 appendLine("package io.github.composefluent.winrt.runtime")

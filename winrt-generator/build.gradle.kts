@@ -31,3 +31,24 @@ tasks.withType<Test>().configureEach {
         "-XX:HeapBaseMinAddress=8g",
     )
 }
+
+// The fixture is rendered by the real generator and compiled by both runtime test targets.
+// A separate task makes source production explicit, including after a clean/cache restore.
+val generateCallSiteIntegrationSources by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Generates actual projection source for JVM and Native ABI integration tests."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter.includeTestsMatching("*.KotlinScalarCallSiteSourceTest.scalar_conversions_and_storage_are_emitted_as_source")
+    val outputDirectory = layout.buildDirectory.dir("generated/callsite-integration")
+    outputs.dir(outputDirectory).withPropertyName("generatedCallSiteSources")
+    systemProperty("winrt.callsite.integration.output", outputDirectory.get().asFile.absolutePath)
+}
+
+val callSiteIntegrationSources by configurations.creating {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+}
+artifacts.add(callSiteIntegrationSources.name, layout.buildDirectory.dir("generated/callsite-integration")) {
+    builtBy(generateCallSiteIntegrationSources)
+}
