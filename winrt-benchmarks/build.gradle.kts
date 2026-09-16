@@ -87,6 +87,7 @@ val buildReferenceBenchmarkComponent by tasks.registering(Exec::class) {
 
 tasks.matching { task ->
     task.name == "generateWinRTMetadataIndex" ||
+        task.name == "prepareWinRTProjectionMetadata" ||
         task.name == "generateWinRTProjections" ||
         task.name.startsWith("compileKotlin")
 }.configureEach {
