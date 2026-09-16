@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.testing.Test
 
 plugins {
@@ -114,15 +115,17 @@ fun benchmarkArguments(outputFileName: String): List<String> =
         }
     }
 
+// The published JVM artifact includes both business and separately compiled projection classes.
+val benchmarkJvmArtifact = tasks.named<Jar>("jvmJar").flatMap { it.archiveFile }
+
 val benchmarkKotlinJvm by tasks.registering(JavaExec::class) {
     group = "benchmark"
     description = "Runs the Kotlin/JVM WinRT projection benchmark."
-    dependsOn("compileKotlinJvm")
     dependsOn(buildReferenceBenchmarkComponent)
     workingDir(layout.projectDirectory)
     mainClass.set("io.github.composefluent.winrt.benchmarks.BenchmarkMainKt")
     classpath(
-        layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+        benchmarkJvmArtifact,
         configurations.named("jvmRuntimeClasspath"),
     )
     jvmArgs(
@@ -231,12 +234,11 @@ fun benchmarkCatalogArguments(outputFileName: String): List<String> =
 val benchmarkKotlinJvmCatalog by tasks.registering(JavaExec::class) {
     group = "verification"
     description = "Exports the Kotlin/JVM executable benchmark catalog."
-    dependsOn("compileKotlinJvm")
     dependsOn(buildReferenceBenchmarkComponent)
     workingDir(layout.projectDirectory)
     mainClass.set("io.github.composefluent.winrt.benchmarks.BenchmarkMainKt")
     classpath(
-        layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+        benchmarkJvmArtifact,
         configurations.named("jvmRuntimeClasspath"),
     )
     jvmArgs("--enable-native-access=ALL-UNNAMED")
