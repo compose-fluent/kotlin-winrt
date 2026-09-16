@@ -43,6 +43,7 @@ val generateCallSiteIntegrationSources by tasks.registering(Test::class) {
     val outputDirectory = layout.buildDirectory.dir("generated/callsite-integration")
     outputs.dir(outputDirectory).withPropertyName("generatedCallSiteSources")
     systemProperty("winrt.callsite.integration.output", outputDirectory.get().asFile.absolutePath)
+    systemProperty("winrt.callsite.benchmark", providers.gradleProperty("winrt.callsite.benchmark").getOrElse("false"))
 }
 
 val callSiteIntegrationSources by configurations.creating {

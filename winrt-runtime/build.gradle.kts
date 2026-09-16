@@ -107,6 +107,12 @@ kotlin {
         }
     }
     mingwX64 {
+        if (providers.gradleProperty("winrt.callsite.benchmark").orNull == "true") {
+            binaries.getTest("DEBUG").apply {
+                optimized = true
+                debuggable = false
+            }
+        }
         compilations.getByName("main") {
             cinterops.create("winrtString") {
                 definitionFile.set(project.file("src/nativeInterop/cinterop/winrtString.def"))
