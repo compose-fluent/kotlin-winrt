@@ -674,7 +674,7 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(method.countOccurrences("iconst_0") >= 2)
         assertTrue(method.countOccurrences("iconst_1") >= 4)
         method.assertOrderedAfter(
-            "access\$getKotlinWinRTExactHResultHandle_address_address_address",
+            "kotlinWinRTExactHResultHandle_address_address_address",
             "aload         16",
             "lload         13",
             "lload_3",
@@ -710,7 +710,7 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(receiveArray.countOccurrences("disposeIntArray") >= 2)
         assertTrue(receiveArray.indexOf("decodeIntArray") < receiveArray.indexOf("disposeIntArray"))
         receiveArray.assertOrderedAfter(
-            "access\$getKotlinWinRTExactHResultHandle_address_address",
+            "kotlinWinRTExactHResultHandle_address_address",
             "aload         12",
             "lload         9",
             "aload_3",
@@ -850,9 +850,12 @@ class WinRTCallSiteLoweringContractTest {
     @Test
     fun mixed_carriers_use_a_compiler_synthesized_static_exact_handle() {
         val bytecode = javap(Task2CallSiteLoweringFixture::class.java.name)
-        val fieldOwner = javap("io.github.composefluent.winrt.runtime.WinRTCallSiteLoweringContractTestKt")
-        assertTrue(bytecode.contains("access\$getKotlinWinRTExactHResultHandle_int8_float32_float64"))
-        assertTrue(fieldOwner.contains("kotlinWinRTExactHResultHandle_int8_float32_float64"))
+        val ownerName = requireNotNull(Regex(
+            "Field (io/github/composefluent/winrt/generated/abi/[^: ]+)\\.kotlinWinRTExactHResultHandle_int8_float32_float64:"
+        ).find(bytecode)).groupValues[1].replace('/', '.')
+        val fieldOwner = javap(ownerName)
+        assertTrue(bytecode.contains("kotlinWinRTExactHResultHandle_int8_float32_float64"))
+        assertTrue(fieldOwner.contains("public static final java.lang.invoke.MethodHandle kotlinWinRTExactHResultHandle_int8_float32_float64"))
         assertFalse(bytecode.contains("hResult:(Ljava/lang/String;)"))
     }
 

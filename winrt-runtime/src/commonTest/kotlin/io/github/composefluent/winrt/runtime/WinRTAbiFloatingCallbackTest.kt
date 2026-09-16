@@ -27,6 +27,8 @@ class WinRTAbiFloatingCallbackTest {
                 assertEquals(-2.5, values[1])
                 assertEquals((-0.0f).toBits(), (values[2] as Float).toBits())
                 assertEquals(456.125, values[3])
+                assertEquals(0, invokeSharedFloatingCallback(reference.pointer, 6, -3.5f, 8.25, 0.5f, -987.125))
+                assertEquals(listOf(-3.5f, 8.25, 0.5f, -987.125), received)
             }
         }
     }

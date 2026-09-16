@@ -345,6 +345,7 @@ private class JvmFfmSymbols private constructor(
     private val createExactHResultHandle: IrSimpleFunctionSymbol,
     private val carrierLayouts: Map<WinRTProjectionCallSiteAbiCarrier, StaticValue>,
 ) {
+    private val supportFiles = WinRTAbiSupportFiles()
     private val exactHandleFields = mutableMapOf<Pair<IrFile, List<WinRTProjectionCallSiteAbiCarrier>>, IrField>()
 
     fun emit(
@@ -425,8 +426,9 @@ private class JvmFfmSymbols private constructor(
         ownerFunction: IrSimpleFunction,
         carriers: List<WinRTProjectionCallSiteAbiCarrier>,
     ): IrExpression {
-        val file = ownerFunction.containingFile()
+        val source = ownerFunction.containingFile()
             ?: error("kotlin-winrt could not locate the JVM call site's file owner.")
+        val file = supportFiles.file(source, "jvm-hresult|" + carriers.joinToString("|"))
         val key = file to carriers.toList()
         val field = exactHandleFields.getOrPut(key) {
             val fieldName = Name.identifier(
@@ -439,7 +441,7 @@ private class JvmFfmSymbols private constructor(
                     endOffset = ownerFunction.endOffset
                     origin = IrDeclarationOrigin.DEFINED
                     name = fieldName
-                    visibility = DescriptorVisibilities.PRIVATE
+                    visibility = DescriptorVisibilities.PUBLIC
                     type = createExactHResultHandle.owner.returnType
                     isFinal = true
                     isStatic = true
@@ -624,6 +626,7 @@ private class NativeCInteropSymbols private constructor(
     private val floatToBits: IrSimpleFunctionSymbol,
     private val doubleToBits: IrSimpleFunctionSymbol,
 ) {
+    private val supportFiles = WinRTAbiSupportFiles(useExistingFile = true)
     private val exactThunkFields = mutableMapOf<NativeThunkFieldKey, NativeThunkStorage>()
     fun emit(
         builder: DeclarationIrBuilder,
@@ -942,14 +945,18 @@ private class NativeCInteropSymbols private constructor(
         transport: NativeThunkTransport,
         inputs: List<WinRTDirectCallInput>,
     ): IrExpression {
-        val file = ownerFunction.containingFile()
+        val source = ownerFunction.containingFile()
             ?: error("kotlin-winrt could not locate the Native call site's file owner.")
+        val file = supportFiles.file(source, "native|" + transport.name + "|" +
+            inputs.joinToString("|") { it.shape.fieldNameComponent })
+        val ownerName = file.fileEntry.name.substringAfterLast('/').substringAfterLast('\\')
+        val ownerIdentity = supportFiles.identity(file, "native-owner|${file.packageFqName}|$ownerName")
         val key = NativeThunkFieldKey(file, transport, inputs.map { input -> input.shape })
         val storage = exactThunkFields.getOrPut(key) {
             val fieldName = Name.identifier(
                 "kotlinWinRT${transport.fieldNameComponent}Thunk_" +
                     inputs.joinToString("_") { input -> input.shape.fieldNameComponent }.ifEmpty { "no_args" } +
-                    "_" + ownerFunction.stableThunkOwnerSuffix(),
+                    "_" + ownerIdentity,
             )
             val accessorName = Name.identifier(fieldName.asString() + "Address")
             val existingField = file.declarations.filterIsInstance<IrField>()
@@ -1266,9 +1273,6 @@ private fun List<WinRTDirectCallInput>.floatingPointKinds(): Long =
         }
         encoded or (bits shl (index * 2))
     }
-
-private fun IrSimpleFunction.stableThunkOwnerSuffix(): String =
-    fqNameWhenAvailable?.asString().orEmpty().hashCode().toUInt().toString(16)
 
 private fun primitiveMember(
     pluginContext: IrPluginContext,
