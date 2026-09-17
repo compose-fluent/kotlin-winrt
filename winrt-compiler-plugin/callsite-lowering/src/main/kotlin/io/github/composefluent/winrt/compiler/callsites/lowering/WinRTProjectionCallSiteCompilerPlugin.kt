@@ -203,8 +203,8 @@ fun lowerWinRTProjectionCallSites(
             pluginContext.reportError(function, error)
             continue
         }
-        if (!function.hasTodoPlaceholder()) {
-            pluginContext.reportError(function, "must contain a TODO() placeholder body before lowering")
+        if (!function.hasPureTodoPlaceholder()) {
+            pluginContext.reportError(function, "must contain only a TODO() placeholder body with a constant message before lowering")
             continue
         }
         if (symbols == null) {
@@ -467,8 +467,8 @@ private fun validateInlineCallSiteMarker(
     if (!callSite.explicit && callSite.result.name.asString() != INLINE_CALL_SITE_RESULT_NAME) {
         return "must use the generated local result name $INLINE_CALL_SITE_RESULT_NAME"
     }
-    if (!callSite.explicit && callSite.result.initializer?.hasTodoPlaceholder() != true) {
-        return "must contain a TODO() placeholder initializer before lowering"
+    if (!callSite.explicit && callSite.result.initializer?.hasPureTodoPlaceholder() != true) {
+        return "must contain only a TODO() placeholder initializer with a constant message before lowering"
     }
     val expected = descriptor.functionParameterCount + 2
     if (callSite.arguments.size != expected) return "must bind exactly $expected typed call-site arguments (received ${callSite.arguments.size})"
@@ -577,41 +577,22 @@ private fun validateCallSiteFunction(
     return null
 }
 
-private fun IrSimpleFunction.hasTodoPlaceholder(): Boolean = body?.hasTodoPlaceholder() == true
-
-private fun IrSimpleFunction.countTodoPlaceholders(): Int {
-    var count = 0
-    body?.acceptChildrenVoid(
-        object : IrVisitorVoid() {
-            override fun visitElement(element: IrElement) {
-                element.acceptChildrenVoid(this)
-            }
-
-            override fun visitCall(expression: IrCall) {
-                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") count += 1
-                super.visitCall(expression)
-            }
-        },
-    )
-    return count
+// Lowering replaces the entire body: never accept a TODO nested in user logic.
+internal fun IrSimpleFunction.hasPureTodoPlaceholder(): Boolean = when (val placeholder = body) {
+    is IrBlockBody -> placeholder.statements.singleOrNull()?.let { statement ->
+        when (statement) {
+            is org.jetbrains.kotlin.ir.expressions.IrReturn ->
+                statement.returnTargetSymbol == symbol && statement.value.hasPureTodoPlaceholder()
+            else -> statement.hasPureTodoPlaceholder()
+        }
+    } == true
+    is org.jetbrains.kotlin.ir.expressions.IrExpressionBody -> placeholder.expression.hasPureTodoPlaceholder()
+    else -> false
 }
 
-private fun IrElement.hasTodoPlaceholder(): Boolean {
-    if (this is IrCall && symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") return true
-    var found = false
-    acceptChildrenVoid(
-        object : IrVisitorVoid() {
-            override fun visitElement(element: IrElement) {
-                if (!found) element.acceptChildrenVoid(this)
-            }
-            override fun visitCall(expression: IrCall) {
-                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") found = true
-                else super.visitCall(expression)
-            }
-        },
-    )
-    return found
-}
+private fun IrElement.hasPureTodoPlaceholder(): Boolean =
+    this is IrCall && symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO" &&
+        arguments.all { it == null || it is IrConst }
 
 private fun IrFunction.regularParameters() = parameters.filter { it.kind == IrParameterKind.Regular }
 

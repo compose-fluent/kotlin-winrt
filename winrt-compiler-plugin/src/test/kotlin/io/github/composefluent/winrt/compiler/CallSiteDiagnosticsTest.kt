@@ -13,6 +13,48 @@ import org.junit.Test
 
 class CallSiteDiagnosticsTest {
     @Test
+    fun fixed_abi_placeholder_cannot_discard_user_logic() {
+        compileFailure(
+            """
+                @WinRTAbiCallSite
+                fun invalid(receiver: RawComPtr, slot: Int): Int { println(slot); return TODO() }
+            """.trimIndent(),
+            "must contain only a TODO() placeholder body",
+        )
+    }
+
+    @Test
+    fun projection_placeholders_cannot_discard_surrounding_logic() {
+        listOf(
+            "{ println(slot); return TODO() }",
+            "= if (slot > 0) TODO() else 42",
+            "{\n fun nested(): Int = TODO()\n return slot\n }",
+            "= TODO(slot.toString())",
+        ).forEach { implementation ->
+            compileFailure(
+                "@WinRTProjectionCallSite fun invalid(receiver: ComObjectReference, slot: Int): Int $implementation",
+                "must contain only a TODO() placeholder body",
+            )
+        }
+    }
+
+    @Test
+    fun implicit_local_placeholder_cannot_discard_surrounding_logic() {
+        compileFailure(
+            """
+                fun invalid(receiver: ComObjectReference, slot: Int): Int {
+                    val __winrtCallSiteArgument0 = receiver
+                    val __winrtCallSiteArgument1 = slot
+                    @WinRTProjectionCallSite
+                    val __winrtCallSiteResult: Int = run { println(slot); TODO() }
+                    return __winrtCallSiteResult
+                }
+            """.trimIndent(),
+            "must contain only a TODO() placeholder initializer",
+        )
+    }
+
+    @Test
     fun invalid_fixed_signature_reports_source_and_stage() {
         compileFailure(
             """

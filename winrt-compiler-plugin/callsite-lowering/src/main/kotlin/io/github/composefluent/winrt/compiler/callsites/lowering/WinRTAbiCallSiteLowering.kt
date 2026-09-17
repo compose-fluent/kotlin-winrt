@@ -26,6 +26,9 @@ internal fun lowerWinRTAbiCallSite(
         "receiver must be a non-null RawComPtr"
     }
     require(parameters[1].type == pluginContext.irBuiltIns.intType) { "vtable slot must be an Int" }
+    require(function.hasPureTodoPlaceholder()) {
+        "must contain only a TODO() placeholder body with a constant message before lowering"
+    }
     val carriers = parameters.drop(2).map { parameter ->
         require(!parameter.type.isNullable()) { "ABI carriers cannot be nullable" }
         WinRTProjectionCallSiteAbiCarrier.entries.singleOrNull { it.kotlinCarrierFqName == parameter.type.classFqName }
