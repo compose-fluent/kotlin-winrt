@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.projections.generator
 
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionSupportLayout
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
@@ -115,7 +116,6 @@ class KotlinProjectionSupportRenderer private constructor(
     )
     private val planner = KotlinProjectionPlanner()
     private val eventProjectionHelperTypesPerFile: Int = 96
-    private val projectionSupportAnchorShardCount: Int = 16
 
     internal fun withModulePlatformAbiCalls(
         calls: KotlinModulePlatformAbiCallSupport?,
@@ -257,7 +257,7 @@ class KotlinProjectionSupportRenderer private constructor(
                 ),
             )
             if (emitProjectionRegistrar) {
-                addAll(renderProjectionSupportAnchors(supportOwnerIdentity))
+                addAll(renderProjectionSupportAnchors(supportOwnerIdentity, registrarPlans.size))
             }
             addAll(
                 renderDispatcherQueueSynchronizationContextAdditions(
@@ -350,7 +350,8 @@ class KotlinProjectionSupportRenderer private constructor(
             .build()
             .withoutSourceAdditions(excludedSourceAdditionTypeNames)
 
-    private fun renderProjectionSupportAnchors(supportOwnerIdentity: String?): List<KotlinProjectionFile> {
+    private fun renderProjectionSupportAnchors(supportOwnerIdentity: String?, registrationCount: Int): List<KotlinProjectionFile> {
+        val projectionSupportAnchorShardCount = WinRTProjectionSupportLayout.anchorFileCount(registrationCount) - 1
         val baseFileName = winRTProjectionSupportAnchorFileName(supportOwnerIdentity)
         return (listOf(baseFileName) + (0 until projectionSupportAnchorShardCount).map { index ->
             "${baseFileName}_${index.toString().padStart(3, '0')}"

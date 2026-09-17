@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionSupportLayout
 import io.github.composefluent.winrt.compiler.callsites.lowering.lowerWinRTProjectionCallSites
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeCandidate
@@ -1949,7 +1950,7 @@ private const val PROJECTION_SUPPORT_INITIALIZER_CLASS_NAME_PREFIX: String =
 private const val STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
     "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class"
 
-private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
+private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = WinRTProjectionSupportLayout.REGISTRAR_CHUNK_SIZE
 
 private fun writeBytesIfChanged(target: Path, bytes: ByteArray) {
     if (Files.isRegularFile(target) && Files.readAllBytes(target).contentEquals(bytes)) {

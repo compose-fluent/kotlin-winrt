@@ -19142,6 +19142,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(initializerAnchor, initializerAnchor.contains("@PublishedApi"))
         assertTrue(initializerAnchor, initializerAnchor.contains("internal fun WinRTProjectionSupportAnchor_sample_lib_jarInitialize()"))
         assertTrue(initializerAnchor, initializerAnchor.contains("WinRTProjectionSupportIntrinsic.ensureInitialized()"))
+        assertEquals(1, artifactScopedFilesByName.keys.count { it.startsWith("WinRTProjectionSupportAnchor_") })
         assertFalse(artifactScopedFilesByName.containsKey("WinRTProjectionSupportAnchor.kt"))
         assertTrue(artifactScopedFilesByName.keys.any { name -> name.startsWith("WinRTEventProjectionHelper_sample_lib_jar_") })
         assertFalse(artifactScopedFilesByName.containsKey("WinRTEventProjectionHelper_000.kt"))
