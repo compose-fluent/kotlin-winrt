@@ -6670,7 +6670,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.projectionCallSiteCount() > 0)
         assertTrue(contents, contents.contains("val __winrtCallSiteArgument2: AsyncActionCompletedHandler?"))
         assertTrue(support, support.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
-        assertTrue(support, support.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
+        assertFalse(support, support.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
         assertFalse(contents, contents.contains("IAsyncAction::class.java"))
     }
 
@@ -10412,7 +10412,7 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val widgetContents = filesByName.getValue("IWidget.kt").contents
         val pointContents = filesByName.getValue("Point.kt").contents
-        val callSiteSupport = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val callSiteSupport = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents.orEmpty()
 
         assertTrue(widgetContents.contains("fun location(): Point"))
         assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler)"))
@@ -10422,8 +10422,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(pointContents, pointContents.contains("kind = WinRTProjectionAbiTypeKind.STRUCT"))
         assertFalse(callSiteSupport, callSiteSupport.contains("name = \"sample.foundation.Point\""))
         assertFalse(callSiteSupport, callSiteSupport.contains("Point.Metadata.fromAbi"))
-        assertTrue(callSiteSupport, callSiteSupport.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
-        assertTrue(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
         assertFalse(widgetContents.contains("fun location(): Point = error(\"WinRT ABI binding is unavailable\")"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"WinRT ABI binding is unavailable\")"))
     }
@@ -10501,7 +10501,7 @@ class KotlinProjectionGeneratorTest {
         val pointContents = filesByName.getValue("Point.kt").contents
         val delegateContents = filesByName.getValue("TransformHandler.kt").contents
         val transformerContents = filesByName.getValue("ITransformer.kt").contents
-        val callSiteSupport = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val callSiteSupport = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents.orEmpty()
 
         assertTrue(pointContents.contains("WinRTValueBoxingRegistration.registerStruct("))
         assertFalse(pointContents.contains("internal fun register()"))
@@ -10522,8 +10522,8 @@ class KotlinProjectionGeneratorTest {
         assertFalse(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(transformerContents, transformerContents.projectionCallSiteCount() > 0)
         assertTrue(transformerContents, transformerContents.contains("val __winrtCallSiteArgument2: TransformHandler"))
-        assertTrue(callSiteSupport, callSiteSupport.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
-        assertTrue(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
         assertFalse(transformerContents.contains("fun setTransform(handler: TransformHandler) = error(\"WinRT ABI binding is unavailable\")"))
     }
 
@@ -10829,9 +10829,9 @@ class KotlinProjectionGeneratorTest {
         val widgetContents = filesByName
             .getValue("IWidget.kt")
             .contents
-        val callSiteSupport = generatedFiles.single { generated ->
+        val callSiteSupport = generatedFiles.singleOrNull { generated ->
             generated.relativePath.endsWith("/WinRTModulePlatformAbiCall.kt")
-        }.contents
+        }?.contents.orEmpty()
 
         assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler)"))
         assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
@@ -10841,8 +10841,8 @@ class KotlinProjectionGeneratorTest {
             widgetContents.normalizedSource().contains("val __winrtCallSiteArgument2: WidgetHandler = handler"),
         )
         assertEquals(0, callSiteSupport.projectionCallSiteCount())
-        assertTrue(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
-        assertTrue(callSiteSupport.contains("WinRTDelegateBridge.createProjectedDelegateArgument(__value)"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
+        assertFalse(callSiteSupport.contains("codec_create_"))
         assertFalse(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"WinRT ABI binding is unavailable\")"))
         assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken = error(\"WinRT ABI binding is unavailable\")"))
@@ -11311,7 +11311,7 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val delegateContents = filesByName.getValue("GenericHandler.kt").contents
         val sourceContents = filesByName.getValue("IGenericHandlerSource.kt").contents
-        val callSiteSupport = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val callSiteSupport = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents.orEmpty()
 
         assertTrue(delegateContents, delegateContents.contains("public fun interface GenericHandler<T0>"))
         assertTrue(delegateContents, delegateContents.contains("public operator fun invoke(`value`: T0): T0"))
@@ -11326,7 +11326,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(delegateContents, delegateContents.contains("WinRTDelegateReference.fromOwnedReference(reference, DESCRIPTOR)"))
         assertTrue(sourceContents, sourceContents.projectionCallSiteCount() > 0)
         assertTrue(sourceContents, sourceContents.contains("val __winrtCallSiteArgument2: GenericHandler<String>"))
-        assertTrue(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
         assertTrue(
             callSiteSupport,
             callSiteSupport.normalizedSource().contains(
@@ -12068,12 +12068,12 @@ class KotlinProjectionGeneratorTest {
         val filesByName = KotlinProjectionGenerator().generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val contents = filesByName.getValue("Widget.kt").contents
-        val callSiteSupport = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
+        val callSiteSupport = filesByName["WinRTModulePlatformAbiCall.kt"]?.contents.orEmpty()
 
         assertTrue(contents.contains("callback: ChangedCallback"))
         assertTrue(contents, contents.projectionCallSiteCount() > 0)
         assertTrue(contents, contents.contains("val __winrtCallSiteArgument2: ChangedCallback"))
-        assertTrue(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
+        assertFalse(callSiteSupport, callSiteSupport.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
     }
 
     @Test

@@ -272,6 +272,10 @@ private fun KotlinProjectionRenderer.registerCallSiteAbiType(
     support: KotlinModulePlatformAbiCallSupport?,
 ) {
     if (support == null) return
+    if (binding.kind == KotlinProjectionAbiValueKind.Delegate &&
+        recipe.callables?.ownerFqName == WINRT_DELEGATE_BRIDGE_CLASS_NAME.canonicalName &&
+        recipe.callables?.createMarshaler == "createProjectedDelegateArgument"
+    ) return
     if (recipe.kind !in GENERATED_ABI_METADATA_RECIPE_KINDS) return
     val storage = recipe.storageRecipe
     // Enums are fully described by their closed IR type and the generated Metadata.toAbi/fromAbi
@@ -367,6 +371,18 @@ private fun KotlinProjectionRenderer.materializeParameterCallSiteRecipe(
     }
     val factory = recipePlan.inputFactory
     if (factory != null) {
+        if (binding.typeBinding.kind == KotlinProjectionAbiValueKind.Delegate &&
+            factory.body == CodeBlock.of("return %T.createProjectedDelegateArgument(__value)\n", WINRT_DELEGATE_BRIDGE_CLASS_NAME)
+        ) {
+            return recipe.withCallSiteProjection(
+                callables = WinRTProjectionCallSiteCallables(
+                    ownerFqName = WINRT_DELEGATE_BRIDGE_CLASS_NAME.canonicalName,
+                    createMarshaler = "createProjectedDelegateArgument",
+                    carrierProperty = "abi",
+                    closeMarshaler = factory.closeFunction,
+                ),
+            )
+        }
         val support = callSiteSupport
             ?: binding.typeBinding.failCallSitePlan("requires a generated closed input codec without module support")
         val projectedType = projectedCallSiteType(binding.typeBinding)

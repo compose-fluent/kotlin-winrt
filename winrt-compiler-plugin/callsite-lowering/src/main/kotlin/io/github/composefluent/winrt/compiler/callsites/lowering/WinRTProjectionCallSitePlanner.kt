@@ -218,6 +218,7 @@ internal class WinRTProjectionCallSitePlanner(
             directEnumRecipe(type, projectedName)?.let { return it }
             directStructRecipe(type, projectedName)?.let { return it }
             if (usage == RecipeUsage.INPUT && !hasSpecializedInputCodec(abiTypeName)) {
+                directDelegateInputRecipe(type, projectedName)?.let { return it }
                 directProjectionInputRecipe(type, projectedName)?.let { return it }
             }
         }
@@ -487,6 +488,35 @@ internal class WinRTProjectionCallSitePlanner(
             ),
             children = listOf(storage),
             typeSignature = signature,
+        )
+    }
+
+    private fun directDelegateInputRecipe(type: IrType, projectedName: String): WinRTProjectionCallSiteRecipe? {
+        val visited = mutableSetOf<IrClass>()
+        fun isProjectedDelegate(candidate: IrClass): Boolean = visited.add(candidate) &&
+            (candidate.fqNameWhenAvailable?.asString() == "io.github.composefluent.winrt.runtime.WinRTProjectedDelegate" ||
+                candidate.superTypes.any { it.classOrNull?.owner?.let(::isProjectedDelegate) == true })
+        if (type.classOrNull?.owner?.let(::isProjectedDelegate) != true) return null
+        // CsWinRT MarshalDelegate likewise converges handle creation in the runtime. The
+        // projected delegate itself still owns its exact closed descriptor and callback IID.
+        val storage = referenceRecipe(
+            WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
+            AbiTypeKind.PROJECTION.typeSignature(projectedName),
+            type.isNullable(),
+        )
+        return WinRTProjectionCallSiteRecipe(
+            kind = WinRTProjectionCallSiteRecipeKind.PROJECTION,
+            abiCarriers = storage.abiCarriers,
+            valueCarrier = storage.valueCarrier,
+            nullable = type.isNullable(),
+            callables = WinRTProjectionCallSiteCallables(
+                ownerFqName = "io.github.composefluent.winrt.runtime.WinRTDelegateBridge",
+                createMarshaler = "createProjectedDelegateArgument",
+                carrierProperty = "abi",
+                closeMarshaler = "close",
+            ),
+            children = listOf(storage),
+            typeSignature = storage.typeSignature,
         )
     }
 

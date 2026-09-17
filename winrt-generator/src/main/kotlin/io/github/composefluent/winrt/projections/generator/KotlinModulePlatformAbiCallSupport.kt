@@ -50,6 +50,12 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private val codecsByIdentity = linkedMapOf<KotlinProjectionCallSiteCodecIdentity, KotlinProjectionCallSiteCodec>()
     private val abiTypes = linkedMapOf<String, KotlinProjectionAbiTypeMetadata>()
     private val metadata = linkedMapOf<String, KotlinProjectionModuleMetadata>()
+    private val externalMetadataReferences = linkedSetOf<String>()
+
+    /** Closed projection helpers consume module metadata without going through a codec body. */
+    internal fun retainMetadataReference(expression: CodeBlock) {
+        externalMetadataReferences += expression.toString()
+    }
 
     init {
         require(
@@ -277,6 +283,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         codecsByIdentity.putAll(source.codecsByIdentity)
         abiTypes.putAll(source.abiTypes)
         metadata.putAll(source.metadata)
+        externalMetadataReferences.addAll(source.externalMetadataReferences)
     }
 
     private fun record(plan: KotlinTypedProjectionCallSitePlan): ModuleCallTarget {
@@ -428,12 +435,12 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     /**
      * Metadata expressions are composed while a call-site plan is being inspected, before the
      * planner knows whether that call will become a module codec or remain an inline call site.
-     * Keep only values reachable from emitted codec bodies, otherwise a one-off call would create
+     * Keep only values reachable from emitted codecs or closed helpers, otherwise a one-off call would create
      * an otherwise empty support file. Dependencies are returned before their users so same-object
      * Kotlin initializers cannot observe an uninitialized later property.
      */
     private fun reachableMetadata(): List<KotlinProjectionModuleMetadata> {
-        if (metadata.isEmpty() || codecs.isEmpty()) return emptyList()
+        if (metadata.isEmpty()) return emptyList()
         val values = metadata.values.toList()
         val byName = values.associateBy(KotlinProjectionModuleMetadata::name)
         // Generated names have a fixed-width hash. Scan each expression once instead of
@@ -445,7 +452,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                 .distinctBy(KotlinProjectionModuleMetadata::name)
                 .sortedBy(KotlinProjectionModuleMetadata::name)
                 .toList()
-        val roots = codecs.values.flatMap { references(it.body.toString()) }
+        val roots = codecs.values.flatMap { references(it.body.toString()) } +
+            externalMetadataReferences.flatMap(::references)
         if (roots.isEmpty()) return emptyList()
 
         val reachable = linkedSetOf<String>()
@@ -529,8 +537,30 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     )
                 }
             }
-            .addCode(codec.body)
+            .addCode(sharedDisposalBody(codec))
             .build()
+
+    private fun sharedDisposalBody(codec: KotlinProjectionCallSiteCodec): CodeBlock {
+        // Preserve every ABI type/role binding, but emit an identical raw disposal loop once.
+        // The complete body includes the element cleanup and finally/free behavior; matching
+        // only the carrier shape would incorrectly conflate HSTRING, COM and struct cleanup.
+        if (codec.role != KotlinProjectionAbiCodecRole.DISPOSE_ABI ||
+            codec.parameters.size != 2 || codec.parameters.any { it.type != RAW_ADDRESS_CLASS_NAME }
+        ) return codec.body
+        val implementation = codecs.values.asSequence()
+            .filter { it.role == codec.role && it.returnType == codec.returnType &&
+                it.hasSameImplementation(codec.parameters, codec.body, codec.consumesOwnedAbi) }
+            .minBy(KotlinProjectionCallSiteCodec::name)
+        if (implementation.name == codec.name) return codec.body
+        return CodeBlock.builder()
+            .add("return %T.%L(", abiSupportClassName(implementation.abiTypeName), implementation.name)
+            .apply { codec.parameters.forEachIndexed { index, parameter ->
+                if (index > 0) add(", ")
+                add("%N", parameter.name)
+            } }
+            .add(")\n")
+            .build()
+    }
 
     private fun renderAbiType(metadata: KotlinProjectionAbiTypeMetadata): TypeSpec =
         TypeSpec.objectBuilder("AbiType_${stableCodecHash("type", metadata.abiTypeName)}")
