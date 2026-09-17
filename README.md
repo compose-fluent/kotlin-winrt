@@ -1,4 +1,4 @@
-# kotlin-winrt
+<h1><img src="docs/Assets/icon.svg" alt="kotlin-winrt logo" height="48" valign="middle"> kotlin-winrt</h1>
 
 [![Publish Snapshot](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml/badge.svg?branch=master)](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml)
 [![Snapshot](https://img.shields.io/maven-metadata/v?label=snapshot&metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Fcompose-fluent%2Fwinrt-runtime%2Fmaven-metadata.xml)](https://central.sonatype.com/repository/maven-snapshots/io/github/compose-fluent/winrt-runtime/maven-metadata.xml)
