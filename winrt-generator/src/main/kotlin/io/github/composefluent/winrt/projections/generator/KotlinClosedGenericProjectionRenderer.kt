@@ -276,10 +276,11 @@ private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(
             "Mapped closed generic '${binding.typeName}' requires ${adapter.typeArgumentCount} type arguments."
         }
         binding.typeArguments.map { argument ->
-            collectionReferenceAdapterCode(argument)
+            collectionReferenceAdapterCode(argument, hoistMetadata = true)
                 ?: error("Mapped closed generic '${binding.typeName}' has no reference adapter for ${argument.typeName}.")
         }
     }.orEmpty()
+    mappedAdapterArguments.forEach { modulePlatformAbiCalls?.retainMetadataReference(it) }
     val mappedAdapterArgumentCode = CodeBlock.builder()
         .apply { mappedAdapterArguments.forEach { argument -> add(", %L", argument) } }
         .build()

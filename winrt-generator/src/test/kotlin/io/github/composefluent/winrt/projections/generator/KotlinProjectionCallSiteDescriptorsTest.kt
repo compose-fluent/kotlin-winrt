@@ -17,6 +17,98 @@ import org.junit.Test
 
 class KotlinProjectionCallSiteDescriptorsTest {
     @Test
+    fun scalar_result_pointee_types_share_only_the_physical_output_pointer_shape() {
+        val renderer = KotlinProjectionRenderer()
+        fun plan(kind: KotlinProjectionAbiValueKind, name: String) = renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan(
+                bindingName = "sample.read$name",
+                returnBinding = KotlinProjectionAbiTypeBinding(kind, name),
+                parameterBindings = emptyList(),
+            ),
+        ).plan
+        val integer = plan(KotlinProjectionAbiValueKind.Int32, "Int")
+        val floating = plan(KotlinProjectionAbiValueKind.Float, "Float")
+        assertEquals(integer.platformShape, floating.platformShape)
+        assertNotEquals(integer.functionName, floating.functionName)
+        val arguments = listOf(CodeBlock.of("instance"), CodeBlock.of("slot"))
+        val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "ScalarAbi"))
+        assertTrue(support.inlineInvocation(integer, arguments).toString().contains(": kotlin.Int ="))
+        assertTrue(support.inlineInvocation(floating, arguments).toString().contains(": kotlin.Float ="))
+    }
+
+    @Test
+    fun platform_shape_is_shared_when_only_public_projection_identity_differs() {
+        val first = modulePlan("sample.FirstResult")
+        val second = modulePlan("sample.SecondResult")
+        assertNotEquals(first.functionName, second.functionName)
+        assertEquals(first.platformShape, second.platformShape)
+        assertTrue(first.platformShape.canonicalDescriptor.contains("ADDRESS:1"))
+
+        val support = KotlinModulePlatformAbiCallSupport(
+            className = ClassName("sample", "ModulePlatformAbi"),
+            abiSupportShardCount = 4,
+        )
+        support.observe(KotlinTypedProjectionCallSiteInvocation(first, listOf(CodeBlock.of("value"))))
+        support.observe(KotlinTypedProjectionCallSiteInvocation(second, listOf(CodeBlock.of("value"))))
+
+        assertEquals(setOf(first.platformShape), support.observedPlatformCallShapes())
+        val files = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
+        assertEquals(setOf(support.callSiteOwnerFqName(first), support.callSiteOwnerFqName(second)).size, files.size)
+        // Typed wrappers have independent placement even when their physical ABI is identical.
+        val plans = (0 until 64).map { modulePlan("sample.Result$it") }
+        assertEquals(1, plans.map { support.platformShapeOwnerFqName(it.platformShape) }.toSet().size)
+        assertTrue(plans.map(support::callSiteOwnerFqName).toSet().size > 1)
+    }
+
+    @Test
+    fun platform_shape_retains_hstring_transport_and_ordered_carriers() {
+        val renderer = KotlinProjectionRenderer()
+        val stringPlan = renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan(
+                bindingName = "sample.consumeString",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        name = "value",
+                        typeBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.String, "String"),
+                    ),
+                ),
+            ),
+        ).plan
+        val addressPlan = renderer.composeTypedProjectionCallSite(
+            renderer.requireAbiCallPlan(
+                bindingName = "sample.consumeAddress",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        name = "value",
+                        typeBinding = KotlinProjectionAbiTypeBinding(
+                            KotlinProjectionAbiValueKind.RawAddress,
+                            "io.github.composefluent.winrt.runtime.RawAddress",
+                        ),
+                    ),
+                ),
+            ),
+        ).plan
+
+        assertEquals(
+            listOf(
+                KotlinProjectionPlatformCallArgument.INSTANCE,
+                KotlinProjectionPlatformCallArgument.hstring(),
+            ),
+            stringPlan.platformShape.arguments,
+        )
+        assertEquals(
+            listOf(
+                KotlinProjectionPlatformCallArgument.INSTANCE,
+                KotlinProjectionPlatformCallArgument.pointer(),
+            ),
+            addressPlan.platformShape.arguments,
+        )
+        assertNotEquals(stringPlan.platformShape, addressPlan.platformShape)
+    }
+
+    @Test
     fun module_metadata_emits_only_reachable_values_in_dependency_order() {
         // CsWinRT main.cpp emits ABI support beside the projected declarations. Kotlin's
         // shared initializer support additionally needs dependency-before-user ordering.
@@ -296,7 +388,7 @@ class KotlinProjectionCallSiteDescriptorsTest {
         val generatedFiles = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
         assertTrue(invocation.plan.descriptor.slots.single().recipe.callables?.toAbi.orEmpty().isBlank())
         assertEquals(
-            "windows.web.http.HttpRequestMessage?",
+            "io.github.composefluent.winrt.runtime.IWinRTObject?",
             invocation.plan.descriptor.slots.single().recipe.projectedKotlinTypeName,
         )
         assertTrue(generatedFiles.isEmpty())

@@ -3778,6 +3778,7 @@ class WindowsToolkitPluginTest {
 
     @Test
     fun ide_import_preparation_preserves_identity_producer_dependencies() {
+        // CsWinRTIncludeProjection preserves generated Compile inputs across design-time passes.
         val project = ProjectBuilder.builder().withName("ide-identity-producer-test").build()
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val producer = project.tasks.register("produceIdentity")
@@ -3788,6 +3789,41 @@ class WindowsToolkitPluginTest {
         val ideImport = project.tasks.register("prepareKotlinIdeaImport").get()
         assertTrue(ideImport.taskDependencies.getDependencies(ideImport).contains(generation))
         assertTrue(generation.taskDependencies.getDependencies(generation).contains(producer.get()))
+        val generated = generation.outputDirectory.get().asFile.resolve("sample/sample.kt")
+        generated.parentFile.mkdirs()
+        val source = "@file:Suppress(\"KOTLIN_WINRT_GENERATED\")\ninterface IProbe"
+        generated.writeText(source)
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+        assertTrue("Deferred IDE preparation must retain the last generated projection", generated.isFile)
+        assertEquals(source, generated.readText())
+    }
+
+    @Test
+    fun projection_identity_does_not_require_native_linking_but_packaging_identity_does() {
+        // CsWinRT projection input preparation precedes compilation; DLL packaging is a build concern.
+        val root = ProjectBuilder.builder().withName("root").build()
+        val producer = ProjectBuilder.builder().withName("producer").withParent(root).build()
+        producer.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        producer.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64 {
+            binaries.sharedLib()
+        }
+        producer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        (producer as org.gradle.api.internal.project.ProjectInternal).evaluate()
+
+        val projectionIdentity = producer.tasks.named("prepareWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+        val packagingIdentity = producer.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
+        val link = producer.tasks.named("linkReleaseSharedMingwX64").get()
+        assertFalse(link in projectionIdentity.taskDependencies.getDependencies(projectionIdentity))
+        assertTrue(projectionIdentity.authoredTargetArtifactFiles.isEmpty)
+        assertTrue(link in packagingIdentity.taskDependencies.getDependencies(packagingIdentity))
+
+        val consumer = ProjectBuilder.builder().withName("consumer").withParent(root).build()
+        consumer.pluginManager.apply("java")
+        consumer.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        consumer.dependencies.add("implementation", consumer.dependencies.project(mapOf("path" to ":producer")))
+        val generation = consumer.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
+        assertEquals(setOf(projectionIdentity.outputFile.get().asFile), generation.dependencyIdentityFiles.files)
+        assertEquals(setOf(projectionIdentity), generation.dependencyIdentityFiles.buildDependencies.getDependencies(null))
     }
 
     @Test
@@ -11890,7 +11926,7 @@ class WindowsToolkitPluginTest {
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
-            tasks.named("generateWinRTIdentity") {
+            tasks.named("prepareWinRTIdentity") {
                 sourceAdditionManifestFiles.setFrom(file("source-additions.tsv"))
                 projectionRegistrarFiles.setFrom(file("projection-registrar.tsv"))
             }
@@ -11937,10 +11973,10 @@ class WindowsToolkitPluginTest {
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:prepareWinRTIdentity")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTIdentity")?.outcome)
         val producerIdentity = projectDir.resolve(
-            "producer/build/generated/kotlin-winrt/identity/kotlin-winrt.json",
+            "producer/build/generated/kotlin-winrt/identity/projection.json",
         ).toFile()
         assertEquals(producerOwnedTypeNames, readProjectionSurfaceIdentity(producerIdentity).sourceAdditions.toSet())
         val consumerRoot = projectDir.resolve("consumer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
@@ -12037,7 +12073,7 @@ class WindowsToolkitPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTProjections")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:prepareWinRTIdentity")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTIdentity")?.outcome)
 
@@ -12048,7 +12084,7 @@ class WindowsToolkitPluginTest {
         val producerManifestNames = readGeneratedSourceAdditionTypeNames(listOf(producerManifest.toFile())).toSet()
         assertTrue("Producer manifest must publish DisplayInformationInterop", "windows.graphics.display.DisplayInformationInterop" in producerManifestNames)
         val producerIdentity = projectDir.resolve(
-            "producer/build/generated/kotlin-winrt/identity/kotlin-winrt.json",
+            "producer/build/generated/kotlin-winrt/identity/projection.json",
         ).toFile()
         assertEquals(producerManifestNames, readProjectionSurfaceIdentity(producerIdentity).sourceAdditions.toSet())
 

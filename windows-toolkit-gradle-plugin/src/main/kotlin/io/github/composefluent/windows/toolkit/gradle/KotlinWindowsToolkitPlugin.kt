@@ -94,6 +94,8 @@ const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRTCompi
 const val KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION: String = "kotlinWinRTGeneratorWorker"
 private const val KOTLIN_WINRT_AUTHORING_SCANNER_CONFIGURATION: String = "kotlinWinRTAuthoringScanner"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
+private val KOTLIN_WINRT_IDENTITY_PURPOSE_ATTRIBUTE: Attribute<String> =
+    Attribute.of("io.github.composefluent.winrt.identity-purpose", String::class.java)
 const val KOTLIN_APPX_RESOURCES_ELEMENTS_CONFIGURATION: String = "kotlinAppxResourcesElements"
 const val KOTLIN_APPX_RESOURCES_CONFIGURATION: String = "kotlinAppxResources"
 const val KOTLIN_APPX_RESOURCES_USAGE: String = "kotlin-appx-resources"
@@ -204,8 +206,8 @@ private fun configureWinRTLibraryModel(
     project.extensions.extraProperties["kotlinWinRTModel"] = project.provider {
         if (extension.applicationEnabled.get()) "application" else "library"
     }
-    val identityTask = project.tasks.register(
-        "generateWinRTIdentity",
+    fun registerIdentityTask(name: String) = project.tasks.register(
+        name,
         GenerateWinRTIdentityTask::class.java,
         Action<GenerateWinRTIdentityTask> { task ->
             task.group = "kotlin-winrt"
@@ -305,6 +307,26 @@ private fun configureWinRTLibraryModel(
         },
     )
 
+    val identityTask = registerIdentityTask("generateWinRTIdentity")
+    // CsWinRTIncludeProjection consumes metadata before compilation. Keep that boundary
+    // separate from packaging identities, which can embed linked authored DLLs.
+    val projectionIdentityTask = registerIdentityTask("prepareWinRTIdentity").apply {
+        configure { task ->
+            task.description = "Prepares WinRT identity metadata for projection generation and IDE import."
+            task.outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/identity/projection.json"))
+        }
+    }
+
+    val projectionIdentityElements = project.configurations.create("kotlinWinRTProjectionIdentityElements") {
+        it.isCanBeConsumed = true
+        it.isCanBeResolved = false
+        it.attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE))
+        it.attributes.attribute(KOTLIN_WINRT_IDENTITY_PURPOSE_ATTRIBUTE, "projection")
+        it.outgoing.artifact(projectionIdentityTask.flatMap { task -> task.outputFile }) { artifact ->
+            artifact.type = "json"
+        }
+    }
+
     val identityElements = project.configurations.create(
         KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION,
         Action { configuration ->
@@ -381,6 +403,7 @@ private fun configureWinRTLibraryModel(
         Action { configuration ->
             configuration.isCanBeConsumed = false
             configuration.isCanBeResolved = true
+            configuration.attributes.attribute(KOTLIN_WINRT_IDENTITY_PURPOSE_ATTRIBUTE, "projection")
             configuration.attributes.attribute(
                 Usage.USAGE_ATTRIBUTE,
                 project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
@@ -388,6 +411,7 @@ private fun configureWinRTLibraryModel(
         },
     )
     configureWinRTIdentityProjectDependencies(project, identityElements, includeExternalModules = false)
+    configureWinRTIdentityProjectDependencies(project, projectionIdentityElements, includeExternalModules = false)
     configureWinRTIdentityProjectDependencies(project, dependencyIdentities, includeExternalModules = true)
     // A plain Java/Kotlin library has one generic resource variant rather than target-specific
     // KMP variants. Mirror its ordinary source dependencies into that optional variant so Maven
@@ -438,6 +462,7 @@ private fun configureWinRTLibraryModel(
             task.enabled = false
         }
         identityElements.isCanBeConsumed = false
+        projectionIdentityElements.isCanBeConsumed = false
     }
     project.plugins.withId("java") {
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
@@ -736,6 +761,7 @@ private fun configureWinAppTasks(
         Action { configuration ->
             configuration.isCanBeConsumed = false
             configuration.isCanBeResolved = true
+            configuration.attributes.attribute(KOTLIN_WINRT_IDENTITY_PURPOSE_ATTRIBUTE, "packaging")
             configuration.attributes.attribute(
                 Usage.USAGE_ATTRIBUTE,
                 project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
@@ -743,18 +769,27 @@ private fun configureWinAppTasks(
         },
     )
     val dependencyIdentityFiles = kotlinWinRTIdentityFiles(project, identityDependencies)
+    val projectionIdentityDependencies = project.configurations.create("${identityConfigurationName}Projection") {
+        it.isCanBeConsumed = false
+        it.isCanBeResolved = true
+        it.attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE))
+        it.attributes.attribute(KOTLIN_WINRT_IDENTITY_PURPOSE_ATTRIBUTE, "projection")
+    }
+    val projectionIdentityFiles = kotlinWinRTIdentityFiles(project, projectionIdentityDependencies)
     val dependencyAppxResources = project.configurations.maybeCreate(resourceConfigurationName).apply {
         isCanBeConsumed = false
         isCanBeResolved = true
         attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, KOTLIN_APPX_RESOURCES_USAGE))
     }
-    configureWinRTIdentityProjectDependencies(
-        project, identityDependencies, includeExternalModules = true,
-        selectedVariant = selectedVariant.takeIf {
-            project.extensions.findByType(KotlinMultiplatformExtension::class.java) != null
-        },
-        observeSelectedVariantImmediately = observeVariantDependenciesImmediately,
-    )
+    listOf(identityDependencies, projectionIdentityDependencies).forEach { configuration ->
+        configureWinRTIdentityProjectDependencies(
+            project, configuration, includeExternalModules = true,
+            selectedVariant = selectedVariant.takeIf {
+                project.extensions.findByType(KotlinMultiplatformExtension::class.java) != null
+            },
+            observeSelectedVariantImmediately = observeVariantDependenciesImmediately,
+        )
+    }
     configureAppxResourceDependencies(project, dependencyAppxResources, selectedVariant)
     val appxResourceVariantRegistry = AppxResourceVariantRegistry()
     project.dependencies.components.all(Action<ComponentMetadataDetails> { metadata ->
@@ -849,23 +884,23 @@ private fun configureWinAppTasks(
         )
     }
     project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        task.dependencyIdentityFiles.from(projectionIdentityFiles)
     }
     restoreWinAppDependenciesTask.configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
-        configureWinAppRestoreInputFiles(project, task, extension.packageReferences, dependencyIdentityFiles)
+        task.dependencyIdentityFiles.from(projectionIdentityFiles)
+        configureWinAppRestoreInputFiles(project, task, extension.packageReferences, projectionIdentityFiles)
     }
     project.tasks.named("prepareWinRTProjectionMetadata", GenerateWinRTProjectionsTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        task.dependencyIdentityFiles.from(projectionIdentityFiles)
     }
     project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        task.dependencyIdentityFiles.from(projectionIdentityFiles)
     }
     project.tasks.named("mergeWinRTCompilerSupport", MergeWinRTCompilerSupportTask::class.java).configure { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        task.dependencyIdentityFiles.from(projectionIdentityFiles)
     }
     project.tasks.withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java).configureEach { task ->
-        task.dependencyIdentityFiles.from(dependencyIdentityFiles)
+        task.dependencyIdentityFiles.from(projectionIdentityFiles)
     }
     val applicationIdentityTask = project.tasks.register(
         taskName("generateWinAppIdentity"),
@@ -1920,7 +1955,11 @@ private fun configureMingwApplicationEntry(
             ?: throw org.gradle.api.GradleException(
                 "Selected mingwX64 executable '${variant.executableName}' is no longer available on target '${target.name}'.",
             )
-        executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
+        // Runtime assets alone do not opt an executable into the generated application host.
+        // Keep its own entry (including main(args)) when no user main was supplied for a wrapper.
+        if (!entryTask.flatMap { it.mainClass }.orNull.isNullOrBlank()) {
+            executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
+        }
         executable.linkerOpts(if (console.get()) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
         // Kotlin/Native's model name (for example, releaseExecutable) is not the staged file
         // name. Keep the output file Provider as the single source for payload, manifest and run
@@ -2558,7 +2597,9 @@ private fun configureWinRTGeneration(
         }.getOrElse { error ->
             if (error is StaticPreparationUnavailable) {
                 project.logger.info("Skipping configuration-time WinRT static preparation: ${error.message}")
-                null
+                // Deferred generation is not removal of the projection selection. A later
+                // IDE model pass must not delete sources produced by its preparation tasks.
+                return@afterEvaluate
             } else {
                 throw error
             }

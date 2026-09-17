@@ -142,6 +142,22 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Configure projection build memory
+        shell: pwsh
+        run: |
+          # Kotlin compiles in-process, so the full SDK projection uses the Gradle heap.
+          # Apply this to compilation AND publication (which can compile another SDK baseline).
+          $gradleHome = if ($env:GRADLE_USER_HOME) { $env:GRADLE_USER_HOME } else { Join-Path $env:USERPROFILE ".gradle" }
+          New-Item -ItemType Directory -Force -Path $gradleHome | Out-Null
+          @"
+
+          org.gradle.jvmargs=-Xmx8g -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          org.gradle.parallel=false
+          org.gradle.daemon=false
+          kotlin.compiler.execution.strategy=in-process
+          "@ | Add-Content -Path (Join-Path $gradleHome "gradle.properties") -Encoding utf8
+
       - name: Validate Publication Kind
         shell: pwsh
         run: |

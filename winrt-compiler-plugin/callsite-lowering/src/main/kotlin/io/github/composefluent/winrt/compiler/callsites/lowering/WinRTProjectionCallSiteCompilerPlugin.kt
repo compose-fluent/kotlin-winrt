@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.ir.inline
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
@@ -48,6 +49,8 @@ import org.jetbrains.kotlin.ir.builders.irUnit
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
+import org.jetbrains.kotlin.ir.declarations.IrDeclaration
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
@@ -63,6 +66,9 @@ import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
 import org.jetbrains.kotlin.ir.expressions.IrGetEnumValue
+import org.jetbrains.kotlin.ir.expressions.IrGetValue
+import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
+import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
@@ -114,6 +120,7 @@ fun lowerWinRTProjectionCallSites(
     lowerWinRTGenericDelegateSamReferences(moduleFragment, pluginContext, guidSignaturesByKotlinClass)
     lowerWinRTEnumConstantReads(moduleFragment, pluginContext)
     val annotatedFunctions = mutableListOf<Pair<IrSimpleFunction, IrFunctionAccessExpression>>()
+    val abiFunctions = mutableListOf<IrSimpleFunction>()
     val inlineCallSites = mutableListOf<InlineProjectionCallSite>()
     moduleFragment.acceptChildrenVoid(
         object : IrVisitorVoid() {
@@ -122,6 +129,15 @@ fun lowerWinRTProjectionCallSites(
                     val result = statement as? IrVariable ?: return@forEachIndexed
                     val annotation = result.annotations.singleOrNull(::isProjectionCallSiteAnnotation)
                         ?: return@forEachIndexed
+                    val explicitArguments = result.explicitCallSiteArguments()
+                    if (explicitArguments != null) {
+                        val arguments = explicitArguments.getOrElse { failure ->
+                            pluginContext.reportError(result, "cannot bind explicit arguments: ${failure.message}")
+                            return@forEachIndexed
+                        }
+                        inlineCallSites += InlineProjectionCallSite(result, annotation, arguments, explicit = true)
+                        return@forEachIndexed
+                    }
                     val arguments = statements.subList(0, index)
                         .asReversed()
                         .takeWhile { candidate ->
@@ -138,8 +154,16 @@ fun lowerWinRTProjectionCallSites(
             }
 
             override fun visitSimpleFunction(declaration: IrSimpleFunction) {
+                if (declaration.annotations.any {
+                    it.type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.WinRTAbiCallSite"
+                }) abiFunctions += declaration
                 declaration.annotations.singleOrNull(::isProjectionCallSiteAnnotation)
-                    ?.let { annotation -> annotatedFunctions += declaration to annotation }
+                    ?.let { annotation ->
+                        val sourceGenerated = annotation.symbol.owner.parameters.indexOfFirst {
+                            it.name.asString() == "sourceGenerated"
+                        }.let { index -> (annotation.arguments.getOrNull(index) as? IrConst)?.value == true }
+                        if (!sourceGenerated) annotatedFunctions += declaration to annotation
+                    }
                 super.visitSimpleFunction(declaration)
             }
 
@@ -154,15 +178,26 @@ fun lowerWinRTProjectionCallSites(
             }
         },
     )
-    lowerWinRTProjectionInboundCallSites(moduleFragment, pluginContext)
+    val context = WinRTCallSiteLoweringContext(moduleFragment, pluginContext)
+    abiFunctions.forEach { function ->
+        runCatching { lowerWinRTAbiCallSite(function, pluginContext, context.directBackend) }
+            .onFailure { pluginContext.reportError(function, "cannot lower fixed ABI signature: ${it.message}") }
+    }
+    lowerWinRTProjectionInboundCallSites(moduleFragment, pluginContext, context)
 
     if (annotatedFunctions.isEmpty() && inlineCallSites.isEmpty()) return
 
-    val projectedTypes = WinRTProjectedTypeCanonicalizer(pluginContext)
-    val planner = WinRTProjectionCallSitePlanner(moduleFragment, pluginContext, projectedTypes)
-    val symbolResolution = runCatching {
-        WinRTCallSiteRecipeLowering.create(pluginContext, moduleFragment)
+    val projectedTypes = context.projectedTypes
+    val planner = runCatching { context.planner }.getOrElse { failure ->
+        val detail = "has invalid ABI metadata: ${failure.message}"
+        if (annotatedFunctions.isNotEmpty()) {
+            pluginContext.reportError(annotatedFunctions.first().first, detail)
+        } else {
+            pluginContext.reportError(inlineCallSites.first().result, detail)
+        }
+        return
     }
+    val symbolResolution = context.recipeResolution
     val symbols = symbolResolution.getOrNull()
     val symbolResolutionDetail = symbolResolution.exceptionOrNull()?.message
     for ((function, annotation) in annotatedFunctions) {
@@ -176,8 +211,8 @@ fun lowerWinRTProjectionCallSites(
             pluginContext.reportError(function, error)
             continue
         }
-        if (!function.hasTodoPlaceholder()) {
-            pluginContext.reportError(function, "must contain a TODO() placeholder body before lowering")
+        if (!function.hasPureTodoPlaceholder()) {
+            pluginContext.reportError(function, "must contain only a TODO() placeholder body with a constant message before lowering")
             continue
         }
         if (symbols == null) {
@@ -208,7 +243,8 @@ fun lowerWinRTProjectionCallSites(
             result,
             pluginContext,
         ) ?: continue
-        val plan = runCatching { planner.plan(createInlineCallSiteFunction(callSite, pluginContext), metadata) }
+        val function = createInlineCallSiteFunction(callSite, pluginContext)
+        val plan = runCatching { planner.plan(function, metadata) }
             .getOrElse { failure ->
                 pluginContext.reportError(result, "cannot plan typed ABI lowering: ${failure.message}")
                 continue
@@ -217,7 +253,6 @@ fun lowerWinRTProjectionCallSites(
             pluginContext.reportError(result, error)
             continue
         }
-        val function = createInlineCallSiteFunction(callSite, pluginContext)
         validateCallSiteFunction(function, plan, projectedTypes)?.let { error ->
             pluginContext.reportError(result, error)
             continue
@@ -322,7 +357,23 @@ private data class InlineProjectionCallSite(
     val result: IrVariable,
     val annotation: IrFunctionAccessExpression,
     val arguments: List<IrVariable>,
+    val explicit: Boolean = false,
 )
+
+private fun IrVariable.explicitCallSiteArguments(): Result<List<IrVariable>>? {
+    val call = initializer as? IrCall ?: return null
+    if (call.symbol.owner.fqNameWhenAvailable?.asString() != EXPLICIT_CALL_SITE_ARGUMENTS_FQ_NAME) return null
+    return runCatching {
+        val arguments = call.arguments.singleOrNull() as? IrVararg
+            ?: error("expected an explicit vararg list of local variables")
+        arguments.elements.mapIndexed { index, element ->
+            var expression = element as? IrExpression
+            while (expression is IrTypeOperatorCall) expression = expression.argument
+            ((expression as? IrGetValue)?.symbol?.owner as? IrVariable)
+                ?: error("argument $index must reference a local variable; expressions and spreads are not supported")
+        }
+    }
+}
 
 private fun parseMetadata(
     annotation: IrFunctionAccessExpression,
@@ -421,15 +472,15 @@ private fun validateInlineCallSiteMarker(
     callSite: InlineProjectionCallSite,
     descriptor: WinRTProjectionCallSiteDescriptor,
 ): String? {
-    if (callSite.result.name.asString() != INLINE_CALL_SITE_RESULT_NAME) {
+    if (!callSite.explicit && callSite.result.name.asString() != INLINE_CALL_SITE_RESULT_NAME) {
         return "must use the generated local result name $INLINE_CALL_SITE_RESULT_NAME"
     }
-    if (callSite.result.initializer?.hasTodoPlaceholder() != true) {
-        return "must contain a TODO() placeholder initializer before lowering"
+    if (!callSite.explicit && callSite.result.initializer?.hasPureTodoPlaceholder() != true) {
+        return "must contain only a TODO() placeholder initializer with a constant message before lowering"
     }
     val expected = descriptor.functionParameterCount + 2
-    if (callSite.arguments.size != expected) return "must be preceded by exactly $expected typed call-site arguments"
-    callSite.arguments.forEachIndexed { index, argument ->
+    if (callSite.arguments.size != expected) return "must bind exactly $expected typed call-site arguments (received ${callSite.arguments.size})"
+    if (!callSite.explicit) callSite.arguments.forEachIndexed { index, argument ->
         if (argument.name.asString() != "$INLINE_CALL_SITE_ARGUMENT_PREFIX$index") {
             return "argument $index must use the generated local name $INLINE_CALL_SITE_ARGUMENT_PREFIX$index"
         }
@@ -534,41 +585,22 @@ private fun validateCallSiteFunction(
     return null
 }
 
-private fun IrSimpleFunction.hasTodoPlaceholder(): Boolean = body?.hasTodoPlaceholder() == true
-
-private fun IrSimpleFunction.countTodoPlaceholders(): Int {
-    var count = 0
-    body?.acceptChildrenVoid(
-        object : IrVisitorVoid() {
-            override fun visitElement(element: IrElement) {
-                element.acceptChildrenVoid(this)
-            }
-
-            override fun visitCall(expression: IrCall) {
-                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") count += 1
-                super.visitCall(expression)
-            }
-        },
-    )
-    return count
+// Lowering replaces the entire body: never accept a TODO nested in user logic.
+internal fun IrSimpleFunction.hasPureTodoPlaceholder(): Boolean = when (val placeholder = body) {
+    is IrBlockBody -> placeholder.statements.singleOrNull()?.let { statement ->
+        when (statement) {
+            is org.jetbrains.kotlin.ir.expressions.IrReturn ->
+                statement.returnTargetSymbol == symbol && statement.value.hasPureTodoPlaceholder()
+            else -> statement.hasPureTodoPlaceholder()
+        }
+    } == true
+    is org.jetbrains.kotlin.ir.expressions.IrExpressionBody -> placeholder.expression.hasPureTodoPlaceholder()
+    else -> false
 }
 
-private fun IrElement.hasTodoPlaceholder(): Boolean {
-    if (this is IrCall && symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") return true
-    var found = false
-    acceptChildrenVoid(
-        object : IrVisitorVoid() {
-            override fun visitElement(element: IrElement) {
-                if (!found) element.acceptChildrenVoid(this)
-            }
-            override fun visitCall(expression: IrCall) {
-                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") found = true
-                else super.visitCall(expression)
-            }
-        },
-    )
-    return found
-}
+private fun IrElement.hasPureTodoPlaceholder(): Boolean =
+    this is IrCall && symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO" &&
+        arguments.all { it == null || it is IrConst }
 
 private fun IrFunction.regularParameters() = parameters.filter { it.kind == IrParameterKind.Regular }
 
@@ -577,13 +609,13 @@ private fun IrPluginContext.reportError(function: IrSimpleFunction, detail: Stri
     messageCollector.report(
         CompilerMessageSeverity.ERROR,
         "kotlin-winrt call site ${function.fqNameWhenAvailable ?: function.name} $detail.",
-        null,
+        function.callSiteSourceLocation(),
     )
 }
 
 @Suppress("DEPRECATION")
 private fun IrPluginContext.reportError(variable: IrVariable, detail: String) {
-    messageCollector.report(CompilerMessageSeverity.ERROR, "kotlin-winrt call site ${variable.name} $detail.", null)
+    messageCollector.report(CompilerMessageSeverity.ERROR, "kotlin-winrt call site ${variable.name} $detail.", variable.callSiteSourceLocation())
 }
 
 @Suppress("DEPRECATION")
@@ -591,8 +623,16 @@ private fun IrPluginContext.reportEnumConstantError(function: IrSimpleFunction, 
     messageCollector.report(
         CompilerMessageSeverity.ERROR,
         "kotlin-winrt enum constant ${function.fqNameWhenAvailable ?: function.name} $detail.",
-        null,
+        function.callSiteSourceLocation(),
     )
+}
+
+private fun IrDeclaration.callSiteSourceLocation(): CompilerMessageLocation? {
+    var owner: IrDeclarationParent = parent
+    while (owner is IrDeclaration) owner = owner.parent
+    val entry = (owner as? IrFile)?.fileEntry ?: return null
+    return if (startOffset < 0) CompilerMessageLocation.create(entry.name)
+    else CompilerMessageLocation.create(entry.name, entry.getLineNumber(startOffset) + 1, entry.getColumnNumber(startOffset) + 1, null)
 }
 
 private fun IrPluginContext.findClassSymbol(classId: ClassId, fromFile: IrFile? = null): IrClassSymbol? =
@@ -649,3 +689,4 @@ private val KOTLIN_STRING_FQ_NAME = FqName("kotlin.String")
 
 private const val INLINE_CALL_SITE_ARGUMENT_PREFIX = "__winrtCallSiteArgument"
 private const val INLINE_CALL_SITE_RESULT_NAME = "__winrtCallSiteResult"
+private const val EXPLICIT_CALL_SITE_ARGUMENTS_FQ_NAME = "io.github.composefluent.winrt.runtime.winRTProjectionCallSiteArguments"

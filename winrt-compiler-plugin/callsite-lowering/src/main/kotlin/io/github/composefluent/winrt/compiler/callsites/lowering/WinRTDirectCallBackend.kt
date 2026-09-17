@@ -87,6 +87,8 @@ internal class WinRTDirectCallBackend private constructor(
     val supportsNativeRecipeThunks: Boolean
         get() = native != null
 
+    fun canInvokeNativeWords(wordCount: Int): Boolean = native?.canInvokeWords(wordCount) == true
+
     fun emit(
         builder: DeclarationIrBuilder,
         pluginContext: IrPluginContext,
@@ -316,9 +318,9 @@ internal class WinRTDirectCallBackend private constructor(
             )
             if (jvm == null && native == null) return null
             val uintToInt = pluginContext.findDirectClass(KOTLIN_UINT_CLASS_ID, fromFile)
-                ?.directFunction("toInt", emptyList())
+                ?.directFunction("toInt", emptyList(), "kotlin.Int")
             val ulongToLong = pluginContext.findDirectClass(KOTLIN_ULONG_CLASS_ID, fromFile)
-                ?.directFunction("toLong", emptyList())
+                ?.directFunction("toLong", emptyList(), "kotlin.Long")
             return WinRTDirectCallBackend(
                 jvm = jvm,
                 native = native,
@@ -345,9 +347,27 @@ private class JvmFfmSymbols private constructor(
     private val createExactHResultHandle: IrSimpleFunctionSymbol,
     private val carrierLayouts: Map<WinRTProjectionCallSiteAbiCarrier, StaticValue>,
 ) {
+    private val supportFiles = WinRTAbiSupportFiles()
+    private val calls = WinRTAbiCallFunctions()
     private val exactHandleFields = mutableMapOf<Pair<IrFile, List<WinRTProjectionCallSiteAbiCarrier>>, IrField>()
 
     fun emit(
+        builder: DeclarationIrBuilder,
+        pluginContext: IrPluginContext,
+        ownerFunction: IrSimpleFunction,
+        instance: IrExpression,
+        slot: IrExpression,
+        carriers: List<WinRTProjectionCallSiteAbiCarrier>,
+        values: List<IrExpression>,
+    ): IrExpression = calls.call(
+        builder, pluginContext, ownerFunction, supportFiles,
+        "jvm-hresult|" + carriers.joinToString("|"),
+        listOf(instance, slot) + values, pluginContext.irBuiltIns.intType,
+    ) { bodyBuilder, function, operands ->
+        emitBody(bodyBuilder, pluginContext, function, operands[0], operands[1], carriers, operands.drop(2))
+    }
+
+    private fun emitBody(
         builder: DeclarationIrBuilder,
         pluginContext: IrPluginContext,
         ownerFunction: IrSimpleFunction,
@@ -425,8 +445,9 @@ private class JvmFfmSymbols private constructor(
         ownerFunction: IrSimpleFunction,
         carriers: List<WinRTProjectionCallSiteAbiCarrier>,
     ): IrExpression {
-        val file = ownerFunction.containingFile()
+        val source = ownerFunction.abiContainingFile()
             ?: error("kotlin-winrt could not locate the JVM call site's file owner.")
+        val file = supportFiles.file(source, "jvm-hresult|" + carriers.joinToString("|"))
         val key = file to carriers.toList()
         val field = exactHandleFields.getOrPut(key) {
             val fieldName = Name.identifier(
@@ -439,7 +460,7 @@ private class JvmFfmSymbols private constructor(
                     endOffset = ownerFunction.endOffset
                     origin = IrDeclarationOrigin.DEFINED
                     name = fieldName
-                    visibility = DescriptorVisibilities.PRIVATE
+                    visibility = DescriptorVisibilities.PUBLIC
                     type = createExactHResultHandle.owner.returnType
                     isFinal = true
                     isStatic = true
@@ -543,7 +564,7 @@ private class JvmFfmSymbols private constructor(
             val valueLayout = pluginContext.findDirectClass(JAVA_VALUE_LAYOUT_CLASS_ID, fromFile) ?: return null
             val addressLayout = pluginContext.findDirectClass(JAVA_ADDRESS_LAYOUT_CLASS_ID, fromFile) ?: return null
             val handles = pluginContext.findDirectClass(WINRT_JVM_FFM_HANDLES_CLASS_ID, fromFile) ?: return null
-            val exactHandle = handles.directFunction("createExactHResultWordHandle") ?: return null
+            val exactHandle = handles.directFunction("createExactHResultWordHandle", listOf("kotlin.Array<out java.lang.foreign.MemoryLayout>"), "java.lang.invoke.MethodHandle") ?: return null
             fun staticLayoutValue(classId: ClassId, owner: IrClassSymbol, name: String): StaticValue? {
                 val property = owner.owner.declarations.filterIsInstance<IrProperty>()
                     .singleOrNull { it.name.asString() == name }
@@ -572,22 +593,23 @@ private class JvmFfmSymbols private constructor(
                 WinRTProjectionCallSiteAbiCarrier.FLOAT64 to
                     (staticLayoutValue(JAVA_VALUE_LAYOUT_CLASS_ID, valueLayout, "JAVA_DOUBLE") ?: return null),
             )
-            val intToLong = pluginContext.irBuiltIns.intClass.owner.declarations
-                .filterIsInstance<IrSimpleFunction>()
-                .singleOrNull { it.name.asString() == "toLong" }?.symbol ?: return null
+            val intToLong = pluginContext.irBuiltIns.intClass.directFunction("toLong", emptyList(), "kotlin.Long") ?: return null
             return JvmFfmSymbols(
                 memoryLayoutType = memoryLayout.owner.defaultType,
-                memorySegmentOfAddress = memorySegment.directFunction("ofAddress", listOf(KOTLIN_LONG_FQ_NAME)) ?: return null,
-                memorySegmentReinterpret = memorySegment.directFunction("reinterpret", listOf(KOTLIN_LONG_FQ_NAME)) ?: return null,
+                // Java platform types use nullable upper bounds in Kotlin IR.
+                memorySegmentOfAddress = memorySegment.directFunction("ofAddress", listOf("kotlin.Long"), "java.lang.foreign.MemorySegment?") ?: return null,
+                memorySegmentReinterpret = memorySegment.directFunction("reinterpret", listOf("kotlin.Long"), "java.lang.foreign.MemorySegment?") ?: return null,
                 memorySegmentGetAddress = memorySegment.directFunction(
                     "get",
-                    listOf(JAVA_ADDRESS_LAYOUT_FQ_NAME, KOTLIN_LONG_FQ_NAME),
+                    listOf("java.lang.foreign.AddressLayout?", "kotlin.Long"),
+                    "java.lang.foreign.MemorySegment?",
                 ) ?: return null,
                 memorySegmentGetAtIndexAddress = memorySegment.directFunction(
                     "getAtIndex",
-                    listOf(JAVA_ADDRESS_LAYOUT_FQ_NAME, KOTLIN_LONG_FQ_NAME),
+                    listOf("java.lang.foreign.AddressLayout?", "kotlin.Long"),
+                    "java.lang.foreign.MemorySegment?",
                 ) ?: return null,
-                methodHandleInvoke = methodHandle.directFunction("invokeExact") ?: return null,
+                methodHandleInvoke = methodHandle.signaturePolymorphicInvokeExact() ?: return null,
                 valueLayoutAddress = address,
                 intToLong = intToLong,
                 rawComPtrValueGetter = rawComPtrValueGetter,
@@ -621,9 +643,11 @@ private class NativeCInteropSymbols private constructor(
     private val byteToLong: IrSimpleFunctionSymbol,
     private val shortToLong: IrSimpleFunctionSymbol,
     private val intToLong: IrSimpleFunctionSymbol,
-    private val floatToBits: IrSimpleFunctionSymbol,
-    private val doubleToBits: IrSimpleFunctionSymbol,
+    private val floatToRawBits: IrSimpleFunctionSymbol,
+    private val doubleToRawBits: IrSimpleFunctionSymbol,
 ) {
+    private val supportFiles = WinRTAbiSupportFiles(useExistingFile = true)
+    private val calls = WinRTAbiCallFunctions(inline = true)
     private val exactThunkFields = mutableMapOf<NativeThunkFieldKey, NativeThunkStorage>()
     fun emit(
         builder: DeclarationIrBuilder,
@@ -889,11 +913,13 @@ private class NativeCInteropSymbols private constructor(
         WinRTProjectionCallSiteAbiCarrier.INT64 -> value
         WinRTProjectionCallSiteAbiCarrier.FLOAT32 ->
             builder.irCall(intToLong).apply {
-                arguments[0] = builder.irCall(floatToBits).apply { arguments[0] = value }
+                arguments[0] = builder.irCall(floatToRawBits).apply { arguments[0] = value }
             }
         WinRTProjectionCallSiteAbiCarrier.FLOAT64 ->
-            builder.irCall(doubleToBits).apply { arguments[0] = value }
+            builder.irCall(doubleToRawBits).apply { arguments[0] = value }
     }.takeIf { expression -> expression.type.classFqName == KOTLIN_LONG_FQ_NAME }
+
+    fun canInvokeWords(wordCount: Int): Boolean = invokesByArity.containsKey(wordCount + 2)
 
     private fun emitThunkInvocation(
         builder: DeclarationIrBuilder,
@@ -913,25 +939,25 @@ private class NativeCInteropSymbols private constructor(
             builder.irCall(intToLong).apply { arguments[0] = slot },
         ) + words + trailingWords
         val invoke = invokesByArity[invokeArguments.size] ?: return null
-        val pointer = functionPointer(
-            builder = builder,
-            pluginContext = pluginContext,
-            address = thunkField(
-                builder = builder,
+        return calls.call(
+            builder, pluginContext, ownerFunction, supportFiles,
+            "native|" + transport.name + "|" + inputs.joinToString("|") { it.shape.fieldNameComponent },
+            invokeArguments, resultType,
+        ) { bodyBuilder, function, operands ->
+            val pointer = functionPointer(
+                builder = bodyBuilder,
                 pluginContext = pluginContext,
-                ownerFunction = ownerFunction,
-                transport = transport,
-                inputs = inputs,
-            ),
-            parameterTypes = invokeArguments.map(IrExpression::type),
-            resultType = resultType,
-        )
-        return builder.irCall(invoke, resultType).apply {
-            (invokeArguments.map(IrExpression::type) + resultType).forEachIndexed { index, type ->
-                typeArguments[index] = type
+                address = thunkField(bodyBuilder, pluginContext, function, transport, inputs),
+                parameterTypes = operands.map(IrExpression::type),
+                resultType = resultType,
+            )
+            bodyBuilder.irCall(invoke, resultType).apply {
+                (operands.map(IrExpression::type) + resultType).forEachIndexed { index, type ->
+                    typeArguments[index] = type
+                }
+                this.arguments[0] = pointer
+                operands.forEachIndexed { index, argument -> this.arguments[index + 1] = argument }
             }
-            arguments[0] = pointer
-            invokeArguments.forEachIndexed { index, argument -> arguments[index + 1] = argument }
         }
     }
 
@@ -942,14 +968,19 @@ private class NativeCInteropSymbols private constructor(
         transport: NativeThunkTransport,
         inputs: List<WinRTDirectCallInput>,
     ): IrExpression {
-        val file = ownerFunction.containingFile()
+        val source = ownerFunction.abiContainingFile()
             ?: error("kotlin-winrt could not locate the Native call site's file owner.")
+        val file = supportFiles.file(source, "native|" + transport.name + "|" +
+            inputs.joinToString("|") { it.shape.fieldNameComponent })
         val key = NativeThunkFieldKey(file, transport, inputs.map { input -> input.shape })
         val storage = exactThunkFields.getOrPut(key) {
+            val ownerName = file.fileEntry.name.substringAfterLast('/').substringAfterLast('\\')
+            val ownerIdentity = supportFiles.identity(file, "native-owner|${file.packageFqName}|$ownerName")
+
             val fieldName = Name.identifier(
                 "kotlinWinRT${transport.fieldNameComponent}Thunk_" +
                     inputs.joinToString("_") { input -> input.shape.fieldNameComponent }.ifEmpty { "no_args" } +
-                    "_" + ownerFunction.stableThunkOwnerSuffix(),
+                    "_" + ownerIdentity,
             )
             val accessorName = Name.identifier(fieldName.asString() + "Address")
             val existingField = file.declarations.filterIsInstance<IrField>()
@@ -1087,8 +1118,8 @@ private class NativeCInteropSymbols private constructor(
             val cFunction = pluginContext.findDirectClass(KOTLINX_CINTEROP_CFUNCTION_CLASS_ID, fromFile) ?: return null
             val vector128 = pluginContext.findDirectClass(KOTLINX_CINTEROP_VECTOR128_CLASS_ID, fromFile) ?: return null
             val nativePtr = pluginContext.findDirectClass(KOTLIN_NATIVE_PTR_CLASS_ID, fromFile) ?: return null
-            val vector128GetLongAt = vector128.directFunction("getLongAt", listOf(KOTLIN_INT_FQ_NAME)) ?: return null
-            val vector128GetIntAt = vector128.directFunction("getIntAt", listOf(KOTLIN_INT_FQ_NAME)) ?: return null
+            val vector128GetLongAt = vector128.directFunction("getLongAt", listOf("kotlin.Int"), "kotlin.Long") ?: return null
+            val vector128GetIntAt = vector128.directFunction("getIntAt", listOf("kotlin.Int"), "kotlin.Int") ?: return null
             val interpretCPointer = pluginContext.findDirectFunctions(
                 CallableId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("interpretCPointer")),
                 fromFile,
@@ -1097,7 +1128,7 @@ private class NativeCInteropSymbols private constructor(
                 CallableId(KOTLIN_NATIVE_INTERNAL_PACKAGE_FQ_NAME, Name.identifier("getNativeNullPtr")),
                 fromFile,
             ).singleOrNull() ?: return null
-            val nativePtrPlus = nativePtr.directFunction("plus", listOf(KOTLIN_LONG_FQ_NAME)) ?: return null
+            val nativePtrPlus = nativePtr.directFunction("plus", listOf("kotlin.Long"), "kotlin.native.internal.NativePtr") ?: return null
             val invokes = pluginContext.findDirectFunctions(
                 CallableId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("invoke")),
                 fromFile,
@@ -1116,9 +1147,7 @@ private class NativeCInteropSymbols private constructor(
                     fromFile,
                 ).toList()
                 val matching = candidates.filter { symbol ->
-                    symbol.owner.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
-                        .map { parameter -> parameter.type.classFqName } == parameterTypes &&
-                        symbol.owner.returnType.classFqName == returnType
+                    symbol.owner.matchesCallSiteSignature(parameterTypes.map(FqName::asString), returnType.asString())
                 }
                 return matching.singleOrNull { symbol -> !symbol.owner.isExpect } ?: error(
                     "kotlin-winrt could not resolve the implemented Native runtime function $name; " +
@@ -1172,22 +1201,22 @@ private class NativeCInteropSymbols private constructor(
                 "kotlin.Int.toLong",
                 primitiveMember(pluginContext, KOTLIN_INT_CLASS_ID, "toLong"),
             )
-            val floatToBits = requirePrimitiveSymbol(
-                "kotlin.Float.toBits",
+            val floatToRawBits = requirePrimitiveSymbol(
+                "kotlin.Float.toRawBits",
                 primitiveExtension(
                     pluginContext,
                     fromFile,
                     KOTLIN_FLOAT_FQ_NAME,
-                    "toBits",
+                    "toRawBits",
                 ),
             )
-            val doubleToBits = requirePrimitiveSymbol(
-                "kotlin.Double.toBits",
+            val doubleToRawBits = requirePrimitiveSymbol(
+                "kotlin.Double.toRawBits",
                 primitiveExtension(
                     pluginContext,
                     fromFile,
                     KOTLIN_DOUBLE_FQ_NAME,
-                    "toBits",
+                    "toRawBits",
                 ),
             )
             return NativeCInteropSymbols(
@@ -1211,8 +1240,8 @@ private class NativeCInteropSymbols private constructor(
                 byteToLong,
                 shortToLong,
                 intToLong,
-                floatToBits,
-                doubleToBits,
+                floatToRawBits,
+                doubleToRawBits,
             )
         }
     }
@@ -1239,15 +1268,14 @@ private data class NativeThunkStorage(
 )
 
 private data class NativeThunkInputShape(
-    val carrier: WinRTProjectionCallSiteAbiCarrier,
     val kind: WinRTDirectCallInputKind,
 ) {
     val fieldNameComponent: String
-        get() = "${carrier.name.lowercase()}_${kind.name.lowercase()}"
+        get() = kind.name.lowercase()
 }
 
 private val WinRTDirectCallInput.shape: NativeThunkInputShape
-    get() = NativeThunkInputShape(carrier, kind)
+    get() = NativeThunkInputShape(kind)
 
 private val WinRTProjectionCallSiteAbiCarrier.directInputKind: WinRTDirectCallInputKind
     get() = when (this) {
@@ -1266,9 +1294,6 @@ private fun List<WinRTDirectCallInput>.floatingPointKinds(): Long =
         }
         encoded or (bits shl (index * 2))
     }
-
-private fun IrSimpleFunction.stableThunkOwnerSuffix(): String =
-    fqNameWhenAvailable?.asString().orEmpty().hashCode().toUInt().toString(16)
 
 private fun primitiveMember(
     pluginContext: IrPluginContext,
@@ -1301,7 +1326,7 @@ private fun WINRT_RAW_ADDRESS_IR_TYPE(pluginContext: IrPluginContext): IrType =
 
 private const val MAX_NATIVE_RECIPE_THUNK_INPUT_COUNT = 20
 
-private val WinRTProjectionCallSiteAbiCarrier.kotlinCarrierFqName: FqName
+internal val WinRTProjectionCallSiteAbiCarrier.kotlinCarrierFqName: FqName
     get() = when (this) {
         WinRTProjectionCallSiteAbiCarrier.ADDRESS -> WINRT_RAW_ADDRESS_FQ_NAME
         WinRTProjectionCallSiteAbiCarrier.INT8 -> KOTLIN_BYTE_FQ_NAME
@@ -1312,9 +1337,9 @@ private val WinRTProjectionCallSiteAbiCarrier.kotlinCarrierFqName: FqName
         WinRTProjectionCallSiteAbiCarrier.FLOAT64 -> KOTLIN_DOUBLE_FQ_NAME
     }
 
-private tailrec fun IrDeclarationParent.containingFile(): IrFile? = when (this) {
+internal tailrec fun IrDeclarationParent.abiContainingFile(): IrFile? = when (this) {
     is IrFile -> this
-    is IrDeclaration -> parent.containingFile()
+    is IrDeclaration -> parent.abiContainingFile()
     else -> null
 }
 
@@ -1335,12 +1360,32 @@ private fun IrPluginContext.findDirectProperties(callableId: CallableId, fromFil
 
 private fun IrClassSymbol.directFunction(
     name: String,
-    regularParameterTypes: List<FqName>? = null,
-): IrSimpleFunctionSymbol? =
+    regularParameterTypes: List<String>,
+    returnType: String,
+): IrSimpleFunctionSymbol? {
+    val candidates = owner.declarations.filterIsInstance<IrSimpleFunction>()
+        .filter { it.name.asString() == name }
+    val matching = candidates.filter { it.matchesCallSiteSignature(regularParameterTypes, returnType) }
+    check(candidates.isEmpty() || matching.isNotEmpty()) {
+        "Incompatible backend helper ${owner.fqNameWhenAvailable}.$name; " +
+            "expected ($regularParameterTypes): $returnType; candidates: " +
+            candidates.joinToString { it.symbol.callSiteSignature() }
+    }
+    check(matching.size <= 1) {
+        "Ambiguous backend helper ${owner.fqNameWhenAvailable}.$name; candidates: " +
+            matching.joinToString { it.symbol.callSiteSignature() }
+    }
+    return matching.singleOrNull()?.symbol
+}
+
+// JDK invokeExact is signature-polymorphic: its declared Object[] -> Object signature
+// is deliberately replaced with the physical ABI signature at the invocation site.
+private fun IrClassSymbol.signaturePolymorphicInvokeExact(): IrSimpleFunctionSymbol? =
     owner.declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { function ->
-        function.name.asString() == name &&
-            (regularParameterTypes == null || function.parameters.filter { it.kind == IrParameterKind.Regular }
-                .map { it.type.classFqName } == regularParameterTypes)
+        function.name.asString() == "invokeExact" &&
+            function.parameters.filter { it.kind == IrParameterKind.Regular }
+                .singleOrNull()?.varargElementType != null &&
+            function.returnType.classFqName == FqName("kotlin.Any")
     }?.symbol
 
 private fun IrClassSymbol.directPropertyGetter(name: String): IrSimpleFunctionSymbol? =

@@ -24,7 +24,8 @@ enum class WinRTCallSiteResultKind {
 
 /**
  * Marks a typed projection call-site stub. The annotation contains only WinMD facts that are not
- * represented by the Kotlin declaration; the compiler plugin owns ABI planning and code emission.
+ * represented by the Kotlin declaration. New projections leave marshaling and lifetime to IR
+ * planning; sourceGenerated remains readable for older source-marshaled projection artifacts.
  */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.LOCAL_VARIABLE)
 @Retention(AnnotationRetention.BINARY)
@@ -32,7 +33,22 @@ annotation class WinRTProjectionCallSite(
     val hResult: WinRTCallSiteHResultPolicy = WinRTCallSiteHResultPolicy.CHECK,
     val result: WinRTCallSiteResultKind = WinRTCallSiteResultKind.INFER,
     val returnAbiType: String = "",
+    /** Legacy producer compatibility: only nested ABI stubs in an already-emitted body are lowered. */
+    val sourceGenerated: Boolean = false,
 )
+
+/** A fixed ABI signature: borrowed RawComPtr, vtable slot, carriers, and an Int HRESULT. */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+annotation class WinRTAbiCallSite
+
+/**
+ * Explicit references to a local typed call site's arguments, in ABI parameter order.
+ * Used only as the initializer of a @WinRTProjectionCallSite local. Lowering removes this
+ * marker and its vararg array; arguments must be local variables in the same function.
+ */
+fun <T> winRTProjectionCallSiteArguments(vararg arguments: Any?): T =
+    error("WinRT call-site argument marker was not lowered (${arguments.size} arguments)")
 
 /**
  * Marks a typed projected-interface CCW entry stub. The generated declaration contains the
@@ -110,6 +126,7 @@ enum class WinRTProjectionAbiCodecRole {
     /** Decodes a borrowed inbound ABI value without taking ownership of its reference. */
     FROM_BORROWED_ABI,
     CREATE_MARSHALER,
+    /** With DISPOSE_ABI, writes into zeroed storage that remains disposable after a partial write. */
     COPY_TO_ABI,
     COPY_FROM_ABI,
     DISPOSE_ABI,

@@ -363,7 +363,7 @@ private object NativeCallbackRegistry {
         }
         val trampoline = Win64ComCallbackTrampoline.allocate(
             callbackContext = id.toLong(),
-            wordCount = parameterKinds.size,
+            parameterKinds = parameterKinds,
             callbackAddress = Win64ComCallbackTrampoline.registeredCallbackAddress(),
         )
         callbacks[id] = RegisteredNativeCallback(parameterKinds, callback)
@@ -390,7 +390,7 @@ private object NativeCallbackRegistry {
         val trampoline = try {
             Win64ComCallbackTrampoline.allocate(
                 callbackContext = callbackReference.asCPointer().rawValue.toLong(),
-                wordCount = parameterKinds.size,
+                parameterKinds = parameterKinds,
                 callbackAddress = Win64ComCallbackTrampoline.directRawWordCallbackAddress(),
             )
         } catch (failure: Throwable) {
@@ -500,10 +500,10 @@ private class Win64ComCallbackTrampoline private constructor(
     companion object {
         fun allocate(
             callbackContext: Long,
-            wordCount: Int,
+            parameterKinds: List<ComAbiValueKind>,
             callbackAddress: Long,
         ): Win64ComCallbackTrampoline {
-            val code = buildCode(callbackContext, wordCount, callbackAddress)
+            val code = buildCode(callbackContext, parameterKinds, callbackAddress)
             val memory = VirtualAlloc(
                 null,
                 code.size.toULong(),
@@ -536,11 +536,22 @@ private class Win64ComCallbackTrampoline private constructor(
 
         private fun buildCode(
             callbackContext: Long,
-            wordCount: Int,
+            parameterKinds: List<ComAbiValueKind>,
             callbackAddress: Long,
         ): ByteArray {
             // Windows x64 ABI only: ARM64 must provide its own trampoline in an ARM64 source set.
             val code = mutableListOf<Byte>()
+            val wordCount = parameterKinds.size
+            // CsWinRT's typed unmanaged entry points receive floating arguments in XMMn.
+            // Our generic word callback must copy those bits before shifting GPRs for context.
+            parameterKinds.take(4).forEachIndexed { position, kind ->
+                if (kind == ComAbiValueKind.Float || kind == ComAbiValueKind.Double) {
+                    val destination = position.gprRegisterCode()
+                    val rex = 0x40 or (if (kind == ComAbiValueKind.Double) 0x08 else 0) or
+                        (if (destination >= 8) 0x01 else 0)
+                    code.emit(0x66, rex, 0x0F, 0x7E, 0xC0 or (position shl 3) or (destination and 7))
+                }
+            }
             val stackSize = 0x68
             code.emit(0x48, 0x83, 0xEC, stackSize)
 

@@ -127,7 +127,7 @@ internal fun prepareWinRTStaticProjectionSources(
             emptyList()
         } + preparedNuGetSources
     if (effectiveSources.isEmpty()) {
-        throw StaticPreparationUnavailable("no fixed metadata or projected NuGet package is configured")
+        return null
     }
     val cache = runCatching { WinRTMetadataSourceResolver.resolve(effectiveSources) }
         .getOrElse { error ->

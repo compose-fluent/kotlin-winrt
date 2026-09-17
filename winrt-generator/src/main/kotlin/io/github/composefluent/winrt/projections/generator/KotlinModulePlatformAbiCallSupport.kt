@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.projections.generator
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
@@ -36,15 +37,24 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private val emitSupportFile: Boolean = true,
     preparedSource: KotlinModulePlatformAbiCallSupport? = null,
 ) {
+    internal val sharesTypedInputs: Boolean get() = emitSupportFile
+
     private val enabledCallNames = enabledCalls?.mapTo(linkedSetOf()) { plan -> plan.functionName }
     private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCalls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCallCounts = linkedMapOf<String, Int>()
+    private val platformShapeDescriptorsByHash = linkedMapOf<String, String>()
     private val preparedCallSitePlans = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val codecs = linkedMapOf<String, KotlinProjectionCallSiteCodec>()
     private val codecsByIdentity = linkedMapOf<KotlinProjectionCallSiteCodecIdentity, KotlinProjectionCallSiteCodec>()
     private val abiTypes = linkedMapOf<String, KotlinProjectionAbiTypeMetadata>()
     private val metadata = linkedMapOf<String, KotlinProjectionModuleMetadata>()
+    private val externalMetadataReferences = linkedSetOf<String>()
+
+    /** Closed projection helpers consume module metadata without going through a codec body. */
+    internal fun retainMetadataReference(expression: CodeBlock) {
+        externalMetadataReferences += expression.toString()
+    }
 
     init {
         require(
@@ -60,7 +70,17 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         abiSupportClassName(abiTypeName).canonicalName
 
     internal fun callSiteOwnerFqName(plan: KotlinTypedProjectionCallSitePlan): String =
-        callSiteSupportClassName(plan.functionName).canonicalName
+        typedCallSiteSupportClassName(plan).canonicalName
+
+    /** Typed plans and physical shapes are intentionally exposed as separate inventories. */
+    internal fun observedTypedCallSitePlans(): Set<KotlinTypedProjectionCallSitePlan> =
+        observedCalls.values.toSet()
+
+    internal fun observedPlatformCallShapes(): Set<KotlinProjectionPlatformCallShape> =
+        observedCalls.values.mapTo(linkedSetOf(), KotlinTypedProjectionCallSitePlan::platformShape)
+
+    internal fun platformShapeOwnerFqName(shape: KotlinProjectionPlatformCallShape): String =
+        callSiteSupportClassName(shape).canonicalName
 
     internal fun preparedCallSitePlan(
         callPlan: KotlinProjectionAbiCallPlan,
@@ -94,6 +114,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         returnType: TypeName,
         body: CodeBlock,
         consumesOwnedAbi: Boolean = false,
+        arrayDisposalKey: KotlinProjectionArrayDisposalKey? = null,
     ): String {
         require(!consumesOwnedAbi || role == KotlinProjectionAbiCodecRole.FROM_ABI) {
             "Only a generated FROM_ABI codec may consume an owned ABI value."
@@ -106,7 +127,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             privateDiscriminator = if (role == null) "$operation|$signature" else "",
         )
         codecsByIdentity[identity]?.let { existing ->
-            require(existing.hasSameImplementation(parameters, body, consumesOwnedAbi)) {
+            require(existing.arrayDisposalKey == arrayDisposalKey &&
+                existing.hasSameImplementation(parameters, body, consumesOwnedAbi)) {
                 "Conflicting generated ABI codec implementations for ${role ?: operation} '$abiTypeName': " +
                     "'${existing.sourceSignature}' vs '$signature'."
             }
@@ -122,6 +144,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             returnType = returnType,
             body = body,
             consumesOwnedAbi = consumesOwnedAbi,
+            arrayDisposalKey = arrayDisposalKey,
         )
         require(codecs.putIfAbsent(name, codec) == null) {
             "WinMD call-site codec hash collision for $operation '$signature'."
@@ -189,6 +212,9 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     }
 
     internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
+        // Typed stubs carry WinMD facts; all platform marshaling is lowered from IR.
+        val renderedFunctions = calls.values.associate { it.functionName to renderFunction(it) }
+        val disposalImplementations = indexDisposalImplementations()
         val renderedMetadata = reachableMetadata()
         if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
         val sourcePrefix = when (layout) {
@@ -201,6 +227,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     sourcePrefix = sourcePrefix,
                     owner = className,
                     renderedCalls = calls.values,
+                    renderedFunctions = renderedFunctions,
+                    disposalImplementations = disposalImplementations,
                     renderedCodecs = codecs.values,
                     renderedAbiTypes = abiTypes.values,
                     renderedMetadata = renderedMetadata,
@@ -208,7 +236,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             )
         }
 
-        val callsByOwner = calls.values.groupBy { plan -> callSiteSupportClassName(plan.functionName) }
+        val callsByOwner = calls.values.groupBy { plan -> typedCallSiteSupportClassName(plan) }
         val codecsByOwner = codecs.values.groupBy { codec -> abiSupportClassName(codec.abiTypeName) }
         val abiTypesByOwner = abiTypes.values.groupBy { metadata -> abiSupportClassName(metadata.abiTypeName) }
         val metadataByOwner = renderedMetadata.groupBy(KotlinProjectionModuleMetadata::owner)
@@ -222,6 +250,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                         sourcePrefix = sourcePrefix,
                         owner = owner,
                         renderedCalls = callsByOwner[owner].orEmpty(),
+                        renderedFunctions = renderedFunctions,
+                        disposalImplementations = disposalImplementations,
                         renderedCodecs = codecsByOwner[owner].orEmpty(),
                         renderedAbiTypes = abiTypesByOwner[owner].orEmpty(),
                         renderedMetadata = metadataByOwner[owner].orEmpty(),
@@ -248,6 +278,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             "Prepared WinRT CallSite state uses ${source.abiSupportShardCount} shards, not $abiSupportShardCount."
         }
         preparedCallSitePlans.putAll(source.preparedCallSitePlans)
+        platformShapeDescriptorsByHash.putAll(source.platformShapeDescriptorsByHash)
         enabledCallNames.orEmpty().forEach { functionName ->
             source.observedCalls[functionName]?.let { plan ->
                 calls[functionName] = plan
@@ -257,10 +288,12 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         codecsByIdentity.putAll(source.codecsByIdentity)
         abiTypes.putAll(source.abiTypes)
         metadata.putAll(source.metadata)
+        externalMetadataReferences.addAll(source.externalMetadataReferences)
     }
 
     private fun record(plan: KotlinTypedProjectionCallSitePlan): ModuleCallTarget {
         val functionName = plan.functionName
+        registerPlatformShape(plan.platformShape)
         observedCalls.putCallSite(functionName, plan)
         observedCallCounts[functionName] = (observedCallCounts[functionName] ?: 0) + 1
         KotlinRuntimeOwnedProjectionCallSites.declarationFor(plan)?.let { declaration ->
@@ -277,9 +310,17 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         }
         calls.putCallSite(functionName, plan)
         return ModuleCallTarget(
-            className = callSiteSupportClassName(functionName),
+            className = typedCallSiteSupportClassName(plan),
             functionName = functionName,
         )
+    }
+
+    private fun registerPlatformShape(shape: KotlinProjectionPlatformCallShape) {
+        val existing = platformShapeDescriptorsByHash.putIfAbsent(shape.stableHash, shape.canonicalDescriptor)
+        require(existing == null || existing == shape.canonicalDescriptor) {
+            "Generated WinRT platform call-shape hash collision '${shape.stableHash}': " +
+                "'$existing' vs '${shape.canonicalDescriptor}'."
+        }
     }
 
     private fun MutableMap<String, KotlinTypedProjectionCallSitePlan>.putCallSite(
@@ -296,6 +337,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         sourcePrefix: String,
         owner: ClassName,
         renderedCalls: Collection<KotlinTypedProjectionCallSitePlan>,
+        renderedFunctions: Map<String, FunSpec>,
+        disposalImplementations: Map<String, KotlinProjectionCallSiteCodec>,
         renderedCodecs: Collection<KotlinProjectionCallSiteCodec>,
         renderedAbiTypes: Collection<KotlinProjectionAbiTypeMetadata>,
         renderedMetadata: Collection<KotlinProjectionModuleMetadata>,
@@ -324,10 +367,10 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     .forEach { codec ->
                         val metadata = abiTypesByName[codec.abiTypeName]
                             ?.takeIf { abiTypeCodecNames[codec.abiTypeName] == codec.name }
-                        addFunction(renderCodec(codec, metadata))
+                        addFunction(renderCodec(codec, metadata, disposalImplementations[codec.name]))
                     }
                 renderedCalls.sortedBy(KotlinTypedProjectionCallSitePlan::functionName)
-                    .forEach { plan -> addFunction(renderFunction(plan)) }
+                    .forEach { plan -> addFunction(renderedFunctions.getValue(plan.functionName)) }
             }
             .build()
         val contents = FileSpec.builder(owner.packageName, fileName)
@@ -349,8 +392,11 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private fun metadataSupportClassName(identity: String): ClassName =
         supportShardClassName("metadata-shard", identity)
 
-    private fun callSiteSupportClassName(functionName: String): ClassName {
-        return supportShardClassName("call-shard", functionName)
+    private fun typedCallSiteSupportClassName(plan: KotlinTypedProjectionCallSitePlan): ClassName =
+        supportShardClassName("typed-call-shard", plan.functionName)
+
+    private fun callSiteSupportClassName(shape: KotlinProjectionPlatformCallShape): ClassName {
+        return supportShardClassName("call-shape-shard", shape.canonicalDescriptor)
     }
 
     private fun supportShardClassName(kind: String, identity: String): ClassName {
@@ -393,12 +439,12 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     /**
      * Metadata expressions are composed while a call-site plan is being inspected, before the
      * planner knows whether that call will become a module codec or remain an inline call site.
-     * Keep only values reachable from emitted codec bodies, otherwise a one-off call would create
+     * Keep only values reachable from emitted codecs or closed helpers, otherwise a one-off call would create
      * an otherwise empty support file. Dependencies are returned before their users so same-object
      * Kotlin initializers cannot observe an uninitialized later property.
      */
     private fun reachableMetadata(): List<KotlinProjectionModuleMetadata> {
-        if (metadata.isEmpty() || codecs.isEmpty()) return emptyList()
+        if (metadata.isEmpty()) return emptyList()
         val values = metadata.values.toList()
         val byName = values.associateBy(KotlinProjectionModuleMetadata::name)
         // Generated names have a fixed-width hash. Scan each expression once instead of
@@ -410,7 +456,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                 .distinctBy(KotlinProjectionModuleMetadata::name)
                 .sortedBy(KotlinProjectionModuleMetadata::name)
                 .toList()
-        val roots = codecs.values.flatMap { references(it.body.toString()) }
+        val roots = codecs.values.flatMap { references(it.body.toString()) } +
+            externalMetadataReferences.flatMap(::references)
         if (roots.isEmpty()) return emptyList()
 
         val reachable = linkedSetOf<String>()
@@ -452,13 +499,16 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                 }
             }
             .returns(plan.returnType)
-            .addAnnotation(plan.callSiteAnnotationSpec())
-            .addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
+            .apply {
+                addAnnotation(plan.callSiteAnnotationSpec())
+                addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
+            }
             .build()
 
     private fun renderCodec(
         codec: KotlinProjectionCallSiteCodec,
         abiTypeMetadata: KotlinProjectionAbiTypeMetadata?,
+        disposalImplementation: KotlinProjectionCallSiteCodec?,
     ): FunSpec =
         FunSpec.builder(codec.name)
             .addModifiers(KModifier.INTERNAL)
@@ -486,8 +536,42 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     )
                 }
             }
-            .addCode(codec.body)
+            .addCode(sharedDisposalBody(codec, disposalImplementation))
             .build()
+
+    // Rebuilt for each render after registration: no stale representative when codecs are added.
+    private fun indexDisposalImplementations(): Map<String, KotlinProjectionCallSiteCodec> =
+        codecs.values.asSequence()
+            .filter { it.role == KotlinProjectionAbiCodecRole.DISPOSE_ABI &&
+                it.arrayDisposalKey != null && it.parameters.size == 2 &&
+                it.parameters.all { parameter -> parameter.type == RAW_ADDRESS_CLASS_NAME } }
+            .groupBy { Triple(it.returnType, it.parameters, it.arrayDisposalKey) }
+            .values.flatMap { group ->
+                val implementation = group.minBy(KotlinProjectionCallSiteCodec::name)
+                group.map { it.name to implementation }
+            }.toMap()
+
+    private fun sharedDisposalBody(
+        codec: KotlinProjectionCallSiteCodec,
+        implementation: KotlinProjectionCallSiteCodec?,
+    ): CodeBlock {
+        // Preserve every ABI type/role binding, but emit an identical raw disposal loop once.
+        // The key is composed with the cleanup operation, layout and exact custom function.
+        // Text equality is only a consistency assertion, never the selection criterion.
+        if (implementation == null) return codec.body
+        check(implementation.hasSameImplementation(codec.parameters, codec.body, codec.consumesOwnedAbi)) {
+            "Conflicting implementations of array disposal ${codec.arrayDisposalKey}"
+        }
+        if (implementation.name == codec.name) return codec.body
+        return CodeBlock.builder()
+            .add("return %T.%L(", abiSupportClassName(implementation.abiTypeName), implementation.name)
+            .apply { codec.parameters.forEachIndexed { index, parameter ->
+                if (index > 0) add(", ")
+                add("%N", parameter.name)
+            } }
+            .add(")\n")
+            .build()
+    }
 
     private fun renderAbiType(metadata: KotlinProjectionAbiTypeMetadata): TypeSpec =
         TypeSpec.objectBuilder("AbiType_${stableCodecHash("type", metadata.abiTypeName)}")
@@ -499,7 +583,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         target: ModuleCallTarget,
         arguments: List<CodeBlock>,
     ): CodeBlock {
-        target.inlineCall?.let { plan -> return renderInlineCallSite(plan, arguments) }
+        target.inlineCall?.let { plan -> return inlineInvocation(plan, arguments) }
         return CodeBlock.builder()
             .apply {
                 target.className?.let { owner -> add("%T.%L(\n", owner, target.functionName) }
@@ -512,7 +596,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             .build()
     }
 
-    private fun renderInlineCallSite(
+    internal fun inlineInvocation(
         plan: KotlinTypedProjectionCallSitePlan,
         arguments: List<CodeBlock>,
     ): CodeBlock {
@@ -537,11 +621,18 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             }
             .add("%L\n", plan.callSiteAnnotationSpec())
             .add(
-                "val %L: %T = TODO(%S)\n",
+                "val %L: %T = %M(",
                 INLINE_CALL_SITE_RESULT_NAME,
                 plan.returnType,
-                MODULE_CALL_SITE_PLACEHOLDER,
+                MemberName("io.github.composefluent.winrt.runtime", "winRTProjectionCallSiteArguments"),
             )
+            .apply {
+                arguments.indices.forEach { index ->
+                    if (index != 0) add(", ")
+                    add("%L%L", INLINE_CALL_SITE_ARGUMENT_PREFIX, index)
+                }
+            }
+            .add(")\n")
             .apply {
                 if (plan.returnType != Unit::class.asClassName()) add("%L\n", INLINE_CALL_SITE_RESULT_NAME)
             }
@@ -645,6 +736,7 @@ private data class KotlinProjectionCallSiteCodec(
     val returnType: TypeName,
     val body: CodeBlock,
     val consumesOwnedAbi: Boolean,
+    val arrayDisposalKey: KotlinProjectionArrayDisposalKey?,
 ) {
     fun hasSameImplementation(
         otherParameters: List<KotlinProjectionCallSiteCodecParameter>,

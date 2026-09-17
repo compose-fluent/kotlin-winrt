@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
+@PublishedApi
 internal actual inline fun winRTKeepAlive(owner: Any?) {
     java.lang.ref.Reference.reachabilityFence(owner)
 }

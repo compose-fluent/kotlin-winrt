@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionSupportLayout
 import io.github.composefluent.winrt.compiler.callsites.lowering.lowerWinRTProjectionCallSites
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeCandidate
@@ -72,6 +73,7 @@ import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
 import org.jetbrains.kotlin.ir.builders.irCall
@@ -315,7 +317,10 @@ class KotlinWinRTIrGenerationExtension(
             else -> error("Unsupported kotlin-winrt projectionSupportMode '$projectionSupportMode'.")
         }
         if (emitProjectionSupport) {
-            writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity)
+            writeCompilerSupportClasses(
+                compilerSupportEntries, projectionRegistrarEntries, projectionSupportOwnerIdentity,
+                moduleFragment, pluginContext,
+            )
         } else {
             clearEmbeddedProjectionSupport(
                 compilerSupportClassOutputDirectoryPath
@@ -477,18 +482,30 @@ class KotlinWinRTIrGenerationExtension(
         return readCompilerSupportManifestIfConfigured(compilerSupportManifestPath)
     }
 
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun writeCompilerSupportClasses(
         entries: List<KotlinWinRTCompilerSupportManifestEntry>,
         projectionRegistrarEntries: List<KotlinWinRTProjectionRegistrarEntry>,
         projectionSupportOwnerIdentity: String,
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
     ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         Files.deleteIfExists(outputDirectory.resolve(STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
         writeCompilerSupportManifestClass(entries, outputDirectory)
+        val classInternalNames = resolveProjectionRegistrarClasses(projectionRegistrarEntries) { name ->
+            pluginContext.findClassSymbol(ClassId.topLevel(FqName(name)), moduleFragment.files.firstOrNull())
+        }.associate { (entry, symbol) ->
+            val classId = requireNotNull(symbol.owner.classId)
+            val jvmClassId = org.jetbrains.kotlin.builtins.jvm.JavaToKotlinClassMap
+                .mapKotlinToJava(classId.asSingleFqName().toUnsafe()) ?: classId
+            entry.kotlinClassName to org.jetbrains.kotlin.resolve.jvm.JvmClassName.byClassId(jvmClassId).internalName
+        }
         writeProjectionSupportInitializerClass(
             entries = projectionRegistrarEntries,
             outputDirectory = outputDirectory,
             ownerIdentity = projectionSupportOwnerIdentity,
+            classInternalNames = classInternalNames,
         )
     }
 
@@ -1933,7 +1950,7 @@ private const val PROJECTION_SUPPORT_INITIALIZER_CLASS_NAME_PREFIX: String =
 private const val STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
     "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class"
 
-private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
+private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = WinRTProjectionSupportLayout.REGISTRAR_CHUNK_SIZE
 
 private fun writeBytesIfChanged(target: Path, bytes: ByteArray) {
     if (Files.isRegularFile(target) && Files.readAllBytes(target).contentEquals(bytes)) {
@@ -2160,6 +2177,7 @@ fun writeProjectionSupportInitializerClass(
     entries: List<KotlinWinRTProjectionRegistrarEntry>,
     outputDirectory: Path,
     ownerIdentity: String = "",
+    classInternalNames: Map<String, String> = emptyMap(),
 ): String? {
     if (entries.isEmpty()) {
         deleteStaleProjectionSupportInitializerClasses(outputDirectory, currentInternalName = null)
@@ -2227,6 +2245,9 @@ fun writeProjectionSupportInitializerClass(
         )
     }
     initialize.visitLabel(alreadyInitialized)
+    // The early-return target has the same empty locals/stack as this static method's entry.
+    // COMPUTE_MAXS alone does not emit the stack map required by the JVM class-file version.
+    initialize.visitFrame(Opcodes.F_SAME, 0, null, 0, null)
     initialize.visitInsn(Opcodes.RETURN)
     initialize.visitMaxs(0, 0)
     initialize.visitEnd()
@@ -2240,6 +2261,7 @@ fun writeProjectionSupportInitializerClass(
             internalName = projectionRegistrarChunkInternalName(internalName, index),
             entries = chunk,
             outputDirectory = outputDirectory,
+            classInternalNames = classInternalNames,
         )
     }
     return internalName
@@ -2316,6 +2338,7 @@ private fun writeProjectionRegistrarChunkClass(
     internalName: String,
     entries: List<KotlinWinRTProjectionRegistrarEntry>,
     outputDirectory: Path,
+    classInternalNames: Map<String, String>,
 ) {
     val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
     classWriter.visit(
@@ -2328,7 +2351,7 @@ private fun writeProjectionRegistrarChunkClass(
     )
     classWriter.visitSource("compiler-support.tsv", null)
     classWriter.addDefaultConstructor()
-    classWriter.addProjectionRegistrarChunk("register", entries, Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC)
+    classWriter.addProjectionRegistrarChunk("register", entries, classInternalNames, Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC)
     classWriter.visitEnd()
     val target = outputDirectory.resolve("$internalName.class")
     writeBytesIfChanged(target, classWriter.toByteArray())
@@ -2337,6 +2360,7 @@ private fun writeProjectionRegistrarChunkClass(
 private fun ClassWriter.addProjectionRegistrarChunk(
     name: String,
     entries: List<KotlinWinRTProjectionRegistrarEntry>,
+    classInternalNames: Map<String, String>,
     access: Int = Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
 ) {
     val method = visitMethod(
@@ -2348,17 +2372,20 @@ private fun ClassWriter.addProjectionRegistrarChunk(
     )
     method.visitCode()
     entries.forEach { entry ->
+        val projectedInternalName = classInternalNames[entry.kotlinClassName] ?: entry.kotlinClassName.toInternalName()
         if (entry.metadataClassName.isNotBlank()) {
-            val metadataInternalName = entry.metadataClassName.toMetadataInternalName()
+            val metadataInternalName = "$projectedInternalName\$Metadata"
+            // Generated Metadata is a named companion: JVM stores it on the projected class,
+            // while Native's IR path obtains the same object with irGetObject.
             method.visitFieldInsn(
                 Opcodes.GETSTATIC,
-                metadataInternalName,
-                "INSTANCE",
+                projectedInternalName,
+                "Metadata",
                 "L$metadataInternalName;",
             )
             method.visitInsn(Opcodes.POP)
         }
-        method.visitLdcInsn(Type.getObjectType(entry.kotlinClassName.toInternalName()))
+        method.visitLdcInsn(Type.getObjectType(projectedInternalName))
         method.visitMethodInsn(
             Opcodes.INVOKESTATIC,
             "kotlin/jvm/internal/Reflection",
@@ -2385,9 +2412,6 @@ private fun ClassWriter.addProjectionRegistrarChunk(
 
 private fun String.toInternalName(): String =
     replace('.', '/')
-
-private fun String.toMetadataInternalName(): String =
-    removeSuffix(".Metadata").toInternalName() + "\$Metadata"
 
 private fun String.splitListFieldOrNull(): List<String>? =
     splitSupportListFieldOrNull(',')

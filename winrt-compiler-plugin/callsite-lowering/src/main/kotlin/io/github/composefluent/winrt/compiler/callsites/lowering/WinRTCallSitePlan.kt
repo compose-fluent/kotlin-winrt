@@ -4,33 +4,14 @@ import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteH
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 
 /** Compiler-private ABI plan composed from typed IR and generated ABI metadata. */
-internal enum class WinRTProjectionCallSiteAbiCarrier {
-    ADDRESS,
-    INT8,
-    INT16,
-    INT32,
-    INT64,
-    FLOAT32,
-    FLOAT64,
-}
+internal typealias WinRTProjectionCallSiteAbiCarrier =
+    io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteAbiCarrier
 
-internal enum class WinRTProjectionCallSiteRecipeKind {
-    VALUE,
-    HSTRING,
-    GUID,
-    ENUM,
-    STRUCT,
-    COM_REFERENCE,
-    ARRAY,
-    PROJECTION,
-}
+internal typealias WinRTProjectionCallSiteRecipeKind =
+    io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteRecipeKind
 
-internal enum class WinRTProjectionCallSiteValueTransform {
-    IDENTITY,
-    BOOLEAN,
-    UNSIGNED,
-    CHAR16,
-}
+internal typealias WinRTProjectionCallSiteValueTransform =
+    io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteValueTransform
 
 internal enum class WinRTProjectionCallSiteReferenceAccess {
     RAW_ADDRESS,
@@ -42,22 +23,11 @@ internal enum class WinRTProjectionCallSiteReferenceAccess {
     PROJECTED_OBJECT,
 }
 
-internal enum class WinRTProjectionCallSiteSlotDirection {
-    IN,
-    REF,
-    OUT,
-    CALLER_OUT,
-    PASS_ARRAY,
-    FILL_ARRAY,
-    RECEIVE_ARRAY,
-    RETURN,
-}
+internal typealias WinRTProjectionCallSiteSlotDirection =
+    io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteSlotDirection
 
-internal enum class WinRTProjectionCallSiteOwnership {
-    NONE,
-    BORROWED,
-    OWNED,
-}
+internal typealias WinRTProjectionCallSiteOwnership =
+    io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteOwnership
 
 internal data class WinRTProjectionCallSiteCallables(
     val ownerFqName: String,
@@ -75,6 +45,14 @@ internal data class WinRTProjectionCallSiteCallables(
     val fromAbiConsumesOwnedReference: Boolean = false,
     /** Exact generated IR entry point when overload resolution cannot be represented by name/arity. */
     val fromAbiSymbol: IrSimpleFunctionSymbol? = null,
+    /** Metadata.wrap entry requiring the projected COM identity/lifetime decode path. */
+    val projectedWrapSymbol: IrSimpleFunctionSymbol? = null,
+    val toAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val copyToAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val copyFromAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val disposeAbiSymbol: IrSimpleFunctionSymbol? = null,
+    val fromAbiCarrierSymbol: IrSimpleFunctionSymbol? = null,
+    val createMarshalerSymbol: IrSimpleFunctionSymbol? = null,
 ) {
     init {
         require(ownerFqName.isNotBlank()) { "Typed ABI callables require an owner." }

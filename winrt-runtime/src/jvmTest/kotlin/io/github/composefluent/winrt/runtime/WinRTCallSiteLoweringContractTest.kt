@@ -31,6 +31,15 @@ private object Task2CallSiteLoweringFixture {
     ): Unit = TODO("Task 2 compiler-plugin fixture")
 }
 
+private object SourceGeneratedCallSiteFixture {
+    @WinRTProjectionCallSite(sourceGenerated = true)
+    fun alreadyGenerated(reference: ComObjectReference, slot: Int): Int {
+        reference.pointer
+        slot
+        return 17
+    }
+}
+
 @JvmInline
 private value class IntEnumConstantFixture(val abiValue: Int) {
     companion object {
@@ -137,6 +146,15 @@ private object ManagedInspectableObjectCallSiteFixture {
         slot: Int,
         @WinRTProjectionParameter(abiType = "System.Object") value: Any?,
     ): Unit = TODO("managed inspectable object input fixture")
+
+    @WinRTProjectionCallSite
+    fun consumeThree(
+        reference: ComObjectReference,
+        slot: Int,
+        @WinRTProjectionParameter(abiType = "System.Object") first: Any?,
+        @WinRTProjectionParameter(abiType = "System.Object") second: Any?,
+        @WinRTProjectionParameter(abiType = "System.Object") third: Any?,
+    ): Unit = TODO("managed inspectable multi-input fixture")
 }
 
 private class ConsumingOwnedProjection(
@@ -163,6 +181,12 @@ private object ConsumingOwnedProjectionCallSiteFixture {
     @WinRTProjectionCallSite
     fun produce(reference: ComObjectReference, slot: Int): ConsumingOwnedProjection =
         TODO("consuming owned projection fixture")
+    @WinRTProjectionCallSite
+    fun produceWithInput(
+        reference: ComObjectReference,
+        slot: Int,
+        @WinRTProjectionParameter(abiType = "System.Object") value: Any?,
+    ): ConsumingOwnedProjection = TODO("consuming owned projection with input fixture")
 }
 
 private interface DirectUnknownProjection : WinRTManagedProjectionStateAccess {
@@ -297,6 +321,8 @@ private data class DirectStructProjection(
         fun fromAbi(source: RawAddress): DirectStructProjection =
             DirectStructProjection(PlatformAbi.readInt32(source))
 
+        fun fromAbi(source: Int): DirectStructProjection = error("Wrong direct metadata overload: $source")
+
         fun disposeAbi(source: RawAddress) {
             PlatformAbi.pointerKey(source)
         }
@@ -382,6 +408,16 @@ private object DirectStructArrayCallSiteFixture {
 
 class WinRTCallSiteLoweringContractTest {
     @Test
+    fun source_generated_call_sites_keep_their_source_body() {
+        val bytecode = javap(SourceGeneratedCallSiteFixture::class.java.name)
+            .methodBytecode("alreadyGenerated")
+
+        assertTrue(bytecode.contains("bipush        17"), bytecode)
+        assertFalse(bytecode.contains("Lowered while compiling the generated WinRT module"), bytecode)
+        assertFalse(bytecode.contains("MethodHandle.invokeExact"), bytecode)
+    }
+
+    @Test
     fun closed_delegate_signature_is_lowered_to_common_iid_words() {
         val bytecode = javap(ClosedDelegateInterfaceIdFixture::class.java.name)
             .methodBytecode("acquire")
@@ -427,6 +463,12 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(produce.contains("releaseRaw"), produce)
         assertFalse(produce.contains("addSuppressed"), produce)
         assertFalse(produce.contains("java/lang/Throwable"), produce)
+        val withInput = bytecode.methodBytecode("produceWithInput")
+        assertTrue(withInput.contains("decodeOwned"), withInput)
+        assertFalse(withInput.contains("addSuppressed"), withInput)
+        assertFalse(withInput.contains("java/lang/Throwable"), withInput)
+        assertEquals(2, withInput.countOccurrences("reachabilityFence"), withInput)
+        assertEquals(1, withInput.countOccurrences("kotlinWinRTAbiInvoke_"), withInput)
     }
 
     @Test
@@ -585,13 +627,13 @@ class WinRTCallSiteLoweringContractTest {
 
         val fiveInterfaces = bytecode.methodBytecode("consumeFiveInterfaces")
         assertEquals(5, fiveInterfaces.countOccurrences("Metadata.getTYPE_HANDLE"), fiveInterfaces)
-        assertEquals(1, fiveInterfaces.countOccurrences("MethodHandle.invokeExact"), fiveInterfaces)
+        assertEquals(1, fiveInterfaces.countOccurrences("kotlinWinRTAbiInvoke_"), fiveInterfaces)
         assertFalse(fiveInterfaces.contains("codec_toAbi_"), fiveInterfaces)
 
         val nullableInterface = bytecode.methodBytecode("consumeNullableInterface")
         assertTrue(nullableInterface.contains("Metadata.getTYPE_HANDLE"), nullableInterface)
         assertTrue(nullableInterface.contains("ifnonnull") || nullableInterface.contains("ifnull"), nullableInterface)
-        assertEquals(1, nullableInterface.countOccurrences("MethodHandle.invokeExact"), nullableInterface)
+        assertEquals(1, nullableInterface.countOccurrences("kotlinWinRTAbiInvoke_"), nullableInterface)
         assertFalse(nullableInterface.contains("codec_toAbi_"), nullableInterface)
     }
 
@@ -612,6 +654,11 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(bytecode.contains("managed inspectable object input fixture"), bytecode)
 
         val consume = bytecode.methodBytecode("consume")
+        assertEquals(1, consume.countOccurrences("kotlinWinRTAbiInvoke_"), consume)
+        val three = bytecode.methodBytecode("consumeThree")
+        assertEquals(1, three.countOccurrences("kotlinWinRTAbiInvoke_"), three)
+        assertEquals(3, three.countOccurrences("BorrowedObjectCodec.createMarshaler"), three)
+
         val stateBorrow = consume.indexOf("WinRTManagedProjectionAbiSource.\"tryBorrowAbi-")
         val ownedFallback = consume.indexOf("BorrowedObjectCodec.createMarshaler")
         assertTrue(stateBorrow >= 0, consume)
@@ -652,18 +699,9 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(method.contains("assemble"))
         assertTrue(method.countOccurrences("iconst_0") >= 2)
         assertTrue(method.countOccurrences("iconst_1") >= 4)
-        method.assertOrderedAfter(
-            "access\$getKotlinWinRTExactHResultHandle_address_address_address",
-            "aload         16",
-            "lload         13",
-            "lload_3",
-            "aload         5",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "aload         6",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "Method java/lang/invoke/MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJJ)I",
-        )
-        assertEquals(1, method.countOccurrences("MemorySegment.ofAddress:(J)"))
+        assertEquals(1, method.countOccurrences("kotlinWinRTAbiInvoke_"), method)
+        assertTrue(sharedAbiBytecode(method).contains("MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJJ)I"))
+        assertEquals(0, method.countOccurrences("MemorySegment.ofAddress:(J)"))
         val cleanupLocals = method.readPointerFrameLocals().takeLast(4).distinct()
         assertEquals(2, cleanupLocals.size)
         assertTrue(cleanupLocals[0] > cleanupLocals[1], cleanupLocals.toString())
@@ -688,19 +726,11 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(receiveArray.contains("decodeIntArray"))
         assertTrue(receiveArray.countOccurrences("disposeIntArray") >= 2)
         assertTrue(receiveArray.indexOf("decodeIntArray") < receiveArray.indexOf("disposeIntArray"))
-        receiveArray.assertOrderedAfter(
-            "access\$getKotlinWinRTExactHResultHandle_address_address",
-            "aload         12",
-            "lload         9",
-            "aload_3",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "aload         4",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "Method java/lang/invoke/MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJ)I",
-        )
-        assertEquals(1, receiveArray.countOccurrences("MemorySegment.ofAddress:(J)"))
+        assertEquals(1, receiveArray.countOccurrences("kotlinWinRTAbiInvoke_"), receiveArray)
+        assertTrue(sharedAbiBytecode(receiveArray).contains("MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJ)I"))
+        assertEquals(0, receiveArray.countOccurrences("MemorySegment.ofAddress:(J)"))
         receiveArray.assertOrderedAfter("throwHResultFailure", "aload_3", "aload         4", "decodeIntArray")
-        receiveArray.assertOrderedAfter("astore        9", "aload_3", "aload         4", "disposeIntArray")
+        assertTrue(receiveArray.indexOf("disposeIntArray") > receiveArray.indexOf("kotlinWinRTAbiInvoke_"))
     }
 
     @Test
@@ -809,7 +839,7 @@ class WinRTCallSiteLoweringContractTest {
         val methodStart = bytecode.indexOf("directComInputAndTwoOut(")
         val methodEnd = bytecode.indexOf("mixedCarriers(", methodStart)
         val method = bytecode.substring(methodStart, methodEnd)
-        val downcall = method.indexOf("java/lang/invoke/MethodHandle.invokeExact:")
+        val downcall = method.indexOf("kotlinWinRTAbiInvoke_")
         val firstFence = method.indexOf("java/lang/ref/Reference.reachabilityFence:(Ljava/lang/Object;)V")
         val successBranch = method.indexOf("ifge")
         val failureTranslation = method.indexOf("HResultKt.\"throwHResultFailure")
@@ -829,10 +859,39 @@ class WinRTCallSiteLoweringContractTest {
     @Test
     fun mixed_carriers_use_a_compiler_synthesized_static_exact_handle() {
         val bytecode = javap(Task2CallSiteLoweringFixture::class.java.name)
-        val fieldOwner = javap("io.github.composefluent.winrt.runtime.WinRTCallSiteLoweringContractTestKt")
-        assertTrue(bytecode.contains("access\$getKotlinWinRTExactHResultHandle_int8_float32_float64"))
-        assertTrue(fieldOwner.contains("kotlinWinRTExactHResultHandle_int8_float32_float64"))
+        val fieldOwner = sharedAbiBytecode(bytecode.methodBytecode("mixedCarriers"))
+        assertTrue(fieldOwner.contains("public static final java.lang.invoke.MethodHandle kotlinWinRTExactHResultHandle_int8_float32_float64"))
         assertFalse(bytecode.contains("hResult:(Ljava/lang/String;)"))
+    }
+
+    @Test
+    fun mixed_carriers_do_not_fall_back_to_generic_argument_dispatch() {
+        val method = javap(Task2CallSiteLoweringFixture::class.java.name)
+            .methodBytecode("mixedCarriers")
+
+        assertEquals(1, method.countOccurrences("kotlinWinRTAbiInvoke_"), method)
+        val physical = sharedAbiBytecode(method)
+        assertEquals(1, physical.countOccurrences("MethodHandle.invokeExact"), physical)
+        assertFalse(physical.contains("invokeWithArguments"), physical)
+        assertFalse(physical.contains("[J"), physical)
+        assertFalse(method.contains("MethodHandle.invokeWithArguments"), method)
+        assertFalse(method.contains("invokeGeneric"), method)
+        assertFalse(method.contains("[J"), method)
+    }
+
+    @Test
+    fun explicit_argument_markers_are_consumed_before_jvm_codegen() {
+        val bytecode = javap(ExplicitCallSiteArgumentsTest::class.java.name)
+        assertTrue(bytecode.contains("kotlinWinRTAbiInvoke_"), bytecode)
+        assertFalse(bytecode.contains("winRTProjectionCallSiteArguments"), bytecode)
+        assertFalse(bytecode.contains("legacy call-site marker"), bytecode)
+    }
+
+    private fun sharedAbiBytecode(caller: String): String {
+        val owner = requireNotNull(Regex(
+            "Method (io/github/composefluent/winrt/generated/abi/[^. ]+)\\.\"?kotlinWinRTAbiInvoke_"
+        ).find(caller)) { caller }.groupValues[1]
+        return javap(owner.replace('/', '.'))
     }
 
     private fun javap(className: String): String {

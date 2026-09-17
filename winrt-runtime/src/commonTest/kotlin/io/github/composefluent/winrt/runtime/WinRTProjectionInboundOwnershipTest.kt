@@ -29,6 +29,7 @@ private class InboundOwnershipProjectionImpl(
 
 private class InboundOwnershipTarget(
     private val result: InboundOwnershipProjection,
+    private val failOnProduce: Boolean = false,
 ) {
     var received: InboundOwnershipProjection? = null
 
@@ -36,7 +37,10 @@ private class InboundOwnershipTarget(
         received = value
     }
 
-    fun produce(): InboundOwnershipProjection = result
+    fun produce(): InboundOwnershipProjection {
+        check(!failOnProduce) { "Inbound result failure" }
+        return result
+    }
 }
 
 private class BorrowedObjectTarget {
@@ -54,6 +58,11 @@ private class BorrowedObjectTarget {
     reference = WinRTProjectionAbiReferenceKind.INSPECTABLE,
 )
 internal object BorrowedObjectCodec {
+    // Same name and arity must not override the annotated, fully typed codec contract.
+    fun fromAbi(address: Int): Any? = error("Wrong codec overload: $address")
+
+    fun createMarshaler(value: Int): WinRTObjectMarshaler = error("Wrong codec overload: $value")
+
     @WinRTProjectionAbiCodec(
         role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER,
         type = "System.Object",
@@ -94,6 +103,33 @@ private fun consumeBorrowedObject(
 }
 
 class WinRTProjectionInboundOwnershipTest {
+    // cswinrt code_writers.h: write_managed_method_call initializes outputs before invocation.
+    @Test
+    fun failed_projected_result_clears_previous_pointer_without_releasing_it() {
+        ProjectionReferenceSource.create().use { source ->
+            createInboundOwnershipHost(InboundOwnershipTarget(source.value, failOnProduce = true)).use { host ->
+                host.createPrimaryReference().use { receiver ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                        PlatformAbi.writePointer(resultOut, source.pointer)
+                        val before = source.referenceCount()
+                        val status = ComVtableInvoker.invokeArgs(
+                            instance = receiver.pointer,
+                            slot = PRODUCE_PROJECTION_SLOT,
+                            arg0 = resultOut,
+                        )
+                        assertTrue(status < 0, "A failed managed call must return a failing HRESULT")
+                        assertTrue(PlatformAbi.samePointer(
+                            PlatformAbi.readPointer(resultOut).asRawComPtr(),
+                            PlatformAbi.nullPointer.asRawComPtr(),
+                        ))
+                        assertEquals(before, source.referenceCount())
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun constant_signature_borrowed_reference_preserves_iid_and_owned_lifetime() {
         val expectedInterfaceId = ParameterizedInterfaceId.createFromSignature(

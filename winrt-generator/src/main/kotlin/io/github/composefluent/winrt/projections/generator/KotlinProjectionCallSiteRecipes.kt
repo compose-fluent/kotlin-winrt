@@ -139,6 +139,7 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
 
     if (binding.kind == KotlinProjectionAbiValueKind.Delegate) {
         return KotlinProjectionCallSiteFactory(
+            kind = KotlinProjectionCallSiteFactoryKind.PROJECTED_DELEGATE,
             returnType = WINRT_DELEGATE_ARGUMENT_MARSHALER_CLASS_NAME,
             body = CodeBlock.of(
                 "return %T.createProjectedDelegateArgument(__value)\n",

@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.projections.generator
 
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
@@ -44,7 +45,7 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
         } else {
             binding.category.callSiteDirection()
         }
-        val recipe = if (
+        val materializedRecipe = if (
             direction == WinRTProjectionCallSiteSlotDirection.OUT ||
             direction == WinRTProjectionCallSiteSlotDirection.RECEIVE_ARRAY
         ) {
@@ -60,19 +61,23 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
                 callSiteSupport = callSiteSupport,
             )
         }
+        val sharedInput = if (callSiteSupport?.sharesTypedInputs == true &&
+            direction == WinRTProjectionCallSiteSlotDirection.IN
+        ) sharedCallSiteInput(binding.typeBinding, materializedRecipe) else null
+        val recipe = sharedInput?.second ?: materializedRecipe
         val slot = WinRTProjectionCallSiteSlot(
             direction = direction,
             ownership = binding.category.parameterOwnership(recipe),
             recipe = recipe,
         )
-        registerCallSiteAbiType(binding.typeBinding, recipe, callSiteSupport)
+        registerCallSiteAbiType(binding.typeBinding, materializedRecipe, callSiteSupport)
         slots += slot
         if (direction == WinRTProjectionCallSiteSlotDirection.RECEIVE_ARRAY) {
             require(parameterResultType == null) { "A WinRT call site cannot project multiple receive-array results." }
             parameterResultType = projectedCallSiteType(binding.typeBinding)
             parameterResultAbiType = binding.typeBinding.explicitCallSiteAbiTypeName()
         } else if (slot.functionParameterCount > 0) {
-            val projectedType = projectedCallSiteType(binding.typeBinding)
+            val projectedType = sharedInput?.first ?: projectedCallSiteType(binding.typeBinding)
             val parameterType = if (direction == WinRTProjectionCallSiteSlotDirection.OUT) {
                 WINRT_OUT_CLASS_NAME.parameterizedBy(projectedType)
             } else {
@@ -81,9 +86,9 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
             parameters += KotlinTypedProjectionCallSiteParameter(
                 type = parameterType,
                 direction = direction.parameterDirection(),
-                abiType = binding.typeBinding.explicitCallSiteAbiTypeName(),
+                abiType = if (sharedInput != null) "" else binding.typeBinding.explicitCallSiteAbiTypeName(),
             )
-            arguments += CodeBlock.of("%L", binding.name.escapeAsKotlinIdentifierIfNeeded())
+            arguments += callSiteInputArgument(slotPlan, slot)
         }
     }
 
@@ -178,7 +183,47 @@ private fun callSiteArguments(
 ): List<CodeBlock> = callPlan.parameterSlots
     .zip(preparedPlan.descriptor.slots)
     .filter { (_, slot) -> slot.functionParameterCount > 0 }
-    .map { (slotPlan, _) -> CodeBlock.of("%L", slotPlan.binding.name.escapeAsKotlinIdentifierIfNeeded()) }
+    .map { (slotPlan, slot) -> callSiteInputArgument(slotPlan, slot) }
+
+/** Keep the public parameter typed; normalize only the shared wrapper's input contract. */
+private fun KotlinProjectionRenderer.sharedCallSiteInput(
+    binding: KotlinProjectionAbiTypeBinding,
+    recipe: WinRTProjectionCallSiteRecipe,
+): Pair<TypeName, WinRTProjectionCallSiteRecipe>? {
+    if (binding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass &&
+        isDirectMetadataProjection(binding, recipe)
+    ) {
+        val type = IWINRT_OBJECT_CLASS_NAME.copy(nullable = recipe.nullable)
+        return type to recipe.storageRecipe.copy(
+            referenceAccess = WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
+            typeSignature = "Projection(${IWINRT_OBJECT_CLASS_NAME.canonicalName}|typed)",
+        )
+    }
+    // Generated enum Metadata.toAbi is a static underlying-value conversion. Performing it
+    // at the typed caller preserves signedness without making each enum a wrapper identity.
+    if (recipe.kind == WinRTProjectionCallSiteRecipeKind.ENUM && !recipe.nullable &&
+        recipe.callables?.toAbi?.isNotBlank() == true
+    ) {
+        val value = recipe.children.single()
+        return ClassName.bestGuess(value.projectedKotlinTypeName) to value
+    }
+    return null
+}
+
+private fun callSiteInputArgument(
+    slotPlan: KotlinProjectionAbiSlotPlan,
+    slot: WinRTProjectionCallSiteSlot,
+): CodeBlock {
+    val value = CodeBlock.of("%L", slotPlan.binding.name.escapeAsKotlinIdentifierIfNeeded())
+    val sourceRecipe = slotPlan.recipePlan.recipe
+    if (sourceRecipe.kind == WinRTProjectionCallSiteRecipeKind.ENUM &&
+        slot.recipe.kind == WinRTProjectionCallSiteRecipeKind.VALUE
+    ) {
+        val codec = requireNotNull(sourceRecipe.callables)
+        return CodeBlock.of("%T.%L(%L)", ClassName.bestGuess(codec.ownerFqName), codec.toAbi, value)
+    }
+    return value
+}
 
 internal data class KotlinDirectInboundCallSiteParameter(
     val projectedType: TypeName,
@@ -227,6 +272,10 @@ private fun KotlinProjectionRenderer.registerCallSiteAbiType(
     support: KotlinModulePlatformAbiCallSupport?,
 ) {
     if (support == null) return
+    if (binding.kind == KotlinProjectionAbiValueKind.Delegate &&
+        recipe.callables?.ownerFqName == WINRT_DELEGATE_BRIDGE_CLASS_NAME.canonicalName &&
+        recipe.callables?.createMarshaler == "createProjectedDelegateArgument"
+    ) return
     if (recipe.kind !in GENERATED_ABI_METADATA_RECIPE_KINDS) return
     val storage = recipe.storageRecipe
     // Enums are fully described by their closed IR type and the generated Metadata.toAbi/fromAbi
@@ -322,6 +371,16 @@ private fun KotlinProjectionRenderer.materializeParameterCallSiteRecipe(
     }
     val factory = recipePlan.inputFactory
     if (factory != null) {
+        if (factory.kind == KotlinProjectionCallSiteFactoryKind.PROJECTED_DELEGATE) {
+            return recipe.withCallSiteProjection(
+                callables = WinRTProjectionCallSiteCallables(
+                    ownerFqName = WINRT_DELEGATE_BRIDGE_CLASS_NAME.canonicalName,
+                    createMarshaler = "createProjectedDelegateArgument",
+                    carrierProperty = "abi",
+                    closeMarshaler = factory.closeFunction,
+                ),
+            )
+        }
         val support = callSiteSupport
             ?: binding.typeBinding.failCallSitePlan("requires a generated closed input codec without module support")
         val projectedType = projectedCallSiteType(binding.typeBinding)
@@ -432,6 +491,7 @@ private fun KotlinProjectionRenderer.materializeOutputCallSiteRecipe(
             returnType = projectedType,
             body = renderClosedArrayOutputCodec(binding, recipe),
         )
+        val cleanup = arrayElementCleanupPlan(recipe.children.single())
         val disposeAbiFunctionName = support.registerCodec(
             operation = "disposeAbiArray",
             role = KotlinProjectionAbiCodecRole.DISPOSE_ABI,
@@ -439,7 +499,8 @@ private fun KotlinProjectionRenderer.materializeOutputCallSiteRecipe(
             signature = recipe.typeSignature,
             parameters = parameters,
             returnType = UNIT,
-            body = renderClosedArrayDisposalCodec(recipe),
+            body = renderClosedArrayDisposalCodec(cleanup?.statement),
+            arrayDisposalKey = cleanup?.key ?: KotlinProjectionArrayDisposalKey(KotlinArrayCleanupKind.NONE),
         )
         return recipe.copy(
             callables = WinRTProjectionCallSiteCallables(
@@ -682,11 +743,8 @@ private fun KotlinProjectionRenderer.renderClosedArrayOutputCodec(
 
 /** Disposes a failed owned array result by folding the same element recipe as the decode codec. */
 private fun renderClosedArrayDisposalCodec(
-    arrayRecipe: WinRTProjectionCallSiteRecipe,
+    cleanup: CodeBlock?,
 ): CodeBlock {
-    val element = arrayRecipe.children.singleOrNull()
-        ?: error("A closed WinMD array recipe must contain exactly one element recipe.")
-    val cleanup = arrayElementCleanupStatement(element)
     return CodeBlock.builder()
         .add("val __arrayLength = %T.readInt32(__resultLengthOut)\n", PLATFORM_ABI_CLASS_NAME)
         .add("val __arrayData = %T.readPointer(__resultDataOut)\n", PLATFORM_ABI_CLASS_NAME)
@@ -849,45 +907,72 @@ private fun WinRTProjectionCallSiteRecipe.arrayElementSizeBytes(): Long =
         }
     }
 
+private data class ArrayElementCleanup(val key: KotlinProjectionArrayDisposalKey, val statement: CodeBlock)
+
 private fun arrayElementCleanupStatement(recipe: WinRTProjectionCallSiteRecipe): CodeBlock? =
+    arrayElementCleanupPlan(recipe)?.statement
+
+private fun arrayElementCleanupPlan(recipe: WinRTProjectionCallSiteRecipe): ArrayElementCleanup? =
     when (recipe.kind) {
         WinRTProjectionCallSiteRecipeKind.VALUE,
         WinRTProjectionCallSiteRecipeKind.GUID -> null
         WinRTProjectionCallSiteRecipeKind.HSTRING ->
-            CodeBlock.of("%T.disposeAbi(%L)", NATIVE_STRING_MARSHALER_CLASS_NAME, arrayElementCarrierExpression(recipe))
-        WinRTProjectionCallSiteRecipeKind.ENUM -> arrayElementCleanupStatement(recipe.children.single())
+            ArrayElementCleanup(
+                KotlinProjectionArrayDisposalKey(KotlinArrayCleanupKind.HSTRING),
+                CodeBlock.of("%T.disposeAbi(%L)", NATIVE_STRING_MARSHALER_CLASS_NAME, arrayElementCarrierExpression(recipe)),
+            )
+        WinRTProjectionCallSiteRecipeKind.ENUM -> arrayElementCleanupPlan(recipe.children.single())
         WinRTProjectionCallSiteRecipeKind.STRUCT -> recipe.callables
             ?.disposeAbi
             ?.takeIf(String::isNotBlank)
             ?.let { functionName ->
-                CodeBlock.of(
-                    "%T.%L(%L)",
-                    com.squareup.kotlinpoet.ClassName.bestGuess(requireNotNull(recipe.callables).ownerFqName),
-                    functionName,
-                    arrayElementAddressExpression(recipe),
+                ArrayElementCleanup(
+                    KotlinProjectionArrayDisposalKey(
+                        KotlinArrayCleanupKind.CUSTOM_ADDRESS,
+                        requireNotNull(recipe.callables).ownerFqName, functionName,
+                        stride = recipe.arrayElementSizeBytes(), alignment = recipe.alignmentBytes,
+                    ),
+                    CodeBlock.of(
+                        "%T.%L(%L)",
+                        com.squareup.kotlinpoet.ClassName.bestGuess(requireNotNull(recipe.callables).ownerFqName),
+                        functionName,
+                        arrayElementAddressExpression(recipe),
+                    ),
                 )
             }
         WinRTProjectionCallSiteRecipeKind.COM_REFERENCE -> {
             val pointer = arrayElementCarrierExpression(recipe)
-            CodeBlock.of(
-                "if (!%T.isNull(%L)) %T(%T.toRawComPtr(%L)).close()",
-                PLATFORM_ABI_CLASS_NAME,
-                pointer,
-                IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
-                pointer,
+            ArrayElementCleanup(
+                KotlinProjectionArrayDisposalKey(KotlinArrayCleanupKind.COM_REFERENCE),
+                CodeBlock.of(
+                    "if (!%T.isNull(%L)) %T(%T.toRawComPtr(%L)).close()",
+                    PLATFORM_ABI_CLASS_NAME,
+                    pointer,
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    pointer,
+                ),
             )
         }
         WinRTProjectionCallSiteRecipeKind.PROJECTION -> {
             val callables = requireNotNull(recipe.callables)
             callables.disposeAbi.takeIf(String::isNotBlank)?.let { functionName ->
-                CodeBlock.of(
-                    "%T.%L(%L)",
-                    com.squareup.kotlinpoet.ClassName.bestGuess(callables.ownerFqName),
-                    functionName,
-                    arrayElementCarrierExpression(recipe.children.single()),
+                val storage = recipe.children.single()
+                ArrayElementCleanup(
+                    KotlinProjectionArrayDisposalKey(
+                        KotlinArrayCleanupKind.CUSTOM_CARRIER,
+                        callables.ownerFqName, functionName,
+                        carrier = storage.valueCarrier ?: storage.abiCarriers.single(),
+                        stride = storage.arrayElementSizeBytes(), alignment = storage.alignmentBytes,
+                    ),
+                    CodeBlock.of(
+                        "%T.%L(%L)",
+                        com.squareup.kotlinpoet.ClassName.bestGuess(callables.ownerFqName),
+                        functionName,
+                        arrayElementCarrierExpression(recipe.children.single()),
+                    ),
                 )
-            } ?: arrayElementCleanupStatement(recipe.children.single())
+            } ?: arrayElementCleanupPlan(recipe.children.single())
         }
         WinRTProjectionCallSiteRecipeKind.ARRAY ->
             error("WinRT ABI arrays cannot contain nested array carriers: '${recipe.typeSignature}'.")
