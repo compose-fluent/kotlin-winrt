@@ -1922,19 +1922,43 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         pluginContext: IrPluginContext,
         continuation: (PreparedInput) -> IrExpression?,
     ): IrExpression = builder.irBlock(resultType = function.returnType) {
+        // MarshalString.CreateMarshaler: empty strings have no marshaler to acquire/dispose.
+        // Branch only around frame acquisition, so the continuation is emitted exactly once.
+        val frameType = hStringReferenceFrameHandleGetter.owner.parameters.first().type.makeNullable()
         val frame = irTemporary(
-            builder.irCall(acquireHStringReferenceFrame).apply { arguments[0] = value },
+            builder.irIfThenElse(
+                type = frameType,
+                condition = intLessThan(builder,
+                    builder.irCall(winRTStringLength).apply { arguments[0] = value }, builder.irInt(1)),
+                thenPart = builder.irNull(frameType),
+                elsePart = builder.irCall(acquireHStringReferenceFrame).apply { arguments[0] = value },
+            ),
             nameHint = "hstringFrame",
             isMutable = false,
             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
         )
-        val handle = builder.irCall(hStringReferenceFrameHandleGetter).apply { arguments[0] = builder.irGet(frame) }
+        val handle = builder.irIfNull(
+            type = hStringReferenceFrameHandleGetter.owner.returnType,
+            subject = builder.irGet(frame),
+            thenPart = platformAbiStaticProperty(builder, platformAbiNullPointerGetter)
+                ?: abortCallSiteLowering("cannot resolve the empty HSTRING handle"),
+            elsePart = builder.irCall(hStringReferenceFrameHandleGetter).apply {
+                arguments[0] = builder.irAs(builder.irGet(frame), frameType.makeNotNull())
+            },
+        )
         +builder.irTry(
             type = function.returnType,
             tryResult = continuation(PreparedInput(listOf(handle))) ?: abortCallSiteLowering(),
             catches = emptyList(),
             finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                +builder.irCall(hStringReferenceFrameClose).apply { arguments[0] = builder.irGet(frame) }
+                +builder.irIfNull(
+                    type = pluginContext.irBuiltIns.unitType,
+                    subject = builder.irGet(frame),
+                    thenPart = builder.irUnit(),
+                    elsePart = builder.irCall(hStringReferenceFrameClose).apply {
+                        arguments[0] = builder.irAs(builder.irGet(frame), frameType.makeNotNull())
+                    },
+                )
             },
         )
     }
