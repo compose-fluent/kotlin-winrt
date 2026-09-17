@@ -3321,8 +3321,28 @@ class KotlinProjectionRenderer(
     private fun nativeStructWriteCode(plan: KotlinTypeProjectionPlan, fields: List<WinRTFieldDefinition>): CodeBlock =
         CodeBlock.builder()
             .apply {
+                val ownsFields = fields.any {
+                    nativeStructFieldDisposeAbiCode(it, "destination", plan.type.namespace, plan.typesByQualifiedName) != null
+                }
+                // CsWinRT struct CreateMarshaler rolls back fields acquired before a later failure.
+                if (ownsFields) {
+                    addStatement("%T.zeroBytes(destination, layout.sizeBytes)", PLATFORM_ABI_CLASS_NAME)
+                    beginControlFlow("try")
+                }
                 fields.forEach { field ->
                     add("%L\n", nativeStructFieldWriteCode(field, "value", "destination", plan.type.namespace, plan.typesByQualifiedName))
+                }
+                if (ownsFields) {
+                    nextControlFlow("catch (failure: Throwable)")
+                    beginControlFlow("try")
+                    addStatement("disposeAbi(destination)")
+                    nextControlFlow("catch (cleanup: Throwable)")
+                    addStatement("failure.addSuppressed(cleanup)")
+                    nextControlFlow("finally")
+                    addStatement("%T.zeroBytes(destination, layout.sizeBytes)", PLATFORM_ABI_CLASS_NAME)
+                    endControlFlow()
+                    addStatement("throw failure")
+                    endControlFlow()
                 }
             }
             .build()
@@ -3732,6 +3752,11 @@ class KotlinProjectionRenderer(
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
         val pointer = CodeBlock.of("%T.readPointer(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+        customStructAbiForNativeField(field.typeName)?.let { custom ->
+            return custom.disposeAbiFunctionName?.let { dispose ->
+                CodeBlock.of("%T.%L(%L)", custom.helperTypeName, dispose, slice)
+            }
+        }
         return when (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName)) {
             NativeStructReferenceFieldKind.String ->
                 CodeBlock.of("%T.fromHandle(%L, owner = true).close()", HSTRING_CLASS_NAME, pointer)
@@ -3740,7 +3765,9 @@ class KotlinProjectionRenderer(
             NativeStructReferenceFieldKind.ProjectedInterface,
             NativeStructReferenceFieldKind.ProjectedRuntimeClass ->
                 CodeBlock.of("if (%L != %T.nullPointer) %T(%T.toRawComPtr(%L)).close()", pointer, PLATFORM_ABI_CLASS_NAME, IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, pointer)
-            null -> null
+            null -> if (renderAbiTypeBinding(field.typeName, typesByQualifiedName, currentNamespace).kind == KotlinProjectionAbiValueKind.Struct &&
+                !isWinRTGuidTypeName(field.typeName)
+            ) CodeBlock.of("%T.Metadata.disposeAbi(%L)", resolveTypeName(field.typeName), slice) else null
         }
     }
 

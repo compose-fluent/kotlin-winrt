@@ -126,6 +126,7 @@ enum class WinRTProjectionAbiCodecRole {
     /** Decodes a borrowed inbound ABI value without taking ownership of its reference. */
     FROM_BORROWED_ABI,
     CREATE_MARSHALER,
+    /** With DISPOSE_ABI, writes into zeroed storage that remains disposable after a partial write. */
     COPY_TO_ABI,
     COPY_FROM_ABI,
     DISPOSE_ABI,

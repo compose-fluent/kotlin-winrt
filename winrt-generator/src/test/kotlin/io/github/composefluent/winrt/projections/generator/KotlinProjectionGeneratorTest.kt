@@ -58,6 +58,30 @@ import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    @Test
+    fun generator_rolls_back_owned_struct_writes() {
+        // CsWinRT code_writers.h: struct CreateMarshaler's partial-initialization rollback.
+        fun struct(name: String, vararg fields: WinRTFieldDefinition) = WinRTTypeDefinition(
+            namespace = "Sample.Rollback", name = name, kind = WinRTTypeKind.Struct,
+            fields = fields.toList(),
+        )
+        val model = WinRTMetadataModel(namespaces = listOf(WinRTNamespace("Sample.Rollback", listOf(
+            struct("Text", WinRTFieldDefinition("Value", "String")),
+            struct("Nested", WinRTFieldDefinition("Text", "Sample.Rollback.Text"), WinRTFieldDefinition("Tail", "String")),
+            struct("Plain", WinRTFieldDefinition("Value", "Int32")),
+        ))))
+        val files = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val text = files.getValue("Text.kt").contents
+        val nested = files.getValue("Nested.kt").contents
+        val plain = files.getValue("Plain.kt").contents
+        assertTrue(text, text.contains("catch (failure: Throwable)"))
+        assertTrue(text, text.contains("disposeAbi(destination)"))
+        assertTrue(text, text.contains("zeroBytes(destination, layout.sizeBytes)"))
+        assertTrue(nested, nested.contains("Text.Metadata.disposeAbi"))
+        assertFalse(plain, plain.contains("zeroBytes(destination"))
+        assertFalse(plain, plain.contains("catch (failure"))
+    }
+
     private fun Map<String, KotlinProjectionFile>.combinedContents(): String =
         values.joinToString("\n", transform = KotlinProjectionFile::contents)
 

@@ -1482,7 +1482,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         if (storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.STRUCT) {
             val callables = storageRecipe.callables ?: return null
             if (callables.copyToAbi.isBlank()) return null
-            return emitStructFrame(builder, function, storageRecipe, clear = false, pluginContext) { _, pointer ->
+            return emitStructFrame(builder, function, storageRecipe, clear = callables.disposeAbi.isNotBlank(), pluginContext) { _, pointer ->
                 val copy = resolver.codecCall(
                     builder,
                     callables.ownerFqName,
@@ -1490,14 +1490,17 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     listOf(value, pointer),
                 ) ?: return@emitStructFrame null
                 builder.irBlock(resultType = function.returnType) {
-                    +copy
                     val downstream = continuation(pointer, null, emptyList()) ?: abortCallSiteLowering()
                     if (callables.disposeAbi.isBlank()) {
+                        +copy
                         +downstream
                     } else {
                         +builder.irTry(
                             type = function.returnType,
-                            tryResult = downstream,
+                            tryResult = builder.irBlock(resultType = function.returnType) {
+                                +copy
+                                +downstream
+                            },
                             catches = emptyList(),
                             finallyExpression = resolver.codecCall(
                                 builder,
@@ -2074,7 +2077,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             )
         }
         if (callables.copyToAbi.isBlank()) return null
-        return emitStructFrame(builder, function, recipe, clear = false, pluginContext) { frame, pointer ->
+        return emitStructFrame(builder, function, recipe, clear = callables.disposeAbi.isNotBlank(), pluginContext) { frame, pointer ->
             val copy = resolver.codecCall(
                 builder,
                 callables.ownerFqName,
@@ -2084,14 +2087,17 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             val carrier = structCarrier(builder, frame, pointer, recipe.abiCarriers.singleOrNull() ?: return@emitStructFrame null)
                 ?: return@emitStructFrame null
             builder.irBlock(resultType = function.returnType) {
-                +copy
                 val downstream = continuation(PreparedInput(listOf(carrier))) ?: abortCallSiteLowering()
                 if (callables.disposeAbi.isBlank()) {
+                    +copy
                     +downstream
                 } else {
                     +builder.irTry(
                         type = function.returnType,
-                        tryResult = downstream,
+                        tryResult = builder.irBlock(resultType = function.returnType) {
+                            +copy
+                            +downstream
+                        },
                         catches = emptyList(),
                         finallyExpression = resolver.codecCall(
                             builder,
