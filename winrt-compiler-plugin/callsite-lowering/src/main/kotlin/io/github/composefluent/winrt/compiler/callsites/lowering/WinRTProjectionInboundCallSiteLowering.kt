@@ -537,7 +537,9 @@ private class InboundRuntimeSymbols private constructor(
             val resultAddressType = resultAddressTypes.firstOrNull() ?: return null
             if (resultAddressTypes.any { candidate -> candidate != resultAddressType }) return null
             val jvmEntryPoint = pluginContext.findInboundFunctions(WINRT_JVM_ENTRY_POINT_CALLABLE_ID, fromFile)
-                .singleOrNull()
+                .singleOrNull { symbol ->
+                    symbol.owner.parameters.count { it.kind == IrParameterKind.Regular } == 3
+                }
             val nativeEntryPoint = pluginContext.findInboundFunctions(WINRT_NATIVE_ENTRY_POINT_CALLABLE_ID, fromFile)
                 .singleOrNull()
             if (jvmEntryPoint == null && nativeEntryPoint == null) return null
