@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.projections.generator
 
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
@@ -44,7 +45,7 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
         } else {
             binding.category.callSiteDirection()
         }
-        val recipe = if (
+        val materializedRecipe = if (
             direction == WinRTProjectionCallSiteSlotDirection.OUT ||
             direction == WinRTProjectionCallSiteSlotDirection.RECEIVE_ARRAY
         ) {
@@ -60,19 +61,23 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
                 callSiteSupport = callSiteSupport,
             )
         }
+        val sharedInput = if (callSiteSupport?.sharesTypedInputs == true &&
+            direction == WinRTProjectionCallSiteSlotDirection.IN
+        ) sharedCallSiteInput(binding.typeBinding, materializedRecipe) else null
+        val recipe = sharedInput?.second ?: materializedRecipe
         val slot = WinRTProjectionCallSiteSlot(
             direction = direction,
             ownership = binding.category.parameterOwnership(recipe),
             recipe = recipe,
         )
-        registerCallSiteAbiType(binding.typeBinding, recipe, callSiteSupport)
+        registerCallSiteAbiType(binding.typeBinding, materializedRecipe, callSiteSupport)
         slots += slot
         if (direction == WinRTProjectionCallSiteSlotDirection.RECEIVE_ARRAY) {
             require(parameterResultType == null) { "A WinRT call site cannot project multiple receive-array results." }
             parameterResultType = projectedCallSiteType(binding.typeBinding)
             parameterResultAbiType = binding.typeBinding.explicitCallSiteAbiTypeName()
         } else if (slot.functionParameterCount > 0) {
-            val projectedType = projectedCallSiteType(binding.typeBinding)
+            val projectedType = sharedInput?.first ?: projectedCallSiteType(binding.typeBinding)
             val parameterType = if (direction == WinRTProjectionCallSiteSlotDirection.OUT) {
                 WINRT_OUT_CLASS_NAME.parameterizedBy(projectedType)
             } else {
@@ -81,9 +86,9 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
             parameters += KotlinTypedProjectionCallSiteParameter(
                 type = parameterType,
                 direction = direction.parameterDirection(),
-                abiType = binding.typeBinding.explicitCallSiteAbiTypeName(),
+                abiType = if (sharedInput != null) "" else binding.typeBinding.explicitCallSiteAbiTypeName(),
             )
-            arguments += CodeBlock.of("%L", binding.name.escapeAsKotlinIdentifierIfNeeded())
+            arguments += callSiteInputArgument(slotPlan, slot)
         }
     }
 
@@ -178,7 +183,47 @@ private fun callSiteArguments(
 ): List<CodeBlock> = callPlan.parameterSlots
     .zip(preparedPlan.descriptor.slots)
     .filter { (_, slot) -> slot.functionParameterCount > 0 }
-    .map { (slotPlan, _) -> CodeBlock.of("%L", slotPlan.binding.name.escapeAsKotlinIdentifierIfNeeded()) }
+    .map { (slotPlan, slot) -> callSiteInputArgument(slotPlan, slot) }
+
+/** Keep the public parameter typed; normalize only the shared wrapper's input contract. */
+private fun KotlinProjectionRenderer.sharedCallSiteInput(
+    binding: KotlinProjectionAbiTypeBinding,
+    recipe: WinRTProjectionCallSiteRecipe,
+): Pair<TypeName, WinRTProjectionCallSiteRecipe>? {
+    if (binding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass &&
+        isDirectMetadataProjection(binding, recipe)
+    ) {
+        val type = IWINRT_OBJECT_CLASS_NAME.copy(nullable = recipe.nullable)
+        return type to recipe.storageRecipe.copy(
+            referenceAccess = WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
+            typeSignature = "Projection(${IWINRT_OBJECT_CLASS_NAME.canonicalName}|typed)",
+        )
+    }
+    // Generated enum Metadata.toAbi is a static underlying-value conversion. Performing it
+    // at the typed caller preserves signedness without making each enum a wrapper identity.
+    if (recipe.kind == WinRTProjectionCallSiteRecipeKind.ENUM && !recipe.nullable &&
+        recipe.callables?.toAbi?.isNotBlank() == true
+    ) {
+        val value = recipe.children.single()
+        return ClassName.bestGuess(value.projectedKotlinTypeName) to value
+    }
+    return null
+}
+
+private fun callSiteInputArgument(
+    slotPlan: KotlinProjectionAbiSlotPlan,
+    slot: WinRTProjectionCallSiteSlot,
+): CodeBlock {
+    val value = CodeBlock.of("%L", slotPlan.binding.name.escapeAsKotlinIdentifierIfNeeded())
+    val sourceRecipe = slotPlan.recipePlan.recipe
+    if (sourceRecipe.kind == WinRTProjectionCallSiteRecipeKind.ENUM &&
+        slot.recipe.kind == WinRTProjectionCallSiteRecipeKind.VALUE
+    ) {
+        val codec = requireNotNull(sourceRecipe.callables)
+        return CodeBlock.of("%T.%L(%L)", ClassName.bestGuess(codec.ownerFqName), codec.toAbi, value)
+    }
+    return value
+}
 
 internal data class KotlinDirectInboundCallSiteParameter(
     val projectedType: TypeName,

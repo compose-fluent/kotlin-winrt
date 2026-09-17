@@ -193,6 +193,19 @@ internal class WinRTProjectionCallSitePlanner(
         abiType: String = "",
         usage: RecipeUsage,
     ): WinRTProjectionCallSiteRecipe {
+        // Shared runtime-class inputs need only the native object reference. CsWinRT likewise
+        // converges object-reference marshaling after selecting the projected input semantics.
+        // This is an input-only contract: outputs still require their exact typed factory, and
+        // an explicit ABI identity must never bypass a specialized marshaler or interface IID.
+        if (usage == RecipeUsage.INPUT && abiType.isEmpty() &&
+            type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.IWinRTObject"
+        ) {
+            return referenceRecipe(
+                WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT,
+                AbiTypeKind.PROJECTION.typeSignature("io.github.composefluent.winrt.runtime.IWinRTObject"),
+                type.isNullable(),
+            )
+        }
         val projectedName = projectedTypes.canonicalize(type)
             ?: error("cannot canonicalize closed projected type $type")
         val explicitAbiTypeName = abiType.takeIf(String::isNotEmpty)?.let { explicit ->

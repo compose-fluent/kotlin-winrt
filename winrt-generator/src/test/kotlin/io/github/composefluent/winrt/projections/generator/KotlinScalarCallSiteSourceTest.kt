@@ -56,12 +56,13 @@ class KotlinScalarCallSiteSourceTest {
                     "io.github.composefluent.winrt.runtime.GeneratedSourceEnum" else case.type,
                 enumUnderlyingType = if (case.kind == KotlinProjectionAbiValueKind.Enum) WinRTIntegralType.UInt32 else null,
             )
-            val plan = renderer.composeTypedProjectionCallSite(renderer.requireAbiCallPlan(
+            val invocation = renderer.composeTypedProjectionCallSite(renderer.requireAbiCallPlan(
                 bindingName = "sample.read${case.type}",
                 returnBinding = binding,
                 parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", binding)),
-            )).plan
-            val source = support.sourceBody(plan, listOf(CodeBlock.of("instance"), CodeBlock.of("slot"), CodeBlock.of("value")))
+            ))
+            val source = support.sourceBody(invocation.plan,
+                listOf(CodeBlock.of("instance"), CodeBlock.of("slot")) + invocation.arguments)
             assertNotNull(case.type, source)
             val text = source.toString()
             assertTrue(text, text.contains("abiCall_"))

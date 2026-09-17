@@ -37,6 +37,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private val emitSupportFile: Boolean = true,
     preparedSource: KotlinModulePlatformAbiCallSupport? = null,
 ) {
+    internal val sharesTypedInputs: Boolean get() = emitSupportFile
+
     private val enabledCallNames = enabledCalls?.mapTo(linkedSetOf()) { plan -> plan.functionName }
     private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val rawCalls = linkedMapOf<List<ClassName>, Pair<ClassName, FunSpec>>()

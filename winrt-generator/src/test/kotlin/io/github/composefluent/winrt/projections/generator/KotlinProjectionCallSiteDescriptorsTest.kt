@@ -388,7 +388,7 @@ class KotlinProjectionCallSiteDescriptorsTest {
         val generatedFiles = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
         assertTrue(invocation.plan.descriptor.slots.single().recipe.callables?.toAbi.orEmpty().isBlank())
         assertEquals(
-            "windows.web.http.HttpRequestMessage?",
+            "io.github.composefluent.winrt.runtime.IWinRTObject?",
             invocation.plan.descriptor.slots.single().recipe.projectedKotlinTypeName,
         )
         assertTrue(generatedFiles.isEmpty())
