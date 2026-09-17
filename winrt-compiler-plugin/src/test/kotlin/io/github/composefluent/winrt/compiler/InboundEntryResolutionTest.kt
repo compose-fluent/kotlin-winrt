@@ -78,7 +78,7 @@ class InboundEntryResolutionTest {
             }
             fun entry(): RawAddress = winRTProjectionInboundEntryPoint(Handler::consume)
         """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
-            assertTrue(output, output.contains("requires an unbound reference"))
+            assertTrue(output, output.contains("top-level function without receivers"))
         }
     }
 
@@ -139,6 +139,88 @@ class InboundEntryResolutionTest {
             fun entry(): RawAddress = winRTProjectionInboundEntryPoint(::ordinary)
         """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
             assertTrue(output, output.contains("requires a reference to a local @WinRTProjectionInboundCallSite function"))
+        }
+    }
+
+    @Test
+    fun unsupported_declaration_shapes_report_compiler_errors() {
+        for (declaration in listOf(
+            "class Handler { @WinRTProjectionInboundCallSite fun consume(target: Target) { TODO() } }",
+            "@WinRTProjectionInboundCallSite fun String.consume(target: Target) { TODO() }",
+            "@WinRTProjectionInboundCallSite suspend fun consume(target: Target) { TODO() }",
+            "fun outer() { @WinRTProjectionInboundCallSite fun consume(target: Target) { TODO() } }",
+        )) {
+            compile("""
+                package test.inbound.declarations
+                import io.github.composefluent.winrt.runtime.*
+                class Target
+                $declaration
+            """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
+                assertTrue(output, output.contains("non-suspend top-level function without receivers"))
+            }
+        }
+    }
+
+    @Test
+    fun unused_entry_is_not_emitted_but_managed_body_is_lowered() {
+        compile("""
+            package test.inbound.unused
+            import io.github.composefluent.winrt.runtime.*
+            class Target { var value = 0 }
+            @WinRTProjectionInboundCallSite
+            private fun consume(target: Target) { target.value = 7; TODO() }
+            fun entry(): Int { val target = Target(); consume(target); return target.value }
+        """.trimIndent(), ExitCode.OK) { directory, _ ->
+            assertEquals(7, invokeEntry(directory, "test.inbound.unused.EntryKt"))
+            URLClassLoader(arrayOf(directory.toURI().toURL()), javaClass.classLoader).use { loader ->
+                assertTrue(loader.loadClass("test.inbound.unused.EntryKt").declaredMethods.none {
+                    it.name.startsWith("kotlinWinRTInbound_")
+                })
+            }
+        }
+    }
+
+    @Test
+    fun nonterminal_and_nested_placeholders_are_rejected() {
+        for (body in listOf(
+            "val action = { TODO() }; action()",
+            "TODO(); println(target)",
+            "if (target.hashCode() == 0) TODO()",
+            "target.also { println(it); TODO() }",
+        )) {
+            compile("""
+                package test.inbound.placeholder
+                import io.github.composefluent.winrt.runtime.*
+                class Target
+                @WinRTProjectionInboundCallSite
+                private fun consume(target: Target) { $body }
+            """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
+                assertTrue(output, output.contains("must end with a Unit TODO() statement"))
+            }
+        }
+    }
+
+    @Test
+    fun unrelated_nested_todo_is_preserved_when_terminal_marker_exists() {
+        compile("""
+            package test.inbound.business
+            import io.github.composefluent.winrt.runtime.*
+            class Target
+            @WinRTProjectionInboundCallSite
+            private fun consume(target: Target) {
+                val action = { TODO("business failure") }
+                action()
+                TODO("inbound")
+            }
+            fun entry() { consume(Target()) }
+        """.trimIndent(), ExitCode.OK) { directory, _ ->
+            try {
+                invokeEntry(directory, "test.inbound.business.EntryKt")
+                throw AssertionError("The business TODO must still throw")
+            } catch (failure: java.lang.reflect.InvocationTargetException) {
+                assertTrue(failure.cause is NotImplementedError)
+                assertTrue(failure.cause!!.message!!.contains("business failure"))
+            }
         }
     }
 

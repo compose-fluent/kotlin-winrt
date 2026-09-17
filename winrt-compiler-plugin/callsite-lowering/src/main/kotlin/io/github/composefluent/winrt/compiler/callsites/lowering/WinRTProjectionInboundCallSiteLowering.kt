@@ -43,6 +43,9 @@ import org.jetbrains.kotlin.ir.expressions.IrBlockBody
 import org.jetbrains.kotlin.ir.expressions.IrContainerExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
+import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
+import org.jetbrains.kotlin.ir.expressions.IrReturn
+import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
@@ -128,18 +131,23 @@ internal fun lowerWinRTProjectionInboundCallSites(
     }
 
     val entries = mutableMapOf<IrSimpleFunctionSymbol, IrSimpleFunction>()
+    val requestedEntries = markers.mapNotNull {
+        it.arguments.firstOrNull()?.inboundFunctionReference()?.symbol
+    }.toSet()
     semanticFunctions.forEach { function ->
         if (function in loweredInboundSemanticFunctions) return@forEach
+        validateDirectInboundCallSite(function)?.let { detail ->
+            pluginContext.reportInboundError(function, detail)
+            return@forEach
+        }
         val plan = planDirectInboundCallSite(function, planner)
         if (plan == null) {
             pluginContext.reportInboundError(function, "does not have a directly composable single-carrier ABI shape")
             return@forEach
         }
-        validateDirectInboundCallSite(function)?.let { detail ->
-            pluginContext.reportInboundError(function, detail)
-            return@forEach
-        }
         lowerSemanticTodoToUnit(function, pluginContext)
+        loweredInboundSemanticFunctions += function
+        if (function.symbol !in requestedEntries) return@forEach
         val entry = synthesizeDirectInboundEntry(
             semantic = function,
             plan = plan,
@@ -148,7 +156,6 @@ internal fun lowerWinRTProjectionInboundCallSites(
             pluginContext = pluginContext,
         )
         entries[function.symbol] = entry
-        loweredInboundSemanticFunctions += function
     }
 
     val consumedAliases = mutableSetOf<IrVariable>()
@@ -557,10 +564,11 @@ private fun lowerSemanticTodoToUnit(
     pluginContext: org.jetbrains.kotlin.backend.common.extensions.IrPluginContext,
 ) {
     val builder = DeclarationIrBuilder(pluginContext, function.symbol)
+    val placeholder = requireNotNull(inboundPlaceholder(function))
     function.transformChildrenVoid(
         object : IrElementTransformerVoidWithContext() {
             override fun visitCall(expression: IrCall): IrExpression {
-                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") {
+                if (expression === placeholder) {
                     return builder.irUnit()
                 }
                 return super.visitCall(expression)
@@ -570,25 +578,38 @@ private fun lowerSemanticTodoToUnit(
 }
 
 private fun validateDirectInboundCallSite(function: IrSimpleFunction): String? {
+    if (function.parent !is IrFile || function.parameters.any { it.kind != IrParameterKind.Regular } || function.isSuspend) {
+        return "inbound stub must be a non-suspend top-level function without receivers"
+    }
     if (function.typeParameters.isNotEmpty()) return "inbound stub must not declare type parameters"
     val parameters = function.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
     if (parameters.isEmpty()) return "inbound stub must declare a projected target"
     if (parameters.first().type.isNullable()) return "inbound projected target must be non-null"
-    var todoCount = 0
-    function.body?.acceptChildrenVoid(
-        object : IrVisitorVoid() {
-            override fun visitElement(element: IrElement) {
-                element.acceptChildrenVoid(this)
-            }
-
-            override fun visitCall(expression: IrCall) {
-                if (expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO") todoCount += 1
-                super.visitCall(expression)
-            }
-        },
-    )
-    if (todoCount != 1) return "inbound stub must contain exactly one TODO() placeholder, found $todoCount"
+    if (inboundPlaceholder(function) == null) {
+        return "inbound stub must end with a Unit TODO() statement or a value.also { TODO() } placeholder"
+    }
     return null
+}
+
+// Kotlin-specific source marker contract. CsWinRT emits the semantic invocation directly;
+// only the terminal marker generated around that invocation may be removed here.
+private fun inboundPlaceholder(function: IrSimpleFunction): IrCall? {
+    fun unwrap(expression: IrExpression): IrExpression = when (expression) {
+        is IrReturn -> unwrap(expression.value)
+        is IrTypeOperatorCall -> unwrap(expression.argument)
+        else -> expression
+    }
+    val terminal = when (val body = function.body) {
+        is IrBlockBody -> body.statements.lastOrNull() as? IrExpression
+        is IrExpressionBody -> body.expression
+        else -> null
+    }?.let(::unwrap) as? IrCall ?: return null
+    fun IrCall.isTodo() = symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.TODO"
+    if (terminal.isTodo()) return terminal.takeIf { function.returnType.classFqName == KOTLIN_UNIT_FQ_NAME }
+    if (terminal.symbol.owner.fqNameWhenAvailable?.asString() != "kotlin.also") return null
+    val lambda = terminal.arguments.lastOrNull() as? IrFunctionExpression ?: return null
+    val statement = (lambda.function.body as? IrBlockBody)?.statements?.singleOrNull() as? IrExpression ?: return null
+    return (unwrap(statement) as? IrCall)?.takeIf { it.isTodo() }
 }
 
 private fun WinRTProjectionCallSiteAbiCarrier.irType(

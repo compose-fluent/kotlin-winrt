@@ -28,6 +28,13 @@ private fun consumeIdentity(
 
 class InboundEntryIdentityTest {
     @Test
+    fun semantic_function_without_abi_entry_remains_callable() {
+        val target = InboundIdentityTarget()
+        consumeManagedOnly(target)
+        assertEquals(9, target.signed)
+    }
+
+    @Test
     fun equal_abi_overloads_and_immutable_aliases_preserve_managed_dispatch() {
         // CsWinRT Do_Abi entries identify semantic methods, even when ABI carriers agree.
         val signed: (InboundIdentityTarget, Int) -> Unit = ::consumeIdentity
@@ -58,4 +65,10 @@ class InboundEntryIdentityTest {
             }
         }
     }
+}
+
+@WinRTProjectionInboundCallSite
+private fun consumeManagedOnly(target: InboundIdentityTarget) {
+    target.signed = 9
+    TODO("inbound")
 }
