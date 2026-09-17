@@ -39,9 +39,9 @@ val generateCallSiteIntegrationSources by tasks.registering(Test::class) {
     description = "Generates actual projection source for JVM and Native ABI integration tests."
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
-    filter.includeTestsMatching("*.KotlinScalarCallSiteSourceTest.scalar_conversions_and_storage_are_emitted_as_source")
-    filter.includeTestsMatching("*.KotlinGuidCallSiteSourceTest.guid_input_and_return_use_generated_marshaling")
-    filter.includeTestsMatching("*.KotlinHStringCallSiteSourceTest.hstring_input_and_return_use_generated_marshaling")
+    filter.includeTestsMatching("*.KotlinScalarCallSiteSourceTest.scalar_conversions_and_storage_are_lowered_from_generated_markers")
+    filter.includeTestsMatching("*.KotlinGuidCallSiteSourceTest.guid_input_and_return_use_ir_marshaling")
+    filter.includeTestsMatching("*.KotlinHStringCallSiteSourceTest.hstring_input_and_return_use_ir_marshaling")
     filter.includeTestsMatching("*.KotlinSharedCallSiteInputTest.generated_shared_inputs_preserve_null_disposal_and_enum_bits")
     val outputDirectory = layout.buildDirectory.dir("generated/callsite-integration")
     outputs.dir(outputDirectory).withPropertyName("generatedCallSiteSources")

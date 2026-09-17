@@ -41,7 +41,6 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
 
     private val enabledCallNames = enabledCalls?.mapTo(linkedSetOf()) { plan -> plan.functionName }
     private val calls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
-    private val rawCalls = linkedMapOf<List<ClassName>, Pair<ClassName, FunSpec>>()
     private val observedCalls = linkedMapOf<String, KotlinTypedProjectionCallSitePlan>()
     private val observedCallCounts = linkedMapOf<String, Int>()
     private val platformShapeDescriptorsByHash = linkedMapOf<String, String>()
@@ -115,6 +114,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         returnType: TypeName,
         body: CodeBlock,
         consumesOwnedAbi: Boolean = false,
+        arrayDisposalKey: KotlinProjectionArrayDisposalKey? = null,
     ): String {
         require(!consumesOwnedAbi || role == KotlinProjectionAbiCodecRole.FROM_ABI) {
             "Only a generated FROM_ABI codec may consume an owned ABI value."
@@ -127,7 +127,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             privateDiscriminator = if (role == null) "$operation|$signature" else "",
         )
         codecsByIdentity[identity]?.let { existing ->
-            require(existing.hasSameImplementation(parameters, body, consumesOwnedAbi)) {
+            require(existing.arrayDisposalKey == arrayDisposalKey &&
+                existing.hasSameImplementation(parameters, body, consumesOwnedAbi)) {
                 "Conflicting generated ABI codec implementations for ${role ?: operation} '$abiTypeName': " +
                     "'${existing.sourceSignature}' vs '$signature'."
             }
@@ -143,6 +144,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             returnType = returnType,
             body = body,
             consumesOwnedAbi = consumesOwnedAbi,
+            arrayDisposalKey = arrayDisposalKey,
         )
         require(codecs.putIfAbsent(name, codec) == null) {
             "WinMD call-site codec hash collision for $operation '$signature'."
@@ -210,10 +212,10 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     }
 
     internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
-        // Rendering typed bodies registers their physical calls before owner enumeration.
+        // Typed stubs carry WinMD facts; all platform marshaling is lowered from IR.
         val renderedFunctions = calls.values.associate { it.functionName to renderFunction(it) }
         val renderedMetadata = reachableMetadata()
-        if (calls.isEmpty() && rawCalls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
+        if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
         val sourcePrefix = when (layout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> ""
             KotlinProjectionGenerationLayout.ExpectActualJvm -> "commonMain/kotlin/"
@@ -236,7 +238,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         val codecsByOwner = codecs.values.groupBy { codec -> abiSupportClassName(codec.abiTypeName) }
         val abiTypesByOwner = abiTypes.values.groupBy { metadata -> abiSupportClassName(metadata.abiTypeName) }
         val metadataByOwner = renderedMetadata.groupBy(KotlinProjectionModuleMetadata::owner)
-        val supportOwners = (callsByOwner.keys + codecsByOwner.keys + abiTypesByOwner.keys + metadataByOwner.keys + rawCalls.values.map { it.first })
+        val supportOwners = (callsByOwner.keys + codecsByOwner.keys + abiTypesByOwner.keys + metadataByOwner.keys)
             .distinct()
             .sortedBy(ClassName::canonicalName)
         return buildList {
@@ -365,8 +367,6 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     }
                 renderedCalls.sortedBy(KotlinTypedProjectionCallSitePlan::functionName)
                     .forEach { plan -> addFunction(renderedFunctions.getValue(plan.functionName)) }
-                rawCalls.values.filter { it.first == owner }.map { it.second }
-                    .sortedBy(FunSpec::name).forEach(::addFunction)
             }
             .build()
         val contents = FileSpec.builder(owner.packageName, fileName)
@@ -496,14 +496,8 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             }
             .returns(plan.returnType)
             .apply {
-                val body = plan.sourceMarshalingBody(
-                    listOf(CodeBlock.of("instance"), CodeBlock.of("slot")) +
-                        plan.parameters.indices.map { CodeBlock.of("arg%L", it) },
-                    abiCall = ::rawAbiCall,
-                )
-                addAnnotation(plan.callSiteAnnotationSpec(sourceGenerated = body != null))
-                if (body == null) addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
-                else addStatement("return %L", body)
+                addAnnotation(plan.callSiteAnnotationSpec())
+                addStatement("return TODO(%S)", MODULE_CALL_SITE_PLACEHOLDER)
             }
             .build()
 
@@ -542,15 +536,19 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
 
     private fun sharedDisposalBody(codec: KotlinProjectionCallSiteCodec): CodeBlock {
         // Preserve every ABI type/role binding, but emit an identical raw disposal loop once.
-        // The complete body includes the element cleanup and finally/free behavior; matching
-        // only the carrier shape would incorrectly conflate HSTRING, COM and struct cleanup.
+        // The key is composed with the cleanup operation, layout and exact custom function.
+        // Text equality is only a consistency assertion, never the selection criterion.
         if (codec.role != KotlinProjectionAbiCodecRole.DISPOSE_ABI ||
+            codec.arrayDisposalKey == null ||
             codec.parameters.size != 2 || codec.parameters.any { it.type != RAW_ADDRESS_CLASS_NAME }
         ) return codec.body
         val implementation = codecs.values.asSequence()
             .filter { it.role == codec.role && it.returnType == codec.returnType &&
-                it.hasSameImplementation(codec.parameters, codec.body, codec.consumesOwnedAbi) }
+                it.parameters == codec.parameters && it.arrayDisposalKey == codec.arrayDisposalKey }
             .minBy(KotlinProjectionCallSiteCodec::name)
+        check(implementation.hasSameImplementation(codec.parameters, codec.body, codec.consumesOwnedAbi)) {
+            "Conflicting implementations of array disposal ${codec.arrayDisposalKey}"
+        }
         if (implementation.name == codec.name) return codec.body
         return CodeBlock.builder()
             .add("return %T.%L(", abiSupportClassName(implementation.abiTypeName), implementation.name)
@@ -572,7 +570,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         target: ModuleCallTarget,
         arguments: List<CodeBlock>,
     ): CodeBlock {
-        target.inlineCall?.let { plan -> return renderInlineCallSite(plan, arguments) }
+        target.inlineCall?.let { plan -> return inlineInvocation(plan, arguments) }
         return CodeBlock.builder()
             .apply {
                 target.className?.let { owner -> add("%T.%L(\n", owner, target.functionName) }
@@ -585,11 +583,10 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             .build()
     }
 
-    private fun renderInlineCallSite(
+    internal fun inlineInvocation(
         plan: KotlinTypedProjectionCallSitePlan,
         arguments: List<CodeBlock>,
     ): CodeBlock {
-        sourceBody(plan, arguments)?.let { return it }
         val parameterTypes = listOf(COM_OBJECT_REFERENCE_CLASS_NAME, Int::class.asClassName()) +
             plan.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
         require(arguments.size == parameterTypes.size) {
@@ -629,32 +626,6 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             .unindent()
             .add("}")
             .build()
-    }
-
-    internal fun sourceBody(plan: KotlinTypedProjectionCallSitePlan, arguments: List<CodeBlock>): CodeBlock? =
-        // Standalone renderer clients cannot publish a module support file. Keep their existing
-        // explicit recipe marker instead of referencing an ABI declaration that is never emitted.
-        if (emitSupportFile) plan.sourceMarshalingBody(arguments, ::rawAbiCall) else null
-
-    /** Physical carriers only: typed codecs, ownership and HRESULT policy stay in source bodies. */
-    private fun rawAbiCall(carriers: List<ClassName>): CodeBlock {
-        val (owner, function) = rawCalls.getOrPut(carriers.toList()) {
-            val signature = carriers.joinToString("|") { it.canonicalName }
-            val name = "abiCall_${stableCodecHash("raw-abi", signature)}"
-            val owner = supportShardClassName("raw-abi-shard", signature)
-            val function = FunSpec.builder(name)
-                .addAnnotation(KOTLIN_PUBLISHED_API_CLASS_NAME)
-                .addAnnotation(ClassName("io.github.composefluent.winrt.runtime", "WinRTAbiCallSite"))
-                .addModifiers(KModifier.INTERNAL)
-                .addParameter("receiver", ClassName("io.github.composefluent.winrt.runtime", "RawComPtr"))
-                .addParameter("slot", Int::class)
-                .apply { carriers.forEachIndexed { index, type -> addParameter("p$index", type) } }
-                .returns(Int::class)
-                .addStatement("return TODO(%S)", "Fixed WinRT ABI call")
-                .build()
-            owner to function
-        }
-        return CodeBlock.of("%T.%L", owner, function.name)
     }
 
     private data class ModuleCallTarget(
@@ -701,11 +672,10 @@ private fun KotlinTypedProjectionCallSitePlan.hasSameRenderedDeclarationAs(
         parameters.map(KotlinTypedProjectionCallSiteParameter::type) ==
         other.parameters.map(KotlinTypedProjectionCallSiteParameter::type)
 
-private fun KotlinTypedProjectionCallSitePlan.callSiteAnnotationSpec(sourceGenerated: Boolean = false): AnnotationSpec =
+private fun KotlinTypedProjectionCallSitePlan.callSiteAnnotationSpec(): AnnotationSpec =
     AnnotationSpec.builder(
         ClassName("io.github.composefluent.winrt.runtime", "WinRTProjectionCallSite"),
     ).apply {
-        if (sourceGenerated) addMember("sourceGenerated = true")
         if (metadata.hResultPolicy != WinRTProjectionCallSiteHResultPolicy.CHECK) {
             addMember(
                 "hResult = %T.%L",
@@ -753,6 +723,7 @@ private data class KotlinProjectionCallSiteCodec(
     val returnType: TypeName,
     val body: CodeBlock,
     val consumesOwnedAbi: Boolean,
+    val arrayDisposalKey: KotlinProjectionArrayDisposalKey?,
 ) {
     fun hasSameImplementation(
         otherParameters: List<KotlinProjectionCallSiteCodecParameter>,

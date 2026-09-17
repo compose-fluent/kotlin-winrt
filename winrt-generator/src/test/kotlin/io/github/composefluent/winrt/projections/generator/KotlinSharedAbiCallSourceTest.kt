@@ -33,10 +33,11 @@ class KotlinSharedAbiCallSourceTest {
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                 parameterBindings = types.mapIndexed { index, type -> KotlinProjectionAbiParameterBinding("p$index", type) },
             )).plan
-            assertNotNull(support.sourceBody(plan, listOf("receiver", "slot", "first", "second").map { CodeBlock.of("%L", it) }))
+            support.observe(KotlinTypedProjectionCallSiteInvocation(plan, listOf(CodeBlock.of("first"), CodeBlock.of("second"))))
         }
         val text = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).joinToString("\n") { it.contents }
-        assertEquals(text, 2, Regex("fun abiCall_").findAll(text).count())
+        assertEquals(2, support.observedPlatformCallShapes().size)
+        assertEquals(text, 0, Regex("fun abiCall_").findAll(text).count())
     }
 
     @Test
@@ -56,17 +57,18 @@ class KotlinSharedAbiCallSourceTest {
             val wide = invocation(KotlinProjectionAbiValueKind.Int64, "Long")
             support.observe(signed)
             support.observe(wide)
-            val inline = support.sourceBody(unsigned.plan, listOf("receiver", "slot", "value").map { CodeBlock.of("%L", it) })!!
+            val inline = support.inlineInvocation(unsigned.plan, listOf("receiver", "slot", "value").map { CodeBlock.of("%L", it) })
             assertFalse(inline.toString(), inline.toString().contains("fun __abi"))
             val files = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
             val text = files.joinToString("\n") { it.contents }
-            assertEquals(text, 2, Regex("fun abiCall_").findAll(text).count())
-            assertEquals(text, 2, Regex("Fixed WinRT ABI call").findAll(text).count())
+            assertEquals(signed.plan.platformShape, unsigned.plan.platformShape)
+            assertNotEquals(signed.plan.platformShape, wide.plan.platformShape)
+            assertEquals(text, 0, Regex("fun abiCall_").findAll(text).count())
+            assertEquals(text, 2, Regex("Lowered while compiling the generated WinRT module").findAll(text).count())
             assertFalse(text, text.contains("fun __abi"))
             assertEquals(files, support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet))
-            // The one-off unsigned body resolves to the same declaration as the signed body.
-            val rawName = Regex("abiCall_[0-9a-f]+").find(inline.toString())!!.value
-            assertEquals(text, 2, Regex(rawName).findAll(text).count())
+            assertTrue(inline.toString(), inline.toString().contains("winRTProjectionCallSiteArguments"))
+            assertFalse(text, text.contains("sourceGenerated = true"))
         }
     }
 }

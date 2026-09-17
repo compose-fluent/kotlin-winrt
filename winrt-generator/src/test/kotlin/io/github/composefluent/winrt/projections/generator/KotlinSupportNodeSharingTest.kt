@@ -44,7 +44,7 @@ class KotlinSupportNodeSharingTest {
         // CsWinRT Marshalers.cs: element disposal and buffer freeing define the cleanup contract.
         fun render(reverse: Boolean): String {
             val support = KotlinModulePlatformAbiCallSupport(ClassName("sample", "Support"), abiSupportShardCount = 4)
-            val entries = listOf("sample.A", "sample.B", "sample.C")
+            val entries = listOf("sample.A", "sample.B", "sample.C", "sample.D")
             (if (reverse) entries.reversed() else entries).forEach { type ->
                 support.registerCodec(
                     operation = "disposeAbiArray", role = KotlinProjectionAbiCodecRole.DISPOSE_ABI,
@@ -52,6 +52,12 @@ class KotlinSupportNodeSharingTest {
                     parameters = listOf("length", "data").map { KotlinProjectionCallSiteCodecParameter(it, RAW_ADDRESS_CLASS_NAME) },
                     returnType = UNIT,
                     body = CodeBlock.of(if (type == "sample.C") "releaseStrings(length, data)\n" else "releaseReferences(length, data)\n"),
+                    arrayDisposalKey = KotlinProjectionArrayDisposalKey(
+                        when (type) {
+                            "sample.C" -> KotlinArrayCleanupKind.HSTRING
+                            "sample.D" -> KotlinArrayCleanupKind.CUSTOM_ADDRESS
+                            else -> KotlinArrayCleanupKind.COM_REFERENCE
+                        }),
                 )
             }
             return support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
@@ -59,8 +65,9 @@ class KotlinSupportNodeSharingTest {
         }
         val source = render(false)
         assertEquals(source, render(true))
-        assertEquals(1, Regex("releaseReferences\\(").findAll(source).count())
+        // Equal text alone must not merge operations with different semantic identities.
+        assertEquals(2, Regex("releaseReferences\\(").findAll(source).count())
         assertEquals(1, Regex("releaseStrings\\(").findAll(source).count())
-        assertEquals(3, Regex("role = WinRTProjectionAbiCodecRole.DISPOSE_ABI").findAll(source).count())
+        assertEquals(4, Regex("role = WinRTProjectionAbiCodecRole.DISPOSE_ABI").findAll(source).count())
     }
 }

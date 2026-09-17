@@ -24,8 +24,8 @@ enum class WinRTCallSiteResultKind {
 
 /**
  * Marks a typed projection call-site stub. The annotation contains only WinMD facts that are not
- * represented by the Kotlin declaration. Source-generated bodies own marshaling and lifetime;
- * remaining typed stubs use compiler ABI planning until their generator slice is migrated.
+ * represented by the Kotlin declaration. New projections leave marshaling and lifetime to IR
+ * planning; sourceGenerated remains readable for older source-marshaled projection artifacts.
  */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.LOCAL_VARIABLE)
 @Retention(AnnotationRetention.BINARY)
@@ -33,7 +33,7 @@ annotation class WinRTProjectionCallSite(
     val hResult: WinRTCallSiteHResultPolicy = WinRTCallSiteHResultPolicy.CHECK,
     val result: WinRTCallSiteResultKind = WinRTCallSiteResultKind.INFER,
     val returnAbiType: String = "",
-    /** The generator has emitted marshaling and lifetime code; only nested ABI stubs are lowered. */
+    /** Legacy producer compatibility: only nested ABI stubs in an already-emitted body are lowered. */
     val sourceGenerated: Boolean = false,
 )
 

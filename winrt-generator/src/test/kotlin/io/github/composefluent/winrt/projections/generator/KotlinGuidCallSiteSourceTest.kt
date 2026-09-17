@@ -8,7 +8,7 @@ import org.junit.Test
 
 class KotlinGuidCallSiteSourceTest {
     @Test
-    fun guid_input_and_return_use_generated_marshaling() {
+    fun guid_input_and_return_use_ir_marshaling() {
         // cswinrt code_writers.h abi_marshaler / write_abi_method_call_marshalers:
         // a blittable GUID has value semantics and no owned reference cleanup.
         val guid = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.GuidValue, "Guid")
@@ -26,11 +26,11 @@ class KotlinGuidCallSiteSourceTest {
                 KotlinProjectionAbiParameterBinding("second", guid),
             ),
         )).plan
-        val body = support.sourceBody(plan, listOf("receiver", "slot", "first", "tag", "second").map { CodeBlock.of("%L", it) })
+        val body = support.inlineInvocation(plan, listOf("receiver", "slot", "first", "tag", "second").map { CodeBlock.of("%L", it) })
         assertNotNull(body)
         val source = body.toString()
-        assertTrue(source, source.contains("writeGuid"))
-        assertTrue(source, source.indexOf("requireSuccess") < source.indexOf("readGuid"))
+        assertTrue(source, source.contains("winRTProjectionCallSiteArguments"))
+        assertTrue(source, !source.contains("writeGuid"))
         val output = System.getProperty("winrt.callsite.integration.output") ?: return
         support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).forEach { file ->
             File(output, file.relativePath).apply { parentFile.mkdirs(); writeText(file.contents) }

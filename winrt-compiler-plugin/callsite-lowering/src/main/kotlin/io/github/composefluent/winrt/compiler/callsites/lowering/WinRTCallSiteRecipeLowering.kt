@@ -1468,12 +1468,23 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         when (recipe.kind) {
             WinRTProjectionCallSiteRecipeKind.VALUE ->
                 continuation(PreparedInput(listOf(primitiveSymbols.toAbi(builder, recipe, value) ?: return null)))
-            WinRTProjectionCallSiteRecipeKind.HSTRING ->
-                if (allowNativeDirectHString) {
-                    emitDirectHStringInput(builder, function, value, continuation)
+            WinRTProjectionCallSiteRecipeKind.HSTRING -> builder.irBlock(resultType = function.returnType) {
+                // CsWinRT MarshalString maps null and empty inputs to the empty HSTRING.
+                val input = irTemporary(
+                    if (value.type.isNullable()) builder.irIfNull(
+                        type = pluginContext.irBuiltIns.stringType,
+                        subject = value,
+                        thenPart = builder.irString(""),
+                        elsePart = builder.irAs(value, pluginContext.irBuiltIns.stringType),
+                    ) else value,
+                    nameHint = "hstringInput",
+                )
+                +if (allowNativeDirectHString) {
+                    emitDirectHStringInput(builder, function, builder.irGet(input), continuation)
                 } else {
-                    emitHStringInput(builder, function, recipe, value, pluginContext, continuation)
+                    emitHStringInput(builder, function, recipe, builder.irGet(input), pluginContext, continuation)
                 }
+            }
             WinRTProjectionCallSiteRecipeKind.GUID ->
                 emitGuidInput(builder, function, recipe, value, pluginContext, continuation)
             WinRTProjectionCallSiteRecipeKind.ENUM -> {
@@ -2392,7 +2403,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         return if (storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.STRUCT ||
             storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.GUID
         ) {
-            emitStructFrame(builder, function, storageRecipe, clear, pluginContext) { frame, pointer ->
+            // Preserve value-initialized GUID out storage when a pooled frame is reused.
+            emitStructFrame(builder, function, storageRecipe,
+                clear || storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.GUID, pluginContext) { frame, pointer ->
                 continuation(OutputStorage(listOf(pointer), emptyList(), frame))
             }
         } else {

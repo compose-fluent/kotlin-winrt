@@ -10,7 +10,7 @@ import org.junit.Test
 
 class KotlinScalarCallSiteSourceTest {
     @Test
-    fun module_scalar_body_keeps_the_run_lambda_attached_after_a_long_signature() {
+    fun module_scalar_body_is_a_typed_ir_placeholder() {
         val support = KotlinModulePlatformAbiCallSupport(
             com.squareup.kotlinpoet.ClassName("sample", "ModulePlatformAbi"),
         )
@@ -23,12 +23,12 @@ class KotlinScalarCallSiteSourceTest {
         support.observe(invocation)
         val text = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
             .joinToString("\n") { it.contents }
-        assertTrue(text, text.contains("kotlin.run {"))
+        assertTrue(text, text.contains("TODO("))
         assertFalse(text, Regex("kotlin\\.run\\s*\\n\\s*\\{").containsMatchIn(text))
     }
 
     @Test
-    fun scalar_conversions_and_storage_are_emitted_as_source() {
+    fun scalar_conversions_and_storage_are_lowered_from_generated_markers() {
         // code_writers.h write_fundamental_marshal_to_abi/from_abi and abi_marshaler.
         val cases = listOf(
             Case(KotlinProjectionAbiValueKind.Boolean, "Boolean", "Int8", "1.toByte()", "true"),
@@ -61,13 +61,13 @@ class KotlinScalarCallSiteSourceTest {
                 returnBinding = binding,
                 parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", binding)),
             ))
-            val source = support.sourceBody(invocation.plan,
+            val source = support.inlineInvocation(invocation.plan,
                 listOf(CodeBlock.of("instance"), CodeBlock.of("slot")) + invocation.arguments)
             assertNotNull(case.type, source)
             val text = source.toString()
-            assertTrue(text, text.contains("abiCall_"))
-            assertTrue(text, text.contains("withWinRTScalarResult"))
-            assertTrue(text, text.contains("requireSuccess()"))
+            assertTrue(text, text.contains("winRTProjectionCallSiteArguments"))
+            assertFalse(text, text.contains("withWinRTScalarResult"))
+            assertFalse(text, text.contains("requireSuccess()"))
             assertFalse(text, text.contains("Lowered while compiling the generated WinRT module"))
             "private fun generated${case.type}(instance: ComObjectReference, slot: Int, value: ${case.type}): ${case.type} = $text"
         }

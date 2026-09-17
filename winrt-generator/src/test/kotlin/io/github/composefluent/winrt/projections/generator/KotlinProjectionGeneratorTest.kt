@@ -4291,10 +4291,10 @@ class KotlinProjectionGeneratorTest {
 
         val normalizedJvm = jvm.normalizedSource()
         assertEquals(1, jvm.projectionCallSiteCount())
-        assertTrue(jvm, normalizedJvm.contains("val __arg0: Boolean = enabled"))
-        assertTrue(jvm, normalizedJvm.contains("val __arg1: UInt = index"))
-        assertTrue(jvm, normalizedJvm.contains("val __arg2: Float = opacity"))
-        assertTrue(jvm, normalizedJvm.contains("withWinRTScalarResult"))
+        assertTrue(jvm, normalizedJvm.contains("val __winrtCallSiteArgument2: Boolean = enabled"))
+        assertTrue(jvm, normalizedJvm.contains("val __winrtCallSiteArgument3: UInt = index"))
+        assertTrue(jvm, normalizedJvm.contains("val __winrtCallSiteArgument4: Float = opacity"))
+        assertTrue(jvm, normalizedJvm.contains("winRTProjectionCallSiteArguments"))
         listOf("JvmAbi", "FunctionDescriptor", "Linker.nativeLinker()", "ComVtableInvoker").forEach { forbidden ->
             assertFalse(jvm, jvm.contains(forbidden))
         }
@@ -6781,7 +6781,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("override var title: String"))
         assertTrue(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.getString("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.setString("))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
     }
 
     @Test
@@ -6962,13 +6962,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.getDouble"))
         assertEquals(1, interfaceContents.projectionCallSiteCount())
-        assertTrue(interfaceContents, interfaceContents.normalizedSource().contains("val __arg0: Double = value"))
-        assertTrue(interfaceContents, interfaceContents.normalizedSource().contains(".abiCall_"))
+        assertTrue(interfaceContents, interfaceContents.normalizedSource().contains("val __winrtCallSiteArgument2: Double = value"))
+        assertTrue(interfaceContents, interfaceContents.normalizedSource().contains("winRTProjectionCallSiteArguments"))
         assertFalse(interfaceContents, interfaceContents.contains("Fixed WinRT ABI call"))
-        assertTrue(filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents.contains("Fixed WinRT ABI call"))
+
         assertFalse(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.setDouble"))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.setDouble"))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IRange"))
     }
 
@@ -7105,14 +7105,14 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(interfaceContents, interfaceContents.contains("kotlin.run {"))
         assertEquals(1, interfaceContents.projectionCallSiteCount())
-        assertTrue(interfaceContents, interfaceContents.contains("val __arg0: Float = normalizedProgressKey"))
-        assertTrue(interfaceContents, interfaceContents.normalizedSource().contains("val __arg1: String = value"))
-        assertTrue(interfaceContents, interfaceContents.contains("withWinRTHStringReference(__arg1)"))
-        assertTrue(interfaceContents, interfaceContents.contains("requireSuccess()"))
+        assertTrue(interfaceContents, interfaceContents.contains("val __winrtCallSiteArgument2: Float = normalizedProgressKey"))
+        assertTrue(interfaceContents, interfaceContents.normalizedSource().contains("val __winrtCallSiteArgument3: String = value"))
+        assertFalse(interfaceContents, interfaceContents.contains("withWinRTHStringReference("))
+        assertFalse(interfaceContents, interfaceContents.contains("requireSuccess()"))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.callUnit_Float_String("))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callUnit("))
         assertFalse(interfaceContents, interfaceContents.contains("fun __winrtCallSite_"))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 
@@ -7200,8 +7200,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("Double = oldValue"))
         assertTrue(interfaceContents, interfaceContents.contains("Double = newValue"))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callUnit("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.abiCall_"))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRTProjectionCallSiteArguments"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 
@@ -7282,13 +7282,13 @@ class KotlinProjectionGeneratorTest {
         assertEquals(6, interfaceContents.projectionCallSiteCount())
         val normalizedInterface = interfaceContents.normalizedSource()
         listOf("readInt8", "readInt16", "readFloat", "toUByte()", "toUShort()").forEach { conversion ->
-            assertTrue(interfaceContents, normalizedInterface.contains(conversion))
+            assertFalse(interfaceContents, normalizedInterface.contains(conversion))
         }
-        assertEquals(6, Regex("withWinRTHStringReference\\(").findAll(normalizedInterface).count())
+        assertEquals(0, Regex("withWinRTHStringReference\\(").findAll(normalizedInterface).count())
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callBoolean("))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callScalar("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.abiCall_"))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRTProjectionCallSiteArguments"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
@@ -7417,7 +7417,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
         assertTrue(interfaceContents, interfaceContents.contains("override fun reset()"))
         assertEquals(2, interfaceContents.projectionCallSiteCount())
-        assertTrue(interfaceContents, interfaceContents.contains(".abiCall_"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRTProjectionCallSiteArguments"))
         assertTrue(interfaceContents, interfaceContents.normalizedSource().contains("val __winrtCallSiteResult: Widget? = winRTProjectionCallSiteArguments("))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callUnit("))
         assertTrue(interfaceContents, interfaceContents.contains("IWidget.Metadata.RESET_SLOT"))
@@ -7632,9 +7632,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("override fun close()"))
         assertTrue(interfaceContents, interfaceContents.projectionCallSiteCount() > 0)
-        assertTrue(interfaceContents, interfaceContents.contains("val __instance = nativeObject"))
-        assertTrue(interfaceContents, interfaceContents.contains("val __slot = 6"))
-        assertTrue(interfaceContents, interfaceContents.contains(".abiCall_"))
+        assertTrue(interfaceContents, interfaceContents.contains("val __winrtCallSiteArgument0: ComObjectReference = nativeObject"))
+        assertTrue(interfaceContents, interfaceContents.contains("val __winrtCallSiteArgument1: Int = 6"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRTProjectionCallSiteArguments"))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callUnit("))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
     }
@@ -8457,7 +8457,7 @@ class KotlinProjectionGeneratorTest {
         assertEquals(1, moduleAbiContents.projectionCallSiteCount())
         assertTrue(moduleAbiContents, moduleAbiContents.normalizedSource().contains("arg0: Double, arg1: Double"))
         assertTrue(moduleAbiContents, moduleAbiContents.contains("): Double"))
-        assertTrue(moduleAbiContents.contains("Fixed WinRT ABI call"))
+        assertTrue(moduleAbiContents.contains("Lowered while compiling the generated WinRT module"))
         assertFalse(moduleAbiContents.contains("WinRTProjectionIntrinsic.callScalar("))
         assertTrue(calculatorContents.contains("left,"))
         assertTrue(calculatorContents.contains("right,"))
@@ -8781,16 +8781,16 @@ class KotlinProjectionGeneratorTest {
         assertTrue(propertySetContents.contains("threshold: Float"))
         assertEquals(1, propertySetContents.projectionCallSiteCount())
         val normalizedPropertySet = propertySetContents.normalizedSource()
-        assertTrue(propertySetContents, normalizedPropertySet.contains("val __arg0: String = name"))
-        assertTrue(propertySetContents, normalizedPropertySet.contains("val __arg1: Boolean = defaultValue"))
-        assertTrue(propertySetContents, normalizedPropertySet.contains("val __arg2: Float = threshold"))
-        assertTrue(propertySetContents, normalizedPropertySet.contains("PlatformAbi.readInt8(__result)"))
+        assertTrue(propertySetContents, normalizedPropertySet.contains("val __winrtCallSiteArgument2: String = name"))
+        assertTrue(propertySetContents, normalizedPropertySet.contains("val __winrtCallSiteArgument3: Boolean = defaultValue"))
+        assertTrue(propertySetContents, normalizedPropertySet.contains("val __winrtCallSiteArgument4: Float = threshold"))
+        assertTrue(propertySetContents, normalizedPropertySet.contains("val __winrtCallSiteResult: Boolean"))
         assertTrue(propertySetContents.contains("String = name"))
         assertTrue(propertySetContents.contains("Boolean = defaultValue"))
         assertTrue(propertySetContents.contains("Float = threshold"))
         assertFalse(propertySetContents.contains("WinRTProjectionIntrinsic.callBoolean("))
-        assertTrue(propertySetContents.contains("WinRTModulePlatformAbiCall.abiCall_"))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertTrue(propertySetContents.contains("winRTProjectionCallSiteArguments"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(propertySetContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 
@@ -8842,9 +8842,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(propertySetContents.contains("fun tryGetBoolean(name: String, `value`: Boolean): GetValueStatus"))
         assertTrue(propertySetContents.contains("private class NativeProjection("))
         assertEquals(1, propertySetContents.projectionCallSiteCount())
-        assertTrue(propertySetContents, propertySetContents.contains("val __arg0: String = name"))
-        assertTrue(propertySetContents, propertySetContents.normalizedSource().contains("val __arg1: Boolean = value"))
-        assertTrue(propertySetContents, propertySetContents.normalizedSource().contains("GetValueStatus.Metadata.fromAbi(PlatformAbi.readInt32(__result))"))
+        assertTrue(propertySetContents, propertySetContents.contains("val __winrtCallSiteArgument2: String = name"))
+        assertTrue(propertySetContents, propertySetContents.normalizedSource().contains("val __winrtCallSiteArgument3: Boolean = value"))
+        assertTrue(propertySetContents, propertySetContents.normalizedSource().contains("val __winrtCallSiteResult: GetValueStatus"))
         assertFalse(moduleAbiContents.contains("kind = WinRTProjectionAbiTypeKind.ENUM"))
         assertFalse(moduleAbiContents.contains("role = WinRTProjectionAbiCodecRole.FROM_ABI"))
         assertTrue(filesByName.getValue("GetValueStatus.kt").contents.contains("fun fromAbi"))
@@ -12613,7 +12613,7 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath == "sample/foundation/IWidget.kt" }
             .contents
         assertTrue(interfaceContents.contains("WinRTProjectionIntrinsic.getNoExceptionBoolean("))
-        assertTrue(generated.any { it.relativePath.endsWith("WinRTModulePlatformAbiCall.kt") })
+        assertFalse(generated.any { it.relativePath.endsWith("WinRTModulePlatformAbiCall.kt") })
         assertFalse(contents.memberBody("override fun tryRefresh").contains("requireSuccess()"))
         assertFalse(contents.memberBody("override var status").contains("requireSuccess()"))
         assertTrue(
@@ -13335,18 +13335,18 @@ class KotlinProjectionGeneratorTest {
         }
         assertEquals(3, interfaceContents.projectionCallSiteCount())
         val normalizedInterface = interfaceContents.normalizedSource()
-        assertEquals(3, Regex("withWinRTOwnedHStringResult\\s*\\{").findAll(normalizedInterface).count())
-        assertTrue(interfaceContents, normalizedInterface.contains("val __arg0: String = name"))
+        assertEquals(0, Regex("withWinRTOwnedHStringResult\\s*\\{").findAll(normalizedInterface).count())
+        assertTrue(interfaceContents, normalizedInterface.contains("val __winrtCallSiteArgument2: String = name"))
         assertTrue(
             interfaceContents,
             normalizedInterface.contains(
-                "val __arg0: UInt = index",
+                "val __winrtCallSiteArgument2: UInt = index",
             ),
         )
-        assertTrue(interfaceContents, normalizedInterface.contains("val __arg1: String = defaultValue"))
+        assertTrue(interfaceContents, normalizedInterface.contains("val __winrtCallSiteArgument3: String = defaultValue"))
         assertFalse(interfaceContents, interfaceContents.contains("WinRTProjectionIntrinsic.callScalar("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRTModulePlatformAbiCall.abiCall_"))
-        assertTrue(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRTProjectionCallSiteArguments"))
+        assertFalse(filesByName.containsKey("WinRTModulePlatformAbiCall.kt"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(name)"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(defaultValue)"))
         assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.confinedScope()"))

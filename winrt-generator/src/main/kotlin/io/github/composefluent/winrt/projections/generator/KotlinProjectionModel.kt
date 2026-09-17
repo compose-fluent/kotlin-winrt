@@ -1466,6 +1466,20 @@ data class KotlinProjectionDelegateInvokeShape(
     val returnBinding: KotlinProjectionAbiTypeBinding,
 )
 
+internal enum class KotlinProjectionCallSiteFactoryKind { GENERATED, PROJECTED_DELEGATE }
+
+internal enum class KotlinArrayCleanupKind { NONE, HSTRING, COM_REFERENCE, CUSTOM_ADDRESS, CUSTOM_CARRIER }
+
+/** ABI cleanup identity, independent of the projected Kotlin type and source formatting. */
+internal data class KotlinProjectionArrayDisposalKey(
+    val kind: KotlinArrayCleanupKind,
+    val owner: String = "",
+    val function: String = "",
+    val carrier: WinRTProjectionCallSiteAbiCarrier? = null,
+    val stride: Long = 0,
+    val alignment: Int = 0,
+)
+
 /** Exact, closed input factory emitted beside module call sites when a slot owns a resource. */
 internal data class KotlinProjectionCallSiteFactory(
     val returnType: TypeName,
@@ -1474,6 +1488,7 @@ internal data class KotlinProjectionCallSiteFactory(
     val nullable: Boolean = returnType.isNullable,
     val closeFunction: String = "close",
     val copyFromAbiBody: CodeBlock? = null,
+    val kind: KotlinProjectionCallSiteFactoryKind = KotlinProjectionCallSiteFactoryKind.GENERATED,
 ) {
     init {
         require(carrierProperties.isNotEmpty() && carrierProperties.none(String::isBlank)) {

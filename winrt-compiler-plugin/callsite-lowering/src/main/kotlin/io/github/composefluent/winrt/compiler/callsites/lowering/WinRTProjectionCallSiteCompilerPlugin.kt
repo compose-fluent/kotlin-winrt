@@ -235,7 +235,8 @@ fun lowerWinRTProjectionCallSites(
             result,
             pluginContext,
         ) ?: continue
-        val plan = runCatching { planner.plan(createInlineCallSiteFunction(callSite, pluginContext), metadata) }
+        val function = createInlineCallSiteFunction(callSite, pluginContext)
+        val plan = runCatching { planner.plan(function, metadata) }
             .getOrElse { failure ->
                 pluginContext.reportError(result, "cannot plan typed ABI lowering: ${failure.message}")
                 continue
@@ -244,7 +245,6 @@ fun lowerWinRTProjectionCallSites(
             pluginContext.reportError(result, error)
             continue
         }
-        val function = createInlineCallSiteFunction(callSite, pluginContext)
         validateCallSiteFunction(function, plan, projectedTypes)?.let { error ->
             pluginContext.reportError(result, error)
             continue

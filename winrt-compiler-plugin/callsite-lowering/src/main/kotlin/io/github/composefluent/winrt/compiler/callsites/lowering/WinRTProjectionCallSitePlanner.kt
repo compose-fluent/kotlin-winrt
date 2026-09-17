@@ -61,6 +61,9 @@ internal class WinRTProjectionCallSitePlanner(
 ) {
     private val abiTypesByName = linkedMapOf<String, AbiTypeFacts>()
     private val codecsByAbiType = linkedMapOf<String, MutableList<CodecFacts>>()
+    private data class RecipeKey(val type: IrType, val abiType: String, val usage: RecipeUsage)
+    // Immutable recipes may share symbols inside this compilation; never cache emitted IR bodies.
+    private val recipes = mutableMapOf<RecipeKey, WinRTProjectionCallSiteRecipe>()
 
     init {
         indexGeneratedAbiMetadata(moduleFragment, pluginContext)
@@ -191,6 +194,14 @@ internal class WinRTProjectionCallSitePlanner(
     private fun recipeFor(
         type: IrType,
         abiType: String = "",
+        usage: RecipeUsage,
+    ): WinRTProjectionCallSiteRecipe = recipes.getOrPut(RecipeKey(type, abiType, usage)) {
+        buildRecipe(type, abiType, usage)
+    }
+
+    private fun buildRecipe(
+        type: IrType,
+        abiType: String,
         usage: RecipeUsage,
     ): WinRTProjectionCallSiteRecipe {
         // Shared runtime-class inputs need only the native object reference. CsWinRT likewise
@@ -999,10 +1010,10 @@ internal class WinRTProjectionCallSitePlanner(
             copyFromAbi,
         )
         require(codecs.isNotEmpty()) { "$projectedName has no typed ABI codecs" }
-        val owners = codecs.map(CodecFacts::ownerFqName).distinct()
-        require(owners.size == 1) { "$projectedName typed ABI codecs are split across owners $owners" }
         return WinRTProjectionCallSiteCallables(
-            ownerFqName = owners.single(),
+            // Indexed roles carry exact symbols below. Their implementations may live in
+            // different objects/files; the name owner is only a legacy fallback/diagnostic.
+            ownerFqName = codecs.first().ownerFqName,
             toAbiSymbol = toAbi?.symbol,
             fromAbiSymbol = fromAbi?.symbol,
             copyToAbiSymbol = copyToAbi?.symbol,

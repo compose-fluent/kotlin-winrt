@@ -8,7 +8,7 @@ import org.junit.Test
 
 class KotlinHStringCallSiteSourceTest {
     @Test
-    fun hstring_input_and_return_use_generated_marshaling() {
+    fun hstring_input_and_return_use_ir_marshaling() {
         // cswinrt code_writers.h abi_marshaler and WinRT.Runtime/Marshalers.cs MarshalString:
         // borrowed input references, copied managed results, unconditional owned ABI cleanup.
         val support = KotlinModulePlatformAbiCallSupport(ClassName("io.github.composefluent.winrt.runtime", "StringAbiSupport"))
@@ -24,12 +24,12 @@ class KotlinHStringCallSiteSourceTest {
                 KotlinProjectionAbiParameterBinding("second", string),
             ),
         )).plan
-        val body = support.sourceBody(plan, listOf("receiver", "slot", "first", "tag", "second").map { CodeBlock.of("%L", it) })
+        val body = support.inlineInvocation(plan, listOf("receiver", "slot", "first", "tag", "second").map { CodeBlock.of("%L", it) })
         assertNotNull(body)
         val source = body.toString()
-        assertEquals(source, 2, Regex("withWinRTHStringReference").findAll(source).count())
-        assertTrue(source, source.contains("withWinRTOwnedHStringResult"))
-        assertTrue(source, source.indexOf("requireSuccess") < source.indexOf("fromAbi"))
+        assertEquals(source, 0, Regex("withWinRTHStringReference").findAll(source).count())
+        assertTrue(source, source.contains("winRTProjectionCallSiteArguments"))
+        assertFalse(source, source.contains("requireSuccess"))
         assertFalse(source, source.contains("TODO("))
         val output = System.getProperty("winrt.callsite.integration.output") ?: return
         support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).forEach { file ->
