@@ -17,6 +17,7 @@ import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteR
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
 import org.jetbrains.kotlin.descriptors.SimpleFunctionDescriptor
 import org.jetbrains.kotlin.fir.FirSession
@@ -45,6 +46,7 @@ import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.isNullable
 import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.name.CallableId
@@ -55,8 +57,8 @@ import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 
 /** Builds private lowering recipes from typed IR and generated ABI metadata. */
 internal class WinRTProjectionCallSitePlanner(
-    moduleFragment: IrModuleFragment,
-    pluginContext: IrPluginContext,
+    private val moduleFragment: IrModuleFragment,
+    private val pluginContext: IrPluginContext,
     private val projectedTypes: WinRTProjectedTypeCanonicalizer,
 ) {
     private val abiTypesByName = linkedMapOf<String, AbiTypeFacts>()
@@ -64,6 +66,7 @@ internal class WinRTProjectionCallSitePlanner(
     private data class RecipeKey(val type: IrType, val abiType: String, val usage: RecipeUsage)
     // Immutable recipes may share symbols inside this compilation; never cache emitted IR bodies.
     private val recipes = mutableMapOf<RecipeKey, WinRTProjectionCallSiteRecipe>()
+    private val dependencyPackages = mutableSetOf<FqName>()
 
     init {
         indexGeneratedAbiMetadata(moduleFragment, pluginContext)
@@ -209,6 +212,7 @@ internal class WinRTProjectionCallSitePlanner(
         abiType: String,
         usage: RecipeUsage,
     ): WinRTProjectionCallSiteRecipe {
+        indexDependencyMetadata(type)
         // Shared runtime-class inputs need only the native object reference. CsWinRT likewise
         // converges object-reference marshaling after selecting the projected input semantics.
         // This is an input-only contract: outputs still require their exact typed factory, and
@@ -1248,13 +1252,55 @@ internal class WinRTProjectionCallSitePlanner(
         }
     }
 
-    private fun generatedAbiMetadataVisitor(): IrVisitorVoid =
+    // Discover codecs beside the requested projected declaration, without enumerating the classpath.
+    // Ordinary dependencies expose public contracts; internal contracts require a friend module.
+    private fun indexDependencyMetadata(type: IrType) {
+        (type as? IrSimpleType)?.arguments?.forEach { argument ->
+            argument.typeOrNull?.let(::indexDependencyMetadata)
+        }
+        val packageName = type.classOrNull?.owner?.classId?.packageFqName ?: return
+        if (!dependencyPackages.add(packageName) || !pluginContext.afterK2) return
+        val module = pluginContext.moduleDescriptor as? FirModuleDescriptor ?: return
+        val provider = module.session.symbolProvider
+        val names = provider.symbolNamesProvider
+        names.getTopLevelClassifierNamesInPackage(packageName).orEmpty().forEach { name ->
+            val id = ClassId(packageName, name)
+            val symbol = provider.getClassLikeSymbolByClassId(id) as? FirRegularClassSymbol ?: return@forEach
+            if (symbol.moduleData !== module.moduleData && symbol.containsGeneratedAbiMetadata(module.session)) {
+                indexCompiledClass(id, moduleFragment.files, pluginContext,
+                    generatedAbiMetadataVisitor(module.moduleData.canSeeInternalsOf(symbol.moduleData)))
+            }
+        }
+        names.getTopLevelCallableNamesInPackage(packageName).orEmpty().forEach { name ->
+            val symbols = provider.getTopLevelFunctionSymbols(packageName, name)
+                .filter { it.moduleData !== module.moduleData && it.hasGeneratedAbiMetadata() }
+            if (symbols.isNotEmpty()) {
+                // Visibility is checked per IR declaration below; public declarations need no friend access.
+                val visitor = generatedAbiMetadataVisitor(false)
+                indexCompiledFunctions(CallableId(packageName, name), moduleFragment.files, pluginContext, visitor)
+                if (symbols.any { module.moduleData.canSeeInternalsOf(it.moduleData) }) {
+                    // Resolve each friend symbol's declaration rather than granting access to other overloads.
+                    moduleFragment.files.forEach { file ->
+                        pluginContext.finderForSource(file).findFunctions(CallableId(packageName, name))
+                            .map { it.owner }.filter { declaration ->
+                                (DescriptorUtils.getContainingModule(declaration.descriptor) as? FirModuleDescriptor)?.let {
+                                    module.moduleData.canSeeInternalsOf(it.moduleData) } == true
+                            }.forEach(generatedAbiMetadataVisitor(true)::visitSimpleFunction)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun generatedAbiMetadataVisitor(externalFriend: Boolean? = null): IrVisitorVoid =
         object : IrVisitorVoid() {
             override fun visitElement(element: IrElement) {
                 element.acceptChildrenVoid(this)
             }
 
             override fun visitClass(declaration: IrClass) {
+                if (externalFriend != null && declaration.visibility != DescriptorVisibilities.PUBLIC &&
+                    !(externalFriend && declaration.visibility == DescriptorVisibilities.INTERNAL)) return
                 declaration.annotations.singleOrNull { annotation ->
                     annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
                 }?.let(::indexAbiType)
@@ -1262,6 +1308,8 @@ internal class WinRTProjectionCallSitePlanner(
             }
 
             override fun visitSimpleFunction(declaration: IrSimpleFunction) {
+                if (externalFriend != null && declaration.visibility != DescriptorVisibilities.PUBLIC &&
+                    !(externalFriend && declaration.visibility == DescriptorVisibilities.INTERNAL)) return
                 declaration.annotations.singleOrNull { annotation ->
                     annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
                 }?.let(::indexAbiType)

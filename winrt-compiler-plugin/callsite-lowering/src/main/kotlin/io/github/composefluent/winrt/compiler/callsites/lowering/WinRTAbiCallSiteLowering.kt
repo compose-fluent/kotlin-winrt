@@ -11,6 +11,12 @@ import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.isNullable
+import java.util.Collections
+import java.util.WeakHashMap
+
+private val loweredFixedAbiFunctions = Collections.synchronizedSet(
+    Collections.newSetFromMap(WeakHashMap<IrSimpleFunction, Boolean>()),
+)
 
 /** No projected-type lookup, codec selection or ownership policy belongs in this pass. */
 internal fun lowerWinRTAbiCallSite(
@@ -18,6 +24,7 @@ internal fun lowerWinRTAbiCallSite(
     pluginContext: IrPluginContext,
     backend: WinRTDirectCallBackend,
 ) {
+    if (function in loweredFixedAbiFunctions) return
     val parameters = function.parameters.filter { it.kind == IrParameterKind.Regular }
     require(function.typeParameters.isEmpty()) { "fixed ABI stubs cannot have type parameters" }
     require(parameters.size >= 2) { "fixed ABI stubs require a receiver and vtable slot" }
@@ -41,4 +48,5 @@ internal fun lowerWinRTAbiCallSite(
         carriers, parameters.drop(2).map { builder.irGet(it) },
     )) { "Cannot emit fixed ABI call" }
     function.body = builder.irBlockBody { +builder.irReturn(invocation) }
+    loweredFixedAbiFunctions.add(function)
 }
