@@ -2782,6 +2782,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             val constructorParameters = constructor.owner.regularParameters()
             if (state.callerOutputs.size != constructorParameters.size) return null
             val values = state.callerOutputs.zip(constructorParameters).mapIndexed { index, (output, parameter) ->
+                +claimConsumingOutput(builder, output.slot, output.storage, ownedOutputs)
                 irTemporary(
                     decodeDirectResult(
                         builder = builder,
@@ -3011,6 +3012,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             pluginContext = pluginContext,
         ) ?: return null
         return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+            +claimConsumingOutput(builder, output.slot, output.storage, ownedOutputs)
             val value = irTemporary(
                 decoded,
                 nameHint = "outputValue",
@@ -3138,6 +3140,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         ownedOutputs: List<OwnedOutputState>,
         pluginContext: IrPluginContext,
     ): IrExpression? = builder.irBlock(resultType = returnType) {
+        +claimConsumingOutput(builder, result.slot, result.storage, ownedOutputs)
         val value = irTemporary(
             decodeDirectResult(builder, returnType, result.slot.recipe, result.storage, result.slot, pluginContext)
                 ?: return null,
@@ -3149,6 +3152,19 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         +builder.irGet(value)
     }
 
+    /** A consuming codec owns the reference even when decoding or later result assembly throws. */
+    private fun claimConsumingOutput(
+        builder: DeclarationIrBuilder,
+        slot: WinRTProjectionCallSiteSlot,
+        storage: OutputStorage,
+        ownedOutputs: List<OwnedOutputState>,
+    ): IrExpression {
+        val output = ownedOutputs.singleOrNull { it.output.storage === storage }
+        return if (output != null && slot.recipe.kind == WinRTProjectionCallSiteRecipeKind.PROJECTION &&
+            slot.recipe.storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.COM_REFERENCE &&
+            slot.recipe.callables?.fromAbiConsumesOwnedReference == true
+        ) builder.irSet(output.transferred.symbol, builder.irBoolean(true)) else builder.irUnit()
+    }
     private fun completeOwnedOutput(
         builder: DeclarationIrBuilder,
         function: IrSimpleFunction,
