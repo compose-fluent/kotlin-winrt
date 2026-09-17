@@ -146,6 +146,15 @@ private object ManagedInspectableObjectCallSiteFixture {
         slot: Int,
         @WinRTProjectionParameter(abiType = "System.Object") value: Any?,
     ): Unit = TODO("managed inspectable object input fixture")
+
+    @WinRTProjectionCallSite
+    fun consumeThree(
+        reference: ComObjectReference,
+        slot: Int,
+        @WinRTProjectionParameter(abiType = "System.Object") first: Any?,
+        @WinRTProjectionParameter(abiType = "System.Object") second: Any?,
+        @WinRTProjectionParameter(abiType = "System.Object") third: Any?,
+    ): Unit = TODO("managed inspectable multi-input fixture")
 }
 
 private class ConsumingOwnedProjection(
@@ -633,6 +642,11 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(bytecode.contains("managed inspectable object input fixture"), bytecode)
 
         val consume = bytecode.methodBytecode("consume")
+        assertEquals(1, consume.countOccurrences("kotlinWinRTAbiInvoke_"), consume)
+        val three = bytecode.methodBytecode("consumeThree")
+        assertEquals(1, three.countOccurrences("kotlinWinRTAbiInvoke_"), three)
+        assertEquals(3, three.countOccurrences("BorrowedObjectCodec.createMarshaler"), three)
+
         val stateBorrow = consume.indexOf("WinRTManagedProjectionAbiSource.\"tryBorrowAbi-")
         val ownedFallback = consume.indexOf("BorrowedObjectCodec.createMarshaler")
         assertTrue(stateBorrow >= 0, consume)

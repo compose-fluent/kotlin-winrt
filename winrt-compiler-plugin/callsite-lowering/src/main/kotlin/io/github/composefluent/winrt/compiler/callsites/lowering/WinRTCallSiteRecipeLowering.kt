@@ -2272,57 +2272,69 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
             )
 
-            fun invokeWith(address: IrExpression, keepAlive: Boolean): IrExpression {
-                val owners = if (keepAlive) listOf(builder.irGet(stableValue)) else emptyList()
-                return continuation(
-                    PreparedInput(
-                        abiValues = listOf(address),
-                        keepAliveOwners = owners,
-                    ),
-                ) ?: abortCallSiteLowering()
+            val factoryCall = resolver.codecCall(
+                builder, callables.ownerFqName, callables.createMarshaler,
+                callables.createMarshalerSymbol, listOf(builder.irGet(stableValue)),
+            ) ?: abortCallSiteLowering()
+            val factoryClass = factoryCall.type.classOrNull ?: abortCallSiteLowering()
+            require(recipe.abiCarriers.size == 1 && callables.extraCarrierProperties.isEmpty())
+            val getter = factoryClass.propertyGetter(callables.carrierProperty) ?: abortCallSiteLowering()
+            val owned = irTemporary(builder.irNull(factoryCall.type.makeNullable()),
+                nameHint = "ownedInspectableMarshaler", isMutable = true)
+            val address = irTemporary(nullPointer, nameHint = "inspectableAddress", isMutable = true)
+            val factoryUsed = callables.copyFromAbi.takeIf(String::isNotBlank)?.let {
+                irTemporary(builder.irBoolean(false), nameHint = "inspectableFactoryUsed", isMutable = true)
             }
-
-            fun borrowOrFallback(): IrExpression = builder.irBlock(resultType = function.returnType) {
-                val borrowedAbi = irTemporary(
-                    resolver.topLevelCall(
-                        builder,
-                        tryBorrowWinRTManagedInspectableAbi,
-                        listOf(builder.irGet(stableValue)),
-                    ),
-                    nameHint = "borrowedInspectableAbi",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+            val carrier = resolver.memberCall(builder, getter,
+                builder.irAs(builder.irGet(owned), factoryClass.owner.defaultType), emptyList())
+            val selected = if (factoryCall.type.isNullable()) builder.irIfNull(
+                type = carrier.type, subject = builder.irGet(owned),
+                thenPart = zeroValue(builder, carrier.type) ?: abortCallSiteLowering(), elsePart = carrier,
+            ) else carrier
+            val preparation = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                +builder.irSet(address.symbol, resolver.topLevelCall(builder,
+                    tryBorrowWinRTManagedInspectableAbi, listOf(builder.irGet(stableValue))))
+                +builder.irIfThen(pluginContext.irBuiltIns.unitType,
+                    builder.irCall(isNullPointer).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = builder.irGet(address)
+                    },
+                    builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irSet(owned.symbol, factoryCall)
+                        factoryUsed?.let { +builder.irSet(it.symbol, builder.irBoolean(true)) }
+                        +builder.irSet(address.symbol,
+                            normalizeCarrier(builder, recipe.abiCarriers.single(), selected) ?: abortCallSiteLowering())
+                    },
                 )
-                val borrowMiss = builder.irCall(isNullPointer).apply {
-                    arguments[0] = builder.irGetObject(platformAbi)
-                    arguments[1] = builder.irGet(borrowedAbi)
+            }
+            val postCall = factoryUsed?.let { used ->
+                {
+                    builder.irIfThen(pluginContext.irBuiltIns.unitType, builder.irGet(used),
+                        resolver.codecCall(builder, callables.ownerFqName, callables.copyFromAbi,
+                            callables.copyFromAbiSymbol,
+                            listOf(builder.irAs(builder.irGet(owned), factoryCall.type), builder.irGet(stableValue)),
+                        ) ?: abortCallSiteLowering())
                 }
-                +builder.irIfThenElse(
-                    type = function.returnType,
-                    condition = borrowMiss,
-                    thenPart = emitFactoryInput(
-                        builder = builder,
-                        function = function,
-                        recipe = recipe,
-                        value = builder.irGet(stableValue),
-                        callables = callables,
-                        pluginContext = pluginContext,
-                        continuation = continuation,
-                    ) ?: abortCallSiteLowering(),
-                    elsePart = invokeWith(builder.irGet(borrowedAbi), keepAlive = true),
-                )
             }
-
-            if (recipe.nullable) {
-                +builder.irIfNull(
-                    type = function.returnType,
-                    subject = builder.irGet(stableValue),
-                    thenPart = invokeWith(nullPointer, keepAlive = false),
-                    elsePart = borrowOrFallback(),
-                )
-            } else {
-                +borrowOrFallback()
-            }
+            // CsWinRT prepares marshalers, invokes once, then conditionally disposes them.
+            // Emit the continuation outside all branches, including for multiple object inputs.
+            val downstream = continuation(PreparedInput(
+                abiValues = listOf(builder.irGet(address)), postCall = postCall,
+                keepAliveOwners = listOf(builder.irGet(stableValue)),
+            )) ?: abortCallSiteLowering()
+            +builder.irTry(
+                type = function.returnType,
+                tryResult = builder.irBlock(resultType = function.returnType) {
+                    +if (recipe.nullable) builder.irIfNull(
+                        type = pluginContext.irBuiltIns.unitType, subject = builder.irGet(stableValue),
+                        thenPart = builder.irUnit(), elsePart = preparation,
+                    ) else preparation
+                    +downstream
+                },
+                catches = emptyList(),
+                finallyExpression = closeFactoryMarshaler(builder, owned, factoryClass,
+                    callables.closeMarshaler, pluginContext) ?: abortCallSiteLowering(),
+            )
         }
     }
 
