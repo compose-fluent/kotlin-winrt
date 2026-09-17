@@ -4368,11 +4368,7 @@ private class CallSiteSymbolResolver(
     private fun selectSignature(
         candidates: Collection<IrSimpleFunctionSymbol>, key: MemberFunctionSignature,
     ): IrSimpleFunctionSymbol? = selectUnique(candidates.filter { symbol ->
-        symbol.owner.typeParameters.isEmpty() &&
-            symbol.owner.parameters.none { it.kind == IrParameterKind.Context } &&
-            symbol.owner.parameters.singleOrNull { it.kind == IrParameterKind.ExtensionReceiver }?.type?.callSiteTypeName() == key.extensionReceiverType &&
-            symbol.owner.regularParameters().map { it.type.callSiteTypeName() } == key.parameterTypes &&
-            symbol.owner.returnType.callSiteTypeName() == key.returnType
+        symbol.owner.matchesCallSiteSignature(key.parameterTypes, key.returnType, key.extensionReceiverType)
     }, key.toString())
 
     private fun selectUnique(candidates: List<IrSimpleFunctionSymbol>, requested: String): IrSimpleFunctionSymbol? {
@@ -4483,27 +4479,6 @@ private class CallSiteSymbolResolver(
         return call
     }
 }
-
-private fun IrType.callSiteTypeName(): String {
-    val simple = this as? IrSimpleType ?: return toString()
-    val name = classFqName?.asString() ?: return toString()
-    val arguments = if (simple.arguments.isEmpty()) "" else simple.arguments.joinToString(",", "<", ">") { argument ->
-        val projection = argument as? org.jetbrains.kotlin.ir.types.IrTypeProjection
-        if (projection == null) "*" else {
-            val variance = when (projection.variance) {
-                org.jetbrains.kotlin.types.Variance.INVARIANT -> ""
-                org.jetbrains.kotlin.types.Variance.IN_VARIANCE -> "in "
-                org.jetbrains.kotlin.types.Variance.OUT_VARIANCE -> "out "
-            }
-            variance + projection.type.callSiteTypeName()
-        }
-    }
-    return name + arguments + if (isNullable()) "?" else ""
-}
-
-private fun IrSimpleFunctionSymbol.callSiteSignature(): String =
-    "${owner.fqNameWhenAvailable}(${owner.parameters.filter { it.kind != IrParameterKind.DispatchReceiver }
-        .joinToString { "${it.kind}: ${it.type.callSiteTypeName()}" }}): ${owner.returnType.callSiteTypeName()}"
 
 private data class MemberFunctionName(
     val ownerFqName: String,

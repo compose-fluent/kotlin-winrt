@@ -316,9 +316,9 @@ internal class WinRTDirectCallBackend private constructor(
             )
             if (jvm == null && native == null) return null
             val uintToInt = pluginContext.findDirectClass(KOTLIN_UINT_CLASS_ID, fromFile)
-                ?.directFunction("toInt", emptyList())
+                ?.directFunction("toInt", emptyList(), "kotlin.Int")
             val ulongToLong = pluginContext.findDirectClass(KOTLIN_ULONG_CLASS_ID, fromFile)
-                ?.directFunction("toLong", emptyList())
+                ?.directFunction("toLong", emptyList(), "kotlin.Long")
             return WinRTDirectCallBackend(
                 jvm = jvm,
                 native = native,
@@ -562,7 +562,7 @@ private class JvmFfmSymbols private constructor(
             val valueLayout = pluginContext.findDirectClass(JAVA_VALUE_LAYOUT_CLASS_ID, fromFile) ?: return null
             val addressLayout = pluginContext.findDirectClass(JAVA_ADDRESS_LAYOUT_CLASS_ID, fromFile) ?: return null
             val handles = pluginContext.findDirectClass(WINRT_JVM_FFM_HANDLES_CLASS_ID, fromFile) ?: return null
-            val exactHandle = handles.directFunction("createExactHResultWordHandle") ?: return null
+            val exactHandle = handles.directFunction("createExactHResultWordHandle", listOf("kotlin.Array<out java.lang.foreign.MemoryLayout>"), "java.lang.invoke.MethodHandle") ?: return null
             fun staticLayoutValue(classId: ClassId, owner: IrClassSymbol, name: String): StaticValue? {
                 val property = owner.owner.declarations.filterIsInstance<IrProperty>()
                     .singleOrNull { it.name.asString() == name }
@@ -591,22 +591,23 @@ private class JvmFfmSymbols private constructor(
                 WinRTProjectionCallSiteAbiCarrier.FLOAT64 to
                     (staticLayoutValue(JAVA_VALUE_LAYOUT_CLASS_ID, valueLayout, "JAVA_DOUBLE") ?: return null),
             )
-            val intToLong = pluginContext.irBuiltIns.intClass.owner.declarations
-                .filterIsInstance<IrSimpleFunction>()
-                .singleOrNull { it.name.asString() == "toLong" }?.symbol ?: return null
+            val intToLong = pluginContext.irBuiltIns.intClass.directFunction("toLong", emptyList(), "kotlin.Long") ?: return null
             return JvmFfmSymbols(
                 memoryLayoutType = memoryLayout.owner.defaultType,
-                memorySegmentOfAddress = memorySegment.directFunction("ofAddress", listOf(KOTLIN_LONG_FQ_NAME)) ?: return null,
-                memorySegmentReinterpret = memorySegment.directFunction("reinterpret", listOf(KOTLIN_LONG_FQ_NAME)) ?: return null,
+                // Java platform types use nullable upper bounds in Kotlin IR.
+                memorySegmentOfAddress = memorySegment.directFunction("ofAddress", listOf("kotlin.Long"), "java.lang.foreign.MemorySegment?") ?: return null,
+                memorySegmentReinterpret = memorySegment.directFunction("reinterpret", listOf("kotlin.Long"), "java.lang.foreign.MemorySegment?") ?: return null,
                 memorySegmentGetAddress = memorySegment.directFunction(
                     "get",
-                    listOf(JAVA_ADDRESS_LAYOUT_FQ_NAME, KOTLIN_LONG_FQ_NAME),
+                    listOf("java.lang.foreign.AddressLayout?", "kotlin.Long"),
+                    "java.lang.foreign.MemorySegment?",
                 ) ?: return null,
                 memorySegmentGetAtIndexAddress = memorySegment.directFunction(
                     "getAtIndex",
-                    listOf(JAVA_ADDRESS_LAYOUT_FQ_NAME, KOTLIN_LONG_FQ_NAME),
+                    listOf("java.lang.foreign.AddressLayout?", "kotlin.Long"),
+                    "java.lang.foreign.MemorySegment?",
                 ) ?: return null,
-                methodHandleInvoke = methodHandle.directFunction("invokeExact") ?: return null,
+                methodHandleInvoke = methodHandle.signaturePolymorphicInvokeExact() ?: return null,
                 valueLayoutAddress = address,
                 intToLong = intToLong,
                 rawComPtrValueGetter = rawComPtrValueGetter,
@@ -1112,8 +1113,8 @@ private class NativeCInteropSymbols private constructor(
             val cFunction = pluginContext.findDirectClass(KOTLINX_CINTEROP_CFUNCTION_CLASS_ID, fromFile) ?: return null
             val vector128 = pluginContext.findDirectClass(KOTLINX_CINTEROP_VECTOR128_CLASS_ID, fromFile) ?: return null
             val nativePtr = pluginContext.findDirectClass(KOTLIN_NATIVE_PTR_CLASS_ID, fromFile) ?: return null
-            val vector128GetLongAt = vector128.directFunction("getLongAt", listOf(KOTLIN_INT_FQ_NAME)) ?: return null
-            val vector128GetIntAt = vector128.directFunction("getIntAt", listOf(KOTLIN_INT_FQ_NAME)) ?: return null
+            val vector128GetLongAt = vector128.directFunction("getLongAt", listOf("kotlin.Int"), "kotlin.Long") ?: return null
+            val vector128GetIntAt = vector128.directFunction("getIntAt", listOf("kotlin.Int"), "kotlin.Int") ?: return null
             val interpretCPointer = pluginContext.findDirectFunctions(
                 CallableId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("interpretCPointer")),
                 fromFile,
@@ -1122,7 +1123,7 @@ private class NativeCInteropSymbols private constructor(
                 CallableId(KOTLIN_NATIVE_INTERNAL_PACKAGE_FQ_NAME, Name.identifier("getNativeNullPtr")),
                 fromFile,
             ).singleOrNull() ?: return null
-            val nativePtrPlus = nativePtr.directFunction("plus", listOf(KOTLIN_LONG_FQ_NAME)) ?: return null
+            val nativePtrPlus = nativePtr.directFunction("plus", listOf("kotlin.Long"), "kotlin.native.internal.NativePtr") ?: return null
             val invokes = pluginContext.findDirectFunctions(
                 CallableId(KOTLINX_CINTEROP_PACKAGE_FQ_NAME, Name.identifier("invoke")),
                 fromFile,
@@ -1141,9 +1142,7 @@ private class NativeCInteropSymbols private constructor(
                     fromFile,
                 ).toList()
                 val matching = candidates.filter { symbol ->
-                    symbol.owner.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
-                        .map { parameter -> parameter.type.classFqName } == parameterTypes &&
-                        symbol.owner.returnType.classFqName == returnType
+                    symbol.owner.matchesCallSiteSignature(parameterTypes.map(FqName::asString), returnType.asString())
                 }
                 return matching.singleOrNull { symbol -> !symbol.owner.isExpect } ?: error(
                     "kotlin-winrt could not resolve the implemented Native runtime function $name; " +
@@ -1357,12 +1356,32 @@ private fun IrPluginContext.findDirectProperties(callableId: CallableId, fromFil
 
 private fun IrClassSymbol.directFunction(
     name: String,
-    regularParameterTypes: List<FqName>? = null,
-): IrSimpleFunctionSymbol? =
+    regularParameterTypes: List<String>,
+    returnType: String,
+): IrSimpleFunctionSymbol? {
+    val candidates = owner.declarations.filterIsInstance<IrSimpleFunction>()
+        .filter { it.name.asString() == name }
+    val matching = candidates.filter { it.matchesCallSiteSignature(regularParameterTypes, returnType) }
+    check(candidates.isEmpty() || matching.isNotEmpty()) {
+        "Incompatible backend helper ${owner.fqNameWhenAvailable}.$name; " +
+            "expected ($regularParameterTypes): $returnType; candidates: " +
+            candidates.joinToString { it.symbol.callSiteSignature() }
+    }
+    check(matching.size <= 1) {
+        "Ambiguous backend helper ${owner.fqNameWhenAvailable}.$name; candidates: " +
+            matching.joinToString { it.symbol.callSiteSignature() }
+    }
+    return matching.singleOrNull()?.symbol
+}
+
+// JDK invokeExact is signature-polymorphic: its declared Object[] -> Object signature
+// is deliberately replaced with the physical ABI signature at the invocation site.
+private fun IrClassSymbol.signaturePolymorphicInvokeExact(): IrSimpleFunctionSymbol? =
     owner.declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { function ->
-        function.name.asString() == name &&
-            (regularParameterTypes == null || function.parameters.filter { it.kind == IrParameterKind.Regular }
-                .map { it.type.classFqName } == regularParameterTypes)
+        function.name.asString() == "invokeExact" &&
+            function.parameters.filter { it.kind == IrParameterKind.Regular }
+                .singleOrNull()?.varargElementType != null &&
+            function.returnType.classFqName == FqName("kotlin.Any")
     }?.symbol
 
 private fun IrClassSymbol.directPropertyGetter(name: String): IrSimpleFunctionSymbol? =
