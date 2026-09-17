@@ -181,6 +181,12 @@ private object ConsumingOwnedProjectionCallSiteFixture {
     @WinRTProjectionCallSite
     fun produce(reference: ComObjectReference, slot: Int): ConsumingOwnedProjection =
         TODO("consuming owned projection fixture")
+    @WinRTProjectionCallSite
+    fun produceWithInput(
+        reference: ComObjectReference,
+        slot: Int,
+        @WinRTProjectionParameter(abiType = "System.Object") value: Any?,
+    ): ConsumingOwnedProjection = TODO("consuming owned projection with input fixture")
 }
 
 private interface DirectUnknownProjection : WinRTManagedProjectionStateAccess {
@@ -457,6 +463,12 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(produce.contains("releaseRaw"), produce)
         assertFalse(produce.contains("addSuppressed"), produce)
         assertFalse(produce.contains("java/lang/Throwable"), produce)
+        val withInput = bytecode.methodBytecode("produceWithInput")
+        assertTrue(withInput.contains("decodeOwned"), withInput)
+        assertFalse(withInput.contains("addSuppressed"), withInput)
+        assertFalse(withInput.contains("java/lang/Throwable"), withInput)
+        assertEquals(2, withInput.countOccurrences("reachabilityFence"), withInput)
+        assertEquals(1, withInput.countOccurrences("kotlinWinRTAbiInvoke_"), withInput)
     }
 
     @Test

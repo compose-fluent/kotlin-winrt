@@ -2655,7 +2655,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         if (state.outputs.isNotEmpty() || state.callerOutputs.isNotEmpty()) {
             return false
         }
-        if (state.postCalls.isNotEmpty() || state.keepAliveOwners.isNotEmpty()) return false
+        if (state.postCalls.isNotEmpty()) return false
         if (state.allocatedOutputs.size != 1 || state.allocatedOutputs.single().slot != result.slot) return false
         if (result.slot.ownership != WinRTProjectionCallSiteOwnership.NONE &&
             !result.isSingleConsumingOwnedProjection(descriptor)
@@ -2698,6 +2698,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             )
             +builder.irCall(winRTKeepAlive).apply {
                 arguments[0] = builder.irGet(parameters[0])
+            }
+            state.keepAliveOwners.forEach { owner ->
+                +builder.irCall(winRTKeepAlive).apply { arguments[0] = owner }
             }
             if (descriptor.hResultPolicy == WinRTProjectionCallSiteHResultPolicy.CHECK) {
                 val checkedHResult = builder.irCall(hResultConstructor).apply {
