@@ -52,11 +52,12 @@ class KotlinProjectionCallSiteDescriptorsTest {
         support.observe(KotlinTypedProjectionCallSiteInvocation(second, listOf(CodeBlock.of("value"))))
 
         assertEquals(setOf(first.platformShape), support.observedPlatformCallShapes())
-        assertEquals(
-            support.callSiteOwnerFqName(first),
-            support.callSiteOwnerFqName(second),
-        )
-        assertEquals(1, support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet).size)
+        val files = support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
+        assertEquals(setOf(support.callSiteOwnerFqName(first), support.callSiteOwnerFqName(second)).size, files.size)
+        // Typed wrappers have independent placement even when their physical ABI is identical.
+        val plans = (0 until 64).map { modulePlan("sample.Result$it") }
+        assertEquals(1, plans.map { support.platformShapeOwnerFqName(it.platformShape) }.toSet().size)
+        assertTrue(plans.map(support::callSiteOwnerFqName).toSet().size > 1)
     }
 
     @Test

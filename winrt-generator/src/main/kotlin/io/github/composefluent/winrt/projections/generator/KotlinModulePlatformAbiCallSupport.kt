@@ -63,7 +63,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         abiSupportClassName(abiTypeName).canonicalName
 
     internal fun callSiteOwnerFqName(plan: KotlinTypedProjectionCallSitePlan): String =
-        callSiteSupportClassName(plan.platformShape).canonicalName
+        typedCallSiteSupportClassName(plan).canonicalName
 
     /** Typed plans and physical shapes are intentionally exposed as separate inventories. */
     internal fun observedTypedCallSitePlans(): Set<KotlinTypedProjectionCallSitePlan> =
@@ -224,7 +224,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
             )
         }
 
-        val callsByOwner = calls.values.groupBy { plan -> callSiteSupportClassName(plan.platformShape) }
+        val callsByOwner = calls.values.groupBy { plan -> typedCallSiteSupportClassName(plan) }
         val codecsByOwner = codecs.values.groupBy { codec -> abiSupportClassName(codec.abiTypeName) }
         val abiTypesByOwner = abiTypes.values.groupBy { metadata -> abiSupportClassName(metadata.abiTypeName) }
         val metadataByOwner = renderedMetadata.groupBy(KotlinProjectionModuleMetadata::owner)
@@ -296,7 +296,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         }
         calls.putCallSite(functionName, plan)
         return ModuleCallTarget(
-            className = callSiteSupportClassName(plan.platformShape),
+            className = typedCallSiteSupportClassName(plan),
             functionName = functionName,
         )
     }
@@ -378,6 +378,9 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
 
     private fun metadataSupportClassName(identity: String): ClassName =
         supportShardClassName("metadata-shard", identity)
+
+    private fun typedCallSiteSupportClassName(plan: KotlinTypedProjectionCallSitePlan): ClassName =
+        supportShardClassName("typed-call-shard", plan.functionName)
 
     private fun callSiteSupportClassName(shape: KotlinProjectionPlatformCallShape): ClassName {
         return supportShardClassName("call-shape-shard", shape.canonicalDescriptor)

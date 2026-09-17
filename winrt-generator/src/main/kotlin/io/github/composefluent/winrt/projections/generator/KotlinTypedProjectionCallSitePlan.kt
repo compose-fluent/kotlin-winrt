@@ -50,7 +50,8 @@ internal data class KotlinTypedProjectionCallSitePlan(
     /**
      * The physical call identity is deliberately separate from the typed wrapper identity.
      * Public Kotlin types, IID selection, nullability and ownership stay in [descriptor] and the
-     * generated wrapper; only the ordered ABI carriers participate in platform support placement.
+     * generated wrapper; only the ordered ABI carriers identify shared physical call support.
+     * Typed wrapper placement uses its own identity so pointer-heavy shapes do not form hot shards.
      */
     val platformShape: KotlinProjectionPlatformCallShape =
         KotlinProjectionPlatformCallShape.from(descriptor)
