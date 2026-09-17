@@ -52,6 +52,8 @@ import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrVariableSymbolImpl
 import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.IrTypeSystemContextImpl
+import org.jetbrains.kotlin.ir.types.isSubtypeOf
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.classOrNull
@@ -164,7 +166,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val acquireScalarScratchFrame: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "acquireNativeScalarScratchFrame",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "acquireNativeScalarScratchFrame", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "acquireNativeScalarScratchFrame", listOf("kotlin.Boolean"), "io.github.composefluent.winrt.runtime.NativeScalarScratchFrame"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -178,74 +180,70 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val scalarScratchFrameConsumeOwnedHString: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.consumeOwnedHString",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "consumeOwnedHString", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "consumeOwnedHString", listOf(), "kotlin.String"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadPointer: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readPointer",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readPointer", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readPointer", listOf(), "io.github.composefluent.winrt.runtime.RawAddress"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadInt8: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readInt8",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt8", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt8", listOf(), "kotlin.Byte"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadInt16: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readInt16",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt16", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt16", listOf(), "kotlin.Short"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadInt32: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readInt32",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt32", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt32", listOf(), "kotlin.Int"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadInt64: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readInt64",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt64", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readInt64", listOf(), "kotlin.Long"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadFloat: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readFloat",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readFloat", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readFloat", listOf(), "kotlin.Float"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameReadDouble: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.readDouble",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readDouble", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "readDouble", listOf(), "kotlin.Double"),
         ) ?: abortCallSiteLowering()
     }
 
     private val scalarScratchFrameClose: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeScalarScratchFrame.close",
-            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "close", 0),
+            resolver.function(WINRT_NATIVE_SCALAR_SCRATCH_FRAME_FQ_NAME, "close", listOf(), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val acquireHStringReferenceFrame: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "acquireInitializedNativeHStringReferenceFrame",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "acquireInitializedNativeHStringReferenceFrame",
-                1,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "acquireInitializedNativeHStringReferenceFrame", listOf("kotlin.String"), "io.github.composefluent.winrt.runtime.NativeHStringReferenceFrame"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -259,37 +257,33 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val hStringReferenceFrameClose: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeHStringReferenceFrame.close",
-            resolver.function(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_FQ_NAME, "close", 0),
+            resolver.function(WINRT_NATIVE_HSTRING_REFERENCE_FRAME_FQ_NAME, "close", listOf(), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPinString: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTPinString",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPinString", 2),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPinString", listOf("kotlin.String", "kotlin.Int"), "kotlin.String"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTStringAddress: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTStringAddress",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringAddress", 2),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringAddress", listOf("kotlin.String", "kotlin.Int"), "io.github.composefluent.winrt.runtime.RawAddress"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTStringLength: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTStringLength",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringLength", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTStringLength", listOf("kotlin.String"), "kotlin.Int"),
         ) ?: abortCallSiteLowering()
     }
 
     private val acquireStructScratchFrame: IrSimpleFunctionSymbol? by lazy {
-        resolver.topLevelFunction(
-            WINRT_RUNTIME_PACKAGE_FQ_NAME,
-            "acquireNativeStructScratchFrame",
-            3,
-        )
+        resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "acquireNativeStructScratchFrame", listOf("kotlin.Long", "kotlin.Long", "kotlin.Boolean"), "io.github.composefluent.winrt.runtime.NativeStructScratchFrame")
     }
 
     private val structScratchFramePointerGetter: IrSimpleFunctionSymbol? by lazy {
@@ -298,31 +292,31 @@ internal class WinRTCallSiteRecipeLowering private constructor(
 
     private val structScratchFrameReadInt8Carrier: IrSimpleFunctionSymbol? by lazy {
         structFrame?.let {
-            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt8Carrier", 0)
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt8Carrier", listOf(), "kotlin.Byte")
     }
     }
 
     private val structScratchFrameReadInt16Carrier: IrSimpleFunctionSymbol? by lazy {
         structFrame?.let {
-            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt16Carrier", 0)
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt16Carrier", listOf(), "kotlin.Short")
     }
     }
 
     private val structScratchFrameReadInt32Carrier: IrSimpleFunctionSymbol? by lazy {
         structFrame?.let {
-            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt32Carrier", 0)
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt32Carrier", listOf(), "kotlin.Int")
     }
     }
 
     private val structScratchFrameReadInt64Carrier: IrSimpleFunctionSymbol? by lazy {
         structFrame?.let {
-            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt64Carrier", 0)
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "readInt64Carrier", listOf(), "kotlin.Long")
     }
     }
 
     private val structScratchFrameClose: IrSimpleFunctionSymbol? by lazy {
         structFrame?.let {
-            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "close", 0)
+            resolver.function(WINRT_NATIVE_STRUCT_SCRATCH_FRAME_FQ_NAME, "close", listOf(), "kotlin.Unit")
     }
     }
 
@@ -340,98 +334,98 @@ internal class WinRTCallSiteRecipeLowering private constructor(
 
     private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "fromRawComPtr", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "fromRawComPtr", listOf("io.github.composefluent.winrt.runtime.RawComPtr"), "io.github.composefluent.winrt.runtime.RawAddress")
     }
     }
 
     private val platformAbiToRawComPtr: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "toRawComPtr", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "toRawComPtr", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "io.github.composefluent.winrt.runtime.RawComPtr")
     }
     }
 
     private val platformAbiReadPointer: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readPointer", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readPointer", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "io.github.composefluent.winrt.runtime.RawAddress")
     }
     }
 
     private val platformAbiReadInt8: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt8", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt8", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Byte")
     }
     }
 
     private val platformAbiReadInt16: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt16", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt16", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Short")
     }
     }
 
     private val platformAbiReadInt32: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt32", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt32", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Int")
     }
     }
 
     private val platformAbiReadInt64: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt64", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readInt64", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Long")
     }
     }
 
     private val platformAbiReadFloat: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readFloat", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readFloat", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Float")
     }
     }
 
     private val platformAbiReadDouble: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readDouble", 1)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readDouble", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Double")
     }
     }
 
     private val platformAbiReadGuid: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readGuid", 1) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "readGuid", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "io.github.composefluent.winrt.runtime.Guid") }
     }
 
     private val platformAbiSlice: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "slice", 3) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "slice", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Long", "kotlin.Long"), "io.github.composefluent.winrt.runtime.RawAddress") }
     }
 
     private val platformAbiWritePointer: IrSimpleFunctionSymbol? by lazy {
         platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writePointer", 2)
+            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writePointer", listOf("io.github.composefluent.winrt.runtime.RawAddress", "io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Unit")
     }
     }
 
     private val platformAbiWriteInt8: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt8", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt8", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Byte"), "kotlin.Unit") }
     }
 
     private val platformAbiWriteInt16: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt16", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt16", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Short"), "kotlin.Unit") }
     }
 
     private val platformAbiWriteInt32: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt32", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt32", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Int"), "kotlin.Unit") }
     }
 
     private val platformAbiWriteInt64: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt64", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeInt64", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Long"), "kotlin.Unit") }
     }
 
     private val platformAbiWriteFloat: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeFloat", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeFloat", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Float"), "kotlin.Unit") }
     }
 
     private val platformAbiWriteDouble: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeDouble", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeDouble", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.Double"), "kotlin.Unit") }
     }
 
     private val platformAbiWriteGuid: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeGuid", 2) }
+        platformAbiClass?.let { resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "writeGuid", listOf("io.github.composefluent.winrt.runtime.RawAddress", "io.github.composefluent.winrt.runtime.Guid"), "kotlin.Unit") }
     }
 
     private val platformAbiIsNullPointer: IrSimpleFunctionSymbol? by lazy {
@@ -446,91 +440,62 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     }
 
     private val iWinRTObjectGetObjectReferenceForType: IrSimpleFunctionSymbol? by lazy {
-        iWinRTObject?.functionNamedWithRegularParameterCount("getObjectReferenceForType", 1)
+        iWinRTObject?.let { resolver.function(WINRT_IWINRT_OBJECT_FQ_NAME, "getObjectReferenceForType", listOf("io.github.composefluent.winrt.runtime.WinRTTypeHandle"), "io.github.composefluent.winrt.runtime.ComObjectReference") }
     }
 
     private val tryAcquireWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "tryAcquireWinRTManagedProjectionCallLease",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "tryAcquireWinRTManagedProjectionCallLease",
-                2,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "tryAcquireWinRTManagedProjectionCallLease", listOf("kotlin.Any?", "io.github.composefluent.winrt.runtime.WinRTTypeHandle"), "io.github.composefluent.winrt.runtime.WinRTProjectionMarshaler?"),
         ) ?: abortCallSiteLowering()
     }
 
     private val tryAcquireWinRTManagedProjectionCallLeaseWithState: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "tryAcquireWinRTManagedProjectionCallLease with projected state",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "tryAcquireWinRTManagedProjectionCallLease",
-                3,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "tryAcquireWinRTManagedProjectionCallLease", listOf("kotlin.Any", "io.github.composefluent.winrt.runtime.WinRTManagedProjectionState?", "io.github.composefluent.winrt.runtime.WinRTTypeHandle"), "io.github.composefluent.winrt.runtime.WinRTProjectionMarshaler?"),
         ) ?: abortCallSiteLowering()
     }
 
     private val releaseWinRTManagedProjectionCallLease: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "releaseWinRTManagedProjectionCallLease",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "releaseWinRTManagedProjectionCallLease",
-                2,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "releaseWinRTManagedProjectionCallLease", listOf("io.github.composefluent.winrt.runtime.WinRTProjectionMarshaler", "kotlin.Any"), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val tryBorrowWinRTManagedProjectionAbi: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "tryBorrowWinRTManagedProjectionAbi",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "tryBorrowWinRTManagedProjectionAbi",
-                2,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "tryBorrowWinRTManagedProjectionAbi", listOf("kotlin.Any?", "io.github.composefluent.winrt.runtime.WinRTTypeHandle"), "io.github.composefluent.winrt.runtime.RawAddress"),
         ) ?: abortCallSiteLowering()
     }
 
     private val tryBorrowWinRTManagedProjectionAbiWithState: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "tryBorrowWinRTManagedProjectionAbi with projected state",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "tryBorrowWinRTManagedProjectionAbi",
-                3,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "tryBorrowWinRTManagedProjectionAbi", listOf("kotlin.Any", "io.github.composefluent.winrt.runtime.WinRTManagedProjectionState?", "io.github.composefluent.winrt.runtime.WinRTTypeHandle"), "io.github.composefluent.winrt.runtime.RawAddress"),
         ) ?: abortCallSiteLowering()
     }
 
     private val tryBorrowWinRTManagedInspectableAbi: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "tryBorrowWinRTManagedInspectableAbi",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "tryBorrowWinRTManagedInspectableAbi",
-                1,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "tryBorrowWinRTManagedInspectableAbi", listOf("kotlin.Any?"), "io.github.composefluent.winrt.runtime.RawAddress"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTManagedProjectionStateAccessor: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "WinRTManagedProjectionStateAccess.winRTManagedProjectionState",
-            resolver.classSymbol(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME)
-                ?.functionNamedWithRegularParameterCount("winRTManagedProjectionState", 0),
+            resolver.function(WINRT_MANAGED_PROJECTION_STATE_ACCESS_FQ_NAME, "winRTManagedProjectionState", emptyList(), "io.github.composefluent.winrt.runtime.WinRTManagedProjectionState?"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTProjectionMarshaler: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTProjectionMarshaler",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "winRTProjectionMarshaler",
-                2,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTProjectionMarshaler", listOf("kotlin.Any?", "io.github.composefluent.winrt.runtime.WinRTTypeHandle"), "io.github.composefluent.winrt.runtime.WinRTProjectionMarshaler"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -544,21 +509,21 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val winRTProjectionMarshalerClose: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "WinRTProjectionMarshaler.close",
-            winRTProjectionMarshalerClass.functionNamedWithRegularParameterCount("close", 0),
+            resolver.function(WINRT_PROJECTION_MARSHALER_FQ_NAME, "close", emptyList(), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTKeepAlive: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTKeepAlive",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTKeepAlive", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTKeepAlive", listOf("kotlin.Any?"), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTAbiArrayAllocateInput: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "WinRTAbiArray.allocateInput",
-            winRTAbiArrayCompanion.functionNamedWithRegularParameterCount("allocateInput", 3),
+            resolver.function(requireNotNull(winRTAbiArrayCompanion.owner.fqNameWhenAvailable), "allocateInput", listOf("kotlin.Int", "kotlin.Int", "kotlin.Int"), "io.github.composefluent.winrt.runtime.WinRTAbiArray"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -579,21 +544,21 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val winRTAbiArrayClose: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "WinRTAbiArray.close",
-            winRTAbiArray.functionNamedWithRegularParameterCount("close", 0),
+            resolver.function(WINRT_ABI_ARRAY_FQ_NAME, "close", emptyList(), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val nativeStringMarshallerFromAbi: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeStringMarshaller.fromAbi",
-            nativeStringMarshaller.functionNamedWithRegularParameterCount("fromAbi", 1),
+            resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "fromAbi", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.String"),
         ) ?: abortCallSiteLowering()
     }
 
     private val nativeStringMarshallerFromManaged: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeStringMarshaller.fromManaged",
-            nativeStringMarshaller.functionNamedWithRegularParameterCount("fromManaged", 1),
+            resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "fromManaged", listOf("kotlin.String?"), "io.github.composefluent.winrt.runtime.HString?"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -610,43 +575,35 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val nativeStringMarshallerDisposeAbi: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "NativeStringMarshaller.disposeAbi",
-            resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "disposeAbi", 1),
+            resolver.function(WINRT_NATIVE_STRING_MARSHALLER_FQ_NAME, "disposeAbi", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTProjectionInboundRetainAddress: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTProjectionInboundRetainAddress",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "winRTProjectionInboundRetainAddress",
-                1,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTProjectionInboundRetainAddress", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "io.github.composefluent.winrt.runtime.RawAddress"),
         ) ?: abortCallSiteLowering()
     }
 
     private val tryConsumeOwnedRuntimeClassRcw: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "tryConsumeOwnedRuntimeClassRcw",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "tryConsumeOwnedRuntimeClassRcw",
-                2,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "tryConsumeOwnedRuntimeClassRcw", listOf("io.github.composefluent.winrt.runtime.RawAddress", "kotlin.reflect.KClass<*>"), "kotlin.Any?"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPlatformApiReleaseRaw: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "WinRTPlatformApi.releaseRaw",
-            resolver.function(WINRT_PLATFORM_API_FQ_NAME, "releaseRaw", 1),
+            resolver.function(WINRT_PLATFORM_API_FQ_NAME, "releaseRaw", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.UInt"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPlatformApiCoTaskMemFreeRaw: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "WinRTPlatformApi.coTaskMemFreeRaw",
-            resolver.function(WINRT_PLATFORM_API_FQ_NAME, "coTaskMemFreeRaw", 1),
+            resolver.function(WINRT_PLATFORM_API_FQ_NAME, "coTaskMemFreeRaw", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Unit"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -667,85 +624,65 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     private val hResultRequireSuccess: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "HResult.requireSuccess",
-            resolver.function(WINRT_HRESULT_FQ_NAME, "requireSuccess", 1),
+            resolver.function(WINRT_HRESULT_FQ_NAME, "requireSuccess", listOf("kotlin.String"), "io.github.composefluent.winrt.runtime.HResult"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTConsumeOwnedHStringScalarResult: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTConsumeOwnedHStringScalarResult",
-            resolver.topLevelFunction(
-                WINRT_RUNTIME_PACKAGE_FQ_NAME,
-                "winRTConsumeOwnedHStringScalarResult",
-                3,
-            ),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTConsumeOwnedHStringScalarResult", listOf("kotlin.Long", "kotlin.Int", "kotlin.Boolean"), "kotlin.String"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTScalarResultRecord: IrSimpleFunctionSymbol? by lazy {
-        resolver.topLevelFunction(
-            WINRT_RUNTIME_PACKAGE_FQ_NAME,
-            "winRTScalarResultRecord",
-            0,
-        )
+        resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTScalarResultRecord", listOf(), "io.github.composefluent.winrt.runtime.RawAddress")
     }
 
     private val winRTScalarResultHResult: IrSimpleFunctionSymbol? by lazy {
-        resolver.topLevelFunction(
-            WINRT_RUNTIME_PACKAGE_FQ_NAME,
-            "winRTScalarResultHResult",
-            1,
-        )
+        resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTScalarResultHResult", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "kotlin.Int")
     }
 
     private val winRTScalarResultValue: IrSimpleFunctionSymbol? by lazy {
-        resolver.topLevelFunction(
-            WINRT_RUNTIME_PACKAGE_FQ_NAME,
-            "winRTScalarResultValue",
-            1,
-        )
+        resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTScalarResultValue", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "io.github.composefluent.winrt.runtime.RawAddress")
     }
 
     private val winRTWideScalarResultFloat64: IrSimpleFunctionSymbol? by lazy {
-        resolver.topLevelFunction(
-            WINRT_RUNTIME_PACKAGE_FQ_NAME,
-            "winRTWideScalarResultFloat64",
-            1,
-        )
+        resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTWideScalarResultFloat64", listOf("kotlin.Long"), "kotlin.Double")
     }
 
     private val winRTPackedScalarResultHResult: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTPackedScalarResultHResult",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultHResult", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultHResult", listOf("kotlin.Long"), "kotlin.Int"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPackedScalarResultInt8: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTPackedScalarResultInt8",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt8", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt8", listOf("kotlin.Long"), "kotlin.Byte"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPackedScalarResultInt16: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTPackedScalarResultInt16",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt16", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt16", listOf("kotlin.Long"), "kotlin.Short"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPackedScalarResultInt32: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTPackedScalarResultInt32",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt32", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultInt32", listOf("kotlin.Long"), "kotlin.Int"),
         ) ?: abortCallSiteLowering()
     }
 
     private val winRTPackedScalarResultFloat32: IrSimpleFunctionSymbol by lazy {
         requiredCallSiteSymbol(
             "winRTPackedScalarResultFloat32",
-            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultFloat32", 1),
+            resolver.topLevelFunction(WINRT_RUNTIME_PACKAGE_FQ_NAME, "winRTPackedScalarResultFloat32", listOf("kotlin.Long"), "kotlin.Float"),
         ) ?: abortCallSiteLowering()
     }
 
@@ -1287,7 +1224,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         value: IrExpression,
         callables: WinRTProjectionCallSiteCallables,
     ): IrExpression? {
-        val converter = (callables.toAbiSymbol ?: resolver.function(callables.ownerFqName, callables.toAbi, 1)) ?: return null
+        val converter = (callables.toAbiSymbol ?: resolver.codecFunction(callables.ownerFqName, callables.toAbi, argumentType = value.type)) ?: return null
         val enumClass = value.type.classOrNull?.owner ?: return null
         if (!enumClass.isValue) return null
         val constructorParameter = enumClass.declarations
@@ -1716,7 +1653,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         }
         WinRTProjectionCallSiteRecipeKind.ENUM -> {
             val callables = recipe.callables ?: return null
-            val fromAbi = (callables.fromAbiSymbol ?: resolver.function(callables.ownerFqName, callables.fromAbi, 1)) ?: return null
+            val fromAbi = (callables.fromAbiSymbol ?: resolver.codecFunction(callables.ownerFqName, callables.fromAbi, returnType = elementType)) ?: return null
             val carrierType = fromAbi.owner.regularParameters().singleOrNull()?.type ?: return null
             val abi = decodeArrayElement(builder, recipe.children.single(), carrierType, address) ?: return null
             emitEnumFromAbi(builder, elementType, abi) ?: resolver.call(builder, fromAbi, listOf(abi))
@@ -2412,7 +2349,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         closeName: String,
         pluginContext: IrPluginContext,
     ): IrExpression? {
-        val close = factoryClass.functionNamedWithRegularParameterCount(closeName, 0) ?: return null
+        val close = resolver.function(requireNotNull(factoryClass.owner.fqNameWhenAvailable), closeName, emptyList(), "kotlin.Unit") ?: return null
         val receiver = builder.irAs(builder.irGet(marshaler), factoryClass.owner.defaultType)
         val call = resolver.memberCall(builder, close, receiver, emptyList())
         return if (marshaler.type.isNullable()) {
@@ -2886,8 +2823,8 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     ): IrExpression? = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
         val throwableType = pluginContext.irBuiltIns.throwableType
         val nullableThrowableType = throwableType.makeNullable()
-        val addSuppressed = resolver.topLevelFunction(FqName("kotlin"), "addSuppressed", 1)
-            ?: pluginContext.irBuiltIns.throwableClass.functionNamedWithRegularParameterCount("addSuppressed", 1)
+        val addSuppressed = resolver.topLevelFunction(FqName("kotlin"), "addSuppressed", listOf("kotlin.Throwable"), "kotlin.Unit", "kotlin.Throwable")
+            ?: resolver.function(FqName("kotlin.Throwable"), "addSuppressed", listOf("kotlin.Throwable"), "kotlin.Unit")
             ?: return null
         val cleanupFailure = irTemporary(
             builder.irNull(nullableThrowableType),
@@ -2977,8 +2914,8 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     ): IrExpression? = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
         val throwableType = pluginContext.irBuiltIns.throwableType
         val nullableThrowableType = throwableType.makeNullable()
-        val addSuppressed = resolver.topLevelFunction(FqName("kotlin"), "addSuppressed", 1)
-            ?: pluginContext.irBuiltIns.throwableClass.functionNamedWithRegularParameterCount("addSuppressed", 1)
+        val addSuppressed = resolver.topLevelFunction(FqName("kotlin"), "addSuppressed", listOf("kotlin.Throwable"), "kotlin.Unit", "kotlin.Throwable")
+            ?: resolver.function(FqName("kotlin.Throwable"), "addSuppressed", listOf("kotlin.Throwable"), "kotlin.Unit")
             ?: return null
         val cleanupFailure = irTemporary(
             builder.irNull(nullableThrowableType),
@@ -3256,7 +3193,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             WinRTProjectionCallSiteRecipeKind.ENUM -> {
                 val child = recipe.children.single()
                 val callables = recipe.callables ?: return null
-                val fromAbi = (callables.fromAbiSymbol ?: resolver.function(callables.ownerFqName, callables.fromAbi, 1)) ?: return null
+                val fromAbi = (callables.fromAbiSymbol ?: resolver.codecFunction(callables.ownerFqName, callables.fromAbi, returnType = returnType)) ?: return null
                 val childProjectedType = fromAbi.owner.regularParameters().singleOrNull()?.type ?: return null
                 val raw = decodeDirectResult(builder, childProjectedType, child, storage, slot, pluginContext)
                     ?: return null
@@ -3319,7 +3256,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         val arrayClass = arrayType.classOrNull ?: return null
         val setElement = arrayClass.functionNamedWithRegularParameterCount("set", 2) ?: return null
         val elementSize = arrayElementSizeBytes(elementRecipe) ?: return null
-        val error = resolver.topLevelFunction(FqName("kotlin"), "error", 1) ?: return null
+        val error = resolver.topLevelFunction(FqName("kotlin"), "error", listOf("kotlin.Any"), "kotlin.Nothing") ?: return null
         val isNull = platformAbiIsNullPointer ?: return null
         val readLength = platformAbiReadInt32 ?: return null
         val readData = platformAbiReadPointer ?: return null
@@ -3524,7 +3461,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         val error = if (recipe.nullable) {
             null
         } else {
-            resolver.topLevelFunction(FqName("kotlin"), "error", 1) ?: return null
+            resolver.topLevelFunction(FqName("kotlin"), "error", listOf("kotlin.Any"), "kotlin.Nothing") ?: return null
         }
         val expectedClass = returnType.classOrNull
         return builder.irBlock(resultType = returnType) {
@@ -4326,7 +4263,9 @@ private class CallSiteSymbolResolver(
     private val sourceFunctions: Map<CallableId, List<IrSimpleFunctionSymbol>>,
 ) {
     private val memberFunctionsByName = mutableMapOf<MemberFunctionName, List<IrSimpleFunctionSymbol>>()
-    private val memberFunctionsByArity = mutableMapOf<MemberFunctionArity, IrSimpleFunctionSymbol?>()
+    private val memberFunctionsBySignature = mutableMapOf<MemberFunctionSignature, IrSimpleFunctionSymbol?>()
+    private val topLevelFunctionsBySignature = mutableMapOf<MemberFunctionSignature, IrSimpleFunctionSymbol?>()
+    private val typeSystem = IrTypeSystemContextImpl(pluginContext.irBuiltIns)
     private val classesByName = mutableMapOf<FqName, IrClassSymbol?>()
 
     fun classSymbol(fqName: FqName): IrClassSymbol? {
@@ -4342,17 +4281,19 @@ private class CallSiteSymbolResolver(
         return null
     }
 
-    fun topLevelFunction(packageName: FqName, name: String, regularParameterCount: Int): IrSimpleFunctionSymbol? {
+    fun topLevelFunction(
+        packageName: FqName, name: String, parameterTypes: List<String>, returnType: String, extensionReceiverType: String? = null,
+    ): IrSimpleFunctionSymbol? {
+        val key = MemberFunctionSignature(packageName.asString(), name, parameterTypes, returnType, extensionReceiverType)
+        if (topLevelFunctionsBySignature.containsKey(key)) return topLevelFunctionsBySignature[key]
         val callableId = CallableId(packageName, Name.identifier(name))
-        sourceFunctions[callableId]
-            .orEmpty()
-            .filter { it.owner.regularParameters().size == regularParameterCount }
-            .uniqueImplementation()
-            ?.let { return it }
-        val source = fromFile?.let { pluginContext.finderForSource(it).findFunctions(callableId) }.orEmpty()
-        return source.ifEmpty { pluginContext.finderForBuiltins().findFunctions(callableId) }
-            .filter { it.owner.regularParameters().size == regularParameterCount }
-            .uniqueImplementation()
+        val local = selectSignature(sourceFunctions[callableId].orEmpty(), key)
+        val resolved = local ?: run {
+            val source = fromFile?.let { pluginContext.finderForSource(it).findFunctions(callableId) }.orEmpty()
+            selectSignature(source.ifEmpty { pluginContext.finderForBuiltins().findFunctions(callableId) }, key)
+        }
+        topLevelFunctionsBySignature[key] = resolved
+        return resolved
     }
 
     fun codecCall(
@@ -4378,31 +4319,66 @@ private class CallSiteSymbolResolver(
         functionName: String,
         arguments: List<IrExpression>,
     ): IrExpression? {
-        val function = function(ownerFqName, functionName, arguments.size)
+        val candidates = functions(ownerFqName, functionName)
+        val applicable = candidates.filter { candidate ->
+            val parameters = candidate.owner.regularParameters()
+            candidate.owner.typeParameters.isEmpty() &&
+                candidate.owner.parameters.none { it.kind == IrParameterKind.ExtensionReceiver || it.kind == IrParameterKind.Context } &&
+                parameters.size == arguments.size && parameters.zip(arguments).all { (parameter, argument) ->
+                argument.type.isSubtypeOf(parameter.type, typeSystem)
+            }
+        }
+        val exact = applicable.filter { candidate ->
+            candidate.owner.regularParameters().map { it.type } == arguments.map { it.type }
+        }
+        val function = selectUnique(exact.ifEmpty { applicable }, "$ownerFqName.$functionName")
             ?: abortCallSiteLowering(
-                "cannot resolve $ownerFqName.$functionName with ${arguments.size} regular parameters",
+                "cannot resolve $ownerFqName.$functionName(${arguments.joinToString { it.type.callSiteTypeName() }}); " +
+                    "candidates: ${candidates.joinToString { it.callSiteSignature() }}",
             )
         return call(builder, function, arguments)
     }
 
     fun function(
-        ownerFqName: FqName,
-        functionName: String,
-        regularParameterCount: Int,
-    ): IrSimpleFunctionSymbol? = function(ownerFqName.asString(), functionName, regularParameterCount)
-
-    fun function(
-        ownerFqName: String,
-        functionName: String,
-        regularParameterCount: Int,
+        ownerFqName: FqName, functionName: String, parameterTypes: List<String>, returnType: String,
     ): IrSimpleFunctionSymbol? {
-        if (functionName.isBlank()) return null
-        val key = MemberFunctionArity(ownerFqName, functionName, regularParameterCount)
-        if (memberFunctionsByArity.containsKey(key)) return memberFunctionsByArity[key]
-        return functions(ownerFqName, functionName)
-            .filter { function -> function.owner.regularParameters().size == regularParameterCount }
-            .uniqueImplementation()
-            .also { function -> memberFunctionsByArity[key] = function }
+        val key = MemberFunctionSignature(ownerFqName.asString(), functionName, parameterTypes, returnType)
+        if (memberFunctionsBySignature.containsKey(key)) return memberFunctionsBySignature[key]
+        return selectSignature(functions(ownerFqName.asString(), functionName), key)
+            .also { memberFunctionsBySignature[key] = it }
+    }
+
+    fun codecFunction(
+        ownerFqName: String, name: String, argumentType: IrType? = null, returnType: IrType? = null,
+    ): IrSimpleFunctionSymbol? {
+        val candidates = functions(ownerFqName, name).filter { symbol ->
+            val parameters = symbol.owner.regularParameters()
+            symbol.owner.typeParameters.isEmpty() &&
+                symbol.owner.parameters.none { it.kind == IrParameterKind.ExtensionReceiver || it.kind == IrParameterKind.Context } &&
+                parameters.size == 1 &&
+                (argumentType == null || argumentType.isSubtypeOf(parameters.single().type, typeSystem)) &&
+                (returnType == null || symbol.owner.returnType == returnType)
+        }
+        val exact = candidates.filter { it.owner.regularParameters().single().type == argumentType }
+        return selectUnique(exact.ifEmpty { candidates }, "$ownerFqName.$name")
+    }
+    private fun selectSignature(
+        candidates: Collection<IrSimpleFunctionSymbol>, key: MemberFunctionSignature,
+    ): IrSimpleFunctionSymbol? = selectUnique(candidates.filter { symbol ->
+        symbol.owner.typeParameters.isEmpty() &&
+            symbol.owner.parameters.none { it.kind == IrParameterKind.Context } &&
+            symbol.owner.parameters.singleOrNull { it.kind == IrParameterKind.ExtensionReceiver }?.type?.callSiteTypeName() == key.extensionReceiverType &&
+            symbol.owner.regularParameters().map { it.type.callSiteTypeName() } == key.parameterTypes &&
+            symbol.owner.returnType.callSiteTypeName() == key.returnType
+    }, key.toString())
+
+    private fun selectUnique(candidates: List<IrSimpleFunctionSymbol>, requested: String): IrSimpleFunctionSymbol? {
+        val distinct = candidates.distinct()
+        val selected = distinct.uniqueImplementation()
+        if (selected == null && distinct.isNotEmpty()) abortCallSiteLowering(
+            "ambiguous helper $requested; candidates: ${distinct.joinToString { it.callSiteSignature() }}",
+        )
+        return selected
     }
 
     fun functions(ownerFqName: String, functionName: String): List<IrSimpleFunctionSymbol> {
@@ -4505,15 +4481,38 @@ private class CallSiteSymbolResolver(
     }
 }
 
+private fun IrType.callSiteTypeName(): String {
+    val simple = this as? IrSimpleType ?: return toString()
+    val name = classFqName?.asString() ?: return toString()
+    val arguments = if (simple.arguments.isEmpty()) "" else simple.arguments.joinToString(",", "<", ">") { argument ->
+        val projection = argument as? org.jetbrains.kotlin.ir.types.IrTypeProjection
+        if (projection == null) "*" else {
+            val variance = when (projection.variance) {
+                org.jetbrains.kotlin.types.Variance.INVARIANT -> ""
+                org.jetbrains.kotlin.types.Variance.IN_VARIANCE -> "in "
+                org.jetbrains.kotlin.types.Variance.OUT_VARIANCE -> "out "
+            }
+            variance + projection.type.callSiteTypeName()
+        }
+    }
+    return name + arguments + if (isNullable()) "?" else ""
+}
+
+private fun IrSimpleFunctionSymbol.callSiteSignature(): String =
+    "${owner.fqNameWhenAvailable}(${owner.parameters.filter { it.kind != IrParameterKind.DispatchReceiver }
+        .joinToString { "${it.kind}: ${it.type.callSiteTypeName()}" }}): ${owner.returnType.callSiteTypeName()}"
+
 private data class MemberFunctionName(
     val ownerFqName: String,
     val functionName: String,
 )
 
-private data class MemberFunctionArity(
+private data class MemberFunctionSignature(
     val ownerFqName: String,
     val functionName: String,
-    val regularParameterCount: Int,
+    val parameterTypes: List<String>,
+    val returnType: String,
+    val extensionReceiverType: String? = null,
 )
 
 private fun FqName.candidateClassIds(): List<ClassId> {
