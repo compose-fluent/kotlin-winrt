@@ -445,6 +445,16 @@ private class InboundRuntimeSymbols private constructor(
             return builder.irCall(helper).apply {
                 arguments[0] = builder.irString(ownerClassName)
                 arguments[1] = builder.irString(entry.name.asString())
+                // lookup() is caller-sensitive: emit it here, never in the runtime helper.
+                val handlesId = ClassId.topLevel(FqName("java.lang.invoke.MethodHandles"))
+                val handles = pluginContext.finderForSource(file).findClass(handlesId)
+                    ?: pluginContext.finderForBuiltins().findClass(handlesId)
+                val lookup = handles?.owner?.declarations?.filterIsInstance<IrSimpleFunction>()
+                    ?.singleOrNull {
+                        it.name.asString() == "lookup" && it.parameters.isEmpty() &&
+                            it.returnType.classFqName?.asString() == "java.lang.invoke.MethodHandles.Lookup"
+                    } ?: return null
+                arguments[2] = builder.irCall(lookup.symbol)
             }
         }
         nativeEntryPoint?.let { helper ->

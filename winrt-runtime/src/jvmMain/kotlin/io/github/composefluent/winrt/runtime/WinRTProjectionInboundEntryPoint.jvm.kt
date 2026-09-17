@@ -12,11 +12,10 @@ import java.util.concurrent.ConcurrentHashMap
 private object WinRTProjectionInboundJvmEntryPoints {
     private val arena = Arena.ofShared()
     private val linker = Linker.nativeLinker()
-    private val entryPoints = ConcurrentHashMap<Pair<String, String>, RawAddress>()
+    private val entryPoints = ConcurrentHashMap<Pair<Class<*>, String>, RawAddress>()
 
-    fun getOrCreate(ownerClassName: String, methodName: String): RawAddress =
-        entryPoints.computeIfAbsent(ownerClassName to methodName) {
-            val owner = Class.forName(ownerClassName, true, Thread.currentThread().contextClassLoader)
+    fun getOrCreate(owner: Class<*>, methodName: String): RawAddress =
+        entryPoints.computeIfAbsent(owner to methodName) {
             val method = owner.declaredMethods.single { candidate ->
                 candidate.name == methodName && candidate.returnType == Int::class.javaPrimitiveType
             }
@@ -50,4 +49,8 @@ private object WinRTProjectionInboundJvmEntryPoints {
 internal fun winRTJvmProjectionInboundEntryPoint(
     ownerClassName: String,
     methodName: String,
-): RawAddress = WinRTProjectionInboundJvmEntryPoints.getOrCreate(ownerClassName, methodName)
+    caller: MethodHandles.Lookup,
+): RawAddress = WinRTProjectionInboundJvmEntryPoints.getOrCreate(
+    Class.forName(ownerClassName, true, caller.lookupClass().classLoader),
+    methodName,
+)

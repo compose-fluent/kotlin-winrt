@@ -84,15 +84,32 @@ class InboundEntryResolutionTest {
 
     private fun invokeEntry(directory: File, owner: String): Any? =
         URLClassLoader(arrayOf(directory.toURI().toURL()), javaClass.classLoader).use { loader ->
-            val thread = Thread.currentThread()
-            val previous = thread.contextClassLoader
-            try {
-                thread.contextClassLoader = loader
-                loader.loadClass(owner).getDeclaredMethod("entry").invoke(null)
-            } finally {
-                thread.contextClassLoader = previous
+            loader.loadClass(owner).getDeclaredMethod("entry").invoke(null)
+        }
+
+    @Test
+    fun entry_cache_distinguishes_classes_loaded_by_isolated_loaders() {
+        compile("""
+            package test.inbound.loaders
+            import io.github.composefluent.winrt.runtime.*
+            class Target
+            @WinRTProjectionInboundCallSite
+            private fun consume(target: Target) { TODO("inbound") }
+            fun entry(): RawAddress = winRTProjectionInboundEntryPoint(::consume)
+        """.trimIndent(), ExitCode.OK) { directory, _ ->
+            val urls = arrayOf(directory.toURI().toURL())
+            URLClassLoader(urls, javaClass.classLoader).use { first ->
+                URLClassLoader(urls, javaClass.classLoader).use { second ->
+                    val a = first.loadClass("test.inbound.loaders.EntryKt").getDeclaredMethod("entry")
+                    val b = second.loadClass("test.inbound.loaders.EntryKt").getDeclaredMethod("entry")
+                    val address = a.invoke(null)
+                    assertNotEquals(0L, address)
+                    assertEquals(address, a.invoke(null))
+                    assertNotEquals(address, b.invoke(null))
+                }
             }
         }
+    }
 
     @Test
     fun dynamic_and_mutable_references_fail_during_compilation() {
