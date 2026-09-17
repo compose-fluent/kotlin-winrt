@@ -346,9 +346,26 @@ private class JvmFfmSymbols private constructor(
     private val carrierLayouts: Map<WinRTProjectionCallSiteAbiCarrier, StaticValue>,
 ) {
     private val supportFiles = WinRTAbiSupportFiles()
+    private val calls = WinRTAbiCallFunctions()
     private val exactHandleFields = mutableMapOf<Pair<IrFile, List<WinRTProjectionCallSiteAbiCarrier>>, IrField>()
 
     fun emit(
+        builder: DeclarationIrBuilder,
+        pluginContext: IrPluginContext,
+        ownerFunction: IrSimpleFunction,
+        instance: IrExpression,
+        slot: IrExpression,
+        carriers: List<WinRTProjectionCallSiteAbiCarrier>,
+        values: List<IrExpression>,
+    ): IrExpression = calls.call(
+        builder, pluginContext, ownerFunction, supportFiles,
+        "jvm-hresult|" + carriers.joinToString("|"),
+        listOf(instance, slot) + values, pluginContext.irBuiltIns.intType,
+    ) { bodyBuilder, function, operands ->
+        emitBody(bodyBuilder, pluginContext, function, operands[0], operands[1], carriers, operands.drop(2))
+    }
+
+    private fun emitBody(
         builder: DeclarationIrBuilder,
         pluginContext: IrPluginContext,
         ownerFunction: IrSimpleFunction,
@@ -426,7 +443,7 @@ private class JvmFfmSymbols private constructor(
         ownerFunction: IrSimpleFunction,
         carriers: List<WinRTProjectionCallSiteAbiCarrier>,
     ): IrExpression {
-        val source = ownerFunction.containingFile()
+        val source = ownerFunction.abiContainingFile()
             ?: error("kotlin-winrt could not locate the JVM call site's file owner.")
         val file = supportFiles.file(source, "jvm-hresult|" + carriers.joinToString("|"))
         val key = file to carriers.toList()
@@ -627,6 +644,7 @@ private class NativeCInteropSymbols private constructor(
     private val doubleToBits: IrSimpleFunctionSymbol,
 ) {
     private val supportFiles = WinRTAbiSupportFiles(useExistingFile = true)
+    private val calls = WinRTAbiCallFunctions(inline = true)
     private val exactThunkFields = mutableMapOf<NativeThunkFieldKey, NativeThunkStorage>()
     fun emit(
         builder: DeclarationIrBuilder,
@@ -916,25 +934,25 @@ private class NativeCInteropSymbols private constructor(
             builder.irCall(intToLong).apply { arguments[0] = slot },
         ) + words + trailingWords
         val invoke = invokesByArity[invokeArguments.size] ?: return null
-        val pointer = functionPointer(
-            builder = builder,
-            pluginContext = pluginContext,
-            address = thunkField(
-                builder = builder,
+        return calls.call(
+            builder, pluginContext, ownerFunction, supportFiles,
+            "native|" + transport.name + "|" + inputs.joinToString("|") { it.shape.fieldNameComponent },
+            invokeArguments, resultType,
+        ) { bodyBuilder, function, operands ->
+            val pointer = functionPointer(
+                builder = bodyBuilder,
                 pluginContext = pluginContext,
-                ownerFunction = ownerFunction,
-                transport = transport,
-                inputs = inputs,
-            ),
-            parameterTypes = invokeArguments.map(IrExpression::type),
-            resultType = resultType,
-        )
-        return builder.irCall(invoke, resultType).apply {
-            (invokeArguments.map(IrExpression::type) + resultType).forEachIndexed { index, type ->
-                typeArguments[index] = type
+                address = thunkField(bodyBuilder, pluginContext, function, transport, inputs),
+                parameterTypes = operands.map(IrExpression::type),
+                resultType = resultType,
+            )
+            bodyBuilder.irCall(invoke, resultType).apply {
+                (operands.map(IrExpression::type) + resultType).forEachIndexed { index, type ->
+                    typeArguments[index] = type
+                }
+                this.arguments[0] = pointer
+                operands.forEachIndexed { index, argument -> this.arguments[index + 1] = argument }
             }
-            arguments[0] = pointer
-            invokeArguments.forEachIndexed { index, argument -> arguments[index + 1] = argument }
         }
     }
 
@@ -945,7 +963,7 @@ private class NativeCInteropSymbols private constructor(
         transport: NativeThunkTransport,
         inputs: List<WinRTDirectCallInput>,
     ): IrExpression {
-        val source = ownerFunction.containingFile()
+        val source = ownerFunction.abiContainingFile()
             ?: error("kotlin-winrt could not locate the Native call site's file owner.")
         val file = supportFiles.file(source, "native|" + transport.name + "|" +
             inputs.joinToString("|") { it.shape.fieldNameComponent })
@@ -1316,9 +1334,9 @@ internal val WinRTProjectionCallSiteAbiCarrier.kotlinCarrierFqName: FqName
         WinRTProjectionCallSiteAbiCarrier.FLOAT64 -> KOTLIN_DOUBLE_FQ_NAME
     }
 
-private tailrec fun IrDeclarationParent.containingFile(): IrFile? = when (this) {
+internal tailrec fun IrDeclarationParent.abiContainingFile(): IrFile? = when (this) {
     is IrFile -> this
-    is IrDeclaration -> parent.containingFile()
+    is IrDeclaration -> parent.abiContainingFile()
     else -> null
 }
 

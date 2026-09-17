@@ -10,7 +10,6 @@ import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.tree.ClassNode
-import org.jetbrains.org.objectweb.asm.tree.FieldInsnNode
 import org.jetbrains.org.objectweb.asm.tree.MethodInsnNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,7 +17,7 @@ import org.junit.Test
 
 class CallSiteAbiSharingTest {
     @Test
-    fun physical_signatures_share_storage_across_files_without_sharing_typed_bodies() {
+    fun physical_signatures_share_invocations_across_files_without_sharing_typed_bodies() {
         // CsWinRT code_writers.h keeps conversions at the caller and invokes a physical ABI.
         // Kotlin's FFM handle storage must depend on that ABI, not the projected source file.
         val directory = Files.createTempDirectory("winrt-abi-sharing").toFile()
@@ -63,13 +62,21 @@ class CallSiteAbiSharingTest {
                 }
                 val calls = classes.flatMap { it.methods }.filter { it.name.startsWith("invoke") }
                 assertEquals(3, calls.size)
-                calls.forEach { method ->
+                val physicalCalls = owners.flatMap { it.methods }.filter { it.name.startsWith("kotlinWinRTAbiInvoke_") }
+                assertEquals(2, physicalCalls.size)
+                physicalCalls.forEach { method ->
                     assertEquals(1, method.instructions.toArray().filterIsInstance<MethodInsnNode>()
                         .count { it.owner == "java/lang/invoke/MethodHandle" && it.name == "invokeExact" })
                 }
+                calls.forEach { method ->
+                    assertEquals(1, method.instructions.toArray().filterIsInstance<MethodInsnNode>()
+                        .count { it.name.startsWith("kotlinWinRTAbiInvoke_") })
+                    assertEquals(0, method.instructions.toArray().filterIsInstance<MethodInsnNode>()
+                        .count { it.owner == "java/lang/invoke/MethodHandle" })
+                }
                 val reads = calls.map { method ->
-                    method.instructions.toArray().filterIsInstance<FieldInsnNode>()
-                        .single { it.desc == "Ljava/lang/invoke/MethodHandle;" }.owner
+                    method.instructions.toArray().filterIsInstance<MethodInsnNode>()
+                        .single { it.name.startsWith("kotlinWinRTAbiInvoke_") }.owner
                 }
                 assertEquals(2, reads.toSet().size)
                 owners.map { it.name }.toSet()

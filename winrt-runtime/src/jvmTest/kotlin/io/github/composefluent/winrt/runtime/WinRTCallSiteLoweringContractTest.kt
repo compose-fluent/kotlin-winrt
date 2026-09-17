@@ -606,13 +606,13 @@ class WinRTCallSiteLoweringContractTest {
 
         val fiveInterfaces = bytecode.methodBytecode("consumeFiveInterfaces")
         assertEquals(5, fiveInterfaces.countOccurrences("Metadata.getTYPE_HANDLE"), fiveInterfaces)
-        assertEquals(1, fiveInterfaces.countOccurrences("MethodHandle.invokeExact"), fiveInterfaces)
+        assertEquals(1, fiveInterfaces.countOccurrences("kotlinWinRTAbiInvoke_"), fiveInterfaces)
         assertFalse(fiveInterfaces.contains("codec_toAbi_"), fiveInterfaces)
 
         val nullableInterface = bytecode.methodBytecode("consumeNullableInterface")
         assertTrue(nullableInterface.contains("Metadata.getTYPE_HANDLE"), nullableInterface)
         assertTrue(nullableInterface.contains("ifnonnull") || nullableInterface.contains("ifnull"), nullableInterface)
-        assertEquals(1, nullableInterface.countOccurrences("MethodHandle.invokeExact"), nullableInterface)
+        assertEquals(1, nullableInterface.countOccurrences("kotlinWinRTAbiInvoke_"), nullableInterface)
         assertFalse(nullableInterface.contains("codec_toAbi_"), nullableInterface)
     }
 
@@ -673,18 +673,9 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(method.contains("assemble"))
         assertTrue(method.countOccurrences("iconst_0") >= 2)
         assertTrue(method.countOccurrences("iconst_1") >= 4)
-        method.assertOrderedAfter(
-            "kotlinWinRTExactHResultHandle_address_address_address",
-            "aload         16",
-            "lload         13",
-            "lload_3",
-            "aload         5",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "aload         6",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "Method java/lang/invoke/MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJJ)I",
-        )
-        assertEquals(1, method.countOccurrences("MemorySegment.ofAddress:(J)"))
+        assertEquals(1, method.countOccurrences("kotlinWinRTAbiInvoke_"), method)
+        assertTrue(sharedAbiBytecode(method).contains("MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJJ)I"))
+        assertEquals(0, method.countOccurrences("MemorySegment.ofAddress:(J)"))
         val cleanupLocals = method.readPointerFrameLocals().takeLast(4).distinct()
         assertEquals(2, cleanupLocals.size)
         assertTrue(cleanupLocals[0] > cleanupLocals[1], cleanupLocals.toString())
@@ -709,19 +700,11 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(receiveArray.contains("decodeIntArray"))
         assertTrue(receiveArray.countOccurrences("disposeIntArray") >= 2)
         assertTrue(receiveArray.indexOf("decodeIntArray") < receiveArray.indexOf("disposeIntArray"))
-        receiveArray.assertOrderedAfter(
-            "kotlinWinRTExactHResultHandle_address_address",
-            "aload         12",
-            "lload         9",
-            "aload_3",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "aload         4",
-            "NativeScalarScratchFrame.\"getPointer-f81YIUw\":()J",
-            "Method java/lang/invoke/MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJ)I",
-        )
-        assertEquals(1, receiveArray.countOccurrences("MemorySegment.ofAddress:(J)"))
+        assertEquals(1, receiveArray.countOccurrences("kotlinWinRTAbiInvoke_"), receiveArray)
+        assertTrue(sharedAbiBytecode(receiveArray).contains("MethodHandle.invokeExact:(Ljava/lang/foreign/MemorySegment;JJJ)I"))
+        assertEquals(0, receiveArray.countOccurrences("MemorySegment.ofAddress:(J)"))
         receiveArray.assertOrderedAfter("throwHResultFailure", "aload_3", "aload         4", "decodeIntArray")
-        receiveArray.assertOrderedAfter("astore        9", "aload_3", "aload         4", "disposeIntArray")
+        assertTrue(receiveArray.indexOf("disposeIntArray") > receiveArray.indexOf("kotlinWinRTAbiInvoke_"))
     }
 
     @Test
@@ -830,7 +813,7 @@ class WinRTCallSiteLoweringContractTest {
         val methodStart = bytecode.indexOf("directComInputAndTwoOut(")
         val methodEnd = bytecode.indexOf("mixedCarriers(", methodStart)
         val method = bytecode.substring(methodStart, methodEnd)
-        val downcall = method.indexOf("java/lang/invoke/MethodHandle.invokeExact:")
+        val downcall = method.indexOf("kotlinWinRTAbiInvoke_")
         val firstFence = method.indexOf("java/lang/ref/Reference.reachabilityFence:(Ljava/lang/Object;)V")
         val successBranch = method.indexOf("ifge")
         val failureTranslation = method.indexOf("HResultKt.\"throwHResultFailure")
@@ -850,11 +833,7 @@ class WinRTCallSiteLoweringContractTest {
     @Test
     fun mixed_carriers_use_a_compiler_synthesized_static_exact_handle() {
         val bytecode = javap(Task2CallSiteLoweringFixture::class.java.name)
-        val ownerName = requireNotNull(Regex(
-            "Field (io/github/composefluent/winrt/generated/abi/[^: ]+)\\.kotlinWinRTExactHResultHandle_int8_float32_float64:"
-        ).find(bytecode)).groupValues[1].replace('/', '.')
-        val fieldOwner = javap(ownerName)
-        assertTrue(bytecode.contains("kotlinWinRTExactHResultHandle_int8_float32_float64"))
+        val fieldOwner = sharedAbiBytecode(bytecode.methodBytecode("mixedCarriers"))
         assertTrue(fieldOwner.contains("public static final java.lang.invoke.MethodHandle kotlinWinRTExactHResultHandle_int8_float32_float64"))
         assertFalse(bytecode.contains("hResult:(Ljava/lang/String;)"))
     }
@@ -864,7 +843,11 @@ class WinRTCallSiteLoweringContractTest {
         val method = javap(Task2CallSiteLoweringFixture::class.java.name)
             .methodBytecode("mixedCarriers")
 
-        assertEquals(1, method.countOccurrences("MethodHandle.invokeExact"), method)
+        assertEquals(1, method.countOccurrences("kotlinWinRTAbiInvoke_"), method)
+        val physical = sharedAbiBytecode(method)
+        assertEquals(1, physical.countOccurrences("MethodHandle.invokeExact"), physical)
+        assertFalse(physical.contains("invokeWithArguments"), physical)
+        assertFalse(physical.contains("[J"), physical)
         assertFalse(method.contains("MethodHandle.invokeWithArguments"), method)
         assertFalse(method.contains("invokeGeneric"), method)
         assertFalse(method.contains("[J"), method)
@@ -873,9 +856,16 @@ class WinRTCallSiteLoweringContractTest {
     @Test
     fun explicit_argument_markers_are_consumed_before_jvm_codegen() {
         val bytecode = javap(ExplicitCallSiteArgumentsTest::class.java.name)
-        assertTrue(bytecode.contains("invokeExact"), bytecode)
+        assertTrue(bytecode.contains("kotlinWinRTAbiInvoke_"), bytecode)
         assertFalse(bytecode.contains("winRTProjectionCallSiteArguments"), bytecode)
         assertFalse(bytecode.contains("legacy call-site marker"), bytecode)
+    }
+
+    private fun sharedAbiBytecode(caller: String): String {
+        val owner = requireNotNull(Regex(
+            "Method (io/github/composefluent/winrt/generated/abi/[^. ]+)\\.\"?kotlinWinRTAbiInvoke_"
+        ).find(caller)) { caller }.groupValues[1]
+        return javap(owner.replace('/', '.'))
     }
 
     private fun javap(className: String): String {
