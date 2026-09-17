@@ -15,6 +15,53 @@ import org.junit.Test
 
 class InboundEntryResolutionTest {
     @Test
+    fun inbound_rejects_mismatched_types_and_unsupported_directions() {
+        for (annotation in listOf("abiType = \"System.Double\"", "direction = WinRTCallSiteParameterDirection.OUT")) {
+            compile("""
+                package test.inbound.contract
+                import io.github.composefluent.winrt.runtime.*
+                class Target
+                @WinRTProjectionInboundCallSite
+                private fun consume(target: Target, @WinRTProjectionParameter($annotation) value: Int) { TODO() }
+                fun entry() = winRTProjectionInboundEntryPoint(::consume)
+            """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
+                assertTrue(output, output.contains("has invalid inbound ABI metadata"))
+            }
+        }
+    }
+
+    @Test
+    fun invalid_layout_is_a_compilation_diagnostic() {
+        compile("""
+            package test.inbound.contract
+            import io.github.composefluent.winrt.runtime.*
+            @WinRTProjectionAbiType(name="test.inbound.contract.Bad", kind=WinRTProjectionAbiTypeKind.STRUCT, size=-1, alignment=8)
+            object Bad
+            @WinRTProjectionCallSite
+            fun invoke(receiver: ComObjectReference, slot: Int): Unit = TODO()
+        """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
+            assertTrue(output, output.contains("has invalid ABI metadata"))
+            assertTrue(output, output.contains("layout cannot be negative"))
+        }
+    }
+
+    @Test
+    fun inbound_rejects_incompatible_return_metadata() {
+        for ((type, body) in listOf("Int" to "1.also { TODO() }", "Unit" to "TODO()")) {
+            compile("""
+                package test.inbound.result
+                import io.github.composefluent.winrt.runtime.*
+                class Target
+                @WinRTProjectionInboundCallSite(returnAbiType = "System.Double")
+                private fun produce(target: Target): $type = $body
+                fun entry() = winRTProjectionInboundEntryPoint(::produce)
+            """.trimIndent(), ExitCode.COMPILATION_ERROR) { _, output ->
+                assertTrue(output, !output.contains("IrGenerationExtensionException"))
+            }
+        }
+    }
+
+    @Test
     fun jvm_entry_lookup_uses_actual_file_and_multifile_part_names() {
         for ((packageSuffix, annotations, owner) in listOf(
             Triple("plain", "", "EntryKt"),

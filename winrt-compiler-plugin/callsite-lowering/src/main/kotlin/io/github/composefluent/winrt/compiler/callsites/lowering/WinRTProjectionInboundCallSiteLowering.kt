@@ -107,7 +107,10 @@ internal fun lowerWinRTProjectionInboundCallSites(
         return
     }
 
-    val planner = context.planner
+    val planner = runCatching { context.planner }.getOrElse { failure ->
+        pluginContext.reportInboundError(semanticFunctions.first(), "has invalid ABI metadata: ${failure.message}")
+        return
+    }
     val recipeLowering = context.recipeResolution.getOrElse { failure ->
         semanticFunctions.forEach { function ->
             pluginContext.reportInboundError(
@@ -136,11 +139,14 @@ internal fun lowerWinRTProjectionInboundCallSites(
     }.toSet()
     semanticFunctions.forEach { function ->
         if (function in loweredInboundSemanticFunctions) return@forEach
-        validateDirectInboundCallSite(function)?.let { detail ->
+        validateDirectInboundCallSite(function, context.projectedTypes)?.let { detail ->
             pluginContext.reportInboundError(function, detail)
             return@forEach
         }
-        val plan = planDirectInboundCallSite(function, planner)
+        val plan = runCatching { planDirectInboundCallSite(function, planner) }.getOrElse { failure ->
+            pluginContext.reportInboundError(function, "has invalid inbound ABI metadata: ${failure.message}")
+            return@forEach
+        }
         if (plan == null) {
             pluginContext.reportInboundError(function, "does not have a directly composable single-carrier ABI shape")
             return@forEach
@@ -385,6 +391,13 @@ private fun planDirectInboundCallSite(
         val parameterMetadata = parameter.annotations.singleOrNull { annotation ->
             annotation.type.classFqName?.asString() == WINRT_PROJECTION_PARAMETER_ANNOTATION_FQ_NAME
         } ?: return null
+        val directionIndex = parameterMetadata.symbol.owner.parameters.indexOfFirst { it.name.asString() == "direction" }
+        val directionArgument = parameterMetadata.arguments.getOrNull(directionIndex)
+        val direction = (directionArgument as? org.jetbrains.kotlin.ir.expressions.IrGetEnumValue)
+            ?.symbol?.owner?.name?.asString() ?: if (directionArgument == null) "IN" else "invalid"
+        require(direction == "IN") {
+            "parameter ${parameter.name} has unsupported inbound direction $direction; expected IN"
+        }
         DirectInboundCallSiteParameter(
             parameter = parameter,
             recipe = planner.directInboundRecipe(
@@ -577,7 +590,7 @@ private fun lowerSemanticTodoToUnit(
     )
 }
 
-private fun validateDirectInboundCallSite(function: IrSimpleFunction): String? {
+private fun validateDirectInboundCallSite(function: IrSimpleFunction, projectedTypes: WinRTProjectedTypeCanonicalizer): String? {
     if (function.parent !is IrFile || function.parameters.any { it.kind != IrParameterKind.Regular } || function.isSuspend) {
         return "inbound stub must be a non-suspend top-level function without receivers"
     }
@@ -585,6 +598,10 @@ private fun validateDirectInboundCallSite(function: IrSimpleFunction): String? {
     val parameters = function.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
     if (parameters.isEmpty()) return "inbound stub must declare a projected target"
     if (parameters.first().type.isNullable()) return "inbound projected target must be non-null"
+    val returnAbi = function.annotations.single(::isInboundCallSiteAnnotation).stringArgument("returnAbiType")
+    if (function.returnType.classFqName == KOTLIN_UNIT_FQ_NAME && returnAbi.isNotBlank() &&
+        projectedTypes.canonicalize(returnAbi) != KOTLIN_UNIT_FQ_NAME.asString()
+    ) return "Unit inbound stub must not declare an ABI result $returnAbi"
     if (inboundPlaceholder(function) == null) {
         return "inbound stub must end with a Unit TODO() statement or a value.also { TODO() } placeholder"
     }

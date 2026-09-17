@@ -181,13 +181,11 @@ internal class WinRTProjectionCallSitePlanner(
         type: IrType,
         abiType: String,
         usage: RecipeUsage,
-    ): WinRTProjectionCallSiteRecipe? = runCatching {
-        recipeFor(
+    ): WinRTProjectionCallSiteRecipe? = recipeFor(
             type = type,
             abiType = abiType,
             usage = usage,
-        )
-    }.getOrNull()?.takeIf { recipe ->
+        ).takeIf { recipe ->
         recipe.kind in DIRECT_INBOUND_RECIPE_KINDS && recipe.abiCarriers.size == 1
     }
 
@@ -196,7 +194,14 @@ internal class WinRTProjectionCallSitePlanner(
         abiType: String = "",
         usage: RecipeUsage,
     ): WinRTProjectionCallSiteRecipe = recipes.getOrPut(RecipeKey(type, abiType, usage)) {
-        buildRecipe(type, abiType, usage)
+        buildRecipe(type, abiType, usage).also { recipe ->
+            // Both call directions must agree on the projected type before emitting conversions.
+            val expected = projectedTypes.canonicalize(recipe.projectedKotlinTypeName)
+            val actual = projectedTypes.canonicalize(type)
+            require(expected != null && actual == expected) {
+                "expects projected type $expected but declares $actual"
+            }
+        }
     }
 
     private fun buildRecipe(

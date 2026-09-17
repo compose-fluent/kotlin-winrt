@@ -188,7 +188,15 @@ fun lowerWinRTProjectionCallSites(
     if (annotatedFunctions.isEmpty() && inlineCallSites.isEmpty()) return
 
     val projectedTypes = context.projectedTypes
-    val planner = context.planner
+    val planner = runCatching { context.planner }.getOrElse { failure ->
+        val detail = "has invalid ABI metadata: ${failure.message}"
+        if (annotatedFunctions.isNotEmpty()) {
+            pluginContext.reportError(annotatedFunctions.first().first, detail)
+        } else {
+            pluginContext.reportError(inlineCallSites.first().result, detail)
+        }
+        return
+    }
     val symbolResolution = context.recipeResolution
     val symbols = symbolResolution.getOrNull()
     val symbolResolutionDetail = symbolResolution.exceptionOrNull()?.message
