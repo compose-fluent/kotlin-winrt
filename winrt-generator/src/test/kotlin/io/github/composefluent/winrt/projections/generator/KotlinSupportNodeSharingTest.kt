@@ -59,6 +59,8 @@ class KotlinSupportNodeSharingTest {
                             else -> KotlinArrayCleanupKind.COM_REFERENCE
                         }),
                 )
+                // Rendering between registrations must not freeze a stale representative.
+                if (reverse) support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
             }
             return support.renderFiles(KotlinProjectionGenerationLayout.SingleSourceSet)
                 .sortedBy { it.relativePath }.joinToString("\n") { it.contents }

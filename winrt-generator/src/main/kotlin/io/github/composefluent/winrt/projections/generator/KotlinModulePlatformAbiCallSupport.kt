@@ -214,6 +214,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     internal fun renderFiles(layout: KotlinProjectionGenerationLayout): List<KotlinProjectionFile> {
         // Typed stubs carry WinMD facts; all platform marshaling is lowered from IR.
         val renderedFunctions = calls.values.associate { it.functionName to renderFunction(it) }
+        val disposalImplementations = indexDisposalImplementations()
         val renderedMetadata = reachableMetadata()
         if (calls.isEmpty() && codecs.isEmpty() && abiTypes.isEmpty() && renderedMetadata.isEmpty()) return emptyList()
         val sourcePrefix = when (layout) {
@@ -227,6 +228,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     owner = className,
                     renderedCalls = calls.values,
                     renderedFunctions = renderedFunctions,
+                    disposalImplementations = disposalImplementations,
                     renderedCodecs = codecs.values,
                     renderedAbiTypes = abiTypes.values,
                     renderedMetadata = renderedMetadata,
@@ -249,6 +251,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                         owner = owner,
                         renderedCalls = callsByOwner[owner].orEmpty(),
                         renderedFunctions = renderedFunctions,
+                        disposalImplementations = disposalImplementations,
                         renderedCodecs = codecsByOwner[owner].orEmpty(),
                         renderedAbiTypes = abiTypesByOwner[owner].orEmpty(),
                         renderedMetadata = metadataByOwner[owner].orEmpty(),
@@ -335,6 +338,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
         owner: ClassName,
         renderedCalls: Collection<KotlinTypedProjectionCallSitePlan>,
         renderedFunctions: Map<String, FunSpec>,
+        disposalImplementations: Map<String, KotlinProjectionCallSiteCodec>,
         renderedCodecs: Collection<KotlinProjectionCallSiteCodec>,
         renderedAbiTypes: Collection<KotlinProjectionAbiTypeMetadata>,
         renderedMetadata: Collection<KotlinProjectionModuleMetadata>,
@@ -363,7 +367,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     .forEach { codec ->
                         val metadata = abiTypesByName[codec.abiTypeName]
                             ?.takeIf { abiTypeCodecNames[codec.abiTypeName] == codec.name }
-                        addFunction(renderCodec(codec, metadata))
+                        addFunction(renderCodec(codec, metadata, disposalImplementations[codec.name]))
                     }
                 renderedCalls.sortedBy(KotlinTypedProjectionCallSitePlan::functionName)
                     .forEach { plan -> addFunction(renderedFunctions.getValue(plan.functionName)) }
@@ -504,6 +508,7 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
     private fun renderCodec(
         codec: KotlinProjectionCallSiteCodec,
         abiTypeMetadata: KotlinProjectionAbiTypeMetadata?,
+        disposalImplementation: KotlinProjectionCallSiteCodec?,
     ): FunSpec =
         FunSpec.builder(codec.name)
             .addModifiers(KModifier.INTERNAL)
@@ -531,21 +536,29 @@ class KotlinModulePlatformAbiCallSupport internal constructor(
                     )
                 }
             }
-            .addCode(sharedDisposalBody(codec))
+            .addCode(sharedDisposalBody(codec, disposalImplementation))
             .build()
 
-    private fun sharedDisposalBody(codec: KotlinProjectionCallSiteCodec): CodeBlock {
+    // Rebuilt for each render after registration: no stale representative when codecs are added.
+    private fun indexDisposalImplementations(): Map<String, KotlinProjectionCallSiteCodec> =
+        codecs.values.asSequence()
+            .filter { it.role == KotlinProjectionAbiCodecRole.DISPOSE_ABI &&
+                it.arrayDisposalKey != null && it.parameters.size == 2 &&
+                it.parameters.all { parameter -> parameter.type == RAW_ADDRESS_CLASS_NAME } }
+            .groupBy { Triple(it.returnType, it.parameters, it.arrayDisposalKey) }
+            .values.flatMap { group ->
+                val implementation = group.minBy(KotlinProjectionCallSiteCodec::name)
+                group.map { it.name to implementation }
+            }.toMap()
+
+    private fun sharedDisposalBody(
+        codec: KotlinProjectionCallSiteCodec,
+        implementation: KotlinProjectionCallSiteCodec?,
+    ): CodeBlock {
         // Preserve every ABI type/role binding, but emit an identical raw disposal loop once.
         // The key is composed with the cleanup operation, layout and exact custom function.
         // Text equality is only a consistency assertion, never the selection criterion.
-        if (codec.role != KotlinProjectionAbiCodecRole.DISPOSE_ABI ||
-            codec.arrayDisposalKey == null ||
-            codec.parameters.size != 2 || codec.parameters.any { it.type != RAW_ADDRESS_CLASS_NAME }
-        ) return codec.body
-        val implementation = codecs.values.asSequence()
-            .filter { it.role == codec.role && it.returnType == codec.returnType &&
-                it.parameters == codec.parameters && it.arrayDisposalKey == codec.arrayDisposalKey }
-            .minBy(KotlinProjectionCallSiteCodec::name)
+        if (implementation == null) return codec.body
         check(implementation.hasSameImplementation(codec.parameters, codec.body, codec.consumesOwnedAbi)) {
             "Conflicting implementations of array disposal ${codec.arrayDisposalKey}"
         }
