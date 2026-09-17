@@ -968,10 +968,11 @@ private class NativeCInteropSymbols private constructor(
             ?: error("kotlin-winrt could not locate the Native call site's file owner.")
         val file = supportFiles.file(source, "native|" + transport.name + "|" +
             inputs.joinToString("|") { it.shape.fieldNameComponent })
-        val ownerName = file.fileEntry.name.substringAfterLast('/').substringAfterLast('\\')
-        val ownerIdentity = supportFiles.identity(file, "native-owner|${file.packageFqName}|$ownerName")
         val key = NativeThunkFieldKey(file, transport, inputs.map { input -> input.shape })
         val storage = exactThunkFields.getOrPut(key) {
+            val ownerName = file.fileEntry.name.substringAfterLast('/').substringAfterLast('\\')
+            val ownerIdentity = supportFiles.identity(file, "native-owner|${file.packageFqName}|$ownerName")
+
             val fieldName = Name.identifier(
                 "kotlinWinRT${transport.fieldNameComponent}Thunk_" +
                     inputs.joinToString("_") { input -> input.shape.fieldNameComponent }.ifEmpty { "no_args" } +
