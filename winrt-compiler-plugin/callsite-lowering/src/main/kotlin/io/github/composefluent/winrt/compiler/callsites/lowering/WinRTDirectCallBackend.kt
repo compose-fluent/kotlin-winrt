@@ -87,6 +87,8 @@ internal class WinRTDirectCallBackend private constructor(
     val supportsNativeRecipeThunks: Boolean
         get() = native != null
 
+    fun canInvokeNativeWords(wordCount: Int): Boolean = native?.canInvokeWords(wordCount) == true
+
     fun emit(
         builder: DeclarationIrBuilder,
         pluginContext: IrPluginContext,
@@ -641,8 +643,8 @@ private class NativeCInteropSymbols private constructor(
     private val byteToLong: IrSimpleFunctionSymbol,
     private val shortToLong: IrSimpleFunctionSymbol,
     private val intToLong: IrSimpleFunctionSymbol,
-    private val floatToBits: IrSimpleFunctionSymbol,
-    private val doubleToBits: IrSimpleFunctionSymbol,
+    private val floatToRawBits: IrSimpleFunctionSymbol,
+    private val doubleToRawBits: IrSimpleFunctionSymbol,
 ) {
     private val supportFiles = WinRTAbiSupportFiles(useExistingFile = true)
     private val calls = WinRTAbiCallFunctions(inline = true)
@@ -911,11 +913,13 @@ private class NativeCInteropSymbols private constructor(
         WinRTProjectionCallSiteAbiCarrier.INT64 -> value
         WinRTProjectionCallSiteAbiCarrier.FLOAT32 ->
             builder.irCall(intToLong).apply {
-                arguments[0] = builder.irCall(floatToBits).apply { arguments[0] = value }
+                arguments[0] = builder.irCall(floatToRawBits).apply { arguments[0] = value }
             }
         WinRTProjectionCallSiteAbiCarrier.FLOAT64 ->
-            builder.irCall(doubleToBits).apply { arguments[0] = value }
+            builder.irCall(doubleToRawBits).apply { arguments[0] = value }
     }.takeIf { expression -> expression.type.classFqName == KOTLIN_LONG_FQ_NAME }
+
+    fun canInvokeWords(wordCount: Int): Boolean = invokesByArity.containsKey(wordCount + 2)
 
     private fun emitThunkInvocation(
         builder: DeclarationIrBuilder,
@@ -1197,22 +1201,22 @@ private class NativeCInteropSymbols private constructor(
                 "kotlin.Int.toLong",
                 primitiveMember(pluginContext, KOTLIN_INT_CLASS_ID, "toLong"),
             )
-            val floatToBits = requirePrimitiveSymbol(
-                "kotlin.Float.toBits",
+            val floatToRawBits = requirePrimitiveSymbol(
+                "kotlin.Float.toRawBits",
                 primitiveExtension(
                     pluginContext,
                     fromFile,
                     KOTLIN_FLOAT_FQ_NAME,
-                    "toBits",
+                    "toRawBits",
                 ),
             )
-            val doubleToBits = requirePrimitiveSymbol(
-                "kotlin.Double.toBits",
+            val doubleToRawBits = requirePrimitiveSymbol(
+                "kotlin.Double.toRawBits",
                 primitiveExtension(
                     pluginContext,
                     fromFile,
                     KOTLIN_DOUBLE_FQ_NAME,
-                    "toBits",
+                    "toRawBits",
                 ),
             )
             return NativeCInteropSymbols(
@@ -1236,8 +1240,8 @@ private class NativeCInteropSymbols private constructor(
                 byteToLong,
                 shortToLong,
                 intToLong,
-                floatToBits,
-                doubleToBits,
+                floatToRawBits,
+                doubleToRawBits,
             )
         }
     }
@@ -1264,15 +1268,14 @@ private data class NativeThunkStorage(
 )
 
 private data class NativeThunkInputShape(
-    val carrier: WinRTProjectionCallSiteAbiCarrier,
     val kind: WinRTDirectCallInputKind,
 ) {
     val fieldNameComponent: String
-        get() = "${carrier.name.lowercase()}_${kind.name.lowercase()}"
+        get() = kind.name.lowercase()
 }
 
 private val WinRTDirectCallInput.shape: NativeThunkInputShape
-    get() = NativeThunkInputShape(carrier, kind)
+    get() = NativeThunkInputShape(kind)
 
 private val WinRTProjectionCallSiteAbiCarrier.directInputKind: WinRTDirectCallInputKind
     get() = when (this) {

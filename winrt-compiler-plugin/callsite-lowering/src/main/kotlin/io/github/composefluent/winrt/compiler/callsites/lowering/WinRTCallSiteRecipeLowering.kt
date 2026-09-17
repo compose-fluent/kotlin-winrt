@@ -1380,7 +1380,13 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             recipe = slot.recipe,
             value = value,
             pluginContext = pluginContext,
-            allowNativeDirectHString = directCallBackend.supportsNativeRecipeThunks,
+            allowNativeDirectHString = directCallBackend.canInvokeNativeWords(
+                descriptor.slots.sumOf { candidate ->
+                    if (candidate.direction == WinRTProjectionCallSiteSlotDirection.IN &&
+                        candidate.recipe.storageRecipe.kind == WinRTProjectionCallSiteRecipeKind.HSTRING
+                    ) 2 else candidate.abiCarriers.size
+                },
+            ),
         ) { prepared ->
             continuation(
                 state.copy(
