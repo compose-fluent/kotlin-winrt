@@ -16,7 +16,8 @@ internal object EventSourceCache {
         index: Int,
         state: WeakReference<Any>,
     ) {
-        val target = obj.tryGetWeakReference() ?: return
+        val target = obj.comPtr.tryWithQueryInterfacePointer(IID.IWeakReferenceSource, ::getWeakReferenceFromSource)
+            ?: return
         val cacheKey = PlatformAbi.pointerKey(obj.pointer)
         val staleTarget: WeakReferenceReference? =
             lock.withLock {

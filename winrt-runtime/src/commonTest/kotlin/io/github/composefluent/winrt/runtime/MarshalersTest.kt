@@ -312,6 +312,41 @@ class MarshalersTest {
     }
 
     @Test
+    fun escaped_delegate_is_rooted_by_its_inbound_binding_without_cache_entries() {
+        // CsWinRT ComCallableWrapper.AddRef roots the wrapper until the final native Release.
+        // Kotlin's platform inbound binding owns that root on both JVM and Native.
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999997"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.UNIT,
+        )
+        var callCount = 0
+        fun escapeDelegate(): RawAddress {
+            val projected = object : WinRTProjectedDelegate {
+                override fun createWinRTDelegateHandle(): WinRTDelegateHandle =
+                    WinRTDelegateBridge.createUnitDelegate(descriptor.interfaceId, emptyList()) {
+                        callCount += 1
+                    }
+            }
+            return WinRTDelegateBridge.createProjectedDelegateArgument(projected).use { marshaler ->
+                WinRTPlatformApi.addRefRaw(marshaler.abi)
+                marshaler.abi
+            }
+        }
+
+        val escaped = WinRTDelegateReference(escapeDelegate(), descriptor)
+        try {
+            ProjectedDelegateCcwCache.clearForTests()
+            repeat(3) { PlatformFinalization.drain() }
+            escaped.invoke(emptyList())
+            assertEquals(1, callCount)
+        } finally {
+            escaped.close()
+            ProjectedDelegateCcwCache.clearForTests()
+        }
+    }
+
+    @Test
     fun delegate_marshaler_unwraps_native_backed_projected_delegate() {
         var callCount = 0
         val descriptor = WinRTDelegateDescriptor(

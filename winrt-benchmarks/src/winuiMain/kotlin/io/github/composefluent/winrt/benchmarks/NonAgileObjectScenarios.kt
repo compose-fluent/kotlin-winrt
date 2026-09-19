@@ -18,9 +18,9 @@ internal fun nonAgileObjectScenarios(): List<BenchmarkScenario> =
         },
     )
 
-private fun nonAgileObjectScenario(
+private inline fun nonAgileObjectScenario(
     method: String,
-    invoke: (NonAgileObjectPerf) -> Unit,
+    crossinline invoke: (NonAgileObjectPerf) -> Unit,
 ): BenchmarkScenario =
     BenchmarkScenario("NonAgileObjectPerf.$method", 1) {
         val benchmark = createNonAgileObjectPerf()

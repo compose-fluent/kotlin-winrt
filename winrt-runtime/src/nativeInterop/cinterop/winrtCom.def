@@ -1,0 +1,4 @@
+package = io.github.composefluent.winrt.runtime.nativeapi
+headers = kotlin_winrt_com.h
+headerFilter = kotlin_winrt_com.h
+compilerOpts = -Isrc/nativeInterop/cinterop

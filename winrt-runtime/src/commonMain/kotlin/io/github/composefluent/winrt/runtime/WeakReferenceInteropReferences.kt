@@ -16,23 +16,26 @@ internal object WeakReferenceVftblSlots {
  * raw `IWeakReferenceSource` / `IWeakReference` call shapes themselves are target-agnostic.
  */
 internal fun ComObjectReference.tryGetWeakReference(): WeakReferenceReference? =
-    tryQueryInterface(IID.IWeakReferenceSource)?.use { weakReferenceSource ->
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            weakReferenceSource.comPtr.throwIfDisposed()
-            HResult(
-                ComVtableInvoker.invokeArgs(
-                    weakReferenceSource.comPtr.raw,
-                    WeakReferenceSourceVftblSlots.GetWeakReference,
-                    resultOut,
-                ),
-            ).requireSuccess("IWeakReferenceSource.GetWeakReference")
-            val resolvedPointer = PlatformAbi.readPointer(resultOut)
-            if (PlatformAbi.isNull(resolvedPointer)) {
-                null
-            } else {
-                WeakReferenceReference(resolvedPointer, IID.IWeakReference)
-            }
+    // Match EventSourceCache: keep the QI result scoped instead of materializing a temporary
+    // ComObjectReference and its finalization registration for this one ABI call.
+    comPtr.tryWithQueryInterfacePointer(IID.IWeakReferenceSource, ::getWeakReferenceFromSource)
+
+internal fun getWeakReferenceFromSource(source: RawComPtr): WeakReferenceReference? =
+    // CsWinRT IWeakReferenceSourceMethods uses a cleared stack-local out pointer.
+    // Reuse the runtime's reentrant scratch storage instead of allocating an owning scope.
+    withWinRTScalarResult { resultOut ->
+        HResult(
+            ComVtableInvoker.invokeArgs(
+                source,
+                WeakReferenceSourceVftblSlots.GetWeakReference,
+                resultOut,
+            ),
+        ).requireSuccess("IWeakReferenceSource.GetWeakReference")
+        val resolvedPointer = PlatformAbi.readPointer(resultOut)
+        if (PlatformAbi.isNull(resolvedPointer)) {
+            null
+        } else {
+            WeakReferenceReference(resolvedPointer, IID.IWeakReference)
         }
     }
 
@@ -41,10 +44,12 @@ internal class WeakReferenceReference(
     interfaceId: Guid = IID.IWeakReference,
 ) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun resolve(interfaceId: Guid): IUnknownReference? =
-        PlatformAbi.confinedScope().use { scope ->
-            val iidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        withWinRTStructStorage(
+            sizeBytes = (Guid.BYTE_SIZE + Long.SIZE_BYTES).toLong(),
+            alignmentBytes = Long.SIZE_BYTES.toLong(),
+        ) { iidMemory ->
             interfaceId.writeTo(iidMemory)
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val resultOut = PlatformAbi.slice(iidMemory, Guid.BYTE_SIZE.toLong(), Long.SIZE_BYTES.toLong())
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(comPtr.raw, WeakReferenceVftblSlots.Resolve, iidMemory, resultOut),

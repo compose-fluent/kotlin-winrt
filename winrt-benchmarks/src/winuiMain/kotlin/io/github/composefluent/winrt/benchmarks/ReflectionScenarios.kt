@@ -202,13 +202,13 @@ internal fun reflectionScenarios(): List<BenchmarkScenario> =
         objectScenario("GetWeakReferenceOfNativeObject") { it.getWeakReferenceOfNativeObject() },
     )
 
-private fun objectScenario(method: String, invoke: (ReflectionPerf) -> Any?): BenchmarkScenario =
+private inline fun objectScenario(method: String, crossinline invoke: (ReflectionPerf) -> Any?): BenchmarkScenario =
     referenceObjectScenario("ReflectionPerf.$method", ::ReflectionPerf, ReflectionPerf::setup, invoke)
 
-private fun intScenario(method: String, invoke: (ReflectionPerf) -> Int): BenchmarkScenario =
+private inline fun intScenario(method: String, crossinline invoke: (ReflectionPerf) -> Int): BenchmarkScenario =
     referenceValueScenario("ReflectionPerf.$method", ::ReflectionPerf, ReflectionPerf::setup, invoke, Int::toLong)
 
-private fun stringScenario(method: String, invoke: (ReflectionPerf) -> String): BenchmarkScenario =
+private inline fun stringScenario(method: String, crossinline invoke: (ReflectionPerf) -> String): BenchmarkScenario =
     referenceValueScenario(
         name = "ReflectionPerf.$method",
         create = ::ReflectionPerf,
@@ -217,5 +217,5 @@ private fun stringScenario(method: String, invoke: (ReflectionPerf) -> String): 
         checksum = { value -> value.length.toLong() },
     )
 
-private fun voidScenario(method: String, invoke: (ReflectionPerf) -> Unit): BenchmarkScenario =
+private inline fun voidScenario(method: String, crossinline invoke: (ReflectionPerf) -> Unit): BenchmarkScenario =
     referenceVoidScenario("ReflectionPerf.$method", ::ReflectionPerf, ReflectionPerf::setup, invoke)

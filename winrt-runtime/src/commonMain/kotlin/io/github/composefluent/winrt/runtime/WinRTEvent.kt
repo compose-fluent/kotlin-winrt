@@ -7,8 +7,9 @@ class WinRTEvent<T : Any>(
     private val unsubscribe: (EventRegistrationToken) -> Unit,
     private val unsubscribeHandler: ((T) -> Unit)? = null,
 ) {
-    private val tokensByHandler = mutableMapOf<T, MutableList<EventRegistrationToken>>()
-    private val handlersByToken = mutableMapOf<EventRegistrationToken, T>()
+    // Like CsWinRT EventSource.Subscribe, allocate subscription bookkeeping on first use.
+    private var tokensByHandler: MutableMap<T, MutableList<EventRegistrationToken>>? = null
+    private var handlersByToken: MutableMap<EventRegistrationToken, T>? = null
 
     constructor(eventSource: EventSource<T>) : this(EventSourceSubscription(eventSource))
 
@@ -20,6 +21,10 @@ class WinRTEvent<T : Any>(
 
     fun add(handler: T): EventRegistrationToken {
         val token = subscribe(handler)
+        val tokensByHandler = tokensByHandler
+            ?: mutableMapOf<T, MutableList<EventRegistrationToken>>().also { this.tokensByHandler = it }
+        val handlersByToken = handlersByToken
+            ?: mutableMapOf<EventRegistrationToken, T>().also { this.handlersByToken = it }
         tokensByHandler.getOrPut(handler) { mutableListOf() }.add(token)
         handlersByToken[token] = handler
         return token
@@ -30,22 +35,23 @@ class WinRTEvent<T : Any>(
     }
 
     fun remove(token: EventRegistrationToken) {
-        val handler = handlersByToken.remove(token)
+        val handler = handlersByToken?.remove(token)
         if (handler != null && unsubscribeHandler != null) {
             unsubscribeHandler.invoke(handler)
         } else {
             unsubscribe(token)
         }
-        tokensByHandler.values.forEach { it.remove(token) }
+        tokensByHandler?.values?.forEach { it.remove(token) }
     }
 
     fun remove(handler: T): Boolean {
+        val tokensByHandler = tokensByHandler ?: return false
         val tokens = tokensByHandler[handler] ?: return false
         val token = tokens.removeLastOrNull() ?: return false
         if (tokens.isEmpty()) {
             tokensByHandler.remove(handler)
         }
-        handlersByToken.remove(token)
+        handlersByToken?.remove(token)
         unsubscribeHandler?.invoke(handler) ?: unsubscribe(token)
         return true
     }

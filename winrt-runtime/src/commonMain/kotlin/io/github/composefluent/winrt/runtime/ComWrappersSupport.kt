@@ -711,8 +711,14 @@ object ComWrappersSupport {
         if (PlatformAbi.isNull(pointer)) {
             return
         }
-        rcwCache[PlatformAbi.pointerKey(pointer)] = value
-        rcwCache[rcwCacheKey(pointer)] = value
+        val directPointerKey = PlatformAbi.pointerKey(pointer)
+        rcwCache[directPointerKey] = value
+        val identityKey = rcwCacheKey(pointer)
+        // CsWinRT registers one weak wrapper per COM identity. An interface alias only
+        // needs another entry when its address differs from the canonical IUnknown.
+        if (identityKey != directPointerKey) {
+            rcwCache[identityKey] = value
+        }
     }
 
     fun registerRuntimeClassWrapper(
@@ -900,10 +906,14 @@ object ComWrappersSupport {
     private fun cachedCcwHostsOrNull(value: Any): CachedCcwHosts? {
         val state = (value as? WinRTManagedProjectionStateOwner)?.winRTManagedProjectionState()
         if (state != null) {
+            // This is an optional fast lookup. An unpublished binding may miss even if another
+            // caller has already created the host; cachedCcwHosts still resolves that miss through
+            // the identity cache, matching CsWinRT ComWrapperCache.GetValue. Avoid a redundant weak
+            // lookup (and sweep) before the authoritative getOrPut on a new managed object.
             val generation = ccwHostCacheGeneration.load()
-            state.binding.load()
+            return state.binding.load()
                 ?.takeIf { binding -> binding.generation == generation }
-                ?.let { binding -> return binding.cache as CachedCcwHosts }
+                ?.let { binding -> binding.cache as CachedCcwHosts }
         }
         return ccwHostCache[value]
     }

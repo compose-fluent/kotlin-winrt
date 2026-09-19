@@ -17,7 +17,9 @@ abstract class EventSource<T : Any> private constructor(
     private val shutdownRemoveHandlerSlot: Int?,
 ) {
     private val lock = PlatformLock()
-    private var state: WeakReference<Any>? = EventSourceCache.getState(objectReference, index)
+    // Match CsWinRT's dormant EventSource shape: an unsubscribed source has no cache probe or
+    // weak state yet. The first subscribe/unsubscribe lookup still consults the shared cache.
+    private var state: WeakReference<Any>? = null
 
     protected constructor(
         objectReference: ComObjectReference,

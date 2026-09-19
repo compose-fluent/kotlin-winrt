@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -10,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class WinRTAsyncInteropTest {
@@ -71,6 +73,77 @@ class WinRTAsyncInteropTest {
                 cancelledJob.join()
                 assertTrue(cancelledAction.cancelCalled)
                 assertTrue(cancelledAction.completedHandlerClosed())
+            }
+        }
+    }
+
+    // CsWinRT Windows.Foundation.cs AsTask checks Completed before constructing the bridge.
+    // Kotlin retains a cancellable continuation so this path must still honor cancellation.
+    @Test
+    fun already_completed_await_preserves_cancellation_during_get_results() {
+        PlatformAbi.confinedScope().use { scope ->
+            runBlocking {
+                val parent = Job()
+                val action = FakeAsyncActionReference(
+                    scope,
+                    WinRTAsyncStatus.Completed,
+                    onResults = { parent.cancel() },
+                )
+                var returned = false
+                val waiter = launch(parent, start = CoroutineStart.UNDISPATCHED) {
+                    action.await()
+                    returned = true
+                }
+                waiter.join()
+                assertTrue(action.resultsCalled)
+                assertTrue(waiter.isCancelled)
+                assertFalse(returned)
+            }
+        }
+    }
+
+    @Test
+    fun already_cancelled_await_still_cancels_underlying_action() {
+        PlatformAbi.confinedScope().use { scope ->
+            runBlocking {
+                val parent = Job().apply { cancel() }
+                val action = FakeAsyncActionReference(scope, WinRTAsyncStatus.Completed)
+                val waiter = launch(parent, start = CoroutineStart.UNDISPATCHED) { action.await() }
+                waiter.join()
+                assertTrue(waiter.isCancelled)
+                assertTrue(action.cancelCalled)
+                assertFalse(action.resultsCalled)
+            }
+        }
+    }
+
+    @Test
+    fun already_completed_progress_variants_return_results_without_waiting() {
+        PlatformAbi.confinedScope().use { scope ->
+            val action = FakeAsyncActionWithProgressReference(scope, WinRTAsyncStatus.Completed)
+            val operation = FakeAsyncOperationWithProgressReference(scope, WinRTAsyncStatus.Completed, "result")
+            runBlocking {
+                action.await()
+                assertEquals("result", operation.await())
+            }
+            assertTrue(action.resultsCalled)
+            assertTrue(operation.resultsCalled)
+        }
+    }
+
+    @Test
+    fun already_completed_variants_propagate_get_results_failure() {
+        PlatformAbi.confinedScope().use { scope ->
+            val failure = WinRTIllegalStateException("get results failed", KnownHResults.E_FAIL)
+            val action = FakeAsyncActionReference(scope, WinRTAsyncStatus.Completed, resultsFailure = failure)
+            val operation = FakeAsyncOperationReference(scope, WinRTAsyncStatus.Completed, "unused", resultsFailure = failure)
+            val actionWithProgress = FakeAsyncActionWithProgressReference(scope, WinRTAsyncStatus.Completed, resultsFailure = failure)
+            val operationWithProgress = FakeAsyncOperationWithProgressReference(scope, WinRTAsyncStatus.Completed, "unused", resultsFailure = failure)
+            runBlocking {
+                assertEquals(failure, assertFailsWith<WinRTIllegalStateException> { action.await() })
+                assertEquals(failure, assertFailsWith<WinRTIllegalStateException> { operation.await() })
+                assertEquals(failure, assertFailsWith<WinRTIllegalStateException> { actionWithProgress.await() })
+                assertEquals(failure, assertFailsWith<WinRTIllegalStateException> { operationWithProgress.await() })
             }
         }
     }
@@ -700,6 +773,7 @@ class WinRTAsyncInteropTest {
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
         private val registrationFailure: Throwable? = null,
+        private val onResults: () -> Unit = {},
     ) : WinRTAsyncActionReference(
         borrowedFakeAsyncComPtr(scope, WinRTAsyncInterfaceIds.IAsyncAction),
     ) {
@@ -713,6 +787,7 @@ class WinRTAsyncInteropTest {
 
         override fun getResults() {
             resultsCalled = true
+            onResults()
             resultsFailure?.let { throw it }
         }
 

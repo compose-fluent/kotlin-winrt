@@ -4,6 +4,9 @@ package io.github.composefluent.winrt.runtime
 
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
@@ -30,6 +33,26 @@ open class WinRTAsyncReferenceBase internal constructor(
 
     internal fun asAsyncInfoView(): WinRTAsyncInfoView = asyncInfoView.value
 
+    internal fun hasAsyncInfoReference(): Boolean = asyncInfoComPtr.isInitialized()
+
+    /**
+     * Reads a terminal status without materializing the owned IAsyncInfo sibling. The await fast
+     * path normally needs one status read followed by GetResults; retaining a ComPtr and its
+     * finalization registration for that single read is unnecessary. Started operations fall back
+     * to [asAsyncInfoView] so cancellation, error inspection, and close still share one owned
+     * reference for their lifetime.
+     */
+    internal fun tryReadTerminalAsyncInfoStatus(): WinRTAsyncStatus? =
+        comPtr.tryWithQueryInterfacePointer(WinRTAsyncInterfaceIds.IAsyncInfo) { pointer ->
+            RawAbiResultSupport.int32Result { resultOut ->
+                ComVtableInvoker.invokeArgs(
+                    pointer,
+                    WinRTAsyncInfoVftblSlots.Status,
+                    resultOut,
+                )
+            }
+        }?.let(WinRTAsyncStatus::fromAbi)?.takeUnless { it == WinRTAsyncStatus.Started }
+
     internal fun releaseAsyncInfoReference() {
         if (asyncInfoComPtr.isInitialized()) {
             asyncInfoComPtr.value.close()
@@ -48,7 +71,11 @@ open class WinRTAsyncInfoReference internal constructor(
     open fun id(): UInt = asAsyncInfoView().id()
 
     open fun status(): WinRTAsyncStatus =
-        asAsyncInfoView().status()
+        if (hasAsyncInfoReference()) {
+            asAsyncInfoView().status()
+        } else {
+            tryReadTerminalAsyncInfoStatus() ?: asAsyncInfoView().status()
+        }
 
     open fun errorCode(): HResult = asAsyncInfoView().errorCode()
 
@@ -562,6 +589,22 @@ open class WinRTAsyncOperationWithProgressReference<T, TProgress> internal const
 }
 
 suspend fun WinRTAsyncActionReference.await() {
+    val awaitContext = currentCoroutineContext()
+    if (!awaitContext.isActive) {
+        runCatching { cancel() }
+        awaitContext.ensureActive()
+    }
+    val initialStatus = status()
+    if (initialStatus == WinRTAsyncStatus.Completed) {
+        try {
+            getResults()
+        } catch (error: Throwable) {
+            awaitContext.ensureActive()
+            throw error
+        }
+        awaitContext.ensureActive()
+        return
+    }
     suspendCancellableCoroutine { continuation ->
         val awaitState = WinRTAsyncAwaitState(continuation, ::cancel)
         awaitState.installCancellation()
@@ -578,7 +621,7 @@ suspend fun WinRTAsyncActionReference.await() {
             )
         }
 
-        complete(status())
+        complete(initialStatus)
         if (awaitState.isTerminal) {
             return@suspendCancellableCoroutine
         }
@@ -594,6 +637,22 @@ suspend fun WinRTAsyncActionReference.await() {
 }
 
 suspend fun <TProgress> WinRTAsyncActionWithProgressReference<TProgress>.await() {
+    val awaitContext = currentCoroutineContext()
+    if (!awaitContext.isActive) {
+        runCatching { cancel() }
+        awaitContext.ensureActive()
+    }
+    val initialStatus = status()
+    if (initialStatus == WinRTAsyncStatus.Completed) {
+        try {
+            getResults()
+        } catch (error: Throwable) {
+            awaitContext.ensureActive()
+            throw error
+        }
+        awaitContext.ensureActive()
+        return
+    }
     suspendCancellableCoroutine { continuation ->
         val awaitState = WinRTAsyncAwaitState(continuation, ::cancel)
         awaitState.installCancellation()
@@ -617,7 +676,7 @@ suspend fun <TProgress> WinRTAsyncActionWithProgressReference<TProgress>.await()
             }
         }
 
-        complete(status())
+        complete(initialStatus)
         if (awaitState.isTerminal) {
             return@suspendCancellableCoroutine
         }
@@ -629,8 +688,24 @@ suspend fun <TProgress> WinRTAsyncActionWithProgressReference<TProgress>.await()
     }
 }
 
-suspend fun <T> WinRTAsyncOperationReference<T>.await(): T =
-    suspendCancellableCoroutine { continuation ->
+suspend fun <T> WinRTAsyncOperationReference<T>.await(): T {
+    val awaitContext = currentCoroutineContext()
+    if (!awaitContext.isActive) {
+        runCatching { cancel() }
+        awaitContext.ensureActive()
+    }
+    val initialStatus = status()
+    if (initialStatus == WinRTAsyncStatus.Completed) {
+        val result = try {
+            getResults()
+        } catch (error: Throwable) {
+            awaitContext.ensureActive()
+            throw error
+        }
+        awaitContext.ensureActive()
+        return result
+    }
+    return suspendCancellableCoroutine { continuation ->
         val awaitState = WinRTAsyncAwaitState(continuation, ::cancel)
         awaitState.installCancellation()
         fun complete(status: WinRTAsyncStatus) {
@@ -646,7 +721,7 @@ suspend fun <T> WinRTAsyncOperationReference<T>.await(): T =
             )
         }
 
-        complete(status())
+        complete(initialStatus)
         if (awaitState.isTerminal) {
             return@suspendCancellableCoroutine
         }
@@ -659,9 +734,26 @@ suspend fun <T> WinRTAsyncOperationReference<T>.await(): T =
             complete(status())
         }
     }
+}
 
-suspend fun <T, TProgress> WinRTAsyncOperationWithProgressReference<T, TProgress>.await(): T =
-    suspendCancellableCoroutine { continuation ->
+suspend fun <T, TProgress> WinRTAsyncOperationWithProgressReference<T, TProgress>.await(): T {
+    val awaitContext = currentCoroutineContext()
+    if (!awaitContext.isActive) {
+        runCatching { cancel() }
+        awaitContext.ensureActive()
+    }
+    val initialStatus = status()
+    if (initialStatus == WinRTAsyncStatus.Completed) {
+        val result = try {
+            getResults()
+        } catch (error: Throwable) {
+            awaitContext.ensureActive()
+            throw error
+        }
+        awaitContext.ensureActive()
+        return result
+    }
+    return suspendCancellableCoroutine { continuation ->
         val awaitState = WinRTAsyncAwaitState(continuation, ::cancel)
         awaitState.installCancellation()
         fun complete(status: WinRTAsyncStatus) {
@@ -682,7 +774,7 @@ suspend fun <T, TProgress> WinRTAsyncOperationWithProgressReference<T, TProgress
             }
         }
 
-        complete(status())
+        complete(initialStatus)
         if (awaitState.isTerminal) {
             return@suspendCancellableCoroutine
         }
@@ -692,6 +784,7 @@ suspend fun <T, TProgress> WinRTAsyncOperationWithProgressReference<T, TProgress
             complete(status())
         }
     }
+}
 
 fun WinRTAsyncActionReference.ensureCompleted(status: WinRTAsyncStatus = this.status()) {
     when (status) {

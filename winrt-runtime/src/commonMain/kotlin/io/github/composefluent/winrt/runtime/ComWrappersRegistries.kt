@@ -317,7 +317,6 @@ internal object RuntimeRegistryResetSupport {
         AuthoringActivationFactoryRegistry.clearForTests()
         CcwFactoryRegistry.clearForTests()
         ProjectedDelegateCcwCache.clearForTests()
-        ProjectedDelegateObjectRoots.clearForTests()
         RuntimeTypeLookupRegistry.clearForTests()
         InteropRuntimeHooks.clearForTests()
         FreeThreadedMarshalerSupport.clearForTests()

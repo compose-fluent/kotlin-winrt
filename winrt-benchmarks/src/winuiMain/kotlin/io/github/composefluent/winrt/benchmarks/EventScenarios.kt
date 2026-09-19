@@ -182,11 +182,11 @@ internal fun eventScenarios(): List<BenchmarkScenario> =
         objectScenario("AddAndRemoveNativeIntEventOnNewEventSource") { it.addAndRemoveNativeIntEventOnNewEventSource() },
     )
 
-private fun objectScenario(method: String, invoke: (EventPerf) -> Any?): BenchmarkScenario =
+private inline fun objectScenario(method: String, crossinline invoke: (EventPerf) -> Any?): BenchmarkScenario =
     referenceObjectScenario("EventPerf.$method", ::EventPerf, EventPerf::setup, invoke)
 
-private fun intScenario(method: String, invoke: (EventPerf) -> Int): BenchmarkScenario =
+private inline fun intScenario(method: String, crossinline invoke: (EventPerf) -> Int): BenchmarkScenario =
     referenceValueScenario("EventPerf.$method", ::EventPerf, EventPerf::setup, invoke, Int::toLong)
 
-private fun voidScenario(method: String, invoke: (EventPerf) -> Unit): BenchmarkScenario =
+private inline fun voidScenario(method: String, crossinline invoke: (EventPerf) -> Unit): BenchmarkScenario =
     referenceVoidScenario("EventPerf.$method", ::EventPerf, EventPerf::setup, invoke)

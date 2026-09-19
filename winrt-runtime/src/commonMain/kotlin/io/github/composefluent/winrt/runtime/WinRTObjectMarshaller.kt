@@ -251,33 +251,18 @@ internal object ProjectedDelegateCcwCache {
     private fun getOrCreate(value: WinRTProjectedDelegate): WinRTDelegateHandle =
         handles.getOrPut(value) {
             value.createWinRTDelegateHandle().also { handle ->
-                ProjectedDelegateObjectRoots.retain(handle)
+                // Like CsWinRT's CCW strong handle, the inbound binding roots the host until
+                // native Release. Its cleanup callback also retains this handle; a second
+                // global root list would duplicate that lifetime and serialize every call.
                 handle.addCleanupAction {
                     handle.markClosedAfterNativeCleanup()
                     handles.remove(value, handle)
-                    ProjectedDelegateObjectRoots.release(handle)
                 }
             }
         }
 
     fun clearForTests() {
         handles.clear()
-    }
-}
-
-internal object ProjectedDelegateObjectRoots {
-    private val roots = SnapshotList<WinRTDelegateHandle>()
-
-    fun retain(handle: WinRTDelegateHandle) {
-        roots.add(handle)
-    }
-
-    fun release(handle: WinRTDelegateHandle) {
-        roots.remove(handle)
-    }
-
-    fun clearForTests() {
-        roots.clear()
     }
 }
 

@@ -2,10 +2,78 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReferenceTrackerInteropTest {
+    // CsWinRT ObjectReference.cs: AsValue(Guid) borrows the parent's tracker registration;
+    // ObjectReferenceValue.Dispose balances the temporary source reference before COM Release.
+    @Test
+    fun scoped_query_balances_tracker_and_com_references_when_callback_throws() {
+        FakeReferenceTrackerHost.create().use { host ->
+            val reference = IInspectableReference(host.objectPointer.asRawComPtr(), IID.IInspectable)
+            try {
+                assertTrue(reference.tryInitializeReferenceTracker())
+                assertFailsWith<IllegalStateException> {
+                    reference.comPtr.tryWithQueryInterfacePointer(IID.IUnknown) { pointer ->
+                        assertEquals(host.objectPointer.asRawComPtr(), pointer)
+                        assertEquals(3, host.trackerAddRefFromSourceCalls)
+                        assertEquals(1, host.trackerConnectCalls)
+                        error("callback failure")
+                    }
+                }
+                assertEquals(1, host.trackerReleaseFromSourceCalls)
+                assertEquals(1, host.objectReleaseCalls)
+                assertEquals(0, host.trackerDisconnectCalls)
+            } finally {
+                reference.close()
+                host.releaseDisconnectedReferenceSources()
+            }
+            assertEquals(3, host.trackerReleaseFromSourceCalls)
+            assertEquals(2, host.objectReleaseCalls)
+            assertEquals(1, host.trackerDisconnectCalls)
+        }
+    }
+
+    @Test
+    fun scoped_query_owns_result_even_when_parent_is_borrowed_and_rejects_disposed_parent() {
+        FakeReferenceTrackerHost.create().use { host ->
+            val parent = ComPtr.create(
+                host.objectPointer.asRawComPtr(), IID.IUnknown,
+                ownershipMode = ComOwnershipMode.Borrowed, trackContext = false,
+            )
+            parent.use {
+                assertEquals(42, parent.tryWithQueryInterfacePointer(IID.IUnknown) { 42 })
+                assertEquals(1, host.objectReleaseCalls)
+                assertNull(parent.tryWithQueryInterfacePointer(IID.IWeakReferenceSource) { error("unsupported") })
+                host.forcedQueryHResult = KnownHResults.E_FAIL.value
+                assertNull(parent.tryWithQueryInterfacePointer(IID.IUnknown) { error("failed query") })
+            }
+            assertEquals(1, host.objectReleaseCalls)
+            assertFailsWith<WinRTObjectDisposedException> {
+                parent.tryWithQueryInterfacePointer(IID.IUnknown) { error("disposed") }
+            }
+        }
+    }
+
+    @Test
+    fun scoped_aggregated_query_releases_query_reference_before_callback_only_once() {
+        FakeReferenceTrackerHost.create().use { host ->
+            ComPtr.create(
+                host.objectPointer.asRawComPtr(), IID.IUnknown,
+                ownershipMode = ComOwnershipMode.Borrowed, isAggregated = true, trackContext = false,
+            ).use { parent ->
+                assertEquals(42, parent.tryWithQueryInterfacePointer(IID.IUnknown) {
+                    assertEquals(1, host.objectReleaseCalls)
+                    42
+                })
+            }
+            assertEquals(1, host.objectReleaseCalls)
+        }
+    }
+
     @Test
     fun com_object_reference_initializes_and_releases_reference_tracker() {
         FakeReferenceTrackerHost.create().use { host ->
@@ -253,6 +321,7 @@ class ReferenceTrackerInteropTest {
         var managerTrackingCompletedCalls: Int = 0
             private set
         var failFindTrackerTargetsCompleted: Boolean = false
+        var forcedQueryHResult: Int? = null
         var releaseDisconnectedOnDisconnect: Boolean = false
 
         fun releaseDisconnectedReferenceSources() {
@@ -276,6 +345,7 @@ class ReferenceTrackerInteropTest {
         }
 
         private fun queryInterface(args: List<Any?>): Int {
+            forcedQueryHResult?.let { return it }
             val iidPointer = args[1] as RawAddress
             val resultPointer = args[2] as RawAddress
             val iid = PlatformAbi.readGuid(iidPointer)

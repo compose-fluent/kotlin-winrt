@@ -144,9 +144,9 @@ internal fun queryInterfaceScenarios(): List<BenchmarkScenario> =
         voidScenario("QueryNativeInterfaceOnComposedObject") { it.queryNativeInterfaceOnComposedObject() },
     )
 
-private fun intScenario(
+private inline fun intScenario(
     method: String,
-    invoke: (QueryInterfacePerf) -> Int,
+    crossinline invoke: (QueryInterfacePerf) -> Int,
 ): BenchmarkScenario =
     referenceValueScenario(
         name = "QueryInterfacePerf.$method",
@@ -156,9 +156,9 @@ private fun intScenario(
         checksum = Int::toLong,
     )
 
-private fun boolScenario(
+private inline fun boolScenario(
     method: String,
-    invoke: (QueryInterfacePerf) -> Boolean,
+    crossinline invoke: (QueryInterfacePerf) -> Boolean,
 ): BenchmarkScenario =
     referenceValueScenario(
         name = "QueryInterfacePerf.$method",
@@ -168,9 +168,9 @@ private fun boolScenario(
         checksum = { value -> if (value) 1L else 0L },
     )
 
-private fun objectScenario(
+private inline fun objectScenario(
     method: String,
-    invoke: (QueryInterfacePerf) -> Any?,
+    crossinline invoke: (QueryInterfacePerf) -> Any?,
 ): BenchmarkScenario =
     referenceObjectScenario(
         name = "QueryInterfacePerf.$method",
@@ -179,9 +179,9 @@ private fun objectScenario(
         invoke = invoke,
     )
 
-private fun voidScenario(
+private inline fun voidScenario(
     method: String,
-    invoke: (QueryInterfacePerf) -> Unit,
+    crossinline invoke: (QueryInterfacePerf) -> Unit,
 ): BenchmarkScenario =
     referenceVoidScenario(
         name = "QueryInterfacePerf.$method",

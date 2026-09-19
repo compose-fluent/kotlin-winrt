@@ -1,12 +1,14 @@
 package io.github.composefluent.winrt.benchmarks
 
-internal fun <T, R> referenceValueScenario(
+// Match the C++ reference runner's templated operation loop: specialize operation and
+// checksum at the scenario call site instead of timing two generic Function1 dispatches.
+internal inline fun <T, R> referenceValueScenario(
     name: String,
-    create: () -> T,
-    setup: (T) -> Unit = {},
-    invoke: (T) -> R,
-    checksum: (R) -> Long,
-    cleanup: (T) -> Unit = {},
+    crossinline create: () -> T,
+    crossinline setup: (T) -> Unit = {},
+    crossinline invoke: (T) -> R,
+    crossinline checksum: (R) -> Long,
+    crossinline cleanup: (T) -> Unit = {},
 ): BenchmarkScenario =
     BenchmarkScenario(name, null) {
         val benchmark = create()
@@ -23,12 +25,12 @@ internal fun <T, R> referenceValueScenario(
         )
     }
 
-internal fun <T> referenceObjectScenario(
+internal inline fun <T> referenceObjectScenario(
     name: String,
-    create: () -> T,
-    setup: (T) -> Unit = {},
-    invoke: (T) -> Any?,
-    cleanup: (T) -> Unit = {},
+    crossinline create: () -> T,
+    crossinline setup: (T) -> Unit = {},
+    crossinline invoke: (T) -> Any?,
+    crossinline cleanup: (T) -> Unit = {},
 ): BenchmarkScenario =
     referenceValueScenario(
         name = name,
@@ -42,12 +44,12 @@ internal fun <T> referenceObjectScenario(
         cleanup = cleanup,
     )
 
-internal fun <T> referenceVoidScenario(
+internal inline fun <T> referenceVoidScenario(
     name: String,
-    create: () -> T,
-    setup: (T) -> Unit = {},
-    invoke: (T) -> Unit,
-    cleanup: (T) -> Unit = {},
+    crossinline create: () -> T,
+    crossinline setup: (T) -> Unit = {},
+    crossinline invoke: (T) -> Unit,
+    crossinline cleanup: (T) -> Unit = {},
 ): BenchmarkScenario =
     BenchmarkScenario(name, 1) {
         val benchmark = create()

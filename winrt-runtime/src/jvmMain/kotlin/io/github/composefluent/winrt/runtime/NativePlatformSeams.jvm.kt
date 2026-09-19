@@ -205,6 +205,14 @@ internal actual class NativeStructScratchFrame internal constructor(
 
     actual fun readInt8Carrier(): Byte = segment.get(ValueLayout.JAVA_BYTE, 0)
 
+    actual fun writeGuid(value: Guid) {
+        segment.set(ValueLayout.JAVA_LONG, 0L, value.abiLowBits)
+        segment.set(ValueLayout.JAVA_LONG, Long.SIZE_BYTES.toLong(), value.abiHighBits)
+    }
+
+    actual fun readPointerAt(offsetBytes: Long): RawAddress =
+        RawAddress(segment.get(ValueLayout.JAVA_LONG, offsetBytes))
+
     actual fun readInt16Carrier(): Short = segment.get(ValueLayout.JAVA_SHORT, 0)
 
     actual fun readInt32Carrier(): Int = segment.get(ValueLayout.JAVA_INT, 0)
@@ -681,13 +689,17 @@ actual object PlatformAbi {
         return OwnedNativeAllocation(
             pointer = memory.pointer,
             memory = memory,
-            onClose = { JvmNativeHeap.free(allocationAddress) },
+            allocationAddress = RawAddress(allocationAddress),
         )
     }
 
     actual fun zeroBytes(pointer: RawAddress, sizeBytes: Long) {
         pointer.asMemorySegment().reinterpret(sizeBytes).fill(0)
     }
+}
+
+internal actual fun freeOwnedNativeAllocation(allocationAddress: RawAddress) {
+    JvmNativeHeap.free(allocationAddress.value)
 }
 
 internal fun RawAddress.asMemorySegment(): MemorySegment =

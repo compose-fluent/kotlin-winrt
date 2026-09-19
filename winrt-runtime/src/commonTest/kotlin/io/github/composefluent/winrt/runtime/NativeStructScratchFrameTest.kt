@@ -7,6 +7,28 @@ import kotlin.test.assertNotEquals
 
 class NativeStructScratchFrameTest {
     @Test
+    fun query_interface_fields_use_guid_abi_layout_and_clear_reused_result() {
+        // CsWinRT ComWrappersSupport.IsFreeThreaded passes GUID storage and an owned pointer
+        // result to QueryInterface. Verify direct frame access against the generic ABI helpers.
+        val iid = Guid("01234567-89ab-cdef-8012-3456789abcde")
+        acquireNativeStructScratchFrame(24L, 8L).use { outer ->
+            outer.writeGuid(iid)
+            assertEquals(iid, PlatformAbi.readGuid(outer.pointer))
+            val resultOut = PlatformAbi.slice(outer.pointer, 16L, 8L)
+            PlatformAbi.writePointer(resultOut, outer.pointer)
+            acquireNativeStructScratchFrame(24L, 8L).use { inner ->
+                inner.writeGuid(IID.IUnknown)
+                assertEquals(RawAddress.Null, inner.readPointerAt(16L))
+            }
+            assertEquals(outer.pointer, outer.readPointerAt(16L))
+            assertEquals(iid, PlatformAbi.readGuid(outer.pointer))
+        }
+        acquireNativeStructScratchFrame(24L, 8L).use { frame ->
+            assertEquals(RawAddress.Null, frame.readPointerAt(16L))
+        }
+    }
+
+    @Test
     fun reuses_the_top_level_struct_storage() {
         val adapter = SmallValueAdapter()
         val firstPointer = acquire(adapter).use { frame ->

@@ -435,7 +435,8 @@ internal class WinRTInspectableComObject(
             ?: PlatformAbi.nullPointer
     }
 
-    private fun interfaceObjectPointer(index: Int): RawAddress =
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun interfaceObjectPointer(index: Int): RawAddress =
         RawAddress(interfaceObjectMemory.value + index * managedComInterfaceObjectSizeBytes)
 
     private fun queryInterface(
@@ -790,8 +791,10 @@ internal class WinRTInspectableComObject(
 
     companion object {
         private const val managedComInterfaceObjectPointerCount = 4
-        private val managedComInterfaceObjectSizeBytes =
-            managedComInterfaceObjectPointerCount * NativeAbiLayout.ADDRESS.byteSize
+        // The supported JVM/Native ABI uses 64-bit pointer words, including this CCW record.
+        // Keep its stride constant so address arithmetic needs no managed companion access.
+        private const val managedComInterfaceObjectSizeBytes: Long =
+            managedComInterfaceObjectPointerCount.toLong() * Long.SIZE_BYTES
         private val externalAliasRegistry = ConcurrentCacheMap<Long, ManagedComInboundBinding>()
         private val externalPointerAliasCount = AtomicInt(0)
 

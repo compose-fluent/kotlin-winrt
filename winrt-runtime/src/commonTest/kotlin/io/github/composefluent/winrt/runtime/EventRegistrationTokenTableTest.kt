@@ -1,5 +1,10 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,6 +17,62 @@ import windows.foundation.EventRegistrationToken
 
 @OptIn(ExperimentalAtomicApi::class)
 class EventRegistrationTokenTableTest {
+    @Test
+    fun token_type_identity_matches_the_runtime_class_across_table_instances() {
+        // CsWinRT EventRegistrationTokenTable<T>.TypeOfTHashCode uses typeof(T), not its name.
+        val expectedHash = TestHandler::class.hashCode().let { if (it == 0) 0x5FC74196 else it }
+        val first = EventRegistrationTokenTable.create<TestHandler>()
+        val second = EventRegistrationTokenTable.create(TestHandler::class)
+        assertEquals(expectedHash, upper32Bits(first.addEventHandler(TestHandler("first"))))
+        assertEquals(expectedHash, upper32Bits(second.addEventHandler(TestHandler("second"))))
+    }
+
+    @Test
+    fun empty_table_defers_handler_snapshot_until_first_registration() {
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+
+        assertNull(table.handlerSnapshot)
+
+        table.addEventHandler(TestHandler("first"))
+
+        assertTrue(table.handlerSnapshot != null)
+    }
+
+    @Test
+    fun zero_type_hash_keeps_token_upper_bits_nonzero() {
+        // CsWinRT GetTypeOfTHashCode reserves non-zero high bits even when the hash is zero.
+        val table = EventRegistrationTokenTable.create<TestHandler>("")
+        val handler = TestHandler("zero hash")
+        val token = table.addEventHandler(handler)
+        assertEquals(0x5FC74196, upper32Bits(token))
+        assertSame(handler, table.removeEventHandler(token))
+    }
+
+    @Test
+    fun concurrent_first_registrations_preserve_unique_tokens_and_handlers() = runBlocking {
+        // CsWinRT EventRegistrationTokenTable<T> serializes token updates with its monitor.
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val handler = TestHandler("concurrent")
+        val start = CompletableDeferred<Unit>()
+        val workers = List(4) {
+            async(Dispatchers.Default) {
+                start.await()
+                List(64) { table.addEventHandler(handler) }
+            }
+        }
+        start.complete(Unit)
+        val tokens = workers.awaitAll().flatten()
+        assertEquals(256, tokens.toSet().size)
+        var handlerCount = 0
+        table.forEachHandler {
+            assertSame(handler, it)
+            handlerCount++
+        }
+        assertEquals(256, handlerCount)
+        tokens.forEach { assertSame(handler, table.removeEventHandler(it)) }
+        table.forEachHandler { error("Removed handler remains in the event snapshot") }
+    }
+
     @Test
     fun event_registration_token_uses_registered_winrt_struct_mapping() {
         ComWrappersSupport.clearRegistriesForTests()
@@ -87,7 +148,7 @@ class EventRegistrationTokenTableTest {
         val calls = mutableListOf<String>()
 
         table.addEventHandler(handler)
-        val snapshot = table.handlerSnapshot.load()
+        val snapshot = requireNotNull(table.handlerSnapshot).load()
         table.forEachHandler { calls += it.name }
 
         assertSame(handler, snapshot.singleHandler)
@@ -150,12 +211,12 @@ class EventRegistrationTokenTableTest {
         val secondToken = table.addEventHandler(second)
 
         assertSame(first, table.removeEventHandler(firstToken))
-        val remainingSnapshot = table.handlerSnapshot.load()
+        val remainingSnapshot = requireNotNull(table.handlerSnapshot).load()
         assertSame(second, remainingSnapshot.singleHandler)
         assertNull(remainingSnapshot.manyHandlers)
 
         assertSame(second, table.removeEventHandler(secondToken))
-        val emptySnapshot = table.handlerSnapshot.load()
+        val emptySnapshot = requireNotNull(table.handlerSnapshot).load()
         assertNull(emptySnapshot.singleHandler)
         assertNull(emptySnapshot.manyHandlers)
     }

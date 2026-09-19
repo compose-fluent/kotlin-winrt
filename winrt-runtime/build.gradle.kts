@@ -117,6 +117,9 @@ kotlin {
             cinterops.create("winrtString") {
                 definitionFile.set(project.file("src/nativeInterop/cinterop/winrtString.def"))
             }
+            cinterops.create("winrtCom") {
+                definitionFile.set(project.file("src/nativeInterop/cinterop/winrtCom.def"))
+            }
         }
     }
 

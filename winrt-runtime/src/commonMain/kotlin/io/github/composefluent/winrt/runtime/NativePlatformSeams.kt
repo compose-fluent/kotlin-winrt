@@ -46,6 +46,12 @@ internal expect inline fun tryConsumeOwnedRuntimeClassRcw(
 internal expect class NativeStructScratchFrame : AutoCloseable {
     val pointer: RawAddress
 
+    /** Writes the GUID at offset zero; callers acquire at least 16 bytes aligned to 8 bytes. */
+    fun writeGuid(value: Guid)
+
+    /** Reads an aligned pointer field within the acquired frame's storage. */
+    fun readPointerAt(offsetBytes: Long): RawAddress
+
     fun readInt8Carrier(): Byte
 
     fun readInt16Carrier(): Short
@@ -171,12 +177,16 @@ internal inline fun winRTStringLength(value: String): Int = value.length
 class OwnedNativeAllocation internal constructor(
     val pointer: RawAddress,
     internal val memory: NativeMemoryView,
-    private val onClose: () -> Unit,
+    private val allocationAddress: RawAddress,
 ) : AutoCloseable {
     override fun close() {
-        onClose()
+        freeOwnedNativeAllocation(allocationAddress)
     }
 }
+
+// Like CsWinRT's MarshalerArray.Dispose, keep the allocation address on the owner
+// and release it directly. The exposed pointer may be adjusted for alignment.
+internal expect fun freeOwnedNativeAllocation(allocationAddress: RawAddress)
 
 expect class NativeCallbackHandle : AutoCloseable {
     val pointer: RawAddress
@@ -332,14 +342,14 @@ internal fun queryInterfaceWithReusableScratch(
             offsetBytes = Guid.BYTE_SIZE.toLong(),
             sizeBytes = Long.SIZE_BYTES.toLong(),
         )
-        PlatformAbi.writeGuid(interfaceIdPointer, interfaceId)
+        scratch.writeGuid(interfaceId)
         val hResult = ComVtableInvoker.invokeArgs(
             instance = PlatformAbi.toRawComPtr(unknown),
             slot = IUnknownVftblSlots.QueryInterface,
             arg0 = interfaceIdPointer,
             arg1 = resultOut,
         )
-        NativePointerResult(hResult, PlatformAbi.readPointer(resultOut))
+        NativePointerResult(hResult, scratch.readPointerAt(Guid.BYTE_SIZE.toLong()))
     }
 }
 

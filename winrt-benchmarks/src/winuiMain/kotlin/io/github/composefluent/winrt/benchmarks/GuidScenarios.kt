@@ -71,5 +71,5 @@ internal fun guidScenarios(): List<BenchmarkScenario> =
         scenario("CreateReadOnlyDelegateListGuid") { it.createReadOnlyDelegateListGuid() },
     )
 
-private fun scenario(method: String, invoke: (GuidPerf) -> Guid): BenchmarkScenario =
+private inline fun scenario(method: String, crossinline invoke: (GuidPerf) -> Guid): BenchmarkScenario =
     referenceObjectScenario("GuidPerf.$method", ::GuidPerf, invoke = invoke)

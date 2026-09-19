@@ -6,6 +6,7 @@
 
 package io.github.composefluent.winrt.runtime
 
+import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_invoke_ref_count
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.COpaque
@@ -25,6 +26,7 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.get
 import kotlinx.cinterop.invoke
+import kotlinx.cinterop.interpretPointed
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.nativeHeap
 import kotlinx.cinterop.pointed
@@ -93,19 +95,26 @@ actual class NativeScope internal constructor(
 internal actual class NativeMemoryView internal constructor(
     private val rawPointer: RawAddress,
 ) {
+    // CsWinRT writes its unmanaged CCW records through a typed base pointer. Keep the
+    // allocation's base converted once: Long.toCPointer otherwise reloads NativePtr.NULL
+    // and adds a managed frame/TLS lookup to each field store on Kotlin/Native 2.4.
+    private val basePointer = rawPointer.asCPointer<ByteVar>().rawValue
+
     actual val pointer: RawAddress
         get() = rawPointer
 
     actual fun writePointer(offsetBytes: Long, value: RawAddress) {
-        PlatformAbi.writePointer(rawPointer, offsetBytes, value)
+        writeInt64(offsetBytes, value.value)
     }
 
     actual fun writePointer(offsetBytes: Long, value: NativeMemoryView) {
-        PlatformAbi.writePointer(rawPointer, offsetBytes, value.pointer)
+        writeInt64(offsetBytes, value.rawPointer.value)
     }
 
     actual fun writeInt64(offsetBytes: Long, value: Long) {
-        PlatformAbi.writeInt64(RawAddress(rawPointer.value + offsetBytes), value)
+        val address = basePointer + offsetBytes
+        if (address.toLong() == 0L) throwNullNativePointer()
+        interpretPointed<LongVar>(address).value = value
     }
 }
 
@@ -253,6 +262,15 @@ internal actual class NativeStructScratchFrame internal constructor(
 
     actual fun readInt8Carrier(): Byte =
         checkNotNull(allocation).reinterpret<ByteVar>().pointed.value
+
+    actual fun writeGuid(value: Guid) {
+        val words = checkNotNull(allocation).reinterpret<LongVar>()
+        words[0] = value.abiLowBits
+        words[1] = value.abiHighBits
+    }
+
+    actual fun readPointerAt(offsetBytes: Long): RawAddress =
+        RawAddress(interpretPointed<LongVar>(checkNotNull(allocation).rawValue + offsetBytes).value)
 
     actual fun readInt16Carrier(): Short =
         checkNotNull(allocation).reinterpret<ShortVar>().pointed.value
@@ -831,13 +849,17 @@ actual object PlatformAbi {
         return OwnedNativeAllocation(
             pointer = raw,
             memory = NativeMemoryView(raw),
-            onClose = { nativeHeap.free(pointer.rawValue) },
+            allocationAddress = raw,
         )
     }
 
     actual fun zeroBytes(pointer: RawAddress, sizeBytes: Long) {
         memset(pointer.toOpaquePointer(), 0, sizeBytes.toULong())
     }
+}
+
+internal actual fun freeOwnedNativeAllocation(allocationAddress: RawAddress) {
+    nativeHeap.free(allocationAddress.asCPointer<ByteVar>().rawValue)
 }
 
 @PublishedApi
@@ -924,6 +946,9 @@ private fun RawAddress.toOpaquePointer(): COpaquePointer? =
 @PublishedApi
 internal inline fun <reified T : CPointed> RawAddress.asCPointer(): CPointer<T> =
     value.toCPointer<T>() ?: error("Cannot dereference a null native pointer.")
+
+private fun throwNullNativePointer(): Nothing =
+    error("Cannot dereference a null native pointer.")
 
 private fun RawAddress.readBytes(size: Int): ByteArray {
     val bytes = asCPointer<ByteVar>()
@@ -1392,13 +1417,15 @@ internal inline fun invokeUnknownRefCountMethod(
     unknown: RawAddress,
     slot: Int,
 ): UInt {
-    val objectMemory = unknown.value.toCPointer<COpaquePointerVar>()
-        ?: error("COM object pointer is null.")
-    val vtable = objectMemory.pointed.value ?: error("COM object has a null vtable.")
-    val function = vtable.reinterpret<COpaquePointerVar>()[slot]
-        ?.reinterpret<CFunction<(COpaquePointer?) -> UInt>>()
-        ?: error("COM vtable slot $slot is null.")
-    return function.invoke(objectMemory.reinterpret<COpaque>())
+    // CsWinRT ObjectReference delegates AddRef/Release to the platform Marshal boundary.
+    // Passing address bits avoids repeated NativePtr conversions before that boundary.
+    val result = kotlin_winrt_invoke_ref_count(unknown.value.toULong(), slot)
+    return when (result shr 32) {
+        0uL -> result.toUInt()
+        1uL -> error("COM object pointer is null.")
+        2uL -> nativeNullComVtable()
+        else -> nativeNullComVtableSlot(slot)
+    }
 }
 
 private const val runtimeAssetsDirectoryName = "windows-package-runtime-assets"

@@ -23,16 +23,20 @@ internal class EventRegistrationTokenTableSnapshot<T : Any>(
  * Stores handler -> token mappings for CCW-sourced WinRT events.
  *
  * `.cswinrt` uses `typeof(T).GetHashCode()` for the upper 32 bits of each token.
- * Kotlin common code has no direct equivalent for that CLR-specific generic type identity,
- * so this owner uses the delegate type display name hash instead while preserving the same
- * two-part token layout and the non-zero upper-32-bits constraint.
+ * Use the Kotlin runtime type's hash for the same purpose, without materializing a display
+ * name on every table creation. Tokens are opaque runtime values; their type hash need not
+ * be stable across processes or targets. The upper 32 bits must remain non-zero.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class EventRegistrationTokenTable<T : Any> private constructor(
     private val delegateTypeHash: Int,
 ) {
-    private val lock = PlatformLock()
-    private val tokens = linkedMapOf<Int, T>()
+    // CsWinRT locks the token dictionary only when a registration changes. Empty authored
+    // events need no native synchronization resource until their first add/remove operation.
+    private val lock by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { PlatformLock() }
+    // Kotlin/Native's empty LinkedHashMap allocates backing storage. Keep CsWinRT's token
+    // dictionary and random counter semantics, but initialize them only on first registration.
+    private var tokens: MutableMap<Int, T>? = null
     /**
      * Immutable update-time snapshot used by authored event raisers.
      *
@@ -40,8 +44,10 @@ class EventRegistrationTokenTable<T : Any> private constructor(
      * an event only loads the already-composed snapshot and never copies the token map.
      */
     @PublishedApi
-    internal val handlerSnapshot = AtomicReference(EventRegistrationTokenTableSnapshot<T>())
-    private var nextLow32Bits: Int = Random.nextInt()
+    @kotlin.concurrent.Volatile
+    internal var handlerSnapshot: AtomicReference<EventRegistrationTokenTableSnapshot<T>>? = null
+        private set
+    private var nextLow32Bits: Int = 0
 
     fun addEventHandler(handler: T?): EventRegistrationToken {
         if (handler == null) {
@@ -49,12 +55,16 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
 
         return lock.withLock {
+            val tokens = tokens ?: linkedMapOf<Int, T>().also {
+                nextLow32Bits = Random.nextInt()
+                this.tokens = it
+            }
             var tokenLow32Bits: Int
             do {
                 tokenLow32Bits = nextLow32Bits++
             } while (tokens.containsKey(tokenLow32Bits))
             tokens[tokenLow32Bits] = handler
-            handlerSnapshot.store(composeHandlerSnapshot())
+            snapshotReference().store(composeHandlerSnapshot())
             EventRegistrationToken(composeTokenValue(delegateTypeHash, tokenLow32Bits))
         }
     }
@@ -65,9 +75,9 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
 
         return lock.withLock {
-            tokens.remove(lower32Bits(token)).also {
+            tokens?.remove(lower32Bits(token)).also {
                 if (it != null) {
-                    handlerSnapshot.store(composeHandlerSnapshot())
+                    snapshotReference().store(composeHandlerSnapshot())
                 }
             }
         }
@@ -79,7 +89,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
      * site, matching the update-time composition used by `.cswinrt`.
      */
     inline fun forEachHandler(action: (T) -> Unit) {
-        val snapshot = handlerSnapshot.load()
+        val snapshot = handlerSnapshot?.load() ?: return
         val singleHandler = snapshot.singleHandler
         if (singleHandler != null) {
             action(singleHandler)
@@ -95,11 +105,18 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
     }
 
-    private fun composeHandlerSnapshot(): EventRegistrationTokenTableSnapshot<T> =
-        when (tokens.size) {
+    private fun composeHandlerSnapshot(): EventRegistrationTokenTableSnapshot<T> {
+        val tokens = tokens ?: return EventRegistrationTokenTableSnapshot()
+        return when (tokens.size) {
             0 -> EventRegistrationTokenTableSnapshot()
             1 -> EventRegistrationTokenTableSnapshot(singleHandler = tokens.values.first())
             else -> EventRegistrationTokenTableSnapshot(manyHandlers = tokens.values.toList())
+        }
+    }
+
+    private fun snapshotReference(): AtomicReference<EventRegistrationTokenTableSnapshot<T>> =
+        handlerSnapshot ?: AtomicReference(EventRegistrationTokenTableSnapshot<T>()).also { reference ->
+            handlerSnapshot = reference
         }
 
     companion object {
@@ -109,13 +126,12 @@ class EventRegistrationTokenTable<T : Any> private constructor(
             create(T::class)
 
         fun <T : Any> create(delegateType: KClass<out T>): EventRegistrationTokenTable<T> =
-            EventRegistrationTokenTable(typeHash(delegateType.typeDisplayName()))
+            EventRegistrationTokenTable(nonZeroTypeHash(delegateType.hashCode()))
 
         internal fun <T : Any> create(typeIdentity: String): EventRegistrationTokenTable<T> =
-            EventRegistrationTokenTable(typeHash(typeIdentity))
+            EventRegistrationTokenTable(nonZeroTypeHash(typeIdentity.hashCode()))
 
-        private fun typeHash(typeIdentity: String): Int {
-            val hash = typeIdentity.hashCode()
+        private fun nonZeroTypeHash(hash: Int): Int {
             return if (hash == 0) {
                 zeroHashReplacement
             } else {

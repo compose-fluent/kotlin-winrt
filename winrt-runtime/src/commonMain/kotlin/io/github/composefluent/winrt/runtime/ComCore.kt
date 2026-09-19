@@ -112,6 +112,50 @@ internal class ComPtr private constructor(
             ::wrapQueriedReference,
         )
 
+    /**
+     * Scoped counterpart of CsWinRT IObjectReference.AsValue(Guid)/ObjectReferenceValue.Dispose.
+     * The pointer is valid only during [block], in the caller's current COM context. Keep the
+     * parent (and its tracker registration) alive instead of registering a temporary RCW.
+     * Like EventSourceCache.Create's TryAs in CsWinRT, a failed optional QI returns null;
+     * exceptions from the caller's block still propagate after releasing the reference.
+     */
+    internal fun <T> tryWithQueryInterfacePointer(interfaceId: Guid, block: (RawComPtr) -> T): T? {
+        try {
+            val result = WinRTPlatformApi.queryInterfaceRaw(checkedPointer().asRawAddress(), interfaceId)
+            if (result.hResultValue != KnownHResults.S_OK.value) {
+                return null
+            }
+            if (PlatformAbi.isNull(result.pointer)) {
+                return null
+            }
+            val aggregated = isAggregated
+            if (aggregated) {
+                WinRTPlatformApi.releaseRaw(result.pointer)
+            }
+            val tracker = referenceTrackerHandle
+            var trackerSourceAdded = false
+            try {
+                if (!PlatformAbi.isNull(tracker)) {
+                    invokeReferenceTrackerAddRefOnPointer(tracker)
+                    trackerSourceAdded = true
+                }
+                return block(result.pointer.asRawComPtr())
+            } finally {
+                try {
+                    if (trackerSourceAdded) {
+                        invokeReferenceTrackerReleaseOnPointer(tracker)
+                    }
+                } finally {
+                    if (!aggregated) {
+                        WinRTPlatformApi.releaseRaw(result.pointer)
+                    }
+                }
+            }
+        } finally {
+            winRTKeepAlive(this)
+        }
+    }
+
     fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean =
         support.tryInitializeReferenceTracker(
             addRefFromTrackerSource = addRefFromTrackerSource,

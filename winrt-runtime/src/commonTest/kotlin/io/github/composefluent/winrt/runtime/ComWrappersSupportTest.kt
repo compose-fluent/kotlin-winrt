@@ -817,6 +817,7 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    @OptIn(ExperimentalAtomicApi::class)
     fun compiler_injected_projection_state_shares_ccw_identity_and_rebinds_after_reset() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("4C4C4C4C-4C4C-4C4C-4C4C-4C4C4C4C4C4C")
@@ -856,6 +857,16 @@ class ComWrappersSupportTest {
         firstMarshaler.close()
         secondMarshaler.close()
         assertEquals(1, definitionsCreated)
+
+        // CsWinRT ComWrapperCache.GetValue must remain authoritative when the optional
+        // object-owned binding is absent, including while a competing caller publishes it.
+        owner.winRTManagedProjectionState()!!.binding.store(null)
+        assertNull(ComWrappersSupport.tryAcquireCachedCCWCallLease(value, interfaceId))
+        ComWrappersSupport.createCCWForObjectForMarshaling(value, interfaceId).use { marshaler ->
+            assertEquals(directPointer, PlatformAbi.pointerKey(marshaler.abi))
+        }
+        assertEquals(1, definitionsCreated)
+        assertEquals(borrowedReferenceCount, WinRTInspectableComObject.tryProbeReferenceCount(directAbi))
 
         ComWrappersSupport.clearRegistriesForTests()
         assertTrue(PlatformAbi.isNull(tryBorrowWinRTManagedProjectionAbi(value, typeHandle)))
