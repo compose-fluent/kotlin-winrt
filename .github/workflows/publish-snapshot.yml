@@ -101,6 +101,8 @@ jobs:
             :winrt-generator:publishToMavenLocal \
             :winrt-authoring:publishToMavenLocal \
             :winrt-compiler-plugin:publishToMavenLocal \
+            :winrt-compiler-plugin:callsite-contract:publishToMavenLocal \
+            :winrt-compiler-plugin:callsite-lowering:publishToMavenLocal \
             --no-configuration-cache
           ./gradlew -p windows-toolkit-gradle-plugin :publishToMavenLocal --no-configuration-cache
 
@@ -139,5 +141,7 @@ jobs:
             :winrt-generator:publishAllPublicationsToMavenCentralRepository \
             :winrt-authoring:publishAllPublicationsToMavenCentralRepository \
             :winrt-compiler-plugin:publishAllPublicationsToMavenCentralRepository \
+            :winrt-compiler-plugin:callsite-contract:publishAllPublicationsToMavenCentralRepository \
+            :winrt-compiler-plugin:callsite-lowering:publishAllPublicationsToMavenCentralRepository \
             --no-configuration-cache
           ./gradlew -p windows-toolkit-gradle-plugin :publishAllPublicationsToMavenCentralRepository --no-configuration-cache
