@@ -7,6 +7,49 @@ import kotlin.test.assertTrue
 
 class WinRTCollectionProjectionTest {
     @Test
+    fun missing_dictionary_keys_are_not_looked_up_before_get_put_or_remove() {
+        // CsWinRT IDictionary.net5.cs / IReadOnlyDictionary.net5.cs TryGetValue preflight.
+        // WinUI ResourceDictionary can fail Lookup with E_FAIL rather than E_BOUNDS.
+        val allocated = mutableListOf<AutoCloseable>()
+        try {
+            for (keyAdapter in listOf(WinRTReferenceValueAdapters.string, labelAdapter(allocated))) {
+                PlatformAbi.confinedScope().use { scope ->
+                    val reference = MissingKeyMapReference(scope)
+                    WinRTDictionaryProjection.FromAbiHelper(
+                        reference, keyAdapter, WinRTReferenceValueAdapters.string,
+                        mapTypeHandleFor(keyAdapter, WinRTReferenceValueAdapters.string),
+                    ).use { map ->
+                        assertEquals(null, map["missing"])
+                        assertEquals(null, map.remove("missing"))
+                        assertEquals(null, map.put("missing", "value"))
+                        assertEquals(0, reference.lookups)
+                        assertEquals("previous", map.put("missing", "replacement"))
+                        assertEquals("previous", map.remove("missing"))
+                        assertEquals(null, map["missing"])
+                        assertEquals(2, reference.lookups)
+                    }
+                    val view = object : WinRTMapViewReference(
+                        PlatformAbi.allocateBytes(scope, 8), IID.IUnknown, preventReleaseOnDispose = true,
+                    ) {
+                        override fun hasKey(key: RawAddress) = false
+                        override fun <T> lookupProjectedOrNull(key: RawAddress, resultOut: RawAddress, adapter: WinRTReferenceValueAdapter<T>): T? =
+                            error("Missing keys must not reach IMapView.Lookup")
+                        override fun <T> lookupProjectedOrNull(key: String, adapter: WinRTReferenceValueAdapter<T>): T? =
+                            error("Missing keys must not reach IMapView.Lookup")
+                        override fun close() = Unit
+                    }
+                    WinRTReadOnlyDictionaryProjection.FromAbiHelper(
+                        view, keyAdapter, WinRTReferenceValueAdapters.string,
+                        mapViewTypeHandleFor(keyAdapter, WinRTReferenceValueAdapters.string),
+                    ).use { assertEquals(null, it["missing"]) }
+                }
+            }
+        } finally {
+            allocated.closeAll()
+        }
+    }
+
+    @Test
     fun dictionary_from_abi_reuses_closed_interface_identity_and_consumes_duplicate_reference() {
         ComWrappersSupport.clearRuntimeCache()
         val adapter = WinRTReferenceValueAdapters.string
@@ -525,6 +568,29 @@ class WinRTCollectionProjectionTest {
         }
     }
 
+}
+
+private class MissingKeyMapReference(scope: NativeScope) : WinRTMapReference(
+    PlatformAbi.allocateBytes(scope, 8), IID.IUnknown, preventReleaseOnDispose = true,
+) {
+    private var present = false
+    var lookups = 0
+        private set
+
+    override fun hasKey(key: RawAddress) = present
+    override fun insert(key: RawAddress, value: RawAddress): Boolean = present.also { present = true }
+    override fun remove(key: RawAddress) { present = false }
+    override fun close() = Unit
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> lookup(): T? {
+        check(present) { "Missing keys must not reach IMap.Lookup" }
+        lookups++
+        return "previous" as T
+    }
+
+    override fun <T> lookupProjectedOrNull(key: RawAddress, resultOut: RawAddress, adapter: WinRTReferenceValueAdapter<T>): T? = lookup()
+    override fun <T> lookupProjectedOrNull(key: String, adapter: WinRTReferenceValueAdapter<T>): T? = lookup()
 }
 
 private fun labelAdapter(allocated: MutableList<AutoCloseable>): WinRTReferenceValueAdapter<String> =

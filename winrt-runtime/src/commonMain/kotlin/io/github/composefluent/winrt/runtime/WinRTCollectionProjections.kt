@@ -1082,6 +1082,8 @@ object WinRTReadOnlyDictionaryProjection {
             }
 
         override fun get(key: K): V? {
+            // CsWinRT IReadOnlyDictionaryMethods.TryGetValue checks HasKey before Lookup.
+            if (!containsKey(key)) return null
             val directHString = keyAdapter.asDirectHStringInputOrNull(key)
             return if (directHString == null) {
                 keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
@@ -1252,6 +1254,9 @@ object WinRTDictionaryProjection {
         override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
             get() = adapter.entries
 
+        override fun containsKey(key: K): Boolean =
+            keyAdapter.withInputAbi(key) { keyAbi -> map.hasKey(keyAbi) }
+
         override fun put(key: K, value: V): V? {
             val previous = get(key)
             keyAdapter.withInputAbi(key) { keyAbi ->
@@ -1263,6 +1268,9 @@ object WinRTDictionaryProjection {
         }
 
         override fun get(key: K): V? {
+            // CsWinRT IDictionaryMethods.TryGetValue checks HasKey first. In particular,
+            // XAML ResourceDictionary.Lookup reports E_FAIL for an absent resource key.
+            if (!containsKey(key)) return null
             val directHString = keyAdapter.asDirectHStringInputOrNull(key)
             return if (directHString == null) {
                 keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
