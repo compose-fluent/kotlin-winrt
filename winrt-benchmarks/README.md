@@ -42,6 +42,8 @@ Gradle finishes the Kotlin build prerequisites before timing and serializes the 
 
 The Gradle wrapper downloads the Kotlin and Kotlin/Native dependencies. The C++ runner discovers Windows Kits from the installed-kits registry first, then `KOTLIN_WINRT_WINDOWS_SDK_ROOT`, and finally the default location. It reports the exact missing Visual Studio or Windows SDK component instead of silently skipping it.
 
+TestWinRT declares `BenchmarkComponent` as a Windows Store project even though it targets the desktop API family and CRT. The build overrides that application type and produces a desktop DLL with the same compiler options, so the Universal Windows Platform build tools are not required.
+
 ## Run
 
 Run the complete matrix and generate Markdown plus JSON reports:

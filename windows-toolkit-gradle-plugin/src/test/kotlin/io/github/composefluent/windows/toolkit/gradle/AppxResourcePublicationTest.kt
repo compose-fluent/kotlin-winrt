@@ -64,6 +64,29 @@ class AppxResourcePublicationTest {
 
     @Test
     fun kmp_project_resources_match_different_local_target_names() {
+        val root = writeKmpResourceProducerAndConsumer()
+
+        val result = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments(":producer:inspectPublication", ":consumer:inspectResources", "--offline", "--stacktrace").build()
+
+        assertTrue(result.output, result.output.contains("selected=producer-libraryDesktopMain-appx-resources.zip"))
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:packageAppxResourcesLibraryDesktopMain")?.outcome)
+    }
+
+    // Configuration on demand configures the producer while the task graph resolves the consumer,
+    // and raises projectsEvaluated only after that resolution.
+    @Test
+    fun kmp_project_resources_are_collected_with_configuration_on_demand() {
+        val root = writeKmpResourceProducerAndConsumer()
+
+        val result = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments(":consumer:inspectResources", "--configure-on-demand", "--offline", "--stacktrace").build()
+
+        assertTrue(result.output, result.output.contains("selected=producer-libraryDesktopMain-appx-resources.zip"))
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:packageAppxResourcesLibraryDesktopMain")?.outcome)
+    }
+
+    private fun writeKmpResourceProducerAndConsumer(): Path {
         val root = Files.createTempDirectory("kotlin-winrt-kmp-resource-names-")
         writeMultiProjectSettings(root)
         writeGradleFile(root.resolve("producer/build.gradle"), """
@@ -106,12 +129,7 @@ class AppxResourcePublicationTest {
                 }
             }
         """.trimIndent())
-
-        val result = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-            .withArguments(":producer:inspectPublication", ":consumer:inspectResources", "--offline", "--stacktrace").build()
-
-        assertTrue(result.output, result.output.contains("selected=producer-libraryDesktopMain-appx-resources.zip"))
-        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:packageAppxResourcesLibraryDesktopMain")?.outcome)
+        return root
     }
 
     @Test

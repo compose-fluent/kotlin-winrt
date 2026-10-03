@@ -7,7 +7,6 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
 import org.gradle.work.DisableCachingByDefault
 import java.net.URI
-import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -32,24 +31,21 @@ abstract class ResolveWinRTXamlCompilerTask : DefaultTask() {
         val hash = archiveSha256.get().lowercase()
         require(hash.matches(Regex("[0-9a-f]{64}"))) { "A pinned XamlCompiler SHA-256 is required." }
         val cache = cacheDirectory.get().asFile.toPath().resolve(hash)
-        Files.createDirectories(cache)
-        FileChannel.open(cache.resolve("download.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
-            channel.lock().use {
-                val archive = cache.resolve("compiler.zip")
-                if (!Files.isRegularFile(archive) || xamlSha256(archive) != hash) {
-                    check(!offline.get()) { "Kotlin XamlCompiler ${compilerVersion.get()} is not cached; Gradle is offline." }
-                    val uri = URI(archiveUrl.get())
-                    require(uri.scheme == "https") { "XamlCompiler download requires HTTPS." }
-                    val temporary = cache.resolve("download.part")
-                    try {
-                        val connection = uri.toURL().openConnection().apply { connectTimeout = 30_000; readTimeout = 60_000 }
-                        connection.getInputStream().use { input -> Files.newOutputStream(temporary).use(input::copyTo) }
-                        check(xamlSha256(temporary) == hash) { "XamlCompiler archive checksum mismatch." }
-                        Files.move(temporary, archive, StandardCopyOption.REPLACE_EXISTING)
-                    } finally { Files.deleteIfExists(temporary) }
-                }
-                extractXamlCompiler(archive, outputDirectory.get().asFile.toPath(), compilerVersion.get())
+        withWinRTCacheLock(cache.resolve("download.lock")) {
+            val archive = cache.resolve("compiler.zip")
+            if (!Files.isRegularFile(archive) || xamlSha256(archive) != hash) {
+                check(!offline.get()) { "Kotlin XamlCompiler ${compilerVersion.get()} is not cached; Gradle is offline." }
+                val uri = URI(archiveUrl.get())
+                require(uri.scheme == "https") { "XamlCompiler download requires HTTPS." }
+                val temporary = cache.resolve("download.part")
+                try {
+                    val connection = uri.toURL().openConnection().apply { connectTimeout = 30_000; readTimeout = 60_000 }
+                    connection.getInputStream().use { input -> Files.newOutputStream(temporary).use(input::copyTo) }
+                    check(xamlSha256(temporary) == hash) { "XamlCompiler archive checksum mismatch." }
+                    Files.move(temporary, archive, StandardCopyOption.REPLACE_EXISTING)
+                } finally { Files.deleteIfExists(temporary) }
             }
+            extractXamlCompiler(archive, outputDirectory.get().asFile.toPath(), compilerVersion.get())
         }
     }
 }

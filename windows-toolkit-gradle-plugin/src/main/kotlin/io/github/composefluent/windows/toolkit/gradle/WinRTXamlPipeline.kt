@@ -129,8 +129,10 @@ internal fun configureWinRTXamlPipeline(
             if (enabled) applicationHeader.flatMap { it.sourceOutputDirectory.file("registrars.tsv") } else project.providers.provider { null }
         })
     }
+    // This transformer is stored with the configuration cache because its input is a
+    // task output; it must not capture the Project.
     val dependencySchemas = applicationHeader.flatMap { it.sourceOutputDirectory }.map {
-        project.fileTree(it.dir("dependency-schemas")) { spec -> spec.include("*.KotlinXaml.winmd") }
+        it.dir("dependency-schemas").asFileTree.matching { spec -> spec.include("*.KotlinXaml.winmd") }
     }
     project.tasks.withType(GenerateWinRTIdentityTask::class.java).configureEach { task ->
         task.dependsOn(removeStaleXaml)

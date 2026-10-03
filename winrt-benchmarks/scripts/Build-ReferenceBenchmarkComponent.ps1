@@ -129,6 +129,7 @@ $oldCl = $env:CL
 try {
     $clOptions = @(
         $oldCl,
+        "/sdl",
         "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     $env:CL = [string]::Join(" ", $clOptions)
@@ -141,16 +142,20 @@ try {
         "/p:Configuration=Release",
         "/p:Platform=x64",
         "/p:PlatformToolset=$($platformToolsets[0].Name)",
-        "/p:WindowsTargetPlatformVersion=$WindowsSdkVersion"
+        "/p:WindowsTargetPlatformVersion=$WindowsSdkVersion",
+        "/p:ApplicationType=",
+        "/p:ApplicationTypeRevision=",
+        "/p:AppContainerApplication=false",
+        "/p:GeneratedFilesDir=GeneratedFiles\"
     )
 } finally {
     $env:CL = $oldCl
 }
 
-$componentBuildOutput = Join-Path $sourceRoot "BenchmarkComponent\x64\Release\BenchmarkComponent"
+$componentBuildOutput = Join-Path $sourceRoot "BenchmarkComponent\x64\Release"
 $componentDll = Join-Path $componentBuildOutput "BenchmarkComponent.dll"
 $componentWinmd = Join-Path $componentBuildOutput "BenchmarkComponent.winmd"
-$generatedFiles = Join-Path $sourceRoot "BenchmarkComponent\Generated Files"
+$generatedFiles = Join-Path $sourceRoot "BenchmarkComponent\GeneratedFiles"
 foreach ($required in @($componentDll, $componentWinmd, $generatedFiles)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "BenchmarkComponent build did not produce '$required'."

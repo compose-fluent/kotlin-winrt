@@ -4048,7 +4048,7 @@ private fun configureKmpAppxResourceArtifactVariants(
     project: Project,
 ) {
     val configuredSourceSets = linkedSetOf<String>()
-    val resourceCompilations = linkedMapOf<String, KotlinCompilation<*>>()
+    val resourceDependencyCollectors = mutableListOf<() -> Unit>()
 
     fun configureCompilation(compilation: KotlinCompilation<*>, resourceTarget: String) {
         if (compilation.name == "winRTProjection") return
@@ -4056,7 +4056,6 @@ private fun configureKmpAppxResourceArtifactVariants(
         if (!configuredSourceSets.add(sourceSetName)) {
             return
         }
-        resourceCompilations[sourceSetName] = compilation
         val suffix = sourceSetName.replaceFirstChar(Char::uppercaseChar)
         val task = project.tasks.register(
             "packageAppxResources$suffix",
@@ -4090,6 +4089,11 @@ private fun configureKmpAppxResourceArtifactVariants(
                 project.objects.named(Usage::class.java, KOTLIN_APPX_RESOURCES_USAGE),
             )
         }
+        val collectDependencies = appxResourceDependencyCollector(project, targetDependencies, compilation)
+        resourceDependencyCollectors.add(collectDependencies)
+        // Configuration on demand raises projectsEvaluated only after a consumer has resolved
+        // this variant. Collect right before that first observation.
+        targetDependencies.withDependencies { collectDependencies() }
         val elements = project.configurations.maybeCreate(
             "${KOTLIN_APPX_RESOURCES_ELEMENTS_CONFIGURATION}$suffix",
         ).apply {
@@ -4117,13 +4121,7 @@ private fun configureKmpAppxResourceArtifactVariants(
     // sets. Each target-specific resource configuration then receives only its own reachable
     // source dependency graph.
     project.gradle.projectsEvaluated {
-        resourceCompilations.forEach { (sourceSetName, compilation) ->
-            val suffix = sourceSetName.replaceFirstChar(Char::uppercaseChar)
-            val targetDependencies = project.configurations.findByName(
-                "${KOTLIN_APPX_RESOURCES_CONFIGURATION}${suffix}Dependencies",
-            ) ?: return@forEach
-            configureAppxResourceDependenciesForCompilation(project, targetDependencies, compilation)
-        }
+        resourceDependencyCollectors.forEach { collectDependencies -> collectDependencies() }
     }
 
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
@@ -4175,8 +4173,7 @@ private fun configureAppxResourceDependencies(
 
     fun registerProjectDependency(dependency: ProjectDependency) {
         if (!canRegister() || registeredProjectPaths.contains(dependency.path)) return
-        val dependencyProject = project.findProject(dependency.path)
-        if (dependencyProject?.plugins?.hasPlugin(KotlinWindowsToolkitPlugin::class.java) == true) {
+        if (project.dependsOnWindowsToolkitProject(dependency)) {
             registeredProjectPaths.add(dependency.path)
             appxResourceDependencies.dependencies.add(dependency.copy())
         }
@@ -4202,7 +4199,7 @@ private fun configureAppxResourceDependencies(
     // Snapshot only the selected compilation's dependency graph after every project has been
     // evaluated. Listening to dependency additions during resolution can run after this optional
     // configuration has been observed by Kotlin/Native, which makes Gradle reject late mutation.
-    project.gradle.projectsEvaluated {
+    val snapshot = snapshot@{
         // The library model is configured for every project, including applications. In an
         // application the selected-variant observer below owns this configuration; the generic
         // observer must stay dormant to avoid adding the same dependency graph twice. KMP
@@ -4213,7 +4210,7 @@ private fun configureAppxResourceDependencies(
                     applicationEnabled?.orNull == true
                 )
         ) {
-            return@projectsEvaluated
+            return@snapshot
         }
         val variant = selectedVariant?.get()
         val configurations = resourceDependencyConfigurationGraph(
@@ -4226,13 +4223,30 @@ private fun configureAppxResourceDependencies(
         )
         configurations.forEach(::observe)
     }
+    project.gradle.projectsEvaluated { snapshot() }
+    // Configuration on demand raises projectsEvaluated only after the task graph has resolved
+    // this configuration. Take the same snapshot right before that first resolution.
+    appxResourceDependencies.withDependencies { snapshot() }
 }
 
-private fun configureAppxResourceDependenciesForCompilation(
+/**
+ * Configuration on demand leaves a producer unconfigured, and its plugins unknown, until a
+ * dependency on it is resolved.
+ */
+private fun Project.dependsOnWindowsToolkitProject(dependency: ProjectDependency): Boolean {
+    val dependencyProject = findProject(dependency.path) ?: return false
+    if (gradle.startParameter.isConfigureOnDemand && !dependencyProject.state.executed) {
+        evaluationDependsOn(dependency.path)
+    }
+    return dependencyProject.plugins.hasPlugin(KotlinWindowsToolkitPlugin::class.java)
+}
+
+/** The collector runs once, from whichever of its triggers observes the evaluated project first. */
+private fun appxResourceDependencyCollector(
     project: Project,
     appxResourceDependencies: org.gradle.api.artifacts.Configuration,
     compilation: KotlinCompilation<*>,
-) {
+): () -> Unit {
     val registeredProjectPaths = linkedSetOf<String>()
     val registeredExternalModules = linkedSetOf<String>()
 
@@ -4240,8 +4254,7 @@ private fun configureAppxResourceDependenciesForCompilation(
         when (dependency) {
             is ProjectDependency -> {
                 if (!registeredProjectPaths.add(dependency.path)) return
-                val dependencyProject = project.findProject(dependency.path)
-                if (dependencyProject?.plugins?.hasPlugin(KotlinWindowsToolkitPlugin::class.java) == true) {
+                if (project.dependsOnWindowsToolkitProject(dependency)) {
                     appxResourceDependencies.dependencies.add(dependency.copy())
                 }
             }
@@ -4254,14 +4267,12 @@ private fun configureAppxResourceDependenciesForCompilation(
         }
     }
 
-    val collectDependencies = {
+    var collected = false
+    return collector@{
+        if (collected || !project.state.executed) return@collector
+        collected = true
         resourceDependencyConfigurationGraph(project, compilation)
             .forEach { configuration -> configuration.dependencies.forEach(::register) }
-    }
-    if (project.state.executed) {
-        collectDependencies()
-    } else {
-        project.afterEvaluate { collectDependencies() }
     }
 }
 

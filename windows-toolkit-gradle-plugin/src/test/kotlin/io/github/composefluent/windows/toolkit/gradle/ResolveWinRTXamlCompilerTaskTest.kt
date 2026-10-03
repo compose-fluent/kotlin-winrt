@@ -6,6 +6,10 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -60,5 +64,43 @@ class ResolveWinRTXamlCompilerTaskTest {
         task.resolve()
         Files.writeString(cache.resolve("compiler.zip"), "corrupt")
         assertTrue(runCatching { task.resolve() }.exceptionOrNull()?.message.orEmpty().contains("offline"))
+    }
+
+    @Test fun resolution_waits_for_another_project_holding_the_shared_cache_entry() {
+        val root = Files.createTempDirectory("xaml-tool-shared-")
+        val archive = packageFile(root)
+        val hash = xamlSha256(archive)
+        val cache = root.resolve("cache/$hash").also(Files::createDirectories)
+        Files.copy(archive, cache.resolve("compiler.zip"))
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        val task = project.tasks.register("resolve", ResolveWinRTXamlCompilerTask::class.java).get()
+        task.compilerVersion.set("1.0.0")
+        task.archiveSha256.set(hash)
+        task.archiveUrl.set("https://example.invalid/compiler.zip")
+        task.offline.set(true)
+        task.cacheDirectory.set(root.resolve("cache").toFile())
+        task.outputDirectory.set(root.resolve("installed").toFile())
+        val holderEntered = CountDownLatch(1)
+        val releaseHolder = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val holder = executor.submit {
+                withWinRTCacheLock(cache.resolve("download.lock")) {
+                    holderEntered.countDown()
+                    check(releaseHolder.await(10, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(holderEntered.await(10, TimeUnit.SECONDS))
+            val resolver = executor.submit { task.resolve() }
+            // A second file lock in this JVM would fail immediately instead of waiting.
+            assertTrue(runCatching { resolver.get(500, TimeUnit.MILLISECONDS) }.exceptionOrNull() is TimeoutException)
+            releaseHolder.countDown()
+            holder.get(10, TimeUnit.SECONDS)
+            resolver.get(10, TimeUnit.SECONDS)
+            assertTrue(Files.isRegularFile(root.resolve("installed/XamlCompiler.exe")))
+        } finally {
+            releaseHolder.countDown()
+            executor.shutdownNow()
+        }
     }
 }
